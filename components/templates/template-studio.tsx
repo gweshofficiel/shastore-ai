@@ -16,7 +16,7 @@ import {
 } from "@/lib/template-studio/actions";
 import type { StoreTemplate, TemplateCustomizationDefaults } from "@/lib/template-studio/types";
 
-type StudioStatus = "draft" | "published" | "unpublished";
+type StudioStatus = "draft" | "published" | "unpublished" | "duplicated" | "restored";
 
 const editorSections = [
   "Branding",
@@ -134,20 +134,34 @@ function ActionForm({
 export function TemplateStudio({
   actionPath,
   backPath,
+  initialCustomization,
+  initialStatus,
+  lastSavedAt,
   template,
   variant
 }: {
   actionPath: string;
   backPath: string;
+  initialCustomization?: TemplateCustomizationDefaults | null;
+  initialStatus?: StudioStatus | null;
+  lastSavedAt?: string | null;
   template: StoreTemplate;
   variant: "seller" | "reseller";
 }) {
   const searchParams = useSearchParams();
   const saved = searchParams.get("saved");
   const error = searchParams.get("error");
-  const [customization, setCustomization] = useState(template.defaultCustomization);
+  const [customization, setCustomization] = useState(
+    initialCustomization ?? template.defaultCustomization
+  );
   const status: StudioStatus =
-    saved === "published" ? "published" : saved === "unpublished" ? "unpublished" : "draft";
+    saved === "published"
+      ? "published"
+      : saved === "unpublished"
+        ? "unpublished"
+        : initialStatus === "published" || initialStatus === "unpublished"
+          ? initialStatus
+          : "draft";
   const featuredProducts = useMemo(
     () => template.demoProducts.filter((product) => product.featured),
     [template.demoProducts]
@@ -294,6 +308,11 @@ export function TemplateStudio({
           {saved ? (
             <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
               Template action completed: {saved}.
+            </p>
+          ) : null}
+          {!saved && lastSavedAt ? (
+            <p className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
+              Saved draft loaded from Supabase. Last updated {new Date(lastSavedAt).toLocaleString()}.
             </p>
           ) : null}
           {error ? (
