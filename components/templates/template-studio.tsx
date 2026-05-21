@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,21 +19,79 @@ import type { StoreTemplate, TemplateCustomizationDefaults } from "@/lib/templat
 type StudioStatus = "draft" | "published" | "unpublished" | "duplicated" | "restored";
 
 const editorSections = [
-  "Branding",
-  "Colors",
-  "Header",
-  "Footer",
-  "Homepage",
-  "Products",
-  "Categories",
-  "CTA",
-  "Contact info",
-  "SEO placeholders",
-  "Footer store info",
-  "Footer legal pages",
-  "Footer shipping/payment",
-  "Locked SHASTORE AI brand"
+  {
+    description: "Logo, banner, and public store identity.",
+    id: "branding",
+    label: "Branding"
+  },
+  {
+    description: "Primary and secondary storefront colors.",
+    id: "colors",
+    label: "Colors"
+  },
+  {
+    description: "Hero copy and first impression content.",
+    id: "header",
+    label: "Header"
+  },
+  {
+    description: "Footer message shown near the bottom of the template.",
+    id: "footer",
+    label: "Footer"
+  },
+  {
+    description: "Homepage sections, offers, and merchandising story.",
+    id: "homepage",
+    label: "Homepage"
+  },
+  {
+    description: "Template demo products and product placeholders.",
+    id: "products",
+    label: "Products"
+  },
+  {
+    description: "Protected category mapping and visible category chips.",
+    id: "categories",
+    label: "Categories"
+  },
+  {
+    description: "Primary call-to-action used in the hero and preview.",
+    id: "cta",
+    label: "CTA"
+  },
+  {
+    description: "Contact, social, and support information.",
+    id: "contact",
+    label: "Contact info"
+  },
+  {
+    description: "Search title and description placeholders.",
+    id: "seo",
+    label: "SEO placeholders"
+  },
+  {
+    description: "Store name, description, and customer support details.",
+    id: "footer-store",
+    label: "Footer store info"
+  },
+  {
+    description: "Legal page labels and links.",
+    id: "footer-legal",
+    label: "Footer legal pages"
+  },
+  {
+    description: "Shipping, payment, and copyright display.",
+    id: "footer-shipping",
+    label: "Footer shipping/payment"
+  },
+  {
+    description: "The protected SHASTORE AI platform credit.",
+    id: "locked-brand",
+    label: "Locked SHASTORE AI brand"
+  }
 ] as const;
+
+type EditorSectionId = (typeof editorSections)[number]["id"];
 
 function Field({
   label,
@@ -109,6 +167,7 @@ function ActionForm({
   actionPath,
   customizationPayload,
   label,
+  onSubmit,
   pendingLabel,
   templateId,
   variant
@@ -117,12 +176,13 @@ function ActionForm({
   actionPath: string;
   customizationPayload: string;
   label: string;
+  onSubmit?: () => void;
   pendingLabel: string;
   templateId: string;
   variant?: "primary" | "secondary" | "ghost";
 }) {
   return (
-    <form action={action}>
+    <form action={action} onSubmit={onSubmit}>
       <input name="returnTo" type="hidden" value={actionPath} />
       <input name="templateId" type="hidden" value={templateId} />
       <input name="customization" type="hidden" value={customizationPayload} />
@@ -154,6 +214,9 @@ export function TemplateStudio({
   const [customization, setCustomization] = useState(
     initialCustomization ?? template.defaultCustomization
   );
+  const [activeSection, setActiveSection] = useState<EditorSectionId>("branding");
+  const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const status: StudioStatus =
     saved === "published"
       ? "published"
@@ -170,6 +233,31 @@ export function TemplateStudio({
     () => JSON.stringify(customization),
     [customization]
   );
+  const activeSectionMeta = editorSections.find((section) => section.id === activeSection);
+
+  useEffect(() => {
+    if (saved) {
+      const label =
+        saved === "draft"
+          ? "Draft saved."
+          : saved === "published"
+            ? "Template saved and published."
+            : saved === "unpublished"
+              ? "Template unpublished."
+              : saved === "duplicated"
+                ? "Template duplicated."
+                : saved === "restored"
+                  ? "Defaults restored."
+                  : "Template action completed.";
+
+      setToast({ message: label, tone: "success" });
+      return;
+    }
+
+    if (error) {
+      setToast({ message: error, tone: "error" });
+    }
+  }, [error, saved]);
 
   function updateCustomization(name: string, value: string) {
     if (name === "instagram" || name === "tiktok" || name === "facebook") {
@@ -193,6 +281,417 @@ export function TemplateStudio({
     setCustomization(template.defaultCustomization);
   }
 
+  function selectSection(section: EditorSectionId) {
+    setActiveSection(section);
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderActivePanel() {
+    switch (activeSection) {
+      case "branding":
+        return (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Logo" name="logo" onChange={updateCustomization} value={customization.logo} />
+              <Field label="Banner" name="banner" onChange={updateCustomization} value={customization.banner} />
+              <Field
+                label="Store name"
+                name="storeName"
+                onChange={updateCustomization}
+                value={customization.storeName}
+              />
+            </div>
+            <TextAreaField
+              label="Store description"
+              name="storeDescription"
+              onChange={updateCustomization}
+              value={customization.storeDescription}
+            />
+          </>
+        );
+      case "colors":
+        return (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                label="Primary color"
+                name="primaryColor"
+                onChange={updateCustomization}
+                type="color"
+                value={customization.primaryColor}
+              />
+              <Field
+                label="Secondary color"
+                name="secondaryColor"
+                onChange={updateCustomization}
+                type="color"
+                value={customization.secondaryColor}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div
+                className="rounded-[2rem] p-5 text-sm font-black text-white"
+                style={{ backgroundColor: customization.primaryColor }}
+              >
+                Primary preview
+              </div>
+              <div
+                className="rounded-[2rem] p-5 text-sm font-black text-white"
+                style={{ backgroundColor: customization.secondaryColor }}
+              >
+                Secondary preview
+              </div>
+            </div>
+          </>
+        );
+      case "header":
+        return (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Logo" name="logo" onChange={updateCustomization} value={customization.logo} />
+              <Field label="Banner" name="banner" onChange={updateCustomization} value={customization.banner} />
+              <Field
+                label="Hero title"
+                name="heroTitle"
+                onChange={updateCustomization}
+                value={customization.heroTitle}
+              />
+            </div>
+            <TextAreaField
+              label="Hero subtitle"
+              name="heroSubtitle"
+              onChange={updateCustomization}
+              value={customization.heroSubtitle}
+            />
+          </>
+        );
+      case "footer":
+        return (
+          <>
+            <TextAreaField
+              label="Footer text"
+              name="footerText"
+              onChange={updateCustomization}
+              value={customization.footerText}
+            />
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-muted">
+              This text appears above the detailed footer store info, legal links, shipping, payment,
+              and locked platform branding.
+            </div>
+          </>
+        );
+      case "homepage":
+        return (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                label="Hero title"
+                name="heroTitle"
+                onChange={updateCustomization}
+                value={customization.heroTitle}
+              />
+              <Field
+                label="CTA text"
+                name="ctaText"
+                onChange={updateCustomization}
+                value={customization.ctaText}
+              />
+            </div>
+            <TextAreaField
+              label="Hero subtitle"
+              name="heroSubtitle"
+              onChange={updateCustomization}
+              value={customization.heroSubtitle}
+            />
+            <div className="grid gap-3">
+              {template.demoSections.map((section) => (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={section.title}>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    {section.eyebrow}
+                  </p>
+                  <p className="mt-2 font-black text-ink">{section.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted">{section.body}</p>
+                </div>
+              ))}
+              {template.demoOffers.map((offer) => (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4" key={offer.code}>
+                  <p className="font-black text-emerald-950">{offer.title}</p>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">
+                    {offer.description}
+                  </p>
+                  <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                    Code: {offer.code}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        );
+      case "products":
+        return (
+          <div className="grid gap-4">
+            {template.demoProducts.map((product) => (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4" key={product.name}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-ink">{product.name}</p>
+                    <p className="mt-1 text-sm font-bold text-muted">{product.category}</p>
+                  </div>
+                  <p className="font-black text-ink">{product.price}</p>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{product.shortDescription}</p>
+                <p className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  {product.type === "digital"
+                    ? product.fileDeliveryPlaceholder
+                    : product.type === "marketplace"
+                      ? `${product.vendorPlaceholder} | ${product.commissionPlaceholder}`
+                      : `${product.imagePlaceholder} | ${product.stockPlaceholder}`}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(product.productBadges ?? []).map((badge) => (
+                    <span
+                      className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500"
+                      key={badge}
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs font-bold text-slate-500">
+                  SKU {product.skuPlaceholder} | Variants{" "}
+                  {(product.variantsPlaceholder ?? []).join(" / ")}
+                </p>
+              </div>
+            ))}
+          </div>
+        );
+      case "categories":
+        return (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {template.demoCategories.map((category) => (
+                <span
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600"
+                  key={category}
+                >
+                  {category}
+                </span>
+              ))}
+            </div>
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-black text-blue-950">Locked to {template.categoryName}</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-blue-800">
+                {template.protection.validationPlaceholder}
+              </p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">
+                {template.protection.wrongCategoryPublishPlaceholder}
+              </p>
+            </div>
+          </>
+        );
+      case "cta":
+        return (
+          <Field
+            label="CTA text"
+            name="ctaText"
+            onChange={updateCustomization}
+            value={customization.ctaText}
+          />
+        );
+      case "contact":
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              label="Contact info"
+              name="contactInfo"
+              onChange={updateCustomization}
+              value={customization.contactInfo}
+            />
+            <Field
+              label="Support email"
+              name="supportEmail"
+              onChange={updateCustomization}
+              value={customization.supportEmail}
+            />
+            <Field label="Phone" name="phone" onChange={updateCustomization} value={customization.phone} />
+            <Field
+              label="WhatsApp"
+              name="whatsapp"
+              onChange={updateCustomization}
+              value={customization.whatsapp}
+            />
+            <Field
+              label="Instagram"
+              name="instagram"
+              onChange={updateCustomization}
+              value={customization.socialLinks.instagram}
+            />
+            <Field
+              label="TikTok"
+              name="tiktok"
+              onChange={updateCustomization}
+              value={customization.socialLinks.tiktok}
+            />
+            <Field
+              label="Facebook"
+              name="facebook"
+              onChange={updateCustomization}
+              value={customization.socialLinks.facebook}
+            />
+            <Field
+              label="Address"
+              name="address"
+              onChange={updateCustomization}
+              value={customization.address}
+            />
+          </div>
+        );
+      case "seo":
+        return (
+          <>
+            <TextAreaField
+              label="SEO title"
+              name="seoTitle"
+              onChange={updateCustomization}
+              value={customization.seoTitle}
+            />
+            <TextAreaField
+              label="SEO description"
+              name="seoDescription"
+              onChange={updateCustomization}
+              value={customization.seoDescription}
+            />
+          </>
+        );
+      case "footer-store":
+        return (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                label="Store name"
+                name="storeName"
+                onChange={updateCustomization}
+                value={customization.storeName}
+              />
+              <Field
+                label="Support email"
+                name="supportEmail"
+                onChange={updateCustomization}
+                value={customization.supportEmail}
+              />
+              <Field label="Phone" name="phone" onChange={updateCustomization} value={customization.phone} />
+              <Field
+                label="WhatsApp"
+                name="whatsapp"
+                onChange={updateCustomization}
+                value={customization.whatsapp}
+              />
+              <Field
+                label="Address"
+                name="address"
+                onChange={updateCustomization}
+                value={customization.address}
+              />
+            </div>
+            <TextAreaField
+              label="Store description"
+              name="storeDescription"
+              onChange={updateCustomization}
+              value={customization.storeDescription}
+            />
+          </>
+        );
+      case "footer-legal":
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              label="Privacy policy text"
+              name="privacyPolicyText"
+              onChange={updateCustomization}
+              value={customization.privacyPolicyText}
+            />
+            <Field
+              label="Privacy policy link"
+              name="privacyPolicyLink"
+              onChange={updateCustomization}
+              value={customization.privacyPolicyLink}
+            />
+            <Field
+              label="Terms text"
+              name="termsText"
+              onChange={updateCustomization}
+              value={customization.termsText}
+            />
+            <Field
+              label="Terms link"
+              name="termsLink"
+              onChange={updateCustomization}
+              value={customization.termsLink}
+            />
+            <Field
+              label="Refund policy text"
+              name="refundPolicyText"
+              onChange={updateCustomization}
+              value={customization.refundPolicyText}
+            />
+            <Field
+              label="Refund policy link"
+              name="refundPolicyLink"
+              onChange={updateCustomization}
+              value={customization.refundPolicyLink}
+            />
+            <Field
+              label="Shipping policy text"
+              name="shippingPolicyText"
+              onChange={updateCustomization}
+              value={customization.shippingPolicyText}
+            />
+            <Field
+              label="Shipping policy link"
+              name="shippingPolicyLink"
+              onChange={updateCustomization}
+              value={customization.shippingPolicyLink}
+            />
+          </div>
+        );
+      case "footer-shipping":
+        return (
+          <>
+            <Field
+              label="Payment icons"
+              name="paymentIcons"
+              onChange={updateCustomization}
+              value={customization.paymentIcons}
+            />
+            <TextAreaField
+              label="Shipping method icons/text"
+              name="shippingMethodText"
+              onChange={updateCustomization}
+              value={customization.shippingMethodText}
+            />
+            <TextAreaField
+              label="Copyright text"
+              name="copyrightText"
+              onChange={updateCustomization}
+              value={customization.copyrightText}
+            />
+          </>
+        );
+      case "locked-brand":
+        return (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-black text-amber-900">Locked platform branding</p>
+            <p className="mt-1 text-sm font-semibold text-amber-800">
+              {customization.lockedPoweredBy} is locked for sellers and resellers. Only platform
+              admin can remove or edit this phrase.
+            </p>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <aside className="grid gap-4 xl:sticky xl:top-6 xl:self-start">
@@ -206,14 +705,33 @@ export function TemplateStudio({
             </h2>
           </div>
           <div className="grid gap-2">
-            {editorSections.map((section) => (
-              <div
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700"
-                key={section}
-              >
-                {section}
-              </div>
-            ))}
+            {editorSections.map((section) => {
+              const isActive = section.id === activeSection;
+
+              return (
+                <button
+                  aria-current={isActive ? "step" : undefined}
+                  aria-expanded={isActive}
+                  className={`rounded-2xl border px-4 py-3 text-left text-sm transition duration-200 ${
+                    isActive
+                      ? "border-blue-300 bg-blue-50 text-blue-950 shadow-sm"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white hover:text-ink"
+                  }`}
+                  key={section.id}
+                  onClick={() => selectSection(section.id)}
+                  type="button"
+                >
+                  <span className="block font-black">{section.label}</span>
+                  <span
+                    className={`mt-1 block overflow-hidden text-xs font-semibold leading-5 transition-all duration-300 xl:hidden ${
+                      isActive ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
+                    }`}
+                  >
+                    {section.description}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </Card>
         <Card className="grid gap-3 border-blue-200 bg-blue-50">
@@ -283,14 +801,16 @@ export function TemplateStudio({
               templateId={template.id}
               variant="secondary"
             />
-            <form action={restoreTemplateDefaults}>
-              <input name="returnTo" type="hidden" value={actionPath} />
-              <input name="templateId" type="hidden" value={template.id} />
-              <input name="customization" type="hidden" value={customizationPayload} />
-              <Button onClick={resetVisibleDefaults} type="submit" variant="ghost">
-                Restore defaults
-              </Button>
-            </form>
+            <ActionForm
+              action={restoreTemplateDefaults}
+              actionPath={actionPath}
+              customizationPayload={customizationPayload}
+              label="Restore Defaults"
+              onSubmit={resetVisibleDefaults}
+              pendingLabel="Restoring..."
+              templateId={template.id}
+              variant="ghost"
+            />
             <Link
               className="inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-bold text-muted transition hover:bg-slate-100 hover:text-ink"
               href={backPath}
@@ -305,231 +825,42 @@ export function TemplateStudio({
               Preview
             </Link>
           </div>
-          {saved ? (
-            <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-              Template action completed: {saved}.
-            </p>
+          {toast ? (
+            <div
+              aria-live="polite"
+              className={`rounded-2xl border px-4 py-3 text-sm font-bold transition duration-300 ${
+                toast.tone === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-red-200 bg-red-50 text-red-700"
+              }`}
+              role="status"
+            >
+              {toast.message}
+            </div>
           ) : null}
           {!saved && lastSavedAt ? (
             <p className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
               Saved draft loaded from Supabase. Last updated {new Date(lastSavedAt).toLocaleString()}.
             </p>
           ) : null}
-          {error ? (
-            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-              {error}
-            </p>
-          ) : null}
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <Card className="grid gap-5">
+          <Card className="grid gap-5 transition duration-300">
+            <div ref={panelRef} />
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Editable Fields
+                Active Editor
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-                Branding, homepage, CTA, contact, and SEO
+                {activeSectionMeta?.label ?? "Template section"}
               </h2>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Logo" name="logo" onChange={updateCustomization} value={customization.logo} />
-              <Field label="Banner" name="banner" onChange={updateCustomization} value={customization.banner} />
-              <Field
-                label="Primary color"
-                name="primaryColor"
-                onChange={updateCustomization}
-                type="color"
-                value={customization.primaryColor}
-              />
-              <Field
-                label="Secondary color"
-                name="secondaryColor"
-                onChange={updateCustomization}
-                type="color"
-                value={customization.secondaryColor}
-              />
-              <Field
-                label="Hero title"
-                name="heroTitle"
-                onChange={updateCustomization}
-                value={customization.heroTitle}
-              />
-              <Field
-                label="CTA text"
-                name="ctaText"
-                onChange={updateCustomization}
-                value={customization.ctaText}
-              />
-              <Field
-                label="Contact info"
-                name="contactInfo"
-                onChange={updateCustomization}
-                value={customization.contactInfo}
-              />
-              <Field
-                label="Instagram"
-                name="instagram"
-                onChange={updateCustomization}
-                value={customization.socialLinks.instagram}
-              />
-              <Field
-                label="TikTok"
-                name="tiktok"
-                onChange={updateCustomization}
-                value={customization.socialLinks.tiktok}
-              />
-              <Field
-                label="Facebook"
-                name="facebook"
-                onChange={updateCustomization}
-                value={customization.socialLinks.facebook}
-              />
-            </div>
-            <TextAreaField
-              label="Hero subtitle"
-              name="heroSubtitle"
-              onChange={updateCustomization}
-              value={customization.heroSubtitle}
-            />
-            <TextAreaField
-              label="Footer text"
-              name="footerText"
-              onChange={updateCustomization}
-              value={customization.footerText}
-            />
-            <TextAreaField
-              label="SEO title"
-              name="seoTitle"
-              onChange={updateCustomization}
-              value={customization.seoTitle}
-            />
-            <TextAreaField
-              label="SEO description"
-              name="seoDescription"
-              onChange={updateCustomization}
-              value={customization.seoDescription}
-            />
-            <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-5">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Footer Editor
+              <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                {activeSectionMeta?.description}
               </p>
-              <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
-                Store info, legal, shipping, and payment display
-              </h3>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <Field
-                  label="Store name"
-                  name="storeName"
-                  onChange={updateCustomization}
-                  value={customization.storeName}
-                />
-                <Field
-                  label="Support email"
-                  name="supportEmail"
-                  onChange={updateCustomization}
-                  value={customization.supportEmail}
-                />
-                <Field
-                  label="Phone"
-                  name="phone"
-                  onChange={updateCustomization}
-                  value={customization.phone}
-                />
-                <Field
-                  label="WhatsApp"
-                  name="whatsapp"
-                  onChange={updateCustomization}
-                  value={customization.whatsapp}
-                />
-                <Field
-                  label="Address"
-                  name="address"
-                  onChange={updateCustomization}
-                  value={customization.address}
-                />
-                <Field
-                  label="Payment icons"
-                  name="paymentIcons"
-                  onChange={updateCustomization}
-                  value={customization.paymentIcons}
-                />
-                <Field
-                  label="Privacy policy text"
-                  name="privacyPolicyText"
-                  onChange={updateCustomization}
-                  value={customization.privacyPolicyText}
-                />
-                <Field
-                  label="Privacy policy link"
-                  name="privacyPolicyLink"
-                  onChange={updateCustomization}
-                  value={customization.privacyPolicyLink}
-                />
-                <Field
-                  label="Terms text"
-                  name="termsText"
-                  onChange={updateCustomization}
-                  value={customization.termsText}
-                />
-                <Field
-                  label="Terms link"
-                  name="termsLink"
-                  onChange={updateCustomization}
-                  value={customization.termsLink}
-                />
-                <Field
-                  label="Refund policy text"
-                  name="refundPolicyText"
-                  onChange={updateCustomization}
-                  value={customization.refundPolicyText}
-                />
-                <Field
-                  label="Refund policy link"
-                  name="refundPolicyLink"
-                  onChange={updateCustomization}
-                  value={customization.refundPolicyLink}
-                />
-                <Field
-                  label="Shipping policy text"
-                  name="shippingPolicyText"
-                  onChange={updateCustomization}
-                  value={customization.shippingPolicyText}
-                />
-                <Field
-                  label="Shipping policy link"
-                  name="shippingPolicyLink"
-                  onChange={updateCustomization}
-                  value={customization.shippingPolicyLink}
-                />
-              </div>
-              <div className="mt-4 grid gap-4">
-                <TextAreaField
-                  label="Store description"
-                  name="storeDescription"
-                  onChange={updateCustomization}
-                  value={customization.storeDescription}
-                />
-                <TextAreaField
-                  label="Shipping method icons/text"
-                  name="shippingMethodText"
-                  onChange={updateCustomization}
-                  value={customization.shippingMethodText}
-                />
-                <TextAreaField
-                  label="Copyright text"
-                  name="copyrightText"
-                  onChange={updateCustomization}
-                  value={customization.copyrightText}
-                />
-              </div>
-              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-black text-amber-900">Locked platform branding</p>
-                <p className="mt-1 text-sm font-semibold text-amber-800">
-                  {customization.lockedPoweredBy} is locked for sellers and resellers. Only
-                  platform admin can remove or edit this phrase.
-                </p>
-              </div>
+            </div>
+            <div className="grid gap-5 animate-in fade-in duration-300" key={activeSection}>
+              {renderActivePanel()}
             </div>
           </Card>
 
@@ -589,77 +920,6 @@ export function TemplateStudio({
           </Card>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="grid gap-4">
-            <h2 className="text-xl font-black tracking-[-0.03em] text-ink">
-              Demo Products
-            </h2>
-            {template.demoProducts.map((product) => (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4" key={product.name}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-black text-ink">{product.name}</p>
-                    <p className="mt-1 text-sm font-bold text-muted">{product.category}</p>
-                  </div>
-                  <p className="font-black text-ink">{product.price}</p>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{product.shortDescription}</p>
-                <p className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  {product.type === "digital"
-                    ? product.fileDeliveryPlaceholder
-                    : product.type === "marketplace"
-                      ? `${product.vendorPlaceholder} | ${product.commissionPlaceholder}`
-                      : `${product.imagePlaceholder} | ${product.stockPlaceholder}`}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(product.productBadges ?? []).map((badge) => (
-                    <span
-                      className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500"
-                      key={badge}
-                    >
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs font-bold text-slate-500">
-                  SKU {product.skuPlaceholder} | Variants{" "}
-                  {(product.variantsPlaceholder ?? []).join(" / ")}
-                </p>
-              </div>
-            ))}
-          </Card>
-          <Card className="grid gap-5">
-            <div>
-              <h2 className="text-xl font-black tracking-[-0.03em] text-ink">
-                Homepage Sections & Offers
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                These placeholders make each template feel like a complete store before a seller
-                replaces the demo content.
-              </p>
-            </div>
-            {template.demoSections.map((section) => (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={section.title}>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  {section.eyebrow}
-                </p>
-                <p className="mt-2 font-black text-ink">{section.title}</p>
-                <p className="mt-1 text-sm leading-6 text-muted">{section.body}</p>
-              </div>
-            ))}
-            {template.demoOffers.map((offer) => (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4" key={offer.code}>
-                <p className="font-black text-emerald-950">{offer.title}</p>
-                <p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">
-                  {offer.description}
-                </p>
-                <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
-                  Code: {offer.code}
-                </p>
-              </div>
-            ))}
-          </Card>
-        </div>
       </div>
     </div>
   );
