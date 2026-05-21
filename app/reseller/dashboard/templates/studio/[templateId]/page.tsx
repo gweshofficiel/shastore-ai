@@ -16,7 +16,8 @@ export default async function ResellerTemplateStudioPage({
 
   return (
     <TemplateStudio
-      returnPath="/reseller/dashboard/templates"
+      actionPath={`/reseller/dashboard/templates/studio/${template.id}`}
+      backPath="/reseller/dashboard/templates"
       template={template}
       variant="reseller"
     />

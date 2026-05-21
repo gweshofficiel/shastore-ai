@@ -72,6 +72,673 @@ const categoryNames = Object.fromEntries(
   storeTemplateCategories.map((category) => [category.key, category.name])
 ) as Record<TemplateCategoryKey, string>;
 
+const extraDemoProducts: Record<string, StoreTemplate["demoProducts"]> = {
+  "fashion-atelier": [
+    {
+      type: "physical",
+      name: "Ribbed Knit Co-ord Set",
+      price: "$76",
+      category: "New Arrivals",
+      shortDescription: "Matching knit top and skirt set designed for travel days and weekend brunch.",
+      imagePlaceholder: "fashion-knit-set-placeholder.jpg",
+      stockPlaceholder: "34 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Wide-Leg City Trouser",
+      price: "$68",
+      category: "New Arrivals",
+      shortDescription: "Tailored wide-leg trousers with a soft drape and hidden elastic back.",
+      imagePlaceholder: "fashion-trouser-placeholder.jpg",
+      stockPlaceholder: "51 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Evening Pearl Clutch",
+      price: "$58",
+      category: "Accessories",
+      shortDescription: "Compact pearl-detailed clutch for weddings, dinners, and party edits.",
+      imagePlaceholder: "fashion-clutch-placeholder.jpg",
+      stockPlaceholder: "27 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Oversized Cotton Shirt",
+      price: "$52",
+      category: "New Arrivals",
+      shortDescription: "Crisp oversized shirt with dropped shoulders and elevated everyday fit.",
+      imagePlaceholder: "fashion-shirt-placeholder.jpg",
+      stockPlaceholder: "68 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Signature Travel Tote",
+      price: "$112",
+      category: "Accessories",
+      shortDescription: "Structured tote with laptop sleeve, zip closure, and polished gold hardware.",
+      imagePlaceholder: "fashion-tote-placeholder.jpg",
+      stockPlaceholder: "22 units available",
+      featured: true
+    }
+  ],
+  "jewelry-luxe": [
+    {
+      type: "physical",
+      name: "Pearl Drop Earrings",
+      price: "$86",
+      category: "Gift Sets",
+      shortDescription: "Elegant freshwater pearl earrings with gold vermeil hooks and gift pouch.",
+      imagePlaceholder: "jewelry-pearl-earrings-placeholder.jpg",
+      stockPlaceholder: "40 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Minimal Silver Bracelet",
+      price: "$72",
+      category: "Bracelets",
+      shortDescription: "Adjustable sterling silver bracelet with a polished minimal chain.",
+      imagePlaceholder: "jewelry-silver-bracelet-placeholder.jpg",
+      stockPlaceholder: "63 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Moroccan Amber Necklace",
+      price: "$132",
+      category: "Necklaces",
+      shortDescription: "Warm amber pendant on a delicate chain inspired by Moroccan souk tones.",
+      imagePlaceholder: "jewelry-amber-necklace-placeholder.jpg",
+      stockPlaceholder: "19 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Wedding Ring Collection",
+      price: "$420",
+      category: "Rings",
+      shortDescription: "Curated wedding band collection with polished, brushed, and stone-set options.",
+      imagePlaceholder: "jewelry-wedding-rings-placeholder.jpg",
+      stockPlaceholder: "Made-to-order placeholder",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Premium Bracelet Box",
+      price: "$34",
+      category: "Gift Sets",
+      shortDescription: "Velvet-lined bracelet box with ribbon wrap for premium gifting moments.",
+      imagePlaceholder: "jewelry-bracelet-box-placeholder.jpg",
+      stockPlaceholder: "85 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Jewelry Cleaning Kit",
+      price: "$24",
+      category: "Gift Sets",
+      shortDescription: "Care kit with polishing cloth, soft brush, and travel-safe cleaning solution.",
+      imagePlaceholder: "jewelry-cleaning-kit-placeholder.jpg",
+      stockPlaceholder: "140 units available",
+      featured: false
+    }
+  ],
+  "electronics-hub": [
+    {
+      type: "physical",
+      name: "Smart Home Sensor Pack",
+      price: "$79",
+      category: "Smart Devices",
+      shortDescription: "Four compact sensors for doors, motion, and room automation routines.",
+      imagePlaceholder: "electronics-sensors-placeholder.jpg",
+      stockPlaceholder: "66 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "4K Pocket Action Cam",
+      price: "$189",
+      category: "Smart Devices",
+      shortDescription: "Stabilized mini camera with waterproof shell and creator mount kit.",
+      imagePlaceholder: "electronics-camera-placeholder.jpg",
+      stockPlaceholder: "21 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Braided USB-C Cable Trio",
+      price: "$22",
+      category: "Chargers",
+      shortDescription: "Durable fast-charge cable pack for desk, car, and travel bags.",
+      imagePlaceholder: "electronics-cables-placeholder.jpg",
+      stockPlaceholder: "180 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Portable Bluetooth Speaker",
+      price: "$74",
+      category: "Audio",
+      shortDescription: "Compact speaker with punchy bass, water resistance, and 18-hour battery.",
+      imagePlaceholder: "electronics-speaker-placeholder.jpg",
+      stockPlaceholder: "53 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Ergonomic Laptop Stand",
+      price: "$46",
+      category: "Workstation",
+      shortDescription: "Foldable aluminum stand for better posture and cleaner creator setups.",
+      imagePlaceholder: "electronics-stand-placeholder.jpg",
+      stockPlaceholder: "79 units available",
+      featured: false
+    }
+  ],
+  "beauty-glow-lab": [
+    {
+      type: "physical",
+      name: "Ceramide Night Mask",
+      price: "$39",
+      category: "Skincare",
+      shortDescription: "Overnight mask for barrier support with ceramides and calming botanicals.",
+      imagePlaceholder: "beauty-night-mask-placeholder.jpg",
+      stockPlaceholder: "70 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Radiant Skin Tint SPF",
+      price: "$32",
+      category: "Makeup",
+      shortDescription: "Light coverage tint with mineral SPF and natural satin finish.",
+      imagePlaceholder: "beauty-skin-tint-placeholder.jpg",
+      stockPlaceholder: "92 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Vanilla Silk Body Oil",
+      price: "$28",
+      category: "Body Care",
+      shortDescription: "Fast-absorbing body oil with vanilla scent and soft glow finish.",
+      imagePlaceholder: "beauty-body-oil-placeholder.jpg",
+      stockPlaceholder: "57 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Reset Routine Bundle",
+      price: "$96",
+      category: "Routine Bundles",
+      shortDescription: "Serum, moisturizer, mask, and lip tint packaged as a full glow routine.",
+      imagePlaceholder: "beauty-routine-bundle-placeholder.jpg",
+      stockPlaceholder: "32 bundles available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Rose Quartz Facial Roller",
+      price: "$18",
+      category: "Skincare",
+      shortDescription: "Cooling facial roller for morning depuffing and serum application.",
+      imagePlaceholder: "beauty-roller-placeholder.jpg",
+      stockPlaceholder: "115 units available",
+      featured: false
+    }
+  ],
+  "food-market": [
+    {
+      type: "physical",
+      name: "Truffle Mushroom Flatbread",
+      price: "$16",
+      category: "Chef Specials",
+      shortDescription: "Crispy flatbread topped with mushrooms, truffle cream, and herbs.",
+      imagePlaceholder: "food-flatbread-placeholder.jpg",
+      stockPlaceholder: "Prepared fresh daily",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Office Lunch Platter",
+      price: "$68",
+      category: "Family Meals",
+      shortDescription: "Shareable platter with wraps, salads, dips, and dessert bites for six.",
+      imagePlaceholder: "food-office-platter-placeholder.jpg",
+      stockPlaceholder: "Pre-order placeholder",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Mint Lemonade Carafe",
+      price: "$12",
+      category: "Drinks",
+      shortDescription: "Fresh mint lemonade served in a chilled sharing carafe.",
+      imagePlaceholder: "food-lemonade-placeholder.jpg",
+      stockPlaceholder: "Made to order",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Date Caramel Brownie Box",
+      price: "$22",
+      category: "Desserts",
+      shortDescription: "Six rich brownies layered with date caramel and toasted nuts.",
+      imagePlaceholder: "food-brownie-placeholder.jpg",
+      stockPlaceholder: "18 boxes per day",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Weekend Brunch Kit",
+      price: "$54",
+      category: "Family Meals",
+      shortDescription: "Ready-to-share brunch kit with eggs, breads, dips, fruit, and pastries.",
+      imagePlaceholder: "food-brunch-placeholder.jpg",
+      stockPlaceholder: "Weekend only placeholder",
+      featured: false
+    }
+  ],
+  "furniture-studio": [
+    {
+      type: "physical",
+      name: "Oak Extendable Dining Table",
+      price: "$860",
+      category: "Dining",
+      shortDescription: "Warm oak table with hidden leaf extension for family dinners.",
+      imagePlaceholder: "furniture-dining-table-placeholder.jpg",
+      stockPlaceholder: "8 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Textured Linen Sofa",
+      price: "$1,240",
+      category: "Living Room",
+      shortDescription: "Three-seat linen sofa with deep cushions and modular chaise option.",
+      imagePlaceholder: "furniture-sofa-placeholder.jpg",
+      stockPlaceholder: "Made-to-order placeholder",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Handwoven Storage Basket",
+      price: "$44",
+      category: "Decor",
+      shortDescription: "Natural woven basket for blankets, toys, and everyday living room storage.",
+      imagePlaceholder: "furniture-basket-placeholder.jpg",
+      stockPlaceholder: "41 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Walnut Bedside Cabinet",
+      price: "$215",
+      category: "Decor",
+      shortDescription: "Compact bedside cabinet with soft-close drawer and brass pull.",
+      imagePlaceholder: "furniture-cabinet-placeholder.jpg",
+      stockPlaceholder: "16 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Arched Wall Mirror",
+      price: "$145",
+      category: "Decor",
+      shortDescription: "Slim arched mirror that adds height and brightness to small rooms.",
+      imagePlaceholder: "furniture-mirror-placeholder.jpg",
+      stockPlaceholder: "29 units available",
+      featured: false
+    }
+  ],
+  "fitness-performance": [
+    {
+      type: "physical",
+      name: "Adjustable Dumbbell Pair",
+      price: "$220",
+      category: "Equipment",
+      shortDescription: "Space-saving dumbbells with quick-change plates for home training.",
+      imagePlaceholder: "fitness-dumbbells-placeholder.jpg",
+      stockPlaceholder: "14 pairs available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Electrolyte Hydration Pack",
+      price: "$26",
+      category: "Supplements",
+      shortDescription: "Sugar-free hydration sticks with citrus flavor and daily mineral support.",
+      imagePlaceholder: "fitness-hydration-placeholder.jpg",
+      stockPlaceholder: "95 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Training Gloves Pro",
+      price: "$31",
+      category: "Equipment",
+      shortDescription: "Breathable grip gloves for lifting, rowing, and circuit sessions.",
+      imagePlaceholder: "fitness-gloves-placeholder.jpg",
+      stockPlaceholder: "62 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Mobility Ball Duo",
+      price: "$19",
+      category: "Recovery",
+      shortDescription: "Two massage balls for targeted mobility and post-workout recovery.",
+      imagePlaceholder: "fitness-mobility-balls-placeholder.jpg",
+      stockPlaceholder: "84 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Home Gym Starter Kit",
+      price: "$128",
+      category: "Training Kits",
+      shortDescription: "Bands, gloves, roller, and hydration pack bundled for first home workouts.",
+      imagePlaceholder: "fitness-home-gym-kit-placeholder.jpg",
+      stockPlaceholder: "36 kits available",
+      featured: true
+    }
+  ],
+  "baby-bloom": [
+    {
+      type: "physical",
+      name: "Bamboo Zip Sleepsuit",
+      price: "$26",
+      category: "Newborn",
+      shortDescription: "Ultra-soft zip sleepsuit with fold-over mittens and breathable bamboo fabric.",
+      imagePlaceholder: "baby-sleepsuit-placeholder.jpg",
+      stockPlaceholder: "74 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Cloud Nursery Rug",
+      price: "$68",
+      category: "Nursery",
+      shortDescription: "Plush washable rug shaped like a cloud for cozy nursery corners.",
+      imagePlaceholder: "baby-rug-placeholder.jpg",
+      stockPlaceholder: "22 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Sensory Crinkle Book",
+      price: "$16",
+      category: "Toys",
+      shortDescription: "Soft fabric book with textures, mirrors, and gentle crinkle sounds.",
+      imagePlaceholder: "baby-crinkle-book-placeholder.jpg",
+      stockPlaceholder: "120 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Baby Shower Gift Hamper",
+      price: "$92",
+      category: "Gift Bundles",
+      shortDescription: "Premium hamper with swaddles, sleepsuit, toy, and keepsake box.",
+      imagePlaceholder: "baby-gift-hamper-placeholder.jpg",
+      stockPlaceholder: "25 hampers available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Silicone Feeding Starter Set",
+      price: "$34",
+      category: "Newborn",
+      shortDescription: "Bowl, spoon, bib, and cup set in food-grade silicone.",
+      imagePlaceholder: "baby-feeding-set-placeholder.jpg",
+      stockPlaceholder: "89 units available",
+      featured: false
+    }
+  ],
+  "digital-creator-kit": [
+    {
+      type: "digital",
+      name: "Canva Launch Graphics Pack",
+      price: "$27",
+      category: "Templates",
+      shortDescription: "Editable launch graphics for Instagram posts, stories, pins, and banners.",
+      downloadTypePlaceholder: "Canva template link placeholder",
+      fileDeliveryPlaceholder: "Instant delivery email placeholder",
+      licensePlaceholder: "Single brand commercial license placeholder",
+      previewImagePlaceholder: "digital-canva-preview.jpg",
+      featured: true
+    },
+    {
+      type: "digital",
+      name: "Digital Store SEO Ebook",
+      price: "$15",
+      category: "Ebooks",
+      shortDescription: "Practical ebook for product SEO, category descriptions, and search intent.",
+      downloadTypePlaceholder: "PDF ebook download",
+      fileDeliveryPlaceholder: "Secure download link placeholder",
+      licensePlaceholder: "Personal use license placeholder",
+      previewImagePlaceholder: "digital-seo-ebook-preview.jpg",
+      featured: false
+    },
+    {
+      type: "digital",
+      name: "Product Photography Shot List",
+      price: "$12",
+      category: "Templates",
+      shortDescription: "Checklist for product, lifestyle, detail, and social content shots.",
+      downloadTypePlaceholder: "PDF + spreadsheet download",
+      fileDeliveryPlaceholder: "Instant download placeholder",
+      licensePlaceholder: "Single creator license placeholder",
+      previewImagePlaceholder: "digital-shot-list-preview.jpg",
+      featured: false
+    },
+    {
+      type: "digital",
+      name: "Ad Hook Prompt Vault",
+      price: "$31",
+      category: "Prompt Packs",
+      shortDescription: "High-converting hooks for ads, reels, emails, and product pages.",
+      downloadTypePlaceholder: "Prompt database placeholder",
+      fileDeliveryPlaceholder: "Private link delivery placeholder",
+      licensePlaceholder: "Commercial client-use license placeholder",
+      previewImagePlaceholder: "digital-ad-hooks-preview.jpg",
+      featured: true
+    },
+    {
+      type: "digital",
+      name: "Creator Finance Tracker",
+      price: "$18",
+      category: "Templates",
+      shortDescription: "Simple tracker for product revenue, costs, content tasks, and launch ROI.",
+      downloadTypePlaceholder: "Google Sheets template",
+      fileDeliveryPlaceholder: "Copy link delivery placeholder",
+      licensePlaceholder: "Single workspace license placeholder",
+      previewImagePlaceholder: "digital-finance-tracker-preview.jpg",
+      featured: false
+    }
+  ],
+  "digital-course-academy": [
+    {
+      type: "digital",
+      name: "AI Store Builder Workshop",
+      price: "$79",
+      category: "Courses",
+      shortDescription: "Live-recorded workshop for building a demo store and launch assets.",
+      downloadTypePlaceholder: "Video replay access placeholder",
+      fileDeliveryPlaceholder: "Course portal invite placeholder",
+      licensePlaceholder: "Single-seat access license placeholder",
+      previewImagePlaceholder: "academy-workshop-preview.jpg",
+      featured: true
+    },
+    {
+      type: "digital",
+      name: "Client Handoff Checklist",
+      price: "$17",
+      category: "Workbooks",
+      shortDescription: "Checklist for handing off store credentials, assets, policies, and next steps.",
+      downloadTypePlaceholder: "PDF checklist download",
+      fileDeliveryPlaceholder: "Instant download placeholder",
+      licensePlaceholder: "Agency internal use placeholder",
+      previewImagePlaceholder: "academy-handoff-preview.jpg",
+      featured: false
+    },
+    {
+      type: "digital",
+      name: "Niche Research Workbook",
+      price: "$25",
+      category: "Workbooks",
+      shortDescription: "Workbook for validating niches, competitor angles, and launch offers.",
+      downloadTypePlaceholder: "Interactive PDF + spreadsheet",
+      fileDeliveryPlaceholder: "Secure download placeholder",
+      licensePlaceholder: "Personal and client strategy use placeholder",
+      previewImagePlaceholder: "academy-niche-preview.jpg",
+      featured: false
+    },
+    {
+      type: "digital",
+      name: "Premium Coaching Upsell Script",
+      price: "$35",
+      category: "Coaching Upsells",
+      shortDescription: "Call script and email sequence for selling post-launch support packages.",
+      downloadTypePlaceholder: "Google Doc + PDF download",
+      fileDeliveryPlaceholder: "Email delivery placeholder",
+      licensePlaceholder: "Single agency license placeholder",
+      previewImagePlaceholder: "academy-upsell-preview.jpg",
+      featured: true
+    },
+    {
+      type: "digital",
+      name: "Course Landing Page Kit",
+      price: "$46",
+      category: "Templates",
+      shortDescription: "Landing sections for curriculum, outcomes, testimonials, pricing, and FAQs.",
+      downloadTypePlaceholder: "Figma + copy template files",
+      fileDeliveryPlaceholder: "Private download link placeholder",
+      licensePlaceholder: "Commercial use for one course placeholder",
+      previewImagePlaceholder: "academy-landing-kit-preview.jpg",
+      featured: false
+    }
+  ],
+  "marketplace-city-bazaar": [
+    {
+      type: "marketplace",
+      name: "Home Decor Seller Shelf",
+      price: "$92",
+      category: "Home",
+      shortDescription: "Curated shelf placeholder from a home decor vendor.",
+      vendorPlaceholder: "Home & Co.",
+      commissionPlaceholder: "10% marketplace commission placeholder",
+      imagePlaceholder: "marketplace-home-placeholder.jpg",
+      featured: true
+    },
+    {
+      type: "marketplace",
+      name: "Smart Travel Adapter",
+      price: "$29",
+      category: "Electronics",
+      shortDescription: "Universal adapter product placeholder from a gadget seller.",
+      vendorPlaceholder: "Tech Yard",
+      commissionPlaceholder: "11% marketplace commission placeholder",
+      imagePlaceholder: "marketplace-adapter-placeholder.jpg",
+      featured: false
+    },
+    {
+      type: "marketplace",
+      name: "Artisan Coffee Starter Box",
+      price: "$48",
+      category: "Food",
+      shortDescription: "Coffee beans, tasting notes, and brew guide from a local roaster.",
+      vendorPlaceholder: "Roast Corner",
+      commissionPlaceholder: "8% marketplace commission placeholder",
+      imagePlaceholder: "marketplace-coffee-placeholder.jpg",
+      featured: false
+    },
+    {
+      type: "marketplace",
+      name: "Evening Accessories Edit",
+      price: "$66",
+      category: "Fashion",
+      shortDescription: "Bag, scarf, and jewelry edit from a boutique vendor.",
+      vendorPlaceholder: "Lina Style Studio",
+      commissionPlaceholder: "12% marketplace commission placeholder",
+      imagePlaceholder: "marketplace-accessories-placeholder.jpg",
+      featured: true
+    },
+    {
+      type: "marketplace",
+      name: "Clean Beauty Discovery Kit",
+      price: "$41",
+      category: "Beauty",
+      shortDescription: "Mini skincare set from a marketplace beauty seller.",
+      vendorPlaceholder: "Glow District",
+      commissionPlaceholder: "10% marketplace commission placeholder",
+      imagePlaceholder: "marketplace-clean-beauty-placeholder.jpg",
+      featured: false
+    }
+  ],
+  "marketplace-mega-mall": [
+    {
+      type: "marketplace",
+      name: "Fashion Weekend Capsule",
+      price: "$135",
+      category: "Fashion",
+      shortDescription: "Three-piece capsule from a marketplace apparel vendor.",
+      vendorPlaceholder: "Urban Edit",
+      commissionPlaceholder: "12% marketplace commission placeholder",
+      imagePlaceholder: "mall-fashion-placeholder.jpg",
+      featured: true
+    },
+    {
+      type: "marketplace",
+      name: "Digital Planner Bundle",
+      price: "$34",
+      category: "Digital Goods",
+      shortDescription: "Notion, PDF, and spreadsheet planner bundle from a digital seller.",
+      vendorPlaceholder: "Creator Desk",
+      commissionPlaceholder: "15% marketplace commission placeholder",
+      imagePlaceholder: "mall-digital-placeholder.jpg",
+      featured: false
+    },
+    {
+      type: "marketplace",
+      name: "Resistance Training Pack",
+      price: "$72",
+      category: "Fitness",
+      shortDescription: "Bands, gloves, and recovery tools from a fitness marketplace seller.",
+      vendorPlaceholder: "Fit Supply",
+      commissionPlaceholder: "10% marketplace commission placeholder",
+      imagePlaceholder: "mall-fitness-placeholder.jpg",
+      featured: true
+    },
+    {
+      type: "marketplace",
+      name: "Minimal Dining Decor Set",
+      price: "$118",
+      category: "Furniture",
+      shortDescription: "Table runner, candle holders, and ceramic bowl from a home seller.",
+      vendorPlaceholder: "Modern Rooms",
+      commissionPlaceholder: "13% marketplace commission placeholder",
+      imagePlaceholder: "mall-decor-placeholder.jpg",
+      featured: false
+    },
+    {
+      type: "marketplace",
+      name: "Baby First-Year Essentials",
+      price: "$98",
+      category: "Kids",
+      shortDescription: "Swaddles, feeding set, toy, and night light from a baby vendor.",
+      vendorPlaceholder: "Mini Nest",
+      commissionPlaceholder: "9% marketplace commission placeholder",
+      imagePlaceholder: "mall-baby-placeholder.jpg",
+      featured: false
+    }
+  ]
+};
+
 function templateProtection(categoryKey: TemplateCategoryKey) {
   return {
     lockedCategory: categoryKey,
@@ -123,7 +790,7 @@ function templateBase({
     description,
     previewGradient,
     demoCategories: categories,
-    demoProducts: products,
+    demoProducts: [...products, ...(extraDemoProducts[id] ?? [])],
     demoSections: sections,
     demoOffers: offers,
     homepageText: {
@@ -255,10 +922,10 @@ export const storeTemplates: StoreTemplate[] = [
       },
       {
         type: "physical",
-        name: "Stacked Gift Bracelet Set",
+        name: "Luxury Gift Set",
         price: "$96",
         category: "Gift Sets",
-        shortDescription: "Three coordinated bracelets boxed for birthdays, bridesmaids, and Eid gifting.",
+        shortDescription: "Coordinated bracelet, earrings, and care card boxed for premium gifting.",
         imagePlaceholder: "jewelry-bracelet-placeholder.jpg",
         stockPlaceholder: "55 units available",
         featured: false

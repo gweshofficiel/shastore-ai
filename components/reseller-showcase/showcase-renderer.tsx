@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getResellerShowcaseTheme } from "@/lib/reseller-showcase/themes";
+import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview";
+import { getStoreTemplate } from "@/lib/template-studio/library";
 import type {
   PublicResellerShowcase,
   ResellerShowcaseItem
@@ -30,6 +32,10 @@ function ShowcaseItemCard({
 }) {
   const features = stringList(item.features);
   const previewImages = stringList(item.preview_images);
+  const templatePreviewId = previewImages
+    .find((image) => image.startsWith("template:"))
+    ?.replace("template:", "");
+  const templatePreview = templatePreviewId ? getStoreTemplate(templatePreviewId) : null;
 
   return (
     <article
@@ -39,18 +45,24 @@ function ShowcaseItemCard({
           : "border-slate-200 bg-white text-slate-950"
       } shadow-[0_24px_80px_-55px_rgba(15,23,42,0.9)] transition hover:-translate-y-1`}
     >
-      <div
-        className={`flex h-56 items-center justify-center bg-slate-100 bg-cover bg-center ${
-          premium ? "bg-white/10" : ""
-        }`}
-        style={item.thumbnail_url ? { backgroundImage: `url(${item.thumbnail_url})` } : undefined}
-      >
-        {!item.thumbnail_url ? (
-          <span className={`text-sm font-black uppercase tracking-[0.22em] ${muted}`}>
-            Store preview
-          </span>
-        ) : null}
-      </div>
+      {templatePreview ? (
+        <div className="p-3">
+          <TemplateHeroThumbnail template={templatePreview} />
+        </div>
+      ) : (
+        <div
+          className={`flex h-56 items-center justify-center bg-slate-100 bg-cover bg-center ${
+            premium ? "bg-white/10" : ""
+          }`}
+          style={item.thumbnail_url ? { backgroundImage: `url(${item.thumbnail_url})` } : undefined}
+        >
+          {!item.thumbnail_url ? (
+            <span className={`text-sm font-black uppercase tracking-[0.22em] ${muted}`}>
+              Store preview
+            </span>
+          ) : null}
+        </div>
+      )}
       <div className="grid gap-4 p-5 lg:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -76,9 +88,9 @@ function ShowcaseItemCard({
             ))}
           </div>
         ) : null}
-        {previewImages.length ? (
+        {previewImages.filter((image) => !image.startsWith("template:")).length ? (
           <div className="grid grid-cols-3 gap-2">
-            {previewImages.slice(0, 3).map((image) => (
+            {previewImages.filter((image) => !image.startsWith("template:")).slice(0, 3).map((image) => (
               <div
                 className="h-20 rounded-2xl bg-slate-100 bg-cover bg-center"
                 key={image}

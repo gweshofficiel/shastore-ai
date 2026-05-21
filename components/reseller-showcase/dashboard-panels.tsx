@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview";
 import {
   publishResellerShowcaseItem,
   saveResellerProfile,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/reseller-showcase/actions";
 import type { ResellerDashboardData } from "@/lib/reseller-showcase/data";
 import { resellerShowcaseThemes } from "@/lib/reseller-showcase/themes";
+import { getStoreTemplate } from "@/lib/template-studio/library";
 import type {
   ResellerProfile,
   ResellerShowcaseItem
@@ -410,9 +412,21 @@ function ShowcaseItemCard({
   returnPath: string;
 }) {
   const featureSummary = asStringList(item.features).split("\n").slice(0, 3).join(" / ");
+  const templatePreviewId = Array.isArray(item.preview_images)
+    ? item.preview_images
+        .map((image) => String(image))
+        .find((image) => image.startsWith("template:"))
+        ?.replace("template:", "")
+    : null;
+  const templatePreview = templatePreviewId ? getStoreTemplate(templatePreviewId) : null;
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+      {templatePreview ? (
+        <div className="mb-4">
+          <TemplateHeroThumbnail template={templatePreview} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-black text-ink">{item.title}</h3>

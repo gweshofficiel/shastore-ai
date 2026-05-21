@@ -16,7 +16,8 @@ export default async function SellerTemplateStudioPage({
 
   return (
     <TemplateStudio
-      returnPath="/dashboard/templates"
+      actionPath={`/dashboard/templates/studio/${template.id}`}
+      backPath="/dashboard/templates"
       template={template}
       variant="seller"
     />

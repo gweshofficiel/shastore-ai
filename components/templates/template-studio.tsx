@@ -1,8 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview";
+import {
+  duplicateTemplate,
+  publishTemplate,
+  restoreTemplateDefaults,
+  saveTemplateDraft,
+  unpublishTemplate
+} from "@/lib/template-studio/actions";
 import type { StoreTemplate, TemplateCustomizationDefaults } from "@/lib/template-studio/types";
 
 type StudioStatus = "draft" | "published" | "unpublished";
@@ -71,21 +82,75 @@ function TextAreaField({
   );
 }
 
+function ActionSubmit({
+  label,
+  pendingLabel,
+  variant = "primary"
+}: {
+  label: string;
+  pendingLabel: string;
+  variant?: "primary" | "secondary" | "ghost";
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button disabled={pending} type="submit" variant={variant}>
+      {pending ? pendingLabel : label}
+    </Button>
+  );
+}
+
+function ActionForm({
+  action,
+  actionPath,
+  customizationPayload,
+  label,
+  pendingLabel,
+  templateId,
+  variant
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  actionPath: string;
+  customizationPayload: string;
+  label: string;
+  pendingLabel: string;
+  templateId: string;
+  variant?: "primary" | "secondary" | "ghost";
+}) {
+  return (
+    <form action={action}>
+      <input name="returnTo" type="hidden" value={actionPath} />
+      <input name="templateId" type="hidden" value={templateId} />
+      <input name="customization" type="hidden" value={customizationPayload} />
+      <ActionSubmit label={label} pendingLabel={pendingLabel} variant={variant} />
+    </form>
+  );
+}
+
 export function TemplateStudio({
-  returnPath,
+  actionPath,
+  backPath,
   template,
   variant
 }: {
-  returnPath: string;
+  actionPath: string;
+  backPath: string;
   template: StoreTemplate;
   variant: "seller" | "reseller";
 }) {
-  const [status, setStatus] = useState<StudioStatus>("draft");
-  const [message, setMessage] = useState("Draft mode is ready. Persistence is prepared in the database foundation.");
+  const searchParams = useSearchParams();
+  const saved = searchParams.get("saved");
+  const error = searchParams.get("error");
   const [customization, setCustomization] = useState(template.defaultCustomization);
+  const status: StudioStatus =
+    saved === "published" ? "published" : saved === "unpublished" ? "unpublished" : "draft";
   const featuredProducts = useMemo(
     () => template.demoProducts.filter((product) => product.featured),
     [template.demoProducts]
+  );
+  const customizationPayload = useMemo(
+    () => JSON.stringify(customization),
+    [customization]
   );
 
   function updateCustomization(name: string, value: string) {
@@ -106,34 +171,8 @@ export function TemplateStudio({
     }));
   }
 
-  function saveDraft() {
-    setStatus("draft");
-    setMessage("Draft saved locally for this foundation. The template_customizations table is ready for per-user saves.");
-  }
-
-  function publish() {
-    setStatus("published");
-    setMessage(
-      variant === "reseller"
-        ? "Publish placeholder prepared for reseller showcase listings and marketplace listings."
-        : "Publish placeholder prepared for seller stores and marketplace listings."
-    );
-  }
-
-  function unpublish() {
-    setStatus("unpublished");
-    setMessage("Template unpublished in Studio state. Future persistence will update the published_at fields safely.");
-  }
-
-  function duplicate() {
-    setStatus("draft");
-    setMessage("Duplicate placeholder created. Future storage will copy defaults into a user-owned template draft.");
-  }
-
-  function restoreDefaults() {
+  function resetVisibleDefaults() {
     setCustomization(template.defaultCustomization);
-    setStatus("draft");
-    setMessage("Defaults restored from the protected template library.");
   }
 
   return (
@@ -191,31 +230,73 @@ export function TemplateStudio({
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button onClick={saveDraft} type="button" variant="secondary">
-              Save Draft
-            </Button>
-            <Button onClick={publish} type="button">
-              Save & Publish
-            </Button>
-            <Button onClick={unpublish} type="button" variant="secondary">
-              Unpublish
-            </Button>
-            <Button onClick={duplicate} type="button" variant="secondary">
-              Duplicate
-            </Button>
-            <Button onClick={restoreDefaults} type="button" variant="ghost">
-              Restore defaults
-            </Button>
-            <a
+            <ActionForm
+              action={saveTemplateDraft}
+              actionPath={actionPath}
+              customizationPayload={customizationPayload}
+              label="Save Draft"
+              pendingLabel="Saving..."
+              templateId={template.id}
+              variant="secondary"
+            />
+            <ActionForm
+              action={publishTemplate}
+              actionPath={actionPath}
+              customizationPayload={customizationPayload}
+              label="Save & Publish"
+              pendingLabel="Publishing..."
+              templateId={template.id}
+            />
+            <ActionForm
+              action={unpublishTemplate}
+              actionPath={actionPath}
+              customizationPayload={customizationPayload}
+              label="Unpublish"
+              pendingLabel="Unpublishing..."
+              templateId={template.id}
+              variant="secondary"
+            />
+            <ActionForm
+              action={duplicateTemplate}
+              actionPath={actionPath}
+              customizationPayload={customizationPayload}
+              label="Duplicate"
+              pendingLabel="Duplicating..."
+              templateId={template.id}
+              variant="secondary"
+            />
+            <form action={restoreTemplateDefaults}>
+              <input name="returnTo" type="hidden" value={actionPath} />
+              <input name="templateId" type="hidden" value={template.id} />
+              <input name="customization" type="hidden" value={customizationPayload} />
+              <Button onClick={resetVisibleDefaults} type="submit" variant="ghost">
+                Restore defaults
+              </Button>
+            </form>
+            <Link
               className="inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-bold text-muted transition hover:bg-slate-100 hover:text-ink"
-              href={returnPath}
+              href={backPath}
             >
               Back to library
-            </a>
+            </Link>
+            <Link
+              className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-ink transition hover:border-slate-300 hover:bg-slate-50"
+              href={`${backPath}/preview/${template.id}`}
+              target="_blank"
+            >
+              Preview
+            </Link>
           </div>
-          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-            {message}
-          </p>
+          {saved ? (
+            <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+              Template action completed: {saved}.
+            </p>
+          ) : null}
+          {error ? (
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              {error}
+            </p>
+          ) : null}
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -309,26 +390,25 @@ export function TemplateStudio({
           </Card>
 
           <Card className="overflow-hidden p-0">
-            <div
-              className="p-6 text-white"
-              style={{
-                background: `linear-gradient(135deg, ${customization.primaryColor}, ${customization.secondaryColor})`
-              }}
-            >
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-white/70">
-                Live Preview Placeholder
-              </p>
-              <h2 className="mt-8 text-3xl font-black tracking-[-0.05em]">
-                {customization.heroTitle}
-              </h2>
-              <p className="mt-3 text-sm font-semibold leading-6 text-white/80">
-                {customization.heroSubtitle}
-              </p>
-              <button className="mt-6 rounded-full bg-white px-5 py-3 text-sm font-black text-slate-950">
-                {customization.ctaText}
-              </button>
+            <div className="p-4">
+              <TemplateHeroThumbnail customization={customization} template={template} />
             </div>
             <div className="grid gap-4 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  Categories Preview
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {template.demoCategories.map((category) => (
+                    <span
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600"
+                      key={category}
+                    >
+                      {category}
+                    </span>
+                  ))}
+                </div>
+              </div>
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
                   Featured Products
@@ -356,8 +436,9 @@ export function TemplateStudio({
               <div className="rounded-2xl border border-dashed border-slate-300 p-4">
                 <p className="text-sm font-black text-ink">Publishing connectors</p>
                 <p className="mt-2 text-xs font-semibold leading-5 text-muted">
-                  Seller store, reseller showcase listing, and marketplace listing connections
-                  are prepared as safe placeholders for the publishing flow.
+                  {variant === "reseller"
+                    ? "Save & Publish creates or updates a reseller showcase listing with this template preview."
+                    : "Seller publishing saves the template customization as published without touching checkout, billing, shipping, or payments."}
                 </p>
               </div>
             </div>

@@ -68,8 +68,8 @@ export function StoreTemplateCard({
           ))}
         </div>
         <div className="flex flex-wrap gap-3">
-          <ButtonLink href={`${basePath}/studio/${template.id}`}>Customize in Studio</ButtonLink>
-          <ButtonLink href={`${basePath}/studio/${template.id}?mode=preview`} variant="secondary">
+          <ButtonLink href={`${basePath}/studio/${template.id}`}>Customize</ButtonLink>
+          <ButtonLink href={`${basePath}/preview/${template.id}`} variant="secondary">
             Preview
           </ButtonLink>
         </div>
