@@ -10,7 +10,8 @@ import {
   PackageCheck,
   PanelsTopLeft,
   Settings,
-  ShoppingBag
+  ShoppingBag,
+  Truck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ const icons = {
   orders: PackageCheck,
   reports: BarChart3,
   settings: Settings,
+  shipping: Truck,
   showcase: PanelsTopLeft,
   stores: ShoppingBag,
   subscription: CreditCard

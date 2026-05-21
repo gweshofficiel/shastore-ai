@@ -12,6 +12,7 @@ const navItems = [
   { href: "/dashboard/customers", label: "Customers", icon: "customers" },
   { href: "/dashboard/analytics", label: "Analytics", icon: "analytics" },
   { href: "/dashboard/payments", label: "Payments", icon: "payments" },
+  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping" },
   { href: "/dashboard/templates", label: "Templates", icon: "templates" },
   { href: "/dashboard/domains", label: "Domains", icon: "domains" },
   { href: "/dashboard/billing", label: "Billing", icon: "billing" },

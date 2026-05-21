@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   Package,
   Settings,
+  Truck,
   Store,
   UserRoundCheck,
   WalletCards
@@ -29,6 +30,7 @@ const icons = {
   products: Package,
   templates: Palette,
   settings: Settings,
+  shipping: Truck,
   landings: Store,
   stores: ShoppingBag
 };
