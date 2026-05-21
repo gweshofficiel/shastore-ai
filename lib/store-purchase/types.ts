@@ -32,10 +32,19 @@ export type StorePurchaseRequest = {
   buyer_email: string;
   buyer_phone: string | null;
   buyer_whatsapp: string | null;
+  buyer_has_account: boolean;
+  buyer_account_type_target: "user";
   business_name: string;
   requested_domain: string | null;
   notes: string | null;
   request_status: StorePurchaseRequestStatus;
+  target_account_id: string | null;
+  target_account_lookup_status:
+    | "new_account_placeholder"
+    | "exists"
+    | "not_found"
+    | "invalid_format"
+    | "invalid_account_type";
   transfer_code: string;
   created_at: string;
 };

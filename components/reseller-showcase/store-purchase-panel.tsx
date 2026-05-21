@@ -51,6 +51,7 @@ function StorePurchaseModal({
 }) {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [buyerHasAccount, setBuyerHasAccount] = useState(false);
   const [state, formAction, isPending] = useActionState(
     submitStorePurchaseRequest,
     initialFormState
@@ -141,6 +142,51 @@ function StorePurchaseModal({
             <input name="resellerId" type="hidden" value={resellerId} />
             <input name="showcaseItemId" type="hidden" value={showcaseItemId} />
             <input name="templateId" type="hidden" value={templateId ?? ""} />
+            <div className="rounded-[2rem] border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-black text-blue-950">
+                Do you already have a SHASTORE AI account?
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-blue-100 bg-white p-3 text-sm font-bold text-blue-950">
+                  <input
+                    checked={!buyerHasAccount}
+                    className="mt-1"
+                    name="buyerHasAccount"
+                    onChange={() => setBuyerHasAccount(false)}
+                    type="radio"
+                    value="no"
+                  />
+                  No, create a new buyer account placeholder
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-blue-100 bg-white p-3 text-sm font-bold text-blue-950">
+                  <input
+                    checked={buyerHasAccount}
+                    className="mt-1"
+                    name="buyerHasAccount"
+                    onChange={() => setBuyerHasAccount(true)}
+                    type="radio"
+                    value="yes"
+                  />
+                  Yes, I have an account ID
+                </label>
+              </div>
+              {buyerHasAccount ? (
+                <div className="mt-4">
+                  <Input
+                    id={`targetAccountId-${showcaseItemId}`}
+                    label="SHASTORE Account ID"
+                    name="targetAccountId"
+                    pattern="SHA[0-9]{9}U"
+                    placeholder="SHA216290173U"
+                    required
+                  />
+                  <p className="mt-2 text-xs font-semibold leading-5 text-blue-800">
+                    Only buyer/customer account IDs ending in U can be used for transfer targeting.
+                    Lookup confirms status only and never exposes private account details.
+                  </p>
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Input
                 id={`buyerName-${showcaseItemId}`}

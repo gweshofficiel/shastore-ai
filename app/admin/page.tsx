@@ -4,12 +4,18 @@ import {
   AdminTable,
   formatAdminMoney
 } from "@/components/admin/admin-control";
+import { AccountIdCard } from "@/components/account/account-id-card";
+import {
+  accountProfileUnavailableMessage,
+  getOrCreateAccountProfile
+} from "@/lib/account-profiles";
 import { getAdminAnalytics, getAdminOverview } from "@/lib/admin/data";
 
 export default async function AdminOverviewPage() {
-  const [overview, analytics] = await Promise.all([
+  const [overview, analytics, account] = await Promise.all([
     getAdminOverview(),
-    getAdminAnalytics()
+    getAdminAnalytics(),
+    getOrCreateAccountProfile("admin")
   ]);
 
   return (
@@ -18,6 +24,7 @@ export default async function AdminOverviewPage() {
         description="Platform owner control center for users, projects, commerce, subscriptions, and conversion health."
         title="Admin control center"
       />
+      <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <AdminStatGrid
         stats={[
           { label: "Total users", value: overview.users },

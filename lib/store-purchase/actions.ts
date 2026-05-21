@@ -32,6 +32,14 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function normalizeAccountId(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value.trim().toUpperCase().slice(0, 16) : null;
+}
+
+function isBuyerAccountId(value: string) {
+  return /^SHA[0-9]{9}U$/.test(value);
+}
+
 function normalizeSlug(value: string) {
   return value
     .trim()
@@ -96,6 +104,8 @@ export async function submitStorePurchaseRequest(
   const businessName = cleanText(formData.get("businessName"), 160);
   const resellerId = cleanText(formData.get("resellerId"), 80);
   const showcaseItemId = cleanText(formData.get("showcaseItemId"), 80);
+  const buyerHasAccount = formData.get("buyerHasAccount") === "yes";
+  const targetAccountId = buyerHasAccount ? normalizeAccountId(formData.get("targetAccountId")) : null;
 
   if (!buyerName || !buyerEmail || !businessName || !resellerId || !showcaseItemId) {
     return {
@@ -108,9 +118,36 @@ export async function submitStorePurchaseRequest(
     return { message: "Please enter a valid buyer email.", status: "error" };
   }
 
+  if (buyerHasAccount && (!targetAccountId || !isBuyerAccountId(targetAccountId))) {
+    return {
+      message: "Enter a valid SHASTORE buyer account ID like SHA216290173U.",
+      status: "error"
+    };
+  }
+
+  let lookupStatus:
+    | "new_account_placeholder"
+    | "exists"
+    | "not_found"
+    | "invalid_format"
+    | "invalid_account_type" = "new_account_placeholder";
+
+  if (targetAccountId) {
+    const { data: lookupData } = await supabase.rpc("lookup_shastore_account_id" as never, {
+      candidate_account_id: targetAccountId
+    } as never);
+    const lookup = Array.isArray(lookupData)
+      ? (lookupData[0] as { lookup_status?: typeof lookupStatus } | undefined)
+      : null;
+
+    lookupStatus = lookup?.lookup_status ?? "not_found";
+  }
+
   const { error } = await supabase.from("store_purchase_requests" as never).insert({
     business_name: businessName,
+    buyer_account_type_target: "user",
     buyer_email: buyerEmail,
+    buyer_has_account: buyerHasAccount,
     buyer_name: buyerName,
     buyer_phone: cleanText(formData.get("buyerPhone"), 80),
     buyer_whatsapp: cleanText(formData.get("buyerWhatsapp"), 80),
@@ -119,6 +156,8 @@ export async function submitStorePurchaseRequest(
     request_status: "pending",
     reseller_id: resellerId,
     showcase_item_id: showcaseItemId,
+    target_account_id: targetAccountId,
+    target_account_lookup_status: lookupStatus,
     template_id: cleanText(formData.get("templateId"), 120)
   } as never);
 
@@ -207,9 +246,13 @@ type PurchaseRequestRecord = {
   buyer_email: string;
   buyer_phone: string | null;
   buyer_whatsapp: string | null;
+  buyer_has_account: boolean;
+  buyer_account_type_target: "user";
   business_name: string;
   requested_domain: string | null;
   notes: string | null;
+  target_account_id: string | null;
+  target_account_lookup_status: string;
   transfer_code: string;
   created_at: string;
 };
@@ -259,11 +302,15 @@ function buildProvisionedStoreData({
 
   return {
     buyer: {
+      accountMode: request.buyer_has_account ? "existing_shastore_account" : "new_account_placeholder",
+      accountTypeTarget: request.buyer_account_type_target,
       businessName: request.business_name,
       email: request.buyer_email,
       name: request.buyer_name,
       phone: request.buyer_phone,
       requestedDomain: request.requested_domain,
+      targetAccountId: request.target_account_id,
+      targetAccountLookupStatus: request.target_account_lookup_status,
       whatsapp: request.buyer_whatsapp
     },
     cloneSource: {
@@ -466,6 +513,11 @@ function buildCredentialsPackage({
     buyer: {
       email: request.buyer_email,
       name: request.buyer_name,
+      targetAccountId: request.target_account_id,
+      targetAccountLookupStatus: request.target_account_lookup_status,
+      transferDestination: request.target_account_id
+        ? "existing_shastore_account_placeholder"
+        : "new_buyer_account_creation_placeholder",
       whatsapp: request.buyer_whatsapp
     },
     deliveryPlaceholders: {
@@ -488,6 +540,8 @@ function buildCredentialsPackage({
     ownershipPlaceholders: {
       buyerAuthCreation: "pending_future_auth_creation",
       buyerDashboardAssignment: "pending_future_dashboard_assignment",
+      targetAccountId: request.target_account_id,
+      targetAccountLookupStatus: request.target_account_lookup_status,
       storeManagementAccess: "pending_future_role_permissions",
       storeRolePermissions: "pending_future_role_permissions",
       storeOwnershipTransfer: "pending_future_store_owner_assignment"

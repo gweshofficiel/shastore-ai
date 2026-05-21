@@ -1,8 +1,13 @@
 import { ButtonLink } from "@/components/ui/button";
+import { AccountIdCard } from "@/components/account/account-id-card";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getCommerceAnalyticsSummary } from "@/lib/commerce/data";
 import { createClient } from "@/lib/supabase/server";
+import {
+  accountProfileUnavailableMessage,
+  getOrCreateAccountProfile
+} from "@/lib/account-profiles";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +51,10 @@ async function getDashboardStats() {
 }
 
 export default async function DashboardPage() {
-  const [stats, commerce] = await Promise.all([
+  const [stats, commerce, account] = await Promise.all([
     getDashboardStats(),
-    getCommerceAnalyticsSummary()
+    getCommerceAnalyticsSummary(),
+    getOrCreateAccountProfile("user")
   ]);
   const statCards = [
     { label: "Published pages", value: stats.published },
@@ -64,6 +70,7 @@ export default async function DashboardPage() {
         description="Manage product images, AI copy, reusable templates, and published ecommerce landing pages."
         title="Launch center"
       />
+      <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map((stat) => (
           <Card className="p-5 lg:p-6" key={stat.label}>

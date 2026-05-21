@@ -240,6 +240,43 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+            Buyer Account Mode
+          </p>
+          <p className="mt-2 font-black text-blue-950">
+            {order.buyer_has_account
+              ? "Existing SHASTORE account"
+              : "New buyer account placeholder"}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-blue-800">
+            Target type: {order.buyer_account_type_target}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+            Target SHASTORE Account ID
+          </p>
+          <p className="mt-2 font-mono font-black text-blue-950">
+            {order.target_account_id ?? "Not provided"}
+          </p>
+          <p className="mt-1 text-sm font-semibold capitalize text-blue-800">
+            Lookup: {order.target_account_lookup_status.replace(/_/g, " ")}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+            Transfer Destination
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-blue-800">
+            {order.target_account_id
+              ? "Prepare transfer to existing account placeholder."
+              : "Prepare future buyer account creation placeholder."}
+          </p>
+        </div>
+      </div>
+
       {order.notes ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Notes</p>

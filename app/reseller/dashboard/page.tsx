@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AccountIdCard } from "@/components/account/account-id-card";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
@@ -10,6 +11,10 @@ import {
   getResellerDashboardData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
+import {
+  accountProfileUnavailableMessage,
+  getOrCreateAccountProfile
+} from "@/lib/account-profiles";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +23,11 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data] = await Promise.all([searchParams, getResellerDashboardData()]);
+  const [query, data, account] = await Promise.all([
+    searchParams,
+    getResellerDashboardData(),
+    getOrCreateAccountProfile("reseller")
+  ]);
 
   return (
     <>
@@ -43,6 +52,7 @@ export default async function PrivateResellerHomePage({
         </Card>
       ) : null}
       <ResellerStatusAlerts query={query} />
+      <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
       <ResellerQuickActions profile={data.profile} />
       <div className="grid gap-6 lg:grid-cols-3">

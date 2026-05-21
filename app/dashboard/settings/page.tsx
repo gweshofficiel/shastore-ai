@@ -1,15 +1,25 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AccountIdCard } from "@/components/account/account-id-card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  accountProfileUnavailableMessage,
+  getOrCreateAccountProfile
+} from "@/lib/account-profiles";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const account = await getOrCreateAccountProfile("user");
+
   return (
     <div className="grid gap-8">
       <PageHeader
         description="Keep account and default brand settings ready for future landing page creation."
         title="Settings"
       />
+      <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <Card className="max-w-2xl">
         <form className="grid gap-4">
           <Input id="name" label="Full name" placeholder="Your name" />
