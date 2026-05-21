@@ -923,3 +923,103 @@ export async function markStoreDeliveryTransferDelivered(formData: FormData) {
   revalidatePath(returnTo);
   redirect(withStatus(returnTo, "saved", "delivered"));
 }
+
+export async function generateManualDeliveryPdf(formData: FormData) {
+  const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
+  const requestId = cleanText(formData.get("requestId"), 80);
+  const { profile, supabase } = await requireResellerProfile();
+
+  if (!requestId) {
+    redirectWithError("Store purchase request could not be found.", returnTo);
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from("store_purchase_requests" as never)
+    .select("*")
+    .eq("id", requestId)
+    .eq("reseller_id", profile.id)
+    .maybeSingle();
+
+  if (requestError || !requestData) {
+    redirectWithError("Store purchase request could not be loaded for delivery PDF.", returnTo);
+  }
+
+  const request = requestData as PurchaseRequestRecord;
+  const [{ data: instanceData }, { data: provisionedData }, { data: activationData }] =
+    await Promise.all([
+      supabase
+        .from("store_instances" as never)
+        .select("id, internal_slug, store_name")
+        .eq("purchase_request_id", request.id)
+        .maybeSingle(),
+      supabase
+        .from("provisioned_stores" as never)
+        .select("id, provisioned_store_name, provisioned_store_slug")
+        .eq("purchase_request_id", request.id)
+        .eq("reseller_id", profile.id)
+        .maybeSingle(),
+      supabase
+        .from("store_activation_tokens" as never)
+        .select("activation_token")
+        .eq("purchase_request_id", request.id)
+        .eq("reseller_id", profile.id)
+        .maybeSingle()
+    ]);
+
+  if (!instanceData || !activationData) {
+    redirectWithError("Prepare Store and Prepare Transfer before generating the PDF.", returnTo);
+  }
+
+  const instance = instanceData as { id: string; internal_slug: string; store_name: string };
+  const provisioned = provisionedData as { id: string; provisioned_store_name: string; provisioned_store_slug: string } | null;
+  const activation = activationData as { activation_token: string };
+  const activationLink = `/activate-store/${activation.activation_token}`;
+  const storePreviewLink = `/reseller/dashboard/orders/store-preview/${instance.internal_slug}`;
+  const accountMode = request.target_account_id
+    ? `Existing SHASTORE account ID: ${request.target_account_id}`
+    : "New buyer account placeholder";
+  const pdfPayload = {
+    accountMode,
+    activationLink,
+    buyerEmail: request.buyer_email,
+    buyerName: request.buyer_name,
+    buyerWhatsapp: request.buyer_whatsapp ?? "Not provided",
+    generatedAt: new Date().toISOString(),
+    onboardingInstructions: [
+      "Open the activation link in the buyer browser or account session.",
+      "Review the store name and transfer code.",
+      "Use the Activate Store button to mark the store as claimed.",
+      "After activation, check /dashboard/stores in the buyer account."
+    ],
+    resellerSupportContact: profile.display_name,
+    storeName: provisioned?.provisioned_store_name ?? instance.store_name,
+    storePreviewLink,
+    transferCode: request.transfer_code
+  };
+
+  const { error: documentError } = await supabase.from("store_delivery_documents" as never).upsert(
+    {
+      document_status: "manual_delivery_ready",
+      generated_at: new Date().toISOString(),
+      pdf_payload: pdfPayload,
+      provisioned_store_id: provisioned?.id ?? null,
+      purchase_request_id: request.id,
+      reseller_id: profile.id,
+      store_instance_id: instance.id
+    } as never,
+    { onConflict: "purchase_request_id" }
+  );
+
+  if (documentError) {
+    redirectWithError("Manual delivery PDF could not be generated.", returnTo);
+  }
+
+  await supabase
+    .from("store_transfers" as never)
+    .update({ delivery_status: "manual_delivery_ready" } as never)
+    .eq("purchase_request_id", request.id)
+    .eq("reseller_id", profile.id);
+
+  revalidatePath(returnTo);
+  redirect(withStatus(returnTo, "saved", "delivery-pdf"));
+}

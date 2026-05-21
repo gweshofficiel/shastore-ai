@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { Card } from "@/components/ui/card";
 import {
+  generateManualDeliveryPdf,
   markStoreDeliveryTransferDelivered,
   prepareProvisionedStoreDraft,
   prepareStoreDeliveryTransfer,
@@ -158,6 +159,30 @@ function StoreProvisioningAction({ requestId }: { requestId: string }) {
       </button>
     </form>
   );
+}
+
+function DeliveryPdfAction({ requestId }: { requestId: string }) {
+  return (
+    <form action={generateManualDeliveryPdf}>
+      <input name="returnTo" type="hidden" value="/reseller/dashboard/orders" />
+      <input name="requestId" type="hidden" value={requestId} />
+      <button
+        className="inline-flex h-9 items-center rounded-full bg-purple-600 px-4 text-xs font-black text-white transition hover:bg-purple-700"
+        type="submit"
+      >
+        Generate Delivery PDF
+      </button>
+    </form>
+  );
+}
+
+function payloadText(payload: unknown, key: string, fallback = "Not generated") {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return fallback;
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
 }
 
 function OrderCard({ order }: { order: StorePurchaseOrder }) {
@@ -451,12 +476,52 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
       )}
 
+      {order.delivery_document ? (
+        <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-600">
+                Manual Delivery PDF Preview
+              </p>
+              <p className="mt-2 text-lg font-black text-purple-950">
+                {payloadText(order.delivery_document.pdf_payload, "storeName")}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-purple-800">
+                Buyer: {payloadText(order.delivery_document.pdf_payload, "buyerEmail")}
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-purple-700">
+              {order.delivery_document.document_status}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 rounded-2xl border border-purple-100 bg-white/80 p-4 text-sm font-semibold text-purple-900 md:grid-cols-2">
+            <p>Transfer code: {payloadText(order.delivery_document.pdf_payload, "transferCode")}</p>
+            <p>WhatsApp: {payloadText(order.delivery_document.pdf_payload, "buyerWhatsapp")}</p>
+            <p>Activation: {payloadText(order.delivery_document.pdf_payload, "activationLink")}</p>
+            <p>Preview: {payloadText(order.delivery_document.pdf_payload, "storePreviewLink")}</p>
+            <p className="md:col-span-2">
+              Account mode: {payloadText(order.delivery_document.pdf_payload, "accountMode")}
+            </p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              className="inline-flex h-11 items-center justify-center rounded-full bg-purple-600 px-5 text-sm font-bold text-white transition hover:bg-purple-700"
+              href={`/reseller/dashboard/orders/delivery-pdf/${order.delivery_document.id}`}
+              target="_blank"
+            >
+              Download Delivery PDF
+            </a>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <StatusAction label="Approve" requestId={order.id} status="approved" />
         <StatusAction label="Reject" requestId={order.id} status="rejected" />
         <TransferPreparationAction requestId={order.id} />
         <MarkDeliveredAction requestId={order.id} />
         <StoreProvisioningAction requestId={order.id} />
+        <DeliveryPdfAction requestId={order.id} />
         {order.store_instance ? (
           <a
             className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100"

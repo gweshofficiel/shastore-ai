@@ -115,6 +115,8 @@ export type StoreDeliveryTransferStatus =
 export type StoreDeliveryStatus =
   | "not_sent"
   | "ready_for_delivery"
+  | "delivery_pdf_generated"
+  | "manual_delivery_ready"
   | "delivered"
   | "failed";
 
@@ -152,8 +154,22 @@ export type StoreActivationToken = {
   activated_at: string | null;
 };
 
+export type StoreDeliveryDocument = {
+  id: string;
+  purchase_request_id: string;
+  provisioned_store_id: string | null;
+  store_instance_id: string;
+  reseller_id: string;
+  document_status: "delivery_pdf_generated" | "manual_delivery_ready";
+  pdf_payload: unknown;
+  generated_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type StorePurchaseOrder = StorePurchaseRequest & {
   activation_token: StoreActivationToken | null;
+  delivery_document: StoreDeliveryDocument | null;
   delivery_transfer: StoreDeliveryTransfer | null;
   provisioned_store: ProvisionedStore | null;
   showcase_title: string | null;
