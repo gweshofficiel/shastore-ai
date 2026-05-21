@@ -198,5 +198,5 @@ export async function getResellerStorePurchaseData(): Promise<ResellerStorePurch
 }
 
 export function storePurchaseMigrationMessage() {
-  return "Apply the store purchase, provisioning, delivery transfer, store instance, buyer activation, and manual delivery PDF migrations to enable reseller requests, cloned stores, activation links, and manual PDF downloads.";
+  return "Apply the store purchase, provisioning, delivery transfer, store instance, buyer activation, account claim, and manual delivery PDF migrations to enable reseller requests, cloned stores, activation links, ownership claim, and manual PDF downloads.";
 }

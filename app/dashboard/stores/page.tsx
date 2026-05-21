@@ -91,9 +91,12 @@ async function getClaimedStoreInstances() {
     ownership_status: string;
     activation_status: string;
     activation_token: string | null;
+    transfer_code: string | null;
     source_reseller_name: string | null;
     buyer_email: string | null;
     target_account_id: string | null;
+    transfer_destination: string | null;
+    claim_account_mode: string | null;
     created_at: string;
   }>;
 }
@@ -170,11 +173,12 @@ export default async function StoresPage({
               Claimed Stores
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-              Buyer-owned store placeholders
+              Claimed reseller stores
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-              Stores claimed through reseller activation appear here. Future owner role permissions,
-              login redirect, and management access will connect to these records.
+              Stores you activated from a delivery PDF or activation link appear here with ownership,
+              transfer, and activation status. Manage products, theme, domain, payments, orders, and
+              analytics will connect in future releases.
             </p>
           </div>
           <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
@@ -203,12 +207,23 @@ export default async function StoresPage({
                 <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-muted">
                   <p>Source reseller: {store.source_reseller_name ?? "Reseller"}</p>
                   <p>Buyer email: {store.buyer_email ?? "Linked buyer email"}</p>
-                  <p>Account ID: {store.target_account_id ?? "Account target placeholder"}</p>
+                  <p>Transfer code: {store.transfer_code ?? "Not available"}</p>
+                  <p>
+                    Account target:{" "}
+                    {store.target_account_id ??
+                      (store.claim_account_mode === "existing_account"
+                        ? "Existing account"
+                        : "New buyer account")}
+                  </p>
+                  <p className="capitalize">
+                    Transfer destination:{" "}
+                    {(store.transfer_destination ?? "new_account_placeholder").replace(/_/g, " ")}
+                  </p>
                   <p>Created: {formatDate(store.created_at)}</p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-                    {store.status}
+                    Store {store.status}
                   </span>
                   <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
                     {store.visibility}
@@ -241,9 +256,13 @@ export default async function StoresPage({
             ))}
           </div>
         ) : (
-          <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-muted">
-            No stores claimed yet.
-          </p>
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
+            <p className="text-lg font-black text-ink">No stores claimed yet.</p>
+            <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
+              Open the activation link from your delivery PDF, confirm your password placeholder,
+              and click Activate store. Your claimed store will appear here.
+            </p>
+          </div>
         )}
       </Card>
       {stores.length ? (

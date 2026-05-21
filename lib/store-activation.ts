@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 export type StoreActivationView = {
@@ -14,10 +14,23 @@ export type StoreActivationView = {
   transfer_code: string | null;
   target_account_id: string | null;
   target_account_lookup_status: string | null;
+  account_claim_mode: "existing_account" | "new_account";
+  transfer_destination: string;
+};
+
+export type StoreActivationFormState = {
+  message: string;
+  status: "idle" | "success" | "error";
+  activationStatus?: string;
+  storeSlug?: string | null;
 };
 
 function cleanToken(value: string) {
   return value.trim().slice(0, 80);
+}
+
+function cleanPassword(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value : "";
 }
 
 export async function getStoreActivationByToken(token: string): Promise<StoreActivationView | null> {
@@ -30,27 +43,161 @@ export async function getStoreActivationByToken(token: string): Promise<StoreAct
     return null;
   }
 
-  return data[0] as StoreActivationView;
+  const row = data[0] as StoreActivationView & {
+    account_claim_mode?: string;
+    transfer_destination?: string;
+  };
+
+  return {
+    ...row,
+    account_claim_mode:
+      row.account_claim_mode === "existing_account" ? "existing_account" : "new_account",
+    transfer_destination: row.transfer_destination ?? "new_account_placeholder"
+  };
 }
 
-export async function activateStoreByToken(formData: FormData) {
-  const token = typeof formData.get("token") === "string" ? cleanToken(String(formData.get("token"))) : "";
+export async function claimStoreByActivationToken(
+  _previousState: StoreActivationFormState,
+  formData: FormData
+): Promise<StoreActivationFormState> {
+  const token =
+    typeof formData.get("token") === "string" ? cleanToken(String(formData.get("token"))) : "";
+  const password = cleanPassword(formData.get("password"));
+  const confirmPassword = cleanPassword(formData.get("confirmPassword"));
 
   if (!token) {
-    redirect("/activate-store/invalid?error=missing-token");
+    return {
+      message: "Activation token is missing.",
+      status: "error"
+    };
   }
 
-  const supabase = await createClient();
-  const { data } = await supabase.rpc("activate_store_by_token" as never, {
-    candidate_token: token
-  } as never);
-  const result = Array.isArray(data)
-    ? (data[0] as { activation_status?: string; store_slug?: string | null } | undefined)
-    : null;
+  if (!password || password.length < 8) {
+    return {
+      message: "Choose a password with at least 8 characters.",
+      status: "error"
+    };
+  }
 
-  redirect(
-    `/activate-store/${encodeURIComponent(token)}?status=${encodeURIComponent(
-      result?.activation_status ?? "not_found"
-    )}`
+  if (password !== confirmPassword) {
+    return {
+      message: "Passwords do not match. Please confirm your password.",
+      status: "error"
+    };
+  }
+
+  try {
+    const activation = await getStoreActivationByToken(token);
+
+    if (!activation) {
+      return {
+        message: "This activation link is invalid.",
+        status: "error"
+      };
+    }
+
+    if (activation.activation_status === "expired") {
+      return {
+        activationStatus: "expired",
+        message: "This activation link has expired. Contact your reseller for a new delivery package.",
+        status: "error"
+      };
+    }
+
+    if (activation.activation_status === "activated") {
+      return {
+        activationStatus: "activated",
+        message: "This store was already activated. You can open it from your buyer dashboard.",
+        status: "success",
+        storeSlug: activation.store_slug
+      };
+    }
+
+    if (activation.activation_status === "cancelled") {
+      return {
+        message: "This activation link was cancelled.",
+        status: "error"
+      };
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("activate_store_by_token" as never, {
+      candidate_token: token
+    } as never);
+
+    if (error) {
+      return {
+        message: "Store activation could not be completed. Please try again.",
+        status: "error"
+      };
+    }
+
+    const result = Array.isArray(data)
+      ? (data[0] as
+          | {
+              activation_status?: string;
+              store_slug?: string | null;
+              ownership_status?: string | null;
+              transfer_destination?: string | null;
+            }
+          | undefined)
+      : null;
+
+    const activationStatus = result?.activation_status ?? "not_found";
+
+    if (activationStatus === "not_found") {
+      return {
+        message: "This activation link is invalid.",
+        status: "error"
+      };
+    }
+
+    if (activationStatus === "expired") {
+      return {
+        activationStatus: "expired",
+        message: "This activation link has expired. Contact your reseller for a new delivery package.",
+        status: "error"
+      };
+    }
+
+    if (activationStatus !== "activated") {
+      return {
+        activationStatus,
+        message: `Activation could not be completed (${activationStatus.replace(/-/g, " ")}).`,
+        status: "error"
+      };
+    }
+
+    revalidatePath("/dashboard/stores");
+    revalidatePath("/reseller/dashboard/orders");
+
+    const accountLabel =
+      activation.account_claim_mode === "existing_account"
+        ? "linked to your SHASTORE account target"
+        : "prepared for new buyer account setup";
+
+    return {
+      activationStatus: "activated",
+      message: `Store claimed and ownership recorded (${accountLabel}). Password setup will connect to Supabase auth invite in a future step.`,
+      status: "success",
+      storeSlug: result?.store_slug ?? activation.store_slug
+    };
+  } catch (error) {
+    console.error("claimStoreByActivationToken failed", error);
+
+    return {
+      message: "Something went wrong during activation. Please try again.",
+      status: "error"
+    };
+  }
+}
+
+/** @deprecated Use claimStoreByActivationToken via ActivateStoreForm */
+export async function activateStoreByToken(formData: FormData) {
+  const result = await claimStoreByActivationToken(
+    { message: "", status: "idle" },
+    formData
   );
+
+  return result;
 }
