@@ -50,7 +50,7 @@ export default async function OrdersPage({
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
-        description="Unified orders from landing pages and ecommerce stores, including COD, WhatsApp, Stripe, and PayPal foundations."
+        description="Unified orders from landing pages and ecommerce stores. Buyer payments stay on COD and WhatsApp until seller-owned payment integrations are added."
         title="Orders"
       />
       {!orders.ready ? (

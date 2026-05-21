@@ -48,7 +48,7 @@ export default function PricingPage() {
                   <li>AI marketing copy generation</li>
                   <li>Reusable landing page templates</li>
                   <li>WhatsApp CTA support</li>
-                  <li>Stripe billing ready</li>
+                  <li>Platform billing ready</li>
                 </ul>
                 <ButtonLink className="mt-8 w-full" href="/register">
                   Start with {plan.name}

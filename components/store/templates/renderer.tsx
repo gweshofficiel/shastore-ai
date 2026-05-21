@@ -76,7 +76,7 @@ export async function StoreTemplateRenderer({
     title: store.name,
     currency: store.currency || "USD",
     whatsappNumber: store.whatsappNumber,
-    paymentMethods: ["whatsapp", "cod", "stripe", "paypal"],
+    paymentMethods: ["whatsapp", "cod"],
     items: store.products.length
       ? store.products.map((product) => ({
           id: product.id,

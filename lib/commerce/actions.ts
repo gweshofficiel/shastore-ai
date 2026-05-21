@@ -67,12 +67,17 @@ export async function saveCommercePaymentSettings(formData: FormData) {
   const { error } = await supabase.from("commerce_payment_settings").upsert(
     {
       user_id: user.id,
-      stripe_enabled: formBoolean(formData, "stripeEnabled"),
-      paypal_enabled: formBoolean(formData, "paypalEnabled"),
+      stripe_enabled: false,
+      paypal_enabled: false,
       cod_enabled: formBoolean(formData, "codEnabled"),
       whatsapp_orders_enabled: formBoolean(formData, "whatsappOrdersEnabled"),
-      stripe_account_label: cleanText(formData.get("stripeAccountLabel")),
-      paypal_account_label: cleanText(formData.get("paypalAccountLabel"))
+      default_whatsapp_number: cleanText(formData.get("defaultWhatsappNumber"), 80),
+      stripe_seller_enabled: formBoolean(formData, "stripeSellerEnabled"),
+      paypal_seller_enabled: formBoolean(formData, "paypalSellerEnabled"),
+      crypto_enabled: formBoolean(formData, "cryptoEnabled"),
+      payment_instructions: cleanText(formData.get("paymentInstructions"), 1000),
+      stripe_account_label: null,
+      paypal_account_label: null
     },
     { onConflict: "user_id" }
   );
@@ -80,7 +85,7 @@ export async function saveCommercePaymentSettings(formData: FormData) {
   if (error) {
     redirect(
       `/dashboard/payments?error=${encodeURIComponent(
-        "Commerce payment settings table is not ready. Apply the unified commerce migration first."
+        "Client payment settings are not ready. Apply the unified commerce and client payment connections migrations first."
       )}`
     );
   }

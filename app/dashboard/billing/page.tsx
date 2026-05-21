@@ -136,7 +136,7 @@ export default async function BillingPage({
       {query.success ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
-            Checkout completed. Subscription activation will be finalized by Stripe webhooks.
+            Checkout completed. Subscription activation will be finalized by platform billing webhooks.
           </p>
         </Card>
       ) : null}
@@ -150,8 +150,9 @@ export default async function BillingPage({
       {query.checkout === "placeholder" ? (
         <Card className="border-blue-200 bg-blue-50 p-5">
           <p className="text-sm font-bold text-blue-800">
-            Stripe checkout placeholder is active for {query.plan ?? "this plan"}. Add
-            live Stripe keys and price IDs when ready to process subscriptions.
+            Platform billing checkout placeholder is active for {query.plan ?? "this plan"}.
+            Add SHASTORE AI Stripe keys and platform price IDs when ready to process
+            SaaS subscriptions.
           </p>
         </Card>
       ) : null}
@@ -235,19 +236,20 @@ export default async function BillingPage({
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Stripe foundation
+            Platform billing Stripe
           </p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-            Checkout-ready architecture
+            SaaS subscription checkout
           </h2>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Paid buttons post to Stripe checkout with plan metadata. Webhook persistence
-            is prepared as a clean foundation and can be connected when product IDs are live.
+            Paid buttons use SHASTORE AI platform Stripe credentials only. Client store
+            buyer payments are kept separate and are not routed through this billing flow.
           </p>
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
-            Configure <code>STRIPE_PRICE_ID_STARTER</code>,{" "}
-            <code>STRIPE_PRICE_ID_PRO</code>, and <code>STRIPE_PRICE_ID_AGENCY</code>{" "}
-            for plan-specific checkout.
+            Configure <code>PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER</code>,{" "}
+            <code>PLATFORM_BILLING_STRIPE_PRICE_ID_PRO</code>, and{" "}
+            <code>PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY</code> for plan-specific
+            checkout.
           </div>
         </Card>
       </div>
@@ -307,7 +309,7 @@ export default async function BillingPage({
                 Included
               </Button>
             ) : (
-              <form action="/api/stripe/checkout" className="mt-6" method="POST">
+              <form action="/api/platform-billing/checkout" className="mt-6" method="POST">
                 <input name="planId" type="hidden" value={plan.id} />
                 <Button className="w-full" type="submit">
                   Upgrade to {plan.name}
@@ -354,7 +356,7 @@ export default async function BillingPage({
               ))
             ) : (
               <p className="rounded-3xl bg-slate-50 p-4 text-sm leading-6 text-muted">
-                No invoices yet. Future Stripe invoices will appear here after webhook sync.
+                No invoices yet. Future platform billing invoices will appear here after webhook sync.
               </p>
             )}
           </div>

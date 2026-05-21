@@ -1,5 +1,5 @@
 import { absoluteUrl } from "@/lib/utils";
-import { getStripe } from "@/lib/stripe";
+import { getPlatformBillingStripe } from "@/lib/stripe";
 import type { BillingPlan } from "@/lib/billing/plans";
 
 export type BillingCheckoutRequest = {
@@ -22,8 +22,7 @@ export type BillingCheckoutResult =
 function getPlanPriceId(plan: BillingPlan) {
   return (
     (plan.stripePriceEnv ? process.env[plan.stripePriceEnv] : null) ||
-    (plan.id === "agency" ? process.env.STRIPE_PRICE_ID_BUSINESS : null) ||
-    process.env.STRIPE_PRICE_ID ||
+    process.env.PLATFORM_BILLING_STRIPE_PRICE_ID ||
     null
   );
 }
@@ -33,10 +32,10 @@ export async function createBillingCheckout(
 ): Promise<BillingCheckoutResult> {
   const priceId = getPlanPriceId(request.plan);
 
-  if (!process.env.STRIPE_SECRET_KEY || !priceId) {
-    const reason = !process.env.STRIPE_SECRET_KEY
-      ? "stripe_key_missing"
-      : "stripe_price_missing";
+  if (!process.env.PLATFORM_BILLING_STRIPE_SECRET_KEY || !priceId) {
+    const reason = !process.env.PLATFORM_BILLING_STRIPE_SECRET_KEY
+      ? "platform_billing_stripe_key_missing"
+      : "platform_billing_stripe_price_missing";
 
     return {
       mode: "placeholder",
@@ -45,7 +44,7 @@ export async function createBillingCheckout(
     };
   }
 
-  const stripe = getStripe();
+  const stripe = getPlatformBillingStripe();
   const session = await stripe.checkout.sessions.create({
     client_reference_id: request.userId,
     customer_email: request.customerEmail ?? undefined,

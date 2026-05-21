@@ -34,12 +34,17 @@ type BuilderState = {
 };
 
 const steps = ["Product", "Theme", "Template", "Payments", "AI", "Preview"];
-const paymentOptions: Array<{ id: PaymentMethod; label: string }> = [
+const buyerCheckoutPaymentMethods = ["whatsapp", "cod"] satisfies PaymentMethod[];
+const paymentOptions: Array<{ id: PaymentMethod; label: string; placeholder?: string }> = [
   { id: "whatsapp", label: "WhatsApp orders" },
   { id: "cod", label: "Cash on Delivery" },
-  { id: "stripe", label: "Stripe" },
-  { id: "paypal", label: "PayPal" }
+  { id: "stripe", label: "Stripe", placeholder: "Client-owned Stripe placeholder" },
+  { id: "paypal", label: "PayPal", placeholder: "Client-owned PayPal placeholder" }
 ];
+
+function isBuyerCheckoutPaymentMethod(method: PaymentMethod) {
+  return buyerCheckoutPaymentMethods.some((supported) => supported === method);
+}
 
 const initialState: BuilderState = {
   productName: "",
@@ -67,6 +72,16 @@ type LandingBuilderProps = {
   };
   mode?: "create" | "edit";
 };
+
+function normalizeBuyerCheckoutPaymentMethods(
+  methods: PaymentMethod[] | undefined
+): PaymentMethod[] {
+  const supported = (methods ?? []).filter((method) =>
+    isBuyerCheckoutPaymentMethod(method)
+  );
+
+  return supported.length ? supported : ["whatsapp"];
+}
 
 export function LandingBuilder({
   initialData,
@@ -98,7 +113,7 @@ export function LandingBuilder({
     })
   );
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(
-    initialData?.paymentMethods?.length ? initialData.paymentMethods : ["whatsapp"]
+    normalizeBuyerCheckoutPaymentMethods(initialData?.paymentMethods)
   );
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [generatingField, setGeneratingField] = useState<string | null>(null);
@@ -168,6 +183,10 @@ export function LandingBuilder({
   }
 
   function togglePayment(method: PaymentMethod) {
+    if (!isBuyerCheckoutPaymentMethod(method)) {
+      return;
+    }
+
     setPaymentMethods((current) =>
       current.includes(method)
         ? current.filter((item) => item !== method)
@@ -561,24 +580,36 @@ export function LandingBuilder({
               Payment methods
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {paymentOptions.map((option) => (
-                <label
-                  className={`flex cursor-pointer items-center justify-between rounded-3xl border p-4 transition ${
-                    paymentMethods.includes(option.id)
-                      ? "border-ink bg-slate-50"
-                      : "border-slate-200 bg-white"
-                  }`}
-                  key={option.id}
-                >
-                  <span className="font-bold text-ink">{option.label}</span>
-                  <input
-                    checked={paymentMethods.includes(option.id)}
-                    className="h-4 w-4"
-                    onChange={() => togglePayment(option.id)}
-                    type="checkbox"
-                  />
-                </label>
-              ))}
+              {paymentOptions.map((option) => {
+                const disabled = !isBuyerCheckoutPaymentMethod(option.id);
+
+                return (
+                  <label
+                    className={`flex items-center justify-between rounded-3xl border p-4 transition ${
+                      paymentMethods.includes(option.id)
+                        ? "border-ink bg-slate-50"
+                        : "border-slate-200 bg-white"
+                    } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                    key={option.id}
+                  >
+                    <span>
+                      <span className="block font-bold text-ink">{option.label}</span>
+                      {option.placeholder ? (
+                        <span className="mt-1 block text-xs font-semibold text-muted">
+                          {option.placeholder}
+                        </span>
+                      ) : null}
+                    </span>
+                    <input
+                      checked={paymentMethods.includes(option.id)}
+                      className="h-4 w-4"
+                      disabled={disabled}
+                      onChange={() => togglePayment(option.id)}
+                      type="checkbox"
+                    />
+                  </label>
+                );
+              })}
             </div>
         </div>
 

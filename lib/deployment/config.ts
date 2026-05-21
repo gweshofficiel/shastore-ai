@@ -2,7 +2,7 @@ export type EnvCheck = {
   key: string;
   configured: boolean;
   required: boolean;
-  scope: "app" | "supabase" | "openai" | "stripe" | "domains";
+  scope: "app" | "supabase" | "openai" | "platform-billing" | "domains";
   note: string;
 };
 
@@ -53,25 +53,39 @@ const optionalEnv: EnvCheck[] = [
     note: "Automatically provided by Vercel preview and production deployments."
   },
   {
-    key: "STRIPE_SECRET_KEY",
-    configured: Boolean(process.env.STRIPE_SECRET_KEY),
+    key: "PLATFORM_BILLING_STRIPE_SECRET_KEY",
+    configured: Boolean(process.env.PLATFORM_BILLING_STRIPE_SECRET_KEY),
     required: false,
-    scope: "stripe",
-    note: "Optional until live billing is enabled."
+    scope: "platform-billing",
+    note: "SHASTORE AI Stripe secret key for SaaS subscription billing only."
   },
   {
-    key: "STRIPE_WEBHOOK_SECRET",
-    configured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+    key: "PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET",
+    configured: Boolean(process.env.PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET),
     required: false,
-    scope: "stripe",
-    note: "Required only when Stripe webhooks are live."
+    scope: "platform-billing",
+    note: "Required only when platform billing Stripe webhooks are live."
   },
   {
-    key: "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-    configured: Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
+    key: "PLATFORM_BILLING_STRIPE_PRICE_ID_PRO",
+    configured: Boolean(process.env.PLATFORM_BILLING_STRIPE_PRICE_ID_PRO),
     required: false,
-    scope: "stripe",
-    note: "Browser-side Stripe key for future hosted billing flows."
+    scope: "platform-billing",
+    note: "Pro SaaS subscription price ID for SHASTORE AI platform billing."
+  },
+  {
+    key: "PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER",
+    configured: Boolean(process.env.PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER),
+    required: false,
+    scope: "platform-billing",
+    note: "Starter SaaS subscription price ID for SHASTORE AI platform billing."
+  },
+  {
+    key: "PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY",
+    configured: Boolean(process.env.PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY),
+    required: false,
+    scope: "platform-billing",
+    note: "Agency SaaS subscription price ID for SHASTORE AI platform billing."
   },
   {
     key: "NEXT_PUBLIC_SHASTORE_DOMAIN",

@@ -10,7 +10,7 @@ Users upload product images, enter product details, generate AI marketing copy, 
 - TypeScript
 - TailwindCSS
 - Supabase auth, database, and storage-ready structure
-- Stripe checkout and webhook structure
+- Platform billing Stripe checkout and webhook structure for SaaS subscriptions
 - OpenAI copy generation endpoint
 - Vercel-ready environment configuration
 
@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and fill in Supabase, Stripe, and OpenAI keys.
+Copy `.env.example` to `.env.local` and fill in Supabase, OpenAI, and SHASTORE AI platform billing Stripe keys.
 
 ## Database
 

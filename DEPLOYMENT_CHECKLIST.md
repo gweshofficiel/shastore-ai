@@ -16,17 +16,18 @@ Use this checklist before deploying SHASTORE AI to Vercel production. This is pr
 - `NEXT_PUBLIC_SHASTORE_DOMAIN`: Base domain for free subdomains, for example `shastore.ai`.
 - `NEXT_PUBLIC_PLATFORM_DOMAIN`: Legacy platform domain placeholder if older code references it.
 
-## Optional Stripe Placeholders
+## Optional Platform Billing Stripe
 
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-- `STRIPE_PRICE_ID`
-- `STRIPE_PRICE_ID_STARTER`
-- `STRIPE_PRICE_ID_PRO`
-- `STRIPE_PRICE_ID_AGENCY`
+- `PLATFORM_BILLING_STRIPE_SECRET_KEY`
+- `PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET`
+- `PLATFORM_BILLING_STRIPE_PRICE_ID`
+- `PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER`
+- `PLATFORM_BILLING_STRIPE_PRICE_ID_PRO`
+- `PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY`
 
-Stripe keys can remain empty until live billing is enabled. The billing foundation should stay in placeholder mode without keys.
+These are SHASTORE AI owner keys for SaaS subscription billing only. Client store
+Stripe credentials are separate seller-owned placeholders and must not be used for
+platform billing or buyer checkout.
 
 ## Optional Domain Placeholders
 
@@ -52,7 +53,7 @@ Do not run production without confirming these migrations completed successfully
 - Create a Vercel project connected to the repository.
 - Set framework preset to Next.js.
 - Add all required environment variables in Vercel Project Settings.
-- Add optional Stripe and HOSTINSH variables only when those services are ready.
+- Add optional platform billing Stripe and HOSTINSH variables only when those services are ready.
 - Confirm `NEXT_PUBLIC_APP_URL` uses the final production domain.
 - Confirm Vercel build command is `npm run build`.
 - Confirm install command is the project default or `npm install`.
@@ -73,13 +74,12 @@ Recommended placeholders to add now, even if values are empty until integrations
 
 ```env
 SUPABASE_SERVICE_ROLE_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-STRIPE_PRICE_ID=
-STRIPE_PRICE_ID_STARTER=
-STRIPE_PRICE_ID_PRO=
-STRIPE_PRICE_ID_AGENCY=
+PLATFORM_BILLING_STRIPE_SECRET_KEY=
+PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET=
+PLATFORM_BILLING_STRIPE_PRICE_ID=
+PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER=
+PLATFORM_BILLING_STRIPE_PRICE_ID_PRO=
+PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY=
 NEXT_PUBLIC_PLATFORM_DOMAIN=shastore.ai
 NEXT_PUBLIC_SHASTORE_DOMAIN=shastore.ai
 HOSTINSH_API_KEY=
@@ -127,7 +127,7 @@ https://app.shastore.ai/api/auth/callback
 - Verify `/store/[slug]` renders a published store.
 - Verify checkout opens and order capture still works.
 - Verify analytics tracking does not block page rendering.
-- Verify billing remains in placeholder mode if Stripe keys are absent.
+- Verify billing remains in placeholder mode if platform billing Stripe keys are absent.
 - Verify domain dashboard can show DNS instructions without live HOSTINSH credentials.
 
 ## Rollback Steps
@@ -142,7 +142,7 @@ https://app.shastore.ai/api/auth/callback
 
 - Do not deploy with missing required Supabase or OpenAI variables.
 - Do not expose server-only secrets through `NEXT_PUBLIC_*`; only public browser-safe values should use that prefix.
-- Do not enable live billing until Stripe checkout and webhook secrets are configured.
+- Do not enable live SaaS billing until platform billing Stripe checkout and webhook secrets are configured.
 - Do not enable live domain verification until HOSTINSH API credentials and DNS target are confirmed.
 - Do not remove local development fallbacks; they keep `npm run dev` working.
 - Do not run production traffic until all required Supabase migrations have been applied and verified.

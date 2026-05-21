@@ -86,6 +86,11 @@ export type CommercePaymentSettings = {
   paypal_enabled: boolean;
   cod_enabled: boolean;
   whatsapp_orders_enabled: boolean;
+  default_whatsapp_number: string | null;
+  stripe_seller_enabled: boolean;
+  paypal_seller_enabled: boolean;
+  crypto_enabled: boolean;
+  payment_instructions: string | null;
   stripe_account_label: string | null;
   paypal_account_label: string | null;
   created_at: string;

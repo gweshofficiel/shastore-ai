@@ -29,7 +29,7 @@ function parseJsonArray(value: FormDataEntryValue | null) {
 }
 
 function parsePaymentMethod(value: string): CommercePaymentMethod {
-  if (value === "cod" || value === "stripe" || value === "paypal") {
+  if (value === "cod" || value === "whatsapp") {
     return value;
   }
 

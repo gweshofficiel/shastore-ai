@@ -68,11 +68,23 @@ create table if not exists public.commerce_payment_settings (
   paypal_enabled boolean not null default false,
   cod_enabled boolean not null default true,
   whatsapp_orders_enabled boolean not null default true,
+  default_whatsapp_number text,
+  stripe_seller_enabled boolean not null default false,
+  paypal_seller_enabled boolean not null default false,
+  crypto_enabled boolean not null default false,
+  payment_instructions text,
   stripe_account_label text,
   paypal_account_label text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.commerce_payment_settings
+  add column if not exists default_whatsapp_number text,
+  add column if not exists stripe_seller_enabled boolean not null default false,
+  add column if not exists paypal_seller_enabled boolean not null default false,
+  add column if not exists crypto_enabled boolean not null default false,
+  add column if not exists payment_instructions text;
 
 create table if not exists public.commerce_domain_publications (
   id uuid primary key default gen_random_uuid(),

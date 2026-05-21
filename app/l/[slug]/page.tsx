@@ -30,6 +30,14 @@ function normalizeTemplateId(templateId: string): TemplateId {
   return supported.includes(templateId) ? (templateId as TemplateId) : "minimal";
 }
 
+function normalizeBuyerPaymentMethods(methods: PaymentMethod[] | undefined): PaymentMethod[] {
+  const supported = (methods ?? []).filter(
+    (method) => method === "whatsapp" || method === "cod"
+  );
+
+  return supported.length ? supported : ["whatsapp"];
+}
+
 function normalizeCopy(copy: unknown, productName: string, productPrice: string): AiLandingCopy {
   const parsed = copy as Partial<AiLandingCopy> | null;
   const fallbackCopy = createFallbackCopy(productName);
@@ -161,7 +169,7 @@ export default async function PublicLandingPage({
     brandColor: landing.brand_color,
     heroImage: landing.hero_image_url ?? heroFromStorage ?? undefined,
     galleryImages,
-    paymentMethods: aiPayload.paymentMethods ?? ["whatsapp"],
+    paymentMethods: normalizeBuyerPaymentMethods(aiPayload.paymentMethods),
     themeSettings,
     copy: {
       ...normalizedCopy,

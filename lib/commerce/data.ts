@@ -16,6 +16,11 @@ const defaultPaymentSettings: Omit<
   paypal_enabled: false,
   cod_enabled: true,
   whatsapp_orders_enabled: true,
+  default_whatsapp_number: null,
+  stripe_seller_enabled: false,
+  paypal_seller_enabled: false,
+  crypto_enabled: false,
+  payment_instructions: null,
   stripe_account_label: null,
   paypal_account_label: null
 };
