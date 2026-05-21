@@ -8,13 +8,7 @@ function visualLabel(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function ProductVisual({
-  label,
-  tone
-}: {
-  label: string;
-  tone: string;
-}) {
+function ProductVisual({ label, tone }: { label: string; tone: string }) {
   return (
     <div
       className="flex min-h-48 items-end overflow-hidden rounded-[1.75rem] p-4 text-white shadow-inner"
@@ -55,7 +49,7 @@ export function TemplateHeroThumbnail({
       <div className="mt-10 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-white/65">
-            {settings.logo}
+            {settings.storeName}
           </p>
           <h2 className="mt-2 text-3xl font-black tracking-[-0.05em]">{settings.heroTitle}</h2>
           <p className="mt-3 text-sm font-semibold leading-6 text-white/75">
@@ -92,13 +86,25 @@ export function DemoStorePreview({
   const firstOffer = template.demoOffers[0];
   const primary = settings.primaryColor;
   const secondary = settings.secondaryColor;
+  const paymentIcons = settings.paymentIcons.split(",").map((item) => item.trim()).filter(Boolean);
+  const shippingMethods = settings.shippingMethodText
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-950">
+      <section
+        className="px-4 py-3 text-center text-xs font-black uppercase tracking-[0.22em] text-white"
+        style={{ backgroundColor: primary }}
+      >
+        Launch offer active: {firstOffer?.title ?? "demo store preview"} | {settings.ctaText}
+      </section>
+
       <section className="bg-white px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <Link className="text-xl font-black tracking-[-0.04em]" href={backHref ?? "/"}>
-            {settings.logo}
+            {settings.storeName}
           </Link>
           <nav className="flex flex-wrap gap-2 text-sm font-black text-slate-500">
             {template.demoCategories.slice(0, 5).map((category) => (
@@ -168,7 +174,7 @@ export function DemoStorePreview({
               <h2 className="mt-2 text-4xl font-black tracking-[-0.05em]">Complete demo catalog</h2>
             </div>
             <p className="text-sm font-bold text-slate-500">
-              {template.demoProducts.length} products, pre-filled with realistic demo content
+              {template.demoProducts.length} products, pre-filled with rich demo content
             </p>
           </div>
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -200,10 +206,8 @@ export function DemoStorePreview({
             {template.demoProducts.map((product, index) => {
               const imageLabel =
                 product.type === "digital"
-                  ? product.previewImagePlaceholder
-                  : product.type === "marketplace"
-                    ? product.imagePlaceholder
-                    : product.imagePlaceholder;
+                  ? (product.imagePlaceholder ?? product.previewImagePlaceholder)
+                  : product.imagePlaceholder;
 
               return (
                 <article className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]" key={product.name}>
@@ -223,15 +227,22 @@ export function DemoStorePreview({
                         </p>
                         <h3 className="mt-2 font-black tracking-[-0.02em]">{product.name}</h3>
                       </div>
-                      {product.featured ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
-                          Featured
-                        </span>
-                      ) : null}
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {(product.productBadges ?? []).slice(0, 2).map((badge) => (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700" key={badge}>
+                            {badge}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                     <p className="text-sm font-semibold leading-6 text-slate-600">
-                      {product.shortDescription}
+                      {product.description ?? product.shortDescription}
                     </p>
+                    <div className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-xs font-bold text-slate-500">
+                      <p>SKU: {product.skuPlaceholder}</p>
+                      <p>Stock: {product.stockPlaceholder}</p>
+                      <p>Variants: {(product.variantsPlaceholder ?? []).slice(0, 3).join(" / ")}</p>
+                    </div>
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xl font-black">{product.price}</p>
                       <p className="text-xs font-bold text-slate-400">
@@ -297,6 +308,25 @@ export function DemoStorePreview({
         </div>
       </section>
 
+      <section className="bg-white px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">FAQ</p>
+          <h2 className="mt-2 text-4xl font-black tracking-[-0.05em]">Store policy placeholders</h2>
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {[
+              ["How fast do orders ship?", settings.shippingMethodText],
+              ["What payment methods are shown?", settings.paymentIcons],
+              ["Can buyers contact support?", `${settings.supportEmail} | ${settings.whatsapp}`]
+            ].map(([question, answer]) => (
+              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5" key={question}>
+                <p className="font-black">{question}</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{answer}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="bg-white px-4 py-12 sm:px-6 lg:px-8" id="contact">
         <div className="mx-auto grid max-w-7xl gap-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-6 lg:grid-cols-[1fr_0.8fr] lg:p-8">
           <div>
@@ -304,9 +334,13 @@ export function DemoStorePreview({
               Contact
             </p>
             <h2 className="mt-3 text-4xl font-black tracking-[-0.05em]">Questions before ordering?</h2>
-            <p className="mt-3 text-sm font-semibold leading-7 text-slate-600">
-              {settings.contactInfo}
-            </p>
+            <div className="mt-4 grid gap-2 text-sm font-semibold leading-7 text-slate-600">
+              <p>{settings.storeDescription}</p>
+              <p>Email: {settings.supportEmail}</p>
+              <p>Phone: {settings.phone}</p>
+              <p>WhatsApp: {settings.whatsapp}</p>
+              <p>Address: {settings.address}</p>
+            </div>
           </div>
           <div className="grid gap-3">
             {Object.entries(settings.socialLinks).map(([label, href]) => (
@@ -322,12 +356,48 @@ export function DemoStorePreview({
         </div>
       </section>
 
-      <footer className="bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm font-semibold text-white/70">{settings.footerText}</p>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-white/40">
-            SEO: {settings.seoTitle}
-          </p>
+      <footer className="bg-slate-950 px-4 py-10 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
+          <div>
+            <p className="text-2xl font-black tracking-[-0.04em]">{settings.storeName}</p>
+            <p className="mt-3 text-sm font-semibold leading-7 text-white/65">
+              {settings.storeDescription}
+            </p>
+            <p className="mt-4 inline-flex rounded-full border border-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white/70">
+              {settings.lockedPoweredBy}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm font-black">Legal</p>
+            <div className="mt-3 grid gap-2 text-sm font-semibold text-white/65">
+              <a href={settings.privacyPolicyLink}>{settings.privacyPolicyText}</a>
+              <a href={settings.termsLink}>{settings.termsText}</a>
+              <a href={settings.refundPolicyLink}>{settings.refundPolicyText}</a>
+              <a href={settings.shippingPolicyLink}>{settings.shippingPolicyText}</a>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-black">Payments</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {paymentIcons.map((icon) => (
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black" key={icon}>
+                  {icon}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-black">Shipping</p>
+            <div className="mt-3 grid gap-2 text-sm font-semibold text-white/65">
+              {shippingMethods.map((method) => (
+                <span key={method}>{method}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mx-auto mt-8 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-6 text-xs font-bold text-white/45 sm:flex-row sm:items-center sm:justify-between">
+          <p>{settings.copyrightText}</p>
+          <p>SEO: {settings.seoTitle}</p>
         </div>
       </footer>
     </main>

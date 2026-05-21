@@ -24,6 +24,13 @@ export type DemoOffer = {
   code: string;
 };
 
+export type DemoProductDetails = {
+  description?: string;
+  skuPlaceholder?: string;
+  productBadges?: string[];
+  variantsPlaceholder?: string[];
+};
+
 export type PhysicalDemoProduct = {
   type: "physical";
   name: string;
@@ -33,7 +40,7 @@ export type PhysicalDemoProduct = {
   imagePlaceholder: string;
   stockPlaceholder: string;
   featured: boolean;
-};
+} & DemoProductDetails;
 
 export type DigitalDemoProduct = {
   type: "digital";
@@ -41,12 +48,14 @@ export type DigitalDemoProduct = {
   price: string;
   category: string;
   shortDescription: string;
+  imagePlaceholder?: string;
+  stockPlaceholder?: string;
   downloadTypePlaceholder: string;
   fileDeliveryPlaceholder: string;
   licensePlaceholder: string;
   previewImagePlaceholder: string;
   featured: boolean;
-};
+} & DemoProductDetails;
 
 export type MarketplaceDemoProduct = {
   type: "marketplace";
@@ -57,8 +66,9 @@ export type MarketplaceDemoProduct = {
   vendorPlaceholder: string;
   commissionPlaceholder: string;
   imagePlaceholder: string;
+  stockPlaceholder?: string;
   featured: boolean;
-};
+} & DemoProductDetails;
 
 export type TemplateDemoProduct =
   | PhysicalDemoProduct
@@ -84,6 +94,24 @@ export type TemplateCustomizationDefaults = {
   socialLinks: TemplateSocialLinks;
   seoTitle: string;
   seoDescription: string;
+  storeName: string;
+  storeDescription: string;
+  supportEmail: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+  privacyPolicyText: string;
+  privacyPolicyLink: string;
+  termsText: string;
+  termsLink: string;
+  refundPolicyText: string;
+  refundPolicyLink: string;
+  shippingPolicyText: string;
+  shippingPolicyLink: string;
+  paymentIcons: string;
+  shippingMethodText: string;
+  copyrightText: string;
+  lockedPoweredBy: "Powered by SHASTORE AI";
 };
 
 export type StoreTemplateCategory = {

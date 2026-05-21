@@ -1,6 +1,7 @@
 import type {
   StoreTemplate,
   StoreTemplateCategory,
+  TemplateDemoProduct,
   TemplateCategoryKey,
   TemplateKind
 } from "@/lib/template-studio/types";
@@ -76,6 +77,56 @@ const extraDemoProducts: Record<string, StoreTemplate["demoProducts"]> = {
   "fashion-atelier": [
     {
       type: "physical",
+      name: "Satin Evening Shirt",
+      price: "$64",
+      category: "New Arrivals",
+      shortDescription: "Fluid satin shirt with pearl buttons for dinners, events, and polished office looks.",
+      imagePlaceholder: "fashion-satin-shirt-placeholder.jpg",
+      stockPlaceholder: "37 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Leather Crossbody Bag",
+      price: "$98",
+      category: "Accessories",
+      shortDescription: "Compact leather crossbody with adjustable strap and premium gold hardware.",
+      imagePlaceholder: "fashion-crossbody-placeholder.jpg",
+      stockPlaceholder: "26 units available",
+      featured: true
+    },
+    {
+      type: "physical",
+      name: "Summer Sandals",
+      price: "$48",
+      category: "Accessories",
+      shortDescription: "Minimal leather sandals with padded sole and easy neutral styling.",
+      imagePlaceholder: "fashion-sandals-placeholder.jpg",
+      stockPlaceholder: "54 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Premium Cotton Hoodie",
+      price: "$72",
+      category: "New Arrivals",
+      shortDescription: "Heavyweight brushed cotton hoodie with relaxed fit and tonal embroidery.",
+      imagePlaceholder: "fashion-hoodie-placeholder.jpg",
+      stockPlaceholder: "48 units available",
+      featured: false
+    },
+    {
+      type: "physical",
+      name: "Classic Denim Jacket",
+      price: "$88",
+      category: "Outerwear",
+      shortDescription: "Mid-wash denim jacket with structured shoulders and vintage-inspired seams.",
+      imagePlaceholder: "fashion-denim-jacket-placeholder.jpg",
+      stockPlaceholder: "31 units available",
+      featured: true
+    },
+    {
+      type: "physical",
       name: "Ribbed Knit Co-ord Set",
       price: "$76",
       category: "New Arrivals",
@@ -138,7 +189,7 @@ const extraDemoProducts: Record<string, StoreTemplate["demoProducts"]> = {
     },
     {
       type: "physical",
-      name: "Minimal Silver Bracelet",
+      name: "Silver Minimal Bracelet",
       price: "$72",
       category: "Bracelets",
       shortDescription: "Adjustable sterling silver bracelet with a polished minimal chain.",
@@ -155,6 +206,16 @@ const extraDemoProducts: Record<string, StoreTemplate["demoProducts"]> = {
       imagePlaceholder: "jewelry-amber-necklace-placeholder.jpg",
       stockPlaceholder: "19 units available",
       featured: true
+    },
+    {
+      type: "physical",
+      name: "Handmade Berber Bracelet",
+      price: "$104",
+      category: "Bracelets",
+      shortDescription: "Hand-finished bracelet with etched Berber-inspired texture and warm gold accents.",
+      imagePlaceholder: "jewelry-berber-bracelet-placeholder.jpg",
+      stockPlaceholder: "28 units available",
+      featured: false
     },
     {
       type: "physical",
@@ -748,6 +809,50 @@ function templateProtection(categoryKey: TemplateCategoryKey) {
   };
 }
 
+function enrichProducts(templateId: string, products: StoreTemplate["demoProducts"]) {
+  return products.map((product, index): TemplateDemoProduct => {
+    const skuPrefix = templateId
+      .split("-")
+      .map((part) => part[0]?.toUpperCase())
+      .join("")
+      .slice(0, 4);
+    const productBadges = product.productBadges ?? [
+      product.featured ? "Featured" : "Demo",
+      product.type === "digital"
+        ? "Instant access"
+        : product.type === "marketplace"
+          ? "Vendor ready"
+          : "In stock"
+    ];
+    const variantsPlaceholder =
+      product.variantsPlaceholder ??
+      (product.type === "digital"
+        ? ["Personal license", "Commercial license", "Agency pack"]
+        : product.type === "marketplace"
+          ? ["Standard listing", "Featured seller slot", "Promoted bundle"]
+          : ["Color option", "Size option", "Gift-ready packaging"]);
+
+    return {
+      ...product,
+      description:
+        product.description ??
+        `${product.shortDescription} Includes polished demo copy, merchandising notes, category placement, and a realistic product detail section for this store template.`,
+      imagePlaceholder:
+        product.type === "digital"
+          ? (product.imagePlaceholder ?? product.previewImagePlaceholder)
+          : product.imagePlaceholder,
+      productBadges,
+      skuPlaceholder: product.skuPlaceholder ?? `${skuPrefix}-${String(index + 1).padStart(3, "0")}`,
+      stockPlaceholder:
+        product.stockPlaceholder ??
+        (product.type === "digital"
+          ? "Unlimited digital delivery placeholder"
+          : "Marketplace availability placeholder"),
+      variantsPlaceholder
+    } as TemplateDemoProduct;
+  });
+}
+
 function templateBase({
   id,
   name,
@@ -790,7 +895,7 @@ function templateBase({
     description,
     previewGradient,
     demoCategories: categories,
-    demoProducts: [...products, ...(extraDemoProducts[id] ?? [])],
+    demoProducts: enrichProducts(id, [...products, ...(extraDemoProducts[id] ?? [])]),
     demoSections: sections,
     demoOffers: offers,
     homepageText: {
@@ -804,18 +909,36 @@ function templateBase({
       banner: `${name} editorial banner placeholder`,
       primaryColor: previewGradient.includes("#020617") ? "#020617" : "#111827",
       secondaryColor: previewGradient.match(/#[0-9a-fA-F]{6}/g)?.[1] ?? "#f8fafc",
+      storeName: name,
+      storeDescription: description,
       heroTitle,
       heroSubtitle,
       ctaText,
       footerText,
       contactInfo: "support@example-store.com | WhatsApp +971 50 000 0000",
+      supportEmail: "support@example-store.com",
+      phone: "+971 4 000 0000",
+      whatsapp: "+971 50 000 0000",
+      address: "Dubai Design District, Dubai, UAE",
       socialLinks: {
         instagram: "https://instagram.com/example-store",
         tiktok: "https://tiktok.com/@example-store",
         facebook: "https://facebook.com/example-store"
       },
       seoTitle: `${name} | Premium ready-made store template`,
-      seoDescription: description
+      seoDescription: description,
+      privacyPolicyText: "Privacy Policy",
+      privacyPolicyLink: "/privacy",
+      termsText: "Terms of Use",
+      termsLink: "/terms",
+      refundPolicyText: "Refund Policy",
+      refundPolicyLink: "/refund-policy",
+      shippingPolicyText: "Shipping Policy",
+      shippingPolicyLink: "/shipping-policy",
+      paymentIcons: "Visa, Mastercard, Apple Pay, Cash on Delivery",
+      shippingMethodText: "Standard delivery, express courier, local pickup",
+      copyrightText: `Copyright ${new Date().getFullYear()} ${name}. All rights reserved.`,
+      lockedPoweredBy: "Powered by SHASTORE AI"
     },
     allowedPublishTargets: ["seller_store", "reseller_showcase", "marketplace_listing"],
     protection: templateProtection(categoryKey)
@@ -848,17 +971,17 @@ export const storeTemplates: StoreTemplate[] = [
       },
       {
         type: "physical",
-        name: "Cropped Tailored Blazer",
+        name: "Oversized Blazer",
         price: "$124",
         category: "Outerwear",
-        shortDescription: "Structured blazer for weekday looks and elevated evening styling.",
+        shortDescription: "Structured oversized blazer for weekday looks and elevated evening styling.",
         imagePlaceholder: "fashion-blazer-placeholder.jpg",
         stockPlaceholder: "18 units available",
         featured: true
       },
       {
         type: "physical",
-        name: "Satin Cloud Scarf",
+        name: "Elegant Scarf",
         price: "$34",
         category: "Accessories",
         shortDescription: "Printed satin scarf designed for bags, hair, and lightweight layering.",

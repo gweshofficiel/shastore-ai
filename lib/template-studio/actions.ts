@@ -60,6 +60,7 @@ function parseCustomization(
     return {
       ...template.defaultCustomization,
       ...parsed,
+      lockedPoweredBy: "Powered by SHASTORE AI",
       socialLinks: {
         ...template.defaultCustomization.socialLinks,
         ...(parsed.socialLinks ?? {})
@@ -143,7 +144,13 @@ async function upsertCustomization({
 }) {
   return supabase.from("template_customizations" as never).upsert(
     {
-      contact_info: { value: customization.contactInfo },
+      contact_info: {
+        address: customization.address,
+        email: customization.supportEmail,
+        phone: customization.phone,
+        value: customization.contactInfo,
+        whatsapp: customization.whatsapp
+      },
       customization,
       featured_products: template.demoProducts
         .filter((product) => product.featured)
@@ -389,7 +396,13 @@ export async function duplicateTemplate(formData: FormData) {
   const { error: customizationError } = await supabase
     .from("template_customizations" as never)
     .insert({
-      contact_info: { value: customization.contactInfo },
+      contact_info: {
+        address: customization.address,
+        email: customization.supportEmail,
+        phone: customization.phone,
+        value: customization.contactInfo,
+        whatsapp: customization.whatsapp
+      },
       customization,
       duplicate_of_template_id: templateRecord.id,
       featured_products: template.demoProducts

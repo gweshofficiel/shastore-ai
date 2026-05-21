@@ -28,7 +28,11 @@ const editorSections = [
   "Categories",
   "CTA",
   "Contact info",
-  "SEO placeholders"
+  "SEO placeholders",
+  "Footer store info",
+  "Footer legal pages",
+  "Footer shipping/payment",
+  "Locked SHASTORE AI brand"
 ] as const;
 
 function Field({
@@ -387,6 +391,127 @@ export function TemplateStudio({
               onChange={updateCustomization}
               value={customization.seoDescription}
             />
+            <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Footer Editor
+              </p>
+              <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
+                Store info, legal, shipping, and payment display
+              </h3>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <Field
+                  label="Store name"
+                  name="storeName"
+                  onChange={updateCustomization}
+                  value={customization.storeName}
+                />
+                <Field
+                  label="Support email"
+                  name="supportEmail"
+                  onChange={updateCustomization}
+                  value={customization.supportEmail}
+                />
+                <Field
+                  label="Phone"
+                  name="phone"
+                  onChange={updateCustomization}
+                  value={customization.phone}
+                />
+                <Field
+                  label="WhatsApp"
+                  name="whatsapp"
+                  onChange={updateCustomization}
+                  value={customization.whatsapp}
+                />
+                <Field
+                  label="Address"
+                  name="address"
+                  onChange={updateCustomization}
+                  value={customization.address}
+                />
+                <Field
+                  label="Payment icons"
+                  name="paymentIcons"
+                  onChange={updateCustomization}
+                  value={customization.paymentIcons}
+                />
+                <Field
+                  label="Privacy policy text"
+                  name="privacyPolicyText"
+                  onChange={updateCustomization}
+                  value={customization.privacyPolicyText}
+                />
+                <Field
+                  label="Privacy policy link"
+                  name="privacyPolicyLink"
+                  onChange={updateCustomization}
+                  value={customization.privacyPolicyLink}
+                />
+                <Field
+                  label="Terms text"
+                  name="termsText"
+                  onChange={updateCustomization}
+                  value={customization.termsText}
+                />
+                <Field
+                  label="Terms link"
+                  name="termsLink"
+                  onChange={updateCustomization}
+                  value={customization.termsLink}
+                />
+                <Field
+                  label="Refund policy text"
+                  name="refundPolicyText"
+                  onChange={updateCustomization}
+                  value={customization.refundPolicyText}
+                />
+                <Field
+                  label="Refund policy link"
+                  name="refundPolicyLink"
+                  onChange={updateCustomization}
+                  value={customization.refundPolicyLink}
+                />
+                <Field
+                  label="Shipping policy text"
+                  name="shippingPolicyText"
+                  onChange={updateCustomization}
+                  value={customization.shippingPolicyText}
+                />
+                <Field
+                  label="Shipping policy link"
+                  name="shippingPolicyLink"
+                  onChange={updateCustomization}
+                  value={customization.shippingPolicyLink}
+                />
+              </div>
+              <div className="mt-4 grid gap-4">
+                <TextAreaField
+                  label="Store description"
+                  name="storeDescription"
+                  onChange={updateCustomization}
+                  value={customization.storeDescription}
+                />
+                <TextAreaField
+                  label="Shipping method icons/text"
+                  name="shippingMethodText"
+                  onChange={updateCustomization}
+                  value={customization.shippingMethodText}
+                />
+                <TextAreaField
+                  label="Copyright text"
+                  name="copyrightText"
+                  onChange={updateCustomization}
+                  value={customization.copyrightText}
+                />
+              </div>
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-black text-amber-900">Locked platform branding</p>
+                <p className="mt-1 text-sm font-semibold text-amber-800">
+                  {customization.lockedPoweredBy} is locked for sellers and resellers. Only
+                  platform admin can remove or edit this phrase.
+                </p>
+              </div>
+            </div>
           </Card>
 
           <Card className="overflow-hidden p-0">
@@ -466,6 +591,20 @@ export function TemplateStudio({
                     : product.type === "marketplace"
                       ? `${product.vendorPlaceholder} | ${product.commissionPlaceholder}`
                       : `${product.imagePlaceholder} | ${product.stockPlaceholder}`}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(product.productBadges ?? []).map((badge) => (
+                    <span
+                      className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500"
+                      key={badge}
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs font-bold text-slate-500">
+                  SKU {product.skuPlaceholder} | Variants{" "}
+                  {(product.variantsPlaceholder ?? []).join(" / ")}
                 </p>
               </div>
             ))}
