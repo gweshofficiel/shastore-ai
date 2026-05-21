@@ -74,19 +74,9 @@ async function getStores() {
 
 async function getClaimedStoreInstances() {
   const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("store_instances" as never)
-    .select("id, internal_slug, store_name, status, visibility, created_at")
-    .eq("owner_user_id", user.id)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc(
+    "get_claimed_store_instances_for_current_user" as never
+  );
 
   if (error) {
     return [];
@@ -98,6 +88,12 @@ async function getClaimedStoreInstances() {
     store_name: string;
     status: string;
     visibility: string;
+    ownership_status: string;
+    activation_status: string;
+    activation_token: string | null;
+    source_reseller_name: string | null;
+    buyer_email: string | null;
+    target_account_id: string | null;
     created_at: string;
   }>;
 }
@@ -112,6 +108,18 @@ function formatDate(value: string) {
 
 function formatOptionalDate(value: string | null | undefined) {
   return value ? formatDate(value) : "Not published";
+}
+
+function ownershipBadgeClass(status: string) {
+  if (status === "claimed" || status === "active") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "suspended") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
 }
 
 export default async function StoresPage({
@@ -176,23 +184,65 @@ export default async function StoresPage({
         {claimedStores.length ? (
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {claimedStores.map((store) => (
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={store.id}>
-                <p className="font-black text-ink">{store.store_name}</p>
-                <p className="mt-1 font-mono text-xs font-bold text-muted">{store.internal_slug}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5" key={store.id}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-black text-ink">{store.store_name}</p>
+                    <p className="mt-1 font-mono text-xs font-bold text-muted">
+                      {store.internal_slug}
+                    </p>
+                  </div>
+                  <span
+                    className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${ownershipBadgeClass(
+                      store.ownership_status
+                    )}`}
+                  >
+                    {store.ownership_status}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-muted">
+                  <p>Source reseller: {store.source_reseller_name ?? "Reseller"}</p>
+                  <p>Buyer email: {store.buyer_email ?? "Linked buyer email"}</p>
+                  <p>Account ID: {store.target_account_id ?? "Account target placeholder"}</p>
+                  <p>Created: {formatDate(store.created_at)}</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
                     {store.status}
                   </span>
                   <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
                     {store.visibility}
                   </span>
+                  <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-purple-700">
+                    Activation {store.activation_status}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 rounded-2xl border border-dashed border-slate-300 p-4 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-2">
+                  <span>Manage products soon</span>
+                  <span>Manage theme soon</span>
+                  <span>Connect domain soon</span>
+                  <span>Payments soon</span>
+                  <span>Orders soon</span>
+                  <span>Analytics soon</span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <ButtonLink href="#" variant="secondary">
+                    Manage
+                  </ButtonLink>
+                  <ButtonLink
+                    href={`/dashboard/stores/preview/${store.internal_slug}`}
+                    target="_blank"
+                    variant="secondary"
+                  >
+                    View store preview
+                  </ButtonLink>
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-muted">
-            No claimed reseller stores yet.
+            No stores claimed yet.
           </p>
         )}
       </Card>

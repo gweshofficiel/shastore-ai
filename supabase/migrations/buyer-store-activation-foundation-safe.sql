@@ -167,12 +167,14 @@ begin
 
   update public.provisioned_stores
     set ownership_status = 'claimed',
-        provisioning_status = 'delivered'
+        provisioning_status = 'delivered',
+        buyer_user_id = coalesce(buyer_user_id, auth.uid())
   where purchase_request_id = activation_row.purchase_request_id;
 
   update public.store_instances
     set status = 'transferred',
-        visibility = 'private'
+        visibility = 'private',
+        owner_user_id = coalesce(owner_user_id, auth.uid())
   where id = activation_row.store_instance_id;
 
   update public.store_transfers
@@ -191,5 +193,57 @@ begin
 
   activation_status := 'activated';
   return next;
+end;
+$$;
+
+create or replace function public.get_claimed_store_instances_for_current_user()
+returns table (
+  id uuid,
+  internal_slug text,
+  store_name text,
+  status text,
+  visibility text,
+  ownership_status text,
+  activation_status text,
+  activation_token text,
+  source_reseller_name text,
+  buyer_email text,
+  target_account_id text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+
+  return query
+  select
+    instances.id,
+    instances.internal_slug,
+    instances.store_name,
+    instances.status,
+    instances.visibility,
+    coalesce(provisioned.ownership_status, 'pending activation') as ownership_status,
+    coalesce(tokens.activation_status, 'pending') as activation_status,
+    tokens.activation_token,
+    profiles.display_name as source_reseller_name,
+    tokens.buyer_email,
+    requests.target_account_id,
+    instances.created_at
+  from public.store_instances instances
+  left join public.provisioned_stores provisioned
+    on provisioned.purchase_request_id = instances.purchase_request_id
+  left join public.store_activation_tokens tokens
+    on tokens.store_instance_id = instances.id
+  left join public.store_purchase_requests requests
+    on requests.id = instances.purchase_request_id
+  left join public.reseller_profiles profiles
+    on profiles.id = tokens.reseller_id
+  where instances.owner_user_id = auth.uid()
+  order by instances.created_at desc;
 end;
 $$;
