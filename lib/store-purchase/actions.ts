@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreTemplate } from "@/lib/template-studio/library";
+import type { TemplateDemoProduct } from "@/lib/template-studio/types";
 import type { StorePurchaseRequestStatus } from "@/lib/store-purchase/types";
 
 export type StorePurchaseFormState = {
@@ -48,6 +49,10 @@ function normalizeSlug(value: string) {
     .replace(/-+/g, "-")
     .replace(/(^-|-$)+/g, "")
     .slice(0, 90);
+}
+
+function categorySlug(value: string) {
+  return normalizeSlug(value).slice(0, 80) || "category";
 }
 
 function safeOrdersReturnPath(value: FormDataEntryValue | null) {
@@ -276,6 +281,14 @@ function stringList(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
+function productImagePlaceholder(product: TemplateDemoProduct) {
+  return "imagePlaceholder" in product ? (product.imagePlaceholder ?? null) : null;
+}
+
+function productStockPlaceholder(product: TemplateDemoProduct) {
+  return "stockPlaceholder" in product ? (product.stockPlaceholder ?? null) : null;
+}
+
 function templateIdFromShowcaseItem(request: PurchaseRequestRecord, item: ShowcaseItemRecord) {
   if (request.template_id) {
     return request.template_id;
@@ -404,7 +417,7 @@ function buildProvisionedStoreData({
 export async function prepareProvisionedStoreDraft(formData: FormData) {
   const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
   const requestId = cleanText(formData.get("requestId"), 80);
-  const { profile, supabase } = await requireResellerProfile();
+  const { profile, supabase, user } = await requireResellerProfile();
 
   if (!requestId) {
     redirectWithError("Store purchase request could not be found.", returnTo);
@@ -437,25 +450,176 @@ export async function prepareProvisionedStoreDraft(formData: FormData) {
 
   const item = itemData as ShowcaseItemRecord;
   const templateId = templateIdFromShowcaseItem(request, item);
+  const template = templateId ? getStoreTemplate(templateId) : null;
+
+  if (!template) {
+    redirectWithError("Purchased template data could not be found for store cloning.", returnTo);
+  }
+
   const slugSeed = normalizeSlug(`${request.business_name}-${item.slug}`) || `store-${request.id}`;
   const provisionedSlug = `${slugSeed}-${request.transfer_code.toLowerCase()}`.slice(0, 110);
   const provisionedName = `${request.business_name} - ${item.title}`;
   const provisionedStoreData = buildProvisionedStoreData({ item, request, templateId });
+  let ownerUserId: string | null = null;
+  let resolvedLookupStatus = request.target_account_lookup_status;
+
+  if (request.target_account_id) {
+    const { data: resolvedAccountData } = await supabase.rpc(
+      "resolve_shastore_user_account_id" as never,
+      { candidate_account_id: request.target_account_id } as never
+    );
+    const resolvedAccount = Array.isArray(resolvedAccountData)
+      ? (resolvedAccountData[0] as { lookup_status?: string; owner_user_id?: string | null } | undefined)
+      : null;
+
+    ownerUserId = resolvedAccount?.owner_user_id ?? null;
+    resolvedLookupStatus = resolvedAccount?.lookup_status ?? resolvedLookupStatus;
+  }
+
+  const { data: storeInstance, error: instanceError } = await supabase
+    .from("store_instances" as never)
+    .upsert(
+      {
+        internal_slug: provisionedSlug,
+        owner_user_id: ownerUserId,
+        purchase_request_id: request.id,
+        reseller_user_id: user.id,
+        source_template_id: template.id,
+        source_template_key: template.id,
+        status: "prepared",
+        store_name: provisionedName.slice(0, 180),
+        visibility: "preview"
+      } as never,
+      { onConflict: "purchase_request_id" }
+    )
+    .select("id, internal_slug")
+    .single();
+
+  if (instanceError || !storeInstance) {
+    redirectWithError("Real cloned store instance could not be created.", returnTo);
+  }
+
+  const instance = storeInstance as { id: string; internal_slug: string };
+
+  await Promise.all([
+    supabase.from("store_instance_products" as never).delete().eq("store_instance_id", instance.id),
+    supabase.from("store_instance_categories" as never).delete().eq("store_instance_id", instance.id)
+  ]);
+
+  const customization = template.defaultCustomization;
+  const productRows = template.demoProducts.map((product, index) => ({
+    category: product.category,
+    featured: product.featured,
+    image_placeholder: productImagePlaceholder(product),
+    name: product.name,
+    price_label: product.price,
+    product_data: product,
+    product_type: product.type,
+    short_description: product.shortDescription,
+    sort_order: index,
+    stock_placeholder: productStockPlaceholder(product),
+    store_instance_id: instance.id
+  }));
+  const categoryRows = template.demoCategories.map((category, index) => ({
+    category_data: {
+      sourceTemplateKey: template.id,
+      templateCategoryKey: template.categoryKey
+    },
+    name: category,
+    slug: categorySlug(category),
+    sort_order: index,
+    store_instance_id: instance.id
+  }));
+
+  await Promise.all([
+    productRows.length
+      ? supabase.from("store_instance_products" as never).insert(productRows as never)
+      : Promise.resolve({ error: null }),
+    categoryRows.length
+      ? supabase.from("store_instance_categories" as never).insert(categoryRows as never)
+      : Promise.resolve({ error: null }),
+    supabase.from("store_instance_branding" as never).upsert(
+      {
+        banner: customization.banner,
+        contact_settings: {
+          contactInfo: customization.contactInfo,
+          phone: customization.phone,
+          supportEmail: customization.supportEmail,
+          whatsapp: customization.whatsapp
+        },
+        cta: {
+          text: customization.ctaText
+        },
+        footer_settings: {
+          address: customization.address,
+          copyrightText: customization.copyrightText,
+          lockedPoweredBy: customization.lockedPoweredBy,
+          paymentIcons: customization.paymentIcons,
+          privacyPolicyLink: customization.privacyPolicyLink,
+          privacyPolicyText: customization.privacyPolicyText,
+          refundPolicyLink: customization.refundPolicyLink,
+          refundPolicyText: customization.refundPolicyText,
+          shippingMethodText: customization.shippingMethodText,
+          shippingPolicyLink: customization.shippingPolicyLink,
+          shippingPolicyText: customization.shippingPolicyText,
+          storeDescription: customization.storeDescription,
+          storeName: customization.storeName,
+          termsLink: customization.termsLink,
+          termsText: customization.termsText
+        },
+        homepage_content: {
+          demoOffers: template.demoOffers,
+          demoSections: template.demoSections,
+          homepageText: template.homepageText,
+          heroSubtitle: customization.heroSubtitle,
+          heroTitle: customization.heroTitle
+        },
+        logo: customization.logo,
+        primary_color: customization.primaryColor,
+        secondary_color: customization.secondaryColor,
+        seo: {
+          description: customization.seoDescription,
+          title: customization.seoTitle
+        },
+        social_links: customization.socialLinks,
+        store_instance_id: instance.id
+      } as never,
+      { onConflict: "store_instance_id" }
+    ),
+    supabase.from("store_instance_domains" as never).upsert(
+      {
+        connected_domain: null,
+        dns_status: "not_configured",
+        requested_domain: request.requested_domain,
+        ssl_status: "not_configured",
+        store_instance_id: instance.id
+      } as never,
+      { onConflict: "store_instance_id" }
+    )
+  ]);
 
   const { error: provisionError } = await supabase.from("provisioned_stores" as never).upsert(
     {
       buyer_email: request.buyer_email,
       buyer_name: request.buyer_name,
-      buyer_user_id: null,
-      ownership_status: "buyer_account_placeholder",
-      provisioned_store_data: provisionedStoreData,
+      buyer_user_id: ownerUserId,
+      ownership_status: ownerUserId ? "target_account_attached" : "pending_transfer",
+      provisioned_store_data: {
+        ...provisionedStoreData,
+        realStoreInstance: {
+          id: instance.id,
+          previewUrl: `/reseller/dashboard/orders/store-preview/${instance.internal_slug}`,
+          slug: instance.internal_slug
+        },
+        targetAccountLookupStatus: resolvedLookupStatus
+      },
       provisioned_store_name: provisionedName.slice(0, 180),
-      provisioned_store_slug: provisionedSlug,
-      provisioning_status: "preparing",
+      provisioned_store_slug: instance.internal_slug,
+      provisioning_status: "ready",
       purchase_request_id: request.id,
       reseller_id: profile.id,
       source_showcase_item_id: item.id,
-      source_template_id: templateId
+      source_template_id: template.id
     } as never,
     { onConflict: "purchase_request_id" }
   );
@@ -473,7 +637,7 @@ export async function prepareProvisionedStoreDraft(formData: FormData) {
         "Future PDF delivery will include generated credentials, transfer code, and handoff checklist.",
       request_id: request.id,
       reseller_id: profile.id,
-      transfer_status: "preparing",
+      transfer_status: "ready",
       whatsapp_delivery_placeholder:
         "Future WhatsApp delivery will notify the buyer when the provisioned store is ready."
     } as never,
@@ -482,7 +646,10 @@ export async function prepareProvisionedStoreDraft(formData: FormData) {
 
   await supabase
     .from("store_purchase_requests" as never)
-    .update({ request_status: "preparing" } as never)
+    .update({
+      request_status: "preparing",
+      target_account_lookup_status: resolvedLookupStatus
+    } as never)
     .eq("id", request.id)
     .eq("reseller_id", profile.id);
 

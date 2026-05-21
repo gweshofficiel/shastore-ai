@@ -209,14 +209,17 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
           </p>
           <span
             className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${provisioningStatusClass(
-              order.provisioned_store?.provisioning_status
+              order.provisioned_store?.provisioning_status ??
+                (order.store_instance ? "ready" : undefined)
             )}`}
           >
-            {order.provisioned_store?.provisioning_status ?? "Not prepared"}
+            {order.store_instance ? "Store Prepared" : (order.provisioned_store?.provisioning_status ?? "Not prepared")}
           </span>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-            {order.provisioned_store
-              ? order.provisioned_store.provisioned_store_slug
+            {order.store_instance
+              ? order.store_instance.internal_slug
+              : order.provisioned_store
+                ? order.provisioned_store.provisioned_store_slug
               : "Buyer-ready draft has not been cloned yet."}
           </p>
         </div>
@@ -317,6 +320,31 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
       ) : null}
 
+      {order.store_instance ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                Real Store Instance Created
+              </p>
+              <p className="mt-2 text-lg font-black text-emerald-950">
+                {order.store_instance.store_name}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-emerald-800">
+                Instance slug: {order.store_instance.internal_slug}
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+              Provisioning ready
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-emerald-800">
+            Products, categories, branding, SEO, footer, contact, CTA, homepage sections, social
+            links, and domain preparation records are cloned into real store instance tables.
+          </p>
+        </div>
+      ) : null}
+
       {order.delivery_transfer ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -363,7 +391,15 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         <TransferPreparationAction requestId={order.id} />
         <MarkDeliveredAction requestId={order.id} />
         <StoreProvisioningAction requestId={order.id} />
-        {order.provisioned_store ? (
+        {order.store_instance ? (
+          <a
+            className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+            href={`/reseller/dashboard/orders/store-preview/${order.store_instance.internal_slug}`}
+            target="_blank"
+          >
+            View Provisioning Status
+          </a>
+        ) : order.provisioned_store ? (
           <a
             className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100"
             href={`#provisioning-${order.id}`}

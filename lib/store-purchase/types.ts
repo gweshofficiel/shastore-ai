@@ -82,6 +82,30 @@ export type ProvisionedStore = {
   updated_at: string;
 };
 
+export type StoreInstanceStatus =
+  | "provisioning"
+  | "prepared"
+  | "delivered"
+  | "transferred"
+  | "suspended";
+
+export type StoreInstanceVisibility = "private" | "preview" | "public";
+
+export type StoreInstance = {
+  id: string;
+  internal_slug: string;
+  owner_user_id: string | null;
+  reseller_user_id: string;
+  purchase_request_id: string;
+  source_template_key: string | null;
+  source_template_id: string | null;
+  store_name: string;
+  status: StoreInstanceStatus;
+  visibility: StoreInstanceVisibility;
+  created_at: string;
+  updated_at: string;
+};
+
 export type StoreDeliveryTransferStatus =
   | "preparing"
   | "ready_for_delivery"
@@ -116,5 +140,6 @@ export type StorePurchaseOrder = StorePurchaseRequest & {
   provisioned_store: ProvisionedStore | null;
   showcase_title: string | null;
   showcase_price_label: string | null;
+  store_instance: StoreInstance | null;
   transfer_record: StoreTransferRecord | null;
 };
