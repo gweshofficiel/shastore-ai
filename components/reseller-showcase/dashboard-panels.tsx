@@ -115,13 +115,13 @@ export function ResellerQuickActions({ profile }: { profile: ResellerProfile | n
       <div className="mt-5 flex flex-wrap gap-3">
         <Link
           className="inline-flex h-11 items-center rounded-full bg-ink px-5 text-sm font-black text-white"
-          href="/dashboard/reseller/showcase"
+          href="/reseller/dashboard/showcase"
         >
           Edit showcase
         </Link>
         <Link
           className="inline-flex h-11 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
-          href="/dashboard/reseller/stores"
+          href="/reseller/dashboard/stores"
         >
           Manage listings
         </Link>

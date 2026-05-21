@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   CreditCard,
+  Flag,
   Globe2,
   LayoutDashboard,
   PackageCheck,
@@ -13,7 +14,8 @@ import {
   ShoppingBag,
   Store,
   UserRoundCheck,
-  Users
+  Users,
+  UserCog
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +24,13 @@ const icons = {
   customers: UserRoundCheck,
   domains: Globe2,
   landings: Store,
+  moderation: Flag,
   overview: LayoutDashboard,
   orders: PackageCheck,
+  reports: BarChart3,
+  resellers: UserCog,
   settings: Settings,
+  sellers: ShoppingBag,
   stores: ShoppingBag,
   subscriptions: CreditCard,
   templates: Palette,

@@ -4,14 +4,11 @@ import { AdminNavLink } from "@/components/admin/admin-nav-link";
 const navItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
   { href: "/admin/users", label: "Users", icon: "users" },
-  { href: "/admin/stores", label: "Stores", icon: "stores" },
-  { href: "/admin/landings", label: "Landings", icon: "landings" },
-  { href: "/admin/orders", label: "Orders", icon: "orders" },
-  { href: "/admin/customers", label: "Customers", icon: "customers" },
-  { href: "/admin/templates", label: "Templates", icon: "templates" },
-  { href: "/admin/domains", label: "Domains", icon: "domains" },
+  { href: "/admin/sellers", label: "Sellers", icon: "sellers" },
+  { href: "/admin/resellers", label: "Resellers", icon: "resellers" },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: "subscriptions" },
-  { href: "/admin/analytics", label: "Analytics", icon: "analytics" },
+  { href: "/admin/reports", label: "Reports", icon: "reports" },
+  { href: "/admin/moderation", label: "Moderation", icon: "moderation" },
   { href: "/admin/settings", label: "Settings", icon: "settings" }
 ] as const;
 

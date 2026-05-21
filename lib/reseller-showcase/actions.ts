@@ -72,8 +72,8 @@ async function getProfileForUser(supabase: Awaited<ReturnType<typeof createClien
 }
 
 function safeReturnPath(value: FormDataEntryValue | null) {
-  if (typeof value !== "string" || !value.startsWith("/dashboard/reseller")) {
-    return "/dashboard/reseller";
+  if (typeof value !== "string" || !value.startsWith("/reseller/dashboard")) {
+    return "/reseller/dashboard";
   }
 
   return value;
@@ -84,7 +84,7 @@ function withStatus(path: string, key: "error" | "saved", value: string) {
   return `${path}${separator}${key}=${encodeURIComponent(value)}`;
 }
 
-function redirectWithError(message: string, returnTo = "/dashboard/reseller"): never {
+function redirectWithError(message: string, returnTo = "/reseller/dashboard"): never {
   redirect(withStatus(returnTo, "error", message));
 }
 
@@ -145,9 +145,9 @@ export async function saveResellerProfile(formData: FormData) {
     );
   }
 
-  revalidatePath("/dashboard/reseller");
-  revalidatePath("/dashboard/reseller/showcase");
-  revalidatePath("/dashboard/reseller/settings");
+  revalidatePath("/reseller/dashboard");
+  revalidatePath("/reseller/dashboard/showcase");
+  revalidatePath("/reseller/dashboard/settings");
   revalidatePath(`/reseller/${slug}`);
   redirect(withStatus(returnTo, "saved", "profile"));
 }
@@ -197,8 +197,8 @@ export async function saveResellerShowcaseItem(formData: FormData) {
     );
   }
 
-  revalidatePath("/dashboard/reseller");
-  revalidatePath("/dashboard/reseller/stores");
+  revalidatePath("/reseller/dashboard");
+  revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
   redirect(withStatus(returnTo, "saved", "item"));
 }
@@ -234,8 +234,8 @@ async function setResellerShowcaseItemStatus(
     redirectWithError("Showcase item status could not be updated.", returnTo);
   }
 
-  revalidatePath("/dashboard/reseller");
-  revalidatePath("/dashboard/reseller/stores");
+  revalidatePath("/reseller/dashboard");
+  revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
   redirect(withStatus(returnTo, "saved", status));
 }

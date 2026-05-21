@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function LegacyDashboardResellerPage() {
+export default function ResellerIndexPage() {
   redirect("/reseller/dashboard");
 }

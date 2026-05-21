@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const resellerNavItems = [
-  { href: "/dashboard/reseller", label: "Home" },
-  { href: "/dashboard/reseller/showcase", label: "Showcase" },
-  { href: "/dashboard/reseller/stores", label: "Store Listings" },
-  { href: "/dashboard/reseller/orders", label: "Orders" },
-  { href: "/dashboard/reseller/earnings", label: "Earnings" },
-  { href: "/dashboard/reseller/settings", label: "Settings" }
+  { href: "/reseller/dashboard", label: "Home" },
+  { href: "/reseller/dashboard/showcase", label: "Showcase" },
+  { href: "/reseller/dashboard/stores", label: "Store Listings" },
+  { href: "/reseller/dashboard/orders", label: "Orders" },
+  { href: "/reseller/dashboard/reports", label: "Reports" },
+  { href: "/reseller/dashboard/subscription", label: "Subscription" },
+  { href: "/reseller/dashboard/earnings", label: "Earnings" },
+  { href: "/reseller/dashboard/settings", label: "Settings" }
 ] as const;
 
 export function ResellerDashboardNav() {
@@ -20,7 +22,7 @@ export function ResellerDashboardNav() {
     <nav className="flex gap-2 overflow-x-auto rounded-[2rem] border border-slate-200/80 bg-white/80 p-2 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] backdrop-blur">
       {resellerNavItems.map((item) => {
         const isActive =
-          item.href === "/dashboard/reseller"
+          item.href === "/reseller/dashboard"
             ? pathname === item.href
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
