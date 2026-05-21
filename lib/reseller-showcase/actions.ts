@@ -71,16 +71,30 @@ async function getProfileForUser(supabase: Awaited<ReturnType<typeof createClien
   return data as { id: string; slug: string } | null;
 }
 
-function redirectWithError(message: string): never {
-  redirect(`/dashboard/reseller?error=${encodeURIComponent(message)}`);
+function safeReturnPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || !value.startsWith("/dashboard/reseller")) {
+    return "/dashboard/reseller";
+  }
+
+  return value;
+}
+
+function withStatus(path: string, key: "error" | "saved", value: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${key}=${encodeURIComponent(value)}`;
+}
+
+function redirectWithError(message: string, returnTo = "/dashboard/reseller"): never {
+  redirect(withStatus(returnTo, "error", message));
 }
 
 export async function saveResellerProfile(formData: FormData) {
   const { supabase, user } = await requireUser();
+  const returnTo = safeReturnPath(formData.get("returnTo"));
   const displayName = cleanText(formData.get("displayName"), 120);
 
   if (!displayName) {
-    redirectWithError("Showcase name is required.");
+    redirectWithError("Showcase name is required.", returnTo);
   }
 
   const profile = await getProfileForUser(supabase, user.id);
@@ -106,7 +120,10 @@ export async function saveResellerProfile(formData: FormData) {
   );
 
   if (error) {
-    redirectWithError("Reseller profile could not be saved. Check that the slug is unique.");
+    redirectWithError(
+      "Reseller profile could not be saved. Check that the slug is unique.",
+      returnTo
+    );
   }
 
   const savedProfile = await getProfileForUser(supabase, user.id);
@@ -129,21 +146,24 @@ export async function saveResellerProfile(formData: FormData) {
   }
 
   revalidatePath("/dashboard/reseller");
+  revalidatePath("/dashboard/reseller/showcase");
+  revalidatePath("/dashboard/reseller/settings");
   revalidatePath(`/reseller/${slug}`);
-  redirect("/dashboard/reseller?saved=profile");
+  redirect(withStatus(returnTo, "saved", "profile"));
 }
 
 export async function saveResellerShowcaseItem(formData: FormData) {
   const { supabase, user } = await requireUser();
+  const returnTo = safeReturnPath(formData.get("returnTo"));
   const profile = await getProfileForUser(supabase, user.id);
   const title = cleanText(formData.get("title"), 160);
 
   if (!profile) {
-    redirectWithError("Create your reseller profile before adding showcase items.");
+    redirectWithError("Create your reseller profile before adding showcase items.", returnTo);
   }
 
   if (!title) {
-    redirectWithError("Showcase item title is required.");
+    redirectWithError("Showcase item title is required.", returnTo);
   }
 
   const itemId = cleanText(formData.get("itemId"), 80);
@@ -171,12 +191,16 @@ export async function saveResellerShowcaseItem(formData: FormData) {
   );
 
   if (error) {
-    redirectWithError("Showcase item could not be saved. Check for duplicate listing slugs.");
+    redirectWithError(
+      "Showcase item could not be saved. Check for duplicate listing slugs.",
+      returnTo
+    );
   }
 
   revalidatePath("/dashboard/reseller");
+  revalidatePath("/dashboard/reseller/stores");
   revalidatePath(`/reseller/${profile.slug}`);
-  redirect("/dashboard/reseller?saved=item");
+  redirect(withStatus(returnTo, "saved", "item"));
 }
 
 export async function publishResellerShowcaseItem(formData: FormData) {
@@ -192,11 +216,12 @@ async function setResellerShowcaseItemStatus(
   status: "published" | "unpublished"
 ) {
   const { supabase, user } = await requireUser();
+  const returnTo = safeReturnPath(formData.get("returnTo"));
   const itemId = cleanText(formData.get("itemId"), 80);
   const profile = await getProfileForUser(supabase, user.id);
 
   if (!itemId || !profile) {
-    redirectWithError("Showcase item could not be found.");
+    redirectWithError("Showcase item could not be found.", returnTo);
   }
 
   const { error } = await supabase
@@ -206,10 +231,11 @@ async function setResellerShowcaseItemStatus(
     .eq("user_id", user.id);
 
   if (error) {
-    redirectWithError("Showcase item status could not be updated.");
+    redirectWithError("Showcase item status could not be updated.", returnTo);
   }
 
   revalidatePath("/dashboard/reseller");
+  revalidatePath("/dashboard/reseller/stores");
   revalidatePath(`/reseller/${profile.slug}`);
-  redirect(`/dashboard/reseller?saved=${status}`);
+  redirect(withStatus(returnTo, "saved", status));
 }
