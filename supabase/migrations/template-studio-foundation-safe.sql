@@ -29,7 +29,7 @@ create table if not exists public.template_categories (
 );
 
 create table if not exists public.store_templates (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key,
   template_key text not null unique,
   name text not null,
   description text,
@@ -37,7 +37,7 @@ create table if not exists public.store_templates (
   protected_category_key text not null references public.template_categories(category_key),
   template_kind text not null default 'physical' check (template_kind in ('physical', 'digital', 'marketplace')),
   owner_user_id uuid references auth.users(id) on delete cascade,
-  source_template_id uuid references public.store_templates(id) on delete set null,
+  source_template_id text references public.store_templates(id) on delete set null,
   is_system_template boolean not null default true,
   preview_gradient text,
   homepage_text jsonb not null default '{}'::jsonb,
@@ -56,8 +56,8 @@ create table if not exists public.store_templates (
 create table if not exists public.template_customizations (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  template_id uuid not null references public.store_templates(id) on delete cascade,
-  duplicate_of_template_id uuid references public.store_templates(id) on delete set null,
+  template_id text not null references public.store_templates(id) on delete cascade,
+  duplicate_of_template_id text references public.store_templates(id) on delete set null,
   status text not null default 'draft' check (status in ('draft', 'published', 'unpublished')),
   customization jsonb not null default '{}'::jsonb,
   featured_products jsonb not null default '[]'::jsonb,
@@ -80,7 +80,7 @@ create table if not exists public.template_customizations (
 
 create table if not exists public.template_demo_products (
   id uuid primary key default gen_random_uuid(),
-  template_id uuid not null references public.store_templates(id) on delete cascade,
+  template_id text not null references public.store_templates(id) on delete cascade,
   product_type text not null check (product_type in ('physical', 'digital', 'marketplace')),
   name text not null,
   demo_price numeric(12, 2),
@@ -294,6 +294,7 @@ on conflict (category_key) do update set
   sort_order = excluded.sort_order;
 
 insert into public.store_templates (
+  id,
   template_key,
   name,
   description,
@@ -309,19 +310,20 @@ insert into public.store_templates (
   wrong_category_publish_placeholder
 )
 values
-  ('fashion-atelier', 'Fashion Atelier', 'Premium boutique layout with seasonal outfits and apparel demo products.', 'fashion', 'fashion', 'physical', 'linear-gradient(135deg,#fff7ed,#111827 58%,#f97316)', '{"headline":"Curated looks for every polished moment"}', '[{"title":"Style the full outfit in one click"}]', '[{"title":"Launch Week Wardrobe","code":"STYLE40"}]', '{"ctaText":"Shop the latest edit"}', 'Validate fashion category before publish.', 'Block fashion templates from electronics or other mismatched categories.'),
-  ('jewelry-luxe', 'Jewelry Luxe', 'Trust-heavy jewelry storefront for rings, necklaces, and gifting.', 'jewelry', 'jewelry', 'physical', 'linear-gradient(135deg,#fef3c7,#78350f 56%,#fbbf24)', '{"headline":"Fine pieces made for everyday rituals"}', '[{"title":"Show quality before checkout"}]', '[{"title":"Complimentary Gift Box","code":"GIFTBOX"}]', '{"ctaText":"Explore the gift edit"}', 'Validate jewelry category before publish.', 'Block jewelry templates from electronics or other mismatched categories.'),
-  ('electronics-hub', 'Electronics Hub', 'Spec-focused electronics template for gadgets and smart bundles.', 'electronics', 'electronics', 'physical', 'linear-gradient(135deg,#020617,#2563eb 55%,#67e8f9)', '{"headline":"Smart gear for faster everyday work"}', '[{"title":"Make comparisons simple"}]', '[{"title":"Creator Setup Bundle","code":"CREATOR15"}]', '{"ctaText":"Browse smart deals"}', 'Validate electronics category before publish.', 'Block electronics templates from jewelry or other mismatched categories.'),
-  ('beauty-glow-lab', 'Beauty Glow Lab', 'Cosmetics template for routines, ingredient callouts, and bundles.', 'beauty', 'beauty', 'physical', 'linear-gradient(135deg,#fff1f2,#fb7185 54%,#7f1d1d)', '{"headline":"Daily glow routines customers can trust"}', '[{"title":"Guide shoppers by skin goal"}]', '[{"title":"Glow Starter Kit","code":"GLOWKIT"}]', '{"ctaText":"Build your routine"}', 'Validate beauty category before publish.', 'Block beauty templates from other mismatched categories.'),
-  ('food-market', 'Food Market', 'Restaurant and food ordering template for menus and delivery offers.', 'food', 'food', 'physical', 'linear-gradient(135deg,#fff7ed,#ea580c 52%,#431407)', '{"headline":"Fresh meals, fast ordering, local flavor"}', '[{"title":"Highlight dishes with appetite-first cards"}]', '[{"title":"Lunch Rush Deal","code":"LUNCHDRINK"}]', '{"ctaText":"Order today favorites"}', 'Validate food category before publish.', 'Block food templates from other mismatched categories.'),
-  ('furniture-studio', 'Furniture Studio', 'Home store template for room collections and material notes.', 'furniture', 'furniture', 'physical', 'linear-gradient(135deg,#f5f5f4,#78716c 52%,#1c1917)', '{"headline":"Design calm rooms with statement pieces"}', '[{"title":"Sell by space, not only by product"}]', '[{"title":"Room Refresh","code":"ROOM75"}]', '{"ctaText":"Explore room collections"}', 'Validate furniture category before publish.', 'Block furniture templates from other mismatched categories.'),
-  ('fitness-performance', 'Fitness Performance', 'Training gear and supplement template with bundle sections.', 'fitness', 'fitness', 'physical', 'linear-gradient(135deg,#ecfccb,#16a34a 52%,#052e16)', '{"headline":"Gear up for stronger training days"}', '[{"title":"Bundle by customer goal"}]', '[{"title":"Starter Stack","code":"STACK20"}]', '{"ctaText":"Shop training essentials"}', 'Validate fitness category before publish.', 'Block fitness templates from other mismatched categories.'),
-  ('baby-bloom', 'Baby Bloom', 'Kids and baby template with essentials, toys, gifting, and safety notes.', 'kids', 'kids', 'physical', 'linear-gradient(135deg,#eff6ff,#f9a8d4 52%,#7c3aed)', '{"headline":"Soft essentials for little everyday moments"}', '[{"title":"Help parents choose quickly"}]', '[{"title":"New Parent Bundle","code":"BABY15"}]', '{"ctaText":"Shop baby favorites"}', 'Validate kids category before publish.', 'Block kids templates from other mismatched categories.'),
-  ('digital-creator-kit', 'Digital Creator Kit', 'Digital storefront for ebooks, templates, prompt packs, and creator resources.', 'digital', 'digital', 'digital', 'linear-gradient(135deg,#eef2ff,#4f46e5 52%,#111827)', '{"headline":"Download-ready tools for faster content creation"}', '[{"title":"Set expectations before purchase"}]', '[{"title":"Creator Launch Bundle","code":"CREATORBUNDLE"}]', '{"ctaText":"Browse instant downloads"}', 'Validate digital category before publish.', 'Block digital templates from physical categories.'),
-  ('digital-course-academy', 'Digital Course Academy', 'Course-first digital template for lessons, workbooks, and gated delivery.', 'digital', 'digital', 'digital', 'linear-gradient(135deg,#ecfeff,#0891b2 52%,#164e63)', '{"headline":"Package your expertise into a premium digital academy"}', '[{"title":"Preview learning outcomes clearly"}]', '[{"title":"Academy Starter","code":"ACADEMY"}]', '{"ctaText":"Preview the curriculum"}', 'Validate digital category before publish.', 'Block digital templates from physical categories.'),
-  ('marketplace-city-bazaar', 'City Bazaar Marketplace', 'Multi-vendor marketplace template for local sellers and commission placeholders.', 'marketplace', 'marketplace', 'marketplace', 'linear-gradient(135deg,#f8fafc,#0f172a 52%,#22c55e)', '{"headline":"One marketplace for the city best independent sellers"}', '[{"title":"Feature sellers as the hero product"}]', '[{"title":"Marketplace Launch Week","code":"SELLERLAUNCH"}]', '{"ctaText":"Explore featured sellers"}', 'Validate marketplace category before publish.', 'Block marketplace templates from single-store categories.'),
-  ('marketplace-mega-mall', 'Mega Mall Marketplace', 'Broad marketplace layout for many categories, vendor discovery, and promotions.', 'marketplace', 'marketplace', 'marketplace', 'linear-gradient(135deg,#fefce8,#ca8a04 48%,#1f2937)', '{"headline":"A multi-category mall ready for vendor growth"}', '[{"title":"Give every category a clear shelf"}]', '[{"title":"Mall Opening Deal","code":"MEGAMALL"}]', '{"ctaText":"Browse marketplace deals"}', 'Validate marketplace category before publish.', 'Block marketplace templates from single-store categories.')
-on conflict (template_key) do update set
+  ('fashion-atelier', 'fashion-atelier', 'Fashion Atelier', 'Premium boutique layout with seasonal outfits and apparel demo products.', 'fashion', 'fashion', 'physical', 'linear-gradient(135deg,#fff7ed,#111827 58%,#f97316)', '{"headline":"Curated looks for every polished moment"}', '[{"title":"Style the full outfit in one click"}]', '[{"title":"Launch Week Wardrobe","code":"STYLE40"}]', '{"ctaText":"Shop the latest edit"}', 'Validate fashion category before publish.', 'Block fashion templates from electronics or other mismatched categories.'),
+  ('jewelry-luxe', 'jewelry-luxe', 'Jewelry Luxe', 'Trust-heavy jewelry storefront for rings, necklaces, and gifting.', 'jewelry', 'jewelry', 'physical', 'linear-gradient(135deg,#fef3c7,#78350f 56%,#fbbf24)', '{"headline":"Fine pieces made for everyday rituals"}', '[{"title":"Show quality before checkout"}]', '[{"title":"Complimentary Gift Box","code":"GIFTBOX"}]', '{"ctaText":"Explore the gift edit"}', 'Validate jewelry category before publish.', 'Block jewelry templates from electronics or other mismatched categories.'),
+  ('electronics-hub', 'electronics-hub', 'Electronics Hub', 'Spec-focused electronics template for gadgets and smart bundles.', 'electronics', 'electronics', 'physical', 'linear-gradient(135deg,#020617,#2563eb 55%,#67e8f9)', '{"headline":"Smart gear for faster everyday work"}', '[{"title":"Make comparisons simple"}]', '[{"title":"Creator Setup Bundle","code":"CREATOR15"}]', '{"ctaText":"Browse smart deals"}', 'Validate electronics category before publish.', 'Block electronics templates from jewelry or other mismatched categories.'),
+  ('beauty-glow-lab', 'beauty-glow-lab', 'Beauty Glow Lab', 'Cosmetics template for routines, ingredient callouts, and bundles.', 'beauty', 'beauty', 'physical', 'linear-gradient(135deg,#fff1f2,#fb7185 54%,#7f1d1d)', '{"headline":"Daily glow routines customers can trust"}', '[{"title":"Guide shoppers by skin goal"}]', '[{"title":"Glow Starter Kit","code":"GLOWKIT"}]', '{"ctaText":"Build your routine"}', 'Validate beauty category before publish.', 'Block beauty templates from other mismatched categories.'),
+  ('food-market', 'food-market', 'Food Market', 'Restaurant and food ordering template for menus and delivery offers.', 'food', 'food', 'physical', 'linear-gradient(135deg,#fff7ed,#ea580c 52%,#431407)', '{"headline":"Fresh meals, fast ordering, local flavor"}', '[{"title":"Highlight dishes with appetite-first cards"}]', '[{"title":"Lunch Rush Deal","code":"LUNCHDRINK"}]', '{"ctaText":"Order today favorites"}', 'Validate food category before publish.', 'Block food templates from other mismatched categories.'),
+  ('furniture-studio', 'furniture-studio', 'Furniture Studio', 'Home store template for room collections and material notes.', 'furniture', 'furniture', 'physical', 'linear-gradient(135deg,#f5f5f4,#78716c 52%,#1c1917)', '{"headline":"Design calm rooms with statement pieces"}', '[{"title":"Sell by space, not only by product"}]', '[{"title":"Room Refresh","code":"ROOM75"}]', '{"ctaText":"Explore room collections"}', 'Validate furniture category before publish.', 'Block furniture templates from other mismatched categories.'),
+  ('fitness-performance', 'fitness-performance', 'Fitness Performance', 'Training gear and supplement template with bundle sections.', 'fitness', 'fitness', 'physical', 'linear-gradient(135deg,#ecfccb,#16a34a 52%,#052e16)', '{"headline":"Gear up for stronger training days"}', '[{"title":"Bundle by customer goal"}]', '[{"title":"Starter Stack","code":"STACK20"}]', '{"ctaText":"Shop training essentials"}', 'Validate fitness category before publish.', 'Block fitness templates from other mismatched categories.'),
+  ('baby-bloom', 'baby-bloom', 'Baby Bloom', 'Kids and baby template with essentials, toys, gifting, and safety notes.', 'kids', 'kids', 'physical', 'linear-gradient(135deg,#eff6ff,#f9a8d4 52%,#7c3aed)', '{"headline":"Soft essentials for little everyday moments"}', '[{"title":"Help parents choose quickly"}]', '[{"title":"New Parent Bundle","code":"BABY15"}]', '{"ctaText":"Shop baby favorites"}', 'Validate kids category before publish.', 'Block kids templates from other mismatched categories.'),
+  ('digital-creator-kit', 'digital-creator-kit', 'Digital Creator Kit', 'Digital storefront for ebooks, templates, prompt packs, and creator resources.', 'digital', 'digital', 'digital', 'linear-gradient(135deg,#eef2ff,#4f46e5 52%,#111827)', '{"headline":"Download-ready tools for faster content creation"}', '[{"title":"Set expectations before purchase"}]', '[{"title":"Creator Launch Bundle","code":"CREATORBUNDLE"}]', '{"ctaText":"Browse instant downloads"}', 'Validate digital category before publish.', 'Block digital templates from physical categories.'),
+  ('digital-course-academy', 'digital-course-academy', 'Digital Course Academy', 'Course-first digital template for lessons, workbooks, and gated delivery.', 'digital', 'digital', 'digital', 'linear-gradient(135deg,#ecfeff,#0891b2 52%,#164e63)', '{"headline":"Package your expertise into a premium digital academy"}', '[{"title":"Preview learning outcomes clearly"}]', '[{"title":"Academy Starter","code":"ACADEMY"}]', '{"ctaText":"Preview the curriculum"}', 'Validate digital category before publish.', 'Block digital templates from physical categories.'),
+  ('marketplace-city-bazaar', 'marketplace-city-bazaar', 'City Bazaar Marketplace', 'Multi-vendor marketplace template for local sellers and commission placeholders.', 'marketplace', 'marketplace', 'marketplace', 'linear-gradient(135deg,#f8fafc,#0f172a 52%,#22c55e)', '{"headline":"One marketplace for the city best independent sellers"}', '[{"title":"Feature sellers as the hero product"}]', '[{"title":"Marketplace Launch Week","code":"SELLERLAUNCH"}]', '{"ctaText":"Explore featured sellers"}', 'Validate marketplace category before publish.', 'Block marketplace templates from single-store categories.'),
+  ('marketplace-mega-mall', 'marketplace-mega-mall', 'Mega Mall Marketplace', 'Broad marketplace layout for many categories, vendor discovery, and promotions.', 'marketplace', 'marketplace', 'marketplace', 'linear-gradient(135deg,#fefce8,#ca8a04 48%,#1f2937)', '{"headline":"A multi-category mall ready for vendor growth"}', '[{"title":"Give every category a clear shelf"}]', '[{"title":"Mall Opening Deal","code":"MEGAMALL"}]', '{"ctaText":"Browse marketplace deals"}', 'Validate marketplace category before publish.', 'Block marketplace templates from single-store categories.')
+on conflict (id) do update set
+  template_key = excluded.template_key,
   name = excluded.name,
   description = excluded.description,
   category_key = excluded.category_key,
@@ -402,7 +404,7 @@ join (
   preview_image_placeholder,
   vendor_placeholder,
   commission_placeholder
-) on demo.template_key = st.template_key
+) on demo.template_key = st.id
 where not exists (
   select 1
   from public.template_demo_products existing
