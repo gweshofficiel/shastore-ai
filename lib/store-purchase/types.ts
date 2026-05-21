@@ -109,6 +109,7 @@ export type StoreInstance = {
 export type StoreDeliveryTransferStatus =
   | "preparing"
   | "ready_for_delivery"
+  | "awaiting_login"
   | "delivered"
   | "failed";
 

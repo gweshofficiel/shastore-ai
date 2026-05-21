@@ -111,6 +111,30 @@ export default async function ActivateStorePage({
                   )}
                 </p>
               </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                  Auth attachment
+                </p>
+                <p className="mt-2 text-sm font-black capitalize text-emerald-950">
+                  {activation.auth_attachment_status.replace(/_/g, " ")}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-emerald-800">
+                  Access role: {activation.access_role ?? "owner"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Domain foundation
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">
+                  {activation.connected_domain ??
+                    activation.requested_domain ??
+                    "Domain not requested yet"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-muted">
+                  DNS and SSL remain handled by the domain foundation.
+                </p>
+              </div>
             </div>
 
             {isExpired ? (

@@ -92,11 +92,17 @@ async function getClaimedStoreInstances() {
     activation_status: string;
     activation_token: string | null;
     transfer_code: string | null;
+    owner_link_id: string | null;
+    access_role: string | null;
+    access_status: string | null;
+    auth_attachment_status: string | null;
     source_reseller_name: string | null;
     buyer_email: string | null;
     target_account_id: string | null;
     transfer_destination: string | null;
     claim_account_mode: string | null;
+    requested_domain: string | null;
+    connected_domain: string | null;
     created_at: string;
   }>;
 }
@@ -209,6 +215,10 @@ export default async function StoresPage({
                   <p>Buyer email: {store.buyer_email ?? "Linked buyer email"}</p>
                   <p>Transfer code: {store.transfer_code ?? "Not available"}</p>
                   <p>
+                    Domain:{" "}
+                    {store.connected_domain ?? store.requested_domain ?? "Domain placeholder"}
+                  </p>
+                  <p>
                     Account target:{" "}
                     {store.target_account_id ??
                       (store.claim_account_mode === "existing_account"
@@ -218,6 +228,10 @@ export default async function StoresPage({
                   <p className="capitalize">
                     Transfer destination:{" "}
                     {(store.transfer_destination ?? "new_account_placeholder").replace(/_/g, " ")}
+                  </p>
+                  <p className="capitalize">
+                    Auth attachment:{" "}
+                    {(store.auth_attachment_status ?? "not_attached").replace(/_/g, " ")}
                   </p>
                   <p>Created: {formatDate(store.created_at)}</p>
                 </div>
@@ -230,6 +244,9 @@ export default async function StoresPage({
                   </span>
                   <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-purple-700">
                     Activation {store.activation_status}
+                  </span>
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                    {store.access_role ?? "owner"} {store.access_status ?? "pending"}
                   </span>
                 </div>
                 <div className="mt-4 grid gap-2 rounded-2xl border border-dashed border-slate-300 p-4 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-2">

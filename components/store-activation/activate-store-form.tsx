@@ -45,6 +45,16 @@ export function ActivateStoreForm({
           Your store ownership claim is recorded
         </h3>
         <p className="text-sm font-semibold leading-6 text-emerald-800">{state.message}</p>
+        {state.authAttachmentStatus ? (
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+            Auth attachment: {state.authAttachmentStatus.replace(/_/g, " ")}
+          </p>
+        ) : null}
+        {state.ownerLinkId ? (
+          <p className="font-mono text-xs font-bold text-emerald-800">
+            Owner link: {state.ownerLinkId}
+          </p>
+        ) : null}
         <p className="text-sm font-semibold text-emerald-800">
           {/* Future: automatic login after Supabase auth invite */}
           Sign in with the same buyer email to manage the store from your dashboard.
@@ -75,9 +85,10 @@ export function ActivateStoreForm({
             : "New buyer account setup"}
         </p>
         <p className="mt-2 text-sm font-semibold leading-6 text-blue-800">
-          Transfer destination: {transferDestination.replace(/_/g, " ")}. Real Supabase auth invite,
-          password setup email, automatic login, buyer role creation, and store owner role
-          assignment remain future placeholders.
+          Transfer destination: {transferDestination.replace(/_/g, " ")}. If you are already signed
+          in, SHASTORE attaches the store to your current Supabase Auth user. If not, it records an
+          onboarding placeholder for future invite, password setup email, automatic login, buyer
+          role creation, and store owner role assignment.
         </p>
       </div>
 
@@ -111,8 +122,9 @@ export function ActivateStoreForm({
       </div>
 
       <p className="text-sm font-semibold leading-6 text-muted">
-        Passwords are validated for matching only. SHASTORE does not create a Supabase auth user in
-        this foundation step — ownership claim records are saved securely for future invite flow.
+        Passwords are validated for matching only. This foundation records the ownership claim and,
+        when a buyer session exists, creates real owner/access rows tied to Supabase Auth. It does not
+        send onboarding email yet.
       </p>
 
       {state.status === "error" ? (

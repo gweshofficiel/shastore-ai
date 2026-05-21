@@ -16,12 +16,19 @@ export type StoreActivationView = {
   target_account_lookup_status: string | null;
   account_claim_mode: "existing_account" | "new_account";
   transfer_destination: string;
+  auth_attachment_status: string;
+  owner_link_id: string | null;
+  access_role: string | null;
+  requested_domain: string | null;
+  connected_domain: string | null;
 };
 
 export type StoreActivationFormState = {
   message: string;
   status: "idle" | "success" | "error";
   activationStatus?: string;
+  authAttachmentStatus?: string;
+  ownerLinkId?: string | null;
   storeSlug?: string | null;
 };
 
@@ -45,6 +52,7 @@ export async function getStoreActivationByToken(token: string): Promise<StoreAct
 
   const row = data[0] as StoreActivationView & {
     account_claim_mode?: string;
+    auth_attachment_status?: string;
     transfer_destination?: string;
   };
 
@@ -52,6 +60,7 @@ export async function getStoreActivationByToken(token: string): Promise<StoreAct
     ...row,
     account_claim_mode:
       row.account_claim_mode === "existing_account" ? "existing_account" : "new_account",
+    auth_attachment_status: row.auth_attachment_status ?? "not_attached",
     transfer_destination: row.transfer_destination ?? "new_account_placeholder"
   };
 }
@@ -139,6 +148,8 @@ export async function claimStoreByActivationToken(
               store_slug?: string | null;
               ownership_status?: string | null;
               transfer_destination?: string | null;
+              auth_attachment_status?: string | null;
+              owner_link_id?: string | null;
             }
           | undefined)
       : null;
@@ -175,10 +186,16 @@ export async function claimStoreByActivationToken(
       activation.account_claim_mode === "existing_account"
         ? "linked to your SHASTORE account target"
         : "prepared for new buyer account setup";
+    const attachmentLabel =
+      result?.auth_attachment_status === "attached_to_auth_user"
+        ? "attached to the current Supabase Auth user"
+        : "saved as an onboarding placeholder until the buyer signs in";
 
     return {
       activationStatus: "activated",
-      message: `Store claimed and ownership recorded (${accountLabel}). Password setup will connect to Supabase auth invite in a future step.`,
+      authAttachmentStatus: result?.auth_attachment_status ?? "onboarding_placeholder_prepared",
+      message: `Store claimed and ownership recorded (${accountLabel}); ownership is ${attachmentLabel}. Password setup will connect to Supabase auth invite in a future step.`,
+      ownerLinkId: result?.owner_link_id ?? null,
       status: "success",
       storeSlug: result?.store_slug ?? activation.store_slug
     };
