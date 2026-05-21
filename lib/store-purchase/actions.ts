@@ -71,7 +71,7 @@ async function requireResellerProfile() {
 
   const { data: profile } = await supabase
     .from("reseller_profiles" as never)
-    .select("id, slug")
+    .select("id, slug, display_name")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -80,7 +80,7 @@ async function requireResellerProfile() {
   }
 
   return {
-    profile: profile as { id: string; slug: string },
+    profile: profile as { id: string; slug: string; display_name: string },
     supabase,
     user
   };
@@ -441,4 +441,223 @@ export async function prepareProvisionedStoreDraft(formData: FormData) {
 
   revalidatePath(returnTo);
   redirect(withStatus(returnTo, "saved", "provisioned"));
+}
+
+type ProvisionedStoreRecord = {
+  id: string;
+  purchase_request_id: string;
+  reseller_id: string;
+  buyer_email: string;
+  buyer_name: string;
+  provisioned_store_slug: string;
+  provisioned_store_name: string;
+};
+
+function buildCredentialsPackage({
+  provisionedStore,
+  request,
+  resellerName
+}: {
+  provisionedStore: ProvisionedStoreRecord;
+  request: PurchaseRequestRecord;
+  resellerName: string;
+}) {
+  return {
+    buyer: {
+      email: request.buyer_email,
+      name: request.buyer_name,
+      whatsapp: request.buyer_whatsapp
+    },
+    deliveryPlaceholders: {
+      automatedOnboarding: "future_onboarding_flow_placeholder",
+      domainConnection: "future_domain_connection_placeholder",
+      emailDelivery: "future_email_delivery_placeholder",
+      passwordSetupLink: "future_secure_password_setup_link_placeholder",
+      pdfCredentialGeneration: "future_pdf_generation_placeholder",
+      quotaDeduction: "future_reseller_quota_deduction_placeholder",
+      realDeployment: "future_deployment_pipeline_placeholder",
+      whatsappDelivery: "future_whatsapp_delivery_placeholder"
+    },
+    loginPlaceholders: {
+      buyerDashboardUrl: "future_buyer_dashboard_url_placeholder",
+      temporaryLogin: "not_generated",
+      temporaryPassword: "not_generated"
+    },
+    onboardingMessage:
+      "Your SHASTORE AI store draft is ready for reseller review. Final login, password setup, domain connection, and delivery automation will be enabled in a future handoff step.",
+    ownershipPlaceholders: {
+      buyerAuthCreation: "pending_future_auth_creation",
+      buyerDashboardAssignment: "pending_future_dashboard_assignment",
+      storeManagementAccess: "pending_future_role_permissions",
+      storeRolePermissions: "pending_future_role_permissions",
+      storeOwnershipTransfer: "pending_future_store_owner_assignment"
+    },
+    resellerName,
+    storeName: provisionedStore.provisioned_store_name,
+    storeSlug: provisionedStore.provisioned_store_slug,
+    transferCode: request.transfer_code
+  };
+}
+
+export async function prepareStoreDeliveryTransfer(formData: FormData) {
+  const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
+  const requestId = cleanText(formData.get("requestId"), 80);
+  const { profile, supabase } = await requireResellerProfile();
+
+  if (!requestId) {
+    redirectWithError("Store purchase request could not be found.", returnTo);
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from("store_purchase_requests" as never)
+    .select("*")
+    .eq("id", requestId)
+    .eq("reseller_id", profile.id)
+    .maybeSingle();
+
+  if (requestError || !requestData) {
+    redirectWithError("Store purchase request could not be loaded for transfer.", returnTo);
+  }
+
+  const request = requestData as PurchaseRequestRecord;
+  const { data: provisionedStoreData, error: provisionedStoreError } = await supabase
+    .from("provisioned_stores" as never)
+    .select("id, purchase_request_id, reseller_id, buyer_email, buyer_name, provisioned_store_slug, provisioned_store_name")
+    .eq("purchase_request_id", request.id)
+    .eq("reseller_id", profile.id)
+    .maybeSingle();
+
+  if (provisionedStoreError || !provisionedStoreData) {
+    redirectWithError("Prepare Store before preparing delivery transfer.", returnTo);
+  }
+
+  const provisionedStore = provisionedStoreData as ProvisionedStoreRecord;
+  const credentialsPackage = buildCredentialsPackage({
+    provisionedStore,
+    request,
+    resellerName: profile.display_name
+  });
+
+  const { error: transferError } = await supabase.from("store_transfers" as never).upsert(
+    {
+      buyer_email: request.buyer_email,
+      buyer_whatsapp: request.buyer_whatsapp,
+      credentials_package: credentialsPackage,
+      delivery_status: "ready_for_delivery",
+      ownership_assigned: false,
+      provisioned_store_id: provisionedStore.id,
+      purchase_request_id: request.id,
+      reseller_id: profile.id,
+      transfer_code: request.transfer_code,
+      transfer_status: "ready_for_delivery",
+      transferred_at: null
+    } as never,
+    { onConflict: "purchase_request_id" }
+  );
+
+  if (transferError) {
+    redirectWithError("Store delivery transfer could not be prepared.", returnTo);
+  }
+
+  await Promise.all([
+    supabase
+      .from("store_transfer_records" as never)
+      .upsert(
+        {
+          delivery_status: "email_pending",
+          email_delivery_placeholder:
+            "Future email delivery will send the prepared credentials package.",
+          pdf_delivery_placeholder:
+            "Future PDF delivery will render the credentials package into a handoff document.",
+          request_id: request.id,
+          reseller_id: profile.id,
+          transfer_status: "ready",
+          whatsapp_delivery_placeholder:
+            "Future WhatsApp delivery will notify the buyer that the store is ready."
+        } as never,
+        { onConflict: "request_id" }
+      ),
+    supabase
+      .from("provisioned_stores" as never)
+      .update({
+        ownership_status: "ready_for_buyer_assignment",
+        provisioning_status: "ready"
+      } as never)
+      .eq("id", provisionedStore.id)
+      .eq("reseller_id", profile.id),
+    supabase
+      .from("store_purchase_requests" as never)
+      .update({ request_status: "preparing" } as never)
+      .eq("id", request.id)
+      .eq("reseller_id", profile.id)
+  ]);
+
+  revalidatePath(returnTo);
+  redirect(withStatus(returnTo, "saved", "transfer-ready"));
+}
+
+export async function markStoreDeliveryTransferDelivered(formData: FormData) {
+  const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
+  const requestId = cleanText(formData.get("requestId"), 80);
+  const { profile, supabase } = await requireResellerProfile();
+
+  if (!requestId) {
+    redirectWithError("Store transfer could not be found.", returnTo);
+  }
+
+  const deliveredAt = new Date().toISOString();
+  const { data: transferData, error: transferError } = await supabase
+    .from("store_transfers" as never)
+    .update({
+      delivery_status: "delivered",
+      ownership_assigned: false,
+      transfer_status: "delivered",
+      transferred_at: deliveredAt
+    } as never)
+    .eq("purchase_request_id", requestId)
+    .eq("reseller_id", profile.id)
+    .select("provisioned_store_id")
+    .maybeSingle();
+
+  if (transferError || !transferData) {
+    redirectWithError("Prepare Transfer before marking this store delivered.", returnTo);
+  }
+
+  const provisionedStoreId = (transferData as { provisioned_store_id: string }).provisioned_store_id;
+
+  await Promise.all([
+    supabase
+      .from("store_transfer_records" as never)
+      .upsert(
+        {
+          delivery_status: "sent",
+          email_delivery_placeholder:
+            "Future email delivery marked as sent placeholder.",
+          pdf_delivery_placeholder:
+            "Future PDF credentials package marked as delivered placeholder.",
+          request_id: requestId,
+          reseller_id: profile.id,
+          transfer_status: "completed",
+          whatsapp_delivery_placeholder:
+            "Future WhatsApp delivery marked as sent placeholder."
+        } as never,
+        { onConflict: "request_id" }
+      ),
+    supabase
+      .from("provisioned_stores" as never)
+      .update({
+        ownership_status: "delivery_completed_buyer_assignment_pending",
+        provisioning_status: "delivered"
+      } as never)
+      .eq("id", provisionedStoreId)
+      .eq("reseller_id", profile.id),
+    supabase
+      .from("store_purchase_requests" as never)
+      .update({ request_status: "delivered" } as never)
+      .eq("id", requestId)
+      .eq("reseller_id", profile.id)
+  ]);
+
+  revalidatePath(returnTo);
+  redirect(withStatus(returnTo, "saved", "delivered"));
 }

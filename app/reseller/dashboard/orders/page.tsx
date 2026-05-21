@@ -1,8 +1,9 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
-  prepareStoreTransferRecord,
+  markStoreDeliveryTransferDelivered,
   prepareProvisionedStoreDraft,
+  prepareStoreDeliveryTransfer,
   updateStorePurchaseRequestStatus
 } from "@/lib/store-purchase/actions";
 import {
@@ -11,6 +12,8 @@ import {
 } from "@/lib/store-purchase/data";
 import type {
   ProvisionedStoreStatus,
+  StoreDeliveryStatus,
+  StoreDeliveryTransferStatus,
   StorePurchaseOrder,
   StorePurchaseRequestStatus
 } from "@/lib/store-purchase/types";
@@ -57,6 +60,24 @@ function provisioningStatusClass(status: ProvisionedStoreStatus | null | undefin
   return "bg-slate-100 text-slate-600";
 }
 
+function deliveryStatusClass(
+  status: StoreDeliveryStatus | StoreDeliveryTransferStatus | null | undefined
+) {
+  if (status === "delivered") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "ready_for_delivery") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  if (status === "failed") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
 function StatusAction({
   label,
   requestId,
@@ -83,14 +104,29 @@ function StatusAction({
 
 function TransferPreparationAction({ requestId }: { requestId: string }) {
   return (
-    <form action={prepareStoreTransferRecord}>
+    <form action={prepareStoreDeliveryTransfer}>
       <input name="returnTo" type="hidden" value="/reseller/dashboard/orders" />
       <input name="requestId" type="hidden" value={requestId} />
       <button
         className="inline-flex h-9 items-center rounded-full bg-ink px-4 text-xs font-black text-white transition hover:bg-slate-800"
         type="submit"
       >
-        Prepare transfer
+        Prepare Transfer
+      </button>
+    </form>
+  );
+}
+
+function MarkDeliveredAction({ requestId }: { requestId: string }) {
+  return (
+    <form action={markStoreDeliveryTransferDelivered}>
+      <input name="returnTo" type="hidden" value="/reseller/dashboard/orders" />
+      <input name="requestId" type="hidden" value={requestId} />
+      <button
+        className="inline-flex h-9 items-center rounded-full bg-emerald-600 px-4 text-xs font-black text-white transition hover:bg-emerald-700"
+        type="submit"
+      >
+        Mark Delivered
       </button>
     </form>
   );
@@ -156,11 +192,15 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
             Transfer Status
           </p>
-          <p className="mt-2 font-black capitalize text-ink">
-            {order.transfer_record?.transfer_status.replace(/_/g, " ") ?? "Not started"}
-          </p>
-          <p className="mt-1 text-sm font-semibold capitalize text-muted">
-            Delivery: {order.transfer_record?.delivery_status.replace(/_/g, " ") ?? "Not sent"}
+          <span
+            className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${deliveryStatusClass(
+              order.delivery_transfer?.transfer_status
+            )}`}
+          >
+            {order.delivery_transfer?.transfer_status.replace(/_/g, " ") ?? "Not prepared"}
+          </span>
+          <p className="mt-2 text-sm font-semibold capitalize text-muted">
+            Legacy prep: {order.transfer_record?.transfer_status.replace(/_/g, " ") ?? "Not started"}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -184,9 +224,18 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
             Future Automation
           </p>
+          <span
+            className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${deliveryStatusClass(
+              order.delivery_transfer?.delivery_status
+            )}`}
+          >
+            Delivery {order.delivery_transfer?.delivery_status.replace(/_/g, " ") ?? "not sent"}
+          </span>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-            Account creation, ownership transfer, domain connection, PDF credentials, WhatsApp,
-            email, and deployment are placeholders only.
+            Ownership{" "}
+            {order.delivery_transfer?.ownership_assigned
+              ? "assigned"
+              : "pending buyer account placeholder"}
           </p>
         </div>
       </div>
@@ -231,11 +280,51 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
       ) : null}
 
+      {order.delivery_transfer ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                Store Delivery Package
+              </p>
+              <p className="mt-2 text-lg font-black text-emerald-950">
+                Transfer code {order.delivery_transfer.transfer_code}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-emerald-800">
+                Buyer: {order.delivery_transfer.buyer_email}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span
+                className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${deliveryStatusClass(
+                  order.delivery_transfer.transfer_status
+                )}`}
+              >
+                {order.delivery_transfer.transfer_status.replace(/_/g, " ")}
+              </span>
+              <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-amber-700">
+                Ownership pending
+              </span>
+            </div>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-emerald-800">
+            Credentials package placeholder is saved. Future PDF generation, WhatsApp delivery,
+            email delivery, automated onboarding, password setup links, domain connection, quota
+            deduction, and real deployment remain disabled.
+          </p>
+          {order.delivery_transfer.transferred_at ? (
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+              Delivered {new Date(order.delivery_transfer.transferred_at).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <StatusAction label="Approve" requestId={order.id} status="approved" />
         <StatusAction label="Reject" requestId={order.id} status="rejected" />
-        <StatusAction label="Mark delivered" requestId={order.id} status="delivered" />
         <TransferPreparationAction requestId={order.id} />
+        <MarkDeliveredAction requestId={order.id} />
         <StoreProvisioningAction requestId={order.id} />
         {order.provisioned_store ? (
           <a

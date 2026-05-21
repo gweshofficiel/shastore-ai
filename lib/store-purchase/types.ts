@@ -73,7 +73,37 @@ export type ProvisionedStore = {
   updated_at: string;
 };
 
+export type StoreDeliveryTransferStatus =
+  | "preparing"
+  | "ready_for_delivery"
+  | "delivered"
+  | "failed";
+
+export type StoreDeliveryStatus =
+  | "not_sent"
+  | "ready_for_delivery"
+  | "delivered"
+  | "failed";
+
+export type StoreDeliveryTransfer = {
+  id: string;
+  purchase_request_id: string;
+  provisioned_store_id: string;
+  reseller_id: string;
+  buyer_email: string;
+  buyer_whatsapp: string | null;
+  transfer_code: string;
+  transfer_status: StoreDeliveryTransferStatus;
+  delivery_status: StoreDeliveryStatus;
+  credentials_package: unknown;
+  ownership_assigned: boolean;
+  transferred_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type StorePurchaseOrder = StorePurchaseRequest & {
+  delivery_transfer: StoreDeliveryTransfer | null;
   provisioned_store: ProvisionedStore | null;
   showcase_title: string | null;
   showcase_price_label: string | null;
