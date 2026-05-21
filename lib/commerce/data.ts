@@ -77,7 +77,7 @@ export async function getCommerceOrders({
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (["new", "confirmed", "shipped", "delivered", "canceled"].includes(status)) {
+  if (["pending", "new", "confirmed", "shipped", "delivered", "canceled"].includes(status)) {
     request = request.eq("status", status as CommerceOrderStatus);
   }
 

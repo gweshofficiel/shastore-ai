@@ -19,6 +19,7 @@ export type ProjectType = "landing" | "store";
 export type CommerceCustomerSourceType = "landing" | "store" | "manual";
 export type CommerceSourceType = "landing" | "store";
 export type CommerceOrderStatus =
+  | "pending"
   | "new"
   | "confirmed"
   | "shipped"
@@ -632,6 +633,8 @@ export type Database = {
           total: number;
           total_amount: number;
           notes: string | null;
+          checkout_source: string | null;
+          buyer_notes: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -657,6 +660,8 @@ export type Database = {
           total?: number;
           total_amount?: number;
           notes?: string | null;
+          checkout_source?: string | null;
+          buyer_notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };

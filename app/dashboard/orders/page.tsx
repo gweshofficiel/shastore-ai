@@ -9,7 +9,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const statuses = ["all", "new", "confirmed", "shipped", "delivered", "canceled"];
+const statuses = ["all", "pending", "new", "confirmed", "shipped", "delivered", "canceled"];
 
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat("en", {

@@ -3,6 +3,7 @@ import type { Json } from "@/types/database";
 export type CommerceSourceType = "landing" | "store";
 export type CommerceCustomerSourceType = CommerceSourceType | "manual";
 export type CommerceOrderStatus =
+  | "pending"
   | "new"
   | "confirmed"
   | "shipped"
@@ -62,6 +63,8 @@ export type CommerceOrder = {
   total: number;
   total_amount: number;
   notes: string | null;
+  checkout_source: string | null;
+  buyer_notes: string | null;
   created_at: string;
   updated_at: string;
 };
