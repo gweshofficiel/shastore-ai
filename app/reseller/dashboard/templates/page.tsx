@@ -2,21 +2,21 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StoreTemplateCard } from "@/components/templates/store-template-card";
 import { storeTemplateCategories, storeTemplates } from "@/lib/template-studio/library";
 
-export default function TemplatesPage() {
+export default function ResellerTemplatesPage() {
   return (
     <div className="grid gap-8">
       <PageHeader
-        description="Choose a ready-made store template with realistic demo products, customize it in Studio, then prepare it for draft or publish workflows."
+        description="Select a ready-made store template, customize it for a client in Studio, then prepare reseller showcase or marketplace publishing placeholders."
         title="Template Library"
       />
-      <div className="grid gap-3 rounded-[2rem] border border-slate-200/80 bg-white/75 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] backdrop-blur">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-          Categories
+      <div className="grid gap-3 rounded-[2rem] border border-violet-100 bg-white/80 p-5 shadow-[0_18px_60px_-48px_rgba(76,29,149,0.45)] backdrop-blur">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+          Reseller Categories
         </p>
         <div className="flex flex-wrap gap-2">
           {storeTemplateCategories.map((category) => (
             <span
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-600"
+              className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-black text-violet-700"
               key={category.key}
             >
               {category.name}
@@ -27,7 +27,7 @@ export default function TemplatesPage() {
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         {storeTemplates.map((template) => (
           <StoreTemplateCard
-            basePath="/dashboard/templates"
+            basePath="/reseller/dashboard/templates"
             key={template.id}
             template={template}
           />

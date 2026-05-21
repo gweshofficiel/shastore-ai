@@ -7,6 +7,7 @@ import {
   Briefcase,
   CreditCard,
   DollarSign,
+  LayoutTemplate,
   LayoutDashboard,
   PackageCheck,
   PanelsTopLeft,
@@ -24,7 +25,8 @@ const icons = {
   settings: Settings,
   showcase: PanelsTopLeft,
   stores: ShoppingBag,
-  subscription: CreditCard
+  subscription: CreditCard,
+  templates: LayoutTemplate
 };
 
 export function ResellerPrivateNavLink({
