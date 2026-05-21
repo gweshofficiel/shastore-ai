@@ -51,6 +51,15 @@ function normalizeSlug(value: string) {
     .slice(0, 90);
 }
 
+function generateActivationToken() {
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replace(/-/g, "")
+      : `${Date.now()}${Math.random()}`.replace(/\D/g, "");
+
+  return `act_${randomPart.slice(0, 32)}`;
+}
+
 function categorySlug(value: string) {
   return normalizeSlug(value).slice(0, 80) || "category";
 }
@@ -668,10 +677,12 @@ type ProvisionedStoreRecord = {
 };
 
 function buildCredentialsPackage({
+  activationPath,
   provisionedStore,
   request,
   resellerName
 }: {
+  activationPath?: string;
   provisionedStore: ProvisionedStoreRecord;
   request: PurchaseRequestRecord;
   resellerName: string;
@@ -688,6 +699,7 @@ function buildCredentialsPackage({
       whatsapp: request.buyer_whatsapp
     },
     deliveryPlaceholders: {
+      activationLink: activationPath ?? "future_activation_link_placeholder",
       automatedOnboarding: "future_onboarding_flow_placeholder",
       domainConnection: "future_domain_connection_placeholder",
       emailDelivery: "future_email_delivery_placeholder",
@@ -723,7 +735,7 @@ function buildCredentialsPackage({
 export async function prepareStoreDeliveryTransfer(formData: FormData) {
   const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
   const requestId = cleanText(formData.get("requestId"), 80);
-  const { profile, supabase } = await requireResellerProfile();
+  const { profile, supabase, user } = await requireResellerProfile();
 
   if (!requestId) {
     redirectWithError("Store purchase request could not be found.", returnTo);
@@ -753,7 +765,22 @@ export async function prepareStoreDeliveryTransfer(formData: FormData) {
   }
 
   const provisionedStore = provisionedStoreData as ProvisionedStoreRecord;
+  const { data: storeInstanceData, error: storeInstanceError } = await supabase
+    .from("store_instances" as never)
+    .select("id, internal_slug")
+    .eq("purchase_request_id", request.id)
+    .eq("reseller_user_id", user.id)
+    .maybeSingle();
+
+  if (storeInstanceError || !storeInstanceData) {
+    redirectWithError("Prepare Store before generating an activation link.", returnTo);
+  }
+
+  const storeInstance = storeInstanceData as { id: string; internal_slug: string };
+  const activationToken = generateActivationToken();
+  const activationPath = `/activate-store/${activationToken}`;
   const credentialsPackage = buildCredentialsPackage({
+    activationPath,
     provisionedStore,
     request,
     resellerName: profile.display_name
@@ -806,6 +833,20 @@ export async function prepareStoreDeliveryTransfer(formData: FormData) {
       } as never)
       .eq("id", provisionedStore.id)
       .eq("reseller_id", profile.id),
+    supabase.from("store_activation_tokens" as never).upsert(
+      {
+        activation_status: "pending",
+        activation_token: activationToken,
+        buyer_email: request.buyer_email,
+        buyer_name: request.buyer_name,
+        expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        purchase_request_id: request.id,
+        reseller_id: profile.id,
+        store_instance_id: storeInstance.id,
+        transfer_code: request.transfer_code
+      } as never,
+      { onConflict: "purchase_request_id" }
+    ),
     supabase
       .from("store_purchase_requests" as never)
       .update({ request_status: "preparing" } as never)

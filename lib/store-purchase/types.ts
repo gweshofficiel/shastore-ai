@@ -135,7 +135,25 @@ export type StoreDeliveryTransfer = {
   updated_at: string;
 };
 
+export type StoreActivationStatus = "pending" | "activated" | "expired" | "cancelled";
+
+export type StoreActivationToken = {
+  id: string;
+  activation_token: string;
+  buyer_email: string;
+  buyer_name: string | null;
+  store_instance_id: string;
+  purchase_request_id: string;
+  reseller_id: string;
+  transfer_code: string;
+  activation_status: StoreActivationStatus;
+  expires_at: string;
+  created_at: string;
+  activated_at: string | null;
+};
+
 export type StorePurchaseOrder = StorePurchaseRequest & {
+  activation_token: StoreActivationToken | null;
   delivery_transfer: StoreDeliveryTransfer | null;
   provisioned_store: ProvisionedStore | null;
   showcase_title: string | null;

@@ -72,6 +72,36 @@ async function getStores() {
   }));
 }
 
+async function getClaimedStoreInstances() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("store_instances" as never)
+    .select("id, internal_slug, store_name, status, visibility, created_at")
+    .eq("owner_user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as Array<{
+    id: string;
+    internal_slug: string;
+    store_name: string;
+    status: string;
+    visibility: string;
+    created_at: string;
+  }>;
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
@@ -90,7 +120,7 @@ export default async function StoresPage({
   searchParams: Promise<{ saved?: string; deleted?: string; published?: string; error?: string }>;
 }) {
   const query = await searchParams;
-  const stores = await getStores();
+  const [stores, claimedStores] = await Promise.all([getStores(), getClaimedStoreInstances()]);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -125,6 +155,47 @@ export default async function StoresPage({
           <p className="text-sm font-bold text-red-700">{query.error}</p>
         </Card>
       ) : null}
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Claimed Stores
+            </p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+              Buyer-owned store placeholders
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
+              Stores claimed through reseller activation appear here. Future owner role permissions,
+              login redirect, and management access will connect to these records.
+            </p>
+          </div>
+          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+            {claimedStores.length} claimed
+          </span>
+        </div>
+        {claimedStores.length ? (
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {claimedStores.map((store) => (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={store.id}>
+                <p className="font-black text-ink">{store.store_name}</p>
+                <p className="mt-1 font-mono text-xs font-bold text-muted">{store.internal_slug}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                    {store.status}
+                  </span>
+                  <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
+                    {store.visibility}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-muted">
+            No claimed reseller stores yet.
+          </p>
+        )}
+      </Card>
       {stores.length ? (
         <div className="grid gap-4">
           {stores.map((store) => (

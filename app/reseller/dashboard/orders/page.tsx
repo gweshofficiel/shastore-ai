@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { Card } from "@/components/ui/card";
 import {
   markStoreDeliveryTransferDelivered,
@@ -76,6 +77,18 @@ function deliveryStatusClass(
   }
 
   return "bg-amber-100 text-amber-700";
+}
+
+function activationStatusClass(status: string | null | undefined) {
+  if (status === "activated") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "expired" || status === "cancelled") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-blue-100 text-blue-700";
 }
 
 function StatusAction({
@@ -384,6 +397,59 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
           ) : null}
         </div>
       ) : null}
+
+      {order.activation_token ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+                Buyer Activation Link
+              </p>
+              <p className="mt-2 font-mono text-sm font-black text-blue-950">
+                /activate-store/{order.activation_token.activation_token}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-blue-800">
+                Expires {new Date(order.activation_token.expires_at).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span
+                className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${activationStatusClass(
+                  order.activation_token.activation_status
+                )}`}
+              >
+                {order.activation_token.activation_status}
+              </span>
+              <span
+                className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${
+                  order.activation_token.activation_status === "activated"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {order.activation_token.activation_status === "activated" ? "Claimed" : "Unclaimed"}
+              </span>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-bold text-white transition hover:bg-slate-800"
+              href={`/activate-store/${order.activation_token.activation_token}`}
+              target="_blank"
+            >
+              Open activation
+            </a>
+            <CopyStoreUrlButton url={`/activate-store/${order.activation_token.activation_token}`} />
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-black text-ink">Activation link not generated yet</p>
+          <p className="mt-1 text-sm font-semibold text-muted">
+            Click Prepare Transfer after Prepare Store to create the buyer activation token.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <StatusAction label="Approve" requestId={order.id} status="approved" />
