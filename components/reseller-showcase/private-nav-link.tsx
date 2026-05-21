@@ -4,24 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Briefcase,
   CreditCard,
   DollarSign,
   LayoutDashboard,
   PackageCheck,
   PanelsTopLeft,
   Settings,
-  ShoppingBag,
-  Truck
+  ShoppingBag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const icons = {
+  business: Briefcase,
   earnings: DollarSign,
   overview: LayoutDashboard,
   orders: PackageCheck,
   reports: BarChart3,
   settings: Settings,
-  shipping: Truck,
   showcase: PanelsTopLeft,
   stores: ShoppingBag,
   subscription: CreditCard

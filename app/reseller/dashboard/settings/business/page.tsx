@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function ResellerShippingRedirectPage() {
+export default function ResellerSettingsBusinessRedirectPage() {
   redirect("/reseller/dashboard/business");
 }

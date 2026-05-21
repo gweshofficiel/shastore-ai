@@ -33,21 +33,19 @@ export default async function PrivateResellerSettingsPage({
       <ResellerStatusAlerts query={query} />
       <Card className="p-6 lg:p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-          Commerce Operations
+          Business Settings
         </p>
         <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-          Reseller fulfillment settings
+          Store delivery to clients
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Configure reseller business details, policies, shipping, and delivery agents
-          without changing public showcases, checkout, payments, or billing.
+          Configure reseller business details and how buyers receive purchased
+          stores, templates, or services. Resellers do not use shipping, couriers,
+          pickup, or local delivery here.
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
-          <ButtonLink href="/reseller/dashboard/settings/commerce" variant="secondary">
-            Commerce settings
-          </ButtonLink>
-          <ButtonLink href="/reseller/dashboard/shipping" variant="secondary">
-            Shipping
+          <ButtonLink href="/reseller/dashboard/business" variant="secondary">
+            Business settings
           </ButtonLink>
         </div>
       </Card>

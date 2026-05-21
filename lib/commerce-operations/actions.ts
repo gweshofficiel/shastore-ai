@@ -45,9 +45,7 @@ function parseScope(value: FormDataEntryValue | null): CommerceOperationsScope {
 
 function defaultReturnPath(scope: CommerceOperationsScope, area: "commerce" | "shipping") {
   if (scope === "reseller") {
-    return area === "commerce"
-      ? "/reseller/dashboard/settings/commerce"
-      : "/reseller/dashboard/shipping";
+    return "/reseller/dashboard/business";
   }
 
   return area === "commerce" ? "/dashboard/settings/commerce" : "/dashboard/shipping";
@@ -128,6 +126,10 @@ export async function saveShippingMethod(formData: FormData) {
   const returnTo = safeReturnPath(formData.get("returnTo"), scope, "shipping");
   const methodName = cleanText(formData.get("methodName"), 160);
 
+  if (scope === "reseller") {
+    redirect(withStatus("/reseller/dashboard/business", "error", "Resellers do not use physical shipping settings."));
+  }
+
   if (!methodName) {
     redirect(withStatus(returnTo, "error", "Shipping method name is required."));
   }
@@ -163,6 +165,10 @@ export async function saveDeliveryAgent(formData: FormData) {
   const scope = parseScope(formData.get("scope"));
   const returnTo = safeReturnPath(formData.get("returnTo"), scope, "shipping");
   const agentName = cleanText(formData.get("agentName"), 160);
+
+  if (scope === "reseller") {
+    redirect(withStatus("/reseller/dashboard/business", "error", "Resellers do not use delivery agents."));
+  }
 
   if (!agentName) {
     redirect(withStatus(returnTo, "error", "Delivery agent name is required."));
