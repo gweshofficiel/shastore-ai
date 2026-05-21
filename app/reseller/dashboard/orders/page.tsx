@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
   prepareStoreTransferRecord,
+  prepareProvisionedStoreDraft,
   updateStorePurchaseRequestStatus
 } from "@/lib/store-purchase/actions";
 import {
@@ -9,6 +10,7 @@ import {
   storePurchaseMigrationMessage
 } from "@/lib/store-purchase/data";
 import type {
+  ProvisionedStoreStatus,
   StorePurchaseOrder,
   StorePurchaseRequestStatus
 } from "@/lib/store-purchase/types";
@@ -37,6 +39,22 @@ function statusClass(status: StorePurchaseRequestStatus) {
   }
 
   return "bg-amber-100 text-amber-700";
+}
+
+function provisioningStatusClass(status: ProvisionedStoreStatus | null | undefined) {
+  if (status === "ready" || status === "delivered") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "failed") {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (status === "preparing") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-slate-100 text-slate-600";
 }
 
 function StatusAction({
@@ -78,6 +96,21 @@ function TransferPreparationAction({ requestId }: { requestId: string }) {
   );
 }
 
+function StoreProvisioningAction({ requestId }: { requestId: string }) {
+  return (
+    <form action={prepareProvisionedStoreDraft}>
+      <input name="returnTo" type="hidden" value="/reseller/dashboard/orders" />
+      <input name="requestId" type="hidden" value={requestId} />
+      <button
+        className="inline-flex h-9 items-center rounded-full bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700"
+        type="submit"
+      >
+        Prepare Store
+      </button>
+    </form>
+  );
+}
+
 function OrderCard({ order }: { order: StorePurchaseOrder }) {
   return (
     <Card className="grid gap-5 p-5">
@@ -103,7 +136,7 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Buyer</p>
           <p className="mt-2 font-black text-ink">{order.buyer_name}</p>
@@ -132,6 +165,23 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Provisioning
+          </p>
+          <span
+            className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${provisioningStatusClass(
+              order.provisioned_store?.provisioning_status
+            )}`}
+          >
+            {order.provisioned_store?.provisioning_status ?? "Not prepared"}
+          </span>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            {order.provisioned_store
+              ? order.provisioned_store.provisioned_store_slug
+              : "Buyer-ready draft has not been cloned yet."}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
             Future Automation
           </p>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
@@ -148,11 +198,53 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
         </div>
       ) : null}
 
+      {order.provisioned_store ? (
+        <div
+          className="rounded-2xl border border-blue-200 bg-blue-50 p-4"
+          id={`provisioning-${order.id}`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+                Provisioned Store Draft
+              </p>
+              <p className="mt-2 text-lg font-black text-blue-950">
+                {order.provisioned_store.provisioned_store_name}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-blue-800">
+                Internal slug: {order.provisioned_store.provisioned_store_slug}
+              </p>
+            </div>
+            <span
+              className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${provisioningStatusClass(
+                order.provisioned_store.provisioning_status
+              )}`}
+            >
+              {order.provisioned_store.provisioning_status}
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-blue-800">
+            Store data has been cloned into a provisioning JSON draft. Buyer account creation,
+            ownership transfer, credentials, domain connection, delivery, and quota deduction remain
+            future placeholders.
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <StatusAction label="Approve" requestId={order.id} status="approved" />
         <StatusAction label="Reject" requestId={order.id} status="rejected" />
         <StatusAction label="Mark delivered" requestId={order.id} status="delivered" />
         <TransferPreparationAction requestId={order.id} />
+        <StoreProvisioningAction requestId={order.id} />
+        {order.provisioned_store ? (
+          <a
+            className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+            href={`#provisioning-${order.id}`}
+          >
+            View Provisioning Status
+          </a>
+        ) : null}
       </div>
     </Card>
   );

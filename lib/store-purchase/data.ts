@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type {
+  ProvisionedStore,
   StorePurchaseOrder,
   StorePurchaseRequest,
   StoreTransferRecord
@@ -18,6 +19,7 @@ function isMissingStorePurchaseTable(error: { code?: string; message?: string } 
     error?.code === "PGRST204" ||
     message.includes("store_purchase_requests") ||
     message.includes("store_transfer_records") ||
+    message.includes("provisioned_stores") ||
     message.includes("could not find the table")
   );
 }
@@ -62,7 +64,7 @@ export async function getResellerStorePurchaseData(): Promise<ResellerStorePurch
   const requestIds = requests.map((request) => request.id);
   const itemIds = Array.from(new Set(requests.map((request) => request.showcase_item_id)));
 
-  const [transfersResult, itemsResult] = await Promise.all([
+  const [transfersResult, itemsResult, provisionedStoresResult] = await Promise.all([
     requestIds.length
       ? supabase
           .from("store_transfer_records" as never)
@@ -74,6 +76,12 @@ export async function getResellerStorePurchaseData(): Promise<ResellerStorePurch
           .from("reseller_showcase_items" as never)
           .select("id, title, price_label")
           .in("id", itemIds)
+      : Promise.resolve({ data: [], error: null }),
+    requestIds.length
+      ? supabase
+          .from("provisioned_stores" as never)
+          .select("*")
+          .in("purchase_request_id", requestIds)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -81,6 +89,12 @@ export async function getResellerStorePurchaseData(): Promise<ResellerStorePurch
     ((transfersResult.data ?? []) as StoreTransferRecord[]).map((transfer) => [
       transfer.request_id,
       transfer
+    ])
+  );
+  const provisionedStoreByRequest = new Map(
+    ((provisionedStoresResult.data ?? []) as ProvisionedStore[]).map((store) => [
+      store.purchase_request_id,
+      store
     ])
   );
   const itemById = new Map(
@@ -95,16 +109,19 @@ export async function getResellerStorePurchaseData(): Promise<ResellerStorePurch
 
       return {
         ...request,
+        provisioned_store: provisionedStoreByRequest.get(request.id) ?? null,
         showcase_price_label: item?.price_label ?? null,
         showcase_title: item?.title ?? null,
         transfer_record: transferByRequest.get(request.id) ?? null
       };
     }),
     profile,
-    ready: !transfersResult.error || !isMissingStorePurchaseTable(transfersResult.error)
+    ready:
+      (!transfersResult.error || !isMissingStorePurchaseTable(transfersResult.error)) &&
+      (!provisionedStoresResult.error || !isMissingStorePurchaseTable(provisionedStoresResult.error))
   };
 }
 
 export function storePurchaseMigrationMessage() {
-  return "Apply supabase/migrations/store-purchase-transfer-foundation-safe.sql to enable reseller store purchase requests and ownership transfer records.";
+  return "Apply supabase/migrations/store-purchase-transfer-foundation-safe.sql and supabase/migrations/automated-store-provisioning-foundation-safe.sql to enable reseller purchase requests, transfer records, and provisioned store drafts.";
 }
