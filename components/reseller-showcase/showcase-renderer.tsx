@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getResellerShowcaseTheme } from "@/lib/reseller-showcase/themes";
+import { StorePurchasePanel } from "@/components/reseller-showcase/store-purchase-panel";
 import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type {
   PublicResellerShowcase,
+  ResellerProfile,
   ResellerShowcaseItem
 } from "@/lib/reseller-showcase/types";
 
@@ -24,11 +26,13 @@ function socialLinks(showcase: PublicResellerShowcase) {
 function ShowcaseItemCard({
   item,
   muted,
-  premium
+  premium,
+  profile
 }: {
   item: ResellerShowcaseItem;
   muted: string;
   premium: boolean;
+  profile: ResellerProfile;
 }) {
   const features = stringList(item.features);
   const previewImages = stringList(item.preview_images);
@@ -99,22 +103,16 @@ function ShowcaseItemCard({
             ))}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xl font-black">{item.price_label ?? "Pricing on request"}</p>
-          {item.demo_url ? (
-            <Link
-              className={`inline-flex h-11 items-center rounded-full px-5 text-sm font-black ${
-                premium ? "bg-white text-slate-950" : "bg-slate-950 text-white"
-              }`}
-              href={item.demo_url}
-              target="_blank"
-            >
-              View demo
-            </Link>
-          ) : (
-            <span className={`text-sm font-semibold ${muted}`}>Demo coming soon</span>
-          )}
-        </div>
+        <StorePurchasePanel
+          contactHref="#reseller-contact"
+          demoUrl={item.demo_url}
+          premium={premium}
+          priceLabel={item.price_label}
+          resellerId={profile.id}
+          showcaseItemId={item.id}
+          storeTitle={item.title}
+          templateId={templatePreviewId ?? null}
+        />
       </div>
     </article>
   );
@@ -204,6 +202,7 @@ export function ResellerShowcaseRenderer({
                   key={item.id}
                   muted={muted}
                   premium={premium}
+                  profile={profile}
                 />
               ))}
             </div>
@@ -221,6 +220,47 @@ export function ResellerShowcaseRenderer({
               </p>
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="px-4 pb-12 sm:px-6 lg:px-8" id="reseller-contact">
+        <div
+          className={`mx-auto grid max-w-7xl gap-4 rounded-[2rem] border p-6 ${
+            premium
+              ? "border-white/10 bg-white/10 text-white"
+              : "border-slate-200 bg-white text-slate-950"
+          }`}
+        >
+          <p className={`text-xs font-black uppercase tracking-[0.22em] ${theme.accentClass}`}>
+            Contact Reseller
+          </p>
+          <h2 className="text-2xl font-black tracking-[-0.04em]">{profile.display_name}</h2>
+          <p className={`max-w-2xl text-sm font-semibold leading-6 ${muted}`}>
+            Ask about store transfer timelines, domain setup, credential delivery, and future
+            deployment support.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {links.length ? (
+              links.map((link) => (
+                <Link
+                  className={`inline-flex h-11 items-center rounded-full border px-5 text-sm font-black ${
+                    premium
+                      ? "border-white/20 bg-white/10 text-white"
+                      : "border-slate-200 bg-white text-slate-950"
+                  }`}
+                  href={link.href}
+                  key={link.label}
+                  target="_blank"
+                >
+                  {link.label}
+                </Link>
+              ))
+            ) : (
+              <span className={`text-sm font-semibold ${muted}`}>
+                Submit a store purchase request and the reseller can follow up from the dashboard.
+              </span>
+            )}
+          </div>
         </div>
       </section>
     </main>
