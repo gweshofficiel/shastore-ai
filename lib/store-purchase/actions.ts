@@ -12,6 +12,33 @@ export type StorePurchaseFormState = {
   status: "idle" | "success" | "error";
 };
 
+export type StoreOrderStatusFormState = {
+  message: string;
+  status: "idle" | "success" | "error";
+};
+
+function isNextRedirect(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: string }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+function orderStatusMessage(status: StorePurchaseRequestStatus) {
+  if (status === "approved") {
+    return "Purchase request approved.";
+  }
+
+  if (status === "rejected") {
+    return "Purchase request rejected.";
+  }
+
+  return "Purchase request status updated.";
+}
+
 const allowedStatuses: StorePurchaseRequestStatus[] = [
   "pending",
   "approved",
@@ -188,28 +215,89 @@ export async function submitStorePurchaseRequest(
   };
 }
 
-export async function updateStorePurchaseRequestStatus(formData: FormData) {
+export async function updateStorePurchaseRequestStatus(
+  _previousState: StoreOrderStatusFormState,
+  formData: FormData
+): Promise<StoreOrderStatusFormState> {
   const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
   const requestId = cleanText(formData.get("requestId"), 80);
   const status = cleanText(formData.get("requestStatus"), 40) as StorePurchaseRequestStatus | null;
-  const { profile, supabase } = await requireResellerProfile();
 
-  if (!requestId || !status || !allowedStatuses.includes(status)) {
-    redirectWithError("Store purchase request status could not be updated.", returnTo);
+  try {
+    if (!requestId || !status || !allowedStatuses.includes(status)) {
+      return {
+        message: "Store purchase request status could not be updated.",
+        status: "error"
+      };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        message: "Sign in to manage store purchase orders.",
+        status: "error"
+      };
+    }
+
+    const { data: profileData } = await supabase
+      .from("reseller_profiles" as never)
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const profile = profileData as { id: string } | null;
+
+    if (!profile) {
+      return {
+        message: "Create your reseller profile before managing store orders.",
+        status: "error"
+      };
+    }
+
+    const { data: updatedRequest, error } = await supabase
+      .from("store_purchase_requests" as never)
+      .update({ request_status: status } as never)
+      .eq("id", requestId)
+      .eq("reseller_id", profile.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      return {
+        message: "Store purchase request status could not be saved.",
+        status: "error"
+      };
+    }
+
+    if (!updatedRequest) {
+      return {
+        message: "Order not found or you do not have permission to update it.",
+        status: "error"
+      };
+    }
+
+    revalidatePath(returnTo);
+
+    return {
+      message: orderStatusMessage(status),
+      status: "success"
+    };
+  } catch (error) {
+    if (isNextRedirect(error)) {
+      throw error;
+    }
+
+    console.error("updateStorePurchaseRequestStatus failed", error);
+
+    return {
+      message: "Something went wrong while updating the order. Please try again.",
+      status: "error"
+    };
   }
-
-  const { error } = await supabase
-    .from("store_purchase_requests" as never)
-    .update({ request_status: status } as never)
-    .eq("id", requestId)
-    .eq("reseller_id", profile.id);
-
-  if (error) {
-    redirectWithError("Store purchase request status could not be saved.", returnTo);
-  }
-
-  revalidatePath(returnTo);
-  redirect(withStatus(returnTo, "saved", status));
 }
 
 export async function prepareStoreTransferRecord(formData: FormData) {

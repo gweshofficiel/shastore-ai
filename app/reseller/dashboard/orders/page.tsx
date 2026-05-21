@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
+import { OrderStatusAction } from "@/components/reseller-orders/order-status-action";
 import { Card } from "@/components/ui/card";
 import {
   generateManualDeliveryPdf,
   markStoreDeliveryTransferDelivered,
   prepareProvisionedStoreDraft,
-  prepareStoreDeliveryTransfer,
-  updateStorePurchaseRequestStatus
+  prepareStoreDeliveryTransfer
 } from "@/lib/store-purchase/actions";
 import {
   getResellerStorePurchaseData,
@@ -90,30 +90,6 @@ function activationStatusClass(status: string | null | undefined) {
   }
 
   return "bg-blue-100 text-blue-700";
-}
-
-function StatusAction({
-  label,
-  requestId,
-  status
-}: {
-  label: string;
-  requestId: string;
-  status: StorePurchaseRequestStatus;
-}) {
-  return (
-    <form action={updateStorePurchaseRequestStatus}>
-      <input name="returnTo" type="hidden" value="/reseller/dashboard/orders" />
-      <input name="requestId" type="hidden" value={requestId} />
-      <input name="requestStatus" type="hidden" value={status} />
-      <button
-        className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-4 text-xs font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
-        type="submit"
-      >
-        {label}
-      </button>
-    </form>
-  );
 }
 
 function TransferPreparationAction({ requestId }: { requestId: string }) {
@@ -303,7 +279,10 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
             {order.target_account_id ?? "Not provided"}
           </p>
           <p className="mt-1 text-sm font-semibold capitalize text-blue-800">
-            Lookup: {order.target_account_lookup_status.replace(/_/g, " ")}
+            Lookup: {(order.target_account_lookup_status ?? "new_account_placeholder").replace(
+              /_/g,
+              " "
+            )}
           </p>
         </div>
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
@@ -516,8 +495,18 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <StatusAction label="Approve" requestId={order.id} status="approved" />
-        <StatusAction label="Reject" requestId={order.id} status="rejected" />
+        <OrderStatusAction
+          label="Approve"
+          pendingLabel="Approving..."
+          requestId={order.id}
+          status="approved"
+        />
+        <OrderStatusAction
+          label="Reject"
+          pendingLabel="Rejecting..."
+          requestId={order.id}
+          status="rejected"
+        />
         <TransferPreparationAction requestId={order.id} />
         <MarkDeliveredAction requestId={order.id} />
         <StoreProvisioningAction requestId={order.id} />
