@@ -42,6 +42,10 @@ import {
   refreshStoreLaunchReadinessAction,
   rollbackLaunchPublishAction
 } from "@/lib/store-launch-actions";
+import {
+  invalidateRuntimeCacheAction,
+  prepareRuntimeOptimizationAction
+} from "@/lib/runtime-optimization-actions";
 import { getStoreLaunchReadiness, getLaunchStatus } from "@/lib/store-launch";
 import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
 import {
@@ -189,6 +193,9 @@ const builderStatusMessages: Record<string, string> = {
   "rollback-published-complete": "Active published layout rolled back to the previous version.",
   "rollback-published-failed": "Published layout rollback failed.",
   "rollback-published-missing": "Create a builder draft before rolling back published layout.",
+  "runtime-cache-invalidated": "Runtime cache records were invalidated safely.",
+  "runtime-optimization-not-authorized": "You are not authorized to optimize this store runtime.",
+  "runtime-optimization-prepared": "Runtime optimization foundation records were prepared.",
   "last-section-protected": "At least one draft section must remain.",
   "launch-complete": "Store launch completed and storefront visibility is public.",
   "launch-draft-missing": "Create a builder draft before launching.",
@@ -529,6 +536,40 @@ export default async function StoreDraftPage({
     const launchEvents = Array.isArray(launchEventsData)
       ? (launchEventsData as Record<string, unknown>[])
       : [];
+    const { data: storefrontRuntimeCacheData } = await supabase
+      .from("storefront_runtime_cache" as never)
+      .select("cache_status, cache_scope, cache_key, expires_at, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const storefrontRuntimeCache = (storefrontRuntimeCacheData ?? {}) as Record<string, unknown>;
+    const { data: previewRuntimeCacheData } = builderDraftId
+      ? await supabase
+          .from("preview_runtime_cache" as never)
+          .select("cache_status, preview_mode, cache_key, expires_at, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    const optimizedPreviewRuntimeCache = (previewRuntimeCacheData ?? {}) as Record<string, unknown>;
+    const { data: tenantRenderStateData } = await supabase
+      .from("tenant_render_states" as never)
+      .select("runtime_status, tenant_key, isolation_state, hydration_state, responsive_state, memoization_state, cache_state, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .maybeSingle();
+    const tenantRenderState = (tenantRenderStateData ?? {}) as Record<string, unknown>;
+    const { data: runtimePerformanceLogData } = await supabase
+      .from("runtime_performance_logs" as never)
+      .select("runtime_scope, event_type, event_status, duration_ms, render_count, cache_hit, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const runtimePerformanceLogs = Array.isArray(runtimePerformanceLogData)
+      ? (runtimePerformanceLogData as Record<string, unknown>[])
+      : [];
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -659,6 +700,18 @@ export default async function StoreDraftPage({
     const previewSessionSyncState =
       previewSession.sync_state && typeof previewSession.sync_state === "object"
         ? (previewSession.sync_state as Record<string, unknown>)
+        : {};
+    const tenantRuntimeHydration =
+      tenantRenderState.hydration_state && typeof tenantRenderState.hydration_state === "object"
+        ? (tenantRenderState.hydration_state as Record<string, unknown>)
+        : {};
+    const tenantRuntimeMemoization =
+      tenantRenderState.memoization_state && typeof tenantRenderState.memoization_state === "object"
+        ? (tenantRenderState.memoization_state as Record<string, unknown>)
+        : {};
+    const tenantRuntimeCacheState =
+      tenantRenderState.cache_state && typeof tenantRenderState.cache_state === "object"
+        ? (tenantRenderState.cache_state as Record<string, unknown>)
         : {};
     const activeResponsiveConfig =
       responsiveConfigs.find(
@@ -1297,6 +1350,120 @@ export default async function StoreDraftPage({
                     ? `${builderVersions.length} layout version records are ready for restore/export flows.`
                     : "Published layout versions will appear here after publish actions are wired."}
                 </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Runtime optimization foundation
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Storefront and builder preview cache records prepare render-safe
+                    memoization, hydration checks, and tenant runtime isolation without
+                    changing published storefront rendering.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {textValue(tenantRenderState, "runtime_status", "Prepared")}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <form action={prepareRuntimeOptimizationAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="mode" type="hidden" value={builderMode} />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Prepare runtime optimization
+                  </Button>
+                </form>
+                <form action={invalidateRuntimeCacheAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="reason" type="hidden" value="manual dashboard invalidation" />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Invalidate runtime cache
+                  </Button>
+                </form>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Storefront cache", textValue(storefrontRuntimeCache, "cache_status", "Not prepared")],
+                  ["Preview cache", textValue(optimizedPreviewRuntimeCache, "cache_status", "Not prepared")],
+                  ["Hydration", tenantRuntimeHydration.hydrationSafe === false ? "Needs check" : "Safe"],
+                  ["Memoization", tenantRuntimeMemoization.renderSafeMemoizationPrepared === true ? "Prepared" : "Pending"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black capitalize text-ink">{String(value)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1fr_0.95fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Runtime health placeholder
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Tenant", textValue(tenantRenderState, "tenant_key", ownedStore.internal_slug)],
+                      ["Store cache key", textValue(storefrontRuntimeCache, "cache_key", "Prepared later")],
+                      ["Preview cache key", textValue(optimizedPreviewRuntimeCache, "cache_key", "Prepared later")],
+                      ["Tenant cache", textValue(tenantRuntimeCacheState, "storefrontCacheKey", "Prepared later")]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl bg-white p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black text-ink">{String(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {["CDN integration prep", "Edge rendering prep", "Serverless optimization prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Render performance placeholder
+                  </p>
+                  <div className="grid gap-2">
+                    {runtimePerformanceLogs.length ? (
+                      runtimePerformanceLogs.map((log, index) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={`${textValue(log, "event_type", "event")}-${index}`}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(log, "runtime_scope", "storefront")} · {textValue(log, "event_status", "recorded")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(log, "event_type", "snapshot").replace(/_/g, " ")} ·{" "}
+                            {numberValue(log, "duration_ms", "0")}ms · {numberValue(log, "render_count", "0")} renders
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Runtime performance snapshots will appear after optimization preparation.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {["Realtime preview scaling prep", "AI render optimization prep", "Analytics instrumentation prep", "Performance monitoring prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
