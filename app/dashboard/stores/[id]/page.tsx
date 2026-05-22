@@ -211,6 +211,19 @@ export default async function StoreDraftPage({
     const sections = Array.isArray(sectionData)
       ? (sectionData as Record<string, unknown>[])
       : [];
+    const { data: builderStateData } = await supabase
+      .from("store_builder_states" as never)
+      .select("status, page_schema, draft_schema, published_schema, layout_tree, responsive_config, editor_state, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .maybeSingle();
+    const builderState = (builderStateData ?? {}) as Record<string, unknown>;
+    const builderPageSchema =
+      builderState.page_schema && typeof builderState.page_schema === "object"
+        ? (builderState.page_schema as Record<string, unknown>)
+        : {};
+    const builderSections = Array.isArray(builderPageSchema.sections)
+      ? builderPageSchema.sections
+      : [];
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -583,6 +596,67 @@ export default async function StoreDraftPage({
                 >
                   {label}
                 </div>
+              ))}
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Visual editor
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Builder schema foundation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Page schema, section props, layout trees, responsive settings, and
+              draft/publish state are prepared for a future drag-drop editor.
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
+                ["State", textValue(builderState, "status", "draft")],
+                ["Schema sections", String(builderSections.length)],
+                ["Mode", "desktop"]
+              ].map(([label, value]) => (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={label}>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-sm font-black capitalize text-ink">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Section editor placeholders
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {["Section props", "Layout tree", "Live preview", "Add section modal"].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {["Desktop", "Tablet", "Mobile"].map((mode) => (
+                <div
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                  key={mode}
+                >
+                  {mode}
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {["Save draft", "Publish schema", "Reorder prep", "Export layout"].map((label) => (
+                <span
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted"
+                  key={label}
+                >
+                  {label}
+                </span>
               ))}
             </div>
           </Card>

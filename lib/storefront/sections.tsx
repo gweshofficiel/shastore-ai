@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadVisualEditorState, resolveBuilderSections } from "@/lib/storefront/builder";
 
 export type StoreSectionType =
   | "hero"
@@ -102,6 +103,16 @@ export async function loadStoreSections(context: StoreTenantContext): Promise<St
 }
 
 export async function resolveSectionLayout(context: StoreTenantContext): Promise<StorePageLayout> {
+  const builderState = await loadVisualEditorState(context);
+  const builderSections = resolveBuilderSections(builderState, context);
+
+  if (builderSections.length) {
+    return {
+      key: `${context.theme.layout_key}:builder`,
+      sections: builderSections
+    };
+  }
+
   const sections = await loadStoreSections(context);
 
   return {
