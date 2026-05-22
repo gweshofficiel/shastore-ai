@@ -32,6 +32,11 @@ import {
   syncVisualStylePreviewAction,
   updateThemeTokensAction
 } from "@/lib/builder-visual-style-actions";
+import {
+  createPreviewSessionAction,
+  refreshPreviewStateAction,
+  syncDraftPreviewAction
+} from "@/lib/builder-preview-runtime-actions";
 import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
 import {
   compareDraftVsPublished,
@@ -144,6 +149,13 @@ const builderStatusMessages: Record<string, string> = {
   "preview-draft-missing": "Create a builder draft before refreshing preview.",
   "preview-refreshed": "Draft preview synchronized safely.",
   "preview-refresh-failed": "Draft preview refresh failed.",
+  "preview-runtime-draft-missing": "Create a builder draft before using the live preview runtime.",
+  "preview-runtime-refreshed": "Live preview runtime refreshed safely.",
+  "preview-runtime-refresh-failed": "Live preview runtime refresh failed.",
+  "preview-runtime-session-created": "Live preview runtime session created.",
+  "preview-runtime-session-failed": "Live preview runtime session could not be created.",
+  "preview-runtime-sync-failed": "Live preview runtime sync failed.",
+  "preview-runtime-synced": "Live preview runtime synchronized.",
   "publish-complete": "Builder draft published as a new layout version.",
   "publish-draft-missing": "Create a builder draft before publishing.",
   "publish-invalid-draft": "Draft must contain at least one visible section before publishing.",
@@ -447,6 +459,37 @@ export default async function StoreDraftPage({
           .maybeSingle()
       : { data: null };
     const visualStyleState = (visualStyleStateData ?? {}) as Record<string, unknown>;
+    const { data: previewSessionData } = builderDraftId
+      ? await supabase
+          .from("builder_preview_sessions" as never)
+          .select("id, session_status, preview_mode, hydration_state, isolation_state, sync_state, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    const previewSession = (previewSessionData ?? {}) as Record<string, unknown>;
+    const { data: previewRuntimeStateData } = builderDraftId
+      ? await supabase
+          .from("preview_runtime_states" as never)
+          .select("runtime_status, sync_source, responsive_state, hydration_state, isolation_state, error_state, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .maybeSingle()
+      : { data: null };
+    const previewRuntimeState = (previewRuntimeStateData ?? {}) as Record<string, unknown>;
+    const { data: previewRenderCacheData } = builderDraftId
+      ? await supabase
+          .from("preview_render_cache" as never)
+          .select("cache_status, cache_key, expires_at, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    const previewRenderCache = (previewRenderCacheData ?? {}) as Record<string, unknown>;
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -532,6 +575,22 @@ export default async function StoreDraftPage({
     const selectedSectionId = textValue(editorState, "selectedSectionId", "None selected");
     const draggingSectionId = textValue(editorState, "draggingSectionId", "Idle");
     const activeResponsiveBreakpoint = responsiveBreakpoints[builderMode];
+    const previewRuntimeHydration =
+      previewRuntimeState.hydration_state && typeof previewRuntimeState.hydration_state === "object"
+        ? (previewRuntimeState.hydration_state as Record<string, unknown>)
+        : {};
+    const previewRuntimeIsolation =
+      previewRuntimeState.isolation_state && typeof previewRuntimeState.isolation_state === "object"
+        ? (previewRuntimeState.isolation_state as Record<string, unknown>)
+        : {};
+    const previewRuntimeErrors =
+      previewRuntimeState.error_state && typeof previewRuntimeState.error_state === "object"
+        ? (previewRuntimeState.error_state as Record<string, unknown>)
+        : {};
+    const previewSessionSyncState =
+      previewSession.sync_state && typeof previewSession.sync_state === "object"
+        ? (previewSession.sync_state as Record<string, unknown>)
+        : {};
     const activeResponsiveConfig =
       responsiveConfigs.find(
         (config) => textValue(config, "breakpoint_key", "desktop") === builderMode
@@ -1433,6 +1492,153 @@ export default async function StoreDraftPage({
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Live preview runtime
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Draft rendering is resolved into an isolated preview runtime with
+                    hydration-safe state, responsive mode context, and prepared render
+                    cache. Published storefront runtime stays untouched.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {textValue(previewRuntimeState, "runtime_status", "Not synced")}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <form action={createPreviewSessionAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="mode" type="hidden" value={builderMode} />
+                  <Button className="w-full" disabled={!builderDraftId} type="submit" variant="secondary">
+                    Create preview session
+                  </Button>
+                </form>
+                <form action={refreshPreviewStateAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="mode" type="hidden" value={builderMode} />
+                  <Button className="w-full" disabled={!builderDraftId} type="submit">
+                    Refresh preview
+                  </Button>
+                </form>
+                <form action={syncDraftPreviewAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="mode" type="hidden" value={builderMode} />
+                  <input name="source" type="hidden" value="draft_change" />
+                  <Button className="w-full" disabled={!builderDraftId} type="submit" variant="secondary">
+                    Sync draft runtime
+                  </Button>
+                </form>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Isolated draft frame
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        {responsiveBreakpoints[builderMode].label} runtime · {draftPublishValidation.schema.sections.length} draft section
+                        {draftPublishValidation.schema.sections.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                      Draft only
+                    </span>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-[2rem] border border-dashed border-slate-300 bg-white p-4">
+                    <div
+                      className="mx-auto rounded-[1.5rem] border border-slate-200 bg-slate-950 p-3 text-white shadow-sm"
+                      style={{ maxWidth: activeResponsiveBreakpoint.maxWidth }}
+                    >
+                      <div className="rounded-[1.2rem] bg-white p-4 text-ink">
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Preview-safe hydration
+                        </p>
+                        <h3 className="mt-2 text-lg font-black tracking-[-0.03em]">
+                          {textValue(settings, "store_name", ownedStore.store_name)}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          {previewRuntimeErrors.fallbackReady === true
+                            ? "Preview fallback is ready because the current draft schema needs review."
+                            : "Draft runtime is isolated from published storefront rendering."}
+                        </p>
+                        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                          {[
+                            ["Hydration", previewRuntimeHydration.hydrationSafe === false ? "Needs check" : "Safe"],
+                            ["Isolation", previewRuntimeIsolation.isolatedRendering === false ? "Pending" : "Isolated"],
+                            ["Cache", textValue(previewRenderCache, "cache_status", "Prepared")]
+                          ].map(([label, value]) => (
+                            <div className="rounded-2xl bg-slate-50 p-3" key={label}>
+                              <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                                {label}
+                              </p>
+                              <p className="mt-1 truncate text-xs font-black capitalize text-ink">{String(value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Runtime sync state
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Session", textValue(previewSession, "session_status", "Not created")],
+                      ["Mode", textValue(previewSession, "preview_mode", builderMode)],
+                      ["Source", textValue(previewRuntimeState, "sync_source", "manual_refresh")],
+                      ["Updated", textValue(previewRuntimeState, "updated_at", "Not synced")],
+                      ["Pending", previewSyncPending ? "Yes" : "No"],
+                      ["Cache key", textValue(previewRenderCache, "cache_key", "Prepared")]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black text-ink">{String(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Preview error placeholder
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-muted">
+                      {previewRuntimeErrors.fallbackReady === true
+                        ? "Fallback preview is prepared until the draft schema validates."
+                        : "No runtime preview errors recorded."}
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    {[
+                      "Realtime collaborative preview prep",
+                      "Preview sharing prep",
+                      "AI visual editing prep",
+                      "Mobile mirroring prep",
+                      "Animation preview prep",
+                      "Performance cache prep"
+                    ].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  {textValue(previewSessionSyncState, "lastSyncAt", "") ? (
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      Last runtime sync: {textValue(previewSessionSyncState, "lastSyncAt", "Not synced")}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
