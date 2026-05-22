@@ -17,6 +17,17 @@ import {
   syncLivePreviewState
 } from "@/lib/builder-publish-actions";
 import {
+  applyResponsiveLayoutOverrideAction,
+  switchResponsiveBuilderMode,
+  syncResponsivePreviewStateAction
+} from "@/lib/builder-responsive-actions";
+import {
+  getResponsiveBuilderMode,
+  responsiveBreakpoints,
+  responsiveBuilderModes,
+  resolveResponsiveSectionConfig
+} from "@/lib/builder-responsive-utils";
+import {
   compareDraftVsPublished,
   validateDraftBeforePublish
 } from "@/lib/builder-publish-utils";
@@ -125,6 +136,13 @@ const builderStatusMessages: Record<string, string> = {
   "publish-invalid-draft": "Draft must contain at least one visible section before publishing.",
   "publish-rollback-complete": "Publish failed and the previous active version was restored.",
   "publish-version-failed": "Published layout version could not be created.",
+  "responsive-draft-missing": "Create a builder draft before using responsive preview.",
+  "responsive-mode-failed": "Responsive builder mode could not be saved.",
+  "responsive-mode-synced": "Responsive builder mode synchronized.",
+  "responsive-override-applied": "Responsive layout override placeholder applied.",
+  "responsive-override-failed": "Responsive layout override could not be applied.",
+  "responsive-preview-synced": "Responsive preview state synchronized.",
+  "responsive-schema-invalid": "Responsive builder schema is not breakpoint safe.",
   "restore-complete": "Active published layout was copied back into the draft.",
   "restore-draft-missing": "Create a builder draft before restoring published layout.",
   "restore-failed": "Published layout could not be restored into draft.",
@@ -363,6 +381,26 @@ export default async function StoreDraftPage({
     const builderSectionDrafts = Array.isArray(builderSectionDraftData)
       ? (builderSectionDraftData as Record<string, unknown>[])
       : [];
+    const { data: responsiveConfigData } = builderDraftId
+      ? await supabase
+          .from("builder_responsive_configs" as never)
+          .select("id, breakpoint_key, config, section_overrides, layout_overrides, typography_overrides, spacing_overrides, visibility_overrides, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .order("breakpoint_key", { ascending: true })
+      : { data: [] };
+    const responsiveConfigs = Array.isArray(responsiveConfigData)
+      ? (responsiveConfigData as Record<string, unknown>[])
+      : [];
+    const { data: responsiveLayoutStateData } = builderDraftId
+      ? await supabase
+          .from("responsive_layout_states" as never)
+          .select("active_breakpoint, preview_state, device_frame, hydration_state, layout_state, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .maybeSingle()
+      : { data: null };
+    const responsiveLayoutState = (responsiveLayoutStateData ?? {}) as Record<string, unknown>;
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -442,9 +480,24 @@ export default async function StoreDraftPage({
       builderDraft.editor_state && typeof builderDraft.editor_state === "object"
         ? (builderDraft.editor_state as Record<string, unknown>)
         : {};
-    const builderMode = textValue(editorState, "mode", "desktop");
+    const builderMode = getResponsiveBuilderMode(
+      draftEditorState.mode ?? editorState.mode ?? responsiveLayoutState.active_breakpoint
+    );
     const selectedSectionId = textValue(editorState, "selectedSectionId", "None selected");
     const draggingSectionId = textValue(editorState, "draggingSectionId", "Idle");
+    const activeResponsiveBreakpoint = responsiveBreakpoints[builderMode];
+    const activeResponsiveConfig =
+      responsiveConfigs.find(
+        (config) => textValue(config, "breakpoint_key", "desktop") === builderMode
+      ) ?? {};
+    const activeResponsivePreview =
+      responsiveLayoutState.preview_state && typeof responsiveLayoutState.preview_state === "object"
+        ? (responsiveLayoutState.preview_state as Record<string, unknown>)
+        : {};
+    const firstResponsiveSection = draftPublishValidation.schema.sections[0] ?? null;
+    const firstResponsiveSectionConfig = firstResponsiveSection
+      ? resolveResponsiveSectionConfig(firstResponsiveSection, builderMode)
+      : {};
     const previewSyncPending =
       typeof draftEditorState.previewSyncPending === "boolean"
         ? draftEditorState.previewSyncPending
@@ -1141,6 +1194,139 @@ export default async function StoreDraftPage({
                   </div>
                   <div className="grid gap-2">
                     {["Realtime preview prep", "Scheduled publishing prep", "Preview sharing prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Responsive builder modes
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Device preview state is isolated to builder drafts. Breakpoint
+                    switching updates editor metadata and responsive preview records,
+                    not the published storefront.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {responsiveBreakpoints[builderMode].label}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {responsiveBuilderModes.map((mode) => (
+                  <form action={switchResponsiveBuilderMode} key={mode}>
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <input name="mode" type="hidden" value={mode} />
+                    <Button
+                      className="w-full"
+                      type="submit"
+                      variant={builderMode === mode ? "primary" : "secondary"}
+                    >
+                      {responsiveBreakpoints[mode].label}
+                    </Button>
+                  </form>
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Responsive preview panel
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        {activeResponsiveBreakpoint.maxWidth}px frame · {activeResponsiveBreakpoint.height}px target height
+                      </p>
+                    </div>
+                    <form action={syncResponsivePreviewStateAction}>
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <input name="mode" type="hidden" value={builderMode} />
+                      <Button type="submit" variant="secondary">
+                        Sync responsive preview
+                      </Button>
+                    </form>
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-[2rem] border border-dashed border-slate-300 bg-white p-4">
+                    <div
+                      className="mx-auto rounded-[1.5rem] border border-slate-200 bg-slate-950 p-3 text-white shadow-sm"
+                      style={{ maxWidth: activeResponsiveBreakpoint.maxWidth }}
+                    >
+                      <div className="rounded-[1.2rem] bg-white p-4 text-ink">
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-slate-400">
+                          {responsiveBreakpoints[builderMode].label} draft frame
+                        </p>
+                        <h3 className="mt-2 text-lg font-black tracking-[-0.03em]">
+                          {textValue(settings, "store_name", ownedStore.store_name)}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          {draftPublishValidation.schema.sections.length
+                            ? `${draftPublishValidation.schema.sections.length} draft section${
+                                draftPublishValidation.schema.sections.length === 1 ? "" : "s"
+                              } prepared for breakpoint-safe preview.`
+                            : "No draft sections are ready for responsive preview yet."}
+                        </p>
+                        <div className="mt-4 grid gap-2">
+                          {[
+                            ["Hydration", activeResponsivePreview.hydratedSafely === false ? "Needs check" : "Safe"],
+                            ["Isolation", activeResponsivePreview.previewIsolated === false ? "Pending" : "Draft only"],
+                            ["Breakpoint", builderMode]
+                          ].map(([label, value]) => (
+                            <div className="rounded-2xl bg-slate-50 p-3" key={label}>
+                              <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                                {label}
+                              </p>
+                              <p className="mt-1 text-xs font-black capitalize text-ink">{String(value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Responsive controls
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Config rows", String(responsiveConfigs.length)],
+                      ["Last sync", textValue(activeResponsiveConfig, "updated_at", "Not synced")],
+                      ["Section config", Object.keys(firstResponsiveSectionConfig).length ? "Ready" : "Empty"],
+                      ["Mode source", textValue(responsiveLayoutState, "active_breakpoint", builderMode)]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black text-ink">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <form action={applyResponsiveLayoutOverrideAction}>
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <input name="mode" type="hidden" value={builderMode} />
+                    <Button className="w-full" type="submit" variant="secondary">
+                      Apply responsive override placeholder
+                    </Button>
+                  </form>
+                  <div className="grid gap-2">
+                    {[
+                      "Responsive spacing placeholders",
+                      "Responsive typography placeholders",
+                      "Responsive visibility placeholders",
+                      "Breakpoint-specific sections prep",
+                      "AI responsive optimization prep",
+                      "Adaptive layouts prep"
+                    ].map((label) => (
                       <div
                         className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                         key={label}
