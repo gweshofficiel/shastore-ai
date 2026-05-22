@@ -79,6 +79,13 @@ import {
   prepareStoreGenerationPrompt
 } from "@/lib/storefront/ai-generation";
 import {
+  executeAIProviderRequest,
+  getAIProvider,
+  mapAIResponseToBuilderSchema,
+  normalizeAIProviderResponse,
+  resolvePromptTemplate
+} from "@/lib/ai-provider";
+import {
   createSimulatedGeneratedStoreSchema,
   getAIWorkerRetryPlan
 } from "@/lib/storefront/ai-worker";
@@ -651,6 +658,32 @@ export default async function StoreDraftPage({
     });
     const aiPromptPreview = prepareStoreGenerationPrompt(aiRequestPreview);
     const simulatedResultPreview = createSimulatedGeneratedStoreSchema(aiRequestPreview);
+    const aiProvider = await getAIProvider(ownedStore.id);
+    const aiPromptTemplate = await resolvePromptTemplate({
+      request: aiRequestPreview,
+      storeInstanceId: ownedStore.id
+    });
+    const aiProviderResponsePreview = await executeAIProviderRequest(aiProvider, {
+      prompt: aiPromptTemplate.body,
+      requestPayload: {
+        layoutIntent: aiRequestPreview.layoutIntent,
+        niche: aiRequestPreview.niche,
+        storeType: aiRequestPreview.storeType
+      },
+      responseFormat: "json_schema",
+      storeInstanceId: ownedStore.id
+    });
+    const normalizedAIProviderPreview = normalizeAIProviderResponse(aiProviderResponsePreview);
+    const mappedAIProviderSchemaPreview = mapAIResponseToBuilderSchema(aiProviderResponsePreview.raw);
+    const { data: aiProviderResultsData } = await supabase
+      .from("ai_generation_results" as never)
+      .select("id, result_status, token_usage, metadata, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const aiProviderResults = Array.isArray(aiProviderResultsData)
+      ? (aiProviderResultsData as Record<string, unknown>[])
+      : [];
     const latestGeneratedStoreSchema = aiGenerations[0]?.generated_store_schema;
     const generatedResultPreview =
       latestGeneratedStoreSchema &&
@@ -2453,6 +2486,109 @@ export default async function StoreDraftPage({
                     {label}
                   </div>
                 ))}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    AI provider foundation
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Provider metadata, model configuration, prompt templates, and
+                    structured JSON output mapping are prepared without API keys or
+                    real provider calls.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {aiProvider.status}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Provider", aiProvider.providerName],
+                  ["Model", aiProvider.modelKey],
+                  ["Prompt", aiPromptTemplate.id ? "Custom" : "Fallback"],
+                  ["Network", aiProviderResponsePreview.metadata.networkCall ? "Enabled" : "Disabled"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-xs font-black capitalize text-ink">
+                      {String(value)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Prompt orchestration
+                  </p>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+                    defaultValue={aiProvider.modelKey}
+                    disabled
+                  >
+                    <option value="gpt-4o-mini">GPT-4o mini placeholder</option>
+                    <option value="gpt-4.1-mini">GPT-4.1 mini placeholder</option>
+                    <option value="gpt-4.1">GPT-4.1 placeholder</option>
+                  </select>
+                  <pre className="max-h-44 overflow-hidden rounded-2xl bg-white p-3 text-xs text-muted">
+                    {aiPromptTemplate.body}
+                  </pre>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      "Provider fallback prep",
+                      "Token tracking prep",
+                      "AI cost tracking prep",
+                      "Moderation prep"
+                    ].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    AI output preview
+                  </p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-black text-ink">
+                      {normalizedAIProviderPreview.store.title}
+                    </p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      {mappedAIProviderSchemaPreview.sections.length} mapped section
+                      {mappedAIProviderSchemaPreview.sections.length === 1 ? "" : "s"} · structured JSON
+                    </p>
+                  </div>
+                  <pre className="max-h-48 overflow-hidden rounded-2xl bg-slate-50 p-3 text-xs text-muted">
+                    {JSON.stringify(aiProviderResponsePreview.raw, null, 2)}
+                  </pre>
+                  <div className="grid gap-2">
+                    {aiProviderResults.length ? (
+                      aiProviderResults.map((result) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(result.id)}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(result, "result_status", "prepared")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(result, "created_at", "Provider result placeholder")}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Provider generation results will appear here after real provider execution is enabled.
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
