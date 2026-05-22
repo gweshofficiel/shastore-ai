@@ -28,6 +28,12 @@ import {
   resolveResponsiveSectionConfig
 } from "@/lib/builder-responsive-utils";
 import {
+  applySectionStyleOverrideAction,
+  syncVisualStylePreviewAction,
+  updateThemeTokensAction
+} from "@/lib/builder-visual-style-actions";
+import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
+import {
   compareDraftVsPublished,
   validateDraftBeforePublish
 } from "@/lib/builder-publish-utils";
@@ -177,7 +183,15 @@ const builderStatusMessages: Record<string, string> = {
   "snapshot-page-missing": "Create a builder page before saving snapshots.",
   "update-failed": "Draft section settings could not be updated.",
   "visibility-failed": "Draft section visibility could not be updated.",
-  "visibility-updated": "Draft section visibility updated."
+  "visibility-updated": "Draft section visibility updated.",
+  "visual-style-draft-missing": "Create a builder draft before customizing visual styles.",
+  "visual-style-invalid": "Visual theme customization is not valid.",
+  "visual-style-preview-synced": "Live styling preview synchronized.",
+  "visual-style-save-failed": "Visual theme tokens could not be saved.",
+  "visual-style-section-applied": "Section style override placeholder applied.",
+  "visual-style-section-failed": "Section style override could not be applied.",
+  "visual-style-section-missing": "Choose a draft section before applying style overrides.",
+  "visual-style-updated": "Visual theme tokens updated for draft preview."
 };
 
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
@@ -198,6 +212,10 @@ function ownedBadgeClass(status: string | null | undefined) {
   }
 
   return "bg-amber-100 text-amber-700";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function textValue(record: Record<string, unknown> | undefined, key: string, fallback = "Not set") {
@@ -401,6 +419,27 @@ export default async function StoreDraftPage({
           .maybeSingle()
       : { data: null };
     const responsiveLayoutState = (responsiveLayoutStateData ?? {}) as Record<string, unknown>;
+    const { data: visualStyleOverrideData } = builderDraftId
+      ? await supabase
+          .from("store_theme_style_overrides" as never)
+          .select("id, override_scope, section_id, color_tokens, typography_tokens, spacing_tokens, radius_tokens, button_tokens, section_style_overrides, global_theme_tokens, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .order("updated_at", { ascending: false })
+          .limit(3)
+      : { data: [] };
+    const visualStyleOverrides = Array.isArray(visualStyleOverrideData)
+      ? (visualStyleOverrideData as Record<string, unknown>[])
+      : [];
+    const { data: visualStyleStateData } = builderDraftId
+      ? await supabase
+          .from("builder_visual_style_states" as never)
+          .select("preview_tokens, preview_state, sidebar_state, selected_style_target, hydration_state, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .eq("builder_draft_id", builderDraftId)
+          .maybeSingle()
+      : { data: null };
+    const visualStyleState = (visualStyleStateData ?? {}) as Record<string, unknown>;
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -498,6 +537,32 @@ export default async function StoreDraftPage({
     const firstResponsiveSectionConfig = firstResponsiveSection
       ? resolveResponsiveSectionConfig(firstResponsiveSection, builderMode)
       : {};
+    const latestVisualStyleOverride = visualStyleOverrides[0] ?? {};
+    const resolvedVisualThemeStyles = resolveVisualThemeStyles(activeTheme, {
+      button: isRecord(latestVisualStyleOverride.button_tokens)
+        ? latestVisualStyleOverride.button_tokens
+        : {},
+      colors: isRecord(latestVisualStyleOverride.color_tokens)
+        ? latestVisualStyleOverride.color_tokens
+        : {},
+      radius: isRecord(latestVisualStyleOverride.radius_tokens)
+        ? latestVisualStyleOverride.radius_tokens
+        : {},
+      spacing: isRecord(latestVisualStyleOverride.spacing_tokens)
+        ? latestVisualStyleOverride.spacing_tokens
+        : {},
+      typography: isRecord(latestVisualStyleOverride.typography_tokens)
+        ? latestVisualStyleOverride.typography_tokens
+        : {}
+    });
+    const visualStylePreview =
+      visualStyleState.preview_state && typeof visualStyleState.preview_state === "object"
+        ? (visualStyleState.preview_state as Record<string, unknown>)
+        : {};
+    const firstStyleSection = builderSectionDrafts[0] ?? visualEditorSections[0] ?? null;
+    const firstStyleSectionId = firstStyleSection
+      ? String(firstStyleSection.id ?? firstStyleSection.section_key ?? "")
+      : "";
     const previewSyncPending =
       typeof draftEditorState.previewSyncPending === "boolean"
         ? draftEditorState.previewSyncPending
@@ -1334,6 +1399,283 @@ export default async function StoreDraftPage({
                         {label}
                       </div>
                     ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Visual styling engine
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Theme token overrides are isolated to builder drafts and visual
+                    preview state. Published storefront rendering and store visibility
+                    stay unchanged.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {visualStyleOverrides.length} override{visualStyleOverrides.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Theme customization sidebar
+                  </p>
+                  <form action={updateThemeTokensAction} className="grid gap-3">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.primary}
+                        id="primaryColor"
+                        label="Primary color"
+                        name="primaryColor"
+                        type="color"
+                      />
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.secondary}
+                        id="secondaryColor"
+                        label="Secondary color"
+                        name="secondaryColor"
+                        type="color"
+                      />
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.accent}
+                        id="accentColor"
+                        label="Accent color"
+                        name="accentColor"
+                        type="color"
+                      />
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.background}
+                        id="backgroundColor"
+                        label="Background color"
+                        name="backgroundColor"
+                        type="color"
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.typography.heading}
+                        name="headingFont"
+                      >
+                        <option value="inter">Inter heading</option>
+                        <option value="serif">Serif heading</option>
+                        <option value="display">Display heading</option>
+                        <option value="mono">Mono heading</option>
+                      </select>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.typography.body}
+                        name="bodyFont"
+                      >
+                        <option value="inter">Inter body</option>
+                        <option value="serif">Serif body</option>
+                        <option value="display">Display body</option>
+                        <option value="mono">Mono body</option>
+                      </select>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.typography.scale}
+                        name="fontScale"
+                      >
+                        <option value="compact">Compact scale</option>
+                        <option value="comfortable">Comfortable scale</option>
+                        <option value="large">Large scale</option>
+                      </select>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.spacing.density}
+                        name="spacingDensity"
+                      >
+                        <option value="compact">Compact spacing</option>
+                        <option value="comfortable">Comfortable spacing</option>
+                        <option value="spacious">Spacious spacing</option>
+                      </select>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.radius.section}
+                        name="sectionRadius"
+                      >
+                        <option value="0.75rem">Small radius</option>
+                        <option value="1rem">Medium radius</option>
+                        <option value="1.5rem">Large radius</option>
+                        <option value="2rem">XL radius</option>
+                        <option value="2.5rem">2XL radius</option>
+                      </select>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                        defaultValue={resolvedVisualThemeStyles.button.radius}
+                        name="buttonRadius"
+                      >
+                        <option value="pill">Pill buttons</option>
+                        <option value="rounded">Rounded buttons</option>
+                        <option value="sharp">Sharp buttons</option>
+                      </select>
+                    </div>
+                    <input name="buttonStyle" type="hidden" value={resolvedVisualThemeStyles.button.style} />
+                    <input name="sectionSpacing" type="hidden" value={resolvedVisualThemeStyles.spacing.section} />
+                    <input name="cardRadius" type="hidden" value={resolvedVisualThemeStyles.radius.card} />
+                    <Button type="submit">Update theme tokens</Button>
+                  </form>
+                  <form action={applySectionStyleOverrideAction} className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-3">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <select
+                      className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-ink"
+                      defaultValue={firstStyleSectionId}
+                      name="sectionId"
+                    >
+                      <option value="" disabled>Select section</option>
+                      {builderSectionDrafts.map((section) => (
+                        <option key={String(section.id)} value={String(section.id)}>
+                          {textValue(section, "section_type", "section").replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.accent}
+                        id="sectionAccentColor"
+                        label="Section accent"
+                        name="sectionAccentColor"
+                        type="color"
+                      />
+                      <Input
+                        defaultValue={resolvedVisualThemeStyles.colors.background}
+                        id="sectionBackgroundColor"
+                        label="Section background"
+                        name="sectionBackgroundColor"
+                        type="color"
+                      />
+                    </div>
+                    <input
+                      name="sectionSpacing"
+                      type="hidden"
+                      value={resolvedVisualThemeStyles.spacing.section}
+                    />
+                    <Button disabled={!firstStyleSectionId} type="submit" variant="secondary">
+                      Apply section style override
+                    </Button>
+                  </form>
+                  <div className="grid gap-2">
+                    {[
+                      "Animation styling prep",
+                      "Visual CSS editor prep",
+                      "Marketplace themes prep"
+                    ].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Live styling preview
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        Draft-only preview · {textValue(visualStyleState, "updated_at", "Not synced")}
+                      </p>
+                    </div>
+                    <form action={syncVisualStylePreviewAction}>
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <input
+                        name="styleTarget"
+                        type="hidden"
+                        value={textValue(visualStyleState, "selected_style_target", "global")}
+                      />
+                      <Button type="submit" variant="secondary">
+                        Sync styling preview
+                      </Button>
+                    </form>
+                  </div>
+                  <div
+                    className="rounded-[2rem] border border-dashed border-slate-300 p-4"
+                    style={{
+                      backgroundColor: resolvedVisualThemeStyles.colors.background,
+                      borderRadius: resolvedVisualThemeStyles.radius.section
+                    }}
+                  >
+                    <div
+                      className="rounded-[1.5rem] p-4 text-white shadow-sm"
+                      style={{
+                        backgroundColor: resolvedVisualThemeStyles.colors.primary,
+                        borderRadius: resolvedVisualThemeStyles.radius.card
+                      }}
+                    >
+                      <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-white/60">
+                        Theme token preview
+                      </p>
+                      <h3
+                        className="mt-2 text-xl font-black tracking-[-0.03em]"
+                        style={{ fontFamily: resolvedVisualThemeStyles.typography.heading }}
+                      >
+                        {textValue(settings, "store_name", ownedStore.store_name)}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-white/75">
+                        Visual styling updates stay in draft preview until a builder
+                        layout is published.
+                      </p>
+                      <div
+                        className="mt-4 inline-flex px-4 py-2 text-sm font-bold text-ink"
+                        style={{
+                          backgroundColor: resolvedVisualThemeStyles.colors.accent,
+                          borderRadius:
+                            resolvedVisualThemeStyles.button.radius === "sharp"
+                              ? "0.5rem"
+                              : resolvedVisualThemeStyles.button.radius === "rounded"
+                                ? "1rem"
+                                : "999px"
+                        }}
+                      >
+                        Button style placeholder
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Hydration", visualStylePreview.hydratedSafely === false ? "Needs check" : "Safe"],
+                      ["Isolation", visualStylePreview.previewIsolated === false ? "Pending" : "Draft only"],
+                      ["Typography", resolvedVisualThemeStyles.typography.heading],
+                      ["Spacing", resolvedVisualThemeStyles.spacing.density]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black capitalize text-ink">{String(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {resolvedVisualThemeStyles.colors.primary &&
+                      ["Primary", "Secondary", "Accent"].map((label, index) => {
+                        const swatch = [
+                          resolvedVisualThemeStyles.colors.primary,
+                          resolvedVisualThemeStyles.colors.secondary,
+                          resolvedVisualThemeStyles.colors.accent
+                        ][index];
+
+                        return (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                            <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                              {label}
+                            </p>
+                            <div
+                              className="mt-2 h-8 rounded-xl border border-slate-200"
+                              style={{ backgroundColor: swatch }}
+                            />
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
