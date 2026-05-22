@@ -34,6 +34,10 @@ import {
   createAIStoreGenerationRequest,
   prepareStoreGenerationPrompt
 } from "@/lib/storefront/ai-generation";
+import {
+  createSimulatedGeneratedStoreSchema,
+  getAIWorkerRetryPlan
+} from "@/lib/storefront/ai-worker";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 
@@ -273,7 +277,7 @@ export default async function StoreDraftPage({
       previewSyncPending;
     const { data: aiGenerationsData } = await supabase
       .from("ai_store_generations" as never)
-      .select("id, status, niche, store_type, language, brand_style, layout_intent, created_at")
+      .select("id, status, niche, store_type, language, brand_style, layout_intent, generated_store_schema, created_at")
       .eq("store_instance_id", ownedStore.id)
       .order("created_at", { ascending: false })
       .limit(5);
@@ -332,6 +336,14 @@ export default async function StoreDraftPage({
     const aiLogs = Array.isArray(aiLogsData)
       ? (aiLogsData as Record<string, unknown>[])
       : [];
+    const aiQueueAttempts =
+      typeof aiQueue.attempts === "number" ? aiQueue.attempts : 0;
+    const aiQueueMaxAttempts =
+      typeof aiQueue.max_attempts === "number" ? aiQueue.max_attempts : 3;
+    const aiRetryPlan = getAIWorkerRetryPlan({
+      attempts: aiQueueAttempts,
+      max_attempts: aiQueueMaxAttempts
+    });
     const aiRequestPreview = createAIStoreGenerationRequest({
       brandStyle: "modern",
       language: textValue(settings, "language", "en"),
@@ -341,6 +353,14 @@ export default async function StoreDraftPage({
       targetAudience: "Online shoppers"
     });
     const aiPromptPreview = prepareStoreGenerationPrompt(aiRequestPreview);
+    const simulatedResultPreview = createSimulatedGeneratedStoreSchema(aiRequestPreview);
+    const latestGeneratedStoreSchema = aiGenerations[0]?.generated_store_schema;
+    const generatedResultPreview =
+      latestGeneratedStoreSchema &&
+      typeof latestGeneratedStoreSchema === "object" &&
+      !Array.isArray(latestGeneratedStoreSchema)
+        ? latestGeneratedStoreSchema
+        : simulatedResultPreview;
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -1008,8 +1028,18 @@ export default async function StoreDraftPage({
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
-                  Attempts {textValue(aiQueue, "attempts", "0")} / {textValue(aiQueue, "max_attempts", "3")}
+                  Attempts {numberValue(aiQueue, "attempts", "0")} / {numberValue(aiQueue, "max_attempts", "3")}
                 </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {["Run simulation", "Refresh progress"].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
               </div>
               <div className="grid gap-2">
                 {aiWorkflowProgressSteps.map((step) => (
@@ -1031,6 +1061,28 @@ export default async function StoreDraftPage({
                   </div>
                 ))}
               </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Retry preparation
+                </p>
+                <p className="mt-2 text-sm font-semibold text-muted">
+                  {aiRetryPlan.canRetry
+                    ? `${aiRetryPlan.remainingAttempts} simulated retry attempt${
+                        aiRetryPlan.remainingAttempts === 1 ? "" : "s"
+                      } remaining. Next delay: ${aiRetryPlan.nextDelaySeconds}s.`
+                    : "No simulated retry attempts remaining."}
+                </p>
+              </div>
+              {textValue(aiQueue, "error_message", "") ? (
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-red-500">
+                    Failure state
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-red-700">
+                    {textValue(aiQueue, "error_message", "Simulated workflow failed.")}
+                  </p>
+                </div>
+              ) : null}
               <div className="grid gap-2 sm:grid-cols-2">
                 {["Cancel generation", "Retry generation"].map((label) => (
                   <div
@@ -1078,6 +1130,19 @@ export default async function StoreDraftPage({
               </p>
               <pre className="mt-3 max-h-40 overflow-hidden rounded-2xl bg-white p-3 text-xs text-muted">
                 {aiPromptPreview}
+              </pre>
+            </div>
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Simulated result preview
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                This placeholder schema is generated locally for worker simulation
+                prep only. It does not call OpenAI, Gemini, image APIs, credits, or
+                payment systems.
+              </p>
+              <pre className="mt-3 max-h-56 overflow-hidden rounded-2xl bg-slate-50 p-3 text-xs text-muted">
+                {JSON.stringify(generatedResultPreview, null, 2)}
               </pre>
             </div>
           </Card>
