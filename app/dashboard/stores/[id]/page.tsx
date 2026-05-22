@@ -10,6 +10,16 @@ import {
   updateDraftSection
 } from "@/lib/builder-editing-actions";
 import { moveDraftSection } from "@/lib/builder-dnd-actions";
+import {
+  publishBuilderDraft,
+  restorePublishedLayout,
+  rollbackPublishedVersionAction,
+  syncLivePreviewState
+} from "@/lib/builder-publish-actions";
+import {
+  compareDraftVsPublished,
+  validateDraftBeforePublish
+} from "@/lib/builder-publish-utils";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -99,6 +109,23 @@ const builderStatusMessages: Record<string, string> = {
   "drag-move-saved": "Draft section order saved.",
   "drag-move-skipped": "Section is already in that drop position.",
   "duplicate-failed": "Draft section could not be duplicated.",
+  "preview-draft-missing": "Create a builder draft before refreshing preview.",
+  "preview-refreshed": "Draft preview synchronized safely.",
+  "preview-refresh-failed": "Draft preview refresh failed.",
+  "publish-complete": "Builder draft published as a new layout version.",
+  "publish-draft-missing": "Create a builder draft before publishing.",
+  "publish-invalid-draft": "Draft must contain at least one visible section before publishing.",
+  "publish-rollback-complete": "Publish failed and the previous active version was restored.",
+  "publish-version-failed": "Published layout version could not be created.",
+  "restore-complete": "Active published layout was copied back into the draft.",
+  "restore-draft-missing": "Create a builder draft before restoring published layout.",
+  "restore-failed": "Published layout could not be restored into draft.",
+  "restore-no-published": "No published layout is available to restore.",
+  "rollback-no-active-version": "No active published version is available to roll back.",
+  "rollback-no-previous-version": "No previous published version is available.",
+  "rollback-published-complete": "Active published layout rolled back to the previous version.",
+  "rollback-published-failed": "Published layout rollback failed.",
+  "rollback-published-missing": "Create a builder draft before rolling back published layout.",
   "last-section-protected": "At least one draft section must remain.",
   "missing-section": "Choose a draft section before editing.",
   "rollback-complete": "Builder draft rolled back to the latest saved history snapshot.",
@@ -296,7 +323,7 @@ export default async function StoreDraftPage({
     const { data: builderVersionsData } = builderPageId
       ? await supabase
           .from("builder_layout_versions" as never)
-          .select("id, version_number, status, published_at")
+          .select("id, version_number, status, published_at, layout_schema")
           .eq("builder_page_id", builderPageId)
           .order("version_number", { ascending: false })
           .limit(5)
@@ -353,6 +380,34 @@ export default async function StoreDraftPage({
     const builderDraftSections = Array.isArray(builderDraftSchema.sections)
       ? builderDraftSchema.sections
       : [];
+    const activePublishedVersion =
+      builderVersions.find(
+        (version) => textValue(version, "id", "") === textValue(builderPage, "active_version_id", "")
+      ) ?? builderVersions[0] ?? {};
+    const activePublishedSchema =
+      activePublishedVersion.layout_schema &&
+      typeof activePublishedVersion.layout_schema === "object" &&
+      !Array.isArray(activePublishedVersion.layout_schema)
+        ? (activePublishedVersion.layout_schema as never)
+        : null;
+    const draftPublishValidation = validateDraftBeforePublish({
+      layoutTree:
+        builderDraftSchema.layoutTree && typeof builderDraftSchema.layoutTree === "object"
+          ? (builderDraftSchema.layoutTree as Record<string, unknown>)
+          : builderDraftSchema.layout_tree && typeof builderDraftSchema.layout_tree === "object"
+            ? (builderDraftSchema.layout_tree as Record<string, unknown>)
+            : { root: { children: [] } },
+      responsive:
+        builderDraftSchema.responsive && typeof builderDraftSchema.responsive === "object"
+          ? (builderDraftSchema.responsive as never)
+          : { desktop: {}, mobile: {}, tablet: {} },
+      sections: builderDraftSections as never,
+      version: typeof builderDraftSchema.version === "number" ? builderDraftSchema.version : 1
+    });
+    const draftPublishedComparison = compareDraftVsPublished(
+      draftPublishValidation.schema,
+      activePublishedSchema
+    );
     const visualEditorSections = builderSectionDrafts.length
       ? builderSectionDrafts
       : builderDraftSections.length
@@ -362,12 +417,18 @@ export default async function StoreDraftPage({
       builderState.editor_state && typeof builderState.editor_state === "object"
         ? (builderState.editor_state as Record<string, unknown>)
         : {};
+    const draftEditorState =
+      builderDraft.editor_state && typeof builderDraft.editor_state === "object"
+        ? (builderDraft.editor_state as Record<string, unknown>)
+        : {};
     const builderMode = textValue(editorState, "mode", "desktop");
     const selectedSectionId = textValue(editorState, "selectedSectionId", "None selected");
     const draggingSectionId = textValue(editorState, "draggingSectionId", "Idle");
     const previewSyncPending =
-      typeof editorState.previewSyncPending === "boolean"
-        ? editorState.previewSyncPending
+      typeof draftEditorState.previewSyncPending === "boolean"
+        ? draftEditorState.previewSyncPending
+        : typeof editorState.previewSyncPending === "boolean"
+          ? editorState.previewSyncPending
         : false;
     const hasUnsavedChanges =
       builderDraft.has_unsaved_changes === true ||
@@ -936,6 +997,138 @@ export default async function StoreDraftPage({
                     ? `${builderVersions.length} layout version records are ready for restore/export flows.`
                     : "Published layout versions will appear here after publish actions are wired."}
                 </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Live preview and publish
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Preview refresh and publishing are isolated to builder drafts and
+                    versioned layouts. Storefront visibility and public routes are
+                    not changed by publishing a builder version.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {previewSyncPending ? "Preview pending" : "Preview synced"}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Draft sections", String(draftPublishedComparison.draftSectionCount)],
+                  ["Published sections", String(draftPublishedComparison.publishedSectionCount)],
+                  ["Schema changed", draftPublishedComparison.schemaChanged ? "Yes" : "No"],
+                  ["Order changed", draftPublishedComparison.orderChanged ? "Yes" : "No"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-sm font-black text-ink">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Isolated draft preview
+                  </p>
+                  <div className="mt-4 rounded-[2rem] border border-dashed border-slate-300 bg-white p-4">
+                    <div className="rounded-2xl bg-slate-900 p-4 text-white">
+                      <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-white/60">
+                        Draft preview panel
+                      </p>
+                      <h3 className="mt-2 text-xl font-black tracking-[-0.03em]">
+                        {textValue(settings, "store_name", ownedStore.store_name)}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-white/70">
+                        {draftPublishValidation.schema.sections.length
+                          ? `${draftPublishValidation.schema.sections.length} draft section${
+                              draftPublishValidation.schema.sections.length === 1 ? "" : "s"
+                            } prepared for preview rendering.`
+                          : "No draft sections are ready for preview yet."}
+                      </p>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {["Hydration safe", "Preview isolated", "Refresh state"].map((label) => (
+                        <div
+                          className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                          key={label}
+                        >
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <form action={syncLivePreviewState} className="mt-4">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <Button type="submit" variant="secondary">
+                      Refresh draft preview
+                    </Button>
+                  </form>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Publish flow
+                  </p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-black text-ink">
+                      Draft / published indicator
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      Active version{" "}
+                      {numberValue(activePublishedVersion, "version_number", "not published")} ·{" "}
+                      {hasUnsavedChanges ? "unsaved draft changes" : "draft clean"}
+                    </p>
+                  </div>
+                  {draftPublishValidation.errors.length ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                      {draftPublishValidation.errors[0]}
+                    </div>
+                  ) : null}
+                  <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-ink">
+                      Publish confirmation
+                    </summary>
+                    <p className="mt-3 text-sm leading-6 text-muted">
+                      Publishing creates a new builder layout version and points the
+                      active builder page to it. It does not publish a private store
+                      or change public storefront visibility.
+                    </p>
+                    <form action={publishBuilderDraft} className="mt-3">
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <Button disabled={Boolean(draftPublishValidation.errors.length)} type="submit">
+                        Publish builder draft
+                      </Button>
+                    </form>
+                  </details>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <form action={restorePublishedLayout}>
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <Button className="w-full" type="submit" variant="secondary">
+                        Restore published
+                      </Button>
+                    </form>
+                    <form action={rollbackPublishedVersionAction}>
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <Button className="w-full" type="submit" variant="secondary">
+                        Roll back published
+                      </Button>
+                    </form>
+                  </div>
+                  <div className="grid gap-2">
+                    {["Realtime preview prep", "Scheduled publishing prep", "Preview sharing prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
