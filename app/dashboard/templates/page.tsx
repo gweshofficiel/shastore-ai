@@ -8,6 +8,12 @@ import {
   createAITemplateCustomizationAction
 } from "@/lib/ai-template-customization-actions";
 import {
+  applyAISuggestionToDraftAction,
+  previewAIChangesAction,
+  rejectAISuggestionAction,
+  rollbackAIApplicationAction
+} from "@/lib/ai-draft-application-actions";
+import {
   applyControlledOpenAIToDraftAction,
   executeControlledOpenAIAction
 } from "@/lib/openai-execution-actions";
@@ -33,6 +39,18 @@ const statusMessages: Record<string, string> = {
   "ai-customization-invalid": "Add a niche and a useful business description before customizing.",
   "ai-customization-missing": "Choose a store and template before customizing with AI.",
   "ai-customization-missing-suggestions": "Create AI suggestions before applying them to a draft.",
+  "ai-application-applied": "AI suggestion was applied safely to the selected draft.",
+  "ai-application-draft-missing": "Create a builder draft before applying AI changes.",
+  "ai-application-failed": "AI suggestion could not be applied to the draft.",
+  "ai-application-invalid": "AI suggestion patch is not safe to apply.",
+  "ai-application-missing": "Choose a store and template before reviewing AI suggestions.",
+  "ai-application-no-suggestion": "Prepare AI suggestions before reviewing draft changes.",
+  "ai-application-preview-created": "AI change preview was prepared.",
+  "ai-application-preview-failed": "AI change preview could not be prepared.",
+  "ai-application-rejected": "AI suggestion was rejected.",
+  "ai-application-rollback-failed": "AI draft application rollback failed.",
+  "ai-application-rollback-missing": "Choose an AI draft application to roll back.",
+  "ai-application-rolled-back": "AI draft application was rolled back to its snapshot.",
   "openai-execution-applied": "Controlled OpenAI output was applied to the selected store draft only.",
   "openai-execution-apply-failed": "Controlled OpenAI output could not be applied to draft.",
   "openai-execution-complete": "Controlled OpenAI execution completed and output was validated.",
@@ -175,6 +193,48 @@ async function getLatestOpenAIExecutionForStore(storeId: string, customizationId
   };
 }
 
+async function getLatestAIApplicationForStore(storeId: string, customizationId: string) {
+  if (!storeId || !customizationId) {
+    return { application: null, preview: null, review: null };
+  }
+
+  const supabase = await createClient();
+  const { data: applicationData } = await supabase
+    .from("ai_draft_applications" as never)
+    .select("id, application_status, application_scope, applied_fields, rejected_fields, before_snapshot, after_snapshot, rollback_snapshot, created_at")
+    .eq("store_instance_id", storeId)
+    .eq("customization_id", customizationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const application = applicationData ? (applicationData as Record<string, unknown>) : null;
+  const applicationId = typeof application?.id === "string" ? application.id : "";
+  const { data: previewData } = applicationId
+    ? await supabase
+        .from("ai_change_previews" as never)
+        .select("preview_status, diff_summary, safe_patch, blocked_patch, draft_sync_state, created_at")
+        .eq("draft_application_id", applicationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const { data: reviewData } = applicationId
+    ? await supabase
+        .from("ai_suggestion_reviews" as never)
+        .select("review_status, reviewed_fields, rejected_fields, review_notes, partial_apply_config, created_at")
+        .eq("draft_application_id", applicationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
+  return {
+    application,
+    preview: previewData ? (previewData as Record<string, unknown>) : null,
+    review: reviewData ? (reviewData as Record<string, unknown>) : null
+  };
+}
+
 function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -214,6 +274,10 @@ export default async function TemplatesPage({
     selectedStoreId,
     latestCustomizationId
   );
+  const latestAIApplication = await getLatestAIApplicationForStore(
+    selectedStoreId,
+    latestCustomizationId
+  );
   const aiSuggestedChanges = recordValue(latestAICustomization?.suggested_changes);
   const aiBrandingSuggestion = recordValue(aiSuggestedChanges.branding);
   const aiCopySuggestion = recordValue(aiSuggestedChanges.copy);
@@ -221,6 +285,11 @@ export default async function TemplatesPage({
   const openAIValidation = recordValue(latestOpenAIExecution.validation);
   const openAISanitizedOutput = recordValue(openAIValidation.sanitized_output);
   const openAICopyPreview = recordValue(openAISanitizedOutput.copy);
+  const aiApplicationRecord = latestAIApplication.application ?? {};
+  const aiApplicationPreview = latestAIApplication.preview ?? {};
+  const aiApplicationReview = latestAIApplication.review ?? {};
+  const aiDiffSummary = recordValue(aiApplicationPreview.diff_summary);
+  const aiDraftSyncState = recordValue(aiApplicationPreview.draft_sync_state);
   const message = params.templateApply ? statusMessages[params.templateApply] : "";
 
   return (
@@ -497,6 +566,90 @@ export default async function TemplatesPage({
                       </p>
                     )}
                   </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    AI draft application review
+                  </p>
+                  <p className="text-sm leading-6 text-muted">
+                    Preview AI patches, apply safe changes to draft, reject a suggestion,
+                    or roll back the latest AI draft application snapshot. Published
+                    storefronts stay untouched.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <form action={previewAIChangesAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <Button className="w-full" disabled={!selectedStoreId} type="submit" variant="secondary">
+                        Preview AI diff
+                      </Button>
+                    </form>
+                    <form action={applyAISuggestionToDraftAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <Button className="w-full" disabled={!selectedStoreId} type="submit">
+                        Apply safe patch
+                      </Button>
+                    </form>
+                    <form action={rejectAISuggestionAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <input name="reason" type="hidden" value="Rejected from template AI review panel." />
+                      <Button className="w-full" disabled={!selectedStoreId} type="submit" variant="secondary">
+                        Reject suggestion
+                      </Button>
+                    </form>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Application", textValue(aiApplicationRecord, "application_status", "No preview")],
+                      ["Review", textValue(aiApplicationReview, "review_status", "Pending")],
+                      ["Draft sync", textValue(aiDraftSyncState, "syncedAt", "Not synced")],
+                      ["Copy diff", String(aiDiffSummary.copyChanged === true ? "Changed" : "Pending")]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black capitalize text-ink">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      AI diff preview placeholder
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-muted">
+                      Sections: {String(aiDiffSummary.beforeSections ?? 0)} · Delta:{" "}
+                      {String(aiDiffSummary.sectionCountChanged ?? 0)} · Layout recommendations:{" "}
+                      {String(aiDiffSummary.layoutRecommendationsReady === true ? "Ready" : "Pending")}
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      "Partial apply placeholder",
+                      "AI draft sync placeholder",
+                      "AI visual editing prep",
+                      "Conversational editing prep"
+                    ].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  {textValue(aiApplicationRecord, "id", "") ? (
+                    <form action={rollbackAIApplicationAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <input name="applicationId" type="hidden" value={textValue(aiApplicationRecord, "id", "")} />
+                      <Button className="w-full" type="submit" variant="secondary">
+                        Roll back AI draft application
+                      </Button>
+                    </form>
+                  ) : null}
                 </div>
               </>
             ) : (
