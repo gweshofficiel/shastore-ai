@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   connectStoreCustomDomain,
+  deleteStoreDomain,
   markStoreDomainVerificationPending,
   setPrimaryStoreDomain,
   setStoreSubdomain
@@ -16,7 +17,9 @@ import {
 
 const statusMessages: Record<string, string> = {
   "custom-domain-saved": "Custom domain prepared for DNS verification.",
+  "delete-failed": "Domain record could not be deleted.",
   "domain-not-found": "Domain record was not found for this store.",
+  "domain-deleted": "Domain record deleted.",
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
@@ -82,6 +85,11 @@ export default async function DomainsPage({
       {message ? (
         <Card className="border-slate-200 bg-white p-5">
           <p className="text-sm font-bold text-ink">{message}</p>
+        </Card>
+      ) : null}
+      {data.error ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">{data.error}</p>
         </Card>
       ) : null}
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -252,6 +260,13 @@ export default async function DomainsPage({
                       </Button>
                     </form>
                   ) : null}
+                  <form action={deleteStoreDomain}>
+                    <input name="storeId" type="hidden" value={domain.store_instance_id} />
+                    <input name="domainId" type="hidden" value={domain.id} />
+                    <Button type="submit" variant="ghost">
+                      Delete
+                    </Button>
+                  </form>
                 </div>
               </div>
             ))

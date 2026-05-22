@@ -29,6 +29,7 @@ export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
   domains: StoreDomainRecord[];
   domainBase: string;
+  error: string | null;
   ready: boolean;
   stores: ClaimedStoreForDomains[];
 };
@@ -66,14 +67,27 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       domains: [],
       domainBase: getDomainBase(),
+      error: null,
       ready: true,
       stores: []
     };
   }
 
-  const { data: storesData } = await supabase.rpc(
+  const { data: storesData, error: storesError } = await supabase.rpc(
     "get_claimed_store_instances_for_current_user" as never
   );
+
+  if (storesError) {
+    return {
+      activeStore: null,
+      domains: [],
+      domainBase: getDomainBase(),
+      error: "Unable to load claimed buyer stores for domain management.",
+      ready: true,
+      stores: []
+    };
+  }
+
   const stores = Array.isArray(storesData)
     ? ((storesData as ClaimedStoreForDomains[]).filter(
         (store) =>
@@ -88,6 +102,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       domains: [],
       domainBase: getDomainBase(),
+      error: null,
       ready: true,
       stores
     };
@@ -106,6 +121,10 @@ export async function getStoreDomainsDashboardData(
       ? []
       : ((domainsResult.data ?? []) as StoreDomainRecord[]),
     domainBase: getDomainBase(),
+    error:
+      domainsResult.error && !isMissingStoreDomainsTable(domainsResult.error)
+        ? "Unable to load domains for this store."
+        : null,
     ready: !isMissingStoreDomainsTable(domainsResult.error),
     stores
   };

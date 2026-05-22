@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { resolveStoreByHostname } from "@/lib/domains/utils";
+import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
 
 export type PublicStorefrontProduct = {
   description: string | null;
@@ -118,11 +118,11 @@ export async function getPublicStorefrontPreview(slug: string) {
 }
 
 export async function getPublicStorefrontPreviewByHostname(hostname: string) {
-  const slug = await resolveStoreByHostname(hostname);
+  const context = await getStorefrontContextFromHostname(hostname);
 
-  if (!slug) {
+  if (!context) {
     return null;
   }
 
-  return getPublicStorefrontPreview(slug);
+  return getPublicStorefrontPreview(context.storeSlug);
 }

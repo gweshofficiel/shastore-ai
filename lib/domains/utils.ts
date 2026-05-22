@@ -1,5 +1,14 @@
 import { getDomainBase } from "@/lib/domains/hostinsh";
-import { createClient } from "@/lib/supabase/server";
+
+type HostnameResolverClient = {
+  rpc: (
+    functionName: never,
+    args: never
+  ) => Promise<{
+    data: unknown;
+    error: { code?: string; message?: string } | null;
+  }>;
+};
 
 const reservedSubdomains = new Set([
   "admin",
@@ -22,6 +31,20 @@ const reservedSubdomains = new Set([
   "www"
 ]);
 
+function isMissingResolver(error: { code?: string; message?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "PGRST202" ||
+    error.code === "PGRST205" ||
+    message.includes("resolve_storefront_hostname") ||
+    message.includes("schema cache")
+  );
+}
+
 export function normalizeSubdomain(value: string) {
   return value
     .trim()
@@ -38,6 +61,7 @@ export function normalizeHostname(value: string) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "")
     .replace(/[^a-z0-9.-]/g, "")
     .replace(/\.+/g, ".")
     .replace(/(^\.|\.$)+/g, "")
@@ -74,6 +98,10 @@ export function extractSubdomain(hostname: string, baseDomain = getDomainBase())
   return subdomain.includes(".") ? "" : normalizeSubdomain(subdomain);
 }
 
+function extractLocalhostSubdomain(hostname: string) {
+  return extractSubdomain(hostname, "localhost");
+}
+
 export function isReservedSubdomain(value: string) {
   return reservedSubdomains.has(normalizeSubdomain(value));
 }
@@ -100,29 +128,37 @@ export function cleanSourceSlug(value: string) {
     .slice(0, 120);
 }
 
-export async function resolveStoreByHostname(hostname: string) {
+export async function resolveStoreByHostname(
+  hostname: string,
+  resolverClient?: HostnameResolverClient
+) {
   const normalizedHostname = normalizeHostname(hostname);
 
-  if (
-    !normalizedHostname ||
-    normalizedHostname === "localhost" ||
-    normalizedHostname.startsWith("localhost:") ||
-    normalizedHostname.endsWith(".localhost")
-  ) {
+  if (!normalizedHostname || normalizedHostname === "localhost") {
     return null;
   }
 
-  const supabase = await createClient();
+  const localhostSubdomain = extractLocalhostSubdomain(normalizedHostname);
+
+  if (localhostSubdomain && !isReservedSubdomain(localhostSubdomain)) {
+    return localhostSubdomain;
+  }
+
+  const supabase =
+    resolverClient ?? (await (await import("@/lib/supabase/server")).createClient());
   const { data, error } = await supabase.rpc("resolve_storefront_hostname" as never, {
     candidate_hostname: normalizedHostname
   } as never);
 
   if (error) {
-    console.error("[domains] storefront hostname resolution failed", {
-      code: error.code,
-      hostname: normalizedHostname,
-      message: error.message
-    });
+    if (!isMissingResolver(error)) {
+      console.error("[domains] storefront hostname resolution failed", {
+        code: error.code,
+        hostname: normalizedHostname,
+        message: error.message
+      });
+    }
+
     return null;
   }
 

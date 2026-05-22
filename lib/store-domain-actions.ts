@@ -92,7 +92,7 @@ async function ensureHostnameAvailable(
 async function clearPrimaryDomain(supabase: SupabaseClient, storeId: string) {
   await supabase
     .from("store_domains" as never)
-    .update({ is_primary: false } as never)
+    .update({ is_primary: false, primary_domain: null } as never)
     .eq("store_instance_id", storeId);
 }
 
@@ -117,22 +117,34 @@ export async function setStoreSubdomain(formData: FormData) {
 
   await clearPrimaryDomain(supabase, storeId);
 
-  const { error } = await supabase.from("store_domains" as never).upsert(
-    {
-      custom_domain: null,
-      dns_status: "verified",
-      domain_type: "subdomain",
-      hostname,
-      is_primary: true,
-      owner_user_id: userId,
-      primary_domain: hostname,
-      ssl_status: "active",
-      store_instance_id: storeId,
-      subdomain,
-      verification_status: "verified"
-    } as never,
-    { onConflict: "store_instance_id,hostname" }
-  );
+  const subdomainPayload = {
+    custom_domain: null,
+    dns_status: "verified",
+    domain_type: "subdomain",
+    hostname,
+    is_primary: true,
+    owner_user_id: userId,
+    primary_domain: hostname,
+    ssl_status: "active",
+    store_instance_id: storeId,
+    subdomain,
+    verification_status: "verified"
+  };
+  const { data: existingSubdomain } = await supabase
+    .from("store_domains" as never)
+    .select("id")
+    .eq("store_instance_id", storeId)
+    .eq("domain_type", "subdomain")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const { error } = existingSubdomain
+    ? await supabase
+        .from("store_domains" as never)
+        .update(subdomainPayload as never)
+        .eq("id", (existingSubdomain as { id: string }).id)
+        .eq("store_instance_id", storeId)
+    : await supabase.from("store_domains" as never).insert(subdomainPayload as never);
 
   if (error) {
     console.error("[store-domains] set subdomain failed", {
@@ -263,4 +275,26 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "verification-pending");
+}
+
+export async function deleteStoreDomain(formData: FormData) {
+  const { storeId, supabase } = await requireClaimedStore(formData);
+  const domainId = cleanText(formData.get("domainId"), 80);
+
+  if (!domainId) {
+    domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { error } = await supabase
+    .from("store_domains" as never)
+    .delete()
+    .eq("id", domainId)
+    .eq("store_instance_id", storeId);
+
+  if (error) {
+    domainsRedirect(storeId, "delete-failed");
+  }
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-deleted");
 }
