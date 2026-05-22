@@ -9,6 +9,7 @@ import {
   toggleDraftSectionVisibility,
   updateDraftSection
 } from "@/lib/builder-editing-actions";
+import { moveDraftSection } from "@/lib/builder-dnd-actions";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -92,6 +93,11 @@ type OwnedStoreManagementRow = {
 const builderStatusMessages: Record<string, string> = {
   "create-failed": "Draft section could not be created.",
   "delete-failed": "Draft section could not be deleted.",
+  "drag-draft-missing": "Initialize a builder draft before moving sections.",
+  "drag-move-failed": "Section move failed and rollback was attempted.",
+  "drag-move-invalid": "Section move is not valid for the current draft order.",
+  "drag-move-saved": "Draft section order saved.",
+  "drag-move-skipped": "Section is already in that drop position.",
   "duplicate-failed": "Draft section could not be duplicated.",
   "last-section-protected": "At least one draft section must remain.",
   "missing-section": "Choose a draft section before editing.",
@@ -1018,6 +1024,79 @@ export default async function StoreDraftPage({
                 />
                 <Button type="submit">Create draft section</Button>
               </form>
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Drag/drop interaction layer
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      Drop zones persist draft ordering through `moveDraftSection()`.
+                      Use the selector as a mobile-safe fallback until pointer drag
+                      events are wired.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                    Optimistic order ready
+                  </span>
+                </div>
+                <div className="grid gap-2">
+                  {builderSectionDrafts.length > 1 ? (
+                    builderSectionDrafts.map((targetSection, targetIndex) => (
+                      <div
+                        className="grid gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3"
+                        data-builder-drop-zone="true"
+                        data-drop-index={targetIndex}
+                        key={`drop-zone-${String(targetSection.id)}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="h-px flex-1 bg-slate-200" />
+                          <span className="rounded-full bg-slate-50 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                            Insert before {textValue(targetSection, "section_type", "section").replace(/_/g, " ")}
+                          </span>
+                          <span className="h-px flex-1 bg-slate-200" />
+                        </div>
+                        <form action={moveDraftSection} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <input name="storeId" type="hidden" value={ownedStore.id} />
+                          <input name="targetIndex" type="hidden" value={String(targetIndex)} />
+                          <input name="position" type="hidden" value="before" />
+                          <select
+                            className="h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-ink"
+                            name="sectionId"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>
+                              Choose section to move
+                            </option>
+                            {builderSectionDrafts.map((section) => (
+                              <option key={String(section.id)} value={String(section.id)}>
+                                {textValue(section, "section_type", "section").replace(/_/g, " ")}
+                              </option>
+                            ))}
+                          </select>
+                          <Button type="submit" variant="secondary">
+                            Drop here
+                          </Button>
+                        </form>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm font-semibold text-muted">
+                      Add at least two draft sections to enable drag reorder persistence.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {["Insertion indicators", "Hover states", "Movement animation prep"].map((label) => (
+                    <div
+                      className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                      key={label}
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="grid gap-3 lg:grid-cols-[18rem_1fr]">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1036,7 +1115,11 @@ export default async function StoreDraftPage({
 
                         return (
                           <div
-                            className="rounded-2xl border border-slate-200 bg-white p-3"
+                            className="rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-slate-300"
+                            data-builder-draggable-card={hasDraftRecord ? "true" : "false"}
+                            data-builder-hover-state="ready"
+                            data-builder-section-id={sectionId}
+                            draggable={hasDraftRecord}
                             key={sectionId || `${sectionType}-${index}`}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1057,6 +1140,9 @@ export default async function StoreDraftPage({
                             </div>
                             {hasDraftRecord ? (
                               <div className="mt-3 grid gap-2">
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-2 text-center text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                                  Drag handle · Stable key {sectionId.slice(0, 8)}
+                                </div>
                                 <div className="grid grid-cols-2 gap-2">
                                   {[
                                     ["up", "Move up"],
@@ -1169,7 +1255,7 @@ export default async function StoreDraftPage({
                     </div>
                   )}
                   <div className="grid gap-2 sm:grid-cols-3">
-                    {["Draft preview state", "Hydration safe preview", "Isolated rendering"].map((label) => (
+                    {["Draft preview state", "Hydration safe preview", "Isolated rendering", "No flicker ordering", "Mobile fallback", "Stable keys"].map((label) => (
                       <div
                         className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                         key={label}
