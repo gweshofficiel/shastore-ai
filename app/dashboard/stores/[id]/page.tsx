@@ -34,6 +34,7 @@ import {
   createAIStoreGenerationRequest,
   prepareStoreGenerationPrompt
 } from "@/lib/storefront/ai-generation";
+import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -287,6 +288,49 @@ export default async function StoreDraftPage({
       .limit(5);
     const aiJobs = Array.isArray(aiJobsData)
       ? (aiJobsData as Record<string, unknown>[])
+      : [];
+    const { data: aiQueueData } = await supabase
+      .from("ai_generation_queue" as never)
+      .select("id, generation_id, workflow_state, queue_status, attempts, max_attempts, error_message, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const aiQueue = (aiQueueData ?? {}) as Record<string, unknown>;
+    const aiQueueId = textValue(aiQueue, "id", "");
+    const { data: aiStepsData } = aiQueueId
+      ? await supabase
+          .from("ai_generation_steps" as never)
+          .select("id, step_order, step_key, step_status, started_at, completed_at, error_message")
+          .eq("queue_id", aiQueueId)
+          .order("step_order", { ascending: true })
+      : { data: [] };
+    const aiWorkflowStepRows = Array.isArray(aiStepsData)
+      ? (aiStepsData as Record<string, unknown>[])
+      : [];
+    const aiStepRowsByKey = new Map(
+      aiWorkflowStepRows.map((step) => [textValue(step, "step_key", ""), step])
+    );
+    const aiWorkflowProgressSteps = aiWorkflowSteps.map((step) => {
+      const row = aiStepRowsByKey.get(step.key);
+
+      return {
+        key: step.key,
+        label: step.key.replace(/_/g, " "),
+        order: step.order,
+        status: row ? textValue(row, "step_status", "pending") : "pending"
+      };
+    });
+    const { data: aiLogsData } = aiQueueId
+      ? await supabase
+          .from("ai_generation_logs" as never)
+          .select("id, log_level, message, created_at")
+          .eq("queue_id", aiQueueId)
+          .order("created_at", { ascending: false })
+          .limit(5)
+      : { data: [] };
+    const aiLogs = Array.isArray(aiLogsData)
+      ? (aiLogsData as Record<string, unknown>[])
       : [];
     const aiRequestPreview = createAIStoreGenerationRequest({
       brandStyle: "modern",
@@ -950,6 +994,79 @@ export default async function StoreDraftPage({
                   {aiJobs.length} job placeholder{aiJobs.length === 1 ? "" : "s"} ready for future provider execution.
                 </p>
               ) : null}
+            </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Queue workflow
+                  </p>
+                  <p className="mt-2 text-sm font-black capitalize text-ink">
+                    {aiQueueId
+                      ? `${workflowStatusLabel(aiQueue.workflow_state)} · ${workflowStatusLabel(aiQueue.queue_status)}`
+                      : "No queued workflow"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  Attempts {textValue(aiQueue, "attempts", "0")} / {textValue(aiQueue, "max_attempts", "3")}
+                </span>
+              </div>
+              <div className="grid gap-2">
+                {aiWorkflowProgressSteps.map((step) => (
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    key={step.key}
+                  >
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-ink">
+                        {step.label}
+                      </p>
+                      <p className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Step {step.order}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                      {step.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {["Cancel generation", "Retry generation"].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Workflow logs
+              </p>
+              <div className="mt-3 grid gap-2">
+                {aiLogs.length ? (
+                  aiLogs.map((log) => (
+                    <div
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                      key={String(log.id)}
+                    >
+                      <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                        {textValue(log, "log_level", "info")}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-muted">
+                        {textValue(log, "message", "Workflow log placeholder")}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                    Workflow logs will appear here when queue processing is wired.
+                  </p>
+                )}
+              </div>
             </div>
             <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
