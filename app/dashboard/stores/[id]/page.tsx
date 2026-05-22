@@ -37,6 +37,12 @@ import {
   refreshPreviewStateAction,
   syncDraftPreviewAction
 } from "@/lib/builder-preview-runtime-actions";
+import {
+  publishStorefrontDraftAction,
+  refreshStoreLaunchReadinessAction,
+  rollbackLaunchPublishAction
+} from "@/lib/store-launch-actions";
+import { getStoreLaunchReadiness, getLaunchStatus } from "@/lib/store-launch";
 import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
 import {
   compareDraftVsPublished,
@@ -184,6 +190,14 @@ const builderStatusMessages: Record<string, string> = {
   "rollback-published-failed": "Published layout rollback failed.",
   "rollback-published-missing": "Create a builder draft before rolling back published layout.",
   "last-section-protected": "At least one draft section must remain.",
+  "launch-complete": "Store launch completed and storefront visibility is public.",
+  "launch-draft-missing": "Create a builder draft before launching.",
+  "launch-not-authorized": "You are not authorized to launch this store.",
+  "launch-publish-failed": "Store launch publish failed and rollback safety was preserved.",
+  "launch-readiness-blocked": "Launch readiness has blocking items.",
+  "launch-ready": "Launch readiness checklist is ready.",
+  "launch-rollback-prepared": "Launch rollback placeholder was recorded and storefront visibility was set private.",
+  "launch-validation-blocked": "Store launch validation found blocking items.",
   "missing-section": "Choose a draft section before editing.",
   "rollback-complete": "Builder draft rolled back to the latest saved history snapshot.",
   "rollback-empty": "No builder history snapshot is available yet.",
@@ -490,6 +504,31 @@ export default async function StoreDraftPage({
           .maybeSingle()
       : { data: null };
     const previewRenderCache = (previewRenderCacheData ?? {}) as Record<string, unknown>;
+    const { data: launchChecklistData } = await supabase
+      .from("store_launch_checklists" as never)
+      .select("id, checklist_status, checklist_items, readiness_score, blocking_reasons, launch_metadata, completed_at, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const launchChecklist = (launchChecklistData ?? {}) as Record<string, unknown>;
+    const { data: launchValidationData } = await supabase
+      .from("store_publish_validations" as never)
+      .select("validation_status, validation_results, warnings, blocking_errors, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const launchValidationRecord = (launchValidationData ?? {}) as Record<string, unknown>;
+    const { data: launchEventsData } = await supabase
+      .from("store_launch_events" as never)
+      .select("id, event_type, event_status, event_payload, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const launchEvents = Array.isArray(launchEventsData)
+      ? (launchEventsData as Record<string, unknown>[])
+      : [];
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -552,6 +591,36 @@ export default async function StoreDraftPage({
       sections: builderDraftSections as never,
       version: typeof builderDraftSchema.version === "number" ? builderDraftSchema.version : 1
     });
+    const launchReadiness = getStoreLaunchReadiness({
+      activeTheme,
+      activeVersionId: textValue(activePublishedVersion, "id", ""),
+      builderDraftSchema: draftPublishValidation.schema,
+      connectedDomain: ownedStore.connected_domain ?? ownedStore.requested_domain,
+      domains,
+      storeStatus: ownedStore.status,
+      storeVisibility: ownedStore.visibility
+    });
+    const launchStatus = getLaunchStatus({
+      activeTheme,
+      activeVersionId: textValue(activePublishedVersion, "id", ""),
+      builderDraftSchema: draftPublishValidation.schema,
+      connectedDomain: ownedStore.connected_domain ?? ownedStore.requested_domain,
+      domains,
+      storeStatus: ownedStore.status,
+      storeVisibility: ownedStore.visibility
+    });
+    const persistedChecklistItems = Array.isArray(launchChecklist.checklist_items)
+      ? (launchChecklist.checklist_items as Array<Record<string, unknown>>)
+      : [];
+    const launchChecklistItems = persistedChecklistItems.length
+      ? persistedChecklistItems
+      : (launchReadiness.items as unknown as Array<Record<string, unknown>>);
+    const launchWarnings = Array.isArray(launchValidationRecord.warnings)
+      ? (launchValidationRecord.warnings as Array<Record<string, unknown>>)
+      : (launchReadiness.warnings as unknown as Array<Record<string, unknown>>);
+    const launchBlockingReasons = Array.isArray(launchValidationRecord.blocking_errors)
+      ? (launchValidationRecord.blocking_errors as Array<Record<string, unknown>>)
+      : (launchReadiness.blockingReasons as unknown as Array<Record<string, unknown>>);
     const draftPublishedComparison = compareDraftVsPublished(
       draftPublishValidation.schema,
       activePublishedSchema
@@ -1351,6 +1420,160 @@ export default async function StoreDraftPage({
                   </div>
                   <div className="grid gap-2">
                     {["Realtime preview prep", "Scheduled publishing prep", "Preview sharing prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Store launch flow
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Launch validates ownership, domain readiness, publishable draft,
+                    theme configuration, visible sections, and system status before
+                    making the buyer-owned storefront public.
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${
+                  launchStatus === "launched"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : launchStatus === "ready"
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-amber-100 text-amber-700"
+                }`}>
+                  {launchStatus}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Readiness", `${numberValue(launchChecklist, "readiness_score", String(launchReadiness.readinessScore))}%`],
+                  ["Checklist", textValue(launchChecklist, "checklist_status", launchReadiness.checklistStatus)],
+                  ["Validation", textValue(launchValidationRecord, "validation_status", launchReadiness.blockingReasons.length ? "blocked" : "pending")],
+                  ["Visibility", ownedStore.visibility === "public" ? "Public" : "Private"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black capitalize text-ink">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Launch checklist
+                  </p>
+                  <div className="grid gap-2">
+                    {launchChecklistItems.map((item) => (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3" key={textValue(item, "key", textValue(item, "label", "item"))}>
+                        <div>
+                          <p className="text-sm font-black text-ink">
+                            {textValue(item, "label", "Launch checklist item")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(item, "severity", "blocking")}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] ${
+                          item.passed === true ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {item.passed === true ? "Ready" : "Needs review"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <form action={refreshStoreLaunchReadinessAction}>
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <Button className="w-full" type="submit" variant="secondary">
+                      Refresh launch readiness
+                    </Button>
+                  </form>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Production publish confirmation
+                  </p>
+                  {launchBlockingReasons.length ? (
+                    <div className="grid gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-sm font-black text-amber-800">Validation warnings</p>
+                      {launchBlockingReasons.slice(0, 3).map((reason) => (
+                        <p className="text-sm font-semibold text-amber-800" key={textValue(reason, "key", textValue(reason, "label", "reason"))}>
+                          {textValue(reason, "label", "Launch requirement needs review.")}
+                        </p>
+                      ))}
+                    </div>
+                  ) : launchWarnings.length ? (
+                    <div className="grid gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-sm font-black text-blue-800">Non-blocking launch warnings</p>
+                      {launchWarnings.slice(0, 2).map((warning) => (
+                        <p className="text-sm font-semibold text-blue-800" key={textValue(warning, "key", textValue(warning, "label", "warning"))}>
+                          {textValue(warning, "label", "Optional launch item can be improved later.")}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-sm font-black text-emerald-700">
+                        Launch success state ready
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-emerald-700">
+                        Publishing will create a versioned layout, keep preview isolated,
+                        and set storefront visibility public through the existing safe RPC.
+                      </p>
+                    </div>
+                  )}
+                  <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-ink">
+                      Confirm store launch
+                    </summary>
+                    <p className="mt-3 text-sm leading-6 text-muted">
+                      This action publishes the current builder draft as a versioned
+                      live layout and makes the store public. Draft preview remains
+                      isolated and rollback records are prepared.
+                    </p>
+                    <form action={publishStorefrontDraftAction} className="mt-3">
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <Button disabled={Boolean(launchBlockingReasons.length)} type="submit">
+                        Launch storefront
+                      </Button>
+                    </form>
+                  </details>
+                  <form action={rollbackLaunchPublishAction}>
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <Button className="w-full" type="submit" variant="secondary">
+                      Rollback launch placeholder
+                    </Button>
+                  </form>
+                  <div className="grid gap-2">
+                    {launchEvents.length ? (
+                      launchEvents.map((event) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(event.id)}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(event, "event_type", "launch event").replace(/_/g, " ")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(event, "event_status", "recorded")} · {textValue(event, "created_at", "Pending")}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Launch audit trail events will appear after readiness checks or publishing.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {["Scheduled publishing prep", "Launch email prep", "Launch analytics prep", "QA automation prep"].map((label) => (
                       <div
                         className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                         key={label}
