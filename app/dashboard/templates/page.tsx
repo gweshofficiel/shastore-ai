@@ -7,6 +7,10 @@ import {
   applyAITemplateSuggestionsToDraftAction,
   createAITemplateCustomizationAction
 } from "@/lib/ai-template-customization-actions";
+import {
+  applyControlledOpenAIToDraftAction,
+  executeControlledOpenAIAction
+} from "@/lib/openai-execution-actions";
 import { applyTemplateToStore } from "@/lib/template-application-actions";
 import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
 import { createClient } from "@/lib/supabase/server";
@@ -29,6 +33,17 @@ const statusMessages: Record<string, string> = {
   "ai-customization-invalid": "Add a niche and a useful business description before customizing.",
   "ai-customization-missing": "Choose a store and template before customizing with AI.",
   "ai-customization-missing-suggestions": "Create AI suggestions before applying them to a draft.",
+  "openai-execution-applied": "Controlled OpenAI output was applied to the selected store draft only.",
+  "openai-execution-apply-failed": "Controlled OpenAI output could not be applied to draft.",
+  "openai-execution-complete": "Controlled OpenAI execution completed and output was validated.",
+  "openai-execution-draft-missing": "Create or apply a template draft before applying OpenAI output.",
+  "openai-execution-failed": "Controlled OpenAI execution failed or returned invalid output.",
+  "openai-execution-invalid-output": "Latest OpenAI output is not safe to apply.",
+  "openai-execution-log-failed": "Controlled OpenAI execution log could not be created.",
+  "openai-execution-missing": "Choose a store and template before executing OpenAI.",
+  "openai-execution-missing-key": "OpenAI execution is ready but OPENAI_API_KEY is not configured.",
+  "openai-execution-needs-customization": "Prepare AI customization suggestions before executing OpenAI.",
+  "openai-execution-no-output": "No validated OpenAI output is ready to apply.",
   applied: "Template applied to the selected store draft. Published storefront remains unchanged.",
   "apply-failed": "Template application failed and rollback was attempted.",
   "draft-created": "Template draft was created.",
@@ -119,6 +134,47 @@ async function getLatestAICustomizationForStore(storeId: string, templateId: str
   return data ? (data as Record<string, unknown>) : null;
 }
 
+async function getLatestOpenAIExecutionForStore(storeId: string, customizationId: string) {
+  if (!storeId || !customizationId) {
+    return { attempts: [], log: null, validation: null };
+  }
+
+  const supabase = await createClient();
+  const { data: logData } = await supabase
+    .from("ai_execution_logs" as never)
+    .select("id, execution_status, prompt_preview, safe_actions, blocked_actions, created_at")
+    .eq("store_instance_id", storeId)
+    .eq("customization_id", customizationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const log = logData ? (logData as Record<string, unknown>) : null;
+  const logId = typeof log?.id === "string" ? log.id : "";
+  const { data: attemptsData } = logId
+    ? await supabase
+        .from("ai_execution_attempts" as never)
+        .select("id, attempt_status, attempt_number, model_key, error_message, token_usage, created_at")
+        .eq("execution_log_id", logId)
+        .order("attempt_number", { ascending: false })
+        .limit(3)
+    : { data: [] };
+  const { data: validationData } = logId
+    ? await supabase
+        .from("ai_response_validations" as never)
+        .select("validation_status, validation_errors, blocked_fields, sanitized_output, mapped_draft_preview, created_at")
+        .eq("execution_log_id", logId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
+  return {
+    attempts: Array.isArray(attemptsData) ? (attemptsData as Record<string, unknown>[]) : [],
+    log,
+    validation: validationData ? (validationData as Record<string, unknown>) : null
+  };
+}
+
 function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -152,10 +208,19 @@ export default async function TemplatesPage({
     selectedStoreId,
     selectedTemplateId
   );
+  const latestCustomizationId =
+    typeof latestAICustomization?.id === "string" ? latestAICustomization.id : "";
+  const latestOpenAIExecution = await getLatestOpenAIExecutionForStore(
+    selectedStoreId,
+    latestCustomizationId
+  );
   const aiSuggestedChanges = recordValue(latestAICustomization?.suggested_changes);
   const aiBrandingSuggestion = recordValue(aiSuggestedChanges.branding);
   const aiCopySuggestion = recordValue(aiSuggestedChanges.copy);
   const aiLayoutSuggestion = recordValue(aiSuggestedChanges.layout);
+  const openAIValidation = recordValue(latestOpenAIExecution.validation);
+  const openAISanitizedOutput = recordValue(openAIValidation.sanitized_output);
+  const openAICopyPreview = recordValue(openAISanitizedOutput.copy);
   const message = params.templateApply ? statusMessages[params.templateApply] : "";
 
   return (
@@ -358,6 +423,81 @@ export default async function TemplatesPage({
                     Apply AI suggestions to draft
                   </Button>
                 </form>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Controlled OpenAI execution
+                  </p>
+                  <p className="text-sm leading-6 text-muted">
+                    Executes only safe customization prompts when `OPENAI_API_KEY`
+                    exists. Output is validated and sanitized before any draft-only
+                    apply action is available.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <form action={executeControlledOpenAIAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <Button className="w-full" disabled={!selectedStoreId} type="submit">
+                        Execute controlled AI
+                      </Button>
+                    </form>
+                    <form action={applyControlledOpenAIToDraftAction}>
+                      <input name="storeId" type="hidden" value={selectedStoreId} />
+                      <input name="templateId" type="hidden" value={selectedTemplateId} />
+                      <Button className="w-full" disabled={!openAIValidation.validation_status} type="submit" variant="secondary">
+                        Apply OpenAI output to draft
+                      </Button>
+                    </form>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Execution", textValue(latestOpenAIExecution.log ?? {}, "execution_status", "Not executed")],
+                      ["Validation", textValue(openAIValidation, "validation_status", "Pending")],
+                      ["Attempts", String(latestOpenAIExecution.attempts.length)],
+                      ["Retry", "Prepared"]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black capitalize text-ink">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      AI response preview
+                    </p>
+                    <p className="mt-2 text-sm font-black text-ink">
+                      {textValue(openAICopyPreview, "heroTitle", "Validated OpenAI hero copy will appear here.")}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      {textValue(openAICopyPreview, "heroSubtitle", "Sanitized subtitle preview pending.")}
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    {latestOpenAIExecution.attempts.length ? (
+                      latestOpenAIExecution.attempts.map((attempt) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(attempt.id)}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            Attempt {textValue(attempt, "attempt_number", "1")} · {textValue(attempt, "attempt_status", "prepared")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(attempt, "model_key", "gpt-4o-mini")}
+                          </p>
+                          {textValue(attempt, "error_message", "") ? (
+                            <p className="mt-2 text-sm font-semibold text-red-700">
+                              {textValue(attempt, "error_message", "")}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Execution logs and retry attempts will appear here after controlled execution.
+                      </p>
+                    )}
+                  </div>
+                </div>
               </>
             ) : (
               <div className="grid gap-2">
