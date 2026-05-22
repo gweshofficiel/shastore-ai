@@ -2,6 +2,7 @@ import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { StoreSection, StoreSectionType } from "@/lib/storefront/sections";
 import { createBuilderInteractionState, getPreviewSyncPayload } from "@/lib/storefront/interactions";
+import { resolveBuilderPersistence } from "@/lib/storefront/builder-persistence";
 
 export type BuilderResponsiveMode = "desktop" | "tablet" | "mobile";
 export type BuilderStatus = "draft" | "published" | "archived";
@@ -181,6 +182,24 @@ function normalizeBuilderState(value: unknown, context: StoreTenantContext): Sto
 
 export async function loadVisualEditorState(context: StoreTenantContext): Promise<StoreBuilderState> {
   const admin = createAdminClient();
+  const persistence = await resolveBuilderPersistence(context);
+
+  if (persistence.page || persistence.draft.id || persistence.published.id) {
+    return {
+      draftSchema: persistence.draft.draftSchema,
+      editorState: {
+        mode: persistence.draft.editorState.mode,
+        selectedSectionId: persistence.draft.editorState.selectedSectionId,
+        status: persistence.page?.status ?? "draft"
+      },
+      id: persistence.page?.id ?? persistence.draft.id,
+      owner_user_id: context.owner_user_id,
+      pageSchema: persistence.published.layoutSchema ?? persistence.draft.draftSchema,
+      publishedSchema: persistence.published.layoutSchema,
+      status: persistence.page?.status ?? "draft",
+      store_instance_id: context.store_instance_id
+    };
+  }
 
   if (!admin) {
     return normalizeBuilderState(null, context);

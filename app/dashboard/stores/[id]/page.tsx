@@ -216,7 +216,34 @@ export default async function StoreDraftPage({
       .select("status, page_schema, draft_schema, published_schema, layout_tree, responsive_config, editor_state, updated_at")
       .eq("store_instance_id", ownedStore.id)
       .maybeSingle();
+    const { data: builderPageData } = await supabase
+      .from("builder_pages" as never)
+      .select("id, status, active_version_id, schema_version, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .eq("page_key", "home")
+      .maybeSingle();
+    const builderPage = (builderPageData ?? {}) as Record<string, unknown>;
+    const builderPageId = textValue(builderPage, "id", "");
+    const { data: builderDraftData } = builderPageId
+      ? await supabase
+          .from("builder_drafts" as never)
+          .select("id, has_unsaved_changes, updated_at, editor_state")
+          .eq("builder_page_id", builderPageId)
+          .maybeSingle()
+      : { data: null };
+    const { data: builderVersionsData } = builderPageId
+      ? await supabase
+          .from("builder_layout_versions" as never)
+          .select("id, version_number, status, published_at")
+          .eq("builder_page_id", builderPageId)
+          .order("version_number", { ascending: false })
+          .limit(5)
+      : { data: [] };
     const builderState = (builderStateData ?? {}) as Record<string, unknown>;
+    const builderDraft = (builderDraftData ?? {}) as Record<string, unknown>;
+    const builderVersions = Array.isArray(builderVersionsData)
+      ? (builderVersionsData as Record<string, unknown>[])
+      : [];
     const builderPageSchema =
       builderState.page_schema && typeof builderState.page_schema === "object"
         ? (builderState.page_schema as Record<string, unknown>)
@@ -235,6 +262,9 @@ export default async function StoreDraftPage({
       typeof editorState.previewSyncPending === "boolean"
         ? editorState.previewSyncPending
         : false;
+    const hasUnsavedChanges =
+      builderDraft.has_unsaved_changes === true ||
+      previewSyncPending;
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -652,6 +682,45 @@ export default async function StoreDraftPage({
                     <p className="mt-1 truncate text-xs font-black text-ink">{value}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Persistence engine
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  ["Unsaved", hasUnsavedChanges ? "Changes pending" : "Clean"],
+                  ["Draft", textValue(builderDraft, "updated_at", "Not saved")],
+                  ["Versions", String(builderVersions.length)]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-xs font-black text-ink">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {["Save draft", "Publish layout", "Restore published"].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Version history preparation
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  {builderVersions.length
+                    ? `${builderVersions.length} layout version records are ready for restore/export flows.`
+                    : "Published layout versions will appear here after publish actions are wired."}
+                </p>
               </div>
             </div>
             <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
