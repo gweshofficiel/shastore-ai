@@ -46,6 +46,10 @@ import {
   invalidateRuntimeCacheAction,
   prepareRuntimeOptimizationAction
 } from "@/lib/runtime-optimization-actions";
+import {
+  prepareSecurityFoundationAction,
+  recordSecurityEventAction
+} from "@/lib/security-protection-actions";
 import { getStoreLaunchReadiness, getLaunchStatus } from "@/lib/store-launch";
 import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
 import {
@@ -196,6 +200,9 @@ const builderStatusMessages: Record<string, string> = {
   "runtime-cache-invalidated": "Runtime cache records were invalidated safely.",
   "runtime-optimization-not-authorized": "You are not authorized to optimize this store runtime.",
   "runtime-optimization-prepared": "Runtime optimization foundation records were prepared.",
+  "security-event-recorded": "Security event placeholder was recorded.",
+  "security-foundation-prepared": "Security and abuse protection foundation records were prepared.",
+  "security-not-authorized": "You are not authorized to prepare security records for this store.",
   "last-section-protected": "At least one draft section must remain.",
   "launch-complete": "Store launch completed and storefront visibility is public.",
   "launch-draft-missing": "Create a builder draft before launching.",
@@ -570,6 +577,45 @@ export default async function StoreDraftPage({
     const runtimePerformanceLogs = Array.isArray(runtimePerformanceLogData)
       ? (runtimePerformanceLogData as Record<string, unknown>[])
       : [];
+    const { data: requestRateLimitData } = await supabase
+      .from("request_rate_limits" as never)
+      .select("action_key, request_scope, request_count, request_limit, limit_status, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const requestRateLimit = (requestRateLimitData ?? {}) as Record<string, unknown>;
+    const { data: aiUsageLimitData } = await supabase
+      .from("ai_usage_limits" as never)
+      .select("usage_scope, request_count, token_count, request_limit, token_limit, usage_status, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const aiUsageLimit = (aiUsageLimitData ?? {}) as Record<string, unknown>;
+    const { data: builderActionLogData } = await supabase
+      .from("builder_action_logs" as never)
+      .select("action_key, mutation_scope, action_status, validation_result, throttle_state, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const builderActionLog = (builderActionLogData ?? {}) as Record<string, unknown>;
+    const { data: securityEventsData } = await supabase
+      .from("security_events" as never)
+      .select("id, event_type, event_status, severity, event_payload, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const securityEvents = Array.isArray(securityEventsData)
+      ? (securityEventsData as Record<string, unknown>[])
+      : [];
+    const { data: abuseDetectionStateData } = await supabase
+      .from("abuse_detection_states" as never)
+      .select("abuse_status, detection_scope, risk_score, signal_counts, detection_reasons, mitigation_state, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .maybeSingle();
+    const abuseDetectionState = (abuseDetectionStateData ?? {}) as Record<string, unknown>;
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -712,6 +758,18 @@ export default async function StoreDraftPage({
     const tenantRuntimeCacheState =
       tenantRenderState.cache_state && typeof tenantRenderState.cache_state === "object"
         ? (tenantRenderState.cache_state as Record<string, unknown>)
+        : {};
+    const builderMutationValidation =
+      builderActionLog.validation_result && typeof builderActionLog.validation_result === "object"
+        ? (builderActionLog.validation_result as Record<string, unknown>)
+        : {};
+    const builderThrottleState =
+      builderActionLog.throttle_state && typeof builderActionLog.throttle_state === "object"
+        ? (builderActionLog.throttle_state as Record<string, unknown>)
+        : {};
+    const abuseSignalCounts =
+      abuseDetectionState.signal_counts && typeof abuseDetectionState.signal_counts === "object"
+        ? (abuseDetectionState.signal_counts as Record<string, unknown>)
         : {};
     const activeResponsiveConfig =
       responsiveConfigs.find(
@@ -2029,6 +2087,124 @@ export default async function StoreDraftPage({
                       Last runtime sync: {textValue(previewSessionSyncState, "lastSyncAt", "Not synced")}
                     </p>
                   ) : null}
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Security and abuse protection
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Security records prepare tenant-safe validation, request throttling,
+                    AI usage limits, builder mutation checks, and abuse detection without
+                    changing storefront rendering or existing publish flows.
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${
+                  textValue(abuseDetectionState, "abuse_status", "clear") === "clear"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}>
+                  {textValue(abuseDetectionState, "abuse_status", "clear")}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <form action={prepareSecurityFoundationAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Prepare security foundation
+                  </Button>
+                </form>
+                <form action={recordSecurityEventAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="eventType" type="hidden" value="security_snapshot" />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Record security event
+                  </Button>
+                </form>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-5">
+                {[
+                  ["Rate limit", textValue(requestRateLimit, "limit_status", "Prepared")],
+                  ["AI usage", textValue(aiUsageLimit, "usage_status", "Prepared")],
+                  ["Mutation", textValue(builderActionLog, "action_status", "Prepared")],
+                  ["Risk", numberValue(abuseDetectionState, "risk_score", "0")],
+                  ["Throttle", textValue(builderThrottleState, "status", "Prepared")]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black capitalize text-ink">{String(value)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1fr_0.95fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Mutation validation placeholder
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Tenant action", textValue(builderMutationValidation, "allowed", "Prepared")],
+                      ["Request count", numberValue(requestRateLimit, "request_count", "0")],
+                      ["AI requests", numberValue(aiUsageLimit, "request_count", "0")],
+                      ["Preview signals", numberValue(abuseSignalCounts, "previewRefreshes", "0")]
+                    ].map(([label, value]) => (
+                      <div className="rounded-2xl bg-white p-3" key={label}>
+                        <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                          {label}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-black text-ink">{String(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {["Hostname spoofing prep", "Preview abuse prep", "Invalid schema rejection prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Security events placeholder
+                  </p>
+                  <div className="grid gap-2">
+                    {securityEvents.length ? (
+                      securityEvents.map((event) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(event.id)}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(event, "event_type", "security event").replace(/_/g, " ")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(event, "event_status", "recorded")} · {textValue(event, "severity", "info")} ·{" "}
+                            {textValue(event, "created_at", "Pending")}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Security events will appear after foundation preparation.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {["Cloudflare prep", "Bot protection prep", "DDoS mitigation prep", "Admin security tools prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
