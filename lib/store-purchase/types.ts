@@ -138,11 +138,19 @@ export type StoreDeliveryTransfer = {
   updated_at: string;
 };
 
-export type StoreActivationStatus = "pending" | "activated" | "expired" | "cancelled";
+export type StoreActivationStatus =
+  | "pending"
+  | "claimed"
+  | "activated"
+  | "expired"
+  | "revoked"
+  | "cancelled";
 
 export type StoreActivationToken = {
   id: string;
   activation_token: string;
+  activation_token_hash: string | null;
+  activation_token_hash_algorithm: string | null;
   buyer_email: string;
   buyer_name: string | null;
   store_instance_id: string;

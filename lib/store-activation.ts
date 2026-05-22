@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 export type StoreActivationView = {
-  activation_status: "pending" | "activated" | "expired" | "cancelled" | "not_found";
+  activation_status:
+    | "pending"
+    | "claimed"
+    | "activated"
+    | "expired"
+    | "revoked"
+    | "cancelled"
+    | "not_found";
   buyer_email: string | null;
   buyer_name: string | null;
   expires_at: string | null;
@@ -113,18 +120,18 @@ export async function claimStoreByActivationToken(
       };
     }
 
-    if (activation.activation_status === "activated") {
+    if (activation.activation_status === "activated" || activation.activation_status === "claimed") {
       return {
-        activationStatus: "activated",
+        activationStatus: activation.activation_status,
         message: "This store was already activated. You can open it from your buyer dashboard.",
         status: "success",
         storeSlug: activation.store_slug
       };
     }
 
-    if (activation.activation_status === "cancelled") {
+    if (activation.activation_status === "cancelled" || activation.activation_status === "revoked") {
       return {
-        message: "This activation link was cancelled.",
+        message: `This activation link was ${activation.activation_status}.`,
         status: "error"
       };
     }
@@ -171,7 +178,7 @@ export async function claimStoreByActivationToken(
       };
     }
 
-    if (activationStatus !== "activated") {
+    if (activationStatus !== "activated" && activationStatus !== "claimed") {
       return {
         activationStatus,
         message: `Activation could not be completed (${activationStatus.replace(/-/g, " ")}).`,
@@ -192,7 +199,7 @@ export async function claimStoreByActivationToken(
         : "saved as an onboarding placeholder until the buyer signs in";
 
     return {
-      activationStatus: "activated",
+      activationStatus,
       authAttachmentStatus: result?.auth_attachment_status ?? "onboarding_placeholder_prepared",
       message: `Store claimed and ownership recorded (${accountLabel}); ownership is ${attachmentLabel}. Password setup will connect to Supabase auth invite in a future step.`,
       ownerLinkId: result?.owner_link_id ?? null,

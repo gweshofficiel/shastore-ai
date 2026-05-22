@@ -11,7 +11,7 @@ function statusClass(status: string) {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "expired" || status === "cancelled" || status === "not_found") {
+  if (status === "expired" || status === "cancelled" || status === "revoked" || status === "not_found") {
     return "bg-red-100 text-red-700";
   }
 
@@ -37,7 +37,8 @@ export default async function ActivateStorePage({
   }
 
   const canActivate = activation.activation_status === "pending";
-  const alreadyActivated = activation.activation_status === "activated";
+  const alreadyActivated =
+    activation.activation_status === "activated" || activation.activation_status === "claimed";
   const isExpired = activation.activation_status === "expired";
 
   return (

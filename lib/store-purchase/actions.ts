@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  buildActivationEmailPayload,
+  buildClaimAccountPath,
+  createActivationTokenRecord
+} from "@/lib/activation-tokens";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type { TemplateDemoProduct } from "@/lib/template-studio/types";
@@ -76,15 +81,6 @@ function normalizeSlug(value: string) {
     .replace(/-+/g, "-")
     .replace(/(^-|-$)+/g, "")
     .slice(0, 90);
-}
-
-function generateActivationToken() {
-  const randomPart =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().replace(/-/g, "")
-      : `${Date.now()}${Math.random()}`.replace(/\D/g, "");
-
-  return `act_${randomPart.slice(0, 32)}`;
 }
 
 function categorySlug(value: string) {
@@ -790,7 +786,7 @@ function buildCredentialsPackage({
       activationLink: activationPath ?? "future_activation_link_placeholder",
       automatedOnboarding: "future_onboarding_flow_placeholder",
       domainConnection: "future_domain_connection_placeholder",
-      emailDelivery: "future_email_delivery_placeholder",
+      emailDelivery: "activation_email_payload_prepared",
       passwordSetupLink: "future_secure_password_setup_link_placeholder",
       pdfCredentialGeneration: "future_pdf_generation_placeholder",
       quotaDeduction: "future_reseller_quota_deduction_placeholder",
@@ -865,8 +861,17 @@ export async function prepareStoreDeliveryTransfer(formData: FormData) {
   }
 
   const storeInstance = storeInstanceData as { id: string; internal_slug: string };
-  const activationToken = generateActivationToken();
-  const activationPath = `/activate-store/${activationToken}`;
+  const activationToken = createActivationTokenRecord();
+  const activationPath = buildClaimAccountPath(activationToken.token);
+  const activationEmailPayload = buildActivationEmailPayload({
+    buyerEmail: request.buyer_email,
+    buyerName: request.buyer_name,
+    claimPath: activationPath,
+    expiresAt: activationToken.expiresAt,
+    resellerName: profile.display_name,
+    storeName: provisionedStore.provisioned_store_name,
+    transferCode: request.transfer_code
+  });
   const credentialsPackage = buildCredentialsPackage({
     activationPath,
     provisionedStore,
@@ -902,7 +907,7 @@ export async function prepareStoreDeliveryTransfer(formData: FormData) {
         {
           delivery_status: "email_pending",
           email_delivery_placeholder:
-            "Future email delivery will send the prepared credentials package.",
+            JSON.stringify(activationEmailPayload),
           pdf_delivery_placeholder:
             "Future PDF delivery will render the credentials package into a handoff document.",
           request_id: request.id,
@@ -924,10 +929,12 @@ export async function prepareStoreDeliveryTransfer(formData: FormData) {
     supabase.from("store_activation_tokens" as never).upsert(
       {
         activation_status: "pending",
-        activation_token: activationToken,
+        activation_token: activationToken.tokenStorageValue,
+        activation_token_hash: activationToken.hash,
+        activation_token_hash_algorithm: "sha256",
         buyer_email: request.buyer_email,
         buyer_name: request.buyer_name,
-        expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        expires_at: activationToken.expiresAt,
         purchase_request_id: request.id,
         reseller_id: profile.id,
         store_instance_id: storeInstance.id,
@@ -1033,7 +1040,12 @@ export async function generateManualDeliveryPdf(formData: FormData) {
   }
 
   const request = requestData as PurchaseRequestRecord;
-  const [{ data: instanceData }, { data: provisionedData }, { data: activationData }] =
+  const [
+    { data: instanceData },
+    { data: provisionedData },
+    { data: activationData },
+    { data: transferData }
+  ] =
     await Promise.all([
       supabase
         .from("store_instances" as never)
@@ -1051,6 +1063,12 @@ export async function generateManualDeliveryPdf(formData: FormData) {
         .select("activation_token")
         .eq("purchase_request_id", request.id)
         .eq("reseller_id", profile.id)
+        .maybeSingle(),
+      supabase
+        .from("store_transfers" as never)
+        .select("credentials_package")
+        .eq("purchase_request_id", request.id)
+        .eq("reseller_id", profile.id)
         .maybeSingle()
     ]);
 
@@ -1061,7 +1079,10 @@ export async function generateManualDeliveryPdf(formData: FormData) {
   const instance = instanceData as { id: string; internal_slug: string; store_name: string };
   const provisioned = provisionedData as { id: string; provisioned_store_name: string; provisioned_store_slug: string } | null;
   const activation = activationData as { activation_token: string };
-  const activationLink = `/activate-store/${activation.activation_token}`;
+  const transfer = transferData as { credentials_package?: { deliveryPlaceholders?: { activationLink?: string } } } | null;
+  const activationLink =
+    transfer?.credentials_package?.deliveryPlaceholders?.activationLink ??
+    buildClaimAccountPath(activation.activation_token);
   const storePreviewLink = `/reseller/dashboard/orders/store-preview/${instance.internal_slug}`;
   const accountMode = request.target_account_id
     ? `Existing SHASTORE account ID: ${request.target_account_id}`
@@ -1074,9 +1095,9 @@ export async function generateManualDeliveryPdf(formData: FormData) {
     buyerWhatsapp: request.buyer_whatsapp ?? "Not provided",
     generatedAt: new Date().toISOString(),
     onboardingInstructions: [
-      "Open the activation link in the buyer browser or account session.",
+      "Open the claim-account link in the buyer browser or account session.",
       "Review the store name and transfer code.",
-      "Use the Activate Store button to mark the store as claimed.",
+      "Set the buyer password to create or link the Supabase Auth account.",
       "After activation, check /dashboard/stores in the buyer account."
     ],
     resellerSupportContact: profile.display_name,

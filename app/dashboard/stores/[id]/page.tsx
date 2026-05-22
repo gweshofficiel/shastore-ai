@@ -7,11 +7,28 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeStoreThemeSettings } from "@/lib/store-theme";
 import {
+  addManagedStoreDomain,
+  createManagedMediaFolder,
+  inviteManagedStoreStaff,
+  refreshManagedStoreUsage,
+  removeManagedStoreStaff,
+  saveManagedStoreBranding,
+  saveManagedStoreSettings,
+  updateManagedStoreSubscription,
+  uploadManagedStoreMedia,
+  verifyManagedStoreDomain
+} from "@/lib/store-management-actions";
+import {
   publishStoreDraft,
   saveStorePublicationSettings,
   saveStoreThemeSettings,
   unpublishStore
 } from "@/lib/store-actions";
+import {
+  publishOwnedStorefront,
+  unpublishOwnedStorefront
+} from "@/lib/store-publishing-actions";
+import { loadBuyerStoreManagementSnapshot } from "@/lib/buyer-store-dashboard";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +50,76 @@ type PublicationRow = {
   hostname?: string | null;
 };
 
+type OwnedStoreManagementRow = {
+  access_role: string | null;
+  access_status: string | null;
+  activation_status: string;
+  auth_attachment_status: string | null;
+  connected_domain: string | null;
+  created_at: string;
+  id: string;
+  internal_slug: string;
+  ownership_status: string;
+  requested_domain: string | null;
+  source_reseller_name: string | null;
+  status: string;
+  store_name: string;
+  transfer_code: string | null;
+  visibility: string;
+};
+
+function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
+  return value ? value.replace(/_/g, " ") : fallback;
+}
+
+function ownedBadgeClass(status: string | null | undefined) {
+  if (status === "active" || status === "activated" || status === "claimed") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "failed" || status === "revoked" || status === "suspended") {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (status === "delivered" || status === "transferred") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
+function textValue(record: Record<string, unknown> | undefined, key: string, fallback = "Not set") {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function numberValue(record: Record<string, unknown> | undefined, key: string, fallback = "Unlimited") {
+  const value = record?.[key];
+  return typeof value === "number" ? value.toLocaleString() : fallback;
+}
+
+function assetValue(record: Record<string, unknown> | undefined, key: string) {
+  const assets = record?.branding_assets;
+
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return "";
+  }
+
+  const value = (assets as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
+}
+
+function typographyValue(record: Record<string, unknown> | undefined, key: string, fallback = "inter") {
+  const typography = record?.typography;
+
+  if (!typography || typeof typography !== "object" || Array.isArray(typography)) {
+    return fallback;
+  }
+
+  const value = (typography as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 export default async function StoreDraftPage({
   params,
   searchParams
@@ -43,6 +130,9 @@ export default async function StoreDraftPage({
     published?: string;
     unpublished?: string;
     error?: string;
+    management?: string;
+    "management-branding-save-failed"?: string;
+    storefront?: string;
     theme?: string;
     publication?: string;
   }>;
@@ -66,7 +156,740 @@ export default async function StoreDraftPage({
     .single();
 
   if (!store) {
-    notFound();
+    const { data: ownedStoreRows, error: ownedStoreError } = await supabase.rpc(
+      "get_claimed_store_instances_for_current_user" as never
+    );
+    const ownedStore = ((ownedStoreRows ?? []) as OwnedStoreManagementRow[]).find(
+      (row) => row.id === id
+    );
+
+    if (ownedStoreError || !ownedStore) {
+      notFound();
+    }
+
+    const { defaults, snapshot: management } = await loadBuyerStoreManagementSnapshot(
+      supabase,
+      ownedStore.id,
+      {
+        id: ownedStore.id,
+        internal_slug: ownedStore.internal_slug,
+        store_name: ownedStore.store_name
+      }
+    );
+    const settings = management.settings;
+    const branding = management.branding;
+    const subscription = management.subscription;
+    const planLimits = management.planLimits;
+    const domains = management.domains;
+    const staff = management.staff;
+    const roles = management.roles;
+    const media = management.media;
+    const usage = management.usage;
+    const tabs = [
+      "Overview",
+      "Settings",
+      "Branding",
+      "Domains",
+      "Subscription",
+      "Staff",
+      "Media",
+      "Analytics"
+    ];
+
+    return (
+      <div className="store-owner-management grid gap-6 lg:gap-8">
+        <style>
+          {`
+            .store-owner-management #domains form,
+            .store-owner-management #subscription form,
+            .store-owner-management #staff form,
+            .store-owner-management #media form,
+            .store-owner-management #analytics form {
+              pointer-events: none;
+              opacity: 0.7;
+            }
+
+            .store-owner-management #domains input,
+            .store-owner-management #domains textarea,
+            .store-owner-management #domains select,
+            .store-owner-management #subscription input,
+            .store-owner-management #subscription textarea,
+            .store-owner-management #subscription select,
+            .store-owner-management #staff input,
+            .store-owner-management #staff textarea,
+            .store-owner-management #staff select,
+            .store-owner-management #media input,
+            .store-owner-management #media textarea,
+            .store-owner-management #media select,
+            .store-owner-management #analytics input,
+            .store-owner-management #analytics textarea,
+            .store-owner-management #analytics select {
+              background: #f8fafc;
+            }
+          `}
+        </style>
+        <PageHeader
+          action={<ButtonLink href="/dashboard/stores">Back to stores</ButtonLink>}
+          description="Buyer-owned store management foundation backed by ownership links and access permissions."
+          title={ownedStore.store_name}
+        />
+        {query["management-branding-save-failed"] === "bucket-missing" ? (
+          <Card className="border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-bold text-red-700">
+              Branding upload failed because the `store-branding` bucket is missing.
+            </p>
+          </Card>
+        ) : query.management === "settings-save-failed" ? (
+          <Card className="border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-bold text-red-700">
+              Store settings could not be saved. Your changes were not applied.
+            </p>
+          </Card>
+        ) : query.management === "branding-save-failed" ? (
+          <Card className="border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-bold text-red-700">
+              Branding text and colors could not be saved. Your changes were not applied.
+            </p>
+          </Card>
+        ) : query.management === "read-only" ? (
+          <Card className="border-blue-200 bg-blue-50 p-5">
+            <p className="text-sm font-bold text-blue-900">
+              This section is read-only temporarily. No changes were saved.
+            </p>
+          </Card>
+        ) : query.management ? (
+          <Card className="border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-bold text-emerald-700">
+              Store management updated: {query.management.replace(/-/g, " ")}.
+            </p>
+          </Card>
+        ) : null}
+        <Card className="border-blue-200 bg-blue-50 p-5">
+          <p className="text-sm font-bold text-blue-900">
+            Store management is partially read-only.
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-blue-800">
+            Store settings, branding text/colors, logo upload, and favicon upload can now be
+            saved. Media, domains, staff, subscriptions, and analytics writes remain disabled.
+          </p>
+        </Card>
+        {query.storefront === "published" ? (
+          <Card className="border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-bold text-emerald-700">
+              Storefront published. Public visitors can now view /store/{ownedStore.internal_slug}.
+            </p>
+          </Card>
+        ) : query.storefront === "unpublished" ? (
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-900">
+              Storefront unpublished. The public storefront is hidden, but owner preview remains available.
+            </p>
+          </Card>
+        ) : query.storefront === "publish-failed" || query.storefront === "unpublish-failed" ? (
+          <Card className="border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-bold text-red-700">
+              Storefront visibility could not be updated. Please try again.
+            </p>
+          </Card>
+        ) : null}
+        {!defaults.ok ? (
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-900">
+              Store management records are using safe read-only fallback values.
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+              {defaults.schemaMissing
+                ? "The buyer dashboard tables or snapshot RPC are not available on this Supabase project. The page will still render from claimed ownership data."
+                : "Store management records could not be read automatically. You can still view this workspace with safe empty values."}
+            </p>
+            {defaults.error?.message ? (
+              <p className="mt-2 font-mono text-xs text-amber-900">{defaults.error.message}</p>
+            ) : null}
+          </Card>
+        ) : null}
+        <Card className="p-5 lg:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Owned Store
+              </p>
+              <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+                {ownedStore.store_name}
+              </h2>
+              <p className="mt-2 font-mono text-xs font-bold text-muted">
+                {ownedStore.internal_slug}
+              </p>
+            </div>
+            <span
+              className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${ownedBadgeClass(
+                ownedStore.ownership_status
+              )}`}
+            >
+              {formatOwnedStatus(ownedStore.ownership_status)}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Store Status
+              </p>
+              <p className="mt-2 text-sm font-black capitalize text-ink">
+                {formatOwnedStatus(ownedStore.status)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Activation
+              </p>
+              <p className="mt-2 text-sm font-black capitalize text-ink">
+                {formatOwnedStatus(ownedStore.activation_status)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Access
+              </p>
+              <p className="mt-2 text-sm font-black capitalize text-ink">
+                {ownedStore.access_role ?? "owner"} {ownedStore.access_status ?? "pending"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Domain
+              </p>
+              <p className="mt-2 text-sm font-black text-ink">
+                {ownedStore.connected_domain ??
+                  ownedStore.requested_domain ??
+                  "Not connected"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Public Storefront
+              </p>
+              <p className="mt-2 text-sm font-black capitalize text-ink">
+                {ownedStore.visibility === "public" ? "Published / public" : "Draft / private"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-white p-5">
+            <p className="text-sm font-black text-ink">Management tools coming next</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Products, theme, domains, store payments, orders, analytics, staff accounts, and role
+              permissions will attach to this owned store record without touching reseller flows.
+            </p>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <ButtonLink
+              href={`/dashboard/stores/preview/${ownedStore.internal_slug}`}
+              target="_blank"
+            >
+              View store preview
+            </ButtonLink>
+            {ownedStore.visibility === "public" ? (
+              <>
+                <ButtonLink href={`/store/${ownedStore.internal_slug}`} target="_blank">
+                  Open public store
+                </ButtonLink>
+                <CopyStoreUrlButton url={`/store/${ownedStore.internal_slug}`} />
+                <form action={unpublishOwnedStorefront}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <Button type="submit" variant="secondary">
+                    Unpublish store
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <form action={publishOwnedStorefront}>
+                <input name="storeId" type="hidden" value={ownedStore.id} />
+                <Button type="submit">Publish store</Button>
+              </form>
+            )}
+            <ButtonLink href="/dashboard/stores" variant="secondary">
+              Back to stores
+            </ButtonLink>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <a
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-muted transition hover:border-slate-400 hover:text-ink"
+                href={`#${tab.toLowerCase()}`}
+                key={tab}
+              >
+                {tab}
+              </a>
+            ))}
+          </div>
+        </Card>
+        <section className="grid gap-6" id="overview">
+          <Card className="p-5 lg:p-6">
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Overview
+              </p>
+              <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+                Store management workspace
+              </h2>
+              <p className="text-sm leading-6 text-muted">
+                This workspace is scoped to one claimed store instance. Store settings, roles,
+                domains, subscriptions, usage, and media records are isolated by store ownership.
+              </p>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Management Status
+                </p>
+                <p className="mt-2 text-sm font-black capitalize text-ink">
+                  {textValue(settings, "store_status", "Draft")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Plan
+                </p>
+                <p className="mt-2 text-sm font-black capitalize text-ink">
+                  {textValue(subscription, "plan_id", "Starter")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Domains
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">{domains.length}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Media Assets
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">{media.length}</p>
+              </div>
+            </div>
+          </Card>
+        </section>
+        <section className="grid gap-6 xl:grid-cols-2" id="settings">
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Settings
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Store identity
+            </h2>
+            <form action={saveManagedStoreSettings} className="mt-5 grid gap-4">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <Input
+                defaultValue={textValue(settings, "store_name", ownedStore.store_name)}
+                id="managed-store-name"
+                label="Store name"
+                name="storeName"
+                required
+              />
+              <Textarea
+                defaultValue={textValue(settings, "store_description", "")}
+                id="managed-store-description"
+                label="Store description"
+                name="storeDescription"
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  defaultValue={textValue(settings, "support_email", "")}
+                  id="managed-support-email"
+                  label="Support email"
+                  name="supportEmail"
+                  type="email"
+                />
+                <Input
+                  defaultValue={textValue(settings, "store_phone", "")}
+                  id="managed-support-phone"
+                  label="Support phone"
+                  name="supportPhone"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Input
+                  defaultValue={textValue(settings, "language", "en")}
+                  id="managed-language"
+                  label="Language"
+                  name="language"
+                />
+                <Input
+                  defaultValue={textValue(settings, "currency", "USD")}
+                  id="managed-currency"
+                  label="Currency"
+                  name="currency"
+                />
+                <Input
+                  defaultValue={textValue(settings, "timezone", "UTC")}
+                  id="managed-timezone"
+                  label="Timezone"
+                  name="timezone"
+                />
+              </div>
+              <Button className="w-fit" type="submit">
+                Save settings
+              </Button>
+            </form>
+          </Card>
+          <Card className="p-5 lg:p-6" id="branding">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Branding
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Theme foundation
+            </h2>
+            <form action={saveManagedStoreBranding} className="mt-5 grid gap-4">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-10 w-10 rounded-full border border-slate-200"
+                  style={{ backgroundColor: textValue(branding, "primary_color", "#0f172a") }}
+                />
+                <span
+                  className="h-10 w-10 rounded-full border border-slate-200"
+                  style={{ backgroundColor: textValue(branding, "secondary_color", "#2563eb") }}
+                />
+                <p className="text-sm font-bold text-muted">
+                  {textValue(branding, "theme_mode", "light")} theme
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"
+                  id="managed-logo"
+                  label="Logo upload"
+                  name="logo"
+                  type="file"
+                />
+                <Input
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"
+                  id="managed-favicon"
+                  label="Favicon upload"
+                  name="favicon"
+                  type="file"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  defaultValue={textValue(branding, "primary_color", "#0f172a")}
+                  id="managed-primary-color"
+                  label="Primary color"
+                  name="primaryColor"
+                  type="color"
+                />
+                <Input
+                  defaultValue={textValue(branding, "secondary_color", "#2563eb")}
+                  id="managed-secondary-color"
+                  label="Secondary color"
+                  name="secondaryColor"
+                  type="color"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Input
+                  defaultValue={typographyValue(branding, "heading")}
+                  id="managed-heading-font"
+                  label="Heading font"
+                  name="headingFont"
+                />
+                <Input
+                  defaultValue={typographyValue(branding, "body")}
+                  id="managed-body-font"
+                  label="Body font"
+                  name="bodyFont"
+                />
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Theme mode</span>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    defaultValue={textValue(branding, "theme_mode", "light")}
+                    name="themeMode"
+                  >
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="system">System</option>
+                  </select>
+                </label>
+              </div>
+              <Textarea
+                defaultValue={textValue(branding, "custom_css", "")}
+                id="managed-custom-css"
+                label="Custom CSS"
+                name="customCss"
+                placeholder=".store-hero { border-radius: 2rem; }"
+              />
+              <div className="grid gap-2 text-xs font-bold text-muted">
+                {textValue(branding, "logo_url", "") || assetValue(branding, "logoUrl") ? (
+                  <p>Current logo: {textValue(branding, "logo_url", assetValue(branding, "logoUrl"))}</p>
+                ) : null}
+                {textValue(branding, "favicon_url", "") || assetValue(branding, "faviconUrl") ? (
+                  <p>Current favicon: {textValue(branding, "favicon_url", assetValue(branding, "faviconUrl"))}</p>
+                ) : null}
+              </div>
+              <Button className="w-fit" type="submit">
+                Save branding
+              </Button>
+            </form>
+          </Card>
+        </section>
+        <section className="grid gap-6 xl:grid-cols-2" id="domains">
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Domains
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Subdomains and custom domains
+            </h2>
+            <form action={addManagedStoreDomain} className="mt-5 grid gap-4">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+                <Input
+                  id="managed-domain-hostname"
+                  label="Hostname"
+                  name="hostname"
+                  placeholder="store.shastore.ai or shop.example.com"
+                  required
+                />
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Type</span>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    name="domainType"
+                  >
+                    <option value="subdomain">Subdomain</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+              </div>
+              <Button className="w-fit" type="submit">
+                Attach domain
+              </Button>
+            </form>
+            <div className="mt-5 grid gap-3">
+              {domains.length ? (
+                domains.map((domain) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={String(domain.id)}>
+                    <p className="font-bold text-ink">{textValue(domain, "hostname")}</p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-muted">
+                      {textValue(domain, "domain_type")} · DNS {textValue(domain, "dns_status")} · SSL{" "}
+                      {textValue(domain, "ssl_status")}
+                    </p>
+                    <form action={verifyManagedStoreDomain} className="mt-3">
+                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                      <input name="domainId" type="hidden" value={String(domain.id)} />
+                      <Button type="submit" variant="secondary">
+                        Recheck verification
+                      </Button>
+                    </form>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
+                  No store domains configured yet.
+                </p>
+              )}
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6" id="subscription">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Subscription
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Per-store plan limits
+            </h2>
+            <form action={updateManagedStoreSubscription} className="mt-5 flex flex-wrap gap-3">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <label className="grid gap-2 text-sm font-semibold text-ink">
+                <span>Plan</span>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  defaultValue={textValue(subscription, "plan_id", "starter")}
+                  name="planId"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="pro">Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </label>
+              <Button className="self-end" type="submit">
+                Save plan
+              </Button>
+            </form>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Products
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">
+                  {numberValue(planLimits, "products_limit")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Storage MB
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">
+                  {numberValue(planLimits, "storage_mb_limit")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Domains
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">
+                  {numberValue(planLimits, "domains_limit")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  AI Usage
+                </p>
+                <p className="mt-2 text-sm font-black text-ink">
+                  {numberValue(planLimits, "ai_usage_limit")}
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+        <section className="grid gap-6 xl:grid-cols-3" id="staff">
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Staff
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Team access
+            </h2>
+            <form action={inviteManagedStoreStaff} className="mt-5 grid gap-4">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <Input id="managed-staff-email" label="Staff email" name="staffEmail" required type="email" />
+              <Input id="managed-staff-name" label="Staff name" name="staffName" />
+              <label className="grid gap-2 text-sm font-semibold text-ink">
+                <span>Role</span>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  name="roleKey"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
+                  <option value="support">Support</option>
+                </select>
+              </label>
+              <Button type="submit">Invite staff</Button>
+            </form>
+            <p className="mt-4 text-4xl font-black text-ink">{staff.length}</p>
+            <p className="mt-2 text-sm font-semibold text-muted">Staff records invited or active.</p>
+            <div className="mt-4 grid gap-2">
+              {staff.map((member) => (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(member.id)}>
+                  <p className="text-sm font-bold text-ink">{textValue(member, "staff_email")}</p>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-muted">
+                    {textValue(member, "role_key")} · {textValue(member, "staff_status")}
+                  </p>
+                  <form action={removeManagedStoreStaff} className="mt-2">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <input name="staffId" type="hidden" value={String(member.id)} />
+                    <Button type="submit" variant="secondary">
+                      Remove
+                    </Button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Roles
+            </p>
+            <div className="mt-5 grid gap-2">
+              {roles.length ? (
+                roles.map((role) => (
+                  <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-ink" key={String(role.id)}>
+                    {textValue(role, "role_name")}
+                  </p>
+                ))
+              ) : (
+                <p className="text-sm font-semibold text-muted">Default roles are not initialized yet.</p>
+              )}
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6" id="media">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Media
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Isolated assets
+            </h2>
+            <form action={createManagedMediaFolder} className="mt-5 grid gap-3">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <Input id="managed-folder-name" label="Folder name" name="folderName" placeholder="Brand assets" />
+              <Input id="managed-folder-path" label="Folder path" name="folderPath" placeholder="brand-assets" />
+              <Button type="submit" variant="secondary">
+                Create folder
+              </Button>
+            </form>
+            <form action={uploadManagedStoreMedia} className="mt-5 grid gap-3">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <Input id="managed-media-file" label="Upload image/video" name="mediaFile" required type="file" />
+              <Input id="managed-media-folder" label="Folder path" name="folderPath" placeholder="library" />
+              <Input id="managed-media-alt" label="Alt text" name="altText" />
+              <Button type="submit">Upload media</Button>
+            </form>
+            <p className="mt-4 text-4xl font-black text-ink">{media.length}</p>
+            <p className="mt-2 text-sm font-semibold text-muted">
+              Latest media records scoped to this store.
+            </p>
+            <div className="mt-4 grid gap-2">
+              {media.slice(0, 5).map((asset) => (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(asset.id)}>
+                  <p className="text-sm font-bold text-ink">{textValue(asset, "file_name")}</p>
+                  <p className="text-xs font-semibold text-muted">
+                    {textValue(asset, "file_type")} · {numberValue(asset, "file_size_bytes", "0")} bytes
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+        <section id="analytics">
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Analytics
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Store usage tracking
+            </h2>
+            <form action={refreshManagedStoreUsage} className="mt-5">
+              <input name="storeId" type="hidden" value={ownedStore.id} />
+              <Button type="submit" variant="secondary">
+                Refresh usage
+              </Button>
+            </form>
+            <div className="mt-5 grid gap-3 md:grid-cols-5">
+              {[
+                ["Products", "products_count"],
+                ["Storage MB", "storage_mb_used"],
+                ["Domains", "domains_count"],
+                ["Traffic", "monthly_traffic_count"],
+                ["AI Usage", "ai_usage_count"]
+              ].map(([label, key]) => (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={key}>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-ink">
+                    {numberValue(usage[0], key, "0")}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      </div>
+    );
   }
 
   const [{ data: categories }, { data: products }, { data: themeRow }] = await Promise.all([

@@ -81,11 +81,11 @@ function deliveryStatusClass(
 }
 
 function activationStatusClass(status: string | null | undefined) {
-  if (status === "activated") {
+  if (status === "activated" || status === "claimed") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "expired" || status === "cancelled") {
+  if (status === "expired" || status === "cancelled" || status === "revoked") {
     return "bg-red-100 text-red-700";
   }
 
@@ -161,7 +161,31 @@ function payloadText(payload: unknown, key: string, fallback = "Not generated") 
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function activationLinkFromOrder(order: StorePurchaseOrder) {
+  const credentials = order.delivery_transfer?.credentials_package;
+
+  if (credentials && typeof credentials === "object" && !Array.isArray(credentials)) {
+    const deliveryPlaceholders = (credentials as Record<string, unknown>).deliveryPlaceholders;
+
+    if (
+      deliveryPlaceholders &&
+      typeof deliveryPlaceholders === "object" &&
+      !Array.isArray(deliveryPlaceholders)
+    ) {
+      const activationLink = (deliveryPlaceholders as Record<string, unknown>).activationLink;
+
+      if (typeof activationLink === "string" && activationLink.startsWith("/claim-account/")) {
+        return activationLink;
+      }
+    }
+  }
+
+  return null;
+}
+
 function OrderCard({ order }: { order: StorePurchaseOrder }) {
+  const activationLink = activationLinkFromOrder(order);
+
   return (
     <Card className="grid gap-5 p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -410,7 +434,7 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
                 Buyer Activation Link
               </p>
               <p className="mt-2 font-mono text-sm font-black text-blue-950">
-                /activate-store/{order.activation_token.activation_token}
+                {activationLink ?? "Secure claim link prepared in the delivery package"}
               </p>
               <p className="mt-1 text-sm font-semibold text-blue-800">
                 Expires {new Date(order.activation_token.expires_at).toLocaleString()}
@@ -426,25 +450,31 @@ function OrderCard({ order }: { order: StorePurchaseOrder }) {
               </span>
               <span
                 className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${
-                  order.activation_token.activation_status === "activated"
+                  order.activation_token.activation_status === "activated" ||
+                  order.activation_token.activation_status === "claimed"
                     ? "bg-emerald-100 text-emerald-700"
                     : "bg-amber-100 text-amber-700"
                 }`}
               >
-                {order.activation_token.activation_status === "activated" ? "Claimed" : "Unclaimed"}
+                {order.activation_token.activation_status === "activated" ||
+                order.activation_token.activation_status === "claimed"
+                  ? "Claimed"
+                  : "Unclaimed"}
               </span>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-bold text-white transition hover:bg-slate-800"
-              href={`/activate-store/${order.activation_token.activation_token}`}
-              target="_blank"
-            >
-              Open activation
-            </a>
-            <CopyStoreUrlButton url={`/activate-store/${order.activation_token.activation_token}`} />
-          </div>
+          {activationLink ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-bold text-white transition hover:bg-slate-800"
+                href={activationLink}
+                target="_blank"
+              >
+                Open claim link
+              </a>
+              <CopyStoreUrlButton url={activationLink} />
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

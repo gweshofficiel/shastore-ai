@@ -10,6 +10,7 @@ type AuthFormProps = {
   footerText: string;
   footerHref: string;
   footerLabel: string;
+  nextPath?: string;
   action: (formData: FormData) => Promise<void>;
 };
 
@@ -20,6 +21,7 @@ export function AuthForm({
   footerText,
   footerHref,
   footerLabel,
+  nextPath,
   action
 }: AuthFormProps) {
   return (
@@ -34,6 +36,7 @@ export function AuthForm({
         <p className="mt-2 text-sm leading-6 text-muted">{subtitle}</p>
       </div>
       <form action={action} className="mt-8 grid gap-4">
+        {nextPath ? <input name="next" type="hidden" value={nextPath} /> : null}
         <Input id="email" label="Email" name="email" required type="email" />
         <Input
           id="password"

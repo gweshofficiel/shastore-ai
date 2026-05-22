@@ -1,131 +1,193 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { deleteStoreDraft, publishStoreDraft, unpublishStore } from "@/lib/store-actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 type PublicationRow = {
-  store_id: string;
-  slug: string;
-  url?: string | null;
-  status?: string | null;
-  visibility?: string | null;
-  published_at?: string | null;
   hostname?: string | null;
+  published_at?: string | null;
+  status?: string | null;
+  store_id: string;
 };
 
-async function getStores() {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+type DraftStore = {
+  created_at: string;
+  id: string;
+  name: string;
+  publication: PublicationRow | null;
+  status: string | null;
+};
 
-  if (!user) {
-    return [];
-  }
+type OwnedStore = {
+  access_role: string | null;
+  access_status: string | null;
+  activation_status: string;
+  auth_attachment_status: string | null;
+  connected_domain: string | null;
+  created_at: string;
+  id: string;
+  internal_slug: string;
+  ownership_status: string;
+  requested_domain: string | null;
+  source_reseller_name: string | null;
+  status: string;
+  store_name: string;
+  transfer_code: string | null;
+  visibility: string;
+};
 
-  const { data, error } = await supabase
-    .from("stores")
-    .select("id, name, description, status, template_id, currency, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+type SubscriptionSummary = {
+  current_period_end: string | null;
+  plan_id: string | null;
+  status: string | null;
+};
 
-  if (error) {
-    return [];
-  }
+type StoreListResult = {
+  draftStores: DraftStore[];
+  error: string | null;
+  ownedStores: OwnedStore[];
+  schemaIssue: string | null;
+  subscription: SubscriptionSummary | null;
+};
 
-  const stores = data ?? [];
-  const storeIds = stores.map((store) => store.id);
-
-  if (!storeIds.length) {
-    return [];
-  }
-
-  const [{ data: categories }, { data: products }] = await Promise.all([
-    supabase.from("store_categories").select("store_id").in("store_id", storeIds),
-    supabase.from("store_products").select("store_id").in("store_id", storeIds)
-  ]);
-  const { data: publications } = await supabase
-    .from("published_stores")
-    .select("*")
-    .in("store_id", storeIds);
-  const publicationRows = (publications ?? []) as PublicationRow[];
-
-  return stores.map((store) => ({
-    ...store,
-    publication:
-      publicationRows.find((publication) => publication.store_id === store.id) ?? null,
-    categoryCount:
-      categories?.filter((category) => category.store_id === store.id).length ?? 0,
-    productCount:
-      products?.filter((product) => product.store_id === store.id).length ?? 0,
-    publicSlug:
-      publicationRows.find(
-        (publication) =>
-          publication.store_id === store.id &&
-          publication.status === "published" &&
-          publication.visibility !== "private"
-      )?.slug ?? null
-  }));
+function isMissingOwnershipFoundation(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST202" ||
+    error?.code === "PGRST205" ||
+    message.includes("get_claimed_store_instances_for_current_user") ||
+    message.includes("store_owner_links") ||
+    message.includes("store_access_permissions") ||
+    message.includes("store_instances") ||
+    message.includes("could not find")
+  );
 }
 
-async function getClaimedStoreInstances() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc(
-    "get_claimed_store_instances_for_current_user" as never
+function isMissingSubscriptionTable(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST205" ||
+    message.includes("user_subscriptions") ||
+    message.includes("could not find")
   );
+}
 
-  if (error) {
-    return [];
+async function getBuyerStores(): Promise<StoreListResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    return {
+      draftStores: [],
+      error: "We could not verify your session. Please sign in again.",
+      ownedStores: [],
+      schemaIssue: null,
+      subscription: null
+    };
   }
 
-  return (data ?? []) as Array<{
-    id: string;
-    internal_slug: string;
-    store_name: string;
-    status: string;
-    visibility: string;
-    ownership_status: string;
-    activation_status: string;
-    activation_token: string | null;
-    transfer_code: string | null;
-    owner_link_id: string | null;
-    access_role: string | null;
-    access_status: string | null;
-    auth_attachment_status: string | null;
-    source_reseller_name: string | null;
-    buyer_email: string | null;
-    target_account_id: string | null;
-    transfer_destination: string | null;
-    claim_account_mode: string | null;
-    requested_domain: string | null;
-    connected_domain: string | null;
-    created_at: string;
-  }>;
+  if (!user) {
+    return {
+      draftStores: [],
+      error: "Sign in to view your stores.",
+      ownedStores: [],
+      schemaIssue: null,
+      subscription: null
+    };
+  }
+
+  const [ownedResult, draftResult, subscriptionResult] = await Promise.all([
+    supabase.rpc("get_claimed_store_instances_for_current_user" as never),
+    supabase
+      .from("stores")
+      .select("id, name, status, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("user_subscriptions" as never)
+      .select("plan_id, status, current_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle()
+  ]);
+
+  const schemaIssue =
+    ownedResult.error && isMissingOwnershipFoundation(ownedResult.error)
+      ? "Missing ownership foundation: run the buyer activation and account claim migrations that create get_claimed_store_instances_for_current_user(), store_owner_links, store_access_permissions, and store_instances."
+      : null;
+  const error =
+    ownedResult.error && !schemaIssue
+      ? "Owned stores could not be loaded. Please try again."
+      : draftResult.error
+        ? "Draft stores could not be loaded. Please try again."
+        : null;
+  const draftStores = ((draftResult.data ?? []) as Omit<DraftStore, "publication">[]).map(
+    (store) => ({
+      ...store,
+      publication: null
+    })
+  );
+  const draftIds = draftStores.map((store) => store.id);
+  let publicationRows: PublicationRow[] = [];
+
+  if (draftIds.length) {
+    const { data } = await supabase
+      .from("published_stores")
+      .select("store_id, status, published_at, hostname")
+      .in("store_id", draftIds);
+    publicationRows = (data ?? []) as unknown as PublicationRow[];
+  }
+
+  const subscription =
+    subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
+      ? null
+      : (subscriptionResult.data as SubscriptionSummary | null);
+
+  return {
+    draftStores: draftStores.map((store) => ({
+      ...store,
+      publication:
+        publicationRows.find((publication) => publication.store_id === store.id) ?? null
+    })),
+    error,
+    ownedStores: (ownedResult.data ?? []) as OwnedStore[],
+    schemaIssue,
+    subscription
+  };
 }
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
-    month: "short",
     day: "numeric",
+    month: "short",
     year: "numeric"
   }).format(new Date(value));
 }
 
-function formatOptionalDate(value: string | null | undefined) {
-  return value ? formatDate(value) : "Not published";
+function formatStatus(value: string | null | undefined, fallback = "not connected") {
+  return value ? value.replace(/_/g, " ") : fallback;
 }
 
-function ownershipBadgeClass(status: string) {
-  if (status === "claimed" || status === "active") {
+function badgeClass(status: string | null | undefined) {
+  if (
+    status === "active" ||
+    status === "activated" ||
+    status === "claimed" ||
+    status === "published"
+  ) {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "suspended") {
+  if (status === "canceled" || status === "failed" || status === "revoked" || status === "suspended") {
     return "bg-red-100 text-red-700";
+  }
+
+  if (status === "delivered" || status === "transferred") {
+    return "bg-blue-100 text-blue-700";
   }
 
   return "bg-amber-100 text-amber-700";
@@ -134,30 +196,28 @@ function ownershipBadgeClass(status: string) {
 export default async function StoresPage({
   searchParams
 }: {
-  searchParams: Promise<{ saved?: string; deleted?: string; published?: string; error?: string }>;
+  searchParams: Promise<{ deleted?: string; error?: string; published?: string; saved?: string }>;
 }) {
   const query = await searchParams;
-  const [stores, claimedStores] = await Promise.all([getStores(), getClaimedStoreInstances()]);
+  const { draftStores, error, ownedStores, schemaIssue, subscription } = await getBuyerStores();
+  const totalStores = ownedStores.length + draftStores.length;
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
         action={<ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>}
-        description="Create and manage draft multi-category stores before public store publishing is enabled."
-        title="Stores"
+        description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."
+        title="My Stores"
       />
+
       {query.saved ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-bold text-emerald-700">
-            Store draft saved successfully.
-          </p>
+          <p className="text-sm font-bold text-emerald-700">Store draft saved successfully.</p>
         </Card>
       ) : null}
       {query.deleted ? (
         <Card className="border-slate-200 bg-slate-50 p-5">
-          <p className="text-sm font-bold text-ink">
-            Store draft deleted successfully.
-          </p>
+          <p className="text-sm font-bold text-ink">Store draft deleted successfully.</p>
         </Card>
       ) : null}
       {query.published ? (
@@ -167,33 +227,51 @@ export default async function StoresPage({
           </p>
         </Card>
       ) : null}
-      {query.error ? (
+      {query.error || error ? (
         <Card className="border-red-200 bg-red-50 p-5">
-          <p className="text-sm font-bold text-red-700">{query.error}</p>
+          <p className="text-sm font-bold text-red-700">{query.error ?? error}</p>
         </Card>
       ) : null}
+      {schemaIssue ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">{schemaIssue}</p>
+        </Card>
+      ) : null}
+
       <Card className="p-6 lg:p-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Claimed Stores
+              Buyer Store Management
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-              Claimed reseller stores
+              Stores owned by your account
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-              Stores you activated from a delivery PDF or activation link appear here with ownership,
-              transfer, and activation status. Manage products, theme, domain, payments, orders, and
-              analytics will connect in future releases.
+              This page reads stores connected to the current Supabase Auth user through ownership
+              links, access permissions, or your own draft store records.
             </p>
           </div>
-          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-            {claimedStores.length} claimed
-          </span>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+              {totalStores} total
+            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
+              Plan {subscription?.plan_id ?? "not connected"}
+            </span>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
+                subscription?.status
+              )}`}
+            >
+              {subscription?.status ?? "no subscription record"}
+            </span>
+          </div>
         </div>
-        {claimedStores.length ? (
+
+        {ownedStores.length ? (
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {claimedStores.map((store) => (
+            {ownedStores.map((store) => (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5" key={store.id}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -203,64 +281,53 @@ export default async function StoresPage({
                     </p>
                   </div>
                   <span
-                    className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${ownershipBadgeClass(
+                    className={`w-fit rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
                       store.ownership_status
                     )}`}
                   >
-                    {store.ownership_status}
+                    {formatStatus(store.ownership_status)}
                   </span>
                 </div>
+
                 <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-muted">
                   <p>Source reseller: {store.source_reseller_name ?? "Reseller"}</p>
-                  <p>Buyer email: {store.buyer_email ?? "Linked buyer email"}</p>
                   <p>Transfer code: {store.transfer_code ?? "Not available"}</p>
                   <p>
-                    Domain:{" "}
-                    {store.connected_domain ?? store.requested_domain ?? "Domain placeholder"}
+                    Domain: {store.connected_domain ?? store.requested_domain ?? "not connected"}
                   </p>
-                  <p>
-                    Account target:{" "}
-                    {store.target_account_id ??
-                      (store.claim_account_mode === "existing_account"
-                        ? "Existing account"
-                        : "New buyer account")}
-                  </p>
-                  <p className="capitalize">
-                    Transfer destination:{" "}
-                    {(store.transfer_destination ?? "new_account_placeholder").replace(/_/g, " ")}
-                  </p>
-                  <p className="capitalize">
-                    Auth attachment:{" "}
-                    {(store.auth_attachment_status ?? "not_attached").replace(/_/g, " ")}
-                  </p>
+                  <p>Auth attachment: {formatStatus(store.auth_attachment_status, "not attached")}</p>
                   <p>Created: {formatDate(store.created_at)}</p>
                 </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-                    Store {store.status}
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
+                      store.status
+                    )}`}
+                  >
+                    Store {formatStatus(store.status)}
                   </span>
                   <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
                     {store.visibility}
                   </span>
-                  <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-purple-700">
-                    Activation {store.activation_status}
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
+                      store.activation_status
+                    )}`}
+                  >
+                    Activation {formatStatus(store.activation_status)}
                   </span>
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
+                      store.access_status
+                    )}`}
+                  >
                     {store.access_role ?? "owner"} {store.access_status ?? "pending"}
                   </span>
                 </div>
-                <div className="mt-4 grid gap-2 rounded-2xl border border-dashed border-slate-300 p-4 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-2">
-                  <span>Manage products soon</span>
-                  <span>Manage theme soon</span>
-                  <span>Connect domain soon</span>
-                  <span>Payments soon</span>
-                  <span>Orders soon</span>
-                  <span>Analytics soon</span>
-                </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <ButtonLink href="#" variant="secondary">
-                    Manage
-                  </ButtonLink>
+                  <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
                   <ButtonLink
                     href={`/dashboard/stores/preview/${store.internal_slug}`}
                     target="_blank"
@@ -272,132 +339,75 @@ export default async function StoresPage({
               </div>
             ))}
           </div>
-        ) : (
+        ) : !draftStores.length ? (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
             <p className="text-lg font-black text-ink">No stores claimed yet.</p>
             <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
               Open the activation link from your delivery PDF, confirm your password placeholder,
-              and click Activate store. Your claimed store will appear here.
+              and click Activate store. Your owned store will appear here.
             </p>
           </div>
-        )}
+        ) : null}
       </Card>
-      {stores.length ? (
-        <div className="grid gap-4">
-          {stores.map((store) => (
-            <Card
-              className="grid gap-5 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_22px_70px_-48px_rgba(15,23,42,0.95)] lg:grid-cols-[minmax(0,1fr)_auto]"
-              key={store.id}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-lg font-black text-ink">{store.name}</p>
-                <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted">
-                  {store.description || "Draft multi-category store"}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${
-                      store.publication?.status === "published"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : store.publication?.status === "unpublished"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-slate-100 text-muted"
-                    }`}
-                  >
-                    {store.publication?.status ?? store.status}
-                  </span>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${
-                      store.publication?.visibility === "private"
-                        ? "bg-slate-200 text-slate-700"
-                        : "bg-blue-100 text-blue-700"
-                    }`}
-                  >
-                    {store.publication?.visibility ?? "private"}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {store.template_id}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {store.categoryCount} categories
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {store.productCount} products
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {formatDate(store.created_at)}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    Published {formatOptionalDate(store.publication?.published_at)}
-                  </span>
-                  {store.publication?.hostname ? (
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                      {store.publication.hostname}
+
+      {draftStores.length ? (
+        <Card className="p-6 lg:p-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Draft Stores
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+                Stores created by your user account
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
+                These are Store Mode drafts where `stores.user_id` equals your current Supabase Auth
+                user.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
+              {draftStores.length} drafts
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            {draftStores.map((store) => (
+              <div
+                className="grid gap-5 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+                key={store.id}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black text-ink">{store.name}</p>
+                  <p className="mt-1 text-sm font-semibold text-muted">
+                    Created {formatDate(store.created_at)}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${badgeClass(
+                        store.publication?.status ?? store.status
+                      )}`}
+                    >
+                      {store.publication?.status ?? store.status ?? "draft"}
                     </span>
-                  ) : null}
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      Domain {store.publication?.hostname ?? "not connected"}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      Published{" "}
+                      {store.publication?.published_at
+                        ? formatDate(store.publication.published_at)
+                        : "not yet"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+                  <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                <ButtonLink href={`/dashboard/stores/${store.id}`} variant="secondary">
-                  Edit
-                </ButtonLink>
-                <ButtonLink href={`/dashboard/stores/${store.id}`} variant="secondary">
-                  Preview
-                </ButtonLink>
-                {store.publication?.status === "published" ? (
-                  <>
-                    {store.publicSlug ? (
-                      <>
-                        <ButtonLink href={`/store/${store.publicSlug}`} target="_blank" variant="secondary">
-                          Open public
-                        </ButtonLink>
-                        <CopyStoreUrlButton url={`/store/${store.publicSlug}`} />
-                      </>
-                    ) : null}
-                    <form action={unpublishStore}>
-                      <input name="storeId" type="hidden" value={store.id} />
-                      <Button type="submit" variant="secondary">
-                        Unpublish
-                      </Button>
-                    </form>
-                  </>
-                ) : (
-                  <form action={publishStoreDraft}>
-                    <input name="storeId" type="hidden" value={store.id} />
-                    <Button type="submit">
-                      {store.publication?.status === "unpublished" ? "Republish" : "Publish"}
-                    </Button>
-                  </form>
-                )}
-                <form action={deleteStoreDraft}>
-                  <input name="storeId" type="hidden" value={store.id} />
-                  <Button type="submit" variant="secondary">
-                    Delete
-                  </Button>
-                </form>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="p-6 text-center lg:p-10">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Store Mode
-          </p>
-          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-            Start your first multi-category store.
-          </h2>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted">
-            Draft stores can hold store basics, categories, products, templates,
-            and a WhatsApp CTA. Public store publishing is not enabled yet.
-          </p>
-          <div className="mt-6 flex justify-center">
-            <ButtonLink href="/dashboard/projects/new" variant="secondary">
-              Choose project type
-            </ButtonLink>
+            ))}
           </div>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }

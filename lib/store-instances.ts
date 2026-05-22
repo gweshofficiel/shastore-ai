@@ -57,11 +57,34 @@ export type StoreInstanceDomain = {
   updated_at: string;
 };
 
+export type ManagedStoreSettings = {
+  store_name?: string | null;
+  store_description?: string | null;
+  store_logo_url?: string | null;
+  store_favicon_url?: string | null;
+  support_email?: string | null;
+  store_phone?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  store_status?: string | null;
+};
+
+export type ManagedStoreBranding = {
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  theme_mode?: string | null;
+  custom_css?: string | null;
+  branding_assets?: Json;
+  typography?: Json;
+};
+
 export type StoreInstancePreview = {
   branding: StoreInstanceBranding | null;
   categories: StoreInstanceCategory[];
   domains: StoreInstanceDomain | null;
   instance: StoreInstance;
+  managedBranding: ManagedStoreBranding | null;
+  settings: ManagedStoreSettings | null;
   products: StoreInstanceProduct[];
 };
 
@@ -109,7 +132,14 @@ export async function getStoreInstancePreview(slug: string): Promise<StoreInstan
     notFound();
   }
 
-  const [productsResult, categoriesResult, brandingResult, domainsResult] = await Promise.all([
+  const [
+    productsResult,
+    categoriesResult,
+    brandingResult,
+    domainsResult,
+    settingsResult,
+    managedBrandingResult
+  ] = await Promise.all([
     supabase
       .from("store_instance_products" as never)
       .select("*")
@@ -129,6 +159,16 @@ export async function getStoreInstancePreview(slug: string): Promise<StoreInstan
       .from("store_instance_domains" as never)
       .select("*")
       .eq("store_instance_id", instance.id)
+      .maybeSingle(),
+    supabase
+      .from("store_settings" as never)
+      .select("*")
+      .eq("store_instance_id", instance.id)
+      .maybeSingle(),
+    supabase
+      .from("store_branding" as never)
+      .select("*")
+      .eq("store_instance_id", instance.id)
       .maybeSingle()
   ]);
 
@@ -137,6 +177,10 @@ export async function getStoreInstancePreview(slug: string): Promise<StoreInstan
     categories: (categoriesResult.data ?? []) as StoreInstanceCategory[],
     domains: (domainsResult.data as StoreInstanceDomain | null) ?? null,
     instance,
+    managedBranding: managedBrandingResult.error
+      ? null
+      : ((managedBrandingResult.data as ManagedStoreBranding | null) ?? null),
+    settings: settingsResult.error ? null : ((settingsResult.data as ManagedStoreSettings | null) ?? null),
     products: (productsResult.data ?? []) as StoreInstanceProduct[]
   };
 }

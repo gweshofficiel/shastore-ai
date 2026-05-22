@@ -1,18 +1,90 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { ButtonLink } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  commerceMigrationMessage,
-  getCommerceCustomers
-} from "@/lib/commerce/data";
+import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-function formatMoney(amount: number) {
+const customersPath = "/dashboard/customers";
+
+type OwnedStore = {
+  access_role?: string | null;
+  id: string;
+  internal_slug?: string | null;
+  store_name?: string | null;
+};
+
+type CustomerRow = {
+  created_at: string;
+  customer_reference?: string | null;
+  email?: string | null;
+  id: string;
+  name: string;
+  notes?: string | null;
+  phone?: string | null;
+  store_instance_id: string;
+  updated_at: string;
+};
+
+type OrderRow = {
+  created_at: string;
+  currency: string;
+  customer_email?: string | null;
+  customer_reference?: string | null;
+  id: string;
+  order_number: string;
+  order_status: string;
+  payment_status: string;
+  total: number | string;
+};
+
+type CustomerSummary = CustomerRow & {
+  lastOrderAt: string | null;
+  orderCount: number;
+  totalSpent: number;
+};
+
+type CustomersDashboardData = {
+  activeStore: OwnedStore | null;
+  customerOrders: OrderRow[];
+  customers: CustomerSummary[];
+  error: string | null;
+  schemaIssue: string | null;
+  selectedCustomer: CustomerSummary | null;
+  stores: OwnedStore[];
+};
+
+function isMissingCustomersFoundation(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST202" ||
+    error?.code === "PGRST205" ||
+    message.includes("get_claimed_store_instances_for_current_user") ||
+    message.includes("customers") ||
+    message.includes("orders") ||
+    message.includes("could not find")
+  );
+}
+
+function numericValue(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function formatMoney(amount: number | string, currency = "USD") {
   return new Intl.NumberFormat("en", {
     style: "currency",
-    currency: "USD"
-  }).format(amount);
+    currency: currency || "USD"
+  }).format(numericValue(amount));
 }
 
 function formatDate(value: string | null) {
@@ -27,74 +99,465 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-export default async function CustomersPage() {
-  const customers = await getCommerceCustomers();
+function customerHref(
+  customer: CustomerRow,
+  params: {
+    q?: string;
+    storeId?: string;
+  }
+) {
+  const search = new URLSearchParams({
+    customerId: customer.id,
+    storeId: params.storeId ?? customer.store_instance_id
+  });
+
+  if (params.q) {
+    search.set("q", params.q);
+  }
+
+  return `${customersPath}?${search.toString()}`;
+}
+
+function matchesCustomer(order: OrderRow, customer: CustomerRow) {
+  const customerReference = customer.customer_reference?.trim().toLowerCase();
+  const customerEmail = customer.email?.trim().toLowerCase();
+  const orderReference = order.customer_reference?.trim().toLowerCase();
+  const orderEmail = order.customer_email?.trim().toLowerCase();
+
+  return Boolean(
+    (customerReference && orderReference && customerReference === orderReference) ||
+      (customerEmail && orderEmail && customerEmail === orderEmail)
+  );
+}
+
+async function getCustomersDashboardData({
+  customerId,
+  query = "",
+  storeId
+}: {
+  customerId?: string;
+  query?: string;
+  storeId?: string;
+}): Promise<CustomersDashboardData> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    return {
+      activeStore: null,
+      customerOrders: [],
+      customers: [],
+      error: "We could not verify your session. Please sign in again.",
+      schemaIssue: null,
+      selectedCustomer: null,
+      stores: []
+    };
+  }
+
+  if (!user) {
+    return {
+      activeStore: null,
+      customerOrders: [],
+      customers: [],
+      error: "Sign in to view customers.",
+      schemaIssue: null,
+      selectedCustomer: null,
+      stores: []
+    };
+  }
+
+  const { data: claimedStores, error: claimedError } = await supabase.rpc(
+    "get_claimed_store_instances_for_current_user" as never
+  );
+
+  if (claimedError) {
+    return {
+      activeStore: null,
+      customerOrders: [],
+      customers: [],
+      error: isMissingCustomersFoundation(claimedError)
+        ? null
+        : "Owned stores could not be loaded. Please try again.",
+      schemaIssue: isMissingCustomersFoundation(claimedError)
+        ? "Missing ownership foundation: run the buyer activation and account claim migrations first."
+        : null,
+      selectedCustomer: null,
+      stores: []
+    };
+  }
+
+  const stores = ((claimedStores ?? []) as OwnedStore[]).filter(
+    (store) => !store.access_role || store.access_role === "owner" || store.access_role === "admin"
+  );
+  const activeStore = stores.find((store) => store.id === storeId) ?? stores[0] ?? null;
+
+  if (!activeStore) {
+    return {
+      activeStore: null,
+      customerOrders: [],
+      customers: [],
+      error: null,
+      schemaIssue: null,
+      selectedCustomer: null,
+      stores
+    };
+  }
+
+  const [{ data: customerRows, error: customersError }, { data: orderRows, error: ordersError }] =
+    await Promise.all([
+      supabase
+        .from("customers" as never)
+        .select("id, store_instance_id, customer_reference, name, email, phone, notes, created_at, updated_at")
+        .eq("store_instance_id", activeStore.id)
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("orders" as never)
+        .select("id, order_number, customer_reference, customer_email, order_status, payment_status, currency, total, created_at")
+        .eq("store_instance_id", activeStore.id)
+        .order("created_at", { ascending: false })
+        .limit(150)
+    ]);
+
+  if (customersError || ordersError) {
+    const firstError = customersError ?? ordersError;
+    return {
+      activeStore,
+      customerOrders: [],
+      customers: [],
+      error: firstError && isMissingCustomersFoundation(firstError)
+        ? null
+        : "Customers could not be loaded. Please try again.",
+      schemaIssue: firstError && isMissingCustomersFoundation(firstError)
+        ? "Missing customers or orders foundation: run the store owner customers migration after the orders migration."
+        : null,
+      selectedCustomer: null,
+      stores
+    };
+  }
+
+  const orders = (orderRows ?? []) as unknown as OrderRow[];
+  const normalizedQuery = query.trim().toLowerCase();
+  const customers = ((customerRows ?? []) as unknown as CustomerRow[])
+    .filter((customer) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [customer.name, customer.email, customer.phone, customer.customer_reference]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+    })
+    .map((customer) => {
+      const matchingOrders = orders.filter((order) => matchesCustomer(order, customer));
+
+      return {
+        ...customer,
+        lastOrderAt: matchingOrders[0]?.created_at ?? null,
+        orderCount: matchingOrders.length,
+        totalSpent: matchingOrders.reduce(
+          (total, order) => total + numericValue(order.total),
+          0
+        )
+      };
+    });
+  const selectedCustomer =
+    customers.find((customer) => customer.id === customerId) ?? customers[0] ?? null;
+  const customerOrders = selectedCustomer
+    ? orders.filter((order) => matchesCustomer(order, selectedCustomer))
+    : [];
+
+  return (
+    {
+      activeStore,
+      customerOrders,
+      customers,
+      error: null,
+      schemaIssue: null,
+      selectedCustomer,
+      stores
+    }
+  );
+}
+
+export default async function CustomersPage({
+  searchParams
+}: {
+  searchParams: Promise<{ customerId?: string; q?: string; storeId?: string }>;
+}) {
+  const params = await searchParams;
+  const { activeStore, customerOrders, customers, error, schemaIssue, selectedCustomer, stores } =
+    await getCustomersDashboardData({
+      customerId: params.customerId,
+      query: params.q,
+      storeId: params.storeId
+    });
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
-        description="A shared customer view for orders captured from landing pages and ecommerce stores."
+        description="Store-scoped customer records with contact details and order history for claimed stores."
         title="Customers"
       />
-      {!customers.ready ? (
-        <Card className="border-blue-200 bg-blue-50 p-5">
-          <p className="text-sm font-bold text-blue-800">
-            {commerceMigrationMessage()}
+
+      {error ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">{error}</p>
+        </Card>
+      ) : null}
+
+      {schemaIssue ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-900">{schemaIssue}</p>
+        </Card>
+      ) : null}
+
+      {!schemaIssue && stores.length === 0 ? (
+        <Card className="p-8 text-center">
+          <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
+            No claimed stores yet
+          </h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
+            Customers are scoped by store instance. Claim a store before reviewing
+            customer records.
           </p>
         </Card>
       ) : null}
-      {customers.items.length ? (
-        <div className="grid gap-4">
-          {customers.items.map((customer) => (
-            <Card
-              className="grid gap-5 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 lg:grid-cols-[minmax(0,1fr)_auto]"
-              key={customer.id}
-            >
-              <div className="min-w-0">
-                <h2 className="truncate text-xl font-black tracking-[-0.02em] text-ink">
-                  {customer.name}
+
+      {activeStore ? (
+        <Card className="grid gap-5 p-5 lg:p-6">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Active Store
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                {activeStore.store_name || activeStore.internal_slug || "Claimed store"}
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                Only customers for this store instance are visible.
+              </p>
+            </div>
+            <form className="flex flex-col gap-3 sm:min-w-[260px]" method="get">
+              <label className="grid gap-2 text-sm font-semibold text-ink">
+                <span>Switch store</span>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  defaultValue={activeStore.id}
+                  name="storeId"
+                >
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.store_name || store.internal_slug || store.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button type="submit" variant="secondary">
+                View customers
+              </Button>
+            </form>
+          </div>
+
+          <form className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <input name="storeId" type="hidden" value={activeStore.id} />
+            <Input
+              defaultValue={params.q}
+              id="q"
+              label="Search customers"
+              name="q"
+              placeholder="Search by name, email, phone, reference"
+            />
+            <Button type="submit">Search</Button>
+          </form>
+        </Card>
+      ) : null}
+
+      {activeStore ? (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+          <section className="grid gap-4">
+            {customers.length ? (
+              customers.map((customer) => (
+                <Card
+                  className={`grid gap-5 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 lg:grid-cols-[minmax(0,1fr)_auto] ${
+                    selectedCustomer?.id === customer.id ? "border-slate-400" : ""
+                  }`}
+                  key={customer.id}
+                >
+                  <div className="min-w-0">
+                    <h2 className="truncate text-xl font-black tracking-[-0.02em] text-ink">
+                      {customer.name}
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      {[customer.email, customer.phone].filter(Boolean).join(" | ") ||
+                        "No contact details"}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                        {customer.orderCount} orders
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                        Last order {formatDate(customer.lastOrderAt)}
+                      </span>
+                      {customer.customer_reference ? (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                          {customer.customer_reference}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 lg:justify-end">
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-muted">Total spent</p>
+                      <p className="text-xl font-black text-ink">
+                        {formatMoney(customer.totalSpent)}
+                      </p>
+                    </div>
+                    <ButtonLink
+                      href={customerHref(customer, {
+                        q: params.q,
+                        storeId: activeStore.id
+                      })}
+                      variant="secondary"
+                    >
+                      Details
+                    </ButtonLink>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <Card className="p-8 text-center">
+                <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
+                  No customers yet
                 </h2>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  {[customer.email, customer.phone].filter(Boolean).join(" • ") ||
-                    "No contact details"}
+                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
+                  Customer records will appear here once customer capture is connected to
+                  this foundation.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {customer.source_type}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    {customer.orderCount} orders
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                    Last order {formatDate(customer.lastOrderAt)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 lg:justify-end">
-                <div className="text-right">
-                  <p className="text-sm font-bold text-muted">Total spent</p>
-                  <p className="text-xl font-black text-ink">
-                    {formatMoney(customer.totalSpent)}
+              </Card>
+            )}
+          </section>
+
+          <aside className="xl:sticky xl:top-6 xl:self-start">
+            <Card className="grid gap-5 p-5 lg:p-6">
+              {selectedCustomer ? (
+                <>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                      Customer Details
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                      {selectedCustomer.name}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      {[selectedCustomer.email, selectedCustomer.phone]
+                        .filter(Boolean)
+                        .join(" | ") || "No contact details"}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 text-sm">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Customer Reference
+                      </p>
+                      <p className="mt-1 font-black text-ink">
+                        {selectedCustomer.customer_reference || "Not set"}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Orders
+                        </p>
+                        <p className="mt-1 font-black text-ink">
+                          {selectedCustomer.orderCount}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Total
+                        </p>
+                        <p className="mt-1 font-black text-ink">
+                          {formatMoney(selectedCustomer.totalSpent)}
+                        </p>
+                      </div>
+                    </div>
+                    {selectedCustomer.notes ? (
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Notes
+                        </p>
+                        <p className="mt-1 leading-6 text-ink">{selectedCustomer.notes}</p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                      Order History
+                    </p>
+                    <div className="mt-3 grid gap-3">
+                      {customerOrders.length ? (
+                        customerOrders.map((order) => (
+                          <div
+                            className="rounded-2xl border border-slate-200 bg-white p-4"
+                            key={order.id}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                  {order.order_number}
+                                </p>
+                                <p className="mt-2 font-black text-ink">
+                                  {formatMoney(order.total, order.currency)}
+                                </p>
+                              </div>
+                              <ButtonLink
+                                href={`/dashboard/orders?storeId=${activeStore.id}&orderId=${order.id}`}
+                                variant="secondary"
+                              >
+                                Open
+                              </ButtonLink>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                                {order.order_status}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                                {order.payment_status}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                                {formatDate(order.created_at)}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="rounded-2xl bg-slate-50 p-4 text-sm text-muted">
+                          No orders are linked to this customer yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center">
+                  <h2 className="text-xl font-black tracking-[-0.03em] text-ink">
+                    Select a customer
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Contact details and order history appear here.
                   </p>
                 </div>
-                <ButtonLink href={`/dashboard/customers/${customer.id}`} variant="secondary">
-                  Details
-                </ButtonLink>
-              </div>
+              )}
             </Card>
-          ))}
+          </aside>
         </div>
-      ) : (
-        <Card className="p-8 text-center">
-          <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-            No customers yet
-          </h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-            Customer profiles will be shared across landing pages and stores once
-            orders start flowing into the unified commerce system.
-          </p>
-        </Card>
-      )}
+      ) : null}
     </div>
   );
 }
