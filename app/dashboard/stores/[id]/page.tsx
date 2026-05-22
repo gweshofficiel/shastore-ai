@@ -38,6 +38,7 @@ import {
   createSimulatedGeneratedStoreSchema,
   getAIWorkerRetryPlan
 } from "@/lib/storefront/ai-worker";
+import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/template-library";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 
@@ -203,6 +204,7 @@ export default async function StoreDraftPage({
       "Subscription",
       "Staff",
       "Media",
+      "Templates",
       "Analytics"
     ];
     const { data: activeThemeData } = await supabase
@@ -361,6 +363,23 @@ export default async function StoreDraftPage({
       !Array.isArray(latestGeneratedStoreSchema)
         ? latestGeneratedStoreSchema
         : simulatedResultPreview;
+    const templateLibrary = await getTemplateLibrary();
+    const templateCategories = templateLibrary.categories.filter((category) =>
+      [
+        "fashion",
+        "beauty",
+        "perfumes",
+        "electronics",
+        "watches",
+        "furniture",
+        "gym",
+        "pets",
+        "restaurants",
+        "cafes",
+        "gadgets"
+      ].includes(category.category_key)
+    );
+    const featuredTemplates = templateLibrary.templates.slice(0, 6);
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -899,6 +918,112 @@ export default async function StoreDraftPage({
                 </span>
               ))}
             </div>
+          </Card>
+          <Card className="p-5 lg:p-6" id="templates">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Template library
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Niche store templates foundation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Ready-made storefront template schemas are prepared for safe cloning
+              into builder drafts, future AI customization, niche recommendations,
+              branding adaptation, and layout improvements.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {templateCategories.map((category) => (
+                <span
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted"
+                  key={category.category_key}
+                >
+                  {category.name}
+                </span>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {featuredTemplates.map((template) => {
+                const draft = mapTemplateToBuilderDraft(template);
+
+                return (
+                  <div
+                    className="overflow-hidden rounded-3xl border border-slate-200 bg-white"
+                    key={template.id}
+                  >
+                    <div
+                      className="min-h-36 p-4 text-white"
+                      style={{
+                        background:
+                          template.preview_gradient ??
+                          "linear-gradient(135deg,#f8fafc,#2563eb 52%,#020617)"
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="rounded-full bg-white/15 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] backdrop-blur">
+                          {template.niche_category}
+                        </span>
+                        <span className="rounded-full bg-white/90 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-900">
+                          {draft.sections.length} sections
+                        </span>
+                      </div>
+                      <h3 className="mt-10 text-xl font-black tracking-[-0.03em]">
+                        {template.name}
+                      </h3>
+                    </div>
+                    <div className="grid gap-4 p-4">
+                      <p className="text-sm leading-6 text-muted">
+                        {template.preview_summary ?? template.description ?? "Template preview placeholder"}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {["Desktop", "Tablet", "Mobile"].map((mode) => (
+                          <div
+                            className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted"
+                            key={mode}
+                          >
+                            {mode}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {["Apply template", "AI customize"].map((label) => (
+                          <div
+                            className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                            key={label}
+                          >
+                            {label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Template cloning preparation
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                `cloneTemplateToStore()` and `mapTemplateToBuilderDraft()` are ready
+                for future apply flows. Existing builder drafts remain untouched until
+                an explicit apply action is wired.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["AI niche recommendations", "AI branding adaptation", "AI layout improvements"].map((label) => (
+                  <span
+                    className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {!templateLibrary.ready ? (
+              <p className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm font-semibold text-muted">
+                Showing safe template placeholders until the Phase 14 migration is applied.
+              </p>
+            ) : null}
           </Card>
           <Card className="p-5 lg:p-6">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
