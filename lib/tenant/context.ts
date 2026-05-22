@@ -4,6 +4,8 @@ import type { PublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { StoreThemeTokens } from "@/lib/tenant/theme";
+import { getStoreTheme, resolveThemeTokens } from "@/lib/tenant/theme";
 
 export type TenantSource = "custom_domain" | "hostname" | "localhost_subdomain" | "slug";
 
@@ -39,6 +41,7 @@ export type StoreTenantContext = {
   source: TenantSource;
   store_instance_id: string;
   store_slug: string;
+  theme: StoreThemeTokens;
 };
 
 type ResolveTenantStoreInput = {
@@ -185,7 +188,7 @@ const resolveTenantStoreCached = cache(async function resolveTenantStoreCached(
       ? "published"
       : preview.store.status;
 
-  return {
+  const baseContext = {
     branding: getTenantBranding(preview),
     domain: {
       hostname: domainMetadata.hostname,
@@ -201,7 +204,14 @@ const resolveTenantStoreCached = cache(async function resolveTenantStoreCached(
     settings: getTenantSettings(preview),
     source,
     store_instance_id: preview.store.id,
-    store_slug: preview.store.slug
+    store_slug: preview.store.slug,
+    theme: null as unknown as StoreThemeTokens
+  };
+  const theme = await getStoreTheme(baseContext);
+
+  return {
+    ...baseContext,
+    theme: resolveThemeTokens(theme)
   };
 });
 

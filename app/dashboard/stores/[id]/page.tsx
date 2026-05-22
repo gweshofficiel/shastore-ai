@@ -195,6 +195,13 @@ export default async function StoreDraftPage({
       "Media",
       "Analytics"
     ];
+    const { data: activeThemeData } = await supabase
+      .from("store_themes" as never)
+      .select("theme_id, theme_key, layout_key, typography, border_radius, spacing, color_palette, logo_config")
+      .eq("store_instance_id", ownedStore.id)
+      .eq("is_active", true)
+      .maybeSingle();
+    const activeTheme = (activeThemeData ?? {}) as Record<string, unknown>;
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -468,6 +475,51 @@ export default async function StoreDraftPage({
                   Media Assets
                 </p>
                 <p className="mt-2 text-sm font-black text-ink">{media.length}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Theme engine
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Active layout foundation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Tenant-safe theme tokens are prepared for marketplace themes,
+              AI-generated styles, drag-and-drop sections, and template exports.
+            </p>
+            <div className="mt-5 grid gap-3">
+              {[
+                ["Theme", textValue(activeTheme, "theme_key", "modern")],
+                ["Layout", textValue(activeTheme, "layout_key", "classic")],
+                ["Spacing", textValue(activeTheme, "spacing", "comfortable")],
+                ["Radius", textValue(activeTheme, "border_radius", "2rem")]
+              ].map(([label, value]) => (
+                <div
+                  className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                  key={label}
+                >
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-ink">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Layout preview placeholders
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {["Hero", "Catalog", "Footer"].map((section) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={section}
+                  >
+                    {section}
+                  </div>
+                ))}
               </div>
             </div>
           </Card>

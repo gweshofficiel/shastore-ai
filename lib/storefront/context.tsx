@@ -22,6 +22,7 @@ export function getStorefrontTenantPayload(context: StoreTenantContext) {
       storeInstanceId: context.store_instance_id
     },
     settings: context.settings,
+    theme: context.theme,
     tenant: {
       hostname: context.hostname,
       ownerUserId: context.owner_user_id,
@@ -46,6 +47,25 @@ export function StorefrontTenantContextScript({
       }}
       id="shastore-tenant-context"
       type="application/json"
+    />
+  );
+}
+
+export function StorefrontThemeTokens({
+  context
+}: {
+  context: StoreTenantContext;
+}) {
+  const cssVariables = Object.entries(context.theme.cssVariables)
+    .map(([key, value]) => `${key}: ${value};`)
+    .join(" ");
+
+  return (
+    <style
+      dangerouslySetInnerHTML={{
+        __html: `:root { ${cssVariables} }`
+      }}
+      id="shastore-theme-tokens"
     />
   );
 }

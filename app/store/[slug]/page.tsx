@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { StorefrontTenantContextScript } from "@/lib/storefront/context";
+import {
+  StorefrontTenantContextScript,
+  StorefrontThemeTokens
+} from "@/lib/storefront/context";
 import {
   getCurrentStoreContext,
   resolveTenantStore
@@ -65,6 +68,7 @@ export default async function PublicStorePage({
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
+      <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
