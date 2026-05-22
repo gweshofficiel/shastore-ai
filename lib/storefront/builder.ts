@@ -1,6 +1,7 @@
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { StoreSection, StoreSectionType } from "@/lib/storefront/sections";
+import { createBuilderInteractionState, getPreviewSyncPayload } from "@/lib/storefront/interactions";
 
 export type BuilderResponsiveMode = "desktop" | "tablet" | "mobile";
 export type BuilderStatus = "draft" | "published" | "archived";
@@ -226,12 +227,14 @@ export function getVisualBuilderPayload(state: StoreBuilderState) {
 
   return {
     editorState: state.editorState,
+    interactionState: createBuilderInteractionState(state),
     pageSchema: {
       layoutTree: schema.layoutTree,
       responsive: schema.responsive,
       sectionCount: schema.sections.length,
       version: schema.version
     },
+    previewSync: getPreviewSyncPayload(state),
     status: state.status
   };
 }

@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loadVisualEditorState, resolveBuilderSections } from "@/lib/storefront/builder";
+import {
+  getVisualBuilderPayload,
+  loadVisualEditorState,
+  resolveBuilderSections
+} from "@/lib/storefront/builder";
 
 export type StoreSectionType =
   | "hero"
@@ -26,6 +30,7 @@ export type StoreSection = {
 };
 
 export type StorePageLayout = {
+  builderPreview: Record<string, unknown>;
   key: string;
   sections: StoreSection[];
 };
@@ -105,9 +110,11 @@ export async function loadStoreSections(context: StoreTenantContext): Promise<St
 export async function resolveSectionLayout(context: StoreTenantContext): Promise<StorePageLayout> {
   const builderState = await loadVisualEditorState(context);
   const builderSections = resolveBuilderSections(builderState, context);
+  const builderPreview = getVisualBuilderPayload(builderState);
 
   if (builderSections.length) {
     return {
+      builderPreview,
       key: `${context.theme.layout_key}:builder`,
       sections: builderSections
     };
@@ -116,6 +123,7 @@ export async function resolveSectionLayout(context: StoreTenantContext): Promise
   const sections = await loadStoreSections(context);
 
   return {
+    builderPreview,
     key: context.theme.layout_key,
     sections
   };
@@ -254,13 +262,28 @@ export async function DynamicSectionLoader({
   fallback: ReactNode;
 }) {
   const layout = await resolveSectionLayout(context);
+  const previewScript = (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(layout.builderPreview).replace(/</g, "\\u003c")
+      }}
+      id="shastore-builder-preview-state"
+      type="application/json"
+    />
+  );
 
   if (!layout.sections.length) {
-    return <>{fallback}</>;
+    return (
+      <>
+        {previewScript}
+        {fallback}
+      </>
+    );
   }
 
   return (
     <>
+      {previewScript}
       {layout.sections.map((section) => (
         <SectionRenderer context={context} key={section.id} section={section} />
       ))}

@@ -224,6 +224,17 @@ export default async function StoreDraftPage({
     const builderSections = Array.isArray(builderPageSchema.sections)
       ? builderPageSchema.sections
       : [];
+    const editorState =
+      builderState.editor_state && typeof builderState.editor_state === "object"
+        ? (builderState.editor_state as Record<string, unknown>)
+        : {};
+    const builderMode = textValue(editorState, "mode", "desktop");
+    const selectedSectionId = textValue(editorState, "selectedSectionId", "None selected");
+    const draggingSectionId = textValue(editorState, "draggingSectionId", "Idle");
+    const previewSyncPending =
+      typeof editorState.previewSyncPending === "boolean"
+        ? editorState.previewSyncPending
+        : false;
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -614,7 +625,7 @@ export default async function StoreDraftPage({
               {[
                 ["State", textValue(builderState, "status", "draft")],
                 ["Schema sections", String(builderSections.length)],
-                ["Mode", "desktop"]
+                ["Mode", builderMode]
               ].map(([label, value]) => (
                 <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={label}>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
@@ -624,12 +635,38 @@ export default async function StoreDraftPage({
                 </div>
               ))}
             </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Interaction state
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  ["Selected", selectedSectionId],
+                  ["Dragging", draggingSectionId],
+                  ["Preview sync", previewSyncPending ? "Pending" : "Ready"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl bg-white p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-xs font-black text-ink">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                 Section editor placeholders
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
-                {["Section props", "Layout tree", "Live preview", "Add section modal"].map((label) => (
+                {[
+                  "Builder sidebar",
+                  "Section inspector",
+                  "Section props",
+                  "Layout tree",
+                  "Live preview sync",
+                  "Add section modal"
+                ].map((label) => (
                   <div
                     className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                     key={label}
@@ -639,10 +676,48 @@ export default async function StoreDraftPage({
                 ))}
               </div>
             </div>
+            <div className="mt-5 grid gap-2">
+              {(builderSections.length ? builderSections : ["hero", "product_grid", "CTA"]).slice(0, 5).map(
+                (section, index) => {
+                  const record =
+                    section && typeof section === "object" && !Array.isArray(section)
+                      ? (section as Record<string, unknown>)
+                      : undefined;
+                  const sectionId = textValue(record, "id", `placeholder-${index + 1}`);
+                  const sectionType = textValue(record, "type", String(section));
+
+                  return (
+                    <div
+                      className={`rounded-2xl border p-3 transition ${
+                        selectedSectionId === sectionId
+                          ? "border-slate-900 bg-white"
+                          : "border-dashed border-slate-300 bg-slate-50"
+                      }`}
+                      data-builder-draggable="placeholder"
+                      data-builder-section-id={sectionId}
+                      key={sectionId}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-ink">
+                          {sectionType.replace(/_/g, " ")}
+                        </p>
+                        <span className="rounded-full bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                          Drag handle
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {["Desktop", "Tablet", "Mobile"].map((mode) => (
                 <div
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                  className={`rounded-2xl border p-3 text-center text-xs font-black uppercase tracking-[0.16em] ${
+                    builderMode.toLowerCase() === mode.toLowerCase()
+                      ? "border-slate-900 bg-white text-ink"
+                      : "border-slate-200 bg-slate-50 text-muted"
+                  }`}
                   key={mode}
                 >
                   {mode}
