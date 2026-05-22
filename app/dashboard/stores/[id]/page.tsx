@@ -29,6 +29,11 @@ import {
   unpublishOwnedStorefront
 } from "@/lib/store-publishing-actions";
 import { loadBuyerStoreManagementSnapshot } from "@/lib/buyer-store-dashboard";
+import {
+  aiGenerationStatusLabel,
+  createAIStoreGenerationRequest,
+  prepareStoreGenerationPrompt
+} from "@/lib/storefront/ai-generation";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -265,6 +270,33 @@ export default async function StoreDraftPage({
     const hasUnsavedChanges =
       builderDraft.has_unsaved_changes === true ||
       previewSyncPending;
+    const { data: aiGenerationsData } = await supabase
+      .from("ai_store_generations" as never)
+      .select("id, status, niche, store_type, language, brand_style, layout_intent, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const aiGenerations = Array.isArray(aiGenerationsData)
+      ? (aiGenerationsData as Record<string, unknown>[])
+      : [];
+    const { data: aiJobsData } = await supabase
+      .from("ai_generation_jobs" as never)
+      .select("id, status, job_type, provider, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const aiJobs = Array.isArray(aiJobsData)
+      ? (aiJobsData as Record<string, unknown>[])
+      : [];
+    const aiRequestPreview = createAIStoreGenerationRequest({
+      brandStyle: "modern",
+      language: textValue(settings, "language", "en"),
+      layoutIntent: "conversion",
+      niche: textValue(settings, "store_name", ownedStore.store_name),
+      storeType: "general",
+      targetAudience: "Online shoppers"
+    });
+    const aiPromptPreview = prepareStoreGenerationPrompt(aiRequestPreview);
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -802,6 +834,134 @@ export default async function StoreDraftPage({
                   {label}
                 </span>
               ))}
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              AI generation
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              AI store foundation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Request schemas are prepared for future OpenAI/Gemini store, layout,
+              section, theme, copywriting, and branding generation. No AI provider
+              is called yet.
+            </p>
+            <div className="mt-5 grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  defaultValue={textValue(settings, "store_name", ownedStore.store_name)}
+                  id="ai-niche-placeholder"
+                  label="Niche input"
+                  name="aiNichePlaceholder"
+                  readOnly
+                />
+                <Input
+                  defaultValue="Online shoppers"
+                  id="ai-audience-placeholder"
+                  label="Target audience"
+                  name="aiAudiencePlaceholder"
+                  readOnly
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Store type</span>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm"
+                    defaultValue="general"
+                    disabled
+                  >
+                    <option value="general">General</option>
+                    <option value="fashion">Fashion</option>
+                    <option value="beauty">Beauty</option>
+                    <option value="food">Food</option>
+                    <option value="digital">Digital</option>
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Language</span>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm"
+                    defaultValue={textValue(settings, "language", "en")}
+                    disabled
+                  >
+                    <option value="en">English</option>
+                    <option value="ar">Arabic</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
+                    <option value="pt">Portuguese</option>
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Brand style</span>
+                  <select
+                    className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm"
+                    defaultValue="modern"
+                    disabled
+                  >
+                    <option value="modern">Modern</option>
+                    <option value="luxury">Luxury</option>
+                    <option value="playful">Playful</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="bold">Bold</option>
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {["Generate store", "Generate theme", "Generate sections"].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Generation status
+              </p>
+              {aiGenerations.length ? (
+                aiGenerations.map((generation) => (
+                  <div
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    key={String(generation.id)}
+                  >
+                    <p className="text-sm font-black text-ink">
+                      {textValue(generation, "niche", "AI store concept")}
+                    </p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      {aiGenerationStatusLabel(generation.status)} ·{" "}
+                      {textValue(generation, "brand_style", "modern")} ·{" "}
+                      {textValue(generation, "layout_intent", "conversion")}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                  No AI store generations queued yet.
+                </p>
+              )}
+              {aiJobs.length ? (
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                  {aiJobs.length} job placeholder{aiJobs.length === 1 ? "" : "s"} ready for future provider execution.
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Generated preview placeholder
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Future generated layouts can map into builder drafts through
+                `mapAISchemaToBuilderDraft()` without rewriting the storefront.
+              </p>
+              <pre className="mt-3 max-h-40 overflow-hidden rounded-2xl bg-white p-3 text-xs text-muted">
+                {aiPromptPreview}
+              </pre>
             </div>
           </Card>
         </section>
