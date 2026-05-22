@@ -202,6 +202,15 @@ export default async function StoreDraftPage({
       .eq("is_active", true)
       .maybeSingle();
     const activeTheme = (activeThemeData ?? {}) as Record<string, unknown>;
+    const { data: sectionData } = await supabase
+      .from("store_sections" as never)
+      .select("id, section_type, section_order, section_enabled, config")
+      .eq("store_instance_id", ownedStore.id)
+      .order("section_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    const sections = Array.isArray(sectionData)
+      ? (sectionData as Record<string, unknown>[])
+      : [];
 
     return (
       <div className="store-owner-management grid gap-6 lg:gap-8">
@@ -521,6 +530,60 @@ export default async function StoreDraftPage({
                   </div>
                 ))}
               </div>
+            </div>
+          </Card>
+          <Card className="p-5 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Page builder
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Store sections foundation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Dynamic storefront sections are tenant-scoped and ready for future
+              drag-drop ordering, AI layouts, reusable sections, and theme presets.
+            </p>
+            <div className="mt-5 grid gap-3">
+              {sections.length ? (
+                sections.slice(0, 8).map((section, index) => (
+                  <div
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                    key={String(section.id ?? `${textValue(section, "section_type", "section")}-${index}`)}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black capitalize text-ink">
+                          {textValue(section, "section_type", "section").replace(/_/g, " ")}
+                        </p>
+                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                          Order {textValue(section, "section_order", String(index + 1))}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                        {section.section_enabled === false ? "Disabled" : "Enabled"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5">
+                  <p className="text-sm font-black text-ink">No custom sections yet.</p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    The storefront is using the stable fallback layout. Add-section,
+                    reorder, and visual editor controls can build on this table.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {["Add section", "Reorder", "Preview"].map((label) => (
+                <div
+                  className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                  key={label}
+                >
+                  {label}
+                </div>
+              ))}
             </div>
           </Card>
         </section>

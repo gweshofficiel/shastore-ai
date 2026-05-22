@@ -4,6 +4,7 @@ import {
   StorefrontTenantContextScript,
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
+import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
   getCurrentStoreContext,
   resolveTenantStore
@@ -65,11 +66,8 @@ export default async function PublicStorePage({
 
   const { branding, products, store } = preview;
   const heroBackground = `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, #020617)`;
-
-  return (
-    <main className="min-h-screen bg-slate-50 text-ink">
-      <StorefrontThemeTokens context={context} />
-      <StorefrontTenantContextScript context={context} />
+  const fallbackStorefront = (
+    <>
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
@@ -186,6 +184,14 @@ export default async function PublicStorePage({
           )}
         </div>
       </section>
+    </>
+  );
+
+  return (
+    <main className="min-h-screen bg-slate-50 text-ink">
+      <StorefrontThemeTokens context={context} />
+      <StorefrontTenantContextScript context={context} />
+      <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
     </main>
   );
 }
