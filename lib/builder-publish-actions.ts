@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { normalizeBuilderPageSchema, type BuilderPageSchema } from "@/lib/storefront/builder";
 import { validateDraftBeforePublish } from "@/lib/builder-publish-utils";
+import { layoutDiffPreparation } from "@/lib/builder-version-utils";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -292,6 +293,44 @@ export async function publishBuilderDraft(formData: FormData) {
     } as never)
     .eq("id", draft.draftId)
     .eq("store_instance_id", storeId);
+
+  const snapshotResult = await supabase
+    .from("builder_version_snapshots" as never)
+    .insert({
+      builder_draft_id: draft.draftId,
+      builder_layout_version_id: versionId,
+      builder_page_id: draft.pageId,
+      editor_state: draft.editorState,
+      layout_diff: layoutDiffPreparation(activePublished.schema, validation.schema),
+      layout_schema: validation.schema,
+      layout_tree: validation.schema.layoutTree,
+      metadata: {
+        source: "builder_publish",
+        versionNumber
+      },
+      owner_user_id: userId,
+      responsive_config: validation.schema.responsive,
+      schema_version: validation.schema.version,
+      snapshot_label: `Published version ${versionNumber}`,
+      snapshot_type: "published",
+      store_instance_id: storeId
+    } as never)
+    .select("id")
+    .maybeSingle();
+
+  await supabase.from("builder_publish_history" as never).insert({
+    builder_layout_version_id: versionId,
+    builder_page_id: draft.pageId,
+    metadata: {
+      source: "builder_publish"
+    },
+    owner_user_id: userId,
+    publish_status: "published",
+    published_at: new Date().toISOString(),
+    snapshot_id: snapshotResult.data ? (snapshotResult.data as { id?: string }).id ?? null : null,
+    store_instance_id: storeId,
+    version_number: versionNumber
+  } as never);
 
   revalidatePath(builderPath(storeId));
   revalidatePath(`/store/${storeId}`);

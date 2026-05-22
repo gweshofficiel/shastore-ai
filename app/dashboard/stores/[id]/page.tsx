@@ -20,6 +20,12 @@ import {
   compareDraftVsPublished,
   validateDraftBeforePublish
 } from "@/lib/builder-publish-utils";
+import {
+  compareBuilderVersionsAction,
+  createBuilderSnapshot,
+  getBuilderVersionHistory,
+  restoreBuilderVersion
+} from "@/lib/builder-version-actions";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -101,6 +107,8 @@ type OwnedStoreManagementRow = {
 };
 
 const builderStatusMessages: Record<string, string> = {
+  "compare-version-missing": "Choose two builder snapshots before comparing versions.",
+  "compare-version-ready": "Version comparison placeholder was prepared.",
   "create-failed": "Draft section could not be created.",
   "delete-failed": "Draft section could not be deleted.",
   "drag-draft-missing": "Initialize a builder draft before moving sections.",
@@ -121,6 +129,12 @@ const builderStatusMessages: Record<string, string> = {
   "restore-draft-missing": "Create a builder draft before restoring published layout.",
   "restore-failed": "Published layout could not be restored into draft.",
   "restore-no-published": "No published layout is available to restore.",
+  "restore-version-complete": "Builder snapshot restored into draft.",
+  "restore-version-draft-missing": "Create a builder draft before restoring a snapshot.",
+  "restore-version-failed": "Builder snapshot could not be restored.",
+  "restore-version-missing": "Choose a builder snapshot before restoring.",
+  "restore-version-page-missing": "Builder page is missing for this store.",
+  "restore-version-unsafe": "Selected snapshot is not safe to restore for this store.",
   "rollback-no-active-version": "No active published version is available to roll back.",
   "rollback-no-previous-version": "No previous published version is available.",
   "rollback-published-complete": "Active published layout rolled back to the previous version.",
@@ -139,6 +153,10 @@ const builderStatusMessages: Record<string, string> = {
   "sections-reordered": "Draft sections reordered.",
   "session-failed": "Builder edit session could not be saved.",
   "session-saved": "Builder edit session saved.",
+  "snapshot-created": "Builder snapshot created.",
+  "snapshot-failed": "Builder snapshot could not be created.",
+  "snapshot-invalid": "Builder snapshot has no valid sections.",
+  "snapshot-page-missing": "Create a builder page before saving snapshots.",
   "update-failed": "Draft section settings could not be updated.",
   "visibility-failed": "Draft section visibility could not be updated.",
   "visibility-updated": "Draft section visibility updated."
@@ -366,6 +384,9 @@ export default async function StoreDraftPage({
     const builderHistory = Array.isArray(builderHistoryData)
       ? (builderHistoryData as Record<string, unknown>[])
       : [];
+    const builderVersionHistory = await getBuilderVersionHistory(ownedStore.id);
+    const builderSnapshots = builderVersionHistory.snapshots;
+    const builderPublishHistory = builderVersionHistory.publishHistory;
     const builderPageSchema =
       builderState.page_schema && typeof builderState.page_schema === "object"
         ? (builderState.page_schema as Record<string, unknown>)
@@ -1120,6 +1141,169 @@ export default async function StoreDraftPage({
                   </div>
                   <div className="grid gap-2">
                     {["Realtime preview prep", "Scheduled publishing prep", "Preview sharing prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Version history
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Snapshots and publish history are scoped to this store. Restoring
+                    a snapshot updates the draft only and keeps public storefront
+                    rendering isolated.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {builderSnapshots.length} snapshot{builderSnapshots.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <form action={createBuilderSnapshot} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="snapshotType" type="hidden" value="draft" />
+                  <Input
+                    defaultValue="Manual draft snapshot"
+                    id="draftSnapshotLabel"
+                    label="Draft snapshot label"
+                    name="snapshotLabel"
+                  />
+                  <Button type="submit">Snapshot draft</Button>
+                </form>
+                <form action={createBuilderSnapshot} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="snapshotType" type="hidden" value="published" />
+                  <Input
+                    defaultValue="Published layout snapshot"
+                    id="publishedSnapshotLabel"
+                    label="Published snapshot label"
+                    name="snapshotLabel"
+                  />
+                  <Button type="submit" variant="secondary">Snapshot published</Button>
+                </form>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
+                <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Snapshot history
+                  </p>
+                  {builderSnapshots.length ? (
+                    builderSnapshots.map((snapshot) => {
+                      const diff = snapshot.layout_diff ?? {};
+                      const addedSections = Array.isArray(diff.addedSections)
+                        ? diff.addedSections.length
+                        : 0;
+                      const removedSections = Array.isArray(diff.removedSections)
+                        ? diff.removedSections.length
+                        : 0;
+
+                      return (
+                        <details
+                          className="rounded-2xl border border-slate-200 bg-white p-3"
+                          key={snapshot.id}
+                        >
+                          <summary className="cursor-pointer text-sm font-black text-ink">
+                            {snapshot.snapshot_label ?? "Builder snapshot"}
+                          </summary>
+                          <div className="mt-3 grid gap-3">
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                              {snapshot.snapshot_type} · {snapshot.created_at}
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              {[
+                                ["Added", String(addedSections)],
+                                ["Removed", String(removedSections)],
+                                ["Order", diff.orderChanged ? "Changed" : "Stable"]
+                              ].map(([label, value]) => (
+                                <div className="rounded-2xl bg-slate-50 p-3" key={label}>
+                                  <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                                    {label}
+                                  </p>
+                                  <p className="mt-1 text-xs font-black text-ink">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <form action={restoreBuilderVersion}>
+                              <input name="storeId" type="hidden" value={ownedStore.id} />
+                              <input name="snapshotId" type="hidden" value={snapshot.id} />
+                              <Button type="submit" variant="secondary">
+                                Restore snapshot to draft
+                              </Button>
+                            </form>
+                          </div>
+                        </details>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm font-semibold text-muted">
+                      No version snapshots yet. Save a draft or published snapshot to start history.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Compare and publish history
+                  </p>
+                  <form action={compareBuilderVersionsAction} className="grid gap-3">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <select
+                      className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-ink"
+                      name="leftSnapshotId"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Base snapshot</option>
+                      {builderSnapshots.map((snapshot) => (
+                        <option key={snapshot.id} value={snapshot.id}>
+                          {snapshot.snapshot_label ?? snapshot.snapshot_type}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-ink"
+                      name="rightSnapshotId"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Compare snapshot</option>
+                      {builderSnapshots.map((snapshot) => (
+                        <option key={snapshot.id} value={snapshot.id}>
+                          {snapshot.snapshot_label ?? snapshot.snapshot_type}
+                        </option>
+                      ))}
+                    </select>
+                    <Button disabled={builderSnapshots.length < 2} type="submit" variant="secondary">
+                      Prepare comparison
+                    </Button>
+                  </form>
+                  <div className="grid gap-2">
+                    {builderPublishHistory.length ? (
+                      builderPublishHistory.map((entry) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={entry.id}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {entry.publish_status.replace(/_/g, " ")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            Version {entry.version_number ?? "draft"} · {entry.published_at}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Publish history will appear here after builder versions are published or restored.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {["Visual diff prep", "Branching layouts prep", "Editor activity logs"].map((label) => (
                       <div
                         className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                         key={label}
