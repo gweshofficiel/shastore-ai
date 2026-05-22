@@ -1,4 +1,14 @@
 import { notFound } from "next/navigation";
+import {
+  createDraftSection,
+  deleteDraftSection,
+  duplicateDraftSection,
+  reorderDraftSections,
+  rollbackBuilderDraft,
+  saveBuilderSession,
+  toggleDraftSectionVisibility,
+  updateDraftSection
+} from "@/lib/builder-editing-actions";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -79,6 +89,28 @@ type OwnedStoreManagementRow = {
   visibility: string;
 };
 
+const builderStatusMessages: Record<string, string> = {
+  "create-failed": "Draft section could not be created.",
+  "delete-failed": "Draft section could not be deleted.",
+  "duplicate-failed": "Draft section could not be duplicated.",
+  "last-section-protected": "At least one draft section must remain.",
+  "missing-section": "Choose a draft section before editing.",
+  "rollback-complete": "Builder draft rolled back to the latest saved history snapshot.",
+  "rollback-empty": "No builder history snapshot is available yet.",
+  "rollback-failed": "Builder draft rollback failed.",
+  "rollback-invalid": "Latest builder history snapshot is not valid.",
+  "section-created": "Draft section created.",
+  "section-deleted": "Draft section deleted.",
+  "section-duplicated": "Draft section duplicated.",
+  "section-updated": "Draft section settings updated.",
+  "sections-reordered": "Draft sections reordered.",
+  "session-failed": "Builder edit session could not be saved.",
+  "session-saved": "Builder edit session saved.",
+  "update-failed": "Draft section settings could not be updated.",
+  "visibility-failed": "Draft section visibility could not be updated.",
+  "visibility-updated": "Draft section visibility updated."
+};
+
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
   return value ? value.replace(/_/g, " ") : fallback;
 }
@@ -131,6 +163,17 @@ function typographyValue(record: Record<string, unknown> | undefined, key: strin
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function nestedTextValue(record: Record<string, unknown> | undefined, key: string, fallback = "") {
+  const settings = record?.settings;
+
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return fallback;
+  }
+
+  const value = (settings as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 export default async function StoreDraftPage({
   params,
   searchParams
@@ -142,6 +185,7 @@ export default async function StoreDraftPage({
     unpublished?: string;
     error?: string;
     management?: string;
+    builder?: string;
     "management-branding-save-failed"?: string;
     storefront?: string;
     theme?: string;
@@ -239,7 +283,7 @@ export default async function StoreDraftPage({
     const { data: builderDraftData } = builderPageId
       ? await supabase
           .from("builder_drafts" as never)
-          .select("id, has_unsaved_changes, updated_at, editor_state")
+          .select("id, has_unsaved_changes, updated_at, editor_state, draft_schema")
           .eq("builder_page_id", builderPageId)
           .maybeSingle()
       : { data: null };
@@ -256,6 +300,39 @@ export default async function StoreDraftPage({
     const builderVersions = Array.isArray(builderVersionsData)
       ? (builderVersionsData as Record<string, unknown>[])
       : [];
+    const builderDraftId = textValue(builderDraft, "id", "");
+    const { data: builderSectionDraftData } = builderDraftId
+      ? await supabase
+          .from("store_builder_section_drafts" as never)
+          .select("id, section_key, section_type, section_order, section_enabled, settings, editor_metadata")
+          .eq("store_instance_id", ownedStore.id)
+          .order("section_order", { ascending: true })
+          .order("created_at", { ascending: true })
+      : { data: [] };
+    const builderSectionDrafts = Array.isArray(builderSectionDraftData)
+      ? (builderSectionDraftData as Record<string, unknown>[])
+      : [];
+    const { data: builderSessionData } = builderPageId
+      ? await supabase
+          .from("store_builder_edit_sessions" as never)
+          .select("id, session_status, responsive_mode, selected_section_id, updated_at")
+          .eq("store_instance_id", ownedStore.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    const builderSession = (builderSessionData ?? {}) as Record<string, unknown>;
+    const { data: builderHistoryData } = builderPageId
+      ? await supabase
+          .from("store_builder_history" as never)
+          .select("id, action_key, created_at")
+          .eq("store_instance_id", ownedStore.id)
+          .order("created_at", { ascending: false })
+          .limit(5)
+      : { data: [] };
+    const builderHistory = Array.isArray(builderHistoryData)
+      ? (builderHistoryData as Record<string, unknown>[])
+      : [];
     const builderPageSchema =
       builderState.page_schema && typeof builderState.page_schema === "object"
         ? (builderState.page_schema as Record<string, unknown>)
@@ -263,6 +340,18 @@ export default async function StoreDraftPage({
     const builderSections = Array.isArray(builderPageSchema.sections)
       ? builderPageSchema.sections
       : [];
+    const builderDraftSchema =
+      builderDraft.draft_schema && typeof builderDraft.draft_schema === "object"
+        ? (builderDraft.draft_schema as Record<string, unknown>)
+        : {};
+    const builderDraftSections = Array.isArray(builderDraftSchema.sections)
+      ? builderDraftSchema.sections
+      : [];
+    const visualEditorSections = builderSectionDrafts.length
+      ? builderSectionDrafts
+      : builderDraftSections.length
+        ? builderDraftSections
+        : builderSections;
     const editorState =
       builderState.editor_state && typeof builderState.editor_state === "object"
         ? (builderState.editor_state as Record<string, unknown>)
@@ -611,6 +700,11 @@ export default async function StoreDraftPage({
             ))}
           </div>
         </Card>
+        {query.builder ? (
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 text-sm font-semibold text-muted">
+            {builderStatusMessages[query.builder] ?? "Builder draft action completed."}
+          </div>
+        ) : null}
         <section className="grid gap-6" id="overview">
           <Card className="p-5 lg:p-6">
             <div className="flex flex-col gap-2">
@@ -836,6 +930,267 @@ export default async function StoreDraftPage({
                     ? `${builderVersions.length} layout version records are ready for restore/export flows.`
                     : "Published layout versions will appear here after publish actions are wired."}
                 </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Draft section editor
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Edit controls write only to builder draft records and section
+                    draft metadata. Published storefront layouts stay unchanged.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+                  {visualEditorSections.length} draft section{visualEditorSections.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Edit session
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["Session", textValue(builderSession, "session_status", "Not saved")],
+                    ["Responsive", textValue(builderSession, "responsive_mode", builderMode)],
+                    ["History", String(builderHistory.length)]
+                  ].map(([label, value]) => (
+                    <div className="rounded-2xl bg-white p-3" key={label}>
+                      <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                        {label}
+                      </p>
+                      <p className="mt-1 truncate text-xs font-black text-ink">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <form action={saveBuilderSession} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <select
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                    name="responsiveMode"
+                    defaultValue={builderMode}
+                  >
+                    <option value="desktop">Desktop</option>
+                    <option value="tablet">Tablet</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                  <select
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                    name="selectedSectionId"
+                    defaultValue=""
+                  >
+                    <option value="">No selected section</option>
+                    {builderSectionDrafts.map((section) => (
+                      <option key={String(section.id)} value={String(section.id)}>
+                        {textValue(section, "section_type", "section").replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="submit" variant="secondary">
+                    Save session
+                  </Button>
+                </form>
+              </div>
+              <form action={createDraftSection} className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
+                <input name="storeId" type="hidden" value={ownedStore.id} />
+                <select
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-ink"
+                  name="sectionType"
+                  defaultValue="rich_text"
+                >
+                  <option value="hero">Hero</option>
+                  <option value="banner">Banner</option>
+                  <option value="product_grid">Product grid</option>
+                  <option value="featured_products">Featured products</option>
+                  <option value="rich_text">Rich text</option>
+                  <option value="CTA">CTA</option>
+                  <option value="testimonials">Testimonials</option>
+                  <option value="newsletter">Newsletter</option>
+                  <option value="spacer">Spacer</option>
+                </select>
+                <Input
+                  defaultValue="New draft section"
+                  id="newSectionHeading"
+                  label="Add section placeholder"
+                  name="heading"
+                />
+                <Button type="submit">Create draft section</Button>
+              </form>
+              <div className="grid gap-3 lg:grid-cols-[18rem_1fr]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Section editor sidebar
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {visualEditorSections.length ? (
+                      visualEditorSections.slice(0, 8).map((section, index) => {
+                        const sectionId = textValue(section, "id", "");
+                        const sectionType = textValue(section, "section_type", textValue(section, "type", "section"));
+                        const sectionEnabled =
+                          section.section_enabled === false || section.enabled === false ? false : true;
+                        const hasDraftRecord = Boolean(
+                          builderSectionDrafts.find((draft) => draft.id === section.id)
+                        );
+
+                        return (
+                          <div
+                            className="rounded-2xl border border-slate-200 bg-white p-3"
+                            key={sectionId || `${sectionType}-${index}`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-ink">
+                                  {sectionType.replace(/_/g, " ")}
+                                </p>
+                                <p className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                  {sectionEnabled ? "Visible" : "Hidden"} · Order{" "}
+                                  {textValue(section, "section_order", textValue(section, "order", String(index + 1)))}
+                                </p>
+                              </div>
+                              {!hasDraftRecord ? (
+                                <span className="rounded-full bg-amber-50 px-2 py-1 text-[0.65rem] font-black uppercase tracking-[0.14em] text-amber-700">
+                                  Init needed
+                                </span>
+                              ) : null}
+                            </div>
+                            {hasDraftRecord ? (
+                              <div className="mt-3 grid gap-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  {[
+                                    ["up", "Move up"],
+                                    ["down", "Move down"]
+                                  ].map(([direction, label]) => (
+                                    <form action={reorderDraftSections} key={direction}>
+                                      <input name="storeId" type="hidden" value={ownedStore.id} />
+                                      <input name="sectionId" type="hidden" value={sectionId} />
+                                      <input name="direction" type="hidden" value={direction} />
+                                      <Button className="w-full" type="submit" variant="secondary">
+                                        {label}
+                                      </Button>
+                                    </form>
+                                  ))}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <form action={toggleDraftSectionVisibility}>
+                                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                                    <input name="sectionId" type="hidden" value={sectionId} />
+                                    <input name="enabled" type="hidden" value={String(sectionEnabled)} />
+                                    <Button className="w-full" type="submit" variant="secondary">
+                                      {sectionEnabled ? "Hide" : "Show"}
+                                    </Button>
+                                  </form>
+                                  <form action={duplicateDraftSection}>
+                                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                                    <input name="sectionId" type="hidden" value={sectionId} />
+                                    <Button className="w-full" type="submit" variant="secondary">
+                                      Duplicate
+                                    </Button>
+                                  </form>
+                                  <form action={deleteDraftSection}>
+                                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                                    <input name="sectionId" type="hidden" value={sectionId} />
+                                    <Button className="w-full" type="submit" variant="secondary">
+                                      Delete
+                                    </Button>
+                                  </form>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-xs font-semibold leading-5 text-muted">
+                                Save an edit session first to initialize editable draft section records.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm font-semibold text-muted">
+                        No draft sections yet. Create a section to start editing.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Section settings state
+                  </p>
+                  {builderSectionDrafts.length ? (
+                    builderSectionDrafts.slice(0, 3).map((section, index) => (
+                      <form action={updateDraftSection} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3" key={String(section.id)}>
+                        <input name="storeId" type="hidden" value={ownedStore.id} />
+                        <input name="sectionId" type="hidden" value={String(section.id)} />
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(section, "section_type", `Section ${index + 1}`).replace(/_/g, " ")}
+                          </p>
+                          <span className="rounded-full bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                            Editable later
+                          </span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Input
+                            defaultValue={nestedTextValue(section, "heading", "Draft section heading")}
+                            id={`heading-${section.id}`}
+                            label="Heading"
+                            name="heading"
+                          />
+                          <Input
+                            defaultValue={nestedTextValue(section, "cta", "Shop now")}
+                            id={`cta-${section.id}`}
+                            label="CTA"
+                            name="cta"
+                          />
+                        </div>
+                        <Textarea
+                          defaultValue={nestedTextValue(section, "subheading", "Section subheading placeholder")}
+                          id={`subheading-${section.id}`}
+                          label="Subheading"
+                          name="subheading"
+                        />
+                        <Textarea
+                          defaultValue={nestedTextValue(section, "body", "Section settings placeholder for future rich controls.")}
+                          id={`body-${section.id}`}
+                          label="Body"
+                          name="body"
+                        />
+                        <Button className="w-fit" type="submit">
+                          Update draft section
+                        </Button>
+                      </form>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                      <p className="text-sm font-black text-ink">Section settings placeholder</p>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Editable settings appear after the first edit session initializes draft sections.
+                      </p>
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {["Draft preview state", "Hydration safe preview", "Isolated rendering"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                  <form action={rollbackBuilderDraft} className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                    <input name="storeId" type="hidden" value={ownedStore.id} />
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Rollback foundation
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      Rollback restores the latest builder editing history snapshot to draft only.
+                    </p>
+                    <Button className="mt-3" type="submit" variant="secondary">
+                      Roll back draft
+                    </Button>
+                  </form>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
