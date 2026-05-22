@@ -50,6 +50,10 @@ import {
   prepareSecurityFoundationAction,
   recordSecurityEventAction
 } from "@/lib/security-protection-actions";
+import {
+  prepareDeploymentHardeningAction,
+  recordDeploymentRuntimeAction
+} from "@/lib/deployment-hardening-actions";
 import { getStoreLaunchReadiness, getLaunchStatus } from "@/lib/store-launch";
 import { resolveVisualThemeStyles } from "@/lib/theme-token-resolver";
 import {
@@ -203,6 +207,10 @@ const builderStatusMessages: Record<string, string> = {
   "security-event-recorded": "Security event placeholder was recorded.",
   "security-foundation-prepared": "Security and abuse protection foundation records were prepared.",
   "security-not-authorized": "You are not authorized to prepare security records for this store.",
+  "deployment-hardening-degraded": "Deployment hardening checks were prepared with warnings.",
+  "deployment-hardening-ready": "Deployment hardening checks are ready.",
+  "deployment-not-authorized": "You are not authorized to prepare deployment hardening for this store.",
+  "deployment-runtime-recorded": "Deployment runtime log was recorded.",
   "last-section-protected": "At least one draft section must remain.",
   "launch-complete": "Store launch completed and storefront visibility is public.",
   "launch-draft-missing": "Create a builder draft before launching.",
@@ -616,6 +624,41 @@ export default async function StoreDraftPage({
       .eq("store_instance_id", ownedStore.id)
       .maybeSingle();
     const abuseDetectionState = (abuseDetectionStateData ?? {}) as Record<string, unknown>;
+    const { data: deploymentEnvironmentData } = await supabase
+      .from("runtime_environment_states" as never)
+      .select("environment_mode, runtime_status, app_base_url, required_env_state, optional_env_state, secret_validation_state, middleware_state, hydration_state, cache_state, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const deploymentEnvironment = (deploymentEnvironmentData ?? {}) as Record<string, unknown>;
+    const { data: deploymentHealthData } = await supabase
+      .from("deployment_health_checks" as never)
+      .select("check_scope, check_key, check_status, warnings, blocking_errors, checked_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("checked_at", { ascending: false })
+      .limit(4);
+    const deploymentHealthChecks = Array.isArray(deploymentHealthData)
+      ? (deploymentHealthData as Record<string, unknown>[])
+      : [];
+    const { data: deploymentRuntimeLogsData } = await supabase
+      .from("deployment_runtime_logs" as never)
+      .select("log_scope, log_level, log_key, created_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const deploymentRuntimeLogs = Array.isArray(deploymentRuntimeLogsData)
+      ? (deploymentRuntimeLogsData as Record<string, unknown>[])
+      : [];
+    const { data: productionFeatureFlagsData } = await supabase
+      .from("production_feature_flags" as never)
+      .select("flag_key, flag_scope, flag_enabled, rollout_state, updated_at")
+      .eq("store_instance_id", ownedStore.id)
+      .order("flag_scope", { ascending: true })
+      .limit(6);
+    const productionFeatureFlags = Array.isArray(productionFeatureFlagsData)
+      ? (productionFeatureFlagsData as Record<string, unknown>[])
+      : [];
     const { data: builderSessionData } = builderPageId
       ? await supabase
           .from("store_builder_edit_sessions" as never)
@@ -770,6 +813,22 @@ export default async function StoreDraftPage({
     const abuseSignalCounts =
       abuseDetectionState.signal_counts && typeof abuseDetectionState.signal_counts === "object"
         ? (abuseDetectionState.signal_counts as Record<string, unknown>)
+        : {};
+    const deploymentRequiredEnv =
+      deploymentEnvironment.required_env_state && typeof deploymentEnvironment.required_env_state === "object"
+        ? (deploymentEnvironment.required_env_state as Record<string, unknown>)
+        : {};
+    const deploymentSecretState =
+      deploymentEnvironment.secret_validation_state && typeof deploymentEnvironment.secret_validation_state === "object"
+        ? (deploymentEnvironment.secret_validation_state as Record<string, unknown>)
+        : {};
+    const deploymentMiddlewareState =
+      deploymentEnvironment.middleware_state && typeof deploymentEnvironment.middleware_state === "object"
+        ? (deploymentEnvironment.middleware_state as Record<string, unknown>)
+        : {};
+    const deploymentHydrationState =
+      deploymentEnvironment.hydration_state && typeof deploymentEnvironment.hydration_state === "object"
+        ? (deploymentEnvironment.hydration_state as Record<string, unknown>)
         : {};
     const activeResponsiveConfig =
       responsiveConfigs.find(
@@ -1408,6 +1467,145 @@ export default async function StoreDraftPage({
                     ? `${builderVersions.length} layout version records are ready for restore/export flows.`
                     : "Published layout versions will appear here after publish actions are wired."}
                 </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Deployment hardening foundation
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Production readiness records validate required environment values,
+                    runtime state, middleware safety, feature flags, cache startup, and
+                    deployment health before any Vercel production deployment.
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${
+                  textValue(deploymentEnvironment, "runtime_status", "pending") === "ready"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}>
+                  {textValue(deploymentEnvironment, "runtime_status", "Pending")}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <form action={prepareDeploymentHardeningAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Prepare deployment hardening
+                  </Button>
+                </form>
+                <form action={recordDeploymentRuntimeAction}>
+                  <input name="storeId" type="hidden" value={ownedStore.id} />
+                  <input name="logKey" type="hidden" value="deployment_dashboard_snapshot" />
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Record deployment runtime
+                  </Button>
+                </form>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-5">
+                {[
+                  ["Environment", textValue(deploymentEnvironment, "environment_mode", "localhost")],
+                  ["Required env", deploymentRequiredEnv.ok === false ? "Missing" : "Ready"],
+                  ["Secrets", deploymentSecretState.ok === false ? "Review" : "Prepared"],
+                  ["Middleware", deploymentMiddlewareState.productionSafeMiddlewareExecution === true ? "Safe" : "Prepared"],
+                  ["Hydration", deploymentHydrationState.deploymentSafeHydration === false ? "Review" : "Safe"]
+                ].map(([label, value]) => (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                    <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black capitalize text-ink">{String(value)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-[1fr_0.95fr]">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Deployment health placeholder
+                  </p>
+                  <div className="grid gap-2">
+                    {deploymentHealthChecks.length ? (
+                      deploymentHealthChecks.map((check, index) => (
+                        <div className="rounded-2xl bg-white p-3" key={`${textValue(check, "check_key", "check")}-${index}`}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(check, "check_scope", "platform")} · {textValue(check, "check_status", "pending")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(check, "check_key", "deployment check").replace(/_/g, " ")}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm font-semibold text-muted">
+                        Deployment health checks will appear after hardening preparation.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {["Vercel deployment prep", "Startup validation prep", "Production logging prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Feature flags and warnings
+                  </p>
+                  <div className="grid gap-2">
+                    {productionFeatureFlags.length ? (
+                      productionFeatureFlags.slice(0, 4).map((flag) => (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3" key={textValue(flag, "flag_key", "flag")}>
+                          <div>
+                            <p className="text-sm font-black text-ink">
+                              {textValue(flag, "flag_key", "feature flag").replace(/_/g, " ")}
+                            </p>
+                            <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                              {textValue(flag, "flag_scope", "platform")} · {textValue(flag, "rollout_state", "prepared")}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-muted">
+                            {flag.flag_enabled === true ? "On" : "Off"}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                        Production feature flags will appear after preparation.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
+                    {deploymentRuntimeLogs.length ? (
+                      deploymentRuntimeLogs.map((log, index) => (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={`${textValue(log, "log_key", "log")}-${index}`}>
+                          <p className="text-sm font-black capitalize text-ink">
+                            {textValue(log, "log_scope", "deployment")} · {textValue(log, "log_level", "info")}
+                          </p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {textValue(log, "log_key", "deployment log").replace(/_/g, " ")}
+                          </p>
+                        </div>
+                      ))
+                    ) : null}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {["Edge runtime prep", "Serverless scaling prep", "Uptime monitoring prep", "Rollback systems prep"].map((label) => (
+                      <div
+                        className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                        key={label}
+                      >
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
