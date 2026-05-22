@@ -1,6 +1,12 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  applyAITemplateSuggestionsToDraftAction,
+  createAITemplateCustomizationAction
+} from "@/lib/ai-template-customization-actions";
 import { applyTemplateToStore } from "@/lib/template-application-actions";
 import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
 import { createClient } from "@/lib/supabase/server";
@@ -15,6 +21,14 @@ type ClaimedStoreRow = {
 };
 
 const statusMessages: Record<string, string> = {
+  "ai-customization-applied": "AI suggestions were applied to the selected store draft only.",
+  "ai-customization-apply-failed": "AI suggestions could not be applied to the draft.",
+  "ai-customization-created": "AI template customization suggestions were prepared without calling real AI APIs.",
+  "ai-customization-draft-missing": "Apply or create a builder draft before applying AI suggestions.",
+  "ai-customization-failed": "AI customization request could not be prepared.",
+  "ai-customization-invalid": "Add a niche and a useful business description before customizing.",
+  "ai-customization-missing": "Choose a store and template before customizing with AI.",
+  "ai-customization-missing-suggestions": "Create AI suggestions before applying them to a draft.",
   applied: "Template applied to the selected store draft. Published storefront remains unchanged.",
   "apply-failed": "Template application failed and rollback was attempted.",
   "draft-created": "Template draft was created.",
@@ -87,6 +101,35 @@ async function getAppliedTemplateForStore(storeId: string) {
   return appliedTemplateId((draftData as { editor_state?: unknown } | null)?.editor_state);
 }
 
+async function getLatestAICustomizationForStore(storeId: string, templateId: string) {
+  if (!storeId || !templateId) {
+    return null;
+  }
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("ai_template_customizations" as never)
+    .select("id, customization_status, input_payload, suggested_changes, prompt_preview, created_at")
+    .eq("store_instance_id", storeId)
+    .eq("template_id", templateId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data ? (data as Record<string, unknown>) : null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function textValue(record: Record<string, unknown>, key: string, fallback = "Not set") {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 export default async function TemplatesPage({
   searchParams
 }: {
@@ -104,6 +147,15 @@ export default async function TemplatesPage({
       ? library.templates
       : library.templates.filter((template) => template.niche_category === selectedCategory);
   const activeStore = stores.find((store) => store.id === selectedStoreId);
+  const selectedTemplateId = params.templateId ?? templates[0]?.id ?? "";
+  const latestAICustomization = await getLatestAICustomizationForStore(
+    selectedStoreId,
+    selectedTemplateId
+  );
+  const aiSuggestedChanges = recordValue(latestAICustomization?.suggested_changes);
+  const aiBrandingSuggestion = recordValue(aiSuggestedChanges.branding);
+  const aiCopySuggestion = recordValue(aiSuggestedChanges.copy);
+  const aiLayoutSuggestion = recordValue(aiSuggestedChanges.layout);
   const message = params.templateApply ? statusMessages[params.templateApply] : "";
 
   return (
@@ -169,6 +221,167 @@ export default async function TemplatesPage({
             </p>
           </div>
         ) : null}
+      </Card>
+
+      <Card className="grid gap-5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              AI template customization
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
+              Adapt a template to a niche
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              This prepares simulated AI suggestions for branding, copy, layout,
+              hero content, and CTA text. It does not call real AI APIs or publish
+              the storefront.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            Draft only
+          </span>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+          <form action={createAITemplateCustomizationAction} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <input name="storeId" type="hidden" value={selectedStoreId} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+                defaultValue={selectedTemplateId}
+                name="templateId"
+              >
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <Input
+                defaultValue={selectedCategory === "all" ? "" : selectedCategory}
+                id="aiNiche"
+                label="Niche"
+                name="niche"
+                placeholder="Luxury perfumes, fitness gear..."
+              />
+            </div>
+            <Textarea
+              defaultValue=""
+              id="aiBusinessDescription"
+              label="Business description"
+              name="businessDescription"
+              placeholder="Describe the brand, offer, location, products, or customer promise."
+              rows={4}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+                defaultValue="general_buyers"
+                name="targetAudience"
+              >
+                <option value="general_buyers">General buyers</option>
+                <option value="young_adults">Young adults</option>
+                <option value="premium_buyers">Premium buyers</option>
+                <option value="local_customers">Local customers</option>
+                <option value="families">Families</option>
+                <option value="professionals">Professionals</option>
+              </select>
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+                defaultValue="modern"
+                name="brandTone"
+              >
+                <option value="modern">Modern</option>
+                <option value="luxury">Luxury</option>
+                <option value="playful">Playful</option>
+                <option value="minimal">Minimal</option>
+                <option value="bold">Bold</option>
+                <option value="natural">Natural</option>
+              </select>
+            </div>
+            <Button disabled={!selectedStoreId || !templates.length} type="submit">
+              Customize template with AI
+            </Button>
+          </form>
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              AI suggestions preview
+            </p>
+            {latestAICustomization ? (
+              <>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-black text-ink">
+                    {textValue(latestAICustomization, "customization_status", "prepared").replace(/_/g, " ")}
+                  </p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                    {textValue(latestAICustomization, "created_at", "Not created")}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["Primary", textValue(aiBrandingSuggestion, "primaryColor", "#0f172a")],
+                    ["Secondary", textValue(aiBrandingSuggestion, "secondaryColor", "#2563eb")],
+                    ["Accent", textValue(aiBrandingSuggestion, "accentColor", "#f59e0b")]
+                  ].map(([label, color]) => (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={label}>
+                      <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-400">
+                        {label}
+                      </p>
+                      <div
+                        className="mt-2 h-8 rounded-xl border border-slate-200"
+                        style={{ backgroundColor: color }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    Hero and CTA copy
+                  </p>
+                  <p className="mt-2 text-sm font-black text-ink">
+                    {textValue(aiCopySuggestion, "heroTitle", "Hero suggestion pending")}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-muted">
+                    {textValue(aiCopySuggestion, "heroSubtitle", "Subtitle suggestion pending")}
+                  </p>
+                  <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                    CTA: {textValue(aiCopySuggestion, "ctaText", "Start Shopping")}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                  Layout focus: {textValue(aiLayoutSuggestion, "suggestedSectionFocus", "hero")}
+                </div>
+                <form action={applyAITemplateSuggestionsToDraftAction}>
+                  <input name="storeId" type="hidden" value={selectedStoreId} />
+                  <input name="templateId" type="hidden" value={selectedTemplateId} />
+                  <Button className="w-full" disabled={!selectedStoreId} type="submit" variant="secondary">
+                    Apply AI suggestions to draft
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <div className="grid gap-2">
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-semibold text-muted">
+                  AI suggestions will appear here after you prepare a customization request.
+                </p>
+                {[
+                  "AI copywriting prep",
+                  "AI branding generation prep",
+                  "AI layout optimization prep",
+                  "Conversion optimization prep",
+                  "Multilingual storefront prep"
+                ].map((label) => (
+                  <div
+                    className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
+                    key={label}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
 
       <div className="grid gap-3 rounded-[2rem] border border-slate-200/80 bg-white/75 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] backdrop-blur">
