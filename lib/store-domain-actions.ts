@@ -96,7 +96,7 @@ async function clearPrimaryDomain(supabase: SupabaseClient, storeId: string) {
     .eq("store_instance_id", storeId);
 }
 
-export async function setStoreSubdomain(formData: FormData) {
+export async function createStoreSubdomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const subdomain = normalizeSubdomain(cleanText(formData.get("subdomain"), 80));
 
@@ -160,7 +160,7 @@ export async function setStoreSubdomain(formData: FormData) {
   domainsRedirect(storeId, "subdomain-saved");
 }
 
-export async function connectStoreCustomDomain(formData: FormData) {
+export async function attachCustomDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const hostname = normalizeHostname(cleanText(formData.get("customDomain"), 253));
 
@@ -215,7 +215,7 @@ export async function connectStoreCustomDomain(formData: FormData) {
   domainsRedirect(storeId, "custom-domain-saved");
 }
 
-export async function setPrimaryStoreDomain(formData: FormData) {
+export async function setPrimaryDomain(formData: FormData) {
   const { storeId, supabase } = await requireClaimedStore(formData);
   const domainId = cleanText(formData.get("domainId"), 80);
 
@@ -277,7 +277,7 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
   domainsRedirect(storeId, "verification-pending");
 }
 
-export async function deleteStoreDomain(formData: FormData) {
+export async function removeDomain(formData: FormData) {
   const { storeId, supabase } = await requireClaimedStore(formData);
   const domainId = cleanText(formData.get("domainId"), 80);
 
@@ -298,3 +298,8 @@ export async function deleteStoreDomain(formData: FormData) {
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "domain-deleted");
 }
+
+export const setStoreSubdomain = createStoreSubdomain;
+export const connectStoreCustomDomain = attachCustomDomain;
+export const setPrimaryStoreDomain = setPrimaryDomain;
+export const deleteStoreDomain = removeDomain;

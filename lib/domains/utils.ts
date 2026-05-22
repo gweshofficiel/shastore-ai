@@ -106,6 +106,10 @@ export function isReservedSubdomain(value: string) {
   return reservedSubdomains.has(normalizeSubdomain(value));
 }
 
+export function getReservedSubdomains() {
+  return Array.from(reservedSubdomains).sort();
+}
+
 export function sourcePublicationUrl(sourceType: "landing" | "store", sourceSlug: string) {
   return sourceType === "store" ? `/store/${sourceSlug}` : `/l/${sourceSlug}`;
 }

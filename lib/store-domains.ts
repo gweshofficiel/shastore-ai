@@ -1,4 +1,15 @@
-import { getDomainBase } from "@/lib/domains/hostinsh";
+import {
+  buildDnsVerification,
+  getDefaultDnsTarget,
+  getDomainBase
+} from "@/lib/domains/hostinsh";
+import {
+  buildFreeHostname,
+  getReservedSubdomains,
+  isReservedSubdomain,
+  isValidHostname,
+  normalizeSubdomain
+} from "@/lib/domains/utils";
 import { createClient } from "@/lib/supabase/server";
 
 export type ClaimedStoreForDomains = {
@@ -25,11 +36,29 @@ export type StoreDomainRecord = {
   updated_at: string;
 };
 
+export type DomainAvailability = {
+  checked: boolean;
+  hostname: string | null;
+  message: string | null;
+  status: "available" | "duplicate" | "invalid" | "reserved" | null;
+  subdomain: string | null;
+};
+
+export type DomainProvisioningInstruction = {
+  cnameTarget: string;
+  recordName: string;
+  recordType: "TXT";
+  recordValue: string;
+};
+
 export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
+  availability: DomainAvailability;
   domains: StoreDomainRecord[];
   domainBase: string;
   error: string | null;
+  provisioning: Record<string, DomainProvisioningInstruction>;
+  reservedSubdomains: string[];
   ready: boolean;
   stores: ClaimedStoreForDomains[];
 };
@@ -54,8 +83,92 @@ export function storeDomainsMigrationMessage() {
   return "Apply supabase/migrations/20260522124000_store_domains_foundation.sql to enable store subdomains and custom domains.";
 }
 
+function emptyAvailability(): DomainAvailability {
+  return {
+    checked: false,
+    hostname: null,
+    message: null,
+    status: null,
+    subdomain: null
+  };
+}
+
+async function checkSubdomainAvailability(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  value?: string
+): Promise<DomainAvailability> {
+  const subdomain = normalizeSubdomain(value ?? "");
+
+  if (!subdomain) {
+    return emptyAvailability();
+  }
+
+  if (subdomain.length < 3) {
+    return {
+      checked: true,
+      hostname: null,
+      message: "Use at least 3 valid characters.",
+      status: "invalid",
+      subdomain
+    };
+  }
+
+  if (isReservedSubdomain(subdomain)) {
+    return {
+      checked: true,
+      hostname: null,
+      message: "This subdomain is reserved by SHASTORE AI.",
+      status: "reserved",
+      subdomain
+    };
+  }
+
+  const hostname = buildFreeHostname(subdomain);
+
+  if (!isValidHostname(hostname)) {
+    return {
+      checked: true,
+      hostname,
+      message: "This hostname is not valid.",
+      status: "invalid",
+      subdomain
+    };
+  }
+
+  const { data } = await supabase
+    .from("store_domains" as never)
+    .select("id")
+    .eq("hostname", hostname)
+    .maybeSingle();
+
+  return {
+    checked: true,
+    hostname,
+    message: data
+      ? "This subdomain is already connected to another store."
+      : "This subdomain is available to reserve.",
+    status: data ? "duplicate" : "available",
+    subdomain
+  };
+}
+
+function buildProvisioning(domain: StoreDomainRecord): DomainProvisioningInstruction {
+  const verification = buildDnsVerification(
+    domain.hostname,
+    `pending-${domain.id.replace(/-/g, "").slice(0, 16)}`
+  );
+
+  return {
+    cnameTarget: getDefaultDnsTarget(),
+    recordName: verification.recordName,
+    recordType: verification.recordType,
+    recordValue: verification.recordValue
+  };
+}
+
 export async function getStoreDomainsDashboardData(
-  requestedStoreId?: string
+  requestedStoreId?: string,
+  availabilitySubdomain?: string
 ): Promise<StoreDomainsDashboardData> {
   const supabase = await createClient();
   const {
@@ -65,9 +178,12 @@ export async function getStoreDomainsDashboardData(
   if (!user) {
     return {
       activeStore: null,
+      availability: emptyAvailability(),
       domains: [],
       domainBase: getDomainBase(),
       error: null,
+      provisioning: {},
+      reservedSubdomains: getReservedSubdomains(),
       ready: true,
       stores: []
     };
@@ -80,9 +196,12 @@ export async function getStoreDomainsDashboardData(
   if (storesError) {
     return {
       activeStore: null,
+      availability: emptyAvailability(),
       domains: [],
       domainBase: getDomainBase(),
       error: "Unable to load claimed buyer stores for domain management.",
+      provisioning: {},
+      reservedSubdomains: getReservedSubdomains(),
       ready: true,
       stores: []
     };
@@ -100,9 +219,12 @@ export async function getStoreDomainsDashboardData(
   if (!activeStore) {
     return {
       activeStore: null,
+      availability: emptyAvailability(),
       domains: [],
       domainBase: getDomainBase(),
       error: null,
+      provisioning: {},
+      reservedSubdomains: getReservedSubdomains(),
       ready: true,
       stores
     };
@@ -115,16 +237,23 @@ export async function getStoreDomainsDashboardData(
     .order("is_primary", { ascending: false })
     .order("created_at", { ascending: false });
 
+  const domains = domainsResult.error
+    ? []
+    : ((domainsResult.data ?? []) as StoreDomainRecord[]);
+
   return {
     activeStore,
-    domains: domainsResult.error
-      ? []
-      : ((domainsResult.data ?? []) as StoreDomainRecord[]),
+    availability: await checkSubdomainAvailability(supabase, availabilitySubdomain),
+    domains,
     domainBase: getDomainBase(),
     error:
       domainsResult.error && !isMissingStoreDomainsTable(domainsResult.error)
         ? "Unable to load domains for this store."
         : null,
+    provisioning: Object.fromEntries(
+      domains.map((domain) => [domain.id, buildProvisioning(domain)])
+    ),
+    reservedSubdomains: getReservedSubdomains(),
     ready: !isMissingStoreDomainsTable(domainsResult.error),
     stores
   };

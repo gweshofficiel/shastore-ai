@@ -1,14 +1,14 @@
-import { Globe2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Copy, Globe2, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  connectStoreCustomDomain,
-  deleteStoreDomain,
+  attachCustomDomain,
+  createStoreSubdomain,
   markStoreDomainVerificationPending,
-  setPrimaryStoreDomain,
-  setStoreSubdomain
+  removeDomain,
+  setPrimaryDomain
 } from "@/lib/store-domain-actions";
 import {
   getStoreDomainsDashboardData,
@@ -35,6 +35,14 @@ const statusMessages: Record<string, string> = {
   "verify-failed": "Verification status could not be updated."
 };
 
+const successStatuses = new Set([
+  "custom-domain-saved",
+  "domain-deleted",
+  "primary-updated",
+  "subdomain-saved",
+  "verification-pending"
+]);
+
 const badgeStyles: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   failed: "bg-red-50 text-red-700",
@@ -57,17 +65,40 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Toast({ status }: { status: string }) {
+  const message = statusMessages[status];
+
+  if (!message) {
+    return null;
+  }
+
+  const isSuccess = successStatuses.has(status);
+
+  return (
+    <div
+      className={`fixed right-4 top-4 z-50 max-w-sm rounded-3xl border p-4 text-sm font-bold shadow-[0_20px_70px_-45px_rgba(15,23,42,0.9)] ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : "border-red-200 bg-red-50 text-red-700"
+      }`}
+      role="status"
+    >
+      {message}
+    </div>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function DomainsPage({
   searchParams
 }: {
-  searchParams: Promise<{ domains?: string; storeId?: string }>;
+  searchParams: Promise<{ checkSubdomain?: string; domains?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
-  const data = await getStoreDomainsDashboardData(params.storeId);
+  const data = await getStoreDomainsDashboardData(params.storeId, params.checkSubdomain);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
-  const message = params.domains ? statusMessages[params.domains] : null;
+  const activeStoreId = data.activeStore?.id ?? "";
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -82,11 +113,7 @@ export default async function DomainsPage({
           </p>
         </Card>
       ) : null}
-      {message ? (
-        <Card className="border-slate-200 bg-white p-5">
-          <p className="text-sm font-bold text-ink">{message}</p>
-        </Card>
-      ) : null}
+      {params.domains ? <Toast status={params.domains} /> : null}
       {data.error ? (
         <Card className="border-red-200 bg-red-50 p-5">
           <p className="text-sm font-bold text-red-700">{data.error}</p>
@@ -169,9 +196,37 @@ export default async function DomainsPage({
             Creates a verified hostname like <strong>brand.{data.domainBase}</strong>.
             Reserved platform names are blocked.
           </p>
-          <form action={setStoreSubdomain} className="mt-6 grid gap-4">
-            <input name="storeId" type="hidden" value={data.activeStore?.id ?? ""} />
+          <form className="mt-6 grid gap-4">
+            <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
+              defaultValue={data.availability.subdomain ?? ""}
+              id="checkSubdomain"
+              label="Check subdomain availability"
+              name="checkSubdomain"
+              placeholder="my-brand"
+            />
+            <Button className="w-fit" disabled={!data.activeStore || !data.ready} type="submit" variant="secondary">
+              Check availability
+            </Button>
+          </form>
+          {data.availability.checked ? (
+            <div
+              className={`mt-4 rounded-3xl border p-4 text-sm font-semibold ${
+                data.availability.status === "available"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <p>{data.availability.message}</p>
+              {data.availability.hostname ? (
+                <p className="mt-1 font-black">{data.availability.hostname}</p>
+              ) : null}
+            </div>
+          ) : null}
+          <form action={createStoreSubdomain} className="mt-6 grid gap-4 border-t border-slate-100 pt-6">
+            <input name="storeId" type="hidden" value={activeStoreId} />
+            <Input
+              defaultValue={data.availability.subdomain ?? ""}
               id="storeSubdomain"
               label="Preferred subdomain"
               name="subdomain"
@@ -182,6 +237,18 @@ export default async function DomainsPage({
               Set subdomain
             </Button>
           </form>
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Reserved names
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              {data.reservedSubdomains
+                .filter((name) =>
+                  ["admin", "api", "app", "dashboard", "docs", "help", "mail", "root", "shastore", "support", "www"].includes(name)
+                )
+                .join(", ")}
+            </p>
+          </div>
         </Card>
         <Card className="p-6 lg:p-8">
           <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
@@ -191,8 +258,8 @@ export default async function DomainsPage({
             Stores custom hostnames for future DNS and SSL verification without
             changing checkout, products, or publishing systems.
           </p>
-          <form action={connectStoreCustomDomain} className="mt-6 grid gap-4">
-            <input name="storeId" type="hidden" value={data.activeStore?.id ?? ""} />
+          <form action={attachCustomDomain} className="mt-6 grid gap-4">
+            <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
               id="customDomain"
               label="Custom domain"
@@ -211,14 +278,24 @@ export default async function DomainsPage({
         </Card>
       </div>
       <Card className="p-6 lg:p-8">
-        <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
-          Store domain records
-        </h2>
-        <div className="mt-5 grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Store domain records
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Saved records are read directly from Supabase for the selected store.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            {data.domains.length} connected
+          </span>
+        </div>
+        <div className="mt-5 grid gap-4">
           {data.domains.length ? (
             data.domains.map((domain) => (
               <div
-                className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
                 key={domain.id}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -231,8 +308,9 @@ export default async function DomainsPage({
                     </p>
                   </div>
                   {domain.is_primary ? (
-                    <span className="rounded-full bg-ink px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-white">
-                      Primary
+                    <span className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-white">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Primary domain
                     </span>
                   ) : null}
                 </div>
@@ -243,7 +321,7 @@ export default async function DomainsPage({
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
                   {!domain.is_primary ? (
-                    <form action={setPrimaryStoreDomain}>
+                    <form action={setPrimaryDomain}>
                       <input name="storeId" type="hidden" value={domain.store_instance_id} />
                       <input name="domainId" type="hidden" value={domain.id} />
                       <Button type="submit" variant="secondary">
@@ -260,7 +338,7 @@ export default async function DomainsPage({
                       </Button>
                     </form>
                   ) : null}
-                  <form action={deleteStoreDomain}>
+                  <form action={removeDomain}>
                     <input name="storeId" type="hidden" value={domain.store_instance_id} />
                     <input name="domainId" type="hidden" value={domain.id} />
                     <Button type="submit" variant="ghost">
@@ -268,12 +346,38 @@ export default async function DomainsPage({
                     </Button>
                   </form>
                 </div>
+                {data.provisioning[domain.id] ? (
+                  <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        CNAME target preview
+                      </p>
+                      <p className="mt-2 break-all font-black text-ink">
+                        {data.provisioning[domain.id].cnameTarget}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        TXT verification placeholder
+                      </p>
+                      <p className="mt-2 break-all text-muted">
+                        <span className="font-black text-ink">{data.provisioning[domain.id].recordName}</span>{" "}
+                        = {data.provisioning[domain.id].recordValue}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (
-            <p className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
-              No domains connected for this store yet.
-            </p>
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+              <Copy className="h-5 w-5 text-slate-400" />
+              <p className="mt-3 font-bold text-ink">No domains connected yet.</p>
+              <p className="mt-1 leading-6">
+                Set a SHASTORE subdomain or attach a custom domain to generate
+                provisioning instructions for this store.
+              </p>
+            </div>
           )}
         </div>
       </Card>
