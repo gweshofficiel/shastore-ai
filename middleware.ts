@@ -47,6 +47,10 @@ async function resolveHostnameStorefront(request: NextRequest) {
   requestHeaders.set("x-shastore-hostname", context.hostname);
   requestHeaders.set("x-shastore-hostname-source", context.source);
   requestHeaders.set("x-shastore-store-slug", context.storeSlug);
+  requestHeaders.set(
+    "x-shastore-tenant-source",
+    context.source === "localhost_subdomain" ? "localhost_subdomain" : "hostname"
+  );
 
   return NextResponse.rewrite(rewriteUrl, {
     request: {

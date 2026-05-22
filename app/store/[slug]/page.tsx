@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { StorefrontTenantContextScript } from "@/lib/storefront/context";
+import {
+  getCurrentStoreContext,
+  resolveTenantStore
+} from "@/lib/tenant/context";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +14,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const preview = await getPublicStorefrontPreview(slug);
+  const context = await resolveTenantStore({ slug, source: "slug" });
+  const preview = context?.preview;
 
   if (!preview) {
     return {
@@ -48,9 +53,10 @@ export default async function PublicStorePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const preview = await getPublicStorefrontPreview(slug);
+  const context = await getCurrentStoreContext(slug);
+  const preview = context?.preview;
 
-  if (!preview) {
+  if (!preview || !context) {
     notFound();
   }
 
@@ -59,6 +65,7 @@ export default async function PublicStorePage({
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
+      <StorefrontTenantContextScript context={context} />
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
