@@ -212,7 +212,7 @@ export function getUpgradeMessage(
     landings: "Your current plan has reached its landing page limit.",
     publish: "Publishing is available on all active SHASTORE AI plans.",
     seo: "SEO settings are available on Starter, Pro, and Agency plans.",
-    stores: "Store support is available on the Pro and Agency plans.",
+    stores: "",
     template: "Premium templates are available on Starter, Pro, and Agency plans."
   };
 
