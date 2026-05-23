@@ -86,9 +86,13 @@ import {
   verifyManagedStoreDomain
 } from "@/lib/store-management-actions";
 import {
+  createManagedStoreCategory,
+  createManagedStoreProduct,
+  deleteManagedStoreProduct,
   publishStoreDraft,
   saveStorePublicationSettings,
   saveStoreThemeSettings,
+  updateManagedStoreProduct,
   unpublishStore
 } from "@/lib/store-actions";
 import {
@@ -249,6 +253,13 @@ const builderStatusMessages: Record<string, string> = {
   "visual-style-updated": "Visual theme tokens updated for draft preview."
 };
 
+const catalogStatusMessages: Record<string, string> = {
+  "category-created": "Category added.",
+  "product-created": "Product added.",
+  "product-deleted": "Product deleted.",
+  "product-updated": "Product updated and public storefront cache refreshed."
+};
+
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
   return value ? value.replace(/_/g, " ") : fallback;
 }
@@ -332,6 +343,7 @@ export default async function StoreDraftPage({
     storefront?: string;
     theme?: string;
     publication?: string;
+    catalog?: string;
   }>;
 }) {
   const { id } = await params;
@@ -349,7 +361,7 @@ export default async function StoreDraftPage({
     .from("stores")
     .select("*")
     .eq("id", id)
-    .eq("user_id", user.id)
+    .or(`user_id.eq.${user.id},owner_user_id.eq.${user.id}`)
     .single();
 
   if (!store) {
@@ -4220,6 +4232,13 @@ export default async function StoreDraftPage({
           </p>
         </Card>
       ) : null}
+      {query.catalog && catalogStatusMessages[query.catalog] ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            {catalogStatusMessages[query.catalog]}
+          </p>
+        </Card>
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
         <Card className="p-5 lg:p-6">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -4606,9 +4625,42 @@ export default async function StoreDraftPage({
       </Card>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="p-5 lg:p-6">
-          <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
-            Categories
-          </h2>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Catalog
+            </p>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Categories
+            </h2>
+            <p className="text-sm leading-6 text-muted">
+              Add categories here, then assign products to them below.
+            </p>
+          </div>
+          <form action={createManagedStoreCategory} className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <input name="storeId" type="hidden" value={store.id} />
+            <Input
+              id="new-category-name"
+              label="New category name"
+              name="categoryName"
+              placeholder="Skincare"
+              required
+            />
+            <Textarea
+              id="new-category-description"
+              label="Description"
+              name="categoryDescription"
+              placeholder="Optional collection description"
+            />
+            <Input
+              id="new-category-image"
+              label="Image URL"
+              name="categoryImageUrl"
+              placeholder="https://example.com/category.jpg"
+            />
+            <div>
+              <Button type="submit" variant="secondary">Add category</Button>
+            </div>
+          </form>
           <div className="mt-5 grid gap-3">
             {(categories ?? []).length ? (
               (categories ?? []).map((category) => (
@@ -4642,16 +4694,74 @@ export default async function StoreDraftPage({
           </div>
         </Card>
         <Card className="p-5 lg:p-6">
-          <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
-            Products
-          </h2>
-          <div className="mt-5 grid gap-3">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Catalog
+            </p>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Products
+            </h2>
+            <p className="text-sm leading-6 text-muted">
+              Product changes write to the same `store_products` table used by the public store.
+            </p>
+          </div>
+          <form action={createManagedStoreProduct} className="mt-5 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <input name="storeId" type="hidden" value={store.id} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                id="new-product-name"
+                label="Product name"
+                name="productName"
+                placeholder="Glow Serum"
+                required
+              />
+              <Input
+                id="new-product-price"
+                label="Price"
+                name="productPrice"
+                placeholder="$39"
+              />
+            </div>
+            <Textarea
+              id="new-product-description"
+              label="Description"
+              name="productDescription"
+              placeholder="Describe this product."
+            />
+            <Input
+              id="new-product-image"
+              label="Image URL"
+              name="productImageUrl"
+              placeholder="https://example.com/product.jpg"
+            />
+            <label className="grid gap-2 text-sm font-semibold text-ink">
+              <span>Category</span>
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                name="categoryId"
+              >
+                <option value="">Unassigned</option>
+                {(categories ?? []).map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <Button type="submit">Add product</Button>
+            </div>
+          </form>
+          <div className="mt-5 grid gap-4">
             {(products ?? []).length ? (
               (products ?? []).map((product) => (
-                <div
+                <form
+                  action={updateManagedStoreProduct}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                   key={product.id}
                 >
+                  <input name="storeId" type="hidden" value={store.id} />
+                  <input name="productId" type="hidden" value={product.id} />
                   {product.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -4664,20 +4774,78 @@ export default async function StoreDraftPage({
                       Product image
                     </div>
                   )}
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="font-bold text-ink">{product.name}</p>
-                    <p className="shrink-0 text-sm font-black text-ink">
-                      {product.price || store.currency}
-                    </p>
+                  <div className="grid gap-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Input
+                        defaultValue={product.name}
+                        id={`product-${product.id}-name`}
+                        label="Product name"
+                        name="productName"
+                        required
+                      />
+                      <Input
+                        defaultValue={product.price ?? ""}
+                        id={`product-${product.id}-price`}
+                        label="Price"
+                        name="productPrice"
+                        placeholder={store.currency}
+                      />
+                    </div>
+                    <Textarea
+                      defaultValue={product.description ?? ""}
+                      id={`product-${product.id}-description`}
+                      label="Description"
+                      name="productDescription"
+                    />
+                    <Input
+                      defaultValue={product.image_url ?? ""}
+                      id={`product-${product.id}-image`}
+                      label="Image URL"
+                      name="productImageUrl"
+                      placeholder="https://example.com/product.jpg"
+                    />
+                    <label className="grid gap-2 text-sm font-semibold text-ink">
+                      <span>Category</span>
+                      <select
+                        className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                        defaultValue={product.category_id ?? ""}
+                        name="categoryId"
+                      >
+                        <option value="">Unassigned</option>
+                        {(categories ?? []).map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                      <Button type="submit" variant="secondary">Save product</Button>
+                      <Button
+                        form={`delete-product-${product.id}`}
+                        type="submit"
+                        variant="ghost"
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-muted">
-                    {product.description || "No product description."}
-                  </p>
-                </div>
+                </form>
               ))
             ) : (
               <p className="text-sm leading-6 text-muted">No products saved yet.</p>
             )}
+            {(products ?? []).map((product) => (
+              <form
+                action={deleteManagedStoreProduct}
+                className="hidden"
+                id={`delete-product-${product.id}`}
+                key={`delete-${product.id}`}
+              >
+                <input name="storeId" type="hidden" value={store.id} />
+                <input name="productId" type="hidden" value={product.id} />
+              </form>
+            ))}
           </div>
         </Card>
       </div>
