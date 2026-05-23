@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -211,29 +212,37 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
                 className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white"
                 key={product.id}
               >
-                {product.imageUrl ? (
-                  <img
-                    alt={product.title}
-                    className="aspect-[4/3] w-full object-cover"
-                    src={product.imageUrl}
-                  />
-                ) : (
-                  <div
-                    className="aspect-[4/3] bg-slate-100"
-                    style={{
-                      background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                    }}
-                  />
-                )}
+                <Link
+                  href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                >
+                  {product.imageUrl ? (
+                    <img
+                      alt={product.title}
+                      className="aspect-[4/3] w-full object-cover"
+                      src={product.imageUrl}
+                    />
+                  ) : (
+                    <div
+                      className="aspect-[4/3] bg-slate-100"
+                      style={{
+                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                      }}
+                    />
+                  )}
+                </Link>
                 <div className="p-5">
                   {product.categoryName ? (
                     <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                       {product.categoryName}
                     </p>
                   ) : null}
-                  <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                    {product.title}
-                  </h3>
+                  <Link
+                    href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                  >
+                    <h3 className="text-xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600">
+                      {product.title}
+                    </h3>
+                  </Link>
                   <p className="mt-3 text-sm leading-6 text-muted">
                     {product.description || "No description has been added for this product yet."}
                   </p>
@@ -245,6 +254,12 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
                     )}
                   </p>
                   <div className="mt-5 grid gap-2">
+                    <Link
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+                      href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                    >
+                      View product details
+                    </Link>
                     {whatsappHref ? (
                       <a
                         className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"

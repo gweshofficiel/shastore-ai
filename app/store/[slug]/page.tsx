@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   StorefrontTenantContextScript,
@@ -172,36 +173,40 @@ export default async function PublicStorePage({
                     className="group flex flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
                     key={product.id}
                   >
-                    {product.imageUrl ? (
-                      <img
-                        alt={product.title}
-                        className="aspect-[4/3] w-full object-cover"
-                        src={product.imageUrl}
-                      />
-                    ) : (
-                      <div
-                        className="flex aspect-[4/3] items-end p-5"
-                        style={{
-                          background: `linear-gradient(135deg, ${branding.primaryColor}16, ${branding.secondaryColor}24)`
-                        }}
-                      >
-                        <span
-                          className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
-                          style={{ backgroundColor: branding.primaryColor }}
+                    <Link href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}>
+                      {product.imageUrl ? (
+                        <img
+                          alt={product.title}
+                          className="aspect-[4/3] w-full object-cover"
+                          src={product.imageUrl}
+                        />
+                      ) : (
+                        <div
+                          className="flex aspect-[4/3] items-end p-5"
+                          style={{
+                            background: `linear-gradient(135deg, ${branding.primaryColor}16, ${branding.secondaryColor}24)`
+                          }}
                         >
-                          {product.categoryName ?? "Product"}
-                        </span>
-                      </div>
-                    )}
+                          <span
+                            className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
+                            style={{ backgroundColor: branding.primaryColor }}
+                          >
+                            {product.categoryName ?? "Product"}
+                          </span>
+                        </div>
+                      )}
+                    </Link>
                     <div className="flex flex-1 flex-col p-5">
                       {product.categoryName ? (
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                           {product.categoryName}
                         </p>
                       ) : null}
-                      <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                        {product.title}
-                      </h3>
+                      <Link href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}>
+                        <h3 className="text-xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600">
+                          {product.title}
+                        </h3>
+                      </Link>
                       <p className="mt-3 min-h-12 text-sm leading-6 text-muted">
                         {product.description || "No description has been added for this product yet."}
                       </p>
@@ -216,6 +221,12 @@ export default async function PublicStorePage({
                         ) : null}
                       </div>
                       <div className="mt-5 grid gap-2">
+                        <Link
+                          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+                          href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}
+                        >
+                          View product details
+                        </Link>
                         {whatsappHref ? (
                           <a
                             className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
