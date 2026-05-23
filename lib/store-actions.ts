@@ -210,12 +210,50 @@ function redirectWithStoreError(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
 }
 
+function redirectWithDatabaseError(detail?: string): never {
+  const params = new URLSearchParams({ error: "REAL_DATABASE_ERROR" });
+
+  if (detail) {
+    params.set("detail", detail.slice(0, 500));
+  }
+
+  redirect(`/dashboard/stores/new?${params.toString()}`);
+}
+
 function isStorePlanGatingEnabled() {
   return process.env.NODE_ENV === "production";
 }
 
 function storeOwnerOrFilter(userId: string) {
   return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
+}
+
+function isMissingOwnerUserColumn(error: SupabaseLikeError | null) {
+  return isMissingColumn(error, "owner_user_id");
+}
+
+async function confirmPersistedStore(
+  supabase: SupabaseClient,
+  userId: string,
+  storeId: string
+) {
+  let result = await supabase
+    .from("stores")
+    .select("id, name, status, user_id, owner_user_id, created_at")
+    .eq("id", storeId)
+    .or(storeOwnerOrFilter(userId))
+    .maybeSingle();
+
+  if (result.error && isMissingOwnerUserColumn(asSupabaseError(result.error))) {
+    result = await supabase
+      .from("stores")
+      .select("id, name, status, user_id, created_at")
+      .eq("id", storeId)
+      .eq("user_id", userId)
+      .maybeSingle();
+  }
+
+  return result;
 }
 
 function normalizeTemplateId(value: string) {
@@ -435,28 +473,9 @@ async function saveThemeSettings(
   }
 }
 
-function validateDraftPayload(
-  storeName: string,
-  categories: DraftCategory[],
-  products: DraftProduct[],
-  redirectPath: string
-) {
+function validateDraftPayload(storeName: string, redirectPath: string) {
   if (!storeName) {
     redirectWithStoreError(redirectPath, "Store name is required.");
-  }
-
-  if (categories.length < 1) {
-    redirectWithStoreError(
-      redirectPath,
-      "Add at least one category with a name before saving."
-    );
-  }
-
-  if (products.length < 1) {
-    redirectWithStoreError(
-      redirectPath,
-      "Add at least one product with a name before saving."
-    );
   }
 }
 
@@ -508,7 +527,7 @@ export async function saveStoreDraft(formData: FormData) {
   const logoImageUrl =
     (await uploadStoreLogo(supabase, user.id, formData)) || themeSettings.logoUrl || null;
 
-  validateDraftPayload(storeName, categories, products, redirectPath);
+  validateDraftPayload(storeName, redirectPath);
 
   if (isStorePlanGatingEnabled()) {
     const access = await getUserSubscriptionAccess(user.id);
@@ -533,7 +552,7 @@ export async function saveStoreDraft(formData: FormData) {
   );
 
   if (projectError) {
-    redirectWithStoreError(redirectPath, projectError);
+    redirectWithDatabaseError(projectError);
   }
 
   const storePayload = {
@@ -553,10 +572,10 @@ export async function saveStoreDraft(formData: FormData) {
   let storeResult = await supabase
     .from("stores")
     .insert(storePayload as never)
-    .select("id")
+    .select("id, name, status, user_id, owner_user_id, created_at")
     .single();
 
-  if (isMissingColumn(asSupabaseError(storeResult.error), "owner_user_id")) {
+  if (storeResult.error && isMissingOwnerUserColumn(asSupabaseError(storeResult.error))) {
     const legacyStorePayload = { ...storePayload } as Omit<
       typeof storePayload,
       "owner_user_id"
@@ -565,19 +584,34 @@ export async function saveStoreDraft(formData: FormData) {
     storeResult = await supabase
       .from("stores")
       .insert(legacyStorePayload as never)
-      .select("id")
+      .select("id, name, status, user_id, created_at")
       .single();
   }
 
-  const store = storeResult.data;
-  const storeError = storeResult.error;
+  const insertedStoreId =
+    storeResult.data && "id" in storeResult.data && typeof storeResult.data.id === "string"
+      ? storeResult.data.id
+      : null;
 
-  if (storeError || !store) {
+  if (storeResult.error || !insertedStoreId) {
     if (projectId) {
       await supabase.from("projects").delete().eq("id", projectId);
     }
-    redirectWithStoreError(redirectPath, formatStoreActionError(storeError));
+    redirectWithDatabaseError(formatStoreActionError(storeResult.error));
   }
+
+  const persistedStore = await confirmPersistedStore(supabase, user.id, insertedStoreId);
+
+  if (persistedStore.error) {
+    redirectWithDatabaseError(formatStoreActionError(persistedStore.error));
+  }
+
+  if (!persistedStore.data) {
+    await cleanupDraft(supabase, insertedStoreId, projectId);
+    redirectWithDatabaseError("Store row was not found after insert.");
+  }
+
+  const store = persistedStore.data;
 
   await saveThemeSettings(
     supabase,
@@ -593,6 +627,7 @@ export async function saveStoreDraft(formData: FormData) {
   );
 
   const categoryIdMap = new Map<string, string>();
+  let catalogWarning: string | null = null;
 
   for (let index = 0; index < categories.length; index += 1) {
     const category = categories[index];
@@ -610,8 +645,8 @@ export async function saveStoreDraft(formData: FormData) {
       .single();
 
     if (error || !savedCategory) {
-      await cleanupDraft(supabase, store.id, projectId);
-      redirectWithStoreError(redirectPath, formatStoreActionError(error));
+      catalogWarning = formatStoreActionError(error);
+      break;
     }
 
     if (category.id) {
@@ -619,30 +654,40 @@ export async function saveStoreDraft(formData: FormData) {
     }
   }
 
-  for (let index = 0; index < products.length; index += 1) {
-    const product = products[index];
-    const mappedCategoryId = product.categoryId
-      ? categoryIdMap.get(product.categoryId) ?? null
-      : null;
+  if (!catalogWarning) {
+    for (let index = 0; index < products.length; index += 1) {
+      const product = products[index];
+      const mappedCategoryId = product.categoryId
+        ? categoryIdMap.get(product.categoryId) ?? null
+        : null;
 
-    const { error } = await supabase.from("store_products").insert({
-      store_id: store.id,
-      category_id: mappedCategoryId,
-      user_id: user.id,
-      name: product.name,
-      description: product.description || null,
-      price: product.price || null,
-      image_url: product.imageUrl ?? null,
-      sort_order: index
-    });
+      const { error } = await supabase.from("store_products").insert({
+        store_id: store.id,
+        category_id: mappedCategoryId,
+        user_id: user.id,
+        name: product.name,
+        description: product.description || null,
+        price: product.price || null,
+        image_url: product.imageUrl ?? null,
+        sort_order: index
+      });
 
-    if (error) {
-      await cleanupDraft(supabase, store.id, projectId);
-      redirectWithStoreError(redirectPath, formatStoreActionError(error));
+      if (error) {
+        catalogWarning = formatStoreActionError(error);
+        break;
+      }
     }
   }
 
   revalidatePath("/dashboard/stores");
+  revalidatePath("/dashboard");
+
+  if (catalogWarning) {
+    redirect(
+      `/dashboard/stores?saved=true&catalog_warning=${encodeURIComponent(catalogWarning)}`
+    );
+  }
+
   redirect("/dashboard/stores?saved=true");
 }
 
@@ -1025,8 +1070,12 @@ export async function publishStoreDraft(formData: FormData) {
     .eq("user_id", user.id)
     .maybeSingle();
   const publication = rawPublication as StorePublicationRow | null;
+  const publicationTableMissing = isMissingTable(
+    asSupabaseError(publicationLookupError),
+    "published_stores"
+  );
 
-  if (publicationLookupError) {
+  if (publicationLookupError && !publicationTableMissing) {
     redirectWithStoreError(detailPath, formatStoreActionError(publicationLookupError));
   }
 
@@ -1047,7 +1096,7 @@ export async function publishStoreDraft(formData: FormData) {
     if (error) {
       redirectWithStoreError(detailPath, formatStoreActionError(error));
     }
-  } else {
+  } else if (!publicationTableMissing) {
     const { error } = await supabase.from("published_stores").insert({
       store_id: updatedStore.id,
       user_id: user.id,
@@ -1064,6 +1113,7 @@ export async function publishStoreDraft(formData: FormData) {
   }
 
   revalidatePath("/dashboard/stores");
+  revalidatePath("/dashboard");
   revalidatePath(`/store/${slug}`);
   redirect(`/dashboard/stores?published=${slug}`);
 }

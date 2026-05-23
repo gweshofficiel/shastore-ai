@@ -49,6 +49,7 @@ type SubscriptionSummary = {
 
 type StoreListResult = {
   draftStores: DraftStore[];
+  draftStoresError: string | null;
   error: string | null;
   ownedStores: OwnedStore[];
   schemaIssue: string | null;
@@ -90,61 +91,55 @@ function storeOwnerOrFilter(userId: string) {
   return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
 }
 
-async function getBuyerStores(): Promise<StoreListResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
+function isMissingOwnerUserColumn(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return error?.code === "PGRST204" && message.includes("owner_user_id");
+}
 
-  if (userError) {
-    return {
-      draftStores: [],
-      error: "We could not verify your session. Please sign in again.",
-      ownedStores: [],
-      schemaIssue: null,
-      subscription: null
-    };
-  }
-
-  if (!user) {
-    return {
-      draftStores: [],
-      error: "Sign in to view your stores.",
-      ownedStores: [],
-      schemaIssue: null,
-      subscription: null
-    };
-  }
-
-  const [ownedResult, draftResult, subscriptionResult] = await Promise.all([
-    supabase.rpc("get_claimed_store_instances_for_current_user" as never),
-    supabase
-      .from("stores")
-      .select("id, name, status, created_at")
-      .or(storeOwnerOrFilter(user.id))
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("user_subscriptions" as never)
-      .select("plan_id, status, current_period_end")
-      .eq("user_id", user.id)
-      .maybeSingle()
-  ]);
-
+async function loadOwnedStores(ownedResult: {
+  data: unknown;
+  error: { code?: string; message?: string } | null;
+}) {
   const schemaIssue =
     ownedResult.error && isMissingOwnershipFoundation(ownedResult.error)
       ? "Missing ownership foundation: run the buyer activation and account claim migrations that create get_claimed_store_instances_for_current_user(), store_owner_links, store_access_permissions, and store_instances."
       : null;
-  const error =
-    ownedResult.error && !schemaIssue
-      ? "Owned stores could not be loaded. Please try again."
-      : draftResult.error
-        ? "Draft stores could not be loaded. Please try again."
-        : null;
-  const subscription =
-    subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
-      ? null
-      : (subscriptionResult.data as SubscriptionSummary | null);
+
+  return {
+    ownedStores: (ownedResult.data ?? []) as OwnedStore[],
+    ownedStoresError:
+      ownedResult.error && !schemaIssue
+        ? "Claimed stores could not be loaded. Please try again."
+        : null,
+    schemaIssue
+  };
+}
+
+async function loadDraftStores(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+) {
+  let draftResult = await supabase
+    .from("stores")
+    .select("id, name, status, created_at")
+    .or(storeOwnerOrFilter(userId))
+    .order("created_at", { ascending: false });
+
+  if (draftResult.error && isMissingOwnerUserColumn(draftResult.error)) {
+    draftResult = await supabase
+      .from("stores")
+      .select("id, name, status, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+  }
+
+  if (draftResult.error) {
+    return {
+      draftStores: [] as DraftStore[],
+      draftStoresError: `Draft stores could not be loaded: ${draftResult.error.message}`
+    };
+  }
+
   const draftStores = ((draftResult.data ?? []) as Omit<DraftStore, "publication">[]).map(
     (store) => ({
       ...store,
@@ -165,10 +160,7 @@ async function getBuyerStores(): Promise<StoreListResult> {
     } else if (!isMissingPublishedStoresTable(publicationError)) {
       return {
         draftStores: [],
-        error: "Published store metadata could not be loaded. Please try again.",
-        ownedStores: (ownedResult.data ?? []) as OwnedStore[],
-        schemaIssue,
-        subscription
+        draftStoresError: "Published store metadata could not be loaded. Please try again."
       };
     }
   }
@@ -179,8 +171,60 @@ async function getBuyerStores(): Promise<StoreListResult> {
       publication:
         publicationRows.find((publication) => publication.store_id === store.id) ?? null
     })),
-    error,
-    ownedStores: (ownedResult.data ?? []) as OwnedStore[],
+    draftStoresError: null
+  };
+}
+
+async function getBuyerStores(): Promise<StoreListResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    return {
+      draftStores: [],
+      draftStoresError: null,
+      error: "We could not verify your session. Please sign in again.",
+      ownedStores: [],
+      schemaIssue: null,
+      subscription: null
+    };
+  }
+
+  if (!user) {
+    return {
+      draftStores: [],
+      draftStoresError: null,
+      error: "Sign in to view your stores.",
+      ownedStores: [],
+      schemaIssue: null,
+      subscription: null
+    };
+  }
+
+  const [ownedResult, subscriptionResult] = await Promise.all([
+    supabase.rpc("get_claimed_store_instances_for_current_user" as never),
+    supabase
+      .from("user_subscriptions" as never)
+      .select("plan_id, status, current_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle()
+  ]);
+
+  const { ownedStores, ownedStoresError, schemaIssue } = await loadOwnedStores(ownedResult);
+  const { draftStores, draftStoresError } = await loadDraftStores(supabase, user.id);
+  const subscription =
+    subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
+      ? null
+      : (subscriptionResult.data as SubscriptionSummary | null);
+
+  return {
+    draftStores,
+    draftStoresError,
+    error: ownedStoresError,
+    ownedStores,
     schemaIssue,
     subscription
   };
@@ -222,11 +266,19 @@ function badgeClass(status: string | null | undefined) {
 export default async function StoresPage({
   searchParams
 }: {
-  searchParams: Promise<{ deleted?: string; error?: string; published?: string; saved?: string }>;
+  searchParams: Promise<{
+    catalog_warning?: string;
+    deleted?: string;
+    error?: string;
+    published?: string;
+    saved?: string;
+  }>;
 }) {
   const query = await searchParams;
-  const { draftStores, error, ownedStores, schemaIssue, subscription } = await getBuyerStores();
-  const totalStores = ownedStores.length + draftStores.length;
+  const { draftStores, draftStoresError, error, ownedStores, schemaIssue, subscription } =
+    await getBuyerStores();
+  const storeModeCount = draftStores.length;
+  const totalStores = ownedStores.length + storeModeCount;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -238,7 +290,15 @@ export default async function StoresPage({
 
       {query.saved ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-bold text-emerald-700">Store draft saved successfully.</p>
+          <p className="text-sm font-bold text-emerald-700">
+            Store draft saved successfully. {storeModeCount} store
+            {storeModeCount === 1 ? "" : "s"} in your account.
+          </p>
+          {query.catalog_warning ? (
+            <p className="mt-2 text-sm font-semibold text-amber-800">
+              Catalog details were not saved: {query.catalog_warning}
+            </p>
+          ) : null}
         </Card>
       ) : null}
       {query.deleted ? (
@@ -253,9 +313,11 @@ export default async function StoresPage({
           </p>
         </Card>
       ) : null}
-      {query.error || error ? (
+      {query.error || error || draftStoresError ? (
         <Card className="border-red-200 bg-red-50 p-5">
-          <p className="text-sm font-bold text-red-700">{query.error ?? error}</p>
+          <p className="text-sm font-bold text-red-700">
+            {query.error ?? draftStoresError ?? error}
+          </p>
         </Card>
       ) : null}
       {schemaIssue ? (
@@ -268,34 +330,109 @@ export default async function StoresPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Buyer Store Management
+              Store Mode
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-              Stores owned by your account
+              Your stores
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-              This page reads stores connected to the current Supabase Auth user through ownership
-              links, access permissions, or your own draft store records.
+              Loaded directly from the stores table for the current Supabase Auth user
+              (user_id or owner_user_id).
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-              {totalStores} total
+              {storeModeCount} store{storeModeCount === 1 ? "" : "s"}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-              Plan {subscription?.plan_id ?? "not connected"}
+              {totalStores} total
             </span>
+          </div>
+        </div>
+
+        {draftStores.length ? (
+          <div className="mt-5 grid gap-4">
+            {draftStores.map((store) => {
+              const displayStatus = store.publication?.status ?? store.status ?? "draft";
+              const isPublished =
+                displayStatus === "published" && Boolean(store.publication?.slug);
+
+              return (
+                <div
+                  className="grid gap-5 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+                  key={store.id}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-lg font-black text-ink">{store.name}</p>
+                    <p className="mt-1 text-sm font-semibold text-muted">
+                      Status {formatStatus(displayStatus, "draft")} · Created{" "}
+                      {formatDate(store.created_at)}
+                    </p>
+                    {store.publication?.slug ? (
+                      <p className="mt-2 font-mono text-xs font-bold text-muted">
+                        /store/{store.publication.slug}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+                    <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
+                    {isPublished ? (
+                      <ButtonLink
+                        href={`/store/${store.publication?.slug}`}
+                        target="_blank"
+                        variant="secondary"
+                      >
+                        Public Store
+                      </ButtonLink>
+                    ) : (
+                      <form action={publishStoreDraft}>
+                        <input name="storeId" type="hidden" value={store.id} />
+                        <Button type="submit" variant="secondary">
+                          Publish Store
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
+            <p className="text-lg font-black text-ink">No saved stores in Store Mode yet.</p>
+            <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
+              Create a store draft, save it, and it will appear here immediately.
+            </p>
+            <div className="mt-4">
+              <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {ownedStores.length ? (
+        <Card className="p-6 lg:p-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Claimed stores
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+                Reseller-delivered ownership
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
+                These stores come from buyer activation and ownership claim flows.
+              </p>
+            </div>
             <span
               className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
                 subscription?.status
               )}`}
             >
-              {subscription?.status ?? "no subscription record"}
+              Plan {subscription?.plan_id ?? "not connected"}
             </span>
           </div>
-        </div>
 
-        {ownedStores.length ? (
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {ownedStores.map((store) => (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5" key={store.id}>
@@ -326,33 +463,6 @@ export default async function StoresPage({
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
-                      store.status
-                    )}`}
-                  >
-                    Store {formatStatus(store.status)}
-                  </span>
-                  <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-                    {store.visibility}
-                  </span>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
-                      store.activation_status
-                    )}`}
-                  >
-                    Activation {formatStatus(store.activation_status)}
-                  </span>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(
-                      store.access_status
-                    )}`}
-                  >
-                    {store.access_role ?? "owner"} {store.access_status ?? "pending"}
-                  </span>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
                   <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
                   <ButtonLink
                     href={`/dashboard/stores/preview/${store.internal_slug}`}
@@ -361,92 +471,6 @@ export default async function StoresPage({
                   >
                     View store preview
                   </ButtonLink>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : !draftStores.length ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
-            <p className="text-lg font-black text-ink">No stores yet.</p>
-            <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
-              Create a Store Mode draft from Create store, or activate a reseller-delivered store
-              from your delivery PDF. Saved drafts appear in the list below.
-            </p>
-            <div className="mt-4">
-              <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>
-            </div>
-          </div>
-        ) : null}
-      </Card>
-
-      {draftStores.length ? (
-        <Card className="p-6 lg:p-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Draft Stores
-              </p>
-              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-                Stores created by your user account
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-                These are Store Mode drafts where stores.user_id or stores.owner_user_id
-                equals your current Supabase Auth user.
-              </p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-              {draftStores.length} drafts
-            </span>
-          </div>
-
-          <div className="mt-5 grid gap-4">
-            {draftStores.map((store) => (
-              <div
-                className="grid gap-5 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-[minmax(0,1fr)_auto]"
-                key={store.id}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-black text-ink">{store.name}</p>
-                  <p className="mt-1 text-sm font-semibold text-muted">
-                    Created {formatDate(store.created_at)}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${badgeClass(
-                        store.publication?.status ?? store.status
-                      )}`}
-                    >
-                      {store.publication?.status ?? store.status ?? "draft"}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                      Slug {store.publication?.slug ?? "not published"}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                      Published{" "}
-                      {store.publication?.published_at
-                        ? formatDate(store.publication.published_at)
-                        : "not yet"}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                  <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
-                  {store.publication?.status === "published" && store.publication.slug ? (
-                    <ButtonLink
-                      href={`/store/${store.publication.slug}`}
-                      target="_blank"
-                      variant="secondary"
-                    >
-                      View public store
-                    </ButtonLink>
-                  ) : (
-                    <form action={publishStoreDraft}>
-                      <input name="storeId" type="hidden" value={store.id} />
-                      <Button type="submit" variant="secondary">
-                        Publish Store
-                      </Button>
-                    </form>
-                  )}
                 </div>
               </div>
             ))}

@@ -40,6 +40,7 @@ type StoreState = {
 };
 
 type StoreBuilderProps = {
+  databaseError?: string | null;
   saveStoreDraft: (formData: FormData) => Promise<void>;
 };
 
@@ -58,7 +59,7 @@ function uid(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-export function StoreBuilder({ saveStoreDraft }: StoreBuilderProps) {
+export function StoreBuilder({ databaseError, saveStoreDraft }: StoreBuilderProps) {
   const [tab, setTab] = useState(0);
   const [store, setStore] = useState<StoreState>(initialStore);
   const [categories, setCategories] = useState<DraftCategory[]>([
@@ -145,6 +146,11 @@ export function StoreBuilder({ saveStoreDraft }: StoreBuilderProps) {
       <input name="themeSettings" type="hidden" value={JSON.stringify(theme)} />
 
       <Card className="grid min-w-0 gap-6 p-5 lg:p-6">
+        {databaseError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {databaseError}
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           {tabs.map((label, index) => (
             <button
