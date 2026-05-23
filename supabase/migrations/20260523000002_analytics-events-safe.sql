@@ -317,3 +317,4 @@ $$;
 grant execute on function public.resolve_analytics_source(text, text) to anon, authenticated;
 grant execute on function public.track_analytics_event(text, text, text, text, text, text, text, text, text, text, jsonb) to anon, authenticated;
 grant execute on function public.track_commerce_event(text, text, text, text, text, jsonb) to anon, authenticated;
+

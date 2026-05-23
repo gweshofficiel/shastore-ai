@@ -187,3 +187,4 @@ on conflict (id) do update set
   ai_features_enabled = excluded.ai_features_enabled,
   sort_order = excluded.sort_order,
   updated_at = now();
+

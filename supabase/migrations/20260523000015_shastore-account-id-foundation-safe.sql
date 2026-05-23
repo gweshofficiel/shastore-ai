@@ -152,3 +152,4 @@ begin
       for each row execute function public.set_account_profiles_updated_at();
   end if;
 end $$;
+

@@ -156,3 +156,4 @@ begin
       for each row execute function public.set_ai_workflow_updated_at();
   end if;
 end $$;
+

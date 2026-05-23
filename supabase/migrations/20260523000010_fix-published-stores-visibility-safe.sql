@@ -46,3 +46,4 @@ end $$;
 
 create index if not exists published_stores_visibility_idx
   on public.published_stores(visibility);
+

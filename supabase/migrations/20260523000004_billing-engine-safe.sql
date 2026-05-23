@@ -239,3 +239,4 @@ update public.user_subscriptions
 set plan_id = 'agency'
 where plan_id = 'business'
   and exists (select 1 from public.subscription_plans where id = 'agency');
+

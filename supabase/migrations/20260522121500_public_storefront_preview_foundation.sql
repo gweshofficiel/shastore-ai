@@ -66,3 +66,4 @@ $$;
 
 grant execute on function public.get_public_storefront_preview(text) to anon;
 grant execute on function public.get_public_storefront_preview(text) to authenticated;
+

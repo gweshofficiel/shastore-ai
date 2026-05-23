@@ -11,7 +11,7 @@ create table if not exists public.storefront_runtime_cache (
   owner_user_id uuid references auth.users(id) on delete cascade,
   builder_page_id uuid references public.builder_pages(id) on delete set null,
   builder_layout_version_id uuid references public.builder_layout_versions(id) on delete set null,
-  cache_key text not null default encode(gen_random_bytes(16), 'hex'),
+  cache_key text not null default md5(random()::text || clock_timestamp()::text),
   cache_status text not null default 'prepared'
     check (cache_status in ('prepared', 'fresh', 'stale', 'invalidated', 'error')),
   cache_scope text not null default 'published_storefront'
@@ -34,7 +34,7 @@ create table if not exists public.preview_runtime_cache (
   builder_draft_id uuid references public.builder_drafts(id) on delete cascade,
   preview_session_id uuid references public.builder_preview_sessions(id) on delete set null,
   preview_runtime_state_id uuid references public.preview_runtime_states(id) on delete set null,
-  cache_key text not null default encode(gen_random_bytes(16), 'hex'),
+  cache_key text not null default md5(random()::text || clock_timestamp()::text),
   cache_status text not null default 'prepared'
     check (cache_status in ('prepared', 'fresh', 'stale', 'invalidated', 'error')),
   preview_mode text not null default 'desktop'
@@ -138,3 +138,4 @@ begin
     end if;
   end loop;
 end $$;
+

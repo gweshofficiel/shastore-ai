@@ -174,3 +174,4 @@ begin
       for each row execute function public.set_builder_drafts_updated_at();
   end if;
 end $$;
+

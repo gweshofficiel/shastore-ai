@@ -202,3 +202,4 @@ $$;
 grant execute on function public.sync_claimed_store_owner_identity(uuid) to authenticated;
 grant execute on function public.can_access_store_instance(uuid) to authenticated;
 grant execute on function public.can_manage_store_instance(uuid) to authenticated;
+

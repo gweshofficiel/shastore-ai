@@ -453,3 +453,4 @@ on conflict (plan_key, category_key) do update set
   automatic_listing_disable_placeholder = excluded.automatic_listing_disable_placeholder,
   usage_tracking_placeholder = excluded.usage_tracking_placeholder,
   enforcement_enabled = false;
+

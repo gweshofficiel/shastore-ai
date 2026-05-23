@@ -247,3 +247,4 @@ begin
   order by instances.created_at desc;
 end;
 $$;
+

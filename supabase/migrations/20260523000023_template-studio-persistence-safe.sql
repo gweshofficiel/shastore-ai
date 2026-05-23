@@ -108,3 +108,4 @@ begin
       for each row execute function public.set_template_studio_persistence_updated_at();
   end if;
 end $$;
+

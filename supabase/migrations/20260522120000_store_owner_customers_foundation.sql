@@ -76,3 +76,4 @@ begin
       for each row execute function public.set_store_owner_customers_updated_at();
   end if;
 end $$;
+

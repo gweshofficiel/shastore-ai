@@ -96,7 +96,7 @@ create table if not exists public.commerce_domain_publications (
   custom_domain text,
   hostname text,
   status text not null default 'pending' check (status in ('pending', 'verified', 'failed')),
-  verification_token text not null default encode(gen_random_bytes(16), 'hex'),
+  verification_token text not null default md5(random()::text || clock_timestamp()::text),
   dns_target text not null default 'cname.vercel-dns.com',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -226,3 +226,4 @@ begin
       for each row execute function public.set_commerce_updated_at();
   end if;
 end $$;
+

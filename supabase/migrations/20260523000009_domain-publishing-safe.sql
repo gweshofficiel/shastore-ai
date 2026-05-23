@@ -38,7 +38,7 @@ create table if not exists public.domains (
   kind domain_kind not null default 'free_subdomain',
   status domain_status not null default 'pending',
   ssl_status ssl_status not null default 'pending',
-  verification_token text not null default encode(gen_random_bytes(16), 'hex'),
+  verification_token text not null default md5(random()::text || clock_timestamp()::text),
   dns_target text not null default 'cname.hostinsh.shastore.ai',
   nameserver_instructions jsonb not null default '[]'::jsonb,
   hostinsh_zone_id text,
@@ -267,3 +267,4 @@ as $$
     and ph.status = 'published'
   limit 1;
 $$;
+

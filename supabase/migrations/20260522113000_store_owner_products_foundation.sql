@@ -165,3 +165,4 @@ begin
       for each row execute function public.set_store_instance_products_updated_at();
   end if;
 end $$;
+

@@ -139,3 +139,4 @@ begin
       for each row execute function public.set_store_builder_editing_updated_at();
   end if;
 end $$;
+

@@ -448,3 +448,4 @@ end;
 $$;
 
 grant execute on function public.claim_store_activation_for_current_user(text) to authenticated;
+

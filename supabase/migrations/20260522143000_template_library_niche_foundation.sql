@@ -393,3 +393,4 @@ on conflict (template_id, asset_key) do update set
   asset_type = excluded.asset_type,
   alt_text = excluded.alt_text,
   metadata = excluded.metadata;
+

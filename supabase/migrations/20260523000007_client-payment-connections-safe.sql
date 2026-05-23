@@ -11,3 +11,4 @@ set
   paypal_seller_enabled = coalesce(paypal_seller_enabled, paypal_enabled, false)
 where stripe_enabled = true
    or paypal_enabled = true;
+

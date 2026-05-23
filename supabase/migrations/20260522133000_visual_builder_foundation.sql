@@ -89,3 +89,4 @@ begin
       for each row execute function public.set_store_builder_states_updated_at();
   end if;
 end $$;
+

@@ -1,91 +1,122 @@
--- Buyer checkout foundation for seller-owned payment methods only.
--- This does not touch SHASTORE AI platform billing or platform Stripe checkout.
+-- Unified checkout and public-safe order capture for SHASTORE AI.
+-- Additive and idempotent: extends commerce tables without changing publish/template architecture.
+
+alter table if exists public.commerce_customers
+  add column if not exists source text,
+  add column if not exists order_count integer not null default 0,
+  add column if not exists total_spent numeric(12,2) not null default 0;
 
 alter table if exists public.commerce_orders
-  add column if not exists checkout_source text,
-  add column if not exists buyer_notes text;
+  add column if not exists customer_name text,
+  add column if not exists customer_phone text,
+  add column if not exists customer_email text,
+  add column if not exists city text,
+  add column if not exists address text,
+  add column if not exists subtotal numeric(12,2) not null default 0,
+  add column if not exists total numeric(12,2) not null default 0;
+
+create index if not exists commerce_customers_phone_idx on public.commerce_customers(user_id, phone);
+create index if not exists commerce_customers_email_idx on public.commerce_customers(user_id, email);
+create index if not exists commerce_orders_customer_phone_idx on public.commerce_orders(user_id, customer_phone);
 
 do $$
 declare
   constraint_row record;
 begin
-  if to_regclass('public.commerce_orders') is not null then
+  if to_regclass('public.commerce_analytics_events') is not null then
     for constraint_row in
       select conname
       from pg_constraint
-      join pg_attribute
-        on pg_attribute.attrelid = pg_constraint.conrelid
-       and pg_attribute.attnum = any(pg_constraint.conkey)
-      where pg_constraint.conrelid = 'public.commerce_orders'::regclass
-        and pg_constraint.contype = 'c'
-        and pg_attribute.attname = 'status'
+      where conrelid = 'public.commerce_analytics_events'::regclass
+        and contype = 'c'
+        and pg_get_constraintdef(oid) like '%event_type%'
     loop
       execute format(
-        'alter table public.commerce_orders drop constraint if exists %I',
+        'alter table public.commerce_analytics_events drop constraint if exists %I',
         constraint_row.conname
       );
     end loop;
 
-    alter table public.commerce_orders
-      add constraint commerce_orders_status_check
-      check (status in ('pending', 'new', 'confirmed', 'shipped', 'delivered', 'canceled'));
+    alter table public.commerce_analytics_events
+      add constraint commerce_analytics_events_event_type_check
+      check (
+        event_type in (
+          'visitor',
+          'page_view',
+          'whatsapp_click',
+          'checkout_started',
+          'order_created',
+          'conversion',
+          'order'
+        )
+      );
   end if;
 end $$;
 
-create or replace function public.get_public_checkout_settings(
+create or replace function public.track_commerce_event(
   p_source_type text,
-  p_source_slug text
+  p_source_slug text,
+  p_event_type text,
+  p_visitor_id text default null,
+  p_session_id text default null,
+  p_metadata jsonb default '{}'::jsonb
 )
-returns table (
-  cod_enabled boolean,
-  whatsapp_orders_enabled boolean,
-  default_whatsapp_number text,
-  stripe_seller_enabled boolean,
-  paypal_seller_enabled boolean,
-  crypto_enabled boolean,
-  payment_instructions text
-)
+returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   resolved_user_id uuid;
+  resolved_source_id uuid;
+  inserted_id uuid;
 begin
   if p_source_type = 'landing' then
-    select user_id
-      into resolved_user_id
+    select user_id, id
+      into resolved_user_id, resolved_source_id
       from public.landing_pages
       where slug = p_source_slug
         and status = 'published'
       limit 1;
   elsif p_source_type = 'store' then
-    select ps.user_id
-      into resolved_user_id
-      from public.published_stores ps
-      where ps.slug = p_source_slug
-        and ps.status = 'published'
-        and coalesce(ps.visibility, 'public') = 'public'
+    select user_id, store_id
+      into resolved_user_id, resolved_source_id
+      from public.published_stores
+      where slug = p_source_slug
+        and status = 'published'
+        and coalesce(visibility, 'public') = 'public'
       limit 1;
   else
-    raise exception 'Invalid checkout source type';
+    raise exception 'Invalid commerce source type';
   end if;
 
   if resolved_user_id is null then
-    raise exception 'Published checkout source not found';
+    raise exception 'Published commerce source not found';
   end if;
 
-  return query
-  select
-    coalesce(cps.cod_enabled, true),
-    coalesce(cps.whatsapp_orders_enabled, true),
-    cps.default_whatsapp_number,
-    coalesce(cps.stripe_seller_enabled, false),
-    coalesce(cps.paypal_seller_enabled, false),
-    coalesce(cps.crypto_enabled, false),
-    cps.payment_instructions
-  from (select resolved_user_id as user_id) owner
-  left join public.commerce_payment_settings cps on cps.user_id = owner.user_id;
+  insert into public.commerce_analytics_events (
+    user_id,
+    source_type,
+    source_id,
+    source_slug,
+    event_type,
+    visitor_id,
+    session_id,
+    metadata
+  )
+  values (
+    resolved_user_id,
+    p_source_type,
+    resolved_source_id,
+    p_source_slug,
+    p_event_type,
+    p_visitor_id,
+    p_session_id,
+    coalesce(p_metadata, '{}'::jsonb)
+  )
+  returning id into inserted_id;
+
+  return inserted_id;
 end;
 $$;
 
@@ -116,7 +147,6 @@ declare
   resolved_source_id uuid;
   customer_id_value uuid;
   order_id_value uuid;
-  settings_row record;
   clean_name text := nullif(trim(coalesce(p_customer_name, '')), '');
   clean_phone text := nullif(trim(coalesce(p_customer_phone, '')), '');
   clean_email text := nullif(trim(coalesce(p_customer_email, '')), '');
@@ -134,8 +164,8 @@ begin
     raise exception 'Customer name and phone are required';
   end if;
 
-  if clean_payment not in ('cod', 'whatsapp') then
-    raise exception 'Online payment checkout is not enabled yet';
+  if clean_payment not in ('cod', 'whatsapp', 'stripe', 'paypal') then
+    raise exception 'Invalid payment method';
   end if;
 
   if jsonb_typeof(safe_products) <> 'array' then
@@ -163,19 +193,6 @@ begin
 
   if resolved_user_id is null then
     raise exception 'Published commerce source not found';
-  end if;
-
-  select *
-    into settings_row
-    from public.get_public_checkout_settings(p_source_type, p_source_slug)
-    limit 1;
-
-  if clean_payment = 'cod' and not coalesce(settings_row.cod_enabled, true) then
-    raise exception 'Cash on Delivery is not enabled for this seller';
-  end if;
-
-  if clean_payment = 'whatsapp' and not coalesce(settings_row.whatsapp_orders_enabled, true) then
-    raise exception 'WhatsApp Orders are not enabled for this seller';
   end if;
 
   select id
@@ -243,8 +260,6 @@ begin
     city,
     address,
     notes,
-    checkout_source,
-    buyer_notes,
     customer_snapshot,
     products,
     currency,
@@ -258,16 +273,14 @@ begin
     p_source_type,
     resolved_source_id,
     p_source_slug,
-    'pending',
+    'new',
     clean_payment,
-    'pending',
+    case when clean_payment in ('stripe', 'paypal') then 'pending' else 'pending' end,
     clean_name,
     clean_phone,
     clean_email,
     clean_city,
     clean_address,
-    clean_notes,
-    'buyer_checkout',
     clean_notes,
     jsonb_build_object(
       'name', clean_name,
@@ -337,5 +350,6 @@ begin
 end;
 $$;
 
-grant execute on function public.get_public_checkout_settings(text, text) to anon, authenticated;
+grant execute on function public.track_commerce_event(text, text, text, text, text, jsonb) to anon, authenticated;
 grant execute on function public.create_commerce_order(text, text, text, text, text, text, text, text, text, jsonb, numeric, numeric, text, text, text) to anon, authenticated;
+

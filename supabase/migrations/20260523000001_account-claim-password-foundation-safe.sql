@@ -689,3 +689,4 @@ begin
   order by instances.id, instances.created_at desc;
 end;
 $$;
+

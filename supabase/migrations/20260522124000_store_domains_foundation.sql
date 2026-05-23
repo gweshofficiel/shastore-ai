@@ -180,3 +180,4 @@ $$;
 
 grant execute on function public.resolve_storefront_hostname(text) to anon;
 grant execute on function public.resolve_storefront_hostname(text) to authenticated;
+

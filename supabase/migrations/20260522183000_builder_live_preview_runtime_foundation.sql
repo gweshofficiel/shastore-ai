@@ -15,7 +15,7 @@ create table if not exists public.builder_preview_sessions (
     check (session_status in ('active', 'refreshing', 'synced', 'stale', 'error', 'closed')),
   preview_mode text not null default 'desktop'
     check (preview_mode in ('desktop', 'tablet', 'mobile')),
-  session_key text not null default encode(gen_random_bytes(16), 'hex'),
+  session_key text not null default md5(random()::text || clock_timestamp()::text),
   hydration_state jsonb not null default '{}'::jsonb,
   isolation_state jsonb not null default '{}'::jsonb,
   sync_state jsonb not null default '{}'::jsonb,
@@ -56,7 +56,7 @@ create table if not exists public.preview_render_cache (
   preview_session_id uuid references public.builder_preview_sessions(id) on delete cascade,
   cache_status text not null default 'prepared'
     check (cache_status in ('prepared', 'fresh', 'stale', 'invalidated', 'error')),
-  cache_key text not null default encode(gen_random_bytes(16), 'hex'),
+  cache_key text not null default md5(random()::text || clock_timestamp()::text),
   render_payload jsonb not null default '{}'::jsonb,
   hydration_payload jsonb not null default '{}'::jsonb,
   responsive_payload jsonb not null default '{}'::jsonb,
@@ -114,3 +114,4 @@ begin
     end if;
   end loop;
 end $$;
+

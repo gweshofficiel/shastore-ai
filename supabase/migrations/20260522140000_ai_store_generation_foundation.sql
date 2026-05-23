@@ -176,3 +176,4 @@ begin
       for each row execute function public.set_ai_generation_jobs_updated_at();
   end if;
 end $$;
+

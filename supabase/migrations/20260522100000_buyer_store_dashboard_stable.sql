@@ -342,3 +342,4 @@ grant execute on function public.can_manage_store_instance(uuid) to authenticate
 grant execute on function public.assert_store_management_manage_access(uuid) to authenticated;
 grant execute on function public.ensure_store_management_defaults(uuid) to authenticated;
 grant execute on function public.get_store_management_snapshot(uuid) to authenticated;
+

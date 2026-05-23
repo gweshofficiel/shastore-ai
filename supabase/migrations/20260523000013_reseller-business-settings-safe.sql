@@ -68,3 +68,4 @@ begin
       for each row execute function public.set_reseller_business_settings_updated_at();
   end if;
 end $$;
+

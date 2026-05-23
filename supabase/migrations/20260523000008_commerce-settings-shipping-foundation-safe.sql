@@ -140,3 +140,4 @@ begin
       for each row execute function public.set_commerce_operations_updated_at();
   end if;
 end $$;
+

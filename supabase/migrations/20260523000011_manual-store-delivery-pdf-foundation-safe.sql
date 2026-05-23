@@ -108,3 +108,4 @@ begin
       for each row execute function public.set_store_delivery_documents_updated_at();
   end if;
 end $$;
+
