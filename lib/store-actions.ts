@@ -18,6 +18,7 @@ import { defaultStoreTemplateId } from "@/lib/store-templates";
 import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
+import { isValidHostname } from "@/lib/domains/utils";
 
 type DraftCategory = {
   id: string;
@@ -43,8 +44,12 @@ type SupabaseLikeError = {
 };
 
 type StorePublicationRow = {
+  custom_domain?: string | null;
+  domain_status?: "pending" | "verifying" | "connected" | "failed" | null;
+  domain_verified_at?: string | null;
   id: string;
   slug?: string | null;
+  subdomain?: string | null;
   status?: string | null;
   visibility?: string | null;
   published_at?: string | null;
@@ -1649,6 +1654,110 @@ export async function saveStorePublicationSettings(formData: FormData) {
   }
 
   redirect(`/dashboard/stores/${store.id}?publication=saved`);
+}
+
+export async function saveStoreDomainSettings(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/stores");
+  }
+
+  const storeId = String(formData.get("storeId") ?? "").trim();
+  const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
+
+  if (!storeId) {
+    redirectWithStoreError("/dashboard/stores", "Store not found.");
+  }
+
+  const { data: store, error: storeError } = await supabase
+    .from("stores")
+    .select("id, name, slug")
+    .eq("id", storeId)
+    .or(storeOwnerOrFilter(user.id))
+    .single();
+
+  if (storeError || !store) {
+    redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  const customDomain = cleanHostname(formData.get("customDomain"));
+  const intent = cleanText(formData.get("domainIntent"), 40);
+
+  if (customDomain && !isValidHostname(customDomain)) {
+    redirectWithStoreError(detailPath, "Enter a valid custom domain, for example shop.example.com.");
+  }
+
+  if (isStorePlanGatingEnabled() && customDomain) {
+    const access = await getUserSubscriptionAccess(user.id);
+
+    if (!canUseCustomDomain(access)) {
+      redirectWithStoreError(detailPath, getUpgradeMessage("domain"));
+    }
+  }
+
+  const slug = await persistStoreSlug(
+    supabase,
+    store.id,
+    String(store.name ?? "").trim() || "store",
+    store.slug
+  );
+  const { data: rawPublication } = await supabase
+    .from("published_stores")
+    .select("*")
+    .eq("store_id", store.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const publication = rawPublication as StorePublicationRow | null;
+  const previousDomain = cleanHostname(publication?.custom_domain ?? null);
+  const domainChanged = previousDomain !== customDomain;
+  const domainStatus =
+    customDomain && intent === "verify" && !domainChanged
+      ? "verifying"
+      : customDomain
+        ? domainChanged
+          ? "pending"
+          : publication?.domain_status ?? "pending"
+        : "pending";
+  const publicationPayload = {
+    custom_domain: customDomain || null,
+    domain_status: domainStatus,
+    domain_verified_at:
+      customDomain && !domainChanged && publication?.domain_status === "connected"
+        ? publication.domain_verified_at ?? null
+        : null,
+    hostname: customDomain || publication?.subdomain || null,
+    slug,
+    updated_at: new Date().toISOString(),
+    url: `/store/${slug}`
+  };
+
+  const { error } = publication
+    ? await supabase
+        .from("published_stores")
+        .update(publicationPayload as never)
+        .eq("id", publication.id)
+        .eq("user_id", user.id)
+    : await supabase.from("published_stores").insert({
+        ...publicationPayload,
+        store_id: store.id,
+        user_id: user.id,
+        status: "draft",
+        visibility: "public",
+        published_at: null
+      } as never);
+
+  if (error) {
+    redirectWithStoreError(detailPath, formatStoreActionError(error));
+  }
+
+  revalidatePath(detailPath);
+  revalidatePath("/dashboard/stores");
+  revalidatePath(`/store/${slug}`);
+  redirect(`${detailPath}?domain=${intent === "verify" ? "verifying" : "saved"}`);
 }
 
 export async function unpublishStore(formData: FormData) {

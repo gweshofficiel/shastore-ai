@@ -14,6 +14,7 @@ export type SubscriptionStatus =
   | "canceled"
   | "incomplete";
 export type DomainStatus = "pending" | "verified" | "failed";
+export type StoreDomainStatus = "pending" | "verifying" | "connected" | "failed";
 export type PublicationStatus = "draft" | "published" | "unpublished";
 export type ProjectType = "landing" | "store";
 export type CommerceCustomerSourceType = "landing" | "store" | "manual";
@@ -424,6 +425,12 @@ export type Database = {
           slug: string;
           url: string;
           status: PublicationStatus;
+          visibility: "public" | "private";
+          custom_domain: string | null;
+          subdomain: string | null;
+          hostname: string | null;
+          domain_status: StoreDomainStatus;
+          domain_verified_at: string | null;
           published_at: string | null;
           created_at: string;
           updated_at: string;
@@ -435,6 +442,12 @@ export type Database = {
           slug: string;
           url: string;
           status?: PublicationStatus;
+          visibility?: "public" | "private";
+          custom_domain?: string | null;
+          subdomain?: string | null;
+          hostname?: string | null;
+          domain_status?: StoreDomainStatus;
+          domain_verified_at?: string | null;
           published_at?: string | null;
           created_at?: string;
           updated_at?: string;

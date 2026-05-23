@@ -92,6 +92,7 @@ import {
   deleteManagedStoreProduct,
   publishStoreDraft,
   resetStoreThemeSettings,
+  saveStoreDomainSettings,
   saveStorePublicationSettings,
   saveStoreThemeSettings,
   updateManagedStoreCategory,
@@ -138,6 +139,8 @@ type PublicationRow = {
   favicon_url?: string | null;
   social_image_url?: string | null;
   custom_domain?: string | null;
+  domain_status?: "pending" | "verifying" | "connected" | "failed" | null;
+  domain_verified_at?: string | null;
   subdomain?: string | null;
   hostname?: string | null;
 };
@@ -285,6 +288,22 @@ function ownedBadgeClass(status: string | null | undefined) {
   return "bg-amber-100 text-amber-700";
 }
 
+function domainBadgeClass(status: string | null | undefined) {
+  if (status === "connected") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "failed") {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (status === "verifying") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -349,6 +368,7 @@ export default async function StoreDraftPage({
     theme?: string;
     publication?: string;
     catalog?: string;
+    domain?: string;
   }>;
 }) {
   const { id } = await params;
@@ -4189,6 +4209,8 @@ export default async function StoreDraftPage({
     .eq("user_id", user.id)
     .maybeSingle();
   const publication = rawPublication as PublicationRow | null;
+  const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
+  const domainStatus = publication?.domain_status ?? "pending";
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -4241,6 +4263,20 @@ export default async function StoreDraftPage({
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
             Publication and SEO settings saved.
+          </p>
+        </Card>
+      ) : null}
+      {query.domain === "saved" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Custom domain saved. DNS verification is pending.
+          </p>
+        </Card>
+      ) : null}
+      {query.domain === "verifying" ? (
+        <Card className="border-blue-200 bg-blue-50 p-5">
+          <p className="text-sm font-bold text-blue-700">
+            Domain verification marked as checking. DNS automation is not enabled yet.
           </p>
         </Card>
       ) : null}
@@ -4464,6 +4500,122 @@ export default async function StoreDraftPage({
             ) : null}
           </div>
         </form>
+      </Card>
+
+      <Card className="p-5 lg:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Domains
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Custom domain foundation
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Connect a custom domain record to this Store Mode storefront. DNS and SSL
+              automation are intentionally not enabled yet.
+            </p>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${domainBadgeClass(
+              domainStatus
+            )}`}
+          >
+            {domainStatus}
+          </span>
+        </div>
+
+        <form action={saveStoreDomainSettings} className="mt-5 grid gap-5">
+          <input name="storeId" type="hidden" value={store.id} />
+          <input name="domainIntent" type="hidden" value="save" />
+          <Input
+            defaultValue={publication?.custom_domain ?? ""}
+            id="store-custom-domain"
+            label="Custom domain"
+            name="customDomain"
+            placeholder="shop.example.com"
+          />
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Current domain
+              </p>
+              <p className="mt-2 break-all text-sm font-black text-ink">
+                {publication?.custom_domain || "No custom domain saved yet."}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Slug route
+              </p>
+              <p className="mt-2 break-all font-mono text-sm font-black text-ink">
+                /store/{publication?.slug ?? store.slug ?? "slug"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Verified at
+              </p>
+              <p className="mt-2 text-sm font-black text-ink">
+                {publication?.domain_verified_at
+                  ? new Intl.DateTimeFormat("en", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric"
+                    }).format(new Date(publication.domain_verified_at))
+                  : "Not verified yet"}
+              </p>
+            </div>
+          </div>
+          <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
+            <p className="text-sm font-black text-blue-900">DNS instructions</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-500">
+                  Record type
+                </p>
+                <p className="mt-1 font-mono text-sm font-black text-blue-950">CNAME</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-500">
+                  Name
+                </p>
+                <p className="mt-1 font-mono text-sm font-black text-blue-950">
+                  {publication?.custom_domain || "your custom domain"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-500">
+                  Target
+                </p>
+                <p className="mt-1 font-mono text-sm font-black text-blue-950">{dnsTarget}</p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-blue-800">
+              Add the CNAME at your DNS provider. After DNS automation is connected,
+              this foundation can move from verifying to connected automatically.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+            <Button type="submit">Save domain</Button>
+            {publication?.custom_domain ? (
+              <Button
+                form="store-domain-verify-form"
+                type="submit"
+                variant="secondary"
+              >
+                Mark as verifying
+              </Button>
+            ) : null}
+          </div>
+        </form>
+        {publication?.custom_domain ? (
+          <form action={saveStoreDomainSettings} className="hidden" id="store-domain-verify-form">
+            <input name="storeId" type="hidden" value={store.id} />
+            <input name="customDomain" type="hidden" value={publication.custom_domain} />
+            <input name="domainIntent" type="hidden" value="verify" />
+          </form>
+        ) : null}
       </Card>
 
       <Card className="p-5 lg:p-6">
