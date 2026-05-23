@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
 
 export type PublicStorefrontProduct = {
+  categoryId: string | null;
   categoryName: string | null;
   description: string | null;
   id: string;
@@ -14,12 +15,20 @@ export type PublicStorefrontProduct = {
   title: string;
 };
 
+export type PublicStorefrontCategory = {
+  description: string | null;
+  id: string;
+  imageUrl: string | null;
+  name: string;
+};
+
 export type PublicStorefrontPreview = {
   branding: {
     primaryColor: string;
     secondaryColor: string;
     themeMode: string;
   };
+  categories: PublicStorefrontCategory[];
   products: PublicStorefrontProduct[];
   store: {
     description: string | null;
@@ -54,6 +63,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   }
 
   return {
+    categoryId: textValue(value.categoryId) || null,
     categoryName: textValue(value.categoryName) || null,
     description: textValue(value.description) || null,
     id,
@@ -63,6 +73,26 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     sku: textValue(value.sku) || null,
     status: textValue(value.status) || null,
     title
+  };
+}
+
+function normalizeCategory(value: unknown): PublicStorefrontCategory | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = textValue(value.id);
+  const name = textValue(value.name);
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    description: textValue(value.description) || null,
+    id,
+    imageUrl: textValue(value.imageUrl) || null,
+    name
   };
 }
 
@@ -92,6 +122,9 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       secondaryColor: textValue(branding.secondaryColor, "#2563eb"),
       themeMode: textValue(branding.themeMode, "light")
     },
+    categories: Array.isArray(value.categories)
+      ? value.categories.map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category))
+      : [],
     products: Array.isArray(value.products)
       ? value.products.map(normalizeProduct).filter((product): product is PublicStorefrontProduct => Boolean(product))
       : [],
@@ -106,6 +139,14 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       whatsappNumber: textValue(store.whatsappNumber) || null
     }
   };
+}
+
+function categoriesFromStoreData(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.categories)) {
+    return [];
+  }
+
+  return value.categories.filter(isRecord).map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category));
 }
 
 function productsFromStoreData(value: unknown) {
@@ -133,6 +174,7 @@ function productsFromStoreData(value: unknown) {
   return value.products
     .filter(isRecord)
     .map((product, index) => ({
+      categoryId: textValue(product.categoryId) || null,
       categoryName: categoriesById.get(textValue(product.categoryId)) ?? null,
       description: textValue(product.description) || null,
       id: textValue(product.id, `product-${index + 1}`),
@@ -194,26 +236,20 @@ async function loadStoreModePublicPreview(slug: string) {
     .select("id, name, description, price, image_url, category_id")
     .eq("store_id", store.id)
     .order("sort_order", { ascending: true });
-  const categoryIds = Array.from(
-    new Set(
-      (products ?? [])
-        .map((product) => product.category_id)
-        .filter((categoryId): categoryId is string => Boolean(categoryId))
-    )
-  );
-  let categoriesById = new Map<string, string>();
-
-  if (categoryIds.length) {
-    const { data: categories } = await client
-      .from("store_categories")
-      .select("id, name")
-      .in("id", categoryIds);
-
-    categoriesById = new Map(
-      (categories ?? []).map((category) => [category.id, category.name])
-    );
-  }
+  const { data: categories } = await client
+    .from("store_categories")
+    .select("id, name, description, image_url")
+    .eq("store_id", store.id)
+    .order("sort_order", { ascending: true });
+  const savedCategories = (categories ?? []).map((category) => ({
+    description: category.description,
+    id: category.id,
+    imageUrl: category.image_url,
+    name: category.name
+  }));
+  const categoriesById = new Map(savedCategories.map((category) => [category.id, category.name]));
   const savedProducts = (products ?? []).map((product) => ({
+    categoryId: product.category_id,
     categoryName: product.category_id ? categoriesById.get(product.category_id) ?? null : null,
     id: product.id,
     title: product.name,
@@ -224,6 +260,7 @@ async function loadStoreModePublicPreview(slug: string) {
     sku: null,
     status: "published"
   }));
+  const fallbackCategories = categoriesFromStoreData(store.store_data);
   const fallbackProducts = productsFromStoreData(store.store_data);
 
   return normalizePreview({
@@ -232,6 +269,7 @@ async function loadStoreModePublicPreview(slug: string) {
       secondaryColor: "#2563eb",
       themeMode: "light"
     },
+    categories: savedCategories.length ? savedCategories : fallbackCategories,
     products: savedProducts.length ? savedProducts : fallbackProducts,
     store: {
       currency: store.currency || "USD",

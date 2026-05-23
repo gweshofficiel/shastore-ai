@@ -99,6 +99,51 @@ export default async function PublicStorePage({
   }
 
   const { branding, products, store } = preview;
+  const categorizedProductIds = new Set<string>();
+  const categorySections = preview.categories.map((category) => {
+    const categoryProducts = products.filter((product) => {
+      const matchesCategory =
+        product.categoryId === category.id ||
+        (!product.categoryId && product.categoryName === category.name);
+
+      if (matchesCategory) {
+        categorizedProductIds.add(product.id);
+      }
+
+      return matchesCategory;
+    });
+
+    return { category, products: categoryProducts };
+  });
+  const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
+  const productSections = categorySections.length
+    ? [
+        ...categorySections,
+        ...(uncategorizedProducts.length
+          ? [
+              {
+                category: {
+                  description: "Products that are not assigned to a category yet.",
+                  id: "uncategorized",
+                  imageUrl: null,
+                  name: "More products"
+                },
+                products: uncategorizedProducts
+              }
+            ]
+          : [])
+      ]
+    : [
+        {
+          category: {
+            description: "Products shown here are published products scoped to this store only.",
+            id: "featured",
+            imageUrl: null,
+            name: "Featured products"
+          },
+          products
+        }
+      ];
   const heroBackground = `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, #020617)`;
   const fallbackStorefront = (
     <>
@@ -158,9 +203,25 @@ export default async function PublicStorePage({
             </p>
           </div>
 
-          {products.length ? (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {products.map((product) => {
+          {products.length || preview.categories.length ? (
+            <div className="grid gap-8">
+              {productSections.map((section) => (
+                <div className="grid gap-5" key={section.category.id}>
+                  <div className="flex flex-col gap-2 rounded-[2rem] border border-slate-200 bg-white p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                      Category
+                    </p>
+                    <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
+                      {section.category.name}
+                    </h3>
+                    <p className="text-sm leading-6 text-muted">
+                      {section.category.description ||
+                        "Products assigned to this category will appear here."}
+                    </p>
+                  </div>
+                  {section.products.length ? (
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                      {section.products.map((product) => {
                 const whatsappHref = whatsappProductHref(
                   store.whatsappNumber,
                   store.title,
@@ -265,7 +326,20 @@ export default async function PublicStorePage({
                     </div>
                   </article>
                 );
-              })}
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
+                      <h4 className="text-xl font-black tracking-[-0.03em] text-ink">
+                        No products in this category yet
+                      </h4>
+                      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
+                        Assign products to {section.category.name} from the store dashboard.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">

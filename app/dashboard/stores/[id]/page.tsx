@@ -88,10 +88,12 @@ import {
 import {
   createManagedStoreCategory,
   createManagedStoreProduct,
+  deleteManagedStoreCategory,
   deleteManagedStoreProduct,
   publishStoreDraft,
   saveStorePublicationSettings,
   saveStoreThemeSettings,
+  updateManagedStoreCategory,
   updateManagedStoreProduct,
   unpublishStore
 } from "@/lib/store-actions";
@@ -255,6 +257,8 @@ const builderStatusMessages: Record<string, string> = {
 
 const catalogStatusMessages: Record<string, string> = {
   "category-created": "Category added.",
+  "category-deleted": "Category deleted. Products from that category are now unassigned.",
+  "category-updated": "Category updated and public storefront cache refreshed.",
   "product-created": "Product added.",
   "product-deleted": "Product deleted.",
   "product-updated": "Product updated and public storefront cache refreshed."
@@ -4664,10 +4668,13 @@ export default async function StoreDraftPage({
           <div className="mt-5 grid gap-3">
             {(categories ?? []).length ? (
               (categories ?? []).map((category) => (
-                <div
+                <form
+                  action={updateManagedStoreCategory}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                   key={category.id}
                 >
+                  <input name="storeId" type="hidden" value={store.id} />
+                  <input name="categoryId" type="hidden" value={category.id} />
                   {category.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -4680,17 +4687,56 @@ export default async function StoreDraftPage({
                       Category image
                     </div>
                   )}
-                  <p className="font-bold text-ink">{category.name}</p>
-                  <p className="mt-1 text-sm leading-6 text-muted">
-                    {category.description || "No category description."}
-                  </p>
-                </div>
+                  <div className="grid gap-4">
+                    <Input
+                      defaultValue={category.name}
+                      id={`category-${category.id}-name`}
+                      label="Category name"
+                      name="categoryName"
+                      required
+                    />
+                    <Textarea
+                      defaultValue={category.description ?? ""}
+                      id={`category-${category.id}-description`}
+                      label="Category description"
+                      name="categoryDescription"
+                    />
+                    <Input
+                      defaultValue={category.image_url ?? ""}
+                      id={`category-${category.id}-image`}
+                      label="Category image URL"
+                      name="categoryImageUrl"
+                      placeholder="https://example.com/category.jpg"
+                    />
+                    <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                      <Button type="submit" variant="secondary">Save category</Button>
+                      <Button
+                        form={`delete-category-${category.id}`}
+                        type="submit"
+                        variant="ghost"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </form>
               ))
             ) : (
               <p className="text-sm leading-6 text-muted">
                 No categories saved yet.
               </p>
             )}
+            {(categories ?? []).map((category) => (
+              <form
+                action={deleteManagedStoreCategory}
+                className="hidden"
+                id={`delete-category-${category.id}`}
+                key={`delete-category-${category.id}`}
+              >
+                <input name="storeId" type="hidden" value={store.id} />
+                <input name="categoryId" type="hidden" value={category.id} />
+              </form>
+            ))}
           </div>
         </Card>
         <Card className="p-5 lg:p-6">

@@ -183,6 +183,51 @@ function SectionShell({
 
 function ProductGridSection({ context }: { context: StoreTenantContext }) {
   const products = context.preview.products.slice(0, 6);
+  const categorizedProductIds = new Set<string>();
+  const categorySections = context.preview.categories.map((category) => {
+    const categoryProducts = products.filter((product) => {
+      const matchesCategory =
+        product.categoryId === category.id ||
+        (!product.categoryId && product.categoryName === category.name);
+
+      if (matchesCategory) {
+        categorizedProductIds.add(product.id);
+      }
+
+      return matchesCategory;
+    });
+
+    return { category, products: categoryProducts };
+  });
+  const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
+  const productSections = categorySections.length
+    ? [
+        ...categorySections,
+        ...(uncategorizedProducts.length
+          ? [
+              {
+                category: {
+                  description: "Products that are not assigned to a category yet.",
+                  id: "uncategorized",
+                  imageUrl: null,
+                  name: "More products"
+                },
+                products: uncategorizedProducts
+              }
+            ]
+          : [])
+      ]
+    : [
+        {
+          category: {
+            description: "Real products saved in Store Builder are shown here for this published store.",
+            id: "featured",
+            imageUrl: null,
+            name: "Featured products"
+          },
+          products
+        }
+      ];
 
   return (
     <SectionShell muted>
@@ -199,9 +244,25 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
           Real products saved in Store Builder are shown here for this published store.
         </p>
       </div>
-      {products.length ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => {
+      {products.length || context.preview.categories.length ? (
+        <div className="grid gap-8">
+          {productSections.map((section) => (
+            <div className="grid gap-5" key={section.category.id}>
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  Category
+                </p>
+                <h3 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                  {section.category.name}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  {section.category.description ||
+                    "Products assigned to this category will appear here."}
+                </p>
+              </div>
+              {section.products.length ? (
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {section.products.map((product) => {
             const whatsappHref = whatsappProductHref(
               context.preview.store.whatsappNumber,
               context.preview.store.title,
@@ -300,7 +361,17 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
                 </div>
               </article>
             );
-          })}
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
+                  <h4 className="text-xl font-black tracking-[-0.03em] text-ink">
+                    No products in this category yet
+                  </h4>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">

@@ -362,6 +362,22 @@ function resolveDatabaseTemplateId(value: string) {
   return "minimal-luxury";
 }
 
+async function productIdsForCategory(
+  supabase: SupabaseClient,
+  storeId: string,
+  userId: string,
+  categoryId: string
+) {
+  const { data } = await supabase
+    .from("store_products")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("user_id", userId)
+    .eq("category_id", categoryId);
+
+  return (data ?? []).map((product) => product.id).filter(Boolean);
+}
+
 export type SaveStoreDraftState = {
   error: string | null;
   message: string | null;
@@ -1068,6 +1084,123 @@ export async function createManagedStoreCategory(formData: FormData) {
 
   await revalidateStoreCatalogPaths(supabase, storeId, store.slug);
   redirect(`${detailPath}?catalog=category-created`);
+}
+
+export async function updateManagedStoreCategory(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/stores");
+  }
+
+  const storeId = cleanText(formData.get("storeId"), 80);
+  const categoryId = cleanText(formData.get("categoryId"), 80);
+  const name = cleanText(formData.get("categoryName"), 120);
+  const description = cleanText(formData.get("categoryDescription"), 500);
+  const imageUrl = cleanUrl(formData.get("categoryImageUrl"));
+  const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
+
+  if (!storeId || !categoryId || !name) {
+    redirectWithStoreError(detailPath, "Category name is required.");
+  }
+
+  const { data: store, error: storeError } = await getOwnedStoreForCatalogAction(
+    supabase,
+    user.id,
+    storeId
+  );
+
+  if (storeError || !store) {
+    redirectWithStoreError(detailPath, "You can only edit categories for your own stores.");
+  }
+
+  const productIds = await productIdsForCategory(supabase, storeId, user.id, categoryId);
+  const { error } = await supabase
+    .from("store_categories")
+    .update({
+      name,
+      description: description || null,
+      image_url: imageUrl || null
+    })
+    .eq("id", categoryId)
+    .eq("store_id", storeId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    redirectWithStoreError(detailPath, formatStoreActionError(error));
+  }
+
+  await revalidateStoreCatalogPaths(supabase, storeId, store.slug);
+  for (const productId of productIds) {
+    await revalidateStoreCatalogPaths(supabase, storeId, store.slug, productId);
+  }
+
+  redirect(`${detailPath}?catalog=category-updated`);
+}
+
+export async function deleteManagedStoreCategory(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/stores");
+  }
+
+  const storeId = cleanText(formData.get("storeId"), 80);
+  const categoryId = cleanText(formData.get("categoryId"), 80);
+  const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
+
+  if (!storeId || !categoryId) {
+    redirectWithStoreError(detailPath, "Choose a category before deleting.");
+  }
+
+  const { data: store, error: storeError } = await getOwnedStoreForCatalogAction(
+    supabase,
+    user.id,
+    storeId
+  );
+
+  if (storeError || !store) {
+    redirectWithStoreError(detailPath, "You can only edit categories for your own stores.");
+  }
+
+  const productIds = await productIdsForCategory(supabase, storeId, user.id, categoryId);
+  const { error: clearProductsError } = await supabase
+    .from("store_products")
+    .update({
+      category_id: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("store_id", storeId)
+    .eq("user_id", user.id)
+    .eq("category_id", categoryId);
+
+  if (clearProductsError) {
+    redirectWithStoreError(detailPath, formatStoreActionError(clearProductsError));
+  }
+
+  const { error } = await supabase
+    .from("store_categories")
+    .delete()
+    .eq("id", categoryId)
+    .eq("store_id", storeId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    redirectWithStoreError(detailPath, formatStoreActionError(error));
+  }
+
+  await revalidateStoreCatalogPaths(supabase, storeId, store.slug);
+  for (const productId of productIds) {
+    await revalidateStoreCatalogPaths(supabase, storeId, store.slug, productId);
+  }
+
+  redirect(`${detailPath}?catalog=category-deleted`);
 }
 
 export async function createManagedStoreProduct(formData: FormData) {
