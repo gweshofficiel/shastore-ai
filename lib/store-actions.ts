@@ -210,6 +210,14 @@ function redirectWithStoreError(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
 }
 
+function isStorePlanGatingEnabled() {
+  return process.env.NODE_ENV === "production";
+}
+
+function storeOwnerOrFilter(userId: string) {
+  return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
+}
+
 function normalizeTemplateId(value: string) {
   const trimmed = value.trim();
   return trimmed || defaultStoreTemplateId;
@@ -501,18 +509,21 @@ export async function saveStoreDraft(formData: FormData) {
     (await uploadStoreLogo(supabase, user.id, formData)) || themeSettings.logoUrl || null;
 
   validateDraftPayload(storeName, categories, products, redirectPath);
-  const access = await getUserSubscriptionAccess(user.id);
 
-  if (!canCreateStore(access)) {
-    redirectWithStoreError(redirectPath, getUpgradeMessage("stores"));
-  }
+  if (isStorePlanGatingEnabled()) {
+    const access = await getUserSubscriptionAccess(user.id);
 
-  if (!canUseTemplate(access, templateId)) {
-    redirectWithStoreError(redirectPath, getUpgradeMessage("template"));
-  }
+    if (!canCreateStore(access)) {
+      redirectWithStoreError(redirectPath, getUpgradeMessage("stores"));
+    }
 
-  if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
-    redirectWithStoreError(redirectPath, getUpgradeMessage("branding"));
+    if (!canUseTemplate(access, templateId)) {
+      redirectWithStoreError(redirectPath, getUpgradeMessage("template"));
+    }
+
+    if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
+      redirectWithStoreError(redirectPath, getUpgradeMessage("branding"));
+    }
   }
 
   const { projectId, error: projectError } = await createStoreProject(
@@ -525,22 +536,37 @@ export async function saveStoreDraft(formData: FormData) {
     redirectWithStoreError(redirectPath, projectError);
   }
 
-  const { data: store, error: storeError } = await supabase
+  const storePayload = {
+    project_id: projectId,
+    user_id: user.id,
+    owner_user_id: user.id,
+    name: storeName,
+    description: storeDescription || null,
+    logo_image_url: logoImageUrl,
+    brand_color: brandColor,
+    currency,
+    whatsapp_number: whatsappNumber || null,
+    template_id: templateId,
+    status: "draft" as const
+  };
+
+  let storeResult = await supabase
     .from("stores")
-    .insert({
-      project_id: projectId,
-      user_id: user.id,
-      name: storeName,
-      description: storeDescription || null,
-      logo_image_url: logoImageUrl,
-      brand_color: brandColor,
-      currency,
-      whatsapp_number: whatsappNumber || null,
-      template_id: templateId,
-      status: "draft"
-    })
+    .insert(storePayload as never)
     .select("id")
     .single();
+
+  if (isMissingColumn(asSupabaseError(storeResult.error), "owner_user_id")) {
+    const { owner_user_id: _ownerUserId, ...legacyStorePayload } = storePayload;
+    storeResult = await supabase
+      .from("stores")
+      .insert(legacyStorePayload as never)
+      .select("id")
+      .single();
+  }
+
+  const store = storeResult.data;
+  const storeError = storeResult.error;
 
   if (storeError || !store) {
     if (projectId) {
@@ -631,7 +657,7 @@ export async function deleteStoreDraft(formData: FormData) {
     .from("stores")
     .delete()
     .eq("id", storeId)
-    .eq("user_id", user.id);
+    .or(storeOwnerOrFilter(user.id));
 
   if (error) {
     redirectWithStoreError("/dashboard/stores", formatStoreActionError(error));
@@ -662,7 +688,7 @@ export async function saveStoreThemeSettings(formData: FormData) {
     .from("stores")
     .select("id, template_id")
     .eq("id", storeId)
-    .eq("user_id", user.id)
+    .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeError || !store) {
@@ -676,10 +702,12 @@ export async function saveStoreThemeSettings(formData: FormData) {
     ...themeSettings,
     logoUrl: logoImageUrl || themeSettings.logoUrl
   };
-  const access = await getUserSubscriptionAccess(user.id);
+  if (isStorePlanGatingEnabled()) {
+    const access = await getUserSubscriptionAccess(user.id);
 
-  if (!canUseCustomBranding(access) && hasCustomBranding(settings, logoImageUrl)) {
-    redirectWithStoreError(detailPath, getUpgradeMessage("branding"));
+    if (!canUseCustomBranding(access) && hasCustomBranding(settings, logoImageUrl)) {
+      redirectWithStoreError(detailPath, getUpgradeMessage("branding"));
+    }
   }
 
   const { error } = await supabase.from("store_theme_settings").upsert(
@@ -706,7 +734,7 @@ export async function saveStoreThemeSettings(formData: FormData) {
       logo_image_url: logoImageUrl
     })
     .eq("id", store.id)
-    .eq("user_id", user.id);
+    .or(storeOwnerOrFilter(user.id));
 
   const { data: publication } = await supabase
     .from("published_stores")
@@ -745,7 +773,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
     .from("stores")
     .select("id, name")
     .eq("id", storeId)
-    .eq("user_id", user.id)
+    .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeError || !store) {
@@ -758,28 +786,30 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const hostname = publicationHostname(customDomain, subdomain);
   const visibility = parseVisibility(formData.get("visibility"));
   const now = new Date().toISOString();
-  const access = await getUserSubscriptionAccess(user.id);
+  if (isStorePlanGatingEnabled()) {
+    const access = await getUserSubscriptionAccess(user.id);
 
-  if (!canUseSeo(access)) {
-    const hasSeoFields = Boolean(
-      cleanText(formData.get("seoTitle")) ||
-        cleanText(formData.get("seoDescription"), 320) ||
-        cleanText(formData.get("ogTitle")) ||
-        cleanText(formData.get("ogDescription"), 320) ||
-        cleanUrl(formData.get("faviconUrl")) ||
-        cleanUrl(formData.get("socialImageUrl"))
-    );
+    if (!canUseSeo(access)) {
+      const hasSeoFields = Boolean(
+        cleanText(formData.get("seoTitle")) ||
+          cleanText(formData.get("seoDescription"), 320) ||
+          cleanText(formData.get("ogTitle")) ||
+          cleanText(formData.get("ogDescription"), 320) ||
+          cleanUrl(formData.get("faviconUrl")) ||
+          cleanUrl(formData.get("socialImageUrl"))
+      );
 
-    if (hasSeoFields) {
-      redirectWithStoreError(detailPath, getUpgradeMessage("seo"));
+      if (hasSeoFields) {
+        redirectWithStoreError(detailPath, getUpgradeMessage("seo"));
+      }
     }
-  }
 
-  if (
-    !canUseCustomDomain(access) &&
-    (cleanHostname(formData.get("customDomain")) || cleanSubdomain(formData.get("subdomain")))
-  ) {
-    redirectWithStoreError(detailPath, getUpgradeMessage("domain"));
+    if (
+      !canUseCustomDomain(access) &&
+      (cleanHostname(formData.get("customDomain")) || cleanSubdomain(formData.get("subdomain")))
+    ) {
+      redirectWithStoreError(detailPath, getUpgradeMessage("domain"));
+    }
   }
 
   const publicationPayload = {
@@ -866,7 +896,7 @@ export async function unpublishStore(formData: FormData) {
     .from("stores")
     .update({ status: "unpublished", updated_at: new Date().toISOString() })
     .eq("id", storeId)
-    .eq("user_id", user.id);
+    .or(storeOwnerOrFilter(user.id));
 
   if (publication) {
     const { error } = await supabase
@@ -912,7 +942,7 @@ export async function publishStoreDraft(formData: FormData) {
     .from("stores")
     .select("id, name")
     .eq("id", storeId)
-    .eq("user_id", user.id)
+    .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeLookupError || !store) {
@@ -959,10 +989,12 @@ export async function publishStoreDraft(formData: FormData) {
       "Add at least one product before publishing this store."
     );
   }
-  const access = await getUserSubscriptionAccess(user.id);
+  if (isStorePlanGatingEnabled()) {
+    const access = await getUserSubscriptionAccess(user.id);
 
-  if (!canPublishStore(access)) {
-    redirectWithStoreError(detailPath, getUpgradeMessage("publish"));
+    if (!canPublishStore(access)) {
+      redirectWithStoreError(detailPath, getUpgradeMessage("publish"));
+    }
   }
 
   const publishedAt = new Date().toISOString();
@@ -973,7 +1005,7 @@ export async function publishStoreDraft(formData: FormData) {
       updated_at: publishedAt
     })
     .eq("id", storeId)
-    .eq("user_id", user.id)
+    .or(storeOwnerOrFilter(user.id))
     .select("id, name")
     .single();
 
@@ -1029,5 +1061,5 @@ export async function publishStoreDraft(formData: FormData) {
 
   revalidatePath("/dashboard/stores");
   revalidatePath(`/store/${slug}`);
-  redirect(`/dashboard/stores/${updatedStore.id}?published=${slug}`);
+  redirect(`/dashboard/stores?published=${slug}`);
 }

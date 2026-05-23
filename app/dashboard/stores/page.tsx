@@ -1,15 +1,18 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { publishStoreDraft } from "@/lib/store-actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 type PublicationRow = {
-  hostname?: string | null;
   published_at?: string | null;
+  slug?: string | null;
   status?: string | null;
   store_id: string;
+  url?: string | null;
 };
 
 type DraftStore = {
@@ -74,6 +77,19 @@ function isMissingSubscriptionTable(error: { code?: string; message?: string } |
   );
 }
 
+function isMissingPublishedStoresTable(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST205" ||
+    message.includes("published_stores") ||
+    message.includes("could not find")
+  );
+}
+
+function storeOwnerOrFilter(userId: string) {
+  return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
+}
+
 async function getBuyerStores(): Promise<StoreListResult> {
   const supabase = await createClient();
   const {
@@ -106,7 +122,7 @@ async function getBuyerStores(): Promise<StoreListResult> {
     supabase
       .from("stores")
       .select("id, name, status, created_at")
-      .eq("user_id", user.id)
+      .or(storeOwnerOrFilter(user.id))
       .order("created_at", { ascending: false }),
     supabase
       .from("user_subscriptions" as never)
@@ -125,6 +141,10 @@ async function getBuyerStores(): Promise<StoreListResult> {
       : draftResult.error
         ? "Draft stores could not be loaded. Please try again."
         : null;
+  const subscription =
+    subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
+      ? null
+      : (subscriptionResult.data as SubscriptionSummary | null);
   const draftStores = ((draftResult.data ?? []) as Omit<DraftStore, "publication">[]).map(
     (store) => ({
       ...store,
@@ -135,17 +155,23 @@ async function getBuyerStores(): Promise<StoreListResult> {
   let publicationRows: PublicationRow[] = [];
 
   if (draftIds.length) {
-    const { data } = await supabase
+    const { data, error: publicationError } = await supabase
       .from("published_stores")
-      .select("store_id, status, published_at, hostname")
+      .select("store_id, status, published_at, slug, url")
       .in("store_id", draftIds);
-    publicationRows = (data ?? []) as unknown as PublicationRow[];
-  }
 
-  const subscription =
-    subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
-      ? null
-      : (subscriptionResult.data as SubscriptionSummary | null);
+    if (!publicationError) {
+      publicationRows = (data ?? []) as unknown as PublicationRow[];
+    } else if (!isMissingPublishedStoresTable(publicationError)) {
+      return {
+        draftStores: [],
+        error: "Published store metadata could not be loaded. Please try again.",
+        ownedStores: (ownedResult.data ?? []) as OwnedStore[],
+        schemaIssue,
+        subscription
+      };
+    }
+  }
 
   return {
     draftStores: draftStores.map((store) => ({
@@ -341,11 +367,14 @@ export default async function StoresPage({
           </div>
         ) : !draftStores.length ? (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
-            <p className="text-lg font-black text-ink">No stores claimed yet.</p>
+            <p className="text-lg font-black text-ink">No stores yet.</p>
             <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
-              Open the activation link from your delivery PDF, confirm your password placeholder,
-              and click Activate store. Your owned store will appear here.
+              Create a Store Mode draft from Create store, or activate a reseller-delivered store
+              from your delivery PDF. Saved drafts appear in the list below.
             </p>
+            <div className="mt-4">
+              <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>
+            </div>
           </div>
         ) : null}
       </Card>
@@ -390,7 +419,7 @@ export default async function StoresPage({
                       {store.publication?.status ?? store.status ?? "draft"}
                     </span>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                      Domain {store.publication?.hostname ?? "not connected"}
+                      Slug {store.publication?.slug ?? "not published"}
                     </span>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                       Published{" "}
@@ -402,6 +431,22 @@ export default async function StoresPage({
                 </div>
                 <div className="flex flex-wrap items-center gap-3 lg:justify-end">
                   <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
+                  {store.publication?.status === "published" && store.publication.slug ? (
+                    <ButtonLink
+                      href={`/store/${store.publication.slug}`}
+                      target="_blank"
+                      variant="secondary"
+                    >
+                      View public store
+                    </ButtonLink>
+                  ) : (
+                    <form action={publishStoreDraft}>
+                      <input name="storeId" type="hidden" value={store.id} />
+                      <Button type="submit" variant="secondary">
+                        Publish Store
+                      </Button>
+                    </form>
+                  )}
                 </div>
               </div>
             ))}
