@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import type { Json } from "@/types/database";
 
@@ -16,6 +18,16 @@ type CartSubmitItem = {
   id: string;
   quantity: number;
 };
+
+const dashboardOrdersPath = "/dashboard/orders";
+const storeOrderStatuses = new Set([
+  "pending",
+  "confirmed",
+  "processing",
+  "shipped",
+  "delivered",
+  "canceled"
+]);
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
@@ -66,6 +78,16 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
   } catch {
     return [];
   }
+}
+
+function orderStatusRedirect(status: string, orderId?: string) {
+  const params = new URLSearchParams({ orders: status });
+
+  if (orderId) {
+    params.set("orderId", orderId);
+  }
+
+  redirect(`${dashboardOrdersPath}?${params.toString()}`);
 }
 
 export async function createPublicStoreOrderAction(
@@ -209,4 +231,56 @@ export async function createPublicStoreOrderAction(
     ok: true,
     orderId: order.id
   };
+}
+
+export async function updateStoreOrderStatusAction(formData: FormData) {
+  const orderId = cleanText(formData.get("orderId"), 80);
+  const status = cleanText(formData.get("status"), 40);
+
+  if (!orderId) {
+    orderStatusRedirect("missing-order");
+  }
+
+  if (!storeOrderStatuses.has(status)) {
+    orderStatusRedirect("invalid-status", orderId);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect(`/login?next=${encodeURIComponent(dashboardOrdersPath)}`);
+  }
+
+  const { data, error } = await supabase
+    .from("store_orders")
+    .update({
+      order_status: status,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", orderId)
+    .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[store-orders] status update failed", {
+      code: error.code,
+      message: error.message,
+      orderId,
+      status
+    });
+    orderStatusRedirect("status-failed", orderId);
+  }
+
+  if (!data) {
+    orderStatusRedirect("not-authorized", orderId);
+  }
+
+  revalidatePath(dashboardOrdersPath);
+  revalidatePath("/dashboard");
+  orderStatusRedirect("status-updated", orderId);
 }

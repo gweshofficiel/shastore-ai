@@ -1,11 +1,15 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { ButtonLink } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { updateStoreOrderStatusAction } from "@/lib/store-order-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import type { Json } from "@/types/database";
 
 export const dynamic = "force-dynamic";
+
+const orderStatuses = ["pending", "confirmed", "processing", "shipped", "delivered", "canceled"];
+const filterStatuses = ["all", ...orderStatuses];
 
 type StoreOrderItem = {
   categoryName?: string | null;
@@ -62,19 +66,50 @@ function formatDate(value: string) {
 }
 
 function statusBadgeClass(status: string | null | undefined) {
-  if (status === "paid" || status === "delivered") {
+  if (status === "delivered") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "processing" || status === "shipped") {
+  if (status === "confirmed" || status === "processing" || status === "shipped") {
     return "bg-blue-100 text-blue-700";
   }
 
-  if (status === "cancelled" || status === "refunded") {
+  if (status === "canceled") {
     return "bg-red-100 text-red-700";
   }
 
   return "bg-amber-100 text-amber-700";
+}
+
+function filterHref(status: string) {
+  return status === "all" ? "/dashboard/orders" : `/dashboard/orders?status=${status}`;
+}
+
+function statusMessage(value: string | undefined) {
+  const messages: Record<string, { className: string; text: string }> = {
+    "invalid-status": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That order status is not supported."
+    },
+    "missing-order": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Choose an order before updating status."
+    },
+    "not-authorized": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "You can only update orders for your own stores."
+    },
+    "status-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Order status could not be updated. Please try again."
+    },
+    "status-updated": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Order status updated."
+    }
+  };
+
+  return value ? messages[value] : null;
 }
 
 function parseItems(value: Json): StoreOrderItem[] {
@@ -116,7 +151,7 @@ function isMissingStoreOrders(error: { code?: string; message?: string } | null)
   );
 }
 
-async function getStoreModeOrders() {
+async function getStoreModeOrders(status: string) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -152,7 +187,7 @@ async function getStoreModeOrders() {
     };
   }
 
-  const { data, error } = await supabase
+  let request = supabase
     .from("store_orders")
     .select(
       "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, created_at"
@@ -160,6 +195,12 @@ async function getStoreModeOrders() {
     .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`)
     .order("created_at", { ascending: false })
     .limit(100);
+
+  if (orderStatuses.includes(status)) {
+    request = request.eq("order_status", status);
+  }
+
+  const { data, error } = await request;
 
   if (error) {
     return {
@@ -183,10 +224,15 @@ async function getStoreModeOrders() {
 export default async function OrdersPage({
   searchParams
 }: {
-  searchParams: Promise<Record<string, string | undefined>>;
+  searchParams: Promise<{
+    orders?: string;
+    status?: string;
+  }>;
 }) {
-  await searchParams;
-  const { error, orders, schemaIssue, stores } = await getStoreModeOrders();
+  const params = await searchParams;
+  const activeStatus = filterStatuses.includes(params.status ?? "") ? (params.status ?? "all") : "all";
+  const message = statusMessage(params.orders);
+  const { error, orders, schemaIssue, stores } = await getStoreModeOrders(activeStatus);
   const storesById = new Map(stores.map((store) => [store.id, store]));
 
   return (
@@ -195,6 +241,12 @@ export default async function OrdersPage({
         description="View Store Mode orders submitted from public storefront carts."
         title="Orders"
       />
+
+      {message ? (
+        <Card className={`p-5 ${message.className}`}>
+          <p className="text-sm font-bold">{message.text}</p>
+        </Card>
+      ) : null}
 
       {error ? (
         <Card className="border-red-200 bg-red-50 p-5">
@@ -224,27 +276,39 @@ export default async function OrdersPage({
 
       {!schemaIssue && !error && stores.length > 0 ? (
         orders.length ? (
-          <div className="grid gap-4">
-            {orders.map((order) => {
-              const store = storesById.get(order.store_id);
-              const items = parseItems(order.items);
+          <div className="grid gap-5">
+            <Card className="p-5">
+              <div className="flex flex-wrap gap-2">
+                {filterStatuses.map((status) => (
+                  <ButtonLink
+                    href={filterHref(status)}
+                    key={status}
+                    variant={activeStatus === status ? "primary" : "secondary"}
+                  >
+                    {status}
+                  </ButtonLink>
+                ))}
+              </div>
+            </Card>
+            <div className="grid gap-4">
+              {orders.map((order) => {
+                const store = storesById.get(order.store_id);
+                const items = parseItems(order.items);
 
-              return (
-                <Card className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_auto]" key={order.id}>
+                return (
+                  <Card className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_320px]" key={order.id}>
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                      {order.id.slice(0, 8)}
+                      Order {order.id.slice(0, 8)}
                     </p>
                     <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
                       {order.customer_name}
                     </h2>
-                    <p className="mt-1 text-sm text-muted">
-                      {order.customer_phone}
-                      {order.customer_email ? ` | ${order.customer_email}` : ""}
-                    </p>
-                    {order.customer_address ? (
-                      <p className="mt-1 text-sm text-muted">{order.customer_address}</p>
-                    ) : null}
+                    <div className="mt-2 grid gap-1 text-sm text-muted">
+                      <p>Phone: {order.customer_phone}</p>
+                      <p>Email: {order.customer_email || "Not provided"}</p>
+                      <p>Address: {order.customer_address || "Not provided"}</p>
+                    </div>
                     <p className="mt-3 text-sm font-semibold text-muted">
                       Store: {store?.name ?? order.store_id}
                     </p>
@@ -253,13 +317,13 @@ export default async function OrdersPage({
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${statusBadgeClass(order.order_status)}`}
                       >
-                        {order.order_status}
+                        order {order.order_status}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        {order.payment_method}
+                        pay via {order.payment_method}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        {order.payment_status}
+                        payment {order.payment_status}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                         {formatDate(order.created_at)}
@@ -270,37 +334,78 @@ export default async function OrdersPage({
                         {items.map((item, index) => (
                           <div className="rounded-2xl bg-slate-50 p-3 text-sm" key={`${order.id}-${item.id ?? index}`}>
                             <div className="flex flex-wrap justify-between gap-3">
-                              <span className="font-bold text-ink">
-                                {item.title} x{item.quantity ?? 1}
-                              </span>
-                              <span className="font-black text-ink">
-                                {formatMoney(item.total ?? 0)}
-                              </span>
+                              <div>
+                                <p className="font-bold text-ink">
+                                  {item.title} x{item.quantity ?? 1}
+                                </p>
+                                {item.categoryName ? (
+                                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                    {item.categoryName}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <span className="font-black text-ink">{formatMoney(item.total ?? 0)}</span>
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : null}
                   </div>
-                  <div className="self-center text-left lg:text-right">
+                  <div className="grid gap-4 self-center text-left lg:text-right">
                     <p className="text-2xl font-black tracking-[-0.03em] text-ink">
                       {formatMoney(order.total)}
                     </p>
                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                       Submitted total
                     </p>
+                    <form action={updateStoreOrderStatusAction} className="grid gap-3">
+                      <input name="orderId" type="hidden" value={order.id} />
+                      <label className="grid gap-2 text-left text-sm font-semibold text-ink">
+                        <span>Order status</span>
+                        <select
+                          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                          defaultValue={order.order_status}
+                          name="status"
+                        >
+                          {orderStatuses.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Button type="submit">Update status</Button>
+                    </form>
                   </div>
                 </Card>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         ) : (
-          <Card className="p-8 text-center">
-            <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">No orders yet</h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-              Orders submitted from public store carts will appear here.
-            </p>
-          </Card>
+          <div className="grid gap-5">
+            <Card className="p-5">
+              <div className="flex flex-wrap gap-2">
+                {filterStatuses.map((status) => (
+                  <ButtonLink
+                    href={filterHref(status)}
+                    key={status}
+                    variant={activeStatus === status ? "primary" : "secondary"}
+                  >
+                    {status}
+                  </ButtonLink>
+                ))}
+              </div>
+            </Card>
+            <Card className="p-8 text-center">
+              <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">No orders yet</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
+                {activeStatus === "all"
+                  ? "Orders submitted from public store carts will appear here."
+                  : `No ${activeStatus} orders yet.`}
+              </p>
+            </Card>
+          </div>
         )
       ) : null}
     </div>
