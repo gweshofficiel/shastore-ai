@@ -1,7 +1,17 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
+import { ButtonLink } from "@/components/ui/button";
 import CreateStoreForm from "@/components/dashboard/create-store-form";
 import { StoreBuilder } from "@/components/dashboard/store-builder";
+import {
+  canCreateStore,
+  getCurrentUserSubscriptionAccess,
+  getUpgradeMessage
+} from "@/lib/billing/access";
+
+function formatLimit(value: number | null) {
+  return value === null ? "Unlimited" : value.toLocaleString();
+}
 
 export default async function NewStorePage({
   searchParams
@@ -9,6 +19,8 @@ export default async function NewStorePage({
   searchParams: Promise<{ detail?: string; error?: string }>;
 }) {
   const query = await searchParams;
+  const access = await getCurrentUserSubscriptionAccess();
+  const canCreate = access ? canCreateStore(access) : true;
   const databaseError =
     query.error === "REAL_DATABASE_ERROR"
       ? query.detail ??
@@ -34,10 +46,32 @@ export default async function NewStorePage({
             Publish Store button on My Stores or Manage Store.
           </p>
         </Card>
+        {access ? (
+          <Card className="border-slate-200 bg-white p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-ink">
+                  Current plan: {access.plan.name}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-muted">
+                  Stores used: {access.usage.storesUsed} / {formatLimit(access.usage.storeLimit)}
+                </p>
+              </div>
+              {!canCreate ? <ButtonLink href="/pricing">Upgrade plan</ButtonLink> : null}
+            </div>
+          </Card>
+        ) : null}
+        {!canCreate ? (
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-800">
+              {getUpgradeMessage("stores")}
+            </p>
+          </Card>
+        ) : null}
 
-        <CreateStoreForm />
+        {canCreate ? <CreateStoreForm /> : null}
 
-        <StoreBuilder databaseError={databaseError} />
+        {canCreate ? <StoreBuilder databaseError={databaseError} /> : null}
       </div>
     </div>
   );

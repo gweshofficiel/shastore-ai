@@ -217,7 +217,7 @@ function redirectWithDatabaseError(detail?: string): never {
 }
 
 function isStorePlanGatingEnabled() {
-  return process.env.STORE_PLAN_GATING_ENABLED === "true";
+  return process.env.STORE_PLAN_GATING_ENABLED !== "false";
 }
 
 function storeOwnerOrFilter(userId: string) {
@@ -984,7 +984,6 @@ function hasCustomBranding(settings: StoreThemeSettings, logoImageUrl: string | 
   return Boolean(
     logoImageUrl ||
       settings.logoUrl ||
-      settings.primaryColor !== defaultStoreThemeSettings.primaryColor ||
       settings.secondaryColor !== defaultStoreThemeSettings.secondaryColor ||
       settings.accentColor !== defaultStoreThemeSettings.accentColor ||
       settings.gradientFrom !== defaultStoreThemeSettings.gradientFrom ||

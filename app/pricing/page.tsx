@@ -1,19 +1,9 @@
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { billingPlans } from "@/lib/billing/plans";
 
-const plans = [
-  {
-    name: "Starter",
-    price: "$19",
-    description: "For testing products and launching fast."
-  },
-  {
-    name: "Growth",
-    price: "$49",
-    description: "For sellers publishing multiple landing pages."
-  }
-];
+const plans = billingPlans.filter((plan) => ["free", "pro", "agency"].includes(plan.id));
 
 export default function PricingPage() {
   return (
@@ -29,13 +19,13 @@ export default function PricingPage() {
               Simple plans for simple launches.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-muted">
-              Start lean, publish premium product pages, and upgrade when you
-              need more templates and landing pages.
+              Start lean, launch a store, and upgrade when you need more stores,
+              custom domains, and full branding.
             </p>
           </div>
-          <div className="mt-12 grid gap-6 md:grid-cols-2">
+          <div className="mt-12 grid gap-6 lg:grid-cols-3">
             {plans.map((plan) => (
-              <Card className="p-8" key={plan.name}>
+              <Card className="p-8" key={plan.id}>
                 <h2 className="text-2xl font-black text-ink">{plan.name}</h2>
                 <p className="mt-3 text-muted">{plan.description}</p>
                 <div className="mt-8 flex items-end gap-1">
@@ -45,10 +35,9 @@ export default function PricingPage() {
                   <span className="pb-2 text-muted">/mo</span>
                 </div>
                 <ul className="mt-8 grid gap-3 text-sm text-muted">
-                  <li>AI marketing copy generation</li>
-                  <li>Reusable landing page templates</li>
-                  <li>WhatsApp CTA support</li>
-                  <li>Platform billing ready</li>
+                  {plan.features.map((feature) => (
+                    <li key={feature}>{feature}</li>
+                  ))}
                 </ul>
                 <ButtonLink className="mt-8 w-full" href="/register">
                   Start with {plan.name}

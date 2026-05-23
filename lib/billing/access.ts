@@ -54,7 +54,7 @@ export async function getUserSubscriptionAccess(
   const { count: storesCount } = await supabase
     .from("stores")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    .or(`user_id.eq.${userId},owner_user_id.eq.${userId}`);
 
   const { count: publishedStoresCount } = await supabase
     .from("published_stores")
@@ -73,9 +73,10 @@ export async function getUserSubscriptionAccess(
     .eq("user_id", userId);
 
   const { count: domainsCount } = await supabase
-    .from("commerce_domain_publications")
+    .from("published_stores")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .not("custom_domain", "is", null);
 
   const { count: trafficCount } = await supabase
     .from("analytics_events")
@@ -207,13 +208,13 @@ export function getUpgradeMessage(
 ) {
   const messages = {
     analytics: "Advanced analytics is available on the Pro and Agency plans.",
-    branding: "Custom branding is available on Starter, Pro, and Agency plans.",
-    domain: "Custom domains are available on Starter, Pro, and Agency plans.",
-    landings: "Your current plan has reached its landing page limit.",
+    branding: "Full theme and branding controls are available on Pro and Agency plans. Upgrade at /pricing.",
+    domain: "Custom domains are available on Pro and Agency plans. Upgrade at /pricing.",
+    landings: "Your current plan has reached its landing page limit. Upgrade at /pricing.",
     publish: "Publishing is available on all active SHASTORE AI plans.",
-    seo: "SEO settings are available on Starter, Pro, and Agency plans.",
-    stores: "",
-    template: "Premium templates are available on Starter, Pro, and Agency plans."
+    seo: "SEO settings are available on Pro and Agency plans. Upgrade at /pricing.",
+    stores: "Your current plan has reached its store limit. Upgrade at /pricing.",
+    template: "Premium templates are available on Pro and Agency plans. Upgrade at /pricing."
   };
 
   return messages[reason];

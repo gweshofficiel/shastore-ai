@@ -9,8 +9,13 @@ import {
   accountProfileUnavailableMessage,
   getOrCreateAccountProfile
 } from "@/lib/account-profiles";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 
 export const dynamic = "force-dynamic";
+
+function formatLimit(value: number | null) {
+  return value === null ? "Unlimited" : value.toLocaleString();
+}
 
 async function getDashboardStats() {
   const supabase = await createClient();
@@ -67,10 +72,11 @@ async function getDashboardStats() {
 }
 
 export default async function DashboardPage() {
-  const [stats, commerce, account] = await Promise.all([
+  const [stats, commerce, account, access] = await Promise.all([
     getDashboardStats(),
     getCommerceAnalyticsSummary(),
-    getOrCreateAccountProfile("user")
+    getOrCreateAccountProfile("user"),
+    getCurrentUserSubscriptionAccess()
   ]);
   const statCards = [
     { label: "Published pages", value: stats.published },
@@ -88,6 +94,40 @@ export default async function DashboardPage() {
         title="Launch center"
       />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
+      {access ? (
+        <Card className="p-6 lg:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Subscription
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                {access.plan.name} plan
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Professional limits are active for store creation, custom domains, and advanced branding.
+              </p>
+            </div>
+            <ButtonLink href="/pricing" variant="secondary">
+              View pricing
+            </ButtonLink>
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-bold text-muted">Stores used / limit</p>
+              <p className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+                {access.usage.storesUsed} / {formatLimit(access.usage.storeLimit)}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-bold text-muted">Landing pages used / limit</p>
+              <p className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+                {access.usage.landingsUsed} / {formatLimit(access.usage.landingLimit)}
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {statCards.map((stat) => (
           <Card className="p-5 lg:p-6" key={stat.label}>
