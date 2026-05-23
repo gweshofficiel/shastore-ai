@@ -4,16 +4,13 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getCommerceAnalyticsSummary } from "@/lib/commerce/data";
 import { createClient } from "@/lib/supabase/server";
+import { countStoresForAuthUser } from "@/lib/stores/user-stores";
 import {
   accountProfileUnavailableMessage,
   getOrCreateAccountProfile
 } from "@/lib/account-profiles";
 
 export const dynamic = "force-dynamic";
-
-function storeOwnerOrFilter(userId: string) {
-  return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
-}
 
 async function getDashboardStats() {
   const supabase = await createClient();
@@ -30,7 +27,7 @@ async function getDashboardStats() {
     };
   }
 
-  const [{ count: published }, { count: drafts }, storesResult, { count: generations }] =
+  const [{ count: published }, { count: drafts }, storesCount, { count: generations }] =
     await Promise.all([
       supabase
         .from("landing_pages")
@@ -42,10 +39,7 @@ async function getDashboardStats() {
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .eq("status", "draft"),
-      supabase
-        .from("stores")
-        .select("id", { count: "exact", head: true })
-        .or(storeOwnerOrFilter(user.id)),
+      countStoresForAuthUser(supabase, user.id),
       supabase
         .from("generations")
         .select("*", { count: "exact", head: true })
@@ -55,7 +49,7 @@ async function getDashboardStats() {
   return {
     published: published ?? 0,
     drafts: drafts ?? 0,
-    stores: storesResult.count ?? 0,
+    stores: storesCount.count ?? 0,
     generations: generations ?? 0
   };
 }

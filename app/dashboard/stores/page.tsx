@@ -5,6 +5,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { publishStoreDraft } from "@/lib/store-actions";
 import { createClient } from "@/lib/supabase/server";
+import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 export const dynamic = "force-dynamic";
 
@@ -88,15 +89,6 @@ function isMissingPublishedStoresTable(error: { code?: string; message?: string 
   );
 }
 
-function storeOwnerOrFilter(userId: string) {
-  return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
-}
-
-function isMissingOwnerUserColumn(error: { code?: string; message?: string } | null) {
-  const message = (error?.message ?? "").toLowerCase();
-  return error?.code === "PGRST204" && message.includes("owner_user_id");
-}
-
 async function loadOwnedStores(ownedResult: {
   data: unknown;
   error: { code?: string; message?: string } | null;
@@ -120,33 +112,19 @@ async function loadDraftStores(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
 ) {
-  let draftResult = await supabase
-    .from("stores")
-    .select("id, name, status, created_at")
-    .or(storeOwnerOrFilter(userId))
-    .order("created_at", { ascending: false });
+  const { stores, error } = await fetchStoresForAuthUser(supabase, userId);
 
-  if (draftResult.error && isMissingOwnerUserColumn(draftResult.error)) {
-    draftResult = await supabase
-      .from("stores")
-      .select("id, name, status, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-  }
-
-  if (draftResult.error) {
+  if (error) {
     return {
       draftStores: [] as DraftStore[],
-      draftStoresError: `Draft stores could not be loaded: ${draftResult.error.message}`
+      draftStoresError: `Stores could not be loaded: ${error}`
     };
   }
 
-  const draftStores = ((draftResult.data ?? []) as Omit<DraftStore, "publication">[]).map(
-    (store) => ({
-      ...store,
-      publication: null
-    })
-  );
+  const draftStores = stores.map((store) => ({
+    ...store,
+    publication: null as PublicationRow | null
+  }));
   const draftIds = draftStores.map((store) => store.id);
   let publicationRows: PublicationRow[] = [];
 
@@ -159,10 +137,10 @@ async function loadDraftStores(
     if (!publicationError) {
       publicationRows = (data ?? []) as unknown as PublicationRow[];
     } else if (!isMissingPublishedStoresTable(publicationError)) {
-      return {
-        draftStores: [],
-        draftStoresError: "Published store metadata could not be loaded. Please try again."
-      };
+      console.warn(
+        "[dashboard/stores] published_stores metadata skipped:",
+        publicationError.message
+      );
     }
   }
 

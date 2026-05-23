@@ -221,7 +221,7 @@ function redirectWithDatabaseError(detail?: string): never {
 }
 
 function isStorePlanGatingEnabled() {
-  return process.env.NODE_ENV === "production";
+  return process.env.STORE_PLAN_GATING_ENABLED === "true";
 }
 
 function storeOwnerOrFilter(userId: string) {
