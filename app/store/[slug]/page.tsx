@@ -5,6 +5,7 @@ import {
   StorefrontTenantContextScript,
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
+import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
   getCurrentStoreContext,
@@ -110,9 +111,7 @@ export default async function PublicStorePage({
               </p>
               <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
             </div>
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
-              Preview
-            </span>
+            <CartNavLink slug={store.slug} />
           </header>
 
           <div
@@ -221,6 +220,7 @@ export default async function PublicStorePage({
                         ) : null}
                       </div>
                       <div className="mt-5 grid gap-2">
+                        <AddToCartButton product={product} slug={store.slug} />
                         <Link
                           className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
                           href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}

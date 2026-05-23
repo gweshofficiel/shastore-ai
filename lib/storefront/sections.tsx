@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -254,6 +255,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
                     )}
                   </p>
                   <div className="mt-5 grid gap-2">
+                    <AddToCartButton product={product} slug={context.preview.store.slug} />
                     <Link
                       className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
                       href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}

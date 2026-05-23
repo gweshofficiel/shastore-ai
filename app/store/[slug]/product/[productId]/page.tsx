@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 
 export const dynamic = "force-dynamic";
@@ -153,12 +154,15 @@ export default async function PublicProductDetailPage({
               </p>
               <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
             </div>
-            <Link
-              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-              href={`/store/${preview.store.slug}`}
-            >
-              Back to store
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <CartNavLink slug={preview.store.slug} />
+              <Link
+                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                href={`/store/${preview.store.slug}`}
+              >
+                Back to store
+              </Link>
+            </div>
           </header>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
@@ -198,6 +202,7 @@ export default async function PublicProductDetailPage({
               </p>
 
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
+                <AddToCartButton product={product} slug={preview.store.slug} />
                 {whatsappHref ? (
                   <a
                     className="inline-flex h-12 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700"
