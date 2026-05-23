@@ -61,6 +61,7 @@ export type StoreThemeSettings = {
   navigationStyle: "centered" | "split" | "minimal";
   stickyHeader: boolean;
   announcementText: string;
+  bannerImageUrl: string;
   heroTitle: string;
   heroSubtitle: string;
   heroBackground: "gradient" | "solid" | "image" | "glass";

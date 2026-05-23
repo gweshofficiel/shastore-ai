@@ -845,6 +845,7 @@ function parseThemeSettings(formData: FormData): StoreThemeSettings {
         ? fromJson.stickyHeader
         : formData.get("themeStickyHeader") === "true",
     announcementText: formData.get("themeAnnouncementText") ?? fromJson.announcementText,
+    bannerImageUrl: formData.get("themeBannerImageUrl") ?? fromJson.bannerImageUrl,
     heroTitle: formData.get("themeHeroTitle") ?? fromJson.heroTitle,
     heroSubtitle: formData.get("themeHeroSubtitle") ?? fromJson.heroSubtitle,
     heroBackground: formData.get("themeHeroBackground") ?? fromJson.heroBackground,
@@ -987,6 +988,7 @@ function hasCustomBranding(settings: StoreThemeSettings, logoImageUrl: string | 
       settings.headingFont !== defaultStoreThemeSettings.headingFont ||
       settings.bodyFont !== defaultStoreThemeSettings.bodyFont ||
       settings.announcementText ||
+      settings.bannerImageUrl ||
       settings.heroTitle ||
       settings.heroSubtitle ||
       settings.ctaText !== defaultStoreThemeSettings.ctaText ||
@@ -1473,6 +1475,64 @@ export async function saveStoreThemeSettings(formData: FormData) {
   }
 
   redirect(`/dashboard/stores/${store.id}?theme=saved`);
+}
+
+export async function resetStoreThemeSettings(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/stores");
+  }
+
+  const storeId = String(formData.get("storeId") ?? "").trim();
+  const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
+
+  if (!storeId) {
+    redirectWithStoreError("/dashboard/stores", "Store not found.");
+  }
+
+  const { data: store, error: storeError } = await supabase
+    .from("stores")
+    .select("id, slug, template_id")
+    .eq("id", storeId)
+    .or(storeOwnerOrFilter(user.id))
+    .single();
+
+  if (storeError || !store) {
+    redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  const { error } = await supabase.from("store_theme_settings").upsert(
+    {
+      store_id: store.id,
+      user_id: user.id,
+      template_id: store.template_id || defaultStoreTemplateId,
+      brand_color: defaultStoreThemeSettings.primaryColor,
+      logo_image_url: null,
+      settings: defaultStoreThemeSettings,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: "store_id" }
+  );
+
+  if (error) {
+    redirectWithStoreError(detailPath, formatStoreActionError(error));
+  }
+
+  await supabase
+    .from("stores")
+    .update({
+      brand_color: defaultStoreThemeSettings.primaryColor,
+      logo_image_url: null
+    })
+    .eq("id", store.id)
+    .or(storeOwnerOrFilter(user.id));
+
+  await revalidateStoreCatalogPaths(supabase, store.id, store.slug);
+  redirect(`${detailPath}?theme=reset`);
 }
 
 export async function saveStorePublicationSettings(formData: FormData) {

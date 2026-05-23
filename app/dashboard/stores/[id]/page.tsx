@@ -91,6 +91,7 @@ import {
   deleteManagedStoreCategory,
   deleteManagedStoreProduct,
   publishStoreDraft,
+  resetStoreThemeSettings,
   saveStorePublicationSettings,
   saveStoreThemeSettings,
   updateManagedStoreCategory,
@@ -4229,6 +4230,13 @@ export default async function StoreDraftPage({
           </p>
         </Card>
       ) : null}
+      {query.theme === "reset" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Store theme reset to defaults.
+          </p>
+        </Card>
+      ) : null}
       {query.publication === "saved" ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
@@ -4471,6 +4479,10 @@ export default async function StoreDraftPage({
             storefront after save.
           </p>
         </div>
+        <form action={resetStoreThemeSettings} className="mt-5">
+          <input name="storeId" type="hidden" value={store.id} />
+          <Button type="submit" variant="ghost">Reset to default theme</Button>
+        </form>
         <form action={saveStoreThemeSettings} className="mt-5 grid gap-5">
           <input name="storeId" type="hidden" value={store.id} />
           <div className="grid gap-4 sm:grid-cols-3">
@@ -4525,6 +4537,13 @@ export default async function StoreDraftPage({
             label="Logo URL"
             name="themeLogoUrl"
             placeholder="https://example.com/logo.png"
+          />
+          <Input
+            defaultValue={themeSettings.bannerImageUrl}
+            id="saved-theme-banner-image"
+            label="Banner image URL"
+            name="themeBannerImageUrl"
+            placeholder="https://example.com/banner.jpg"
           />
           <Input
             defaultValue={themeSettings.announcementText}

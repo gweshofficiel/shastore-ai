@@ -183,6 +183,7 @@ function SectionShell({
 
 function ProductGridSection({ context }: { context: StoreTenantContext }) {
   const products = context.preview.products.slice(0, 6);
+  const theme = context.preview.themeSettings;
   const categorizedProductIds = new Set<string>();
   const categorySections = context.preview.categories.map((category) => {
     const categoryProducts = products.filter((product) => {
@@ -325,9 +326,10 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
                     </Link>
                     {whatsappHref ? (
                       <a
-                        className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
+                        className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-black text-white transition"
                         href={whatsappHref}
                         rel="noreferrer"
+                        style={{ backgroundColor: theme.accentColor }}
                         target="_blank"
                       >
                         Order on WhatsApp
@@ -392,8 +394,9 @@ export function SectionRenderer({
   section: StoreSection;
 }) {
   const config = section.config;
-  const title = textValue(config.title, context.settings.title);
-  const body = textValue(config.body, context.settings.description ?? "");
+  const theme = context.preview.themeSettings;
+  const title = textValue(config.title, theme.heroTitle || context.settings.title);
+  const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
 
   if (section.section_type === "spacer") {
     return <div aria-hidden="true" className="h-8 sm:h-12" />;
@@ -409,7 +412,9 @@ export function SectionRenderer({
         <div
           className="rounded-[2.5rem] px-6 py-16 text-white sm:px-10 lg:px-14"
           style={{
-            background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`
+            background: theme.bannerImageUrl
+              ? `linear-gradient(135deg, ${context.theme.colorPalette.primary}cc, ${context.theme.colorPalette.secondary}99), url("${theme.bannerImageUrl}") center/cover`
+              : `linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`
           }}
         >
           <p className="text-xs font-black uppercase tracking-[0.28em] text-white/60">

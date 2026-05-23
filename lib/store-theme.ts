@@ -16,6 +16,7 @@ export const defaultStoreThemeSettings: StoreThemeSettings = {
   navigationStyle: "centered",
   stickyHeader: true,
   announcementText: "",
+  bannerImageUrl: "",
   heroTitle: "",
   heroSubtitle: "",
   heroBackground: "gradient",
@@ -95,6 +96,7 @@ export function normalizeStoreThemeSettings(
     stickyHeader:
       typeof value.stickyHeader === "boolean" ? value.stickyHeader : fallback.stickyHeader,
     announcementText: cleanText(value.announcementText),
+    bannerImageUrl: cleanUrl(value.bannerImageUrl),
     heroTitle: cleanText(value.heroTitle),
     heroSubtitle: cleanText(value.heroSubtitle),
     heroBackground: pick(

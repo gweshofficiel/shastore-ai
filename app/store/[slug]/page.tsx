@@ -99,6 +99,7 @@ export default async function PublicStorePage({
   }
 
   const { branding, products, store } = preview;
+  const theme = preview.themeSettings;
   const categorizedProductIds = new Set<string>();
   const categorySections = preview.categories.map((category) => {
     const categoryProducts = products.filter((product) => {
@@ -144,17 +145,28 @@ export default async function PublicStorePage({
           products
         }
       ];
-  const heroBackground = `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, #020617)`;
+  const heroBackground = theme.bannerImageUrl
+    ? `linear-gradient(135deg, ${branding.primaryColor}cc, ${branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
+    : `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, ${branding.secondaryColor})`;
   const fallbackStorefront = (
     <>
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                SHASTORE AI Store
-              </p>
-              <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
+            <div className="flex items-center gap-3">
+              {theme.logoUrl ? (
+                <img
+                  alt={`${store.title} logo`}
+                  className="h-10 w-10 rounded-full object-cover"
+                  src={theme.logoUrl}
+                />
+              ) : null}
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  SHASTORE AI Store
+                </p>
+                <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
+              </div>
             </div>
             <CartNavLink slug={store.slug} />
           </header>
@@ -168,10 +180,11 @@ export default async function PublicStorePage({
                 Public Storefront
               </p>
               <h1 className="mt-5 text-5xl font-black leading-none tracking-[-0.07em] sm:text-7xl lg:text-8xl">
-                {store.title}
+                {theme.heroTitle || store.title}
               </h1>
               <p className="mt-6 max-w-2xl text-base font-semibold leading-8 text-white/75 sm:text-lg">
-                {store.description ||
+                {theme.heroSubtitle ||
+                  store.description ||
                   "A clean SHASTORE AI storefront preview for this claimed store."}
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -290,9 +303,10 @@ export default async function PublicStorePage({
                         </Link>
                         {whatsappHref ? (
                           <a
-                            className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
+                            className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-black text-white transition"
                             href={whatsappHref}
                             rel="noreferrer"
+                            style={{ backgroundColor: theme.accentColor }}
                             target="_blank"
                           >
                             Order on WhatsApp
@@ -362,6 +376,22 @@ export default async function PublicStorePage({
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
       <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
+      <footer
+        className="px-4 py-8 sm:px-6 lg:px-8"
+        style={{
+          backgroundColor: theme.footerBackgroundColor,
+          color: theme.footerTextColor
+        }}
+      >
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+          <p className="text-sm font-bold">
+            {theme.copyrightText || `© ${new Date().getFullYear()} ${store.title}`}
+          </p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] opacity-75">
+            Powered by SHASTORE AI
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

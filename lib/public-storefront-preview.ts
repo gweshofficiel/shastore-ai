@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
+import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
+import type { StoreThemeSettings } from "@/types/storefront";
 
 export type PublicStorefrontProduct = {
   categoryId: string | null;
@@ -30,6 +32,7 @@ export type PublicStorefrontPreview = {
   };
   categories: PublicStorefrontCategory[];
   products: PublicStorefrontProduct[];
+  themeSettings: StoreThemeSettings;
   store: {
     description: string | null;
     id: string;
@@ -128,6 +131,7 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
     products: Array.isArray(value.products)
       ? value.products.map(normalizeProduct).filter((product): product is PublicStorefrontProduct => Boolean(product))
       : [],
+    themeSettings: normalizeStoreThemeSettings(value.themeSettings, defaultStoreThemeSettings),
     store: {
       description: textValue(store.description) || null,
       id,
@@ -262,15 +266,25 @@ async function loadStoreModePublicPreview(slug: string) {
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const fallbackProducts = productsFromStoreData(store.store_data);
+  const { data: themeRow } = await client
+    .from("store_theme_settings")
+    .select("settings")
+    .eq("store_id", store.id)
+    .maybeSingle();
+  const themeSettings = normalizeStoreThemeSettings(
+    (themeRow as { settings?: unknown } | null)?.settings,
+    defaultStoreThemeSettings
+  );
 
   return normalizePreview({
     branding: {
-      primaryColor: store.brand_color || "#0f172a",
-      secondaryColor: "#2563eb",
+      primaryColor: themeSettings.primaryColor || store.brand_color || "#0f172a",
+      secondaryColor: themeSettings.secondaryColor || "#2563eb",
       themeMode: "light"
     },
     categories: savedCategories.length ? savedCategories : fallbackCategories,
     products: savedProducts.length ? savedProducts : fallbackProducts,
+    themeSettings,
     store: {
       currency: store.currency || "USD",
       description: store.description,

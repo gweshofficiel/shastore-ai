@@ -141,18 +141,30 @@ export default async function PublicProductDetailPage({
     preview.store.title,
     product.title
   );
-  const heroBackground = `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, #020617)`;
+  const theme = preview.themeSettings;
+  const heroBackground = theme.bannerImageUrl
+    ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
+    : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                SHASTORE AI Store
-              </p>
-              <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
+            <div className="flex items-center gap-3">
+              {theme.logoUrl ? (
+                <img
+                  alt={`${preview.store.title} logo`}
+                  className="h-10 w-10 rounded-full object-cover"
+                  src={theme.logoUrl}
+                />
+              ) : null}
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  SHASTORE AI Store
+                </p>
+                <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <CartNavLink slug={preview.store.slug} />
@@ -205,9 +217,10 @@ export default async function PublicProductDetailPage({
                 <AddToCartButton product={product} slug={preview.store.slug} />
                 {whatsappHref ? (
                   <a
-                    className="inline-flex h-12 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700"
+                    className="inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-black text-white transition"
                     href={whatsappHref}
                     rel="noreferrer"
+                    style={{ backgroundColor: theme.accentColor }}
                     target="_blank"
                   >
                     Order on WhatsApp
@@ -242,6 +255,22 @@ export default async function PublicProductDetailPage({
           </div>
         </div>
       </section>
+      <footer
+        className="px-4 py-8 sm:px-6 lg:px-8"
+        style={{
+          backgroundColor: theme.footerBackgroundColor,
+          color: theme.footerTextColor
+        }}
+      >
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+          <p className="text-sm font-bold">
+            {theme.copyrightText || `© ${new Date().getFullYear()} ${preview.store.title}`}
+          </p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] opacity-75">
+            Powered by SHASTORE AI
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }
