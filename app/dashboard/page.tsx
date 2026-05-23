@@ -23,11 +23,18 @@ async function getDashboardStats() {
       published: 0,
       drafts: 0,
       stores: 0,
+      orders: 0,
       generations: 0
     };
   }
 
-  const [{ count: published }, { count: drafts }, storesCount, { count: generations }] =
+  const [
+    { count: published },
+    { count: drafts },
+    storesCount,
+    ordersCount,
+    { count: generations }
+  ] =
     await Promise.all([
       supabase
         .from("landing_pages")
@@ -41,6 +48,10 @@ async function getDashboardStats() {
         .eq("status", "draft"),
       countStoresForAuthUser(supabase, user.id),
       supabase
+        .from("store_orders")
+        .select("id", { count: "exact", head: true })
+        .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`),
+      supabase
         .from("generations")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
@@ -50,6 +61,7 @@ async function getDashboardStats() {
     published: published ?? 0,
     drafts: drafts ?? 0,
     stores: storesCount.count ?? 0,
+    orders: ordersCount.error ? 0 : (ordersCount.count ?? 0),
     generations: generations ?? 0
   };
 }
@@ -64,7 +76,7 @@ export default async function DashboardPage() {
     { label: "Published pages", value: stats.published },
     { label: "Drafts", value: stats.drafts },
     { label: "Stores", value: stats.stores },
-    { label: "Orders", value: commerce.items.orders },
+    { label: "Orders", value: stats.orders },
     { label: "Visitors", value: commerce.items.visitors }
   ];
 

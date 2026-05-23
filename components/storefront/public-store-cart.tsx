@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import {
+  createPublicStoreOrderAction,
+  type PublicStoreOrderState
+} from "@/lib/store-order-actions";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -24,6 +28,13 @@ type CartPageClientProps = {
   slug: string;
   storeTitle: string;
   whatsappNumber: string | null;
+};
+
+const initialOrderState: PublicStoreOrderState = {
+  error: null,
+  message: null,
+  ok: false,
+  orderId: null
 };
 
 function cartKey(slug: string) {
@@ -219,10 +230,23 @@ export function CartPageClient({
   whatsappNumber
 }: CartPageClientProps) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [orderState, submitOrder, isSubmitting] = useActionState(
+    createPublicStoreOrderAction,
+    initialOrderState
+  );
 
   useEffect(() => {
     setItems(readCart(slug));
   }, [slug]);
+
+  useEffect(() => {
+    if (!orderState.ok) {
+      return;
+    }
+
+    updateItems([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderState.ok]);
 
   const total = useMemo(() => cartTotal(items), [items]);
   const whatsappHref = whatsappCheckoutHref({
@@ -254,6 +278,11 @@ export function CartPageClient({
   if (!items.length) {
     return (
       <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
+        {orderState.message ? (
+          <div className="mx-auto mb-5 max-w-xl rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
+            {orderState.message}
+          </div>
+        ) : null}
         <h1 className="text-3xl font-black tracking-[-0.04em] text-ink">Your cart is empty</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
           Add products from the public store before checkout.
@@ -352,6 +381,68 @@ export function CartPageClient({
             <span>{formatMoney(total, currency)}</span>
           </div>
         </div>
+        <form action={submitOrder} className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
+          <input name="slug" type="hidden" value={slug} />
+          <input
+            name="items"
+            type="hidden"
+            value={JSON.stringify(
+              items.map((item) => ({ id: item.id, quantity: item.quantity }))
+            )}
+          />
+          {orderState.error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              {orderState.error}
+            </div>
+          ) : null}
+          {orderState.message ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
+              {orderState.message}
+            </div>
+          ) : null}
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Customer name</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="customerName"
+              placeholder="Full name"
+              required
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Phone</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="customerPhone"
+              placeholder="+15551234567"
+              required
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Email optional</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="customerEmail"
+              placeholder="customer@example.com"
+              type="email"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Address optional</span>
+            <textarea
+              className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="customerAddress"
+              placeholder="Delivery address or notes"
+            />
+          </label>
+          <button
+            className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {isSubmitting ? "Submitting order..." : "Submit order"}
+          </button>
+        </form>
         <div className="mt-6 grid gap-3">
           {whatsappHref ? (
             <a

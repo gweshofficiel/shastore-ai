@@ -239,6 +239,7 @@ export type Database = {
           id: string;
           project_id: string | null;
           user_id: string;
+          owner_user_id: string | null;
           name: string;
           description: string | null;
           logo_image_url: string | null;
@@ -256,6 +257,7 @@ export type Database = {
           id?: string;
           project_id?: string | null;
           user_id: string;
+          owner_user_id?: string | null;
           name: string;
           description?: string | null;
           logo_image_url?: string | null;
@@ -326,6 +328,46 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["store_products"]["Insert"]>;
+        Relationships: [];
+      };
+      store_orders: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string | null;
+          owner_user_id: string | null;
+          customer_name: string;
+          customer_phone: string;
+          customer_email: string | null;
+          customer_address: string | null;
+          items: Json;
+          subtotal: number;
+          total: number;
+          payment_method: string;
+          payment_status: string;
+          order_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          user_id?: string | null;
+          owner_user_id?: string | null;
+          customer_name: string;
+          customer_phone: string;
+          customer_email?: string | null;
+          customer_address?: string | null;
+          items?: Json;
+          subtotal?: number;
+          total?: number;
+          payment_method?: string;
+          payment_status?: string;
+          order_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["store_orders"]["Insert"]>;
         Relationships: [];
       };
       store_templates: {
