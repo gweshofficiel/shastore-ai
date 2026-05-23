@@ -2,7 +2,6 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import CreateStoreForm from "@/components/dashboard/create-store-form";
 import { StoreBuilder } from "@/components/dashboard/store-builder";
-import { saveStoreDraft } from "@/lib/store-actions";
 
 export default async function NewStorePage({
   searchParams
@@ -38,7 +37,7 @@ export default async function NewStorePage({
 
         <CreateStoreForm />
 
-        <StoreBuilder databaseError={databaseError} saveStoreDraft={saveStoreDraft} />
+        <StoreBuilder databaseError={databaseError} />
       </div>
     </div>
   );

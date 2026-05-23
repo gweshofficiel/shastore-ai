@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { StoreSaveToast } from "@/components/dashboard/store-save-toast";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -282,6 +283,10 @@ export default async function StoresPage({
 
   return (
     <div className="grid gap-6 lg:gap-8">
+      <StoreSaveToast
+        message="Store draft saved successfully."
+        show={Boolean(query.saved)}
+      />
       <PageHeader
         action={<ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>}
         description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."

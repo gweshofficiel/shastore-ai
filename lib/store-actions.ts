@@ -261,6 +261,417 @@ function normalizeTemplateId(value: string) {
   return trimmed || defaultStoreTemplateId;
 }
 
+const databaseTemplateIds = new Set([
+  "minimal-luxury",
+  "fashion-modern",
+  "electronics-dark",
+  "beauty-glow",
+  "marketplace-grid",
+  "premium-brand",
+  "gadget-neon",
+  "clean-scandinavian",
+  "arabic-luxury",
+  "tiktok-product-store",
+  "modern-store"
+]);
+
+const templateIdAliases: Record<string, string> = {
+  "luxury-dark": "minimal-luxury",
+  "minimal-clean": "clean-scandinavian",
+  "arabic-premium": "arabic-luxury",
+  "fashion-editorial": "fashion-modern",
+  "tiktok-product": "tiktok-product-store",
+  "modern-gradient": "premium-brand",
+  "scandinavian-light": "clean-scandinavian"
+};
+
+function resolveDatabaseTemplateId(value: string) {
+  const normalized = normalizeTemplateId(value);
+  const aliased = templateIdAliases[normalized] ?? normalized;
+
+  if (databaseTemplateIds.has(aliased)) {
+    return aliased;
+  }
+
+  return "minimal-luxury";
+}
+
+export type SaveStoreDraftState = {
+  error: string | null;
+  message: string | null;
+  ok: boolean;
+};
+
+function isNextRedirectError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: string }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+function buildStoreDataPayload({
+  brandColor,
+  categories,
+  currency,
+  products,
+  storeDescription,
+  storeName,
+  templateId,
+  themeSettings,
+  whatsappNumber
+}: {
+  brandColor: string;
+  categories: DraftCategory[];
+  currency: string;
+  products: DraftProduct[];
+  storeDescription: string;
+  storeName: string;
+  templateId: string;
+  themeSettings: StoreThemeSettings;
+  whatsappNumber: string;
+}) {
+  return {
+    brandColor,
+    categories,
+    currency,
+    products,
+    storeDescription,
+    storeName,
+    templateId,
+    themeSettings,
+    whatsappNumber
+  };
+}
+
+async function insertStoreDraftRow(
+  supabase: SupabaseClient,
+  userId: string,
+  input: {
+    brandColor: string;
+    currency: string;
+    logoImageUrl: string | null;
+    name: string;
+    projectId: string | null;
+    storeData: Record<string, unknown>;
+    storeDescription: string | null;
+    templateId: string;
+    whatsappNumber: string | null;
+  }
+) {
+  const slug = `${slugify(input.name)}-${crypto.randomUUID().slice(0, 8)}`;
+  const base = {
+    brand_color: input.brandColor,
+    currency: input.currency,
+    description: input.storeDescription,
+    logo_image_url: input.logoImageUrl,
+    name: input.name,
+    project_id: input.projectId,
+    status: "draft" as const,
+    template_id: input.templateId,
+    user_id: userId,
+    whatsapp_number: input.whatsappNumber
+  };
+
+  const payloadAttempts: Array<Record<string, unknown>> = [
+    {
+      ...base,
+      is_active: true,
+      owner_user_id: userId,
+      provisioning_state: "pending",
+      slug,
+      store_data: input.storeData,
+      subscription_plan: "free"
+    },
+    {
+      ...base,
+      owner_user_id: userId,
+      slug,
+      store_data: input.storeData
+    },
+    {
+      ...base,
+      owner_user_id: userId,
+      slug
+    },
+    {
+      ...base,
+      owner_user_id: userId
+    },
+    base
+  ];
+
+  let lastError: SupabaseLikeError | null = null;
+
+  for (const payload of payloadAttempts) {
+    console.log("[saveStoreDraft] insert attempt keys:", Object.keys(payload).join(", "));
+
+    let result = await supabase
+      .from("stores")
+      .insert(payload as never)
+      .select("id, name, status, user_id, created_at")
+      .single();
+
+    if (result.error && isMissingOwnerUserColumn(asSupabaseError(result.error))) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.owner_user_id;
+      result = await supabase
+        .from("stores")
+        .insert(legacyPayload as never)
+        .select("id, name, status, user_id, created_at")
+        .single();
+    }
+
+    if (!result.error && result.data) {
+      console.log("[saveStoreDraft] insert success:", result.data);
+      return { data: result.data, error: null };
+    }
+
+    lastError = asSupabaseError(result.error);
+    const message = (lastError?.message ?? "").toLowerCase();
+
+    if (lastError?.code !== "PGRST204" && !message.includes("column")) {
+      break;
+    }
+  }
+
+  return { data: null, error: lastError };
+}
+
+async function persistStoreDraftFromForm(
+  formData: FormData
+): Promise<{ error?: string; ok: true; storeId: string } | { error: string; ok: false }> {
+  console.log("[saveStoreDraft] persistStoreDraftFromForm start");
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "Sign in required to save a store draft." };
+  }
+
+  const storeName = String(formData.get("storeName") ?? "").trim();
+  const storeDescription = String(formData.get("storeDescription") ?? "").trim();
+  const brandColor = String(formData.get("brandColor") ?? "#0f172a").trim() || "#0f172a";
+  const currency = String(formData.get("currency") ?? "USD").trim() || "USD";
+  const whatsappNumber = String(formData.get("whatsappNumber") ?? "").trim();
+  const templateId = resolveDatabaseTemplateId(String(formData.get("templateId") ?? ""));
+  const categories = parseCategories(formData);
+  const products = parseProducts(formData);
+  const themeSettings = parseThemeSettings(formData);
+  const logoImageUrl =
+    (await uploadStoreLogo(supabase, user.id, formData)) || themeSettings.logoUrl || null;
+
+  console.log("[saveStoreDraft] parsed payload", {
+    categories: categories.length,
+    products: products.length,
+    storeName,
+    templateId,
+    userId: user.id
+  });
+
+  if (!storeName) {
+    return { ok: false, error: "Store name is required." };
+  }
+
+  if (isStorePlanGatingEnabled()) {
+    const access = await getUserSubscriptionAccess(user.id);
+
+    if (!canCreateStore(access)) {
+      return { ok: false, error: getUpgradeMessage("stores") || "Store limit reached." };
+    }
+
+    if (!canUseTemplate(access, templateId)) {
+      return { ok: false, error: getUpgradeMessage("template") };
+    }
+
+    if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
+      return { ok: false, error: getUpgradeMessage("branding") };
+    }
+  }
+
+  const { projectId, error: projectError } = await createStoreProject(
+    supabase,
+    user.id,
+    storeName
+  );
+
+  if (projectError) {
+    console.error("[saveStoreDraft] project create failed:", projectError);
+    return { ok: false, error: projectError };
+  }
+
+  const storeData = buildStoreDataPayload({
+    brandColor,
+    categories,
+    currency,
+    products,
+    storeDescription,
+    storeName,
+    templateId,
+    themeSettings,
+    whatsappNumber
+  });
+
+  const insertResult = await insertStoreDraftRow(supabase, user.id, {
+    brandColor,
+    currency,
+    logoImageUrl,
+    name: storeName,
+    projectId,
+    storeData,
+    storeDescription: storeDescription || null,
+    templateId,
+    whatsappNumber: whatsappNumber || null
+  });
+
+  if (insertResult.error || !insertResult.data) {
+    if (projectId) {
+      await supabase.from("projects").delete().eq("id", projectId);
+    }
+    const message = formatStoreActionError(insertResult.error);
+    console.error("[saveStoreDraft] store insert failed:", message, insertResult.error);
+    return { ok: false, error: message };
+  }
+
+  const insertedStoreId =
+    insertResult.data && "id" in insertResult.data && typeof insertResult.data.id === "string"
+      ? insertResult.data.id
+      : null;
+
+  if (!insertedStoreId) {
+    console.error("[saveStoreDraft] missing inserted store id");
+    return { ok: false, error: "Store insert returned no id." };
+  }
+
+  const persistedStore = await confirmPersistedStore(supabase, user.id, insertedStoreId);
+
+  if (persistedStore.error) {
+    console.error("[saveStoreDraft] confirm select failed:", persistedStore.error);
+    await cleanupDraft(supabase, insertedStoreId, projectId);
+    return { ok: false, error: formatStoreActionError(persistedStore.error) };
+  }
+
+  if (!persistedStore.data) {
+    console.error("[saveStoreDraft] confirm select returned no row");
+    await cleanupDraft(supabase, insertedStoreId, projectId);
+    return { ok: false, error: "Store row was not found after insert." };
+  }
+
+  const store = persistedStore.data;
+
+  await saveThemeSettings(
+    supabase,
+    store.id,
+    user.id,
+    templateId,
+    themeSettings.primaryColor || brandColor,
+    {
+      ...themeSettings,
+      logoUrl: logoImageUrl || themeSettings.logoUrl
+    },
+    logoImageUrl
+  );
+
+  const categoryIdMap = new Map<string, string>();
+
+  for (let index = 0; index < categories.length; index += 1) {
+    const category = categories[index];
+    const { data: savedCategory, error } = await supabase
+      .from("store_categories")
+      .insert({
+        store_id: store.id,
+        user_id: user.id,
+        name: category.name,
+        description: category.description || null,
+        image_url: category.imageUrl ?? null,
+        sort_order: index
+      })
+      .select("id")
+      .single();
+
+    if (error || !savedCategory) {
+      console.warn("[saveStoreDraft] category insert warning:", error);
+      break;
+    }
+
+    if (category.id) {
+      categoryIdMap.set(category.id, savedCategory.id);
+    }
+  }
+
+  for (let index = 0; index < products.length; index += 1) {
+    const product = products[index];
+    const mappedCategoryId = product.categoryId
+      ? categoryIdMap.get(product.categoryId) ?? null
+      : null;
+
+    const { error } = await supabase.from("store_products").insert({
+      store_id: store.id,
+      category_id: mappedCategoryId,
+      user_id: user.id,
+      name: product.name,
+      description: product.description || null,
+      price: product.price || null,
+      image_url: product.imageUrl ?? null,
+      sort_order: index
+    });
+
+    if (error) {
+      console.warn("[saveStoreDraft] product insert warning:", error);
+      break;
+    }
+  }
+
+  console.log("[saveStoreDraft] persistStoreDraftFromForm complete", store.id);
+  return { ok: true, storeId: store.id };
+}
+
+export async function saveStoreDraftAction(
+  _prev: SaveStoreDraftState | null,
+  formData: FormData
+): Promise<SaveStoreDraftState> {
+  console.log("[saveStoreDraft] action invoked");
+
+  try {
+    const result = await persistStoreDraftFromForm(formData);
+
+    if (!result.ok) {
+      console.error("[saveStoreDraft] action failed:", result.error);
+      return {
+        ok: false,
+        error: result.error,
+        message: null
+      };
+    }
+
+    revalidatePath("/dashboard/stores");
+    revalidatePath("/dashboard");
+    redirect("/dashboard/stores?saved=true");
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error("[saveStoreDraft] unexpected action error:", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Unexpected save failure.",
+      message: null
+    };
+  }
+
+  return {
+    ok: false,
+    error: "Unknown save failure.",
+    message: null
+  };
+}
+
 function parseCategories(formData: FormData): DraftCategory[] {
   const raw = parseJsonField<unknown[]>(formData.get("categories"), []);
 
@@ -505,190 +916,12 @@ function hasCustomBranding(settings: StoreThemeSettings, logoImageUrl: string | 
 }
 
 export async function saveStoreDraft(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?next=/dashboard/stores/new");
-  }
-
-  const redirectPath = "/dashboard/stores/new";
-  const storeName = String(formData.get("storeName") ?? "").trim();
-  const storeDescription = String(formData.get("storeDescription") ?? "").trim();
-  const brandColor = String(formData.get("brandColor") ?? "#0f172a").trim() || "#0f172a";
-  const currency = String(formData.get("currency") ?? "USD").trim() || "USD";
-  const whatsappNumber = String(formData.get("whatsappNumber") ?? "").trim();
-  const templateId = normalizeTemplateId(String(formData.get("templateId") ?? ""));
-  const categories = parseCategories(formData);
-  const products = parseProducts(formData);
-  const themeSettings = parseThemeSettings(formData);
-  const logoImageUrl =
-    (await uploadStoreLogo(supabase, user.id, formData)) || themeSettings.logoUrl || null;
-
-  validateDraftPayload(storeName, redirectPath);
-
-  if (isStorePlanGatingEnabled()) {
-    const access = await getUserSubscriptionAccess(user.id);
-
-    if (!canCreateStore(access)) {
-      redirectWithStoreError(redirectPath, getUpgradeMessage("stores"));
-    }
-
-    if (!canUseTemplate(access, templateId)) {
-      redirectWithStoreError(redirectPath, getUpgradeMessage("template"));
-    }
-
-    if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
-      redirectWithStoreError(redirectPath, getUpgradeMessage("branding"));
-    }
-  }
-
-  const { projectId, error: projectError } = await createStoreProject(
-    supabase,
-    user.id,
-    storeName
-  );
-
-  if (projectError) {
-    redirectWithDatabaseError(projectError);
-  }
-
-  const storePayload = {
-    project_id: projectId,
-    user_id: user.id,
-    owner_user_id: user.id,
-    name: storeName,
-    description: storeDescription || null,
-    logo_image_url: logoImageUrl,
-    brand_color: brandColor,
-    currency,
-    whatsapp_number: whatsappNumber || null,
-    template_id: templateId,
-    status: "draft" as const
-  };
-
-  let storeResult = await supabase
-    .from("stores")
-    .insert(storePayload as never)
-    .select("id, name, status, user_id, owner_user_id, created_at")
-    .single();
-
-  if (storeResult.error && isMissingOwnerUserColumn(asSupabaseError(storeResult.error))) {
-    const legacyStorePayload = { ...storePayload } as Omit<
-      typeof storePayload,
-      "owner_user_id"
-    > & { owner_user_id?: string };
-    delete legacyStorePayload.owner_user_id;
-    storeResult = await supabase
-      .from("stores")
-      .insert(legacyStorePayload as never)
-      .select("id, name, status, user_id, created_at")
-      .single();
-  }
-
-  const insertedStoreId =
-    storeResult.data && "id" in storeResult.data && typeof storeResult.data.id === "string"
-      ? storeResult.data.id
-      : null;
-
-  if (storeResult.error || !insertedStoreId) {
-    if (projectId) {
-      await supabase.from("projects").delete().eq("id", projectId);
-    }
-    redirectWithDatabaseError(formatStoreActionError(storeResult.error));
-  }
-
-  const persistedStore = await confirmPersistedStore(supabase, user.id, insertedStoreId);
-
-  if (persistedStore.error) {
-    redirectWithDatabaseError(formatStoreActionError(persistedStore.error));
-  }
-
-  if (!persistedStore.data) {
-    await cleanupDraft(supabase, insertedStoreId, projectId);
-    redirectWithDatabaseError("Store row was not found after insert.");
-  }
-
-  const store = persistedStore.data;
-
-  await saveThemeSettings(
-    supabase,
-    store.id,
-    user.id,
-    templateId,
-    themeSettings.primaryColor || brandColor,
-    {
-      ...themeSettings,
-      logoUrl: logoImageUrl || themeSettings.logoUrl
-    },
-    logoImageUrl
-  );
-
-  const categoryIdMap = new Map<string, string>();
-  let catalogWarning: string | null = null;
-
-  for (let index = 0; index < categories.length; index += 1) {
-    const category = categories[index];
-    const { data: savedCategory, error } = await supabase
-      .from("store_categories")
-      .insert({
-        store_id: store.id,
-        user_id: user.id,
-        name: category.name,
-        description: category.description || null,
-        image_url: category.imageUrl ?? null,
-        sort_order: index
-      })
-      .select("id")
-      .single();
-
-    if (error || !savedCategory) {
-      catalogWarning = formatStoreActionError(error);
-      break;
-    }
-
-    if (category.id) {
-      categoryIdMap.set(category.id, savedCategory.id);
-    }
-  }
-
-  if (!catalogWarning) {
-    for (let index = 0; index < products.length; index += 1) {
-      const product = products[index];
-      const mappedCategoryId = product.categoryId
-        ? categoryIdMap.get(product.categoryId) ?? null
-        : null;
-
-      const { error } = await supabase.from("store_products").insert({
-        store_id: store.id,
-        category_id: mappedCategoryId,
-        user_id: user.id,
-        name: product.name,
-        description: product.description || null,
-        price: product.price || null,
-        image_url: product.imageUrl ?? null,
-        sort_order: index
-      });
-
-      if (error) {
-        catalogWarning = formatStoreActionError(error);
-        break;
-      }
-    }
-  }
-
-  revalidatePath("/dashboard/stores");
-  revalidatePath("/dashboard");
-
-  if (catalogWarning) {
+  const result = await saveStoreDraftAction(null, formData);
+  if (result.error) {
     redirect(
-      `/dashboard/stores?saved=true&catalog_warning=${encodeURIComponent(catalogWarning)}`
+      `/dashboard/stores/new?error=REAL_DATABASE_ERROR&detail=${encodeURIComponent(result.error)}`
     );
   }
-
-  redirect("/dashboard/stores?saved=true");
 }
 
 export async function deleteStoreDraft(formData: FormData) {

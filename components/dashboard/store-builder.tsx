@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { saveStoreDraftAction, type SaveStoreDraftState } from "@/lib/store-actions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,8 +42,35 @@ type StoreState = {
 
 type StoreBuilderProps = {
   databaseError?: string | null;
-  saveStoreDraft: (formData: FormData) => Promise<void>;
 };
+
+const initialSaveState: SaveStoreDraftState = {
+  error: null,
+  message: null,
+  ok: false
+};
+
+function buildDraftFormData(
+  form: HTMLFormElement,
+  state: {
+    categories: DraftCategory[];
+    products: DraftProduct[];
+    store: StoreState;
+    theme: StoreThemeSettings;
+  }
+) {
+  const formData = new FormData(form);
+  formData.set("storeName", state.store.storeName);
+  formData.set("storeDescription", state.store.storeDescription);
+  formData.set("brandColor", state.store.brandColor);
+  formData.set("currency", state.store.currency);
+  formData.set("whatsappNumber", state.store.whatsappNumber);
+  formData.set("templateId", state.store.templateId);
+  formData.set("categories", JSON.stringify(state.categories));
+  formData.set("products", JSON.stringify(state.products));
+  formData.set("themeSettings", JSON.stringify(state.theme));
+  return formData;
+}
 
 const tabs = ["Basics", "Categories", "Products", "Theme", "Templates", "Preview"];
 
@@ -59,8 +87,12 @@ function uid(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-export function StoreBuilder({ databaseError, saveStoreDraft }: StoreBuilderProps) {
+export function StoreBuilder({ databaseError }: StoreBuilderProps) {
   const [tab, setTab] = useState(0);
+  const [saveState, submitDraft, isPending] = useActionState(
+    saveStoreDraftAction,
+    initialSaveState
+  );
   const [store, setStore] = useState<StoreState>(initialStore);
   const [categories, setCategories] = useState<DraftCategory[]>([
     { id: "category-1", name: "", description: "", imageUrl: "" }
@@ -86,6 +118,23 @@ export function StoreBuilder({ databaseError, saveStoreDraft }: StoreBuilderProp
     () => products.filter((product) => product.name.trim()),
     [products]
   );
+  const saveError = saveState.error ?? databaseError ?? null;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = buildDraftFormData(event.currentTarget, {
+      categories,
+      products,
+      store,
+      theme
+    });
+    console.log("[StoreBuilder] submitting draft", {
+      categories: categories.length,
+      products: products.length,
+      storeName: store.storeName
+    });
+    void submitDraft(formData);
+  }
 
   function updateStore(field: keyof StoreState, value: string) {
     setStore((current) => ({ ...current, [field]: value }));
@@ -137,18 +186,19 @@ export function StoreBuilder({ databaseError, saveStoreDraft }: StoreBuilderProp
 
   return (
     <form
-      action={saveStoreDraft}
       className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.85fr)]"
+      encType="multipart/form-data"
+      onSubmit={handleSubmit}
     >
-      <input name="categories" type="hidden" value={JSON.stringify(categories)} />
-      <input name="products" type="hidden" value={JSON.stringify(products)} />
-      <input name="templateId" type="hidden" value={store.templateId} />
-      <input name="themeSettings" type="hidden" value={JSON.stringify(theme)} />
-
       <Card className="grid min-w-0 gap-6 p-5 lg:p-6">
-        {databaseError ? (
+        {saveError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            {databaseError}
+            {saveError}
+          </div>
+        ) : null}
+        {isPending ? (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800">
+            Saving draft to Supabase…
           </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
@@ -772,12 +822,16 @@ export function StoreBuilder({ databaseError, saveStoreDraft }: StoreBuilderProp
             </Button>
           ) : null}
           {tab === tabs.length - 1 ? (
-            <Button disabled={!store.storeName} type="submit">
-              Save store draft
+            <Button disabled={isPending || !store.storeName.trim()} type="submit">
+              {isPending ? "Saving…" : "Save store draft"}
             </Button>
           ) : (
-            <Button disabled={!store.storeName} type="submit" variant="secondary">
-              Save draft
+            <Button
+              disabled={isPending || !store.storeName.trim()}
+              type="submit"
+              variant="secondary"
+            >
+              {isPending ? "Saving…" : "Save draft"}
             </Button>
           )}
         </div>
