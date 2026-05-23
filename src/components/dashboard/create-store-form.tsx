@@ -1,6 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
+);
 
 export default function CreateStoreForm() {
   const [name, setName] = useState("");
@@ -14,10 +20,24 @@ export default function CreateStoreForm() {
     setMessage("");
 
     try {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token;
+
+      if (!token) {
+        throw new Error("You must be logged in to create a store");
+      }
+
       const response = await fetch("/api/stores/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, slug, description }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name,
+          slug,
+          description,
+        }),
       });
 
       const data = await response.json();
