@@ -22,6 +22,7 @@ type DraftStore = {
   id: string;
   name: string;
   publication: PublicationRow | null;
+  slug: string | null;
   status: string | null;
 };
 
@@ -337,8 +338,10 @@ export default async function StoresPage({
           <div className="mt-5 grid gap-4">
             {draftStores.map((store) => {
               const displayStatus = store.publication?.status ?? store.status ?? "draft";
+              const publicSlug = store.slug ?? store.publication?.slug ?? null;
               const isPublished =
-                displayStatus === "published" && Boolean(store.publication?.slug);
+                (displayStatus === "published" || store.status === "published") &&
+                Boolean(publicSlug);
 
               return (
                 <div
@@ -351,9 +354,9 @@ export default async function StoresPage({
                       Status {formatStatus(displayStatus, "draft")} · Created{" "}
                       {formatDate(store.created_at)}
                     </p>
-                    {store.publication?.slug ? (
+                    {publicSlug ? (
                       <p className="mt-2 font-mono text-xs font-bold text-muted">
-                        /store/{store.publication.slug}
+                        /store/{publicSlug}
                       </p>
                     ) : null}
                   </div>
@@ -361,7 +364,7 @@ export default async function StoresPage({
                     <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
                     {isPublished ? (
                       <ButtonLink
-                        href={`/store/${store.publication?.slug}`}
+                        href={`/store/${publicSlug}`}
                         target="_blank"
                         variant="secondary"
                       >

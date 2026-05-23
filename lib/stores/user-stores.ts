@@ -4,10 +4,11 @@ export type UserStoreRow = {
   created_at: string;
   id: string;
   name: string;
+  slug: string | null;
   status: string | null;
 };
 
-const storeSelect = "id, name, status, created_at";
+const storeSelect = "id, name, status, slug, created_at";
 
 function isMissingOwnerUserColumn(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();

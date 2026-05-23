@@ -17,6 +17,7 @@ import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/st
 import { defaultStoreTemplateId } from "@/lib/store-templates";
 import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
 
 type DraftCategory = {
   id: string;
@@ -59,16 +60,6 @@ function parseJsonField<T>(value: FormDataEntryValue | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function slugify(value: string) {
-  const slug = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
-
-  return slug || "store";
 }
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
@@ -232,6 +223,29 @@ function isMissingOwnerUserColumn(error: SupabaseLikeError | null) {
   return isMissingColumn(error, "owner_user_id");
 }
 
+function isMissingSlugColumn(error: SupabaseLikeError | null) {
+  return isMissingColumn(error, "slug");
+}
+
+async function persistStoreSlug(
+  supabase: SupabaseClient,
+  storeId: string,
+  storeName: string,
+  existingSlug?: string | null
+) {
+  const slug = await resolveUniqueStoreSlug(supabase, storeName, storeId, existingSlug);
+  const { error } = await supabase
+    .from("stores")
+    .update({ slug, updated_at: new Date().toISOString() })
+    .eq("id", storeId);
+
+  if (error && !isMissingSlugColumn(asSupabaseError(error))) {
+    console.warn("[store-actions] stores.slug persist warning:", error.message);
+  }
+
+  return slug;
+}
+
 async function confirmPersistedStore(
   supabase: SupabaseClient,
   userId: string,
@@ -361,7 +375,7 @@ async function insertStoreDraftRow(
     whatsappNumber: string | null;
   }
 ) {
-  const slug = `${slugify(input.name)}-${crypto.randomUUID().slice(0, 8)}`;
+  const slug = buildStoreSlug(input.name, crypto.randomUUID().slice(0, 8));
   const base = {
     brand_color: input.brandColor,
     currency: input.currency,
@@ -626,6 +640,8 @@ async function persistStoreDraftFromForm(
       break;
     }
   }
+
+  await persistStoreSlug(supabase, store.id, storeName);
 
   console.log("[saveStoreDraft] persistStoreDraftFromForm complete", store.id);
   return { ok: true, storeId: store.id };
@@ -1053,7 +1069,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
 
   const { data: store, error: storeError } = await supabase
     .from("stores")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
@@ -1062,7 +1078,12 @@ export async function saveStorePublicationSettings(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
-  const slug = `${slugify(store.name)}-${store.id.slice(0, 8)}`;
+  const slug = await persistStoreSlug(
+    supabase,
+    store.id,
+    String(store.name ?? "").trim() || "store",
+    store.slug
+  );
   const customDomain = cleanHostname(formData.get("customDomain"));
   const subdomain = cleanSubdomain(formData.get("subdomain"));
   const hostname = publicationHostname(customDomain, subdomain);
@@ -1222,7 +1243,7 @@ export async function publishStoreDraft(formData: FormData) {
 
   const { data: store, error: storeLookupError } = await supabase
     .from("stores")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
@@ -1235,6 +1256,8 @@ export async function publishStoreDraft(formData: FormData) {
   if (!storeName) {
     redirectWithStoreError(detailPath, "Store name is required before publishing.");
   }
+
+  const slug = await persistStoreSlug(supabase, store.id, storeName, store.slug);
 
   const [{ data: categories, error: categoriesError }, { data: products, error: productsError }] =
     await Promise.all([
@@ -1283,19 +1306,27 @@ export async function publishStoreDraft(formData: FormData) {
   const { data: updatedStore, error: storeError } = await supabase
     .from("stores")
     .update({
+      slug,
       status: "published",
       updated_at: publishedAt
     })
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
-    .select("id, name")
+    .select("id, name, slug")
     .single();
 
   if (storeError || !updatedStore) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
-  const slug = `${slugify(updatedStore.name)}-${updatedStore.id.slice(0, 8)}`;
+  const publishedSlug =
+    String(updatedStore.slug ?? "").trim() ||
+    (await persistStoreSlug(
+      supabase,
+      updatedStore.id,
+      String(updatedStore.name ?? storeName),
+      slug
+    ));
   const { data: rawPublication, error: publicationLookupError } = await supabase
     .from("published_stores")
     .select("*")
@@ -1316,8 +1347,8 @@ export async function publishStoreDraft(formData: FormData) {
     const { error } = await supabase
       .from("published_stores")
       .update({
-        slug,
-        url: `/store/${slug}`,
+        slug: publishedSlug,
+        url: `/store/${publishedSlug}`,
         status: "published",
         visibility: publication.visibility || "public",
         published_at: publishedAt,
@@ -1333,8 +1364,8 @@ export async function publishStoreDraft(formData: FormData) {
     const { error } = await supabase.from("published_stores").insert({
       store_id: updatedStore.id,
       user_id: user.id,
-      slug,
-      url: `/store/${slug}`,
+      slug: publishedSlug,
+      url: `/store/${publishedSlug}`,
       status: "published",
       visibility: "public",
       published_at: publishedAt
@@ -1347,6 +1378,6 @@ export async function publishStoreDraft(formData: FormData) {
 
   revalidatePath("/dashboard/stores");
   revalidatePath("/dashboard");
-  revalidatePath(`/store/${slug}`);
-  redirect(`/dashboard/stores?published=${slug}`);
+  revalidatePath(`/store/${publishedSlug}`);
+  redirect(`/dashboard/stores?published=${publishedSlug}`);
 }
