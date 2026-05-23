@@ -60,6 +60,38 @@ function numberValue(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
+  if (priceLabel) {
+    return priceLabel;
+  }
+
+  if (price === null || price === undefined || price === "") {
+    return "Price coming soon";
+  }
+
+  const numericPrice = typeof price === "number" ? price : Number(price);
+
+  if (!Number.isFinite(numericPrice)) {
+    return String(price);
+  }
+
+  return new Intl.NumberFormat("en", {
+    currency: currency || "USD",
+    style: "currency"
+  }).format(numericPrice);
+}
+
+function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
+  const number = whatsappNumber?.replace(/\D/g, "");
+
+  if (!number) {
+    return null;
+  }
+
+  const text = encodeURIComponent(`Hi, I want to order ${productTitle} from ${storeTitle}.`);
+  return `https://wa.me/${number}?text=${text}`;
+}
+
 function normalizeSection(value: unknown, context: StoreTenantContext): StoreSection | null {
   if (!isRecord(value)) {
     return null;
@@ -162,24 +194,101 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
           </h2>
         </div>
         <p className="max-w-xl text-sm font-semibold leading-6 text-muted">
-          Products are still loaded through the existing tenant-scoped storefront foundation.
+          Real products saved in Store Builder are shown here for this published store.
         </p>
       </div>
       {products.length ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => (
-            <article className="rounded-[2rem] border border-slate-200 bg-white p-5" key={product.id}>
-              <h3 className="text-xl font-black tracking-[-0.03em] text-ink">{product.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-muted">
-                {product.description || "No description has been added for this product yet."}
-              </p>
-            </article>
-          ))}
+          {products.map((product) => {
+            const whatsappHref = whatsappProductHref(
+              context.preview.store.whatsappNumber,
+              context.preview.store.title,
+              product.title
+            );
+
+            return (
+              <article
+                className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white"
+                key={product.id}
+              >
+                {product.imageUrl ? (
+                  <img
+                    alt={product.title}
+                    className="aspect-[4/3] w-full object-cover"
+                    src={product.imageUrl}
+                  />
+                ) : (
+                  <div
+                    className="aspect-[4/3] bg-slate-100"
+                    style={{
+                      background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                    }}
+                  />
+                )}
+                <div className="p-5">
+                  {product.categoryName ? (
+                    <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                      {product.categoryName}
+                    </p>
+                  ) : null}
+                  <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
+                    {product.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-muted">
+                    {product.description || "No description has been added for this product yet."}
+                  </p>
+                  <p className="mt-5 border-t border-slate-100 pt-5 text-lg font-black text-ink">
+                    {formatProductPrice(
+                      product.price,
+                      product.priceLabel,
+                      context.preview.store.currency
+                    )}
+                  </p>
+                  <div className="mt-5 grid gap-2">
+                    {whatsappHref ? (
+                      <a
+                        className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
+                        href={whatsappHref}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Order on WhatsApp
+                      </a>
+                    ) : (
+                      <button
+                        className="h-11 rounded-full bg-slate-100 px-4 text-sm font-black text-slate-400"
+                        disabled
+                        type="button"
+                      >
+                        WhatsApp unavailable
+                      </button>
+                    )}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
+                        disabled
+                        type="button"
+                      >
+                        Pay by Card
+                      </button>
+                      <button
+                        className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
+                        disabled
+                        type="button"
+                      >
+                        PayPal
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
           <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-            Products coming soon
+            No products yet
           </h3>
         </div>
       )}

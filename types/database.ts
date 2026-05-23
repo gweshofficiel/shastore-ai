@@ -247,6 +247,7 @@ export type Database = {
           whatsapp_number: string | null;
           template_id: string;
           slug: string | null;
+          store_data: Json;
           status: PublicationStatus;
           created_at: string;
           updated_at: string;
@@ -263,6 +264,7 @@ export type Database = {
           whatsapp_number?: string | null;
           template_id?: string;
           slug?: string | null;
+          store_data?: Json;
           status?: PublicationStatus;
           created_at?: string;
           updated_at?: string;

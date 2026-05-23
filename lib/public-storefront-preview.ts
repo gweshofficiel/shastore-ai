@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
 
 export type PublicStorefrontProduct = {
+  categoryName: string | null;
   description: string | null;
   id: string;
+  imageUrl: string | null;
   price: number | string | null;
   priceLabel: string | null;
   sku: string | null;
@@ -26,6 +28,8 @@ export type PublicStorefrontPreview = {
     status: string;
     title: string;
     visibility: string;
+    currency: string;
+    whatsappNumber: string | null;
   };
 };
 
@@ -50,8 +54,10 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   }
 
   return {
+    categoryName: textValue(value.categoryName) || null,
     description: textValue(value.description) || null,
     id,
+    imageUrl: textValue(value.imageUrl) || null,
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
     priceLabel: textValue(value.priceLabel) || null,
     sku: textValue(value.sku) || null,
@@ -95,9 +101,49 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       slug,
       status: textValue(store.status, "active"),
       title,
-      visibility: textValue(store.visibility, "public")
+      visibility: textValue(store.visibility, "public"),
+      currency: textValue(store.currency, "USD"),
+      whatsappNumber: textValue(store.whatsappNumber) || null
     }
   };
+}
+
+function productsFromStoreData(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.products)) {
+    return [];
+  }
+
+  const categoriesById = new Map<string, string>();
+
+  if (Array.isArray(value.categories)) {
+    for (const category of value.categories) {
+      if (!isRecord(category)) {
+        continue;
+      }
+
+      const id = textValue(category.id);
+      const name = textValue(category.name);
+
+      if (id && name) {
+        categoriesById.set(id, name);
+      }
+    }
+  }
+
+  return value.products
+    .filter(isRecord)
+    .map((product, index) => ({
+      categoryName: categoriesById.get(textValue(product.categoryId)) ?? null,
+      description: textValue(product.description) || null,
+      id: textValue(product.id, `product-${index + 1}`),
+      imageUrl: textValue(product.imageUrl) || null,
+      price: textValue(product.price) || null,
+      priceLabel: textValue(product.price) || null,
+      sku: null,
+      status: "published",
+      title: textValue(product.name)
+    }))
+    .filter((product) => product.title);
 }
 
 async function loadStoreModePublicPreview(slug: string) {
@@ -110,17 +156,20 @@ async function loadStoreModePublicPreview(slug: string) {
   const client = createAdminClient() ?? (await createClient());
   const { data: rawStore, error: storeError } = await client
     .from("stores")
-    .select("id, name, description, brand_color, status, slug")
+    .select("id, name, description, brand_color, currency, whatsapp_number, status, slug, store_data")
     .eq("slug", normalizedSlug)
     .eq("status", "published")
     .maybeSingle();
   const store = rawStore as {
     brand_color: string;
+    currency: string;
     description: string | null;
     id: string;
     name: string;
     slug: string | null;
     status: string;
+    store_data: unknown;
+    whatsapp_number: string | null;
   } | null;
 
   if (storeError || !store?.slug) {
@@ -142,9 +191,40 @@ async function loadStoreModePublicPreview(slug: string) {
 
   const { data: products } = await client
     .from("store_products")
-    .select("id, name, description, price")
+    .select("id, name, description, price, image_url, category_id")
     .eq("store_id", store.id)
     .order("sort_order", { ascending: true });
+  const categoryIds = Array.from(
+    new Set(
+      (products ?? [])
+        .map((product) => product.category_id)
+        .filter((categoryId): categoryId is string => Boolean(categoryId))
+    )
+  );
+  let categoriesById = new Map<string, string>();
+
+  if (categoryIds.length) {
+    const { data: categories } = await client
+      .from("store_categories")
+      .select("id, name")
+      .in("id", categoryIds);
+
+    categoriesById = new Map(
+      (categories ?? []).map((category) => [category.id, category.name])
+    );
+  }
+  const savedProducts = (products ?? []).map((product) => ({
+    categoryName: product.category_id ? categoriesById.get(product.category_id) ?? null : null,
+    id: product.id,
+    title: product.name,
+    description: product.description,
+    imageUrl: product.image_url,
+    price: product.price,
+    priceLabel: product.price,
+    sku: null,
+    status: "published"
+  }));
+  const fallbackProducts = productsFromStoreData(store.store_data);
 
   return normalizePreview({
     branding: {
@@ -152,22 +232,16 @@ async function loadStoreModePublicPreview(slug: string) {
       secondaryColor: "#2563eb",
       themeMode: "light"
     },
-    products: (products ?? []).map((product) => ({
-      id: product.id,
-      title: product.name,
-      description: product.description,
-      price: product.price,
-      priceLabel: product.price,
-      sku: null,
-      status: "published"
-    })),
+    products: savedProducts.length ? savedProducts : fallbackProducts,
     store: {
+      currency: store.currency || "USD",
       description: store.description,
       id: store.id,
       slug: store.slug,
       status: "active",
       title: store.name,
-      visibility: publication?.visibility ?? "public"
+      visibility: publication?.visibility ?? "public",
+      whatsappNumber: store.whatsapp_number || null
     }
   });
 }

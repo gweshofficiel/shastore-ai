@@ -12,6 +12,38 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
+  if (priceLabel) {
+    return priceLabel;
+  }
+
+  if (price === null || price === undefined || price === "") {
+    return "Price coming soon";
+  }
+
+  const numericPrice = typeof price === "number" ? price : Number(price);
+
+  if (!Number.isFinite(numericPrice)) {
+    return String(price);
+  }
+
+  return new Intl.NumberFormat("en", {
+    currency: currency || "USD",
+    style: "currency"
+  }).format(numericPrice);
+}
+
+function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
+  const number = whatsappNumber?.replace(/\D/g, "");
+
+  if (!number) {
+    return null;
+  }
+
+  const text = encodeURIComponent(`Hi, I want to order ${productTitle} from ${storeTitle}.`);
+  return `https://wa.me/${number}?text=${text}`;
+}
+
 export async function generateMetadata({
   params
 }: {
@@ -128,57 +160,110 @@ export default async function PublicStorePage({
 
           {products.length ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {products.map((product) => (
-                <article
-                  className="group rounded-[2rem] border border-slate-200 bg-white p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
-                  key={product.id}
-                >
-                  <div
-                    className="mb-5 flex aspect-[4/3] items-end rounded-[1.5rem] p-5"
-                    style={{
-                      background: `linear-gradient(135deg, ${branding.primaryColor}16, ${branding.secondaryColor}24)`
-                    }}
+              {products.map((product) => {
+                const whatsappHref = whatsappProductHref(
+                  store.whatsappNumber,
+                  store.title,
+                  product.title
+                );
+
+                return (
+                  <article
+                    className="group flex flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
+                    key={product.id}
                   >
-                    <span
-                      className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
-                      style={{ backgroundColor: branding.primaryColor }}
-                    >
-                      Product
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                    {product.title}
-                  </h3>
-                  <p className="mt-3 min-h-12 text-sm leading-6 text-muted">
-                    {product.description || "No description has been added for this product yet."}
-                  </p>
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                    <p className="text-lg font-black text-ink">
-                      {product.priceLabel ||
-                        (product.price === null || product.price === undefined
-                          ? "Price coming soon"
-                          : new Intl.NumberFormat("en", {
-                              currency: "USD",
-                              style: "currency"
-                            }).format(Number(product.price)))}
-                    </p>
-                    {product.sku ? (
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        {product.sku}
-                      </span>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
+                    {product.imageUrl ? (
+                      <img
+                        alt={product.title}
+                        className="aspect-[4/3] w-full object-cover"
+                        src={product.imageUrl}
+                      />
+                    ) : (
+                      <div
+                        className="flex aspect-[4/3] items-end p-5"
+                        style={{
+                          background: `linear-gradient(135deg, ${branding.primaryColor}16, ${branding.secondaryColor}24)`
+                        }}
+                      >
+                        <span
+                          className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
+                          style={{ backgroundColor: branding.primaryColor }}
+                        >
+                          {product.categoryName ?? "Product"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col p-5">
+                      {product.categoryName ? (
+                        <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                          {product.categoryName}
+                        </p>
+                      ) : null}
+                      <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
+                        {product.title}
+                      </h3>
+                      <p className="mt-3 min-h-12 text-sm leading-6 text-muted">
+                        {product.description || "No description has been added for this product yet."}
+                      </p>
+                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                        <p className="text-lg font-black text-ink">
+                          {formatProductPrice(product.price, product.priceLabel, store.currency)}
+                        </p>
+                        {product.sku ? (
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                            {product.sku}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-5 grid gap-2">
+                        {whatsappHref ? (
+                          <a
+                            className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
+                            href={whatsappHref}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Order on WhatsApp
+                          </a>
+                        ) : (
+                          <button
+                            className="h-11 rounded-full bg-slate-100 px-4 text-sm font-black text-slate-400"
+                            disabled
+                            type="button"
+                          >
+                            WhatsApp unavailable
+                          </button>
+                        )}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <button
+                            className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
+                            disabled
+                            type="button"
+                          >
+                            Pay by Card · Coming soon
+                          </button>
+                          <button
+                            className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
+                            disabled
+                            type="button"
+                          >
+                            PayPal · Coming soon
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                Products coming soon
+                No products yet
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                This store is live, but no products are published yet. Draft products stay
-                hidden until the store owner publishes them.
+                This store is live, but the catalog is empty. Products added in Store Builder
+                will appear here after the store is saved and published.
               </p>
             </div>
           )}

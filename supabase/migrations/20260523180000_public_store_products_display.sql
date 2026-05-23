@@ -1,19 +1,4 @@
--- Store Mode slugs on public.stores + storefront preview by stores.slug
-
-update public.stores
-set slug = lower(
-  regexp_replace(
-    regexp_replace(trim(coalesce(name, 'store')), '[^a-zA-Z0-9]+', '-', 'g'),
-    '(^-|-$)',
-    '',
-    'g'
-  )
-) || '-' || left(replace(id::text, '-', ''), 8)
-where slug is null or trim(slug) = '';
-
-create unique index if not exists stores_slug_unique_idx
-on public.stores (slug)
-where slug is not null;
+-- Public Store Products Display: expose Store Mode product catalog in storefront RPC.
 
 create or replace function public.get_public_storefront_preview(store_slug text)
 returns jsonb
