@@ -557,7 +557,11 @@ export async function saveStoreDraft(formData: FormData) {
     .single();
 
   if (isMissingColumn(asSupabaseError(storeResult.error), "owner_user_id")) {
-    const { owner_user_id: _ownerUserId, ...legacyStorePayload } = storePayload;
+    const legacyStorePayload = { ...storePayload } as Omit<
+      typeof storePayload,
+      "owner_user_id"
+    > & { owner_user_id?: string };
+    delete legacyStorePayload.owner_user_id;
     storeResult = await supabase
       .from("stores")
       .insert(legacyStorePayload as never)

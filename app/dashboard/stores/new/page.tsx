@@ -13,6 +13,13 @@ export default async function NewStorePage() {
       />
 
       <div className="grid gap-6">
+        <Card className="border-blue-100 bg-blue-50 p-5">
+          <p className="text-sm font-bold text-blue-800">
+            Publishing happens after saving: create the draft here, then use the
+            Publish Store button on My Stores or Manage Store.
+          </p>
+        </Card>
+
         <CreateStoreForm />
 
         <StoreBuilder saveStoreDraft={saveStoreDraft} />

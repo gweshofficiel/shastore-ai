@@ -390,8 +390,8 @@ export default async function StoresPage({
                 Stores created by your user account
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-                These are Store Mode drafts where `stores.user_id` equals your current Supabase Auth
-                user.
+                These are Store Mode drafts where stores.user_id or stores.owner_user_id
+                equals your current Supabase Auth user.
               </p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">

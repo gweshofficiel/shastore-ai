@@ -11,6 +11,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function storeOwnerOrFilter(userId: string) {
+  return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
+}
+
 async function getDashboardStats() {
   const supabase = await createClient();
   const {
@@ -21,11 +25,12 @@ async function getDashboardStats() {
     return {
       published: 0,
       drafts: 0,
+      stores: 0,
       generations: 0
     };
   }
 
-  const [{ count: published }, { count: drafts }, { count: generations }] =
+  const [{ count: published }, { count: drafts }, storesResult, { count: generations }] =
     await Promise.all([
       supabase
         .from("landing_pages")
@@ -38,6 +43,10 @@ async function getDashboardStats() {
         .eq("user_id", user.id)
         .eq("status", "draft"),
       supabase
+        .from("stores")
+        .select("id", { count: "exact", head: true })
+        .or(storeOwnerOrFilter(user.id)),
+      supabase
         .from("generations")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
@@ -46,6 +55,7 @@ async function getDashboardStats() {
   return {
     published: published ?? 0,
     drafts: drafts ?? 0,
+    stores: storesResult.count ?? 0,
     generations: generations ?? 0
   };
 }
@@ -59,6 +69,7 @@ export default async function DashboardPage() {
   const statCards = [
     { label: "Published pages", value: stats.published },
     { label: "Drafts", value: stats.drafts },
+    { label: "Stores", value: stats.stores },
     { label: "Orders", value: commerce.items.orders },
     { label: "Visitors", value: commerce.items.visitors }
   ];
@@ -71,7 +82,7 @@ export default async function DashboardPage() {
         title="Launch center"
       />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {statCards.map((stat) => (
           <Card className="p-5 lg:p-6" key={stat.label}>
             <p className="text-sm font-bold text-muted">{stat.label}</p>

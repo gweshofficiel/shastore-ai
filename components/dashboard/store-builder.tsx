@@ -735,8 +735,8 @@ export function StoreBuilder({ saveStoreDraft }: StoreBuilderProps) {
             Review store draft
           </h2>
           <p className="text-sm leading-6 text-muted">
-            Save this Store Mode project as a draft. Public store publishing is
-            intentionally not enabled yet.
+            Save this Store Mode project as a draft. After saving, you can publish it
+            from My Stores or the Manage Store page.
           </p>
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm">
             <p className="font-bold text-ink">
