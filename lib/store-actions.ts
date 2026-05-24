@@ -3,14 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
-  canCreateStore,
   canPublishStore,
   canUseCustomDomain,
   canUseCustomBranding,
   canUseSeo,
   canUseTemplate,
   getUpgradeMessage,
-  getUserSubscriptionAccess
+  getUserSubscriptionAccess,
+  logBillingLimitCheck
 } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
@@ -565,20 +565,19 @@ async function persistStoreDraftFromForm(
     return { ok: false, error: "Store name is required." };
   }
 
-  if (isStorePlanGatingEnabled()) {
-    const access = await getUserSubscriptionAccess(user.id);
+  const access = await getUserSubscriptionAccess(user.id);
+  const storeLimit = logBillingLimitCheck(access, "stores");
 
-    if (!canCreateStore(access)) {
-      return { ok: false, error: getUpgradeMessage("stores") || "Store limit reached." };
-    }
+  if (!storeLimit.allowed) {
+    return { ok: false, error: getUpgradeMessage("stores") || "Store limit reached." };
+  }
 
-    if (!canUseTemplate(access, templateId)) {
-      return { ok: false, error: getUpgradeMessage("template") };
-    }
+  if (!canUseTemplate(access, templateId)) {
+    return { ok: false, error: getUpgradeMessage("template") };
+  }
 
-    if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
-      return { ok: false, error: getUpgradeMessage("branding") };
-    }
+  if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
+    return { ok: false, error: getUpgradeMessage("branding") };
   }
 
   const { projectId, error: projectError } = await createStoreProject(

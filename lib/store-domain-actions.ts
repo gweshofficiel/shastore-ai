@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  getUserSubscriptionAccess,
+  logBillingLimitCheck
+} from "@/lib/billing/access";
 import { getDomainBase } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
@@ -99,6 +103,12 @@ async function clearPrimaryDomain(supabase: SupabaseClient, storeId: string) {
 export async function createStoreSubdomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const subdomain = normalizeSubdomain(cleanText(formData.get("subdomain"), 80));
+  const access = await getUserSubscriptionAccess(userId);
+  const domainLimit = logBillingLimitCheck(access, "domains");
+
+  if (!domainLimit.allowed) {
+    domainsRedirect(storeId, "limit-reached");
+  }
 
   if (!subdomain || subdomain.length < 3) {
     domainsRedirect(storeId, "invalid-subdomain");
@@ -163,6 +173,12 @@ export async function createStoreSubdomain(formData: FormData) {
 export async function attachCustomDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const hostname = normalizeHostname(cleanText(formData.get("customDomain"), 253));
+  const access = await getUserSubscriptionAccess(userId);
+  const domainLimit = logBillingLimitCheck(access, "domains");
+
+  if (!domainLimit.allowed) {
+    domainsRedirect(storeId, "limit-reached");
+  }
 
   if (!isValidHostname(hostname)) {
     domainsRedirect(storeId, "invalid-domain");

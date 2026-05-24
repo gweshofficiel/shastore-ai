@@ -2,7 +2,7 @@ import { CheckCircle2, Copy, Globe2, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import {
   attachCustomDomain,
   createStoreSubdomain,
@@ -23,6 +23,7 @@ const statusMessages: Record<string, string> = {
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
+  "limit-reached": "Your current plan has reached its domain limit.",
   "missing-domain": "Choose a domain record first.",
   "missing-store": "Choose a claimed store first.",
   "not-authorized": "You can only manage domains for stores you own or administer.",
@@ -114,6 +115,16 @@ export default async function DomainsPage({
         </Card>
       ) : null}
       {params.domains ? <Toast status={params.domains} /> : null}
+      {params.domains === "limit-reached" ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-bold text-amber-800">
+              Your current plan has reached its domain limit.
+            </p>
+            <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink>
+          </div>
+        </Card>
+      ) : null}
       {data.error ? (
         <Card className="border-red-200 bg-red-50 p-5">
           <p className="text-sm font-bold text-red-700">{data.error}</p>

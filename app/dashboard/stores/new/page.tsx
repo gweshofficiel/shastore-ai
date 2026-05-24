@@ -57,7 +57,7 @@ export default async function NewStorePage({
                   Stores used: {access.usage.storesUsed} / {formatLimit(access.usage.storeLimit)}
                 </p>
               </div>
-              {!canCreate ? <ButtonLink href="/pricing">Upgrade plan</ButtonLink> : null}
+              {!canCreate ? <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink> : null}
             </div>
           </Card>
         ) : null}

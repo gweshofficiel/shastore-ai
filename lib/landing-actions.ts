@@ -3,6 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { parseLandingThemeSettings } from "@/lib/landing-theme";
+import {
+  getUpgradeMessage,
+  getUserSubscriptionAccess,
+  logBillingLimitCheck
+} from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 import { createFallbackCopy } from "@/templates/engine";
 import { landingTemplates } from "@/templates/registry";
@@ -16,6 +21,15 @@ function slugify(value: string) {
     .replace(/(^-|-$)+/g, "");
 
   return slug || "product";
+}
+
+function redirectLandingCreateError(message: string): never {
+  const params = new URLSearchParams({
+    error: "limit-reached",
+    detail: message
+  });
+
+  redirect(`/dashboard/landings/new?${params.toString()}`);
 }
 
 function parseCopy(
@@ -150,6 +164,15 @@ export async function publishLandingPage(formData: FormData) {
 
   if (!user) {
     redirect("/login");
+  }
+
+  const access = await getUserSubscriptionAccess(user.id);
+  const landingLimit = logBillingLimitCheck(access, "landings");
+
+  if (!landingLimit.allowed) {
+    redirectLandingCreateError(
+      getUpgradeMessage("landings") || "Your current plan has reached its landing page limit."
+    );
   }
 
   const productName = String(formData.get("productName") ?? "");

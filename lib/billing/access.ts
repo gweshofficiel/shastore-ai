@@ -30,6 +30,8 @@ export type UserSubscriptionAccess = {
   };
 };
 
+export type BillingLimitResource = "domains" | "landings" | "stores";
+
 type SubscriptionRow = {
   cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
@@ -94,11 +96,18 @@ export async function getUserSubscriptionAccess(
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId);
 
-  const { count: domainsCount } = await supabase
-    .from("published_stores")
+  const { count: storeDomainsCount, error: storeDomainsError } = await supabase
+    .from("store_domains" as never)
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .not("custom_domain", "is", null);
+    .eq("owner_user_id", userId);
+
+  const { count: publishedCustomDomainsCount } = storeDomainsError
+    ? await supabase
+        .from("published_stores")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .not("custom_domain", "is", null)
+    : { count: null };
 
   const { count: trafficCount } = await supabase
     .from("analytics_events")
@@ -145,7 +154,7 @@ export async function getUserSubscriptionAccess(
       ordersUsed: ordersCount ?? 0,
       trafficUsed: trafficCount ?? 0,
       storageMbUsed: Math.round(((storageImageCount ?? 0) * 1.5 + Number.EPSILON) * 10) / 10,
-      domainsUsed: domainsCount ?? 0,
+      domainsUsed: storeDomainsCount ?? publishedCustomDomainsCount ?? 0,
       landingLimit: plan.landingLimit,
       storeLimit: plan.storeLimit,
       domainLimit: plan.domainLimit
@@ -181,6 +190,55 @@ export function canCreateLanding(access: UserSubscriptionAccess) {
     access.plan.landingLimit === null ||
     access.usage.landingsUsed < access.plan.landingLimit
   );
+}
+
+export function canCreateDomain(access: UserSubscriptionAccess) {
+  return (
+    access.plan.customDomains &&
+    access.status !== "canceled" &&
+    (access.plan.domainLimit === null || access.usage.domainsUsed < access.plan.domainLimit)
+  );
+}
+
+export function billingLimitState(
+  access: UserSubscriptionAccess,
+  resource: BillingLimitResource
+) {
+  const state = {
+    domains: {
+      allowed: canCreateDomain(access),
+      limit: access.usage.domainLimit,
+      used: access.usage.domainsUsed
+    },
+    landings: {
+      allowed: canCreateLanding(access),
+      limit: access.usage.landingLimit,
+      used: access.usage.landingsUsed
+    },
+    stores: {
+      allowed: canCreateStore(access),
+      limit: access.usage.storeLimit,
+      used: access.usage.storesUsed
+    }
+  }[resource];
+
+  return {
+    ...state,
+    planId: access.plan.id,
+    resource,
+    status: access.status
+  };
+}
+
+export function logBillingLimitCheck(
+  access: UserSubscriptionAccess,
+  resource: BillingLimitResource
+) {
+  const state = billingLimitState(access, resource);
+
+  console.info("[billing-limit] resource creation check", state);
+
+  return state;
 }
 
 export function canPublishStore(access: UserSubscriptionAccess) {
@@ -239,13 +297,13 @@ export function getUpgradeMessage(
 ) {
   const messages = {
     analytics: "Advanced analytics is available on the Pro and Agency plans.",
-    branding: "Full theme and branding controls are available on Pro and Agency plans. Upgrade at /pricing.",
-    domain: "Custom domains are available on Pro and Agency plans. Upgrade at /pricing.",
-    landings: "Your current plan has reached its landing page limit. Upgrade at /pricing.",
+    branding: "Full theme and branding controls are available on Pro and Agency plans. Upgrade at /dashboard/billing.",
+    domain: "Custom domains are available on Pro and Agency plans. Upgrade at /dashboard/billing.",
+    landings: "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing.",
     publish: "Publishing is available on all active SHASTORE AI plans.",
-    seo: "SEO settings are available on Pro and Agency plans. Upgrade at /pricing.",
-    stores: "Your current plan has reached its store limit. Upgrade at /pricing.",
-    template: "Premium templates are available on Pro and Agency plans. Upgrade at /pricing."
+    seo: "SEO settings are available on Pro and Agency plans. Upgrade at /dashboard/billing.",
+    stores: "Your current plan has reached its store limit. Upgrade at /dashboard/billing.",
+    template: "Premium templates are available on Pro and Agency plans. Upgrade at /dashboard/billing."
   };
 
   return messages[reason];
