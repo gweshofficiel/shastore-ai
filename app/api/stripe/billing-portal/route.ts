@@ -25,7 +25,11 @@ function subscriptionCanUsePortal(subscription: {
     return false;
   }
 
-  return subscription.status === "active";
+  return (
+    subscription.status === "active" ||
+    subscription.status === "past_due" ||
+    subscription.status === "trialing"
+  );
 }
 
 export async function POST() {

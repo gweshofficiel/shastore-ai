@@ -1,7 +1,10 @@
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
-import { isPaidSubscriptionPlan } from "@/lib/billing/platform-checkout";
+import {
+  isPaidSubscriptionPlan,
+  resolvePlatformPlanByPriceId
+} from "@/lib/billing/platform-checkout";
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete";
 
@@ -75,6 +78,11 @@ function paidPlanFromMetadata(metadata: Stripe.Metadata | null | undefined) {
   const planId = metadataValue(metadata, "planId", "plan_id") ?? metadata?.plan ?? null;
 
   return planId && isPaidSubscriptionPlan(planId) ? planId : null;
+}
+
+function paidPlanFromSubscriptionPrice(subscription: Stripe.Subscription) {
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  return resolvePlatformPlanByPriceId(priceId);
 }
 
 async function upsertUserSubscription(input: {
@@ -239,7 +247,9 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       metadataValue(subscription.metadata, "userId", "user_id") ??
       existingSubscription?.user_id ??
       null;
+    const pricePlanId = paidPlanFromSubscriptionPrice(subscription);
     const planId =
+      pricePlanId ??
       paidPlanFromMetadata(subscription.metadata) ??
       (existingSubscription?.plan_id && isPaidSubscriptionPlan(existingSubscription.plan_id)
         ? existingSubscription.plan_id
@@ -249,6 +259,8 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       eventId: event.id,
       eventType: event.type,
+      planId,
+      pricePlanId,
       status: subscription.status,
       subscriptionId: subscription.id
     });

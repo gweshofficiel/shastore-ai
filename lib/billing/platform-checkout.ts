@@ -26,6 +26,14 @@ export function resolvePlatformPriceId(plan: PaidSubscriptionPlanId) {
   return { envKey, priceId };
 }
 
+export function resolvePlatformPlanByPriceId(priceId: string | null | undefined) {
+  if (!priceId) {
+    return null;
+  }
+
+  return PAID_PLANS.find((plan) => resolvePlatformPriceId(plan).priceId === priceId) ?? null;
+}
+
 export type CreatePlatformCheckoutInput = {
   customerEmail?: string | null;
   plan: PaidSubscriptionPlanId;

@@ -1,8 +1,10 @@
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { billingPlans } from "@/lib/billing/plans";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getSubscriptionState } from "@/lib/billing/subscription-state";
 import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,6 +28,22 @@ function priceLabel(priceCents: number) {
   }
 
   return `$${priceCents / 100}`;
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "Not scheduled";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function stateLabel(value: string) {
+  return value.replace(/_/g, " ");
 }
 
 async function getBillingTableAvailable() {
@@ -103,11 +121,13 @@ export default async function BillingPage({
 
   const currentPlan = access.plan;
   const isPaid = currentPlan.id !== "free";
-  const hasActiveSubscription = access.status === "active";
+  const hasPortalSubscription =
+    access.status === "active" || access.status === "past_due" || access.status === "trialing";
   const hasStripeCustomerId = Boolean(access.stripeCustomerId);
-  const canManageSubscription = isPaid && hasActiveSubscription && hasStripeCustomerId;
+  const canManageSubscription = isPaid && hasPortalSubscription && hasStripeCustomerId;
   const paidSubscriptionMissingCustomer =
-    isPaid && hasActiveSubscription && !hasStripeCustomerId;
+    isPaid && hasPortalSubscription && !hasStripeCustomerId;
+  const subscriptionState = getSubscriptionState(access);
 
   const billingHistory = await getBillingHistory(access.userId);
   const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
@@ -173,6 +193,15 @@ export default async function BillingPage({
           </p>
         </Card>
       ) : null}
+      {subscriptionState.warning ? (
+        <UpgradeRequiredCard
+          blockedAction={stateLabel(subscriptionState.label)}
+          currentPlan={currentPlan.name}
+          reason={subscriptionState.warning}
+          recommendedPlan={subscriptionState.upgradePlanName}
+          recommendedPlanId={subscriptionState.upgradePlanId}
+        />
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="overflow-hidden p-0">
           <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 text-white lg:p-8">
@@ -189,7 +218,7 @@ export default async function BillingPage({
                 </p>
               </div>
               <span className="rounded-full bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/80">
-                {access.status}
+                {stateLabel(subscriptionState.label)}
               </span>
             </div>
           </div>
@@ -254,8 +283,14 @@ export default async function BillingPage({
             buyer payments are kept separate and are not routed through this billing flow.
           </p>
           <div className="mt-5 rounded-3xl border border-slate-200 p-4 text-sm leading-6">
-            <p className="font-black text-ink">Stripe subscription status</p>
+            <p className="font-black text-ink">Billing status</p>
+            <p className="mt-1 capitalize text-muted">{stateLabel(subscriptionState.label)}</p>
+            <p className="mt-3 font-black text-ink">Stripe subscription status</p>
             <p className="mt-1 capitalize text-muted">{access.status}</p>
+            <p className="mt-3 font-black text-ink">Cancellation date</p>
+            <p className="mt-1 text-muted">
+              {formatDate(subscriptionState.cancellationDate)}
+            </p>
           </div>
           {canManageSubscription ? (
             <form action="/api/stripe/billing-portal" className="mt-5" method="POST">
