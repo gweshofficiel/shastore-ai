@@ -7,13 +7,20 @@ const handledEvents = new Set([
   "checkout.session.completed",
   "customer.subscription.created",
   "customer.subscription.updated",
-  "customer.subscription.deleted"
+  "customer.subscription.deleted",
+  "invoice.finalized",
+  "invoice.payment_succeeded",
+  "invoice.payment_failed"
 ]);
+
+function getStripeWebhookSecret() {
+  return process.env.STRIPE_WEBHOOK_SECRET ?? process.env.PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET;
+}
 
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = (await headers()).get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = getStripeWebhookSecret();
 
   if (!signature) {
     console.error("[stripe-webhook] missing stripe-signature header");
@@ -21,7 +28,9 @@ export async function POST(request: Request) {
   }
 
   if (!webhookSecret) {
-    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET is not configured");
+    console.error("[stripe-webhook] Stripe webhook secret is not configured", {
+      acceptedEnv: ["STRIPE_WEBHOOK_SECRET", "PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET"]
+    });
     return NextResponse.json({ error: "Webhook secret is not configured" }, { status: 500 });
   }
 

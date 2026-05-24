@@ -132,6 +132,13 @@ export default async function BillingPage({
         description="Manage your SHASTORE AI subscription, store limits, and publishing access."
         title="Billing"
       />
+      {query.billing === "success" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Checkout completed. Your active plan and limits will update as soon as Stripe sends the platform billing webhook.
+          </p>
+        </Card>
+      ) : null}
       {query.billing === "cancelled" ? (
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-bold text-amber-700">
@@ -236,6 +243,10 @@ export default async function BillingPage({
             Paid buttons use SHASTORE AI platform Stripe credentials only. Client store
             buyer payments are kept separate and are not routed through this billing flow.
           </p>
+          <div className="mt-5 rounded-3xl border border-slate-200 p-4 text-sm leading-6">
+            <p className="font-black text-ink">Stripe subscription status</p>
+            <p className="mt-1 capitalize text-muted">{access.status}</p>
+          </div>
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
             Configure <code>PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER</code>,{" "}
             <code>PLATFORM_BILLING_STRIPE_PRICE_ID_PRO</code>, and{" "}

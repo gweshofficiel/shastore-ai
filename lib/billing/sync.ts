@@ -1,6 +1,10 @@
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBillingPlan } from "@/lib/billing/plans";
+import {
+  isPaidSubscriptionPlan,
+  type PaidSubscriptionPlanId
+} from "@/lib/billing/platform-checkout";
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete";
 
@@ -70,11 +74,17 @@ function metadataValue(metadata: Stripe.Metadata | null | undefined, camelKey: s
   return metadata?.[snakeKey] ?? metadata?.[camelKey] ?? null;
 }
 
+function paidPlanFromMetadata(metadata: Stripe.Metadata | null | undefined) {
+  const planId = metadataValue(metadata, "planId", "plan_id") ?? metadata?.plan ?? null;
+
+  return planId && isPaidSubscriptionPlan(planId) ? planId : null;
+}
+
 async function upsertUserSubscription(input: {
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   currentPeriodStart?: string | null;
-  planId: string | null | undefined;
+  planId: PaidSubscriptionPlanId;
   status: SubscriptionStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -114,12 +124,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId =
       metadataValue(session.metadata, "userId", "user_id") ?? session.client_reference_id;
-    const planId =
-      metadataValue(session.metadata, "planId", "plan_id") ?? session.metadata?.plan ?? null;
+    const planId = paidPlanFromMetadata(session.metadata);
 
-    if (!userId) {
-      console.error("[stripe-webhook] checkout.session.completed missing user_id metadata", {
+    if (!userId || !planId) {
+      console.error("[stripe-webhook] checkout.session.completed missing required metadata", {
         eventId: event.id,
+        hasPlan: Boolean(planId),
+        hasUserId: Boolean(userId),
+        metadata: session.metadata ?? null,
         sessionId: session.id
       });
       await logBillingEvent(event);
@@ -151,15 +163,15 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
   ) {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = metadataValue(subscription.metadata, "userId", "user_id");
-    const planId =
-      metadataValue(subscription.metadata, "planId", "plan_id") ??
-      subscription.metadata?.plan ??
-      null;
+    const planId = paidPlanFromMetadata(subscription.metadata);
 
-    if (!userId) {
-      console.error("[stripe-webhook] subscription event missing user_id metadata", {
+    if (!userId || !planId) {
+      console.error("[stripe-webhook] subscription event missing required metadata", {
         eventId: event.id,
         eventType: event.type,
+        hasPlan: Boolean(planId),
+        hasUserId: Boolean(userId),
+        metadata: subscription.metadata ?? null,
         subscriptionId: subscription.id
       });
       await logBillingEvent(event);

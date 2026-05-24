@@ -45,7 +45,7 @@ function platformCheckoutUrls() {
 
   return {
     cancelUrl: `${baseUrl}/dashboard/billing?billing=cancelled`,
-    successUrl: `${baseUrl}/dashboard?billing=success`
+    successUrl: `${baseUrl}/dashboard/billing?billing=success`
   };
 }
 
