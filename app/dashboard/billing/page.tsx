@@ -101,12 +101,27 @@ export default async function BillingPage({
   }
 
   const currentPlan = access.plan;
-  const canManageSubscription =
-    currentPlan.id !== "free" &&
-    access.status === "active" &&
-    Boolean(access.stripeCustomerId);
+  const isPaid = currentPlan.id !== "free";
+  const hasActiveSubscription = access.status === "active";
+  const hasStripeCustomerId = Boolean(access.stripeCustomerId);
+  const hasStripeSubscriptionId = Boolean(access.stripeSubscriptionId);
+  const canManageSubscription = isPaid && hasActiveSubscription && hasStripeCustomerId;
   const paidSubscriptionMissingCustomer =
-    currentPlan.id !== "free" && access.status === "active" && !access.stripeCustomerId;
+    isPaid && hasActiveSubscription && !hasStripeCustomerId;
+
+  console.info("[billing-debug] manage subscription visibility", {
+    canManageSubscription,
+    currentPlan,
+    hasActiveSubscription,
+    hasStripeCustomerId,
+    hasStripeSubscriptionId,
+    isPaid,
+    stripeCustomerId: access.stripeCustomerId,
+    stripeSubscriptionId: access.stripeSubscriptionId,
+    subscriptionStatus: access.status,
+    userId: access.userId
+  });
+
   const billingHistory = await getBillingHistory(access.userId);
   const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
   const landingPercent = usagePercent(access.usage.landingsUsed, access.usage.landingLimit);
@@ -171,6 +186,20 @@ export default async function BillingPage({
           </p>
         </Card>
       ) : null}
+      <Card className="border-dashed border-slate-300 bg-slate-50 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+          Temporary billing debug
+        </p>
+        <div className="mt-4 grid gap-2 text-sm font-bold text-slate-700 sm:grid-cols-2">
+          <p>Current plan: {currentPlan.id}</p>
+          <p>Subscription status: {access.status}</p>
+          <p>Stripe customer ID exists: {hasStripeCustomerId ? "yes" : "no"}</p>
+          <p>Stripe subscription ID exists: {hasStripeSubscriptionId ? "yes" : "no"}</p>
+          <p>isPaid: {isPaid ? "yes" : "no"}</p>
+          <p>hasActiveSubscription: {hasActiveSubscription ? "yes" : "no"}</p>
+          <p>Manage subscription visible: {canManageSubscription ? "yes" : "no"}</p>
+        </div>
+      </Card>
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="overflow-hidden p-0">
           <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 text-white lg:p-8">
