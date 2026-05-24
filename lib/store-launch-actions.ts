@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
-import { assertCanUseExistingCustomDomain } from "@/lib/billing/domain-access";
-import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { canPublishStorefront } from "@/lib/billing/publish-access";
 import {
   getLaunchStatus,
   getStoreLaunchReadiness,
@@ -274,18 +273,21 @@ export async function refreshStoreLaunchReadinessAction(formData: FormData) {
 
 export async function publishStorefrontDraftAction(formData: FormData) {
   const context = await requireLaunchContext(formData);
-  try {
-    await assertStoreMutationAllowed(context.supabase, context.userId, { id: context.storeId });
-  } catch {
-    builderRedirect(context.storeId, "store-locked-by-plan");
-  }
+  const customDomain = context.domains.find(
+    (domain) => typeof domain.custom_domain === "string" && domain.custom_domain
+  )?.custom_domain as string | undefined;
+  const publishAccess = await canPublishStorefront({
+    publication: customDomain ? { custom_domain: customDomain } : null,
+    store: { id: context.storeId },
+    supabase: context.supabase,
+    userId: context.userId
+  });
 
-  if (context.domains.some((domain) => typeof domain.custom_domain === "string" && domain.custom_domain)) {
-    try {
-      await assertCanUseExistingCustomDomain(context.supabase, context.userId, context.storeId);
-    } catch {
-      builderRedirect(context.storeId, "domain-locked-by-plan");
-    }
+  if (!publishAccess.allowed) {
+    builderRedirect(
+      context.storeId,
+      publishAccess.state === "domain_blocked" ? "domain-locked-by-plan" : "store-locked-by-plan"
+    );
   }
 
   const { checklistId } = await recordChecklist(context);

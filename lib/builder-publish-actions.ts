@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { normalizeBuilderPageSchema, type BuilderPageSchema } from "@/lib/storefront/builder";
-import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { validateDraftBeforePublish } from "@/lib/builder-publish-utils";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
 import { createClient } from "@/lib/supabase/server";
@@ -219,9 +219,13 @@ export async function syncLivePreviewState(formData: FormData) {
 
 export async function publishBuilderDraft(formData: FormData) {
   const { storeId, supabase, userId } = await requireBuilderStore(formData);
-  try {
-    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
-  } catch {
+  const publishAccess = await canPublishStorefront({
+    store: { id: storeId },
+    supabase,
+    userId
+  });
+
+  if (!publishAccess.allowed) {
     builderRedirect(storeId, "store-locked-by-plan");
   }
 

@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
-  canPublishStore,
   canUseSeo,
   getUpgradeMessage,
   getUserSubscriptionAccess
@@ -17,6 +16,7 @@ import {
   assertCanConnectCustomDomain,
   assertCanUseExistingCustomDomain
 } from "@/lib/billing/domain-access";
+import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
@@ -1962,11 +1962,35 @@ export async function publishStoreDraft(formData: FormData) {
       "Add at least one product before publishing this store."
     );
   }
-  if (isStorePlanGatingEnabled()) {
-    const access = await getUserSubscriptionAccess(user.id);
+  const { data: rawPublication, error: publicationLookupError } = await supabase
+    .from("published_stores")
+    .select("*")
+    .eq("store_id", store.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const publication = rawPublication as StorePublicationRow | null;
+  const publicationTableMissing = isMissingTable(
+    asSupabaseError(publicationLookupError),
+    "published_stores"
+  );
 
-    if (!canPublishStore(access)) {
-      redirectWithStoreError(detailPath, getUpgradeMessage("publish"));
+  if (publicationLookupError && !publicationTableMissing) {
+    redirectWithStoreError(detailPath, formatStoreActionError(publicationLookupError));
+  }
+
+  if (isStorePlanGatingEnabled()) {
+    const publishAccess = await canPublishStorefront({
+      publication,
+      store,
+      supabase,
+      userId: user.id
+    });
+
+    if (!publishAccess.allowed) {
+      redirectWithStoreError(
+        detailPath,
+        publishAccess.reason ?? getUpgradeMessage("publish")
+      );
     }
   }
 
@@ -1995,32 +2019,6 @@ export async function publishStoreDraft(formData: FormData) {
       String(updatedStore.name ?? storeName),
       slug
     ));
-  const { data: rawPublication, error: publicationLookupError } = await supabase
-    .from("published_stores")
-    .select("*")
-    .eq("store_id", updatedStore.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  const publication = rawPublication as StorePublicationRow | null;
-  const publicationTableMissing = isMissingTable(
-    asSupabaseError(publicationLookupError),
-    "published_stores"
-  );
-
-  if (publicationLookupError && !publicationTableMissing) {
-    redirectWithStoreError(detailPath, formatStoreActionError(publicationLookupError));
-  }
-
-  if (publication?.custom_domain) {
-    try {
-      await assertCanUseExistingCustomDomain(supabase, user.id, updatedStore.id);
-    } catch (error) {
-      redirectWithStoreError(
-        detailPath,
-        error instanceof Error ? error.message : getUpgradeMessage("domain")
-      );
-    }
-  }
 
   if (publication) {
     const { error } = await supabase
