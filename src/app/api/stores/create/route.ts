@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createStore } from "../../../../server/stores/create-store";
 
-const supabase = createClient(
+const supabase = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
@@ -39,6 +45,38 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, error: "name and slug are required" },
         { status: 400 }
+      );
+    }
+
+    const userSupabase = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      }
+    );
+    const access = await getUserSubscriptionAccessForClient(
+      userSupabase,
+      authResult.data.user.id
+    );
+
+    try {
+      if (access.usage.storesUsed > 0) {
+        assertFeatureAccess(access, "multi_store");
+      }
+
+      assertUsageWithinLimits(access, "stores");
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: billingEnforcementMessage(error) ?? "Plan limit reached",
+        },
+        { status: 403 }
       );
     }
 

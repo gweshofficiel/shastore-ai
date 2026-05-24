@@ -72,7 +72,8 @@ const statusMessages: Record<string, string> = {
   "sections-failed": "Template sections could not be applied.",
   "template-missing": "Template was not found.",
   "theme-applied": "Template theme was applied to the draft workspace.",
-  "theme-failed": "Template theme could not be applied."
+  "theme-failed": "Template theme could not be applied.",
+  "upgrade-required": "This template is unavailable on your current plan. Upgrade at /dashboard/billing."
 };
 
 function appliedTemplateId(editorState: unknown) {
@@ -249,7 +250,7 @@ function textValue(record: Record<string, unknown>, key: string, fallback = "Not
 export default async function TemplatesPage({
   searchParams
 }: {
-  searchParams: Promise<{ category?: string; storeId?: string; templateApply?: string; templateId?: string }>;
+  searchParams: Promise<{ category?: string; detail?: string; storeId?: string; templateApply?: string; templateId?: string }>;
 }) {
   const params = await searchParams;
   const stores = await getClaimedStores();
@@ -290,7 +291,7 @@ export default async function TemplatesPage({
   const aiApplicationReview = latestAIApplication.review ?? {};
   const aiDiffSummary = recordValue(aiApplicationPreview.diff_summary);
   const aiDraftSyncState = recordValue(aiApplicationPreview.draft_sync_state);
-  const message = params.templateApply ? statusMessages[params.templateApply] : "";
+  const message = params.detail ?? (params.templateApply ? statusMessages[params.templateApply] : "");
 
   return (
     <div className="grid gap-8">

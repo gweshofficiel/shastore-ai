@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getUserSubscriptionAccess } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
 import {
   getTemplateLibrary,
@@ -170,6 +175,29 @@ async function requireTemplateApplication(formData: FormData) {
 
   if (validation.errors.length) {
     applicationRedirect("invalid-template", storeId, templateId);
+  }
+
+  const access = await getUserSubscriptionAccess(user.id);
+
+  try {
+    assertFeatureAccess(access, "premium_templates", { templateId });
+  } catch (error) {
+    const params = new URLSearchParams({
+      templateApply: "upgrade-required",
+      templateId
+    });
+
+    if (storeId) {
+      params.set("storeId", storeId);
+    }
+
+    const message = billingEnforcementMessage(error);
+
+    if (message) {
+      params.set("detail", message);
+    }
+
+    redirect(`${templatePagePath}?${params.toString()}`);
   }
 
   return {

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   billingPlans,
   freeTemplateIds,
@@ -75,6 +76,13 @@ export async function getUserSubscriptionAccess(
   userId: string
 ): Promise<UserSubscriptionAccess> {
   const supabase = await createClient();
+  return getUserSubscriptionAccessForClient(supabase, userId);
+}
+
+export async function getUserSubscriptionAccessForClient(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<UserSubscriptionAccess> {
   const usage = await getBillingUsageForUser(supabase, userId);
 
   const { data, error } = await supabase

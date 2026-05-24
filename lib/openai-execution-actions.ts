@@ -9,6 +9,11 @@ import {
   sanitizeAIOutput,
   validateOpenAIJSON
 } from "@/lib/openai-execution";
+import { getUserSubscriptionAccess } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { normalizeBuilderPageSchema } from "@/lib/storefront/builder";
 import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/template-library";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +31,7 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : "";
 }
 
-function executionRedirect(status: string, storeId?: string, templateId?: string): never {
+function executionRedirect(status: string, storeId?: string, templateId?: string, detail?: string): never {
   const params = new URLSearchParams({ templateApply: status });
 
   if (storeId) {
@@ -35,6 +40,10 @@ function executionRedirect(status: string, storeId?: string, templateId?: string
 
   if (templateId) {
     params.set("templateId", templateId);
+  }
+
+  if (detail) {
+    params.set("detail", detail);
   }
 
   redirect(`${templatePagePath}?${params.toString()}`);
@@ -86,6 +95,19 @@ async function requireExecutionContext(formData: FormData) {
 
   if (!template) {
     executionRedirect("template-missing", storeId, templateId);
+  }
+
+  const access = await getUserSubscriptionAccess(user.id);
+
+  try {
+    assertFeatureAccess(access, "premium_templates", { templateId });
+  } catch (error) {
+    executionRedirect(
+      "upgrade-required",
+      storeId,
+      templateId,
+      billingEnforcementMessage(error) ?? undefined
+    );
   }
 
   return { storeId, supabase, template, templateId, userId: user.id };

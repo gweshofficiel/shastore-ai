@@ -15,6 +15,8 @@ const pageSize = 8;
 
 type LandingsPageProps = {
   searchParams: Promise<{
+    detail?: string;
+    error?: string;
     q?: string;
     status?: string;
     published?: string;
@@ -116,6 +118,13 @@ export default async function LandingsPage({ searchParams }: LandingsPageProps) 
           </p>
           <p className="mt-1 text-sm text-emerald-700">
             Your page is live at /l/{params.published}.
+          </p>
+        </Card>
+      ) : null}
+      {params.error === "limit-reached" ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            {params.detail ?? "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing."}
           </p>
         </Card>
       ) : null}

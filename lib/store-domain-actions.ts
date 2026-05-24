@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  getUserSubscriptionAccess,
-  logBillingLimitCheck
+  getUserSubscriptionAccess
 } from "@/lib/billing/access";
+import { assertUsageWithinLimits } from "@/lib/billing/enforcement";
 import { getDomainBase } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
@@ -104,9 +104,10 @@ export async function createStoreSubdomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const subdomain = normalizeSubdomain(cleanText(formData.get("subdomain"), 80));
   const access = await getUserSubscriptionAccess(userId);
-  const domainLimit = logBillingLimitCheck(access, "domains");
 
-  if (!domainLimit.allowed) {
+  try {
+    assertUsageWithinLimits(access, "domains");
+  } catch {
     domainsRedirect(storeId, "limit-reached");
   }
 
@@ -174,9 +175,10 @@ export async function attachCustomDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const hostname = normalizeHostname(cleanText(formData.get("customDomain"), 253));
   const access = await getUserSubscriptionAccess(userId);
-  const domainLimit = logBillingLimitCheck(access, "domains");
 
-  if (!domainLimit.allowed) {
+  try {
+    assertUsageWithinLimits(access, "domains");
+  } catch {
     domainsRedirect(storeId, "limit-reached");
   }
 

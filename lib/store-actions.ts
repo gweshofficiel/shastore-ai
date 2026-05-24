@@ -4,14 +4,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   canPublishStore,
-  canUseCustomDomain,
-  canUseCustomBranding,
   canUseSeo,
-  canUseTemplate,
   getUpgradeMessage,
-  getUserSubscriptionAccess,
-  logBillingLimitCheck
+  getUserSubscriptionAccess
 } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
@@ -566,18 +567,22 @@ async function persistStoreDraftFromForm(
   }
 
   const access = await getUserSubscriptionAccess(user.id);
-  const storeLimit = logBillingLimitCheck(access, "stores");
+  try {
+    if (access.usage.storesUsed > 0) {
+      assertFeatureAccess(access, "multi_store");
+    }
 
-  if (!storeLimit.allowed) {
-    return { ok: false, error: getUpgradeMessage("stores") || "Store limit reached." };
-  }
+    assertUsageWithinLimits(access, "stores");
+    assertFeatureAccess(access, "premium_templates", { templateId });
 
-  if (!canUseTemplate(access, templateId)) {
-    return { ok: false, error: getUpgradeMessage("template") };
-  }
-
-  if (!canUseCustomBranding(access) && hasCustomBranding(themeSettings, logoImageUrl)) {
-    return { ok: false, error: getUpgradeMessage("branding") };
+    if (hasCustomBranding(themeSettings, logoImageUrl)) {
+      assertFeatureAccess(access, "custom_branding");
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: billingEnforcementMessage(error) ?? getUpgradeMessage("stores") ?? "Upgrade required."
+    };
   }
 
   const { projectId, error: projectError } = await createStoreProject(
@@ -1433,8 +1438,15 @@ export async function saveStoreThemeSettings(formData: FormData) {
   if (isStorePlanGatingEnabled()) {
     const access = await getUserSubscriptionAccess(user.id);
 
-    if (!canUseCustomBranding(access) && hasCustomBranding(settings, logoImageUrl)) {
-      redirectWithStoreError(detailPath, getUpgradeMessage("branding"));
+    if (hasCustomBranding(settings, logoImageUrl)) {
+      try {
+        assertFeatureAccess(access, "custom_branding");
+      } catch (error) {
+        redirectWithStoreError(
+          detailPath,
+          billingEnforcementMessage(error) ?? getUpgradeMessage("branding")
+        );
+      }
     }
   }
 
@@ -1591,15 +1603,26 @@ export async function saveStorePublicationSettings(formData: FormData) {
       );
 
       if (hasSeoFields) {
-        redirectWithStoreError(detailPath, getUpgradeMessage("seo"));
+        try {
+          assertFeatureAccess(access, "seo");
+        } catch (error) {
+          redirectWithStoreError(
+            detailPath,
+            billingEnforcementMessage(error) ?? getUpgradeMessage("seo")
+          );
+        }
       }
     }
 
-    if (
-      !canUseCustomDomain(access) &&
-      (cleanHostname(formData.get("customDomain")) || cleanSubdomain(formData.get("subdomain")))
-    ) {
-      redirectWithStoreError(detailPath, getUpgradeMessage("domain"));
+    if (cleanHostname(formData.get("customDomain")) || cleanSubdomain(formData.get("subdomain"))) {
+      try {
+        assertFeatureAccess(access, "custom_domains");
+      } catch (error) {
+        redirectWithStoreError(
+          detailPath,
+          billingEnforcementMessage(error) ?? getUpgradeMessage("domain")
+        );
+      }
     }
   }
 
@@ -1692,8 +1715,13 @@ export async function saveStoreDomainSettings(formData: FormData) {
   if (isStorePlanGatingEnabled() && customDomain) {
     const access = await getUserSubscriptionAccess(user.id);
 
-    if (!canUseCustomDomain(access)) {
-      redirectWithStoreError(detailPath, getUpgradeMessage("domain"));
+    try {
+      assertFeatureAccess(access, "custom_domains");
+    } catch (error) {
+      redirectWithStoreError(
+        detailPath,
+        billingEnforcementMessage(error) ?? getUpgradeMessage("domain")
+      );
     }
   }
 

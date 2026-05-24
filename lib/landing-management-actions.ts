@@ -2,6 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { getUserSubscriptionAccess } from "@/lib/billing/access";
+import {
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
 
 function slugify(value: string) {
@@ -30,6 +35,19 @@ async function requireUser() {
 export async function duplicateLandingPage(formData: FormData) {
   const { supabase, user } = await requireUser();
   const landingId = String(formData.get("landingId") ?? "");
+  const access = await getUserSubscriptionAccess(user.id);
+
+  try {
+    assertUsageWithinLimits(access, "landings");
+  } catch (error) {
+    const params = new URLSearchParams({
+      error: "limit-reached",
+      detail:
+        billingEnforcementMessage(error) ??
+        "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing."
+    });
+    redirect(`/dashboard/landings?${params.toString()}`);
+  }
 
   const { data: landing, error } = await supabase
     .from("landing_pages")

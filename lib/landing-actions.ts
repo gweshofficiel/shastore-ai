@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { parseLandingThemeSettings } from "@/lib/landing-theme";
+import { getUserSubscriptionAccess } from "@/lib/billing/access";
 import {
-  getUpgradeMessage,
-  getUserSubscriptionAccess,
-  logBillingLimitCheck
-} from "@/lib/billing/access";
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
 import { createFallbackCopy } from "@/templates/engine";
 import { landingTemplates } from "@/templates/registry";
@@ -167,11 +167,12 @@ export async function publishLandingPage(formData: FormData) {
   }
 
   const access = await getUserSubscriptionAccess(user.id);
-  const landingLimit = logBillingLimitCheck(access, "landings");
-
-  if (!landingLimit.allowed) {
+  try {
+    assertUsageWithinLimits(access, "landings");
+  } catch (error) {
     redirectLandingCreateError(
-      getUpgradeMessage("landings") || "Your current plan has reached its landing page limit."
+      billingEnforcementMessage(error) ??
+        "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing."
     );
   }
 

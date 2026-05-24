@@ -1,5 +1,11 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import {
   commerceMigrationMessage,
   getCommerceAnalyticsSummary
@@ -15,6 +21,44 @@ function formatMoney(amount: number) {
 }
 
 export default async function AnalyticsPage() {
+  const access = await getCurrentUserSubscriptionAccess();
+
+  if (!access) {
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Shared analytics foundation for visitors, WhatsApp clicks, page views, conversions, orders, products, and sources."
+          title="Analytics"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">Sign in to access analytics.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  try {
+    assertFeatureAccess(access, "advanced_analytics");
+  } catch (error) {
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Shared analytics foundation for visitors, WhatsApp clicks, page views, conversions, orders, products, and sources."
+          title="Analytics"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-6">
+          <p className="text-sm font-bold text-amber-800">
+            {billingEnforcementMessage(error) ??
+              "Advanced analytics are unavailable on your current plan."}
+          </p>
+          <ButtonLink className="mt-4" href="/dashboard/billing">
+            Upgrade plan
+          </ButtonLink>
+        </Card>
+      </div>
+    );
+  }
+
   const summary = await getCommerceAnalyticsSummary();
   const stats = [
     { label: "Total visitors", value: summary.items.visitors },
