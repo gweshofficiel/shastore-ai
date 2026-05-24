@@ -6,6 +6,7 @@ import {
   getUserSubscriptionAccess
 } from "@/lib/billing/access";
 import { assertUsageWithinLimits } from "@/lib/billing/enforcement";
+import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { getDomainBase } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
@@ -106,6 +107,12 @@ export async function createStoreSubdomain(formData: FormData) {
   const access = await getUserSubscriptionAccess(userId);
 
   try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  try {
     assertUsageWithinLimits(access, "domains");
   } catch {
     domainsRedirect(storeId, "limit-reached");
@@ -175,6 +182,12 @@ export async function attachCustomDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const hostname = normalizeHostname(cleanText(formData.get("customDomain"), 253));
   const access = await getUserSubscriptionAccess(userId);
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
 
   try {
     assertUsageWithinLimits(access, "domains");

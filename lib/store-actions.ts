@@ -13,6 +13,7 @@ import {
   assertUsageWithinLimits,
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
+import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
@@ -1428,6 +1429,15 @@ export async function saveStoreThemeSettings(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
+  try {
+    await assertStoreMutationAllowed(supabase, user.id, store);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
+  }
+
   const themeSettings = parseThemeSettings(formData);
   const logoImageUrl =
     (await uploadStoreLogo(supabase, user.id, formData)) || themeSettings.logoUrl || null;
@@ -1578,6 +1588,15 @@ export async function saveStorePublicationSettings(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
+  try {
+    await assertStoreMutationAllowed(supabase, user.id, store);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
+  }
+
   const slug = await persistStoreSlug(
     supabase,
     store.id,
@@ -1703,6 +1722,15 @@ export async function saveStoreDomainSettings(formData: FormData) {
 
   if (storeError || !store) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  try {
+    await assertStoreMutationAllowed(supabase, user.id, store);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
   }
 
   const customDomain = cleanHostname(formData.get("customDomain"));
@@ -1870,6 +1898,15 @@ export async function publishStoreDraft(formData: FormData) {
 
   if (storeLookupError || !store) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeLookupError));
+  }
+
+  try {
+    await assertStoreMutationAllowed(supabase, user.id, store);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
   }
 
   const storeName = String(store.name ?? "").trim();

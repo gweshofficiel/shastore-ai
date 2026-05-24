@@ -33,6 +33,7 @@ const statusMessages: Record<string, string> = {
   "primary-updated": "Primary domain updated.",
   "reserved-subdomain": "That subdomain is reserved by SHASTORE AI.",
   "save-failed": "Domain settings could not be saved yet. Confirm the migration is applied.",
+  "store-locked": "Store locked due to current subscription limits.",
   "subdomain-saved": "Subdomain connected and marked as the primary store domain.",
   "use-subdomain-form": "Use the subdomain form for SHASTORE AI subdomains.",
   "verification-pending": "Verification was queued for this domain.",

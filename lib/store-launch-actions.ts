@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
+import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import {
   getLaunchStatus,
   getStoreLaunchReadiness,
@@ -272,6 +273,12 @@ export async function refreshStoreLaunchReadinessAction(formData: FormData) {
 
 export async function publishStorefrontDraftAction(formData: FormData) {
   const context = await requireLaunchContext(formData);
+  try {
+    await assertStoreMutationAllowed(context.supabase, context.userId, { id: context.storeId });
+  } catch {
+    builderRedirect(context.storeId, "store-locked-by-plan");
+  }
+
   const { checklistId } = await recordChecklist(context);
   const validation = await insertValidation(context, checklistId);
 

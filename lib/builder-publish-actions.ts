@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { normalizeBuilderPageSchema, type BuilderPageSchema } from "@/lib/storefront/builder";
+import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { validateDraftBeforePublish } from "@/lib/builder-publish-utils";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
 import { createClient } from "@/lib/supabase/server";
@@ -218,6 +219,12 @@ export async function syncLivePreviewState(formData: FormData) {
 
 export async function publishBuilderDraft(formData: FormData) {
   const { storeId, supabase, userId } = await requireBuilderStore(formData);
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    builderRedirect(storeId, "store-locked-by-plan");
+  }
+
   const draft = await getDraftSnapshot(supabase, storeId);
 
   if (!draft) {

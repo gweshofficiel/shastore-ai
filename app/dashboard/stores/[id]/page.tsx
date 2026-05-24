@@ -104,6 +104,7 @@ import {
   unpublishOwnedStorefront
 } from "@/lib/store-publishing-actions";
 import { loadBuyerStoreManagementSnapshot } from "@/lib/buyer-store-dashboard";
+import { getStoreAccessForUser } from "@/lib/billing/store-access";
 import {
   aiGenerationStatusLabel,
   createAIStoreGenerationRequest,
@@ -189,6 +190,7 @@ const builderStatusMessages: Record<string, string> = {
   "publish-invalid-draft": "Draft must contain at least one visible section before publishing.",
   "publish-rollback-complete": "Publish failed and the previous active version was restored.",
   "publish-version-failed": "Published layout version could not be created.",
+  "store-locked-by-plan": "Store locked due to current subscription limits.",
   "responsive-draft-missing": "Create a builder draft before using responsive preview.",
   "responsive-mode-failed": "Responsive builder mode could not be saved.",
   "responsive-mode-synced": "Responsive builder mode synchronized.",
@@ -4211,6 +4213,9 @@ export default async function StoreDraftPage({
   const publication = rawPublication as PublicationRow | null;
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
+  const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
+  const storeIsLocked =
+    storeAccess.state === "locked_by_plan" || storeAccess.state === "suspended";
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -4219,6 +4224,21 @@ export default async function StoreDraftPage({
         description="Review the saved Store Mode draft. Public store publishing is not enabled yet."
         title={store.name}
       />
+      {storeIsLocked ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-amber-900">
+                Store locked due to current subscription limits
+              </p>
+              <p className="mt-1 text-sm font-semibold text-amber-800">
+                {storeAccess.reason}
+              </p>
+            </div>
+            <ButtonLink href="/dashboard/billing">Upgrade to unlock</ButtonLink>
+          </div>
+        </Card>
+      ) : null}
       {query.saved ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">

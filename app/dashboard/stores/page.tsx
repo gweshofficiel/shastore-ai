@@ -5,6 +5,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { publishStoreDraft } from "@/lib/store-actions";
 import { createClient } from "@/lib/supabase/server";
+import { getStoreAccessMapForUser, type StoreAccessResult } from "@/lib/billing/store-access";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,7 @@ type SubscriptionSummary = {
 
 type StoreListResult = {
   draftStores: DraftStore[];
+  draftStoreAccess: Record<string, StoreAccessResult>;
   draftStoresError: string | null;
   error: string | null;
   ownedStores: OwnedStore[];
@@ -165,6 +167,7 @@ async function getBuyerStores(): Promise<StoreListResult> {
   if (userError) {
     return {
       draftStores: [],
+      draftStoreAccess: {},
       draftStoresError: null,
       error: "We could not verify your session. Please sign in again.",
       ownedStores: [],
@@ -176,6 +179,7 @@ async function getBuyerStores(): Promise<StoreListResult> {
   if (!user) {
     return {
       draftStores: [],
+      draftStoreAccess: {},
       draftStoresError: null,
       error: "Sign in to view your stores.",
       ownedStores: [],
@@ -194,7 +198,10 @@ async function getBuyerStores(): Promise<StoreListResult> {
   ]);
 
   const { ownedStores, ownedStoresError, schemaIssue } = await loadOwnedStores(ownedResult);
-  const { draftStores, draftStoresError } = await loadDraftStores(supabase, user.id);
+  const [{ draftStores, draftStoresError }, { accessMap }] = await Promise.all([
+    loadDraftStores(supabase, user.id),
+    getStoreAccessMapForUser(supabase, user.id)
+  ]);
   const subscription =
     subscriptionResult.error && isMissingSubscriptionTable(subscriptionResult.error)
       ? null
@@ -202,6 +209,7 @@ async function getBuyerStores(): Promise<StoreListResult> {
 
   return {
     draftStores,
+    draftStoreAccess: Object.fromEntries(accessMap),
     draftStoresError,
     error: ownedStoresError,
     ownedStores,
@@ -255,7 +263,7 @@ export default async function StoresPage({
   }>;
 }) {
   const query = await searchParams;
-  const { draftStores, draftStoresError, error, ownedStores, schemaIssue, subscription } =
+  const { draftStoreAccess, draftStores, draftStoresError, error, ownedStores, schemaIssue, subscription } =
     await getBuyerStores();
   const storeModeCount = draftStores.length;
   const totalStores = ownedStores.length + storeModeCount;
@@ -338,6 +346,8 @@ export default async function StoresPage({
           <div className="mt-5 grid gap-4">
             {draftStores.map((store) => {
               const displayStatus = store.publication?.status ?? store.status ?? "draft";
+              const storeAccess = draftStoreAccess[store.id];
+              const isLocked = storeAccess?.state === "locked_by_plan" || storeAccess?.state === "suspended";
               const publicSlug = store.slug ?? store.publication?.slug ?? null;
               const isPublished =
                 (displayStatus === "published" || store.status === "published") &&
@@ -351,9 +361,14 @@ export default async function StoresPage({
                   <div className="min-w-0">
                     <p className="truncate text-lg font-black text-ink">{store.name}</p>
                     <p className="mt-1 text-sm font-semibold text-muted">
-                      Status {formatStatus(displayStatus, "draft")} · Created{" "}
+                      Status {isLocked ? formatStatus(storeAccess.state) : formatStatus(displayStatus, "draft")} · Created{" "}
                       {formatDate(store.created_at)}
                     </p>
+                    {isLocked ? (
+                      <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+                        Store locked due to current subscription limits.
+                      </p>
+                    ) : null}
                     {publicSlug ? (
                       <p className="mt-2 font-mono text-xs font-bold text-muted">
                         /store/{publicSlug}
@@ -369,6 +384,10 @@ export default async function StoresPage({
                         variant="secondary"
                       >
                         Public Store
+                      </ButtonLink>
+                    ) : isLocked ? (
+                      <ButtonLink href="/dashboard/billing" variant="secondary">
+                        Upgrade to unlock
                       </ButtonLink>
                     ) : (
                       <form action={publishStoreDraft}>
