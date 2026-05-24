@@ -1,3 +1,4 @@
+import { Resend } from "resend";
 import { getBillingEmailTemplate } from "@/lib/notifications/email-templates";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -35,6 +36,14 @@ function providerReady(provider: EmailProviderName) {
   return true;
 }
 
+function emailFromAddress() {
+  return process.env.EMAIL_FROM?.trim() ?? "";
+}
+
+function resendApiKey() {
+  return process.env.RESEND_API_KEY?.trim() ?? "";
+}
+
 async function resolveRecipientEmail(userId: string) {
   const client = createAdminClient();
 
@@ -54,6 +63,39 @@ async function resolveRecipientEmail(userId: string) {
   }
 
   return data.user?.email ?? null;
+}
+
+async function sendWithResend({
+  html,
+  subject,
+  text,
+  to
+}: {
+  html: string;
+  subject: string;
+  text: string;
+  to: string;
+}) {
+  const apiKey = resendApiKey();
+  const from = emailFromAddress();
+
+  if (!apiKey || !from) {
+    return { error: "Resend environment is not configured", id: null };
+  }
+
+  const resend = new Resend(apiKey);
+  const { data, error } = await resend.emails.send({
+    from,
+    html,
+    subject,
+    text,
+    to
+  });
+
+  return {
+    error: error?.message ?? null,
+    id: data?.id ?? null
+  };
 }
 
 export async function sendBillingNotificationEmailSafe({
@@ -101,9 +143,41 @@ export async function sendBillingNotificationEmailSafe({
       return;
     }
 
-    console.info("[email-notification-skipped] email provider adapter not implemented", {
+    if (provider !== "resend") {
+      console.warn("[email-notification-skipped] email provider adapter not implemented", {
+        provider,
+        type,
+        userId
+      });
+      return;
+    }
+
+    console.info("[email-notification] sending billing email", {
       provider,
+      type,
+      userId
+    });
+
+    const result = await sendWithResend({
+      html: template.html,
       subject: template.subject,
+      text: template.text,
+      to: recipientEmail
+    });
+
+    if (result.error) {
+      console.warn("[email-notification-error] resend send failed", {
+        message: result.error,
+        provider,
+        type,
+        userId
+      });
+      return;
+    }
+
+    console.info("[email-notification-sent] billing email sent", {
+      provider,
+      resendMessageId: result.id,
       type,
       userId
     });
