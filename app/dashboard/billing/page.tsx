@@ -103,7 +103,10 @@ export default async function BillingPage({
   const currentPlan = access.plan;
   const canManageSubscription =
     currentPlan.id !== "free" &&
-    (access.status === "active" || access.status === "trialing" || access.status === "past_due");
+    access.status === "active" &&
+    Boolean(access.stripeCustomerId);
+  const paidSubscriptionMissingCustomer =
+    currentPlan.id !== "free" && access.status === "active" && !access.stripeCustomerId;
   const billingHistory = await getBillingHistory(access.userId);
   const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
   const landingPercent = usagePercent(access.usage.landingsUsed, access.usage.landingLimit);
@@ -257,6 +260,12 @@ export default async function BillingPage({
               </Button>
             </form>
           ) : null}
+          {paidSubscriptionMissingCustomer ? (
+            <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+              Your paid platform plan is active, but the Stripe customer ID has not synced yet.
+              The customer portal will appear after Stripe sends the subscription customer data.
+            </div>
+          ) : null}
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
             Configure <code>PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER</code>,{" "}
             <code>PLATFORM_BILLING_STRIPE_PRICE_ID_PRO</code>, and{" "}
@@ -312,7 +321,13 @@ export default async function BillingPage({
                 </div>
               ))}
             </div>
-            {plan.id === currentPlan.id ? (
+            {plan.id === currentPlan.id && canManageSubscription ? (
+              <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
+                <Button className="w-full" type="submit">
+                  Manage subscription
+                </Button>
+              </form>
+            ) : plan.id === currentPlan.id ? (
               <Button className="mt-6 w-full" disabled type="button" variant="secondary">
                 Current plan
               </Button>

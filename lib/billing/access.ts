@@ -13,6 +13,9 @@ export type UserSubscriptionAccess = {
   plan: BillingPlan;
   status: "trialing" | "active" | "past_due" | "canceled" | "incomplete";
   currentPeriodEnd: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  cancelAtPeriodEnd: boolean;
   usage: {
     landingsUsed: number;
     storesUsed: number;
@@ -132,6 +135,9 @@ export async function getUserSubscriptionAccess(
     plan,
     status,
     currentPeriodEnd: subscription?.current_period_end ?? null,
+    stripeCustomerId: subscription?.stripe_customer_id ?? null,
+    stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
+    cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
     usage: {
       landingsUsed: landingsCount ?? 0,
       storesUsed: storesCount ?? 0,

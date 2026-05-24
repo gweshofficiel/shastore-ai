@@ -172,6 +172,25 @@ async function updateSubscriptionStatusByStripeReference(input: {
   return subscription?.user_id ?? null;
 }
 
+async function findExistingSubscriptionByStripeId(stripeSubscriptionId: string) {
+  const supabase = getBillingSyncClient();
+  const { data, error } = await supabase
+    .from("user_subscriptions" as never)
+    .select("user_id, plan_id")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[stripe-webhook] existing subscription lookup failed", {
+      message: error.message,
+      stripeSubscriptionId
+    });
+    throw error;
+  }
+
+  return data as { plan_id: string | null; user_id: string | null } | null;
+}
+
 export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -215,8 +234,16 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     event.type === "customer.subscription.deleted"
   ) {
     const subscription = event.data.object as Stripe.Subscription;
-    const userId = metadataValue(subscription.metadata, "userId", "user_id");
-    const planId = paidPlanFromMetadata(subscription.metadata);
+    const existingSubscription = await findExistingSubscriptionByStripeId(subscription.id);
+    const userId =
+      metadataValue(subscription.metadata, "userId", "user_id") ??
+      existingSubscription?.user_id ??
+      null;
+    const planId =
+      paidPlanFromMetadata(subscription.metadata) ??
+      (existingSubscription?.plan_id && isPaidSubscriptionPlan(existingSubscription.plan_id)
+        ? existingSubscription.plan_id
+        : null);
 
     console.info("[stripe-webhook] subscription update received", {
       cancelAtPeriodEnd: subscription.cancel_at_period_end,

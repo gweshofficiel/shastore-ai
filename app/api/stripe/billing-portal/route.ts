@@ -25,11 +25,7 @@ function subscriptionCanUsePortal(subscription: {
     return false;
   }
 
-  if (subscription.status === "active" || subscription.status === "trialing") {
-    return true;
-  }
-
-  return subscription.status === "past_due";
+  return subscription.status === "active";
 }
 
 export async function POST() {
@@ -93,8 +89,12 @@ export async function POST() {
       customer: subscription.stripe_customer_id,
       return_url: absoluteUrl("/dashboard/billing")
     });
+    console.info("[stripe-portal] portal session created", {
+      customerId: subscription.stripe_customer_id,
+      userId: user.id
+    });
   } catch (error) {
-    console.error("[stripe-portal] portal session creation failed", {
+    console.error("[stripe-portal] portal redirect failed", {
       message: error instanceof Error ? error.message : String(error),
       userId: user.id
     });
