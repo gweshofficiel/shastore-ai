@@ -104,6 +104,10 @@ import {
   unpublishOwnedStorefront
 } from "@/lib/store-publishing-actions";
 import { loadBuyerStoreManagementSnapshot } from "@/lib/buyer-store-dashboard";
+import {
+  canUseCustomDomains,
+  getRemainingDomainQuota
+} from "@/lib/billing/domain-access";
 import { getStoreAccessForUser } from "@/lib/billing/store-access";
 import {
   aiGenerationStatusLabel,
@@ -169,6 +173,7 @@ const builderStatusMessages: Record<string, string> = {
   "compare-version-ready": "Version comparison placeholder was prepared.",
   "create-failed": "Draft section could not be created.",
   "delete-failed": "Draft section could not be deleted.",
+  "domain-locked-by-plan": "Connected custom domains are blocked by your current subscription.",
   "drag-draft-missing": "Initialize a builder draft before moving sections.",
   "drag-move-failed": "Section move failed and rollback was attempted.",
   "drag-move-invalid": "Section move is not valid for the current draft order.",
@@ -4216,6 +4221,10 @@ export default async function StoreDraftPage({
   const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
   const storeIsLocked =
     storeAccess.state === "locked_by_plan" || storeAccess.state === "suspended";
+  const remainingDomainQuota = getRemainingDomainQuota(storeAccess.subscription);
+  const customDomainsBlocked =
+    !canUseCustomDomains(storeAccess.subscription) ||
+    (storeAccess.subscription.usage.domainLimit !== null && (remainingDomainQuota ?? 0) <= 0);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -4236,6 +4245,23 @@ export default async function StoreDraftPage({
               </p>
             </div>
             <ButtonLink href="/dashboard/billing">Upgrade to unlock</ButtonLink>
+          </div>
+        </Card>
+      ) : null}
+      {customDomainsBlocked ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-amber-900">
+                Custom domains are blocked by your current subscription
+              </p>
+              <p className="mt-1 text-sm font-semibold text-amber-800">
+                {storeAccess.subscription.usage.domainLimit === null
+                  ? "Resolve your billing status to update connected domains."
+                  : `Custom domain usage: ${storeAccess.subscription.usage.domainsUsed} / ${storeAccess.subscription.usage.domainLimit}.`}
+              </p>
+            </div>
+            <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink>
           </div>
         </Card>
       ) : null}

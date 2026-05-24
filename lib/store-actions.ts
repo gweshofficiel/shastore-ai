@@ -13,6 +13,10 @@ import {
   assertUsageWithinLimits,
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
+import {
+  assertCanConnectCustomDomain,
+  assertCanUseExistingCustomDomain
+} from "@/lib/billing/domain-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
@@ -1632,17 +1636,6 @@ export async function saveStorePublicationSettings(formData: FormData) {
         }
       }
     }
-
-    if (cleanHostname(formData.get("customDomain")) || cleanSubdomain(formData.get("subdomain"))) {
-      try {
-        assertFeatureAccess(access, "custom_domains");
-      } catch (error) {
-        redirectWithStoreError(
-          detailPath,
-          billingEnforcementMessage(error) ?? getUpgradeMessage("domain")
-        );
-      }
-    }
   }
 
   const publicationPayload = {
@@ -1670,6 +1663,21 @@ export async function saveStorePublicationSettings(formData: FormData) {
     .eq("user_id", user.id)
     .maybeSingle();
   const publication = rawPublication as StorePublicationRow | null;
+
+  if (customDomain) {
+    try {
+      if (publication?.custom_domain) {
+        await assertCanUseExistingCustomDomain(supabase, user.id, store.id);
+      } else {
+        await assertCanConnectCustomDomain(supabase, user.id, store.id);
+      }
+    } catch (error) {
+      redirectWithStoreError(
+        detailPath,
+        error instanceof Error ? error.message : getUpgradeMessage("domain")
+      );
+    }
+  }
 
   const { error } = publication
     ? await supabase
@@ -1740,19 +1748,6 @@ export async function saveStoreDomainSettings(formData: FormData) {
     redirectWithStoreError(detailPath, "Enter a valid custom domain, for example shop.example.com.");
   }
 
-  if (isStorePlanGatingEnabled() && customDomain) {
-    const access = await getUserSubscriptionAccess(user.id);
-
-    try {
-      assertFeatureAccess(access, "custom_domains");
-    } catch (error) {
-      redirectWithStoreError(
-        detailPath,
-        billingEnforcementMessage(error) ?? getUpgradeMessage("domain")
-      );
-    }
-  }
-
   const slug = await persistStoreSlug(
     supabase,
     store.id,
@@ -1768,6 +1763,22 @@ export async function saveStoreDomainSettings(formData: FormData) {
   const publication = rawPublication as StorePublicationRow | null;
   const previousDomain = cleanHostname(publication?.custom_domain ?? null);
   const domainChanged = previousDomain !== customDomain;
+
+  if (isStorePlanGatingEnabled() && customDomain) {
+    try {
+      if (previousDomain) {
+        await assertCanUseExistingCustomDomain(supabase, user.id, store.id);
+      } else {
+        await assertCanConnectCustomDomain(supabase, user.id, store.id);
+      }
+    } catch (error) {
+      redirectWithStoreError(
+        detailPath,
+        error instanceof Error ? error.message : getUpgradeMessage("domain")
+      );
+    }
+  }
+
   const domainStatus =
     customDomain && intent === "verify" && !domainChanged
       ? "verifying"
@@ -1998,6 +2009,17 @@ export async function publishStoreDraft(formData: FormData) {
 
   if (publicationLookupError && !publicationTableMissing) {
     redirectWithStoreError(detailPath, formatStoreActionError(publicationLookupError));
+  }
+
+  if (publication?.custom_domain) {
+    try {
+      await assertCanUseExistingCustomDomain(supabase, user.id, updatedStore.id);
+    } catch (error) {
+      redirectWithStoreError(
+        detailPath,
+        error instanceof Error ? error.message : getUpgradeMessage("domain")
+      );
+    }
   }
 
   if (publication) {

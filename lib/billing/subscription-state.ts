@@ -1,4 +1,5 @@
 import type { BillingLimitResource, UserSubscriptionAccess } from "@/lib/billing/access";
+import { isStoreLocked, getRemainingDomainQuota } from "@/lib/billing/domain-access";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
@@ -112,3 +113,5 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
     warning
   };
 }
+
+export { getRemainingDomainQuota, isStoreLocked };

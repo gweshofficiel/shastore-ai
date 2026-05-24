@@ -86,7 +86,8 @@ async function countDomains(supabase: SupabaseClient, userId: string) {
   const storeDomains = await supabase
     .from("store_domains" as never)
     .select("id", { count: "exact", head: true })
-    .eq("owner_user_id", userId);
+    .eq("owner_user_id", userId)
+    .eq("domain_type", "custom");
 
   if (!storeDomains.error) {
     return storeDomains.count ?? 0;

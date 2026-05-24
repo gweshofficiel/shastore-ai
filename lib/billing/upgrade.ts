@@ -45,7 +45,7 @@ function minimumPlanForFeature(feature: BillingFeature): PaidSubscriptionPlanId 
   const minimums: Record<BillingFeature, PaidSubscriptionPlanId> = {
     advanced_analytics: "pro",
     custom_branding: "pro",
-    custom_domains: "pro",
+    custom_domains: "starter",
     multi_store: "pro",
     premium_templates: "starter",
     seo: "pro"
@@ -56,7 +56,7 @@ function minimumPlanForFeature(feature: BillingFeature): PaidSubscriptionPlanId 
 
 function minimumPlanForResource(resource: BillingLimitResource): PaidSubscriptionPlanId {
   const minimums: Record<BillingLimitResource, PaidSubscriptionPlanId> = {
-    domains: "pro",
+    domains: "starter",
     landings: "starter",
     stores: "pro"
   };
@@ -79,7 +79,9 @@ function reasonForUpgrade(intent: UpgradeIntent, planName: string) {
   }
 
   if (intent.blockedFeature === "custom_domains" || intent.blockedResource === "domains") {
-    return "Custom domains require Pro.";
+    return intent.currentPlanId === "free"
+      ? "Custom domains require Starter."
+      : "Custom domain limit reached on your current plan.";
   }
 
   if (intent.blockedFeature === "advanced_analytics") {

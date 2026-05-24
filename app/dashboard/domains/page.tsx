@@ -16,6 +16,10 @@ import {
   storeDomainsMigrationMessage
 } from "@/lib/store-domains";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import {
+  canUseCustomDomains,
+  getRemainingDomainQuota
+} from "@/lib/billing/domain-access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
 const statusMessages: Record<string, string> = {
@@ -115,6 +119,12 @@ export default async function DomainsPage({
         needsUnlimited: access.plan.id === "pro"
       })
     : null;
+  const remainingDomainQuota = access ? getRemainingDomainQuota(access) : null;
+  const domainLimitReached =
+    Boolean(access) &&
+    access?.usage.domainLimit !== null &&
+    (remainingDomainQuota ?? 0) <= 0;
+  const customDomainsAvailable = access ? canUseCustomDomains(access) : false;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -132,12 +142,18 @@ export default async function DomainsPage({
       {params.domains && params.domains !== "limit-reached" ? (
         <Toast status={params.domains} />
       ) : null}
-      {params.domains === "limit-reached" && access ? (
+      {(params.domains === "limit-reached" || domainLimitReached || !customDomainsAvailable) && access ? (
         <UpgradeRequiredCard
-          blockedAction="Custom domains require Pro"
+          blockedAction={
+            customDomainsAvailable ? "Custom domain limit reached" : "Custom domains unavailable"
+          }
           currentPlan={access.plan.name}
-          reason={domainUpgrade?.reason ?? "Custom domains require Pro."}
-          recommendedPlan={domainUpgrade?.planName ?? "Pro"}
+          reason={
+            customDomainsAvailable
+              ? "Your current plan has reached its custom domain limit."
+              : domainUpgrade?.reason ?? "Custom domains are not available on your current subscription."
+          }
+          recommendedPlan={domainUpgrade?.planName ?? "Starter"}
           recommendedPlanId={domainUpgrade?.planId}
         />
       ) : null}
@@ -213,6 +229,23 @@ export default async function DomainsPage({
             </p>
           )}
         </Card>
+        {access ? (
+          <Card className="p-6 lg:p-8">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Custom domain quota
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {access.usage.domainsUsed} / {access.usage.domainLimit === null ? "Unlimited" : access.usage.domainLimit}
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Remaining quota:{" "}
+              {remainingDomainQuota === null ? "Unlimited" : remainingDomainQuota.toLocaleString()}
+            </p>
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Plan: {access.plan.name}. SHASTORE subdomains do not consume custom-domain quota.
+            </p>
+          </Card>
+        ) : null}
       </div>
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="p-6 lg:p-8">

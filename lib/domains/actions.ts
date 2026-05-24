@@ -9,6 +9,10 @@ import {
   verifyDomainWithHostinsh
 } from "@/lib/domains/hostinsh";
 import {
+  canConnectAnotherDomain
+} from "@/lib/billing/domain-access";
+import { getUserSubscriptionAccess } from "@/lib/billing/access";
+import {
   buildFreeHostname,
   cleanSourceSlug,
   createVerificationToken,
@@ -156,6 +160,13 @@ export async function connectCustomDomain(formData: FormData) {
 
   if (!sourceSlug || !hostname) {
     redirect("/dashboard/domains?error=missing-domain");
+  }
+
+  const subscription = await getUserSubscriptionAccess(user.id);
+  const domainAccess = canConnectAnotherDomain({ subscription });
+
+  if (!domainAccess.allowed) {
+    redirect("/dashboard/domains?error=limit-reached");
   }
 
   const token = createVerificationToken();

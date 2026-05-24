@@ -69,13 +69,13 @@ export const billingPlans: BillingPlan[] = [
     description: "Legacy starter plan for landing-page customers.",
     landingLimit: 10,
     storeLimit: 1,
-    domainLimit: 0,
+    domainLimit: 1,
     analytics: "basic",
     templateAccess: "premium",
     customBranding: false,
     publish: true,
     seo: false,
-    customDomains: false,
+    customDomains: true,
     shastoreBranding: false,
     priorityRendering: false,
     storeSupport: true,
@@ -84,6 +84,7 @@ export const billingPlans: BillingPlan[] = [
     features: [
       "10 landing pages",
       "Basic analytics",
+      "1 custom domain",
       "Premium landing templates"
     ]
   },

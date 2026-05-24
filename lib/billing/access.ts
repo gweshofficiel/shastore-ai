@@ -263,7 +263,7 @@ export function getUpgradeMessage(
   const messages = {
     analytics: "Advanced analytics is available on the Pro and Agency plans.",
     branding: "Full theme and branding controls are available on Pro and Agency plans. Upgrade at /dashboard/billing.",
-    domain: "Custom domains are available on Pro and Agency plans. Upgrade at /dashboard/billing.",
+    domain: "Custom domains are available on Starter, Pro, and Agency plans. Upgrade at /dashboard/billing.",
     landings: "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing.",
     publish: "Publishing is available on all active SHASTORE AI plans.",
     seo: "SEO settings are available on Pro and Agency plans. Upgrade at /dashboard/billing.",

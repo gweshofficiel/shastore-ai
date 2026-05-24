@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  getUserSubscriptionAccess
-} from "@/lib/billing/access";
-import { assertUsageWithinLimits } from "@/lib/billing/enforcement";
+  assertCanConnectCustomDomain,
+  assertCanUseExistingCustomDomain
+} from "@/lib/billing/domain-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { getDomainBase } from "@/lib/domains/hostinsh";
 import {
@@ -104,18 +104,11 @@ async function clearPrimaryDomain(supabase: SupabaseClient, storeId: string) {
 export async function createStoreSubdomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const subdomain = normalizeSubdomain(cleanText(formData.get("subdomain"), 80));
-  const access = await getUserSubscriptionAccess(userId);
 
   try {
     await assertStoreMutationAllowed(supabase, userId, { id: storeId });
   } catch {
     domainsRedirect(storeId, "store-locked");
-  }
-
-  try {
-    assertUsageWithinLimits(access, "domains");
-  } catch {
-    domainsRedirect(storeId, "limit-reached");
   }
 
   if (!subdomain || subdomain.length < 3) {
@@ -181,16 +174,9 @@ export async function createStoreSubdomain(formData: FormData) {
 export async function attachCustomDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const hostname = normalizeHostname(cleanText(formData.get("customDomain"), 253));
-  const access = await getUserSubscriptionAccess(userId);
 
   try {
-    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
-  } catch {
-    domainsRedirect(storeId, "store-locked");
-  }
-
-  try {
-    assertUsageWithinLimits(access, "domains");
+    await assertCanConnectCustomDomain(supabase, userId, storeId);
   } catch {
     domainsRedirect(storeId, "limit-reached");
   }
@@ -247,7 +233,7 @@ export async function attachCustomDomain(formData: FormData) {
 }
 
 export async function setPrimaryDomain(formData: FormData) {
-  const { storeId, supabase } = await requireClaimedStore(formData);
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const domainId = cleanText(formData.get("domainId"), 80);
 
   if (!domainId) {
@@ -256,7 +242,7 @@ export async function setPrimaryDomain(formData: FormData) {
 
   const { data: domain } = await supabase
     .from("store_domains" as never)
-    .select("id, hostname")
+    .select("id, hostname, domain_type")
     .eq("id", domainId)
     .eq("store_instance_id", storeId)
     .maybeSingle();
@@ -265,9 +251,21 @@ export async function setPrimaryDomain(formData: FormData) {
     domainsRedirect(storeId, "domain-not-found");
   }
 
+  const domainRow = domain as { domain_type?: string | null; hostname: string };
+
+  try {
+    if (domainRow.domain_type === "custom") {
+      await assertCanUseExistingCustomDomain(supabase, userId, storeId);
+    } else {
+      await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+    }
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
   await clearPrimaryDomain(supabase, storeId);
 
-  const hostname = (domain as { hostname: string }).hostname;
+  const hostname = domainRow.hostname;
   const { error } = await supabase
     .from("store_domains" as never)
     .update({ is_primary: true, primary_domain: hostname } as never)
@@ -283,11 +281,32 @@ export async function setPrimaryDomain(formData: FormData) {
 }
 
 export async function markStoreDomainVerificationPending(formData: FormData) {
-  const { storeId, supabase } = await requireClaimedStore(formData);
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const domainId = cleanText(formData.get("domainId"), 80);
 
   if (!domainId) {
     domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { data: domain } = await supabase
+    .from("store_domains" as never)
+    .select("domain_type")
+    .eq("id", domainId)
+    .eq("store_instance_id", storeId)
+    .maybeSingle();
+
+  if (!domain) {
+    domainsRedirect(storeId, "domain-not-found");
+  }
+
+  try {
+    if ((domain as { domain_type?: string | null }).domain_type === "custom") {
+      await assertCanUseExistingCustomDomain(supabase, userId, storeId);
+    } else {
+      await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+    }
+  } catch {
+    domainsRedirect(storeId, "store-locked");
   }
 
   const { error } = await supabase

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
+import { assertCanUseExistingCustomDomain } from "@/lib/billing/domain-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import {
   getLaunchStatus,
@@ -277,6 +278,14 @@ export async function publishStorefrontDraftAction(formData: FormData) {
     await assertStoreMutationAllowed(context.supabase, context.userId, { id: context.storeId });
   } catch {
     builderRedirect(context.storeId, "store-locked-by-plan");
+  }
+
+  if (context.domains.some((domain) => typeof domain.custom_domain === "string" && domain.custom_domain)) {
+    try {
+      await assertCanUseExistingCustomDomain(context.supabase, context.userId, context.storeId);
+    } catch {
+      builderRedirect(context.storeId, "domain-locked-by-plan");
+    }
   }
 
   const { checklistId } = await recordChecklist(context);

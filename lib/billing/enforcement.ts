@@ -78,7 +78,7 @@ export const planCapabilities: Record<
   starter: {
     advanced_analytics: false,
     custom_branding: false,
-    custom_domains: false,
+    custom_domains: true,
     multi_store: false,
     premium_templates: true,
     seo: false
