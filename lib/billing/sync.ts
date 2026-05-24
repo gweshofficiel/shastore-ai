@@ -6,6 +6,8 @@ import {
   resolvePlatformPlanByPriceId
 } from "@/lib/billing/platform-checkout";
 import { createBillingNotification } from "@/lib/notifications/billing-notifications";
+import { resolveNotificationUserId } from "@/lib/notifications/resolve-user";
+import { getPlatformBillingStripe } from "@/lib/stripe";
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
 
@@ -70,17 +72,6 @@ function stripeEmail(value: unknown) {
   return typeof email === "string" && email.includes("@") ? email.trim().toLowerCase() : null;
 }
 
-function configuredAdminEmails() {
-  return (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function developmentNotificationFallbackEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
-}
-
 function stripeReferenceFromRecord(value: unknown) {
   if (typeof value === "string") {
     return value;
@@ -122,6 +113,37 @@ function invoiceSubscriptionId(invoice: Stripe.Invoice) {
       : null;
 
   return stripeReferenceFromRecord(parentSubscriptionDetails?.subscription);
+}
+
+async function resolveStripeCustomerEmail(input: {
+  customer: unknown;
+  customerEmail?: string | null;
+  stripeCustomerId?: string | null;
+}) {
+  const directEmail =
+    typeof input.customerEmail === "string" && input.customerEmail.includes("@")
+      ? input.customerEmail.trim().toLowerCase()
+      : stripeEmail(input.customer);
+
+  if (directEmail || !input.stripeCustomerId) {
+    return directEmail;
+  }
+
+  try {
+    const customer = await getPlatformBillingStripe().customers.retrieve(input.stripeCustomerId);
+
+    if (customer.deleted) {
+      return null;
+    }
+
+    return customer.email?.trim().toLowerCase() ?? null;
+  } catch (error) {
+    console.warn("[billing-notification-skip] Stripe customer email lookup failed", {
+      message: error instanceof Error ? error.message : String(error),
+      stripeCustomerId: input.stripeCustomerId
+    });
+    return null;
+  }
 }
 
 function getBillingSyncClient() {
@@ -359,149 +381,6 @@ async function findExistingSubscriptionByStripeReference(input: {
   return customerData as { plan_id: string | null; user_id: string | null } | null;
 }
 
-async function findAuthUserIdByEmail(email?: string | null) {
-  const normalizedEmail = email?.trim().toLowerCase();
-
-  if (!normalizedEmail) {
-    return null;
-  }
-
-  const supabase = getBillingSyncClient();
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles" as never)
-    .select("id, email")
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-
-  if (profileError) {
-    console.warn("[billing-notification-skip] profile email lookup failed", {
-      email: normalizedEmail,
-      message: profileError.message
-    });
-  }
-
-  const profileUserId = (profile as { id?: string | null } | null)?.id ?? null;
-
-  if (profileUserId) {
-    return profileUserId;
-  }
-
-  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-
-  if (error) {
-    console.warn("[billing-notification-skip] auth email lookup failed", {
-      email: normalizedEmail,
-      message: error.message
-    });
-    return null;
-  }
-
-  return data.users.find((user) => user.email?.toLowerCase() === normalizedEmail)?.id ?? null;
-}
-
-async function findDevelopmentFallbackAdminUserId() {
-  if (!developmentNotificationFallbackEnabled()) {
-    return null;
-  }
-
-  const adminEmails = configuredAdminEmails();
-
-  for (const email of adminEmails) {
-    const userId = await findAuthUserIdByEmail(email);
-
-    if (userId) {
-      console.warn("[billing-notification] development admin fallback resolved configured admin", {
-        userId
-      });
-      return userId;
-    }
-  }
-
-  const supabase = getBillingSyncClient();
-  const { data: adminProfiles, error } = await supabase
-    .from("account_profiles" as never)
-    .select("user_id")
-    .eq("account_type", "admin")
-    .order("created_at", { ascending: true })
-    .limit(1);
-
-  if (error) {
-    console.warn("[billing-notification-skip] development admin fallback profile lookup failed", {
-      message: error.message
-    });
-    return null;
-  }
-
-  const userId = ((adminProfiles ?? [])[0] as { user_id?: string | null } | undefined)?.user_id ?? null;
-
-  if (userId) {
-    console.warn("[billing-notification] development admin fallback resolved account profile", {
-      userId
-    });
-  }
-
-  return userId;
-}
-
-async function resolveNotificationUserId({
-  currentUserId,
-  eventType,
-  stripeCustomerEmail
-}: {
-  currentUserId?: string | null;
-  eventType: string;
-  stripeCustomerEmail?: string | null;
-}) {
-  try {
-    if (currentUserId) {
-      console.info("[billing-notification] webhook user resolved from billing record", {
-        eventType,
-        resolvedEmail: stripeCustomerEmail ?? null,
-        resolvedUserId: currentUserId
-      });
-      return currentUserId;
-    }
-
-    const emailUserId = await findAuthUserIdByEmail(stripeCustomerEmail);
-
-    if (emailUserId) {
-      console.info("[billing-notification] webhook user resolved from Stripe customer email", {
-        eventType,
-        resolvedEmail: stripeCustomerEmail ?? null,
-        resolvedUserId: emailUserId
-      });
-      return emailUserId;
-    }
-
-    const fallbackUserId = await findDevelopmentFallbackAdminUserId();
-
-    if (fallbackUserId) {
-      console.warn("[billing-notification] development-only fallback user resolved", {
-        eventType,
-        fallbackMode: "development",
-        resolvedEmail: stripeCustomerEmail ?? null,
-        resolvedUserId: fallbackUserId
-      });
-      return fallbackUserId;
-    }
-
-    console.warn("[billing-notification-skip] webhook notification user unresolved", {
-      eventType,
-      fallbackAllowed: developmentNotificationFallbackEnabled(),
-      resolvedEmail: stripeCustomerEmail ?? null
-    });
-  } catch (error) {
-    console.warn("[billing-notification-error] webhook notification user resolution failed safely", {
-      eventType,
-      message: error instanceof Error ? error.message : String(error),
-      resolvedEmail: stripeCustomerEmail ?? null,
-      resolvedUserId: null
-    });
-  }
-
-  return null;
-}
-
 async function createWebhookBillingNotification(input: {
   eventId: string;
   metadata: Record<string, unknown>;
@@ -593,11 +472,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     event.type === "customer.subscription.deleted"
   ) {
     const subscription = event.data.object as Stripe.Subscription;
-    const subscriptionCustomerEmail = stripeEmail(subscription.customer);
     const stripeCustomerId =
       typeof subscription.customer === "string"
         ? subscription.customer
         : subscription.customer?.id ?? null;
+    const subscriptionCustomerEmail = await resolveStripeCustomerEmail({
+      customer: subscription.customer,
+      stripeCustomerId
+    });
     const existingSubscription = await findExistingSubscriptionByStripeReference({
       stripeCustomerId,
       stripeSubscriptionId: subscription.id
@@ -741,10 +623,11 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     };
     const stripeSubscriptionId = invoiceSubscriptionId(invoice);
     const stripeCustomerId = stripeId(invoice.customer);
-    const stripeCustomerEmail =
-      typeof invoice.customer_email === "string" && invoice.customer_email.includes("@")
-        ? invoice.customer_email.trim().toLowerCase()
-        : stripeEmail(invoice.customer);
+    const stripeCustomerEmail = await resolveStripeCustomerEmail({
+      customer: invoice.customer,
+      customerEmail: invoice.customer_email,
+      stripeCustomerId
+    });
     const supabase = getBillingSyncClient();
 
     let subscription:
