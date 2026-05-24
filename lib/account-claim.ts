@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getOrCreateAccountProfile } from "@/lib/account-profiles";
+import {
+  assertOwnershipTransferAllowed,
+  recordOwnershipTransferCompleted
+} from "@/lib/stores/ownership-guard";
 import { getStoreActivationByToken } from "@/lib/store-activation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -71,6 +75,29 @@ async function ensureProfileRows(userId: string, email: string, fullName: string
 
 async function claimCurrentSession(token: string): Promise<AccountClaimFormState | null> {
   const supabase = await createClient();
+  const activation = await getStoreActivationByToken(token);
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (activation?.store_instance_id) {
+    try {
+      await assertOwnershipTransferAllowed({
+        actorUserId: user?.id ?? null,
+        storeId: activation.store_instance_id,
+        supabase
+      });
+    } catch (error) {
+      return {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Ownership transfer is temporarily unavailable for this store.",
+        status: "error"
+      };
+    }
+  }
+
   const { data, error } = await supabase.rpc("claim_store_activation_for_current_user" as never, {
     candidate_token: token
   } as never);
@@ -87,6 +114,11 @@ async function claimCurrentSession(token: string): Promise<AccountClaimFormState
   const claimStatus = result?.claim_status ?? "not_found";
 
   if (claimStatus === "claimed") {
+    await recordOwnershipTransferCompleted({
+      actorUserId: user?.id ?? null,
+      storeId: activation?.store_instance_id ?? null,
+      supabase
+    });
     revalidatePath("/dashboard/stores");
     revalidatePath("/reseller/dashboard/orders");
     redirect("/dashboard/stores");

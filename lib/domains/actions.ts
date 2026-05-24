@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import {
   buildDnsVerification,
   buildNameserverInstructions,
@@ -108,6 +109,21 @@ async function upsertPublicationHost({
   } as never);
 }
 
+async function storeIdForStoreSource(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sourceSlug: string,
+  userId: string
+) {
+  const { data } = await supabase
+    .from("stores")
+    .select("id")
+    .eq("slug", sourceSlug)
+    .or(`owner_user_id.eq.${userId},user_id.eq.${userId}`)
+    .maybeSingle();
+
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
 export async function reserveFreeSubdomain(formData: FormData) {
   const { supabase, user } = await requireUser();
   const sourceType = sourceTypeFromForm(formData);
@@ -146,6 +162,19 @@ export async function reserveFreeSubdomain(formData: FormData) {
     sourceType,
     status: "published",
     userId: user.id
+  });
+  await recordStoreAuditLogSafe({
+    action: "domain_connected",
+    actorUserId: user.id,
+    metadata: {
+      domainType: "subdomain",
+      source: "domains"
+    },
+    storeId:
+      sourceType === "store"
+        ? await storeIdForStoreSource(supabase, sourceSlug, user.id)
+        : null,
+    supabase
   });
 
   revalidatePath("/dashboard/domains");
@@ -209,6 +238,19 @@ export async function connectCustomDomain(formData: FormData) {
     sourceType,
     status: "pending",
     userId: user.id
+  });
+  await recordStoreAuditLogSafe({
+    action: "domain_connected",
+    actorUserId: user.id,
+    metadata: {
+      domainType: "custom",
+      source: "domains"
+    },
+    storeId:
+      sourceType === "store"
+        ? await storeIdForStoreSource(supabase, sourceSlug, user.id)
+        : null,
+    supabase
   });
 
   revalidatePath("/dashboard/domains");

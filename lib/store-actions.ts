@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import {
   canUseSeo,
   getUpgradeMessage,
@@ -724,6 +725,16 @@ async function persistStoreDraftFromForm(
   }
 
   await persistStoreSlug(supabase, store.id, storeName);
+  await recordStoreAuditLogSafe({
+    action: "store_created",
+    actorUserId: user.id,
+    metadata: {
+      source: "store_draft",
+      templateId
+    },
+    storeId: store.id,
+    supabase
+  });
 
   console.log("[saveStoreDraft] persistStoreDraftFromForm complete", store.id);
   return { ok: true, storeId: store.id };
@@ -1489,6 +1500,15 @@ export async function saveStoreThemeSettings(formData: FormData) {
     })
     .eq("id", store.id)
     .or(storeOwnerOrFilter(user.id));
+  await recordStoreAuditLogSafe({
+    action: "store_updated",
+    actorUserId: user.id,
+    metadata: {
+      source: "theme_settings"
+    },
+    storeId: store.id,
+    supabase
+  });
 
   const { data: publication } = await supabase
     .from("published_stores")
@@ -1559,6 +1579,15 @@ export async function resetStoreThemeSettings(formData: FormData) {
     })
     .eq("id", store.id)
     .or(storeOwnerOrFilter(user.id));
+  await recordStoreAuditLogSafe({
+    action: "store_updated",
+    actorUserId: user.id,
+    metadata: {
+      source: "theme_reset"
+    },
+    storeId: store.id,
+    supabase
+  });
 
   await revalidateStoreCatalogPaths(supabase, store.id, store.slug);
   redirect(`${detailPath}?theme=reset`);
@@ -1694,6 +1723,16 @@ export async function saveStorePublicationSettings(formData: FormData) {
   if (error) {
     redirectWithStoreError(detailPath, formatStoreActionError(error));
   }
+  await recordStoreAuditLogSafe({
+    action: "store_updated",
+    actorUserId: user.id,
+    metadata: {
+      source: "publication_settings",
+      visibility
+    },
+    storeId: store.id,
+    supabase
+  });
 
   revalidatePath(`/dashboard/stores/${store.id}`);
   revalidatePath("/dashboard/stores");
@@ -1818,6 +1857,16 @@ export async function saveStoreDomainSettings(formData: FormData) {
   if (error) {
     redirectWithStoreError(detailPath, formatStoreActionError(error));
   }
+  await recordStoreAuditLogSafe({
+    action: customDomain ? "domain_connected" : "store_updated",
+    actorUserId: user.id,
+    metadata: {
+      domainType: customDomain ? "custom" : "subdomain",
+      source: "domain_settings"
+    },
+    storeId: store.id,
+    supabase
+  });
 
   revalidatePath(detailPath);
   revalidatePath("/dashboard/stores");
@@ -1874,9 +1923,18 @@ export async function unpublishStore(formData: FormData) {
     if (error) {
       redirectWithStoreError(detailPath, formatStoreActionError(error));
     }
-
     revalidatePath(`/store/${publication.slug}`);
   }
+
+  await recordStoreAuditLogSafe({
+    action: "store_unpublished",
+    actorUserId: user.id,
+    metadata: {
+      source: "store_action"
+    },
+    storeId,
+    supabase
+  });
 
   revalidatePath("/dashboard/stores");
   revalidatePath(detailPath);
@@ -2056,5 +2114,14 @@ export async function publishStoreDraft(formData: FormData) {
   revalidatePath("/dashboard/stores");
   revalidatePath("/dashboard");
   revalidatePath(`/store/${publishedSlug}`);
+  await recordStoreAuditLogSafe({
+    action: "store_published",
+    actorUserId: user.id,
+    metadata: {
+      source: "store_action"
+    },
+    storeId: updatedStore.id,
+    supabase
+  });
   redirect(`/dashboard/stores?published=${publishedSlug}`);
 }

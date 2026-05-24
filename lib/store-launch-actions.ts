@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import { layoutDiffPreparation } from "@/lib/builder-version-utils";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import {
@@ -454,6 +455,16 @@ export async function publishStorefrontDraftAction(formData: FormData) {
 
   revalidatePath(builderPath(context.storeId));
   revalidatePath(`/store/${context.store.internal_slug ?? context.storeId}`);
+  await recordStoreAuditLogSafe({
+    action: "store_published",
+    actorUserId: context.userId,
+    metadata: {
+      source: "store_launch_flow",
+      versionNumber
+    },
+    storeId: context.storeId,
+    supabase: context.supabase
+  });
   builderRedirect(context.storeId, "launch-complete");
 }
 

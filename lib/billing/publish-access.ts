@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import {
   canPublishStore,
   getUserSubscriptionAccessForClient
@@ -81,6 +82,18 @@ export async function canPublishStorefront(input: {
       storeId: input.store.id,
       userId: input.userId
     });
+    if (storeAccess.state === "locked_by_plan") {
+      await recordStoreAuditLogSafe({
+        action: "store_locked_by_plan",
+        actorUserId: input.userId,
+        metadata: {
+          source: "publish_guard",
+          planId: subscription.plan.id
+        },
+        storeId: input.store.id,
+        supabase: input.supabase
+      });
+    }
     return result;
   }
 
@@ -179,6 +192,19 @@ export async function getPublicStorefrontAccess(input: {
     storeId: input.storeId,
     userId: ownerId
   });
+
+  if (access.state === "locked_by_plan") {
+    await recordStoreAuditLogSafe({
+      action: "store_locked_by_plan",
+      actorUserId: ownerId,
+      metadata: {
+        source: "public_storefront",
+        planId: access.subscription.plan.id
+      },
+      storeId: input.storeId,
+      supabase: input.supabase
+    });
+  }
 
   return {
     allowed,

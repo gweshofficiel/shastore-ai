@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  assertOwnershipTransferAllowed,
+  recordOwnershipTransferCompleted
+} from "@/lib/stores/ownership-guard";
 import { createClient } from "@/lib/supabase/server";
 
 export type StoreActivationView = {
@@ -137,6 +141,28 @@ export async function claimStoreByActivationToken(
     }
 
     const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (activation.store_instance_id) {
+      try {
+        await assertOwnershipTransferAllowed({
+          actorUserId: user?.id ?? null,
+          storeId: activation.store_instance_id,
+          supabase
+        });
+      } catch (error) {
+        return {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Ownership transfer is temporarily unavailable for this store.",
+          status: "error"
+        };
+      }
+    }
+
     const { data, error } = await supabase.rpc("activate_store_by_token" as never, {
       candidate_token: token
     } as never);
@@ -185,6 +211,12 @@ export async function claimStoreByActivationToken(
         status: "error"
       };
     }
+
+    await recordOwnershipTransferCompleted({
+      actorUserId: user?.id ?? null,
+      storeId: activation.store_instance_id,
+      supabase
+    });
 
     revalidatePath("/dashboard/stores");
     revalidatePath("/reseller/dashboard/orders");

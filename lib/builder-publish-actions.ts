@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import { normalizeBuilderPageSchema, type BuilderPageSchema } from "@/lib/storefront/builder";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { validateDraftBeforePublish } from "@/lib/builder-publish-utils";
@@ -345,6 +346,16 @@ export async function publishBuilderDraft(formData: FormData) {
 
   revalidatePath(builderPath(storeId));
   revalidatePath(`/store/${storeId}`);
+  await recordStoreAuditLogSafe({
+    action: "store_published",
+    actorUserId: userId,
+    metadata: {
+      source: "builder_publish",
+      versionNumber
+    },
+    storeId,
+    supabase
+  });
   builderRedirect(storeId, "publish-complete");
 }
 

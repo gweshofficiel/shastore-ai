@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
 import {
   assertCanConnectCustomDomain,
   assertCanUseExistingCustomDomain
@@ -167,6 +168,17 @@ export async function createStoreSubdomain(formData: FormData) {
     domainsRedirect(storeId, "save-failed");
   }
 
+  await recordStoreAuditLogSafe({
+    action: "domain_connected",
+    actorUserId: userId,
+    metadata: {
+      domainType: "subdomain",
+      source: "store_domains"
+    },
+    storeId,
+    supabase
+  });
+
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "subdomain-saved");
 }
@@ -227,6 +239,17 @@ export async function attachCustomDomain(formData: FormData) {
     });
     domainsRedirect(storeId, "save-failed");
   }
+
+  await recordStoreAuditLogSafe({
+    action: "domain_connected",
+    actorUserId: userId,
+    metadata: {
+      domainType: "custom",
+      source: "store_domains"
+    },
+    storeId,
+    supabase
+  });
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "custom-domain-saved");
