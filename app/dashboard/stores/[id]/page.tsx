@@ -108,6 +108,7 @@ import {
   canUseCustomDomains,
   getRemainingDomainQuota
 } from "@/lib/billing/domain-access";
+import { getExpiryLockdownState } from "@/lib/billing/expiry-lockdown";
 import { getStoreAccessForUser } from "@/lib/billing/store-access";
 import {
   aiGenerationStatusLabel,
@@ -4221,6 +4222,8 @@ export default async function StoreDraftPage({
   const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
   const storeIsLocked =
     storeAccess.state === "locked_by_plan" || storeAccess.state === "suspended";
+  const billingRestriction = getExpiryLockdownState(storeAccess.subscription);
+  const protectedActionsBlocked = billingRestriction.paidAccessLocked;
   const remainingDomainQuota = getRemainingDomainQuota(storeAccess.subscription);
   const customDomainsBlocked =
     !canUseCustomDomains(storeAccess.subscription) ||
@@ -4245,6 +4248,23 @@ export default async function StoreDraftPage({
               </p>
             </div>
             <ButtonLink href="/dashboard/billing">Upgrade to unlock</ButtonLink>
+          </div>
+        </Card>
+      ) : null}
+      {protectedActionsBlocked && !storeIsLocked ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-amber-900">
+                Storefront remains online, editing is paused
+              </p>
+              <p className="mt-1 text-sm font-semibold text-amber-800">
+                {billingRestriction.label === "grace_period"
+                  ? `Payment recovery is in grace period${billingRestriction.gracePeriodRemainingDays ? ` for ${billingRestriction.gracePeriodRemainingDays} more day${billingRestriction.gracePeriodRemainingDays === 1 ? "" : "s"}` : ""}. Publishing, theme edits, custom domains, and premium actions are paused.`
+                  : billingRestriction.reason}
+              </p>
+            </div>
+            <ButtonLink href="/dashboard/billing">Reactivate subscription</ButtonLink>
           </div>
         </Card>
       ) : null}
@@ -4397,7 +4417,7 @@ export default async function StoreDraftPage({
             ) : (
               <form action={publishStoreDraft}>
                 <input name="storeId" type="hidden" value={store.id} />
-                <Button type="submit">
+                <Button disabled={protectedActionsBlocked} type="submit">
                   {publication?.status === "unpublished" ? "Republish store" : "Publish store"}
                 </Button>
               </form>
@@ -4540,7 +4560,7 @@ export default async function StoreDraftPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-            <Button type="submit">Save publication settings</Button>
+            <Button disabled={protectedActionsBlocked} type="submit">Save publication settings</Button>
             {publication?.slug ? (
               <CopyStoreUrlButton url={`/store/${publication.slug}`} />
             ) : null}
@@ -4643,9 +4663,10 @@ export default async function StoreDraftPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-            <Button type="submit">Save domain</Button>
+            <Button disabled={protectedActionsBlocked} type="submit">Save domain</Button>
             {publication?.custom_domain ? (
               <Button
+                disabled={protectedActionsBlocked}
                 form="store-domain-verify-form"
                 type="submit"
                 variant="secondary"
@@ -4679,7 +4700,7 @@ export default async function StoreDraftPage({
         </div>
         <form action={resetStoreThemeSettings} className="mt-5">
           <input name="storeId" type="hidden" value={store.id} />
-          <Button type="submit" variant="ghost">Reset to default theme</Button>
+          <Button disabled={protectedActionsBlocked} type="submit" variant="ghost">Reset to default theme</Button>
         </form>
         <form action={saveStoreThemeSettings} className="mt-5 grid gap-5">
           <input name="storeId" type="hidden" value={store.id} />
@@ -4835,7 +4856,7 @@ export default async function StoreDraftPage({
             />
           </div>
           <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-            <Button type="submit">Save theme settings</Button>
+            <Button disabled={protectedActionsBlocked} type="submit">Save theme settings</Button>
             {publication?.status === "published" ? (
               <ButtonLink href={`/store/${publication.slug}`} target="_blank" variant="secondary">
                 Preview public store

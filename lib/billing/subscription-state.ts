@@ -7,10 +7,11 @@ import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 export type DerivedSubscriptionStateLabel =
   | "active"
   | "cancel_at_period_end"
-  | "downgraded_over_limit"
-  | "expired"
+  | "canceled"
+  | "grace_period"
   | "past_due"
   | "restricted"
+  | "downgraded_over_limit"
   | "unpaid";
 
 export type OverLimitResourceState = {
@@ -22,6 +23,8 @@ export type OverLimitResourceState = {
 
 export type DerivedSubscriptionState = {
   cancellationDate: string | null;
+  gracePeriodRemainingDays: number | null;
+  gracePeriodUntil: string | null;
   label: DerivedSubscriptionStateLabel;
   overLimitResources: OverLimitResourceState[];
   restricted: boolean;
@@ -57,6 +60,7 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
   const expiry = getExpiryLockdownState({
     cancelAtPeriodEnd: access.cancelAtPeriodEnd,
     currentPeriodEnd: access.currentPeriodEnd,
+    gracePeriodUntil: access.gracePeriodUntil,
     planId: access.plan.id,
     status: access.status
   });
@@ -84,8 +88,10 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
   });
   let label: DerivedSubscriptionStateLabel = "active";
 
-  if (expiry.label === "expired") {
-    label = "expired";
+  if (expiry.label === "grace_period") {
+    label = "grace_period";
+  } else if (expiry.label === "canceled") {
+    label = "canceled";
   } else if (expiry.label === "past_due") {
     label = "past_due";
   } else if (expiry.label === "unpaid") {
@@ -104,9 +110,11 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
     warning = "Your current usage is above this plan's limits. Existing data stays safe, but new resources are blocked until usage is reduced or you upgrade again.";
   } else if (label === "past_due" || label === "unpaid") {
     warning = "Payment needs attention. Existing data stays safe, but paid actions are locked until billing is resolved.";
+  } else if (label === "grace_period") {
+    warning = `Payment failed. Storefronts remain online during grace period, but protected actions are paused${expiry.gracePeriodRemainingDays ? ` for ${expiry.gracePeriodRemainingDays} more day${expiry.gracePeriodRemainingDays === 1 ? "" : "s"}` : ""}.`;
   } else if (label === "cancel_at_period_end") {
     warning = "Your subscription is scheduled to cancel at period end. Access continues until the current period ends.";
-  } else if (label === "expired") {
+  } else if (label === "canceled") {
     warning = "Your subscription period has ended. Reactivate billing to unlock paid features again.";
   } else if (label === "restricted") {
     warning = "Your subscription is restricted. Existing resources remain available, but new paid resources are blocked.";
@@ -122,13 +130,16 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
   });
 
   return {
-    cancellationDate: access.cancelAtPeriodEnd || label === "expired" ? access.currentPeriodEnd : null,
+    cancellationDate: access.cancelAtPeriodEnd || label === "canceled" ? access.currentPeriodEnd : null,
+    gracePeriodRemainingDays: expiry.gracePeriodRemainingDays,
+    gracePeriodUntil: expiry.gracePeriodUntil,
     label,
     overLimitResources,
     restricted:
       label === "past_due" ||
       label === "unpaid" ||
-      label === "expired" ||
+      label === "grace_period" ||
+      label === "canceled" ||
       label === "restricted" ||
       label === "downgraded_over_limit",
     upgradePlanId: upgrade.planId,

@@ -16,6 +16,7 @@ export type UserSubscriptionAccess = {
   plan: BillingPlan;
   status: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
   currentPeriodEnd: string | null;
+  gracePeriodUntil: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   cancelAtPeriodEnd: boolean;
@@ -38,6 +39,7 @@ export type BillingLimitResource = "domains" | "landings" | "stores";
 type SubscriptionRow = {
   cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
+  grace_period_until?: string | null;
   plan_id?: string | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
@@ -110,6 +112,7 @@ export async function getUserSubscriptionAccessForClient(
     plan,
     status,
     currentPeriodEnd: subscription?.current_period_end ?? null,
+    gracePeriodUntil: subscription?.grace_period_until ?? null,
     stripeCustomerId: subscription?.stripe_customer_id ?? null,
     stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
     cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
@@ -164,6 +167,7 @@ export function canCreateDomain(access: UserSubscriptionAccess) {
     !isPaidAccessLocked({
       cancelAtPeriodEnd: access.cancelAtPeriodEnd,
       currentPeriodEnd: access.currentPeriodEnd,
+      gracePeriodUntil: access.gracePeriodUntil,
       planId: access.plan.id,
       status: access.status
     }) &&
@@ -218,6 +222,7 @@ export function canPublishStore(access: UserSubscriptionAccess) {
     !isPaidAccessLocked({
       cancelAtPeriodEnd: access.cancelAtPeriodEnd,
       currentPeriodEnd: access.currentPeriodEnd,
+      gracePeriodUntil: access.gracePeriodUntil,
       planId: access.plan.id,
       status: access.status
     })

@@ -17,6 +17,7 @@ import {
   assertCanConnectCustomDomain,
   assertCanUseExistingCustomDomain
 } from "@/lib/billing/domain-access";
+import { assertPaidAccessNotLocked } from "@/lib/billing/expiry-lockdown";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { createClient } from "@/lib/supabase/server";
@@ -1444,6 +1445,17 @@ export async function saveStoreThemeSettings(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
+  const access = await getUserSubscriptionAccess(user.id);
+
+  try {
+    assertPaidAccessNotLocked(access);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Billing needs attention before editing themes."
+    );
+  }
+
   try {
     await assertStoreMutationAllowed(supabase, user.id, store);
   } catch (error) {
@@ -1461,8 +1473,6 @@ export async function saveStoreThemeSettings(formData: FormData) {
     logoUrl: logoImageUrl || themeSettings.logoUrl
   };
   if (isStorePlanGatingEnabled()) {
-    const access = await getUserSubscriptionAccess(user.id);
-
     if (hasCustomBranding(settings, logoImageUrl)) {
       try {
         assertFeatureAccess(access, "custom_branding");
@@ -1554,6 +1564,15 @@ export async function resetStoreThemeSettings(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
   }
 
+  try {
+    assertPaidAccessNotLocked(await getUserSubscriptionAccess(user.id));
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Billing needs attention before editing themes."
+    );
+  }
+
   const { error } = await supabase.from("store_theme_settings").upsert(
     {
       store_id: store.id,
@@ -1627,6 +1646,17 @@ export async function saveStorePublicationSettings(formData: FormData) {
     redirectWithStoreError(
       detailPath,
       error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
+  }
+
+  try {
+    assertPaidAccessNotLocked(await getUserSubscriptionAccess(user.id));
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error
+        ? error.message
+        : "Billing needs attention before updating publication settings."
     );
   }
 

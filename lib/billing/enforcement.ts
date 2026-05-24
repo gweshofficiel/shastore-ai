@@ -113,6 +113,7 @@ function isActiveForBilling(access: UserSubscriptionAccess) {
   return !isPaidAccessLocked({
     cancelAtPeriodEnd: access.cancelAtPeriodEnd,
     currentPeriodEnd: access.currentPeriodEnd,
+    gracePeriodUntil: access.gracePeriodUntil,
     planId: access.plan.id,
     status: access.status
   });

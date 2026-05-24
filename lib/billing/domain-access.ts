@@ -17,6 +17,7 @@ export function canUseCustomDomains(subscription: UserSubscriptionAccess) {
     !isPaidAccessLocked({
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      gracePeriodUntil: subscription.gracePeriodUntil,
       planId: subscription.plan.id,
       status: subscription.status
     })

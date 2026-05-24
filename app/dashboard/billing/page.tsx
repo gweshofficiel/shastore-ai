@@ -205,23 +205,32 @@ export default async function BillingPage({
           recommendedPlanId={subscriptionState.upgradePlanId}
         />
       ) : null}
-      {subscriptionState.label === "expired" ||
+      {subscriptionState.label === "grace_period" ||
+      subscriptionState.label === "canceled" ||
       subscriptionState.label === "past_due" ||
       subscriptionState.label === "unpaid" ||
       subscriptionState.label === "restricted" ? (
-        <Card className="border-red-200 bg-red-50 p-5">
+        <Card className={`p-5 ${subscriptionState.label === "grace_period" ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-red-700">
-                Billing action required
+              <p className={`text-sm font-black uppercase tracking-[0.18em] ${subscriptionState.label === "grace_period" ? "text-amber-700" : "text-red-700"}`}>
+                {subscriptionState.label === "grace_period" ? "Payment recovery grace period" : "Billing action required"}
               </p>
-              <p className="mt-2 text-sm font-bold leading-6 text-red-800">
-                Paid access is locked until billing is reactivated. Your stores, products,
-                orders, and storefront data remain safe.
+              <p className={`mt-2 text-sm font-bold leading-6 ${subscriptionState.label === "grace_period" ? "text-amber-800" : "text-red-800"}`}>
+                {subscriptionState.label === "grace_period"
+                  ? "Storefronts remain online, but publishing, new stores, custom domains, premium templates, analytics, and theme edits are paused until payment recovers."
+                  : "Paid access is locked until billing is reactivated. Your stores, products, orders, and storefront data remain safe."}
               </p>
+              {subscriptionState.label === "grace_period" &&
+              subscriptionState.gracePeriodRemainingDays ? (
+                <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+                  {subscriptionState.gracePeriodRemainingDays} day
+                  {subscriptionState.gracePeriodRemainingDays === 1 ? "" : "s"} remaining
+                </p>
+              ) : null}
               {access.currentPeriodEnd ? (
-                <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-red-700">
-                  Current period ended {formatDate(access.currentPeriodEnd)}
+                <p className={`mt-2 text-xs font-bold uppercase tracking-[0.14em] ${subscriptionState.label === "grace_period" ? "text-amber-700" : "text-red-700"}`}>
+                  Current period end {formatDate(access.currentPeriodEnd)}
                 </p>
               ) : null}
             </div>

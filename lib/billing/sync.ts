@@ -8,6 +8,14 @@ import {
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
 
+function gracePeriodDays() {
+  const raw =
+    process.env.PLATFORM_BILLING_GRACE_PERIOD_DAYS ?? process.env.BILLING_GRACE_PERIOD_DAYS;
+  const parsed = Number(raw);
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : 7;
+}
+
 function normalizeStatus(value: string | null | undefined): SubscriptionStatus {
   if (
     value === "trialing" ||
@@ -35,6 +43,17 @@ function subscriptionPeriodDate(subscription: Stripe.Subscription, key: "current
   const value = typeof directValue === "number" ? directValue : itemValue;
 
   return typeof value === "number" ? dateFromUnix(value) : null;
+}
+
+function calculateGracePeriodUntil(currentPeriodEnd?: string | null) {
+  const periodEndTime = currentPeriodEnd ? new Date(currentPeriodEnd).getTime() : null;
+  const fallbackTime = Date.now() + gracePeriodDays() * 86_400_000;
+  const graceTime =
+    periodEndTime && Number.isFinite(periodEndTime) && periodEndTime > Date.now()
+      ? periodEndTime
+      : fallbackTime;
+
+  return new Date(graceTime).toISOString();
 }
 
 function stripeId(value: { id?: string | null } | string | null | undefined) {
@@ -90,6 +109,7 @@ async function upsertUserSubscription(input: {
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   currentPeriodStart?: string | null;
+  gracePeriodUntil?: string | null;
   planId: SubscriptionPlanId;
   status: SubscriptionStatus;
   stripeCustomerId: string | null;
@@ -103,6 +123,7 @@ async function upsertUserSubscription(input: {
       cancel_at_period_end: input.cancelAtPeriodEnd ?? false,
       current_period_end: input.currentPeriodEnd ?? null,
       current_period_start: input.currentPeriodStart ?? null,
+      grace_period_until: input.gracePeriodUntil ?? null,
       plan_id: plan.id,
       status: input.status,
       stripe_customer_id: input.stripeCustomerId,
@@ -132,13 +153,14 @@ async function upsertUserSubscription(input: {
   });
 
   if (input.status === "active") {
-    console.info("[billing-reactivation] subscription access active", {
+    console.info("[billing-recovery] subscription access active", {
       planId: plan.id,
       stripeSubscriptionId: input.stripeSubscriptionId,
       userId: input.userId
     });
   } else if (input.status === "past_due" || input.status === "unpaid" || input.status === "canceled") {
-    console.warn("[billing-expiry] subscription access restricted", {
+    console.warn(input.gracePeriodUntil ? "[billing-grace] subscription entered grace period" : "[billing-restricted] subscription access restricted", {
+      gracePeriodUntil: input.gracePeriodUntil ?? null,
       planId: plan.id,
       status: input.status,
       stripeSubscriptionId: input.stripeSubscriptionId,
@@ -148,6 +170,8 @@ async function upsertUserSubscription(input: {
 }
 
 async function updateSubscriptionStatusByStripeReference(input: {
+  clearGracePeriod?: boolean;
+  gracePeriodUntil?: string | null;
   status: SubscriptionStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -160,12 +184,20 @@ async function updateSubscriptionStatusByStripeReference(input: {
   }
 
   const supabase = getBillingSyncClient();
+  const updatePayload: Record<string, unknown> = {
+    status: input.status,
+    updated_at: new Date().toISOString()
+  };
+
+  if (input.clearGracePeriod) {
+    updatePayload.grace_period_until = null;
+  } else if (input.gracePeriodUntil) {
+    updatePayload.grace_period_until = input.gracePeriodUntil;
+  }
+
   const query = supabase
     .from("user_subscriptions" as never)
-    .update({
-      status: input.status,
-      updated_at: new Date().toISOString()
-    } as never)
+    .update(updatePayload as never)
     .select("user_id, plan_id, status")
     .limit(1);
 
@@ -194,16 +226,22 @@ async function updateSubscriptionStatusByStripeReference(input: {
   });
 
   if (input.status === "active") {
-    console.info("[billing-reactivation] invoice payment restored subscription access", {
+    console.info("[billing-recovery] invoice payment restored subscription access", {
       stripeSubscriptionId: input.stripeSubscriptionId,
       userId: subscription?.user_id ?? null
     });
   } else {
-    console.warn("[billing-expiry] invoice payment restricted subscription access", {
+    console.warn(
+      input.gracePeriodUntil
+        ? "[billing-grace] invoice payment started grace period"
+        : "[billing-restricted] invoice payment restricted subscription access",
+      {
       status: input.status,
+      gracePeriodUntil: input.gracePeriodUntil ?? null,
       stripeSubscriptionId: input.stripeSubscriptionId,
       userId: subscription?.user_id ?? null
-    });
+      }
+    );
   }
 
   return subscription?.user_id ?? null;
@@ -312,10 +350,17 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         ? "canceled"
         : normalizeStatus(subscription.status);
 
+    const currentPeriodEnd = subscriptionPeriodDate(subscription, "current_period_end");
+    const gracePeriodUntil =
+      status === "past_due" || status === "unpaid"
+        ? calculateGracePeriodUntil(currentPeriodEnd)
+        : null;
+
     await upsertUserSubscription({
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      currentPeriodEnd: subscriptionPeriodDate(subscription, "current_period_end"),
+      currentPeriodEnd,
       currentPeriodStart: subscriptionPeriodDate(subscription, "current_period_start"),
+      gracePeriodUntil,
       planId: status === "canceled" ? "free" : planId,
       status,
       stripeCustomerId:
@@ -344,7 +389,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
     const subscriptionQuery = supabase
       .from("user_subscriptions" as never)
-      .select("id, user_id")
+      .select("id, user_id, current_period_end")
       .limit(1);
 
     const { data: subscriptions } = stripeSubscriptionId
@@ -353,7 +398,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         ? await subscriptionQuery.eq("stripe_customer_id", stripeCustomerId)
         : { data: [] };
     const subscription = (subscriptions ?? [])[0] as
-      | { id: string; user_id: string | null }
+      | { current_period_end?: string | null; id: string; user_id: string | null }
       | undefined;
     const userId = subscription?.user_id ?? null;
 
@@ -383,6 +428,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
     if (event.type === "invoice.payment_failed") {
       await updateSubscriptionStatusByStripeReference({
+        gracePeriodUntil: calculateGracePeriodUntil(subscription?.current_period_end ?? null),
         status: "past_due",
         stripeCustomerId,
         stripeSubscriptionId
@@ -391,6 +437,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
     if (event.type === "invoice.payment_succeeded") {
       await updateSubscriptionStatusByStripeReference({
+        clearGracePeriod: true,
         status: "active",
         stripeCustomerId,
         stripeSubscriptionId

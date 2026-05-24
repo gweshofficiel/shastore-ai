@@ -3,6 +3,7 @@ import {
   getUserSubscriptionAccessForClient,
   type UserSubscriptionAccess
 } from "@/lib/billing/access";
+import { getExpiryLockdownState } from "@/lib/billing/expiry-lockdown";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 
 export type StoreAccessState = "active" | "draft" | "locked_by_plan" | "suspended";
@@ -59,13 +60,11 @@ export function canAccessStore(
   subscription: UserSubscriptionAccess,
   stores: UserStoreRow[]
 ): StoreAccessResult {
-  if (
-    subscription.status === "past_due" ||
-    subscription.status === "incomplete" ||
-    subscription.status === "unpaid"
-  ) {
+  const expiry = getExpiryLockdownState(subscription);
+
+  if (expiry.storefrontLocked || expiry.label === "restricted") {
     return {
-      reason: "This store is suspended until billing is resolved.",
+      reason: expiry.reason ?? "This store is suspended until billing is resolved.",
       state: "suspended",
       storeId: store.id
     };
