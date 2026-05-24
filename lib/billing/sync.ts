@@ -389,6 +389,23 @@ async function createWebhookBillingNotification(input: {
   userId?: string | null;
   webhookType: string;
 }) {
+  console.log("[stripe-debug] notification handler start", {
+    eventId: input.eventId,
+    eventType: input.webhookType,
+    notificationType: input.type,
+    resolvedUserId: input.userId ?? null
+  });
+
+  if (!input.userId) {
+    console.warn("[stripe-debug] notification skipped (no resolved user)", {
+      eventId: input.eventId,
+      eventType: input.webhookType,
+      failureReason: "user_resolution_empty",
+      notificationType: input.type
+    });
+    return;
+  }
+
   try {
     const inserted = await createBillingNotification({
       metadata: {
@@ -400,20 +417,20 @@ async function createWebhookBillingNotification(input: {
       userId: input.userId
     });
 
-    console.info("[billing-notification] webhook notification insert completed", {
+    console.log("[stripe-debug] notification handler completed", {
       eventId: input.eventId,
-      inserted: Boolean(inserted),
-      resolvedUserId: input.userId ?? null,
-      type: input.type,
-      webhookType: input.webhookType
+      eventType: input.webhookType,
+      inserted,
+      notificationType: input.type,
+      resolvedUserId: input.userId
     });
   } catch (error) {
-    console.warn("[billing-notification-error] webhook notification insert failed safely", {
+    console.warn("[stripe-debug] notification handler error", {
       eventId: input.eventId,
+      eventType: input.webhookType,
       message: error instanceof Error ? error.message : String(error),
-      resolvedUserId: input.userId ?? null,
-      type: input.type,
-      webhookType: input.webhookType
+      notificationType: input.type,
+      resolvedUserId: input.userId ?? null
     });
   }
 }
@@ -675,13 +692,23 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     } as never, { onConflict: "provider_invoice_id" });
 
     if (invoiceError) {
-      console.error("[stripe-webhook] invoice upsert failed", {
+      console.warn("[stripe-debug] invoice upsert failed (continuing to notifications)", {
+        code: invoiceError.code,
         eventId: event.id,
+        eventType: event.type,
         invoiceId: invoice.id,
         message: invoiceError.message
       });
-      throw invoiceError;
     }
+
+    console.log("[stripe-debug] invoice event ready for notifications", {
+      billingUserId,
+      customerEmail: stripeCustomerEmail ?? null,
+      eventId: event.id,
+      eventType: event.type,
+      hasStripeCustomerId: Boolean(stripeCustomerId),
+      hasStripeSubscriptionId: Boolean(stripeSubscriptionId)
+    });
 
     if (event.type === "invoice.payment_failed") {
       const gracePeriodUntil = calculateGracePeriodUntil(subscription?.current_period_end ?? null);

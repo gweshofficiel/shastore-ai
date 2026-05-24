@@ -8,6 +8,14 @@ function configuredAdminEmails() {
 }
 
 function notificationTestFallbackEnabled() {
+  if (process.env.VERCEL_ENV === "production") {
+    return false;
+  }
+
+  if (process.env.BILLING_NOTIFICATION_TEST_FALLBACK === "true") {
+    return true;
+  }
+
   return process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
 }
 
@@ -15,13 +23,14 @@ async function findAuthUserIdByEmail(email?: string | null) {
   const normalizedEmail = email?.trim().toLowerCase();
 
   if (!normalizedEmail) {
+    console.log("[stripe-debug] user lookup skipped (no customer email)");
     return null;
   }
 
   const supabase = createAdminClient();
 
   if (!supabase) {
-    console.warn("[billing-notification-skip] user email lookup skipped without service client", {
+    console.warn("[stripe-debug] user lookup failed (missing service role client)", {
       customerEmail: normalizedEmail
     });
     return null;
@@ -136,7 +145,7 @@ export async function resolveNotificationUserId({
 }) {
   try {
     if (currentUserId) {
-      console.info("[billing-notification] webhook user resolved from billing record", {
+      console.log("[stripe-debug] user resolved from billing record", {
         customerEmail: stripeCustomerEmail ?? null,
         eventType,
         resolvedUserId: currentUserId
@@ -147,7 +156,7 @@ export async function resolveNotificationUserId({
     const emailUserId = await findAuthUserIdByEmail(stripeCustomerEmail);
 
     if (emailUserId) {
-      console.info("[billing-notification] webhook user resolved from Stripe customer email", {
+      console.log("[stripe-debug] user resolved from Stripe customer email", {
         customerEmail: stripeCustomerEmail ?? null,
         eventType,
         resolvedUserId: emailUserId
@@ -155,29 +164,35 @@ export async function resolveNotificationUserId({
       return emailUserId;
     }
 
+    console.log("[stripe-debug] user not found by email", {
+      customerEmail: stripeCustomerEmail ?? null,
+      eventType,
+      testFallbackAllowed: notificationTestFallbackEnabled()
+    });
+
     const fallbackUserId = await findTestModeFallbackUserId();
 
     if (fallbackUserId) {
-      console.warn("[billing-notification] test-mode fallback user resolved", {
+      console.log("[stripe-debug] user resolved from test fallback", {
         customerEmail: stripeCustomerEmail ?? null,
         eventType,
-        fallbackMode: "development_or_test",
         resolvedUserId: fallbackUserId
       });
       return fallbackUserId;
     }
 
-    console.warn("[billing-notification-skip] webhook notification user unresolved", {
+    console.warn("[stripe-debug] user resolution failed", {
       customerEmail: stripeCustomerEmail ?? null,
       eventType,
-      fallbackAllowed: notificationTestFallbackEnabled()
+      failureReason: "no_billing_user_no_email_match_no_test_fallback",
+      testFallbackAllowed: notificationTestFallbackEnabled()
     });
   } catch (error) {
-    console.warn("[billing-notification-error] webhook notification user resolution failed safely", {
+    console.warn("[stripe-debug] user resolution error", {
       customerEmail: stripeCustomerEmail ?? null,
       eventType,
-      message: error instanceof Error ? error.message : String(error),
-      resolvedUserId: null
+      failureReason: "resolution_exception",
+      message: error instanceof Error ? error.message : String(error)
     });
   }
 

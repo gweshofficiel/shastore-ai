@@ -143,19 +143,28 @@ export async function createBillingNotification({
   userId: string | null | undefined;
 }) {
   if (!userId) {
-    console.warn("[billing-notification-skip] skipped without user", { type });
+    console.warn("[notification-insert] skipped without user", {
+      failureReason: "missing_user_id",
+      type
+    });
     return false;
   }
 
   const client = createAdminClient();
 
   if (!client) {
-    console.warn("[billing-notification-skip] skipped without service client", { type, userId });
+    console.warn("[notification-insert] skipped without service client", {
+      failureReason: "missing_supabase_service_role",
+      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+      type,
+      userId
+    });
     return false;
   }
 
   if (await notificationAlreadyExists(client, userId, type, providerEventId)) {
-    console.info("[billing-notification-skip] duplicate ignored", { type, userId });
+    console.log("[notification-insert] duplicate ignored", { providerEventId, type, userId });
     return false;
   }
 
@@ -165,16 +174,32 @@ export async function createBillingNotification({
     emailReady: true,
     providerEventId: providerEventId ?? null
   });
-  const { error } = await client.from("notifications" as never).insert({
+  const insertPayload = {
     message: message ?? copy.message,
     metadata: safeMetadata,
     title: title ?? copy.title,
     type,
     user_id: userId
-  } as never);
+  };
+
+  console.log("[notification-insert] attempting insert", {
+    payload: insertPayload,
+    providerEventId: providerEventId ?? null,
+    type,
+    userId
+  });
+
+  const { data, error } = await client
+    .from("notifications" as never)
+    .insert(insertPayload as never)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
-    console.warn("[billing-notification-error] insert failed", {
+    console.warn("[notification-insert] insert failed", {
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
       message: error.message,
       type,
       userId
@@ -182,8 +207,8 @@ export async function createBillingNotification({
     return false;
   }
 
-  console.info("[billing-notification] created", {
-    emailReady: true,
+  console.log("[notification-insert] insert succeeded", {
+    notificationId: (data as { id?: string } | null)?.id ?? null,
     type,
     userId
   });

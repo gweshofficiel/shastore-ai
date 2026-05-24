@@ -51,8 +51,15 @@ export async function POST(request: Request) {
   }
 
   if (!handledEvents.has(event.type)) {
+    console.log("[stripe-debug] event skipped (unhandled type)", { eventType: event.type });
     return NextResponse.json({ received: true, skipped: true }, { status: 200 });
   }
+
+  console.log("[stripe-debug] verified event", {
+    eventId: event.id,
+    eventType: event.type,
+    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+  });
 
   try {
     await syncStripeSubscriptionEvent(event);
