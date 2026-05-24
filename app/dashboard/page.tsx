@@ -71,7 +71,12 @@ async function getDashboardStats() {
   };
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<{ billing?: string }>;
+}) {
+  const query = await searchParams;
   const [stats, commerce, account, access] = await Promise.all([
     getDashboardStats(),
     getCommerceAnalyticsSummary(),
@@ -93,6 +98,13 @@ export default async function DashboardPage() {
         description="Manage product images, AI copy, reusable templates, and published ecommerce landing pages."
         title="Launch center"
       />
+      {query.billing === "success" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Checkout completed. Your plan will update once Stripe sends the platform billing webhook.
+          </p>
+        </Card>
+      ) : null}
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       {access ? (
         <Card className="p-6 lg:p-8">

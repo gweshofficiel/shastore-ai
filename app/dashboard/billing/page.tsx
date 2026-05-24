@@ -77,10 +77,9 @@ export default async function BillingPage({
   searchParams
 }: {
   searchParams: Promise<{
-    checkout?: string;
-    success?: string;
-    canceled?: string;
-    plan?: string;
+    billing?: string;
+    message?: string;
+    reason?: string;
   }>;
 }) {
   const query = await searchParams;
@@ -133,26 +132,18 @@ export default async function BillingPage({
         description="Manage your SHASTORE AI subscription, store limits, and publishing access."
         title="Billing"
       />
-      {query.success ? (
-        <Card className="border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-bold text-emerald-700">
-            Checkout completed. Subscription activation will be finalized by platform billing webhooks.
-          </p>
-        </Card>
-      ) : null}
-      {query.canceled ? (
+      {query.billing === "cancelled" ? (
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-bold text-amber-700">
             Checkout canceled. Your current plan is unchanged.
           </p>
         </Card>
       ) : null}
-      {query.checkout === "placeholder" ? (
-        <Card className="border-blue-200 bg-blue-50 p-5">
-          <p className="text-sm font-bold text-blue-800">
-            Platform billing checkout placeholder is active for {query.plan ?? "this plan"}.
-            Add SHASTORE AI Stripe keys and platform price IDs when ready to process
-            SaaS subscriptions.
+      {query.billing === "error" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-800">
+            {query.message ??
+              "Checkout could not be started. Verify STRIPE_SECRET_KEY and plan price IDs."}
           </p>
         </Card>
       ) : null}
@@ -309,8 +300,8 @@ export default async function BillingPage({
                 Included
               </Button>
             ) : (
-              <form action="/api/platform-billing/checkout" className="mt-6" method="POST">
-                <input name="planId" type="hidden" value={plan.id} />
+              <form action="/api/stripe/create-checkout-session" className="mt-6" method="POST">
+                <input name="plan" type="hidden" value={plan.id} />
                 <Button className="w-full" type="submit">
                   Upgrade to {plan.name}
                 </Button>

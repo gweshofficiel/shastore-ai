@@ -114,7 +114,8 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId =
       metadataValue(session.metadata, "userId", "user_id") ?? session.client_reference_id;
-    const planId = metadataValue(session.metadata, "planId", "plan_id");
+    const planId =
+      metadataValue(session.metadata, "planId", "plan_id") ?? session.metadata?.plan ?? null;
 
     if (!userId) {
       console.error("[stripe-webhook] checkout.session.completed missing user_id metadata", {
@@ -150,7 +151,10 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
   ) {
     const subscription = event.data.object as Stripe.Subscription;
     const userId = metadataValue(subscription.metadata, "userId", "user_id");
-    const planId = metadataValue(subscription.metadata, "planId", "plan_id");
+    const planId =
+      metadataValue(subscription.metadata, "planId", "plan_id") ??
+      subscription.metadata?.plan ??
+      null;
 
     if (!userId) {
       console.error("[stripe-webhook] subscription event missing user_id metadata", {
