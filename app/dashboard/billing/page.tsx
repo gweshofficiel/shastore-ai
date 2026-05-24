@@ -147,8 +147,13 @@ export default async function BillingPage({
     }
   ];
 
+  const routeBuildMarker = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+
   return (
     <div className="grid gap-6 lg:gap-8">
+      <div className="rounded-xl border-4 border-fuchsia-600 bg-fuchsia-500 p-5 text-center text-lg font-black uppercase tracking-[0.18em] text-white shadow-lg">
+        REAL BILLING ROUTE ACTIVE — app/dashboard/billing/page.tsx ({routeBuildMarker})
+      </div>
       <PageHeader
         description="Manage your SHASTORE AI subscription, store limits, and publishing access."
         title="Billing"
