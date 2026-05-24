@@ -144,19 +144,19 @@ export async function createBillingNotification({
 }) {
   if (!userId) {
     console.warn("[billing-notification-skip] skipped without user", { type });
-    return;
+    return false;
   }
 
   const client = createAdminClient();
 
   if (!client) {
     console.warn("[billing-notification-skip] skipped without service client", { type, userId });
-    return;
+    return false;
   }
 
   if (await notificationAlreadyExists(client, userId, type, providerEventId)) {
     console.info("[billing-notification-skip] duplicate ignored", { type, userId });
-    return;
+    return false;
   }
 
   const copy = notificationCopy[type];
@@ -179,7 +179,7 @@ export async function createBillingNotification({
       type,
       userId
     });
-    return;
+    return false;
   }
 
   console.info("[billing-notification] created", {
@@ -193,4 +193,6 @@ export async function createBillingNotification({
     type,
     userId
   });
+
+  return true;
 }

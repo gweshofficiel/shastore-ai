@@ -61,6 +61,26 @@ function stripeId(value: { id?: string | null } | string | null | undefined) {
   return typeof value === "string" ? value : value?.id ?? null;
 }
 
+function stripeEmail(value: unknown) {
+  if (!value || typeof value !== "object" || !("email" in value)) {
+    return null;
+  }
+
+  const email = (value as { email?: unknown }).email;
+  return typeof email === "string" && email.includes("@") ? email.trim().toLowerCase() : null;
+}
+
+function configuredAdminEmails() {
+  return (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function developmentNotificationFallbackEnabled() {
+  return process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+}
+
 function stripeReferenceFromRecord(value: unknown) {
   if (typeof value === "string") {
     return value;
@@ -339,6 +359,186 @@ async function findExistingSubscriptionByStripeReference(input: {
   return customerData as { plan_id: string | null; user_id: string | null } | null;
 }
 
+async function findAuthUserIdByEmail(email?: string | null) {
+  const normalizedEmail = email?.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const supabase = getBillingSyncClient();
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles" as never)
+    .select("id, email")
+    .ilike("email", normalizedEmail)
+    .maybeSingle();
+
+  if (profileError) {
+    console.warn("[billing-notification-skip] profile email lookup failed", {
+      email: normalizedEmail,
+      message: profileError.message
+    });
+  }
+
+  const profileUserId = (profile as { id?: string | null } | null)?.id ?? null;
+
+  if (profileUserId) {
+    return profileUserId;
+  }
+
+  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+
+  if (error) {
+    console.warn("[billing-notification-skip] auth email lookup failed", {
+      email: normalizedEmail,
+      message: error.message
+    });
+    return null;
+  }
+
+  return data.users.find((user) => user.email?.toLowerCase() === normalizedEmail)?.id ?? null;
+}
+
+async function findDevelopmentFallbackAdminUserId() {
+  if (!developmentNotificationFallbackEnabled()) {
+    return null;
+  }
+
+  const adminEmails = configuredAdminEmails();
+
+  for (const email of adminEmails) {
+    const userId = await findAuthUserIdByEmail(email);
+
+    if (userId) {
+      console.warn("[billing-notification] development admin fallback resolved configured admin", {
+        userId
+      });
+      return userId;
+    }
+  }
+
+  const supabase = getBillingSyncClient();
+  const { data: adminProfiles, error } = await supabase
+    .from("account_profiles" as never)
+    .select("user_id")
+    .eq("account_type", "admin")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (error) {
+    console.warn("[billing-notification-skip] development admin fallback profile lookup failed", {
+      message: error.message
+    });
+    return null;
+  }
+
+  const userId = ((adminProfiles ?? [])[0] as { user_id?: string | null } | undefined)?.user_id ?? null;
+
+  if (userId) {
+    console.warn("[billing-notification] development admin fallback resolved account profile", {
+      userId
+    });
+  }
+
+  return userId;
+}
+
+async function resolveNotificationUserId({
+  currentUserId,
+  eventType,
+  stripeCustomerEmail
+}: {
+  currentUserId?: string | null;
+  eventType: string;
+  stripeCustomerEmail?: string | null;
+}) {
+  try {
+    if (currentUserId) {
+      console.info("[billing-notification] webhook user resolved from billing record", {
+        eventType,
+        resolvedEmail: stripeCustomerEmail ?? null,
+        resolvedUserId: currentUserId
+      });
+      return currentUserId;
+    }
+
+    const emailUserId = await findAuthUserIdByEmail(stripeCustomerEmail);
+
+    if (emailUserId) {
+      console.info("[billing-notification] webhook user resolved from Stripe customer email", {
+        eventType,
+        resolvedEmail: stripeCustomerEmail ?? null,
+        resolvedUserId: emailUserId
+      });
+      return emailUserId;
+    }
+
+    const fallbackUserId = await findDevelopmentFallbackAdminUserId();
+
+    if (fallbackUserId) {
+      console.warn("[billing-notification] development-only fallback user resolved", {
+        eventType,
+        fallbackMode: "development",
+        resolvedEmail: stripeCustomerEmail ?? null,
+        resolvedUserId: fallbackUserId
+      });
+      return fallbackUserId;
+    }
+
+    console.warn("[billing-notification-skip] webhook notification user unresolved", {
+      eventType,
+      fallbackAllowed: developmentNotificationFallbackEnabled(),
+      resolvedEmail: stripeCustomerEmail ?? null
+    });
+  } catch (error) {
+    console.warn("[billing-notification-error] webhook notification user resolution failed safely", {
+      eventType,
+      message: error instanceof Error ? error.message : String(error),
+      resolvedEmail: stripeCustomerEmail ?? null,
+      resolvedUserId: null
+    });
+  }
+
+  return null;
+}
+
+async function createWebhookBillingNotification(input: {
+  eventId: string;
+  metadata: Record<string, unknown>;
+  providerEventId: string;
+  type: Parameters<typeof createBillingNotification>[0]["type"];
+  userId?: string | null;
+  webhookType: string;
+}) {
+  try {
+    const inserted = await createBillingNotification({
+      metadata: {
+        ...input.metadata,
+        webhookType: input.webhookType
+      },
+      providerEventId: input.providerEventId,
+      type: input.type,
+      userId: input.userId
+    });
+
+    console.info("[billing-notification] webhook notification insert completed", {
+      eventId: input.eventId,
+      inserted: Boolean(inserted),
+      resolvedUserId: input.userId ?? null,
+      type: input.type,
+      webhookType: input.webhookType
+    });
+  } catch (error) {
+    console.warn("[billing-notification-error] webhook notification insert failed safely", {
+      eventId: input.eventId,
+      message: error instanceof Error ? error.message : String(error),
+      resolvedUserId: input.userId ?? null,
+      type: input.type,
+      webhookType: input.webhookType
+    });
+  }
+}
+
 export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -393,6 +593,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     event.type === "customer.subscription.deleted"
   ) {
     const subscription = event.data.object as Stripe.Subscription;
+    const subscriptionCustomerEmail = stripeEmail(subscription.customer);
     const stripeCustomerId =
       typeof subscription.customer === "string"
         ? subscription.customer
@@ -401,10 +602,15 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       stripeCustomerId,
       stripeSubscriptionId: subscription.id
     });
-    const userId =
+    const billingUserId =
       metadataValue(subscription.metadata, "userId", "user_id") ??
       existingSubscription?.user_id ??
       null;
+    const notificationUserId = await resolveNotificationUserId({
+      currentUserId: billingUserId,
+      eventType: event.type,
+      stripeCustomerEmail: subscriptionCustomerEmail
+    });
     const pricePlanId = paidPlanFromSubscriptionPrice(subscription);
     const planId =
       pricePlanId ??
@@ -423,15 +629,30 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       subscriptionId: subscription.id
     });
 
-    if (!userId || !planId) {
+    if (!billingUserId || !planId) {
       console.error("[stripe-webhook] subscription event missing required metadata", {
         eventId: event.id,
         eventType: event.type,
         hasPlan: Boolean(planId),
-        hasUserId: Boolean(userId),
+        hasUserId: Boolean(billingUserId),
         metadata: subscription.metadata ?? null,
         subscriptionId: subscription.id
       });
+      if (event.type === "customer.subscription.deleted" && notificationUserId) {
+        await createWebhookBillingNotification({
+          eventId: event.id,
+          metadata: {
+            eventType: event.type,
+            planId: "free",
+            resolvedEmail: subscriptionCustomerEmail,
+            status: "canceled"
+          },
+          providerEventId: event.id,
+          type: "subscription_canceled",
+          userId: notificationUserId,
+          webhookType: event.type
+        });
+      }
       await logBillingEvent(event);
       return;
     }
@@ -456,48 +677,57 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       status,
       stripeCustomerId,
       stripeSubscriptionId: subscription.id,
-      userId
+      userId: billingUserId
     });
 
     if (status === "canceled") {
-      await createBillingNotification({
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
           planId: "free",
+          resolvedEmail: subscriptionCustomerEmail,
           status
         },
         providerEventId: event.id,
         type: "subscription_canceled",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
     } else if (event.type === "customer.subscription.updated" && subscription.cancel_at_period_end) {
-      await createBillingNotification({
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
           currentPeriodEnd,
           eventType: event.type,
           planId,
+          resolvedEmail: subscriptionCustomerEmail,
           status
         },
         providerEventId: event.id,
         type: "subscription_canceled_at_period_end",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
     } else if (status === "past_due" || status === "unpaid") {
-      await createBillingNotification({
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
           gracePeriodUntil,
           planId,
+          resolvedEmail: subscriptionCustomerEmail,
           status
         },
         providerEventId: event.id,
         type: gracePeriodUntil ? "grace_period_started" : "subscription_restricted",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
     }
 
-    await logBillingEvent(event, userId);
+    await logBillingEvent(event, billingUserId);
     return;
   }
 
@@ -511,6 +741,10 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     };
     const stripeSubscriptionId = invoiceSubscriptionId(invoice);
     const stripeCustomerId = stripeId(invoice.customer);
+    const stripeCustomerEmail =
+      typeof invoice.customer_email === "string" && invoice.customer_email.includes("@")
+        ? invoice.customer_email.trim().toLowerCase()
+        : stripeEmail(invoice.customer);
     const supabase = getBillingSyncClient();
 
     let subscription:
@@ -530,14 +764,15 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         | undefined;
     }
 
-    const userId = subscription?.user_id ?? null;
+    const billingUserId = subscription?.user_id ?? null;
 
-    if (!userId) {
+    if (!billingUserId) {
       console.warn("[billing-notification-skip] invoice event has no matching user subscription", {
         eventId: event.id,
         eventType: event.type,
         hasStripeCustomerId: Boolean(stripeCustomerId),
-        hasStripeSubscriptionId: Boolean(stripeSubscriptionId)
+        hasStripeSubscriptionId: Boolean(stripeSubscriptionId),
+        resolvedEmail: stripeCustomerEmail ?? null
       });
     }
 
@@ -553,7 +788,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       provider_invoice_id: invoice.id,
       status: invoice.status ?? "draft",
       subscription_id: subscription?.id ?? null,
-      user_id: userId
+      user_id: billingUserId
     } as never, { onConflict: "provider_invoice_id" });
 
     if (invoiceError) {
@@ -567,62 +802,84 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
     if (event.type === "invoice.payment_failed") {
       const gracePeriodUntil = calculateGracePeriodUntil(subscription?.current_period_end ?? null);
-      await updateSubscriptionStatusByStripeReference({
+      const updatedUserId = await updateSubscriptionStatusByStripeReference({
         gracePeriodUntil,
         status: "past_due",
         stripeCustomerId,
         stripeSubscriptionId
       });
-      await createBillingNotification({
+      const notificationUserId = await resolveNotificationUserId({
+        currentUserId: billingUserId ?? updatedUserId,
+        eventType: event.type,
+        stripeCustomerEmail
+      });
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
           gracePeriodUntil,
+          resolvedEmail: stripeCustomerEmail,
           status: "past_due"
         },
         providerEventId: event.id,
         type: "payment_failed",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
-      await createBillingNotification({
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
           gracePeriodUntil,
+          resolvedEmail: stripeCustomerEmail,
           status: "past_due"
         },
         providerEventId: `${event.id}:grace`,
         type: "grace_period_started",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
     }
 
     if (event.type === "invoice.payment_succeeded") {
-      await updateSubscriptionStatusByStripeReference({
+      const updatedUserId = await updateSubscriptionStatusByStripeReference({
         clearGracePeriod: true,
         status: "active",
         stripeCustomerId,
         stripeSubscriptionId
       });
-      await createBillingNotification({
+      const notificationUserId = await resolveNotificationUserId({
+        currentUserId: billingUserId ?? updatedUserId,
+        eventType: event.type,
+        stripeCustomerEmail
+      });
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
+          resolvedEmail: stripeCustomerEmail,
           status: "active"
         },
         providerEventId: event.id,
         type: "payment_recovered",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
-      await createBillingNotification({
+      await createWebhookBillingNotification({
+        eventId: event.id,
         metadata: {
           eventType: event.type,
+          resolvedEmail: stripeCustomerEmail,
           status: "active"
         },
         providerEventId: `${event.id}:reactivated`,
         type: "subscription_reactivated",
-        userId
+        userId: notificationUserId,
+        webhookType: event.type
       });
     }
 
-    await logBillingEvent(event, userId);
+    await logBillingEvent(event, billingUserId);
     return;
   }
 
