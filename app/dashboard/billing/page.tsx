@@ -282,6 +282,9 @@ export default async function BillingPage({
             <p className="font-black text-ink">Stripe subscription status</p>
             <p className="mt-1 capitalize text-muted">{access.status}</p>
           </div>
+          <div className="mt-5 rounded-xl border-4 border-red-700 bg-red-600 p-4 text-center text-base font-black uppercase tracking-[0.18em] text-white">
+            MANAGE BUTTON SHOULD BE HERE
+          </div>
           {canManageSubscription ? (
             <form action="/api/stripe/billing-portal" className="mt-5" method="POST">
               <Button className="w-full" type="submit">
@@ -350,6 +353,11 @@ export default async function BillingPage({
                 </div>
               ))}
             </div>
+            {plan.id === currentPlan.id ? (
+              <div className="mt-6 rounded-xl border-4 border-red-700 bg-red-600 p-4 text-center text-base font-black uppercase tracking-[0.18em] text-white">
+                MANAGE BUTTON SHOULD BE HERE
+              </div>
+            ) : null}
             {plan.id === currentPlan.id && canManageSubscription ? (
               <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
                 <Button className="w-full" type="submit">
