@@ -51,13 +51,17 @@ export async function createBillingCheckout(
     line_items: [{ price: priceId, quantity: 1 }],
     metadata: {
       planId: request.plan.id,
-      userId: request.userId
+      plan_id: request.plan.id,
+      userId: request.userId,
+      user_id: request.userId
     },
     mode: "subscription",
     subscription_data: {
       metadata: {
         planId: request.plan.id,
-        userId: request.userId
+        plan_id: request.plan.id,
+        userId: request.userId,
+        user_id: request.userId
       }
     },
     success_url: absoluteUrl("/dashboard/billing?success=true"),

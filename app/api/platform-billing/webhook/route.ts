@@ -20,6 +20,7 @@ export async function POST(request: Request) {
 
   switch (event.type) {
     case "checkout.session.completed":
+    case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
     case "invoice.finalized":
