@@ -7,6 +7,7 @@ import {
   type BillingPlan,
   type SubscriptionPlanId
 } from "@/lib/billing/plans";
+import { getBillingUsageForUser } from "@/lib/billing/usage";
 
 export type UserSubscriptionAccess = {
   userId: string;
@@ -22,7 +23,7 @@ export type UserSubscriptionAccess = {
     publishedStoresUsed: number;
     ordersUsed: number;
     trafficUsed: number;
-    storageMbUsed: number;
+    storageMbUsed: number | null;
     domainsUsed: number;
     landingLimit: number | null;
     storeLimit: number | null;
@@ -74,51 +75,7 @@ export async function getUserSubscriptionAccess(
   userId: string
 ): Promise<UserSubscriptionAccess> {
   const supabase = await createClient();
-
-  const { count: storesCount } = await supabase
-    .from("stores")
-    .select("id", { count: "exact", head: true })
-    .or(`user_id.eq.${userId},owner_user_id.eq.${userId}`);
-
-  const { count: publishedStoresCount } = await supabase
-    .from("published_stores")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("status", "published");
-
-  const { count: landingsCount } = await supabase
-    .from("landing_pages")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  const { count: ordersCount } = await supabase
-    .from("commerce_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  const { count: storeDomainsCount, error: storeDomainsError } = await supabase
-    .from("store_domains" as never)
-    .select("id", { count: "exact", head: true })
-    .eq("owner_user_id", userId);
-
-  const { count: publishedCustomDomainsCount } = storeDomainsError
-    ? await supabase
-        .from("published_stores")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .not("custom_domain", "is", null)
-    : { count: null };
-
-  const { count: trafficCount } = await supabase
-    .from("analytics_events")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("event_type", "page_view");
-
-  const { count: storageImageCount } = await supabase
-    .from("product_images")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+  const usage = await getBillingUsageForUser(supabase, userId);
 
   const { data, error } = await supabase
     .from("user_subscriptions" as never)
@@ -148,13 +105,13 @@ export async function getUserSubscriptionAccess(
     stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
     cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
     usage: {
-      landingsUsed: landingsCount ?? 0,
-      storesUsed: storesCount ?? 0,
-      publishedStoresUsed: publishedStoresCount ?? 0,
-      ordersUsed: ordersCount ?? 0,
-      trafficUsed: trafficCount ?? 0,
-      storageMbUsed: Math.round(((storageImageCount ?? 0) * 1.5 + Number.EPSILON) * 10) / 10,
-      domainsUsed: storeDomainsCount ?? publishedCustomDomainsCount ?? 0,
+      landingsUsed: usage.landingsUsed,
+      storesUsed: usage.storesUsed,
+      publishedStoresUsed: usage.publishedStoresUsed,
+      ordersUsed: usage.ordersUsed,
+      trafficUsed: usage.trafficUsed,
+      storageMbUsed: usage.storageMbUsed,
+      domainsUsed: usage.domainsUsed,
       landingLimit: plan.landingLimit,
       storeLimit: plan.storeLimit,
       domainLimit: plan.domainLimit

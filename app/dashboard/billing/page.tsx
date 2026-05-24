@@ -104,23 +104,9 @@ export default async function BillingPage({
   const isPaid = currentPlan.id !== "free";
   const hasActiveSubscription = access.status === "active";
   const hasStripeCustomerId = Boolean(access.stripeCustomerId);
-  const hasStripeSubscriptionId = Boolean(access.stripeSubscriptionId);
   const canManageSubscription = isPaid && hasActiveSubscription && hasStripeCustomerId;
   const paidSubscriptionMissingCustomer =
     isPaid && hasActiveSubscription && !hasStripeCustomerId;
-
-  console.info("[billing-debug] manage subscription visibility", {
-    canManageSubscription,
-    currentPlan,
-    hasActiveSubscription,
-    hasStripeCustomerId,
-    hasStripeSubscriptionId,
-    isPaid,
-    stripeCustomerId: access.stripeCustomerId,
-    stripeSubscriptionId: access.stripeSubscriptionId,
-    subscriptionStatus: access.status,
-    userId: access.userId
-  });
 
   const billingHistory = await getBillingHistory(access.userId);
   const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
@@ -147,13 +133,8 @@ export default async function BillingPage({
     }
   ];
 
-  const routeBuildMarker = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
-
   return (
     <div className="grid gap-6 lg:gap-8">
-      <div className="rounded-xl border-4 border-fuchsia-600 bg-fuchsia-500 p-5 text-center text-lg font-black uppercase tracking-[0.18em] text-white shadow-lg">
-        REAL BILLING ROUTE ACTIVE — app/dashboard/billing/page.tsx ({routeBuildMarker})
-      </div>
       <PageHeader
         description="Manage your SHASTORE AI subscription, store limits, and publishing access."
         title="Billing"
@@ -191,20 +172,6 @@ export default async function BillingPage({
           </p>
         </Card>
       ) : null}
-      <Card className="border-dashed border-slate-300 bg-slate-50 p-5">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-          Temporary billing debug
-        </p>
-        <div className="mt-4 grid gap-2 text-sm font-bold text-slate-700 sm:grid-cols-2">
-          <p>Current plan: {currentPlan.id}</p>
-          <p>Subscription status: {access.status}</p>
-          <p>Stripe customer ID exists: {hasStripeCustomerId ? "yes" : "no"}</p>
-          <p>Stripe subscription ID exists: {hasStripeSubscriptionId ? "yes" : "no"}</p>
-          <p>isPaid: {isPaid ? "yes" : "no"}</p>
-          <p>hasActiveSubscription: {hasActiveSubscription ? "yes" : "no"}</p>
-          <p>Manage subscription visible: {canManageSubscription ? "yes" : "no"}</p>
-        </div>
-      </Card>
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="overflow-hidden p-0">
           <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 text-white lg:p-8">
@@ -263,10 +230,12 @@ export default async function BillingPage({
               </div>
               <div className="rounded-3xl bg-slate-50 p-4">
                 <p className="text-2xl font-black text-ink">
-                  {access.usage.storageMbUsed} MB
+                  {access.usage.storageMbUsed === null
+                    ? "Not tracked yet"
+                    : `${access.usage.storageMbUsed} MB`}
                 </p>
                 <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                  Storage estimate
+                  Storage
                 </p>
               </div>
             </div>
@@ -286,9 +255,6 @@ export default async function BillingPage({
           <div className="mt-5 rounded-3xl border border-slate-200 p-4 text-sm leading-6">
             <p className="font-black text-ink">Stripe subscription status</p>
             <p className="mt-1 capitalize text-muted">{access.status}</p>
-          </div>
-          <div className="mt-5 rounded-xl border-4 border-red-700 bg-red-600 p-4 text-center text-base font-black uppercase tracking-[0.18em] text-white">
-            MANAGE BUTTON SHOULD BE HERE
           </div>
           {canManageSubscription ? (
             <form action="/api/stripe/billing-portal" className="mt-5" method="POST">
@@ -358,11 +324,6 @@ export default async function BillingPage({
                 </div>
               ))}
             </div>
-            {plan.id === currentPlan.id ? (
-              <div className="mt-6 rounded-xl border-4 border-red-700 bg-red-600 p-4 text-center text-base font-black uppercase tracking-[0.18em] text-white">
-                MANAGE BUTTON SHOULD BE HERE
-              </div>
-            ) : null}
             {plan.id === currentPlan.id && canManageSubscription ? (
               <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
                 <Button className="w-full" type="submit">
