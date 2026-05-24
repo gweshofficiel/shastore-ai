@@ -61,6 +61,49 @@ function stripeId(value: { id?: string | null } | string | null | undefined) {
   return typeof value === "string" ? value : value?.id ?? null;
 }
 
+function stripeReferenceFromRecord(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" ? id : null;
+  }
+
+  return null;
+}
+
+function invoiceSubscriptionId(invoice: Stripe.Invoice) {
+  const record = invoice as unknown as Record<string, unknown>;
+  const direct = stripeReferenceFromRecord(record.subscription);
+
+  if (direct) {
+    return direct;
+  }
+
+  const subscriptionDetails =
+    record.subscription_details && typeof record.subscription_details === "object"
+      ? (record.subscription_details as Record<string, unknown>)
+      : null;
+  const fromDetails = stripeReferenceFromRecord(subscriptionDetails?.subscription);
+
+  if (fromDetails) {
+    return fromDetails;
+  }
+
+  const parent =
+    record.parent && typeof record.parent === "object"
+      ? (record.parent as Record<string, unknown>)
+      : null;
+  const parentSubscriptionDetails =
+    parent?.subscription_details && typeof parent.subscription_details === "object"
+      ? (parent.subscription_details as Record<string, unknown>)
+      : null;
+
+  return stripeReferenceFromRecord(parentSubscriptionDetails?.subscription);
+}
+
 function getBillingSyncClient() {
   const supabase = createAdminClient();
 
@@ -248,23 +291,52 @@ async function updateSubscriptionStatusByStripeReference(input: {
   return subscription?.user_id ?? null;
 }
 
-async function findExistingSubscriptionByStripeId(stripeSubscriptionId: string) {
+async function findExistingSubscriptionByStripeReference(input: {
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+}) {
   const supabase = getBillingSyncClient();
-  const { data, error } = await supabase
+  let data:
+    | { plan_id: string | null; user_id: string | null }
+    | null = null;
+
+  if (input.stripeSubscriptionId) {
+    const result = await supabase
+      .from("user_subscriptions" as never)
+      .select("user_id, plan_id")
+      .eq("stripe_subscription_id", input.stripeSubscriptionId)
+      .maybeSingle();
+
+    if (result.error) {
+      console.error("[stripe-webhook] existing subscription lookup failed", {
+        message: result.error.message,
+        stripeSubscriptionId: input.stripeSubscriptionId
+      });
+      throw result.error;
+    }
+
+    data = result.data as { plan_id: string | null; user_id: string | null } | null;
+  }
+
+  if (data || !input.stripeCustomerId) {
+    return data;
+  }
+
+  const { data: customerData, error } = await supabase
     .from("user_subscriptions" as never)
     .select("user_id, plan_id")
-    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .eq("stripe_customer_id", input.stripeCustomerId)
     .maybeSingle();
 
   if (error) {
     console.error("[stripe-webhook] existing subscription lookup failed", {
       message: error.message,
-      stripeSubscriptionId
+      stripeCustomerId: input.stripeCustomerId
     });
     throw error;
   }
 
-  return data as { plan_id: string | null; user_id: string | null } | null;
+  return customerData as { plan_id: string | null; user_id: string | null } | null;
 }
 
 export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
@@ -300,6 +372,17 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       userId
     });
 
+    await createBillingNotification({
+      metadata: {
+        eventType: event.type,
+        planId,
+        status: "active"
+      },
+      providerEventId: event.id,
+      type: "subscription_activated",
+      userId
+    });
+
     await logBillingEvent(event, userId);
     return;
   }
@@ -310,7 +393,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     event.type === "customer.subscription.deleted"
   ) {
     const subscription = event.data.object as Stripe.Subscription;
-    const existingSubscription = await findExistingSubscriptionByStripeId(subscription.id);
+    const stripeCustomerId =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer?.id ?? null;
+    const existingSubscription = await findExistingSubscriptionByStripeReference({
+      stripeCustomerId,
+      stripeSubscriptionId: subscription.id
+    });
     const userId =
       metadataValue(subscription.metadata, "userId", "user_id") ??
       existingSubscription?.user_id ??
@@ -364,10 +454,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       gracePeriodUntil,
       planId: status === "canceled" ? "free" : planId,
       status,
-      stripeCustomerId:
-        typeof subscription.customer === "string"
-          ? subscription.customer
-          : subscription.customer?.id ?? null,
+      stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       userId
     });
@@ -383,15 +470,17 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         type: "subscription_canceled",
         userId
       });
-    } else if (status === "active") {
+    } else if (event.type === "customer.subscription.updated" && subscription.cancel_at_period_end) {
       await createBillingNotification({
         metadata: {
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          currentPeriodEnd,
           eventType: event.type,
           planId,
           status
         },
         providerEventId: event.id,
-        type: "subscription_reactivated",
+        type: "subscription_canceled_at_period_end",
         userId
       });
     } else if (status === "past_due" || status === "unpaid") {
@@ -420,24 +509,37 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice & {
       subscription?: string | Stripe.Subscription | null;
     };
-    const stripeSubscriptionId = stripeId(invoice.subscription);
+    const stripeSubscriptionId = invoiceSubscriptionId(invoice);
     const stripeCustomerId = stripeId(invoice.customer);
     const supabase = getBillingSyncClient();
 
-    const subscriptionQuery = supabase
-      .from("user_subscriptions" as never)
-      .select("id, user_id, current_period_end")
-      .limit(1);
-
-    const { data: subscriptions } = stripeSubscriptionId
-      ? await subscriptionQuery.eq("stripe_subscription_id", stripeSubscriptionId)
-      : stripeCustomerId
-        ? await subscriptionQuery.eq("stripe_customer_id", stripeCustomerId)
-        : { data: [] };
-    const subscription = (subscriptions ?? [])[0] as
+    let subscription:
       | { current_period_end?: string | null; id: string; user_id: string | null }
       | undefined;
+
+    if (stripeSubscriptionId || stripeCustomerId) {
+      const query = supabase
+        .from("user_subscriptions" as never)
+        .select("id, user_id, current_period_end")
+        .limit(1);
+      const { data: subscriptions } = stripeSubscriptionId
+        ? await query.eq("stripe_subscription_id", stripeSubscriptionId)
+        : await query.eq("stripe_customer_id", stripeCustomerId as string);
+      subscription = (subscriptions ?? [])[0] as
+        | { current_period_end?: string | null; id: string; user_id: string | null }
+        | undefined;
+    }
+
     const userId = subscription?.user_id ?? null;
+
+    if (!userId) {
+      console.warn("[billing-notification-skip] invoice event has no matching user subscription", {
+        eventId: event.id,
+        eventType: event.type,
+        hasStripeCustomerId: Boolean(stripeCustomerId),
+        hasStripeSubscriptionId: Boolean(stripeSubscriptionId)
+      });
+    }
 
     const { error: invoiceError } = await supabase.from("invoices" as never).upsert({
       amount_due: invoice.amount_due ?? 0,

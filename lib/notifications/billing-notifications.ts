@@ -5,7 +5,9 @@ export type BillingNotificationType =
   | "grace_period_started"
   | "payment_failed"
   | "payment_recovered"
+  | "subscription_activated"
   | "subscription_canceled"
+  | "subscription_canceled_at_period_end"
   | "subscription_reactivated"
   | "subscription_restricted";
 
@@ -29,10 +31,19 @@ const notificationCopy: Record<
     title: "Payment recovered",
     message: "Your payment succeeded and protected SHASTORE AI billing access has been restored."
   },
+  subscription_activated: {
+    title: "Subscription activated",
+    message: "Your SHASTORE AI subscription is active and paid features are available."
+  },
   subscription_canceled: {
     title: "Subscription canceled",
     message:
       "Your subscription has ended. Your data remains safe, but paid access is locked until you reactivate."
+  },
+  subscription_canceled_at_period_end: {
+    title: "Subscription scheduled to cancel",
+    message:
+      "Your subscription is scheduled to cancel at period end. Access continues until the current period ends."
   },
   subscription_reactivated: {
     title: "Subscription reactivated",
@@ -104,7 +115,7 @@ async function notificationAlreadyExists(
     .limit(1);
 
   if (error) {
-    console.warn("[billing-notification] duplicate lookup skipped", {
+    console.warn("[billing-notification-error] duplicate lookup skipped", {
       message: error.message,
       type,
       userId
@@ -119,7 +130,6 @@ export async function createBillingNotification({
   message,
   metadata = {},
   providerEventId,
-  supabase,
   title,
   type,
   userId
@@ -127,25 +137,24 @@ export async function createBillingNotification({
   message?: string;
   metadata?: NotificationMetadata;
   providerEventId?: string | null;
-  supabase?: SupabaseClient;
   title?: string;
   type: BillingNotificationType;
   userId: string | null | undefined;
 }) {
   if (!userId) {
-    console.warn("[billing-notification] skipped without user", { type });
+    console.warn("[billing-notification-skip] skipped without user", { type });
     return;
   }
 
-  const client = createAdminClient() ?? supabase;
+  const client = createAdminClient();
 
   if (!client) {
-    console.warn("[billing-notification] skipped without service client", { type, userId });
+    console.warn("[billing-notification-skip] skipped without service client", { type, userId });
     return;
   }
 
   if (await notificationAlreadyExists(client, userId, type, providerEventId)) {
-    console.info("[billing-notification] duplicate ignored", { type, userId });
+    console.info("[billing-notification-skip] duplicate ignored", { type, userId });
     return;
   }
 
@@ -164,7 +173,7 @@ export async function createBillingNotification({
   } as never);
 
   if (error) {
-    console.warn("[billing-notification] insert failed", {
+    console.warn("[billing-notification-error] insert failed", {
       message: error.message,
       type,
       userId
