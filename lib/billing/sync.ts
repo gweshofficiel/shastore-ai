@@ -6,7 +6,7 @@ import {
   resolvePlatformPlanByPriceId
 } from "@/lib/billing/platform-checkout";
 
-type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete";
+type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
 
 function normalizeStatus(value: string | null | undefined): SubscriptionStatus {
   if (
@@ -14,7 +14,8 @@ function normalizeStatus(value: string | null | undefined): SubscriptionStatus {
     value === "active" ||
     value === "past_due" ||
     value === "canceled" ||
-    value === "incomplete"
+    value === "incomplete" ||
+    value === "unpaid"
   ) {
     return value;
   }
@@ -129,6 +130,21 @@ async function upsertUserSubscription(input: {
     stripeSubscriptionId: input.stripeSubscriptionId,
     userId: input.userId
   });
+
+  if (input.status === "active") {
+    console.info("[billing-reactivation] subscription access active", {
+      planId: plan.id,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      userId: input.userId
+    });
+  } else if (input.status === "past_due" || input.status === "unpaid" || input.status === "canceled") {
+    console.warn("[billing-expiry] subscription access restricted", {
+      planId: plan.id,
+      status: input.status,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      userId: input.userId
+    });
+  }
 }
 
 async function updateSubscriptionStatusByStripeReference(input: {
@@ -176,6 +192,19 @@ async function updateSubscriptionStatusByStripeReference(input: {
     stripeSubscriptionId: input.stripeSubscriptionId,
     userId: subscription?.user_id ?? null
   });
+
+  if (input.status === "active") {
+    console.info("[billing-reactivation] invoice payment restored subscription access", {
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      userId: subscription?.user_id ?? null
+    });
+  } else {
+    console.warn("[billing-expiry] invoice payment restricted subscription access", {
+      status: input.status,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      userId: subscription?.user_id ?? null
+    });
+  }
 
   return subscription?.user_id ?? null;
 }

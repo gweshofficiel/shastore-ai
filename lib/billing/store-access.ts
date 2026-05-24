@@ -59,7 +59,11 @@ export function canAccessStore(
   subscription: UserSubscriptionAccess,
   stores: UserStoreRow[]
 ): StoreAccessResult {
-  if (subscription.status === "past_due" || subscription.status === "incomplete") {
+  if (
+    subscription.status === "past_due" ||
+    subscription.status === "incomplete" ||
+    subscription.status === "unpaid"
+  ) {
     return {
       reason: "This store is suspended until billing is resolved.",
       state: "suspended",

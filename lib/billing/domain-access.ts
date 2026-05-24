@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUserSubscriptionAccessForClient, type UserSubscriptionAccess } from "@/lib/billing/access";
+import { getExpiryLockdownState, isPaidAccessLocked } from "@/lib/billing/expiry-lockdown";
 import {
   getStoreAccessForUser,
   type StoreAccessResult
@@ -13,9 +14,12 @@ type DomainAccessInput = {
 export function canUseCustomDomains(subscription: UserSubscriptionAccess) {
   return (
     subscription.plan.customDomains &&
-    subscription.status !== "canceled" &&
-    subscription.status !== "incomplete" &&
-    subscription.status !== "past_due"
+    !isPaidAccessLocked({
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      planId: subscription.plan.id,
+      status: subscription.status
+    })
   );
 }
 
@@ -59,7 +63,8 @@ export function canConnectAnotherDomain(input: DomainAccessInput) {
       : isStoreLocked(input.storeAccess)
         ? "Store locked due to current subscription limits."
         : !canUseCustomDomains(input.subscription)
-          ? "Custom domains are not available on your current subscription."
+          ? getExpiryLockdownState(input.subscription).reason ??
+            "Custom domains are not available on your current subscription."
           : "Your current plan has reached its custom domain limit."
   };
 }

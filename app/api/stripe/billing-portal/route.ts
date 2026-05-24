@@ -28,7 +28,8 @@ function subscriptionCanUsePortal(subscription: {
   return (
     subscription.status === "active" ||
     subscription.status === "past_due" ||
-    subscription.status === "trialing"
+    subscription.status === "trialing" ||
+    subscription.status === "unpaid"
   );
 }
 

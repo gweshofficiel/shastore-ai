@@ -9,6 +9,7 @@ import {
   type UserSubscriptionAccess
 } from "@/lib/billing/access";
 import type { SubscriptionPlanId } from "@/lib/billing/plans";
+import { getExpiryLockdownState, isPaidAccessLocked } from "@/lib/billing/expiry-lockdown";
 
 export type BillingFeature =
   | "advanced_analytics"
@@ -109,7 +110,12 @@ function limitMessage(resource: BillingLimitResource) {
 }
 
 function isActiveForBilling(access: UserSubscriptionAccess) {
-  return access.status !== "canceled" && access.status !== "incomplete";
+  return !isPaidAccessLocked({
+    cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+    currentPeriodEnd: access.currentPeriodEnd,
+    planId: access.plan.id,
+    status: access.status
+  });
 }
 
 function featureAllowed(access: UserSubscriptionAccess, feature: BillingFeature, templateId?: string) {
@@ -157,7 +163,8 @@ export function assertFeatureAccess(
   });
 
   if (!allowed) {
-    throw new BillingEnforcementError("feature_unavailable", featureMessage(feature), {
+    const expiry = getExpiryLockdownState(access);
+    throw new BillingEnforcementError("feature_unavailable", expiry.reason ?? featureMessage(feature), {
       feature,
       planId: access.plan.id,
       status: access.status,
@@ -183,7 +190,8 @@ export function assertUsageWithinLimits(
   });
 
   if (!isActiveForBilling(access)) {
-    throw new BillingEnforcementError("subscription_inactive", "Your subscription is not active. Upgrade at /dashboard/billing.", {
+    const expiry = getExpiryLockdownState(access);
+    throw new BillingEnforcementError("subscription_inactive", expiry.reason ?? "Your subscription is not active. Upgrade at /dashboard/billing.", {
       limit: state.limit,
       planId: access.plan.id,
       resource,

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CartPageClient } from "@/components/storefront/public-store-cart";
+import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,22 @@ export async function generateMetadata({
       title: "Cart not found | SHASTORE AI",
       robots: { follow: false, index: false }
     };
+  }
+
+  const admin = createAdminClient();
+
+  if (admin) {
+    const storefrontAccess = await getPublicStorefrontAccess({
+      storeId: preview.store.id,
+      supabase: admin
+    });
+
+    if (!storefrontAccess.allowed) {
+      return {
+        title: "Store unavailable | SHASTORE AI",
+        robots: { follow: false, index: false }
+      };
+    }
   }
 
   return {
@@ -46,6 +64,33 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted">
             The store may be unpublished or the public link may be incorrect.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const admin = createAdminClient();
+  const storefrontAccess = admin
+    ? await getPublicStorefrontAccess({
+        storeId: preview.store.id,
+        supabase: admin
+      })
+    : { allowed: true };
+
+  if (!storefrontAccess.allowed) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-16 text-ink sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+            Store unavailable
+          </p>
+          <h1 className="mt-4 text-4xl font-black tracking-[-0.05em]">
+            This storefront is temporarily unavailable.
+          </h1>
+          <p className="mt-4 text-sm font-semibold leading-6 text-muted">
+            The store owner needs to update their SHASTORE AI subscription before this
+            storefront can be viewed again.
           </p>
         </div>
       </main>

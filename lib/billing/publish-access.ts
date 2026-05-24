@@ -193,6 +193,15 @@ export async function getPublicStorefrontAccess(input: {
     userId: ownerId
   });
 
+  if (!allowed) {
+    console.warn("[storefront-lock] storefront locked by billing state", {
+      planId: access.subscription.plan.id,
+      state: access.state,
+      storeId: input.storeId,
+      userId: ownerId
+    });
+  }
+
   if (access.state === "locked_by_plan") {
     await recordStoreAuditLogSafe({
       action: "store_locked_by_plan",

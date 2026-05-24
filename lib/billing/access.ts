@@ -8,12 +8,13 @@ import {
   type BillingPlan,
   type SubscriptionPlanId
 } from "@/lib/billing/plans";
+import { isPaidAccessLocked } from "@/lib/billing/expiry-lockdown";
 import { getBillingUsageForUser } from "@/lib/billing/usage";
 
 export type UserSubscriptionAccess = {
   userId: string;
   plan: BillingPlan;
-  status: "trialing" | "active" | "past_due" | "canceled" | "incomplete";
+  status: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
   currentPeriodEnd: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -56,7 +57,7 @@ function isSubscriptionStillActive(subscription: SubscriptionRow | null) {
     return new Date(subscription.current_period_end).getTime() > Date.now();
   }
 
-  return subscription.status === "past_due";
+  return subscription.status === "past_due" || subscription.status === "unpaid";
 }
 
 function isMissingBillingTable(error: unknown) {
@@ -160,7 +161,12 @@ export function canCreateLanding(access: UserSubscriptionAccess) {
 export function canCreateDomain(access: UserSubscriptionAccess) {
   return (
     access.plan.customDomains &&
-    access.status !== "canceled" &&
+    !isPaidAccessLocked({
+      cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+      currentPeriodEnd: access.currentPeriodEnd,
+      planId: access.plan.id,
+      status: access.status
+    }) &&
     (access.plan.domainLimit === null || access.usage.domainsUsed < access.plan.domainLimit)
   );
 }
@@ -207,7 +213,15 @@ export function logBillingLimitCheck(
 }
 
 export function canPublishStore(access: UserSubscriptionAccess) {
-  return access.plan.publish && access.status !== "canceled";
+  return (
+    access.plan.publish &&
+    !isPaidAccessLocked({
+      cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+      currentPeriodEnd: access.currentPeriodEnd,
+      planId: access.plan.id,
+      status: access.status
+    })
+  );
 }
 
 export function canUseTemplate(access: UserSubscriptionAccess, templateId: string) {
@@ -226,27 +240,27 @@ export function canUseTemplate(access: UserSubscriptionAccess, templateId: strin
 }
 
 export function canUseCustomBranding(access: UserSubscriptionAccess) {
-  return access.plan.customBranding && access.status !== "canceled";
+  return access.plan.customBranding && !isPaidAccessLocked(access);
 }
 
 export function canUseSeo(access: UserSubscriptionAccess) {
-  return access.plan.seo && access.status !== "canceled";
+  return access.plan.seo && !isPaidAccessLocked(access);
 }
 
 export function canUseCustomDomain(access: UserSubscriptionAccess) {
   return (
     access.plan.customDomains &&
-    access.status !== "canceled" &&
+    !isPaidAccessLocked(access) &&
     (access.plan.domainLimit === null || access.usage.domainsUsed < access.plan.domainLimit)
   );
 }
 
 export function canViewAdvancedAnalytics(access: UserSubscriptionAccess) {
-  return access.plan.analytics === "advanced" && access.status !== "canceled";
+  return access.plan.analytics === "advanced" && !isPaidAccessLocked(access);
 }
 
 export function canViewBasicAnalytics(access: UserSubscriptionAccess) {
-  return access.plan.analytics !== "limited" && access.status !== "canceled";
+  return access.plan.analytics !== "limited" && !isPaidAccessLocked(access);
 }
 
 export function getUpgradeMessage(

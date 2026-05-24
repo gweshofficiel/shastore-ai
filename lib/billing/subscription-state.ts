@@ -1,5 +1,6 @@
 import type { BillingLimitResource, UserSubscriptionAccess } from "@/lib/billing/access";
 import { isStoreLocked, getRemainingDomainQuota } from "@/lib/billing/domain-access";
+import { getExpiryLockdownState } from "@/lib/billing/expiry-lockdown";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
@@ -7,8 +8,10 @@ export type DerivedSubscriptionStateLabel =
   | "active"
   | "cancel_at_period_end"
   | "downgraded_over_limit"
+  | "expired"
   | "past_due"
-  | "restricted";
+  | "restricted"
+  | "unpaid";
 
 export type OverLimitResourceState = {
   label: string;
@@ -51,6 +54,12 @@ function overLimitResource(
 }
 
 export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSubscriptionState {
+  const expiry = getExpiryLockdownState({
+    cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+    currentPeriodEnd: access.currentPeriodEnd,
+    planId: access.plan.id,
+    status: access.status
+  });
   const overLimitResources = [
     overLimitResource("stores", access.usage.storesUsed, access.usage.storeLimit),
     overLimitResource("landings", access.usage.landingsUsed, access.usage.landingLimit),
@@ -73,25 +82,35 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
     currentPlanId: access.plan.id,
     needsUnlimited
   });
-  const label: DerivedSubscriptionStateLabel =
-    access.status === "past_due"
-      ? "past_due"
-      : access.status === "canceled" || access.status === "incomplete"
-        ? "restricted"
-        : hasOverLimitUsage
-          ? "downgraded_over_limit"
-          : access.cancelAtPeriodEnd
-            ? "cancel_at_period_end"
-            : "active";
-  const warning = hasOverLimitUsage
-    ? "Your current usage is above this plan's limits. Existing data stays safe, but new resources are blocked until usage is reduced or you upgrade again."
-    : label === "past_due"
-      ? "Payment is past due. Existing resources stay online, but some paid actions may be restricted until billing is resolved."
-      : label === "cancel_at_period_end"
-        ? "Your subscription is scheduled to cancel at period end. Your data will remain safe."
-        : label === "restricted"
-          ? "Your subscription is restricted. Existing resources remain available, but new paid resources are blocked."
-          : null;
+  let label: DerivedSubscriptionStateLabel = "active";
+
+  if (expiry.label === "expired") {
+    label = "expired";
+  } else if (expiry.label === "past_due") {
+    label = "past_due";
+  } else if (expiry.label === "unpaid") {
+    label = "unpaid";
+  } else if (expiry.label === "restricted") {
+    label = "restricted";
+  } else if (hasOverLimitUsage) {
+    label = "downgraded_over_limit";
+  } else if (expiry.label === "cancel_at_period_end") {
+    label = "cancel_at_period_end";
+  }
+
+  let warning: string | null = null;
+
+  if (hasOverLimitUsage) {
+    warning = "Your current usage is above this plan's limits. Existing data stays safe, but new resources are blocked until usage is reduced or you upgrade again.";
+  } else if (label === "past_due" || label === "unpaid") {
+    warning = "Payment needs attention. Existing data stays safe, but paid actions are locked until billing is resolved.";
+  } else if (label === "cancel_at_period_end") {
+    warning = "Your subscription is scheduled to cancel at period end. Access continues until the current period ends.";
+  } else if (label === "expired") {
+    warning = "Your subscription period has ended. Reactivate billing to unlock paid features again.";
+  } else if (label === "restricted") {
+    warning = "Your subscription is restricted. Existing resources remain available, but new paid resources are blocked.";
+  }
 
   console.info("[billing-state] derived subscription state", {
     cancelAtPeriodEnd: access.cancelAtPeriodEnd,
@@ -103,11 +122,15 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
   });
 
   return {
-    cancellationDate: access.cancelAtPeriodEnd ? access.currentPeriodEnd : null,
+    cancellationDate: access.cancelAtPeriodEnd || label === "expired" ? access.currentPeriodEnd : null,
     label,
     overLimitResources,
     restricted:
-      label === "past_due" || label === "restricted" || label === "downgraded_over_limit",
+      label === "past_due" ||
+      label === "unpaid" ||
+      label === "expired" ||
+      label === "restricted" ||
+      label === "downgraded_over_limit",
     upgradePlanId: upgrade.planId,
     upgradePlanName: upgrade.planName,
     warning

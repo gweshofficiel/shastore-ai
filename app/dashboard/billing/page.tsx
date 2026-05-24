@@ -122,7 +122,10 @@ export default async function BillingPage({
   const currentPlan = access.plan;
   const isPaid = currentPlan.id !== "free";
   const hasPortalSubscription =
-    access.status === "active" || access.status === "past_due" || access.status === "trialing";
+    access.status === "active" ||
+    access.status === "past_due" ||
+    access.status === "trialing" ||
+    access.status === "unpaid";
   const hasStripeCustomerId = Boolean(access.stripeCustomerId);
   const canManageSubscription = isPaid && hasPortalSubscription && hasStripeCustomerId;
   const paidSubscriptionMissingCustomer =
@@ -201,6 +204,39 @@ export default async function BillingPage({
           recommendedPlan={subscriptionState.upgradePlanName}
           recommendedPlanId={subscriptionState.upgradePlanId}
         />
+      ) : null}
+      {subscriptionState.label === "expired" ||
+      subscriptionState.label === "past_due" ||
+      subscriptionState.label === "unpaid" ||
+      subscriptionState.label === "restricted" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-red-700">
+                Billing action required
+              </p>
+              <p className="mt-2 text-sm font-bold leading-6 text-red-800">
+                Paid access is locked until billing is reactivated. Your stores, products,
+                orders, and storefront data remain safe.
+              </p>
+              {access.currentPeriodEnd ? (
+                <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-red-700">
+                  Current period ended {formatDate(access.currentPeriodEnd)}
+                </p>
+              ) : null}
+            </div>
+            {canManageSubscription ? (
+              <form action="/api/stripe/billing-portal" method="POST">
+                <Button type="submit">Reactivate billing</Button>
+              </form>
+            ) : (
+              <form action="/api/stripe/create-checkout-session" method="POST">
+                <input name="plan" type="hidden" value={subscriptionState.upgradePlanId ?? "starter"} />
+                <Button type="submit">Reactivate subscription</Button>
+              </form>
+            )}
+          </div>
+        </Card>
       ) : null}
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="overflow-hidden p-0">
@@ -287,9 +323,9 @@ export default async function BillingPage({
             <p className="mt-1 capitalize text-muted">{stateLabel(subscriptionState.label)}</p>
             <p className="mt-3 font-black text-ink">Stripe subscription status</p>
             <p className="mt-1 capitalize text-muted">{access.status}</p>
-            <p className="mt-3 font-black text-ink">Cancellation date</p>
+            <p className="mt-3 font-black text-ink">Current period end</p>
             <p className="mt-1 text-muted">
-              {formatDate(subscriptionState.cancellationDate)}
+              {formatDate(access.currentPeriodEnd)}
             </p>
           </div>
           {canManageSubscription ? (
