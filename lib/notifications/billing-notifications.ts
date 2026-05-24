@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendBillingNotificationEmailSafe } from "@/lib/notifications/email-provider";
 
 export type BillingNotificationType =
   | "grace_period_started"
@@ -183,6 +184,12 @@ export async function createBillingNotification({
 
   console.info("[billing-notification] created", {
     emailReady: true,
+    type,
+    userId
+  });
+
+  await sendBillingNotificationEmailSafe({
+    metadata: safeMetadata,
     type,
     userId
   });
