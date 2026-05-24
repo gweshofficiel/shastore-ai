@@ -5,6 +5,7 @@ import {
   isPaidSubscriptionPlan,
   resolvePlatformPlanByPriceId
 } from "@/lib/billing/platform-checkout";
+import { createBillingNotification } from "@/lib/notifications/billing-notifications";
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "unpaid";
 
@@ -371,6 +372,42 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       userId
     });
 
+    if (status === "canceled") {
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          planId: "free",
+          status
+        },
+        providerEventId: event.id,
+        type: "subscription_canceled",
+        userId
+      });
+    } else if (status === "active") {
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          planId,
+          status
+        },
+        providerEventId: event.id,
+        type: "subscription_reactivated",
+        userId
+      });
+    } else if (status === "past_due" || status === "unpaid") {
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          gracePeriodUntil,
+          planId,
+          status
+        },
+        providerEventId: event.id,
+        type: gracePeriodUntil ? "grace_period_started" : "subscription_restricted",
+        userId
+      });
+    }
+
     await logBillingEvent(event, userId);
     return;
   }
@@ -427,11 +464,32 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     }
 
     if (event.type === "invoice.payment_failed") {
+      const gracePeriodUntil = calculateGracePeriodUntil(subscription?.current_period_end ?? null);
       await updateSubscriptionStatusByStripeReference({
-        gracePeriodUntil: calculateGracePeriodUntil(subscription?.current_period_end ?? null),
+        gracePeriodUntil,
         status: "past_due",
         stripeCustomerId,
         stripeSubscriptionId
+      });
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          gracePeriodUntil,
+          status: "past_due"
+        },
+        providerEventId: event.id,
+        type: "payment_failed",
+        userId
+      });
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          gracePeriodUntil,
+          status: "past_due"
+        },
+        providerEventId: `${event.id}:grace`,
+        type: "grace_period_started",
+        userId
       });
     }
 
@@ -441,6 +499,24 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         status: "active",
         stripeCustomerId,
         stripeSubscriptionId
+      });
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          status: "active"
+        },
+        providerEventId: event.id,
+        type: "payment_recovered",
+        userId
+      });
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          status: "active"
+        },
+        providerEventId: `${event.id}:reactivated`,
+        type: "subscription_reactivated",
+        userId
       });
     }
 

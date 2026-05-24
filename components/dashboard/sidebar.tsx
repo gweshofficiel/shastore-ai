@@ -2,6 +2,7 @@ import Link from "next/link";
 import { logout } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { DashboardNavLink } from "@/components/dashboard/nav-link";
+import { createClient } from "@/lib/supabase/server";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "overview" },
@@ -16,10 +17,36 @@ const navItems = [
   { href: "/dashboard/templates", label: "Templates", icon: "templates" },
   { href: "/dashboard/domains", label: "Domains", icon: "domains" },
   { href: "/dashboard/billing", label: "Billing", icon: "billing" },
+  { href: "/dashboard/notifications", label: "Notifications", icon: "notifications" },
   { href: "/dashboard/settings", label: "Settings", icon: "settings" }
 ] as const;
 
-export function Sidebar() {
+async function getUnreadNotificationCount() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return 0;
+  }
+
+  const { count, error } = await supabase
+    .from("notifications" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .is("read_at", null);
+
+  if (error) {
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+export async function Sidebar() {
+  const unreadNotifications = await getUnreadNotificationCount();
+
   return (
     <aside className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
       <div className="flex h-full flex-col px-4 py-4 lg:px-5 lg:py-6">
@@ -42,6 +69,7 @@ export function Sidebar() {
                 icon={item.icon}
                 key={item.href}
                 label={item.label}
+                badge={item.href === "/dashboard/notifications" ? unreadNotifications : undefined}
               />
             );
           })}

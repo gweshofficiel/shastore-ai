@@ -7,6 +7,7 @@ import {
   CreditCard,
   Globe2,
   LayoutDashboard,
+  Bell,
   PackageCheck,
   Palette,
   ShoppingBag,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 const icons = {
   analytics: BarChart3,
   billing: CreditCard,
+  notifications: Bell,
   customers: UserRoundCheck,
   domains: Globe2,
   overview: LayoutDashboard,
@@ -36,10 +38,12 @@ const icons = {
 };
 
 export function DashboardNavLink({
+  badge,
   href,
   icon,
   label
 }: {
+  badge?: number;
   href: string;
   icon: keyof typeof icons;
   label: string;
@@ -68,6 +72,16 @@ export function DashboardNavLink({
         )}
       />
       <span>{label}</span>
+      {badge ? (
+        <span
+          className={cn(
+            "ml-auto rounded-full px-2 py-0.5 text-[10px] font-black",
+            isActive ? "bg-white/15 text-white" : "bg-red-100 text-red-700"
+          )}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
