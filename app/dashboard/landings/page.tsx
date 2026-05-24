@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { Input } from "@/components/ui/input";
 import { DeleteLandingButton } from "@/components/dashboard/delete-landing-button";
 import { publishLandingPageById } from "@/lib/landing-actions";
@@ -8,6 +9,7 @@ import {
   duplicateLandingPage,
   unpublishLandingPage
 } from "@/lib/landing-management-actions";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +99,10 @@ async function getLandings(query = "", status = "all", page = 1) {
 export default async function LandingsPage({ searchParams }: LandingsPageProps) {
   const params = await searchParams;
   const currentPage = Math.max(1, Number(params.page ?? "1") || 1);
-  const landings = await getLandings(params.q, params.status, currentPage);
+  const [access, landings] = await Promise.all([
+    getCurrentUserSubscriptionAccess(),
+    getLandings(params.q, params.status, currentPage)
+  ]);
   const status = params.status ?? "all";
 
   return (
@@ -121,12 +126,17 @@ export default async function LandingsPage({ searchParams }: LandingsPageProps) 
           </p>
         </Card>
       ) : null}
-      {params.error === "limit-reached" ? (
-        <Card className="border-amber-200 bg-amber-50 p-5">
-          <p className="text-sm font-bold text-amber-800">
-            {params.detail ?? "Your current plan has reached its landing page limit. Upgrade at /dashboard/billing."}
-          </p>
-        </Card>
+      {params.error === "limit-reached" && access ? (
+        <UpgradeRequiredCard
+          blockedAction="Landing page limit reached"
+          currentPlan={access.plan.name}
+          reason={
+            access.plan.id === "pro"
+              ? "Agency plan required for unlimited usage."
+              : params.detail ?? "Landing page limit reached on your current plan."
+          }
+          recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+        />
       ) : null}
       {params.draft ? (
         <Card className="border-slate-200 bg-slate-50 p-5">

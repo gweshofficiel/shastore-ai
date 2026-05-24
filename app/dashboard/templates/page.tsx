@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/openai-execution-actions";
 import { applyTemplateToStore } from "@/lib/template-application-actions";
 import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -253,7 +255,10 @@ export default async function TemplatesPage({
   searchParams: Promise<{ category?: string; detail?: string; storeId?: string; templateApply?: string; templateId?: string }>;
 }) {
   const params = await searchParams;
-  const stores = await getClaimedStores();
+  const [access, stores] = await Promise.all([
+    getCurrentUserSubscriptionAccess(),
+    getClaimedStores()
+  ]);
   const selectedStoreId =
     stores.find((store) => store.id === params.storeId)?.id ?? stores[0]?.id ?? "";
   const selectedCategory = params.category ?? "all";
@@ -300,7 +305,14 @@ export default async function TemplatesPage({
         title="Template Library"
       />
 
-      {message ? (
+      {params.templateApply === "upgrade-required" && access ? (
+        <UpgradeRequiredCard
+          blockedAction="Premium templates access"
+          currentPlan={access.plan.name}
+          reason={params.detail ?? "Premium templates are unavailable on your current plan."}
+          recommendedPlan="Pro"
+        />
+      ) : message ? (
         <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-sm font-semibold text-muted shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)]">
           {message}
         </div>

@@ -1,5 +1,5 @@
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import {
@@ -46,15 +46,12 @@ export default async function AnalyticsPage() {
           description="Shared analytics foundation for visitors, WhatsApp clicks, page views, conversions, orders, products, and sources."
           title="Analytics"
         />
-        <Card className="border-amber-200 bg-amber-50 p-6">
-          <p className="text-sm font-bold text-amber-800">
-            {billingEnforcementMessage(error) ??
-              "Advanced analytics are unavailable on your current plan."}
-          </p>
-          <ButtonLink className="mt-4" href="/dashboard/billing">
-            Upgrade plan
-          </ButtonLink>
-        </Card>
+        <UpgradeRequiredCard
+          blockedAction="Advanced analytics require Pro"
+          currentPlan={access.plan.name}
+          reason={billingEnforcementMessage(error) ?? "Advanced analytics require Pro."}
+          recommendedPlan="Pro"
+        />
       </div>
     );
   }

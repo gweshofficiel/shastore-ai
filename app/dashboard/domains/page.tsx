@@ -1,8 +1,9 @@
 import { CheckCircle2, Copy, Globe2, ShieldCheck } from "lucide-react";
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   attachCustomDomain,
   createStoreSubdomain,
@@ -14,6 +15,7 @@ import {
   getStoreDomainsDashboardData,
   storeDomainsMigrationMessage
 } from "@/lib/store-domains";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 
 const statusMessages: Record<string, string> = {
   "custom-domain-saved": "Custom domain prepared for DNS verification.",
@@ -97,7 +99,10 @@ export default async function DomainsPage({
   searchParams: Promise<{ checkSubdomain?: string; domains?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
-  const data = await getStoreDomainsDashboardData(params.storeId, params.checkSubdomain);
+  const [access, data] = await Promise.all([
+    getCurrentUserSubscriptionAccess(),
+    getStoreDomainsDashboardData(params.storeId, params.checkSubdomain)
+  ]);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
   const activeStoreId = data.activeStore?.id ?? "";
 
@@ -114,16 +119,20 @@ export default async function DomainsPage({
           </p>
         </Card>
       ) : null}
-      {params.domains ? <Toast status={params.domains} /> : null}
-      {params.domains === "limit-reached" ? (
-        <Card className="border-amber-200 bg-amber-50 p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-bold text-amber-800">
-              Your current plan has reached its domain limit.
-            </p>
-            <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink>
-          </div>
-        </Card>
+      {params.domains && params.domains !== "limit-reached" ? (
+        <Toast status={params.domains} />
+      ) : null}
+      {params.domains === "limit-reached" && access ? (
+        <UpgradeRequiredCard
+          blockedAction="Custom domains require Pro"
+          currentPlan={access.plan.name}
+          reason={
+            access.plan.id === "pro"
+              ? "Agency plan required for unlimited usage."
+              : "Custom domains require Pro."
+          }
+          recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+        />
       ) : null}
       {data.error ? (
         <Card className="border-red-200 bg-red-50 p-5">

@@ -1,12 +1,11 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
-import { ButtonLink } from "@/components/ui/button";
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import CreateStoreForm from "@/components/dashboard/create-store-form";
 import { StoreBuilder } from "@/components/dashboard/store-builder";
 import {
   canCreateStore,
-  getCurrentUserSubscriptionAccess,
-  getUpgradeMessage
+  getCurrentUserSubscriptionAccess
 } from "@/lib/billing/access";
 
 function formatLimit(value: number | null) {
@@ -48,7 +47,7 @@ export default async function NewStorePage({
         </Card>
         {access ? (
           <Card className="border-slate-200 bg-white p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
               <div>
                 <p className="text-sm font-black text-ink">
                   Current plan: {access.plan.name}
@@ -57,19 +56,23 @@ export default async function NewStorePage({
                   Stores used: {access.usage.storesUsed} / {formatLimit(access.usage.storeLimit)}
                 </p>
               </div>
-              {!canCreate ? <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink> : null}
             </div>
           </Card>
         ) : null}
-        {!canCreate ? (
-          <Card className="border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm font-bold text-amber-800">
-              {getUpgradeMessage("stores")}
-            </p>
-          </Card>
+        {!canCreate && access ? (
+          <UpgradeRequiredCard
+            blockedAction="Store limit reached"
+            currentPlan={access.plan.name}
+            reason={
+              access.plan.id === "pro"
+                ? "Agency plan required for unlimited usage."
+                : "Store limit reached on your current plan."
+            }
+            recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+          />
         ) : null}
 
-        {canCreate ? <CreateStoreForm /> : null}
+        {canCreate ? <CreateStoreForm currentPlan={access?.plan.name} /> : null}
 
         {canCreate ? <StoreBuilder databaseError={databaseError} /> : null}
       </div>

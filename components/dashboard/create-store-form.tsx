@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 
-export default function CreateStoreForm() {
+type CreateStoreFormProps = {
+  currentPlan?: string | null;
+};
+
+export default function CreateStoreForm({ currentPlan }: CreateStoreFormProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   async function handleCreateStore() {
     setLoading(true);
     setMessage("");
+    setUpgradeRequired(false);
 
     try {
       const response = await fetch("/api/stores/create", {
@@ -23,6 +30,10 @@ export default function CreateStoreForm() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 403) {
+          setUpgradeRequired(true);
+        }
+
         throw new Error(data.error || "Failed to create store");
       }
 
@@ -51,7 +62,16 @@ export default function CreateStoreForm() {
         {loading ? "Creating..." : "Create Store"}
       </button>
 
-      {message ? <p className="text-sm text-neutral-600">{message}</p> : null}
+      {upgradeRequired ? (
+        <UpgradeRequiredCard
+          blockedAction="Store limit reached"
+          currentPlan={currentPlan}
+          reason={message || "Store limit reached on your current plan."}
+          recommendedPlan={currentPlan === "Pro" ? "Agency" : "Pro"}
+        />
+      ) : message ? (
+        <p className="text-sm text-neutral-600">{message}</p>
+      ) : null}
     </div>
   );
 }
