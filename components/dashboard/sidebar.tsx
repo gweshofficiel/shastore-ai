@@ -38,10 +38,21 @@ async function getUnreadNotificationCount() {
     .is("read_at", null);
 
   if (error) {
+    console.warn("[notification-count] unread count failed", {
+      message: error.message,
+      userId: user.id
+    });
     return 0;
   }
 
-  return count ?? 0;
+  const unreadCount = count ?? 0;
+
+  console.info("[notification-count] unread count loaded", {
+    unreadCount,
+    userId: user.id
+  });
+
+  return unreadCount;
 }
 
 export async function Sidebar() {

@@ -60,14 +60,41 @@ export default async function NotificationsPage() {
     );
   }
 
-  const { data } = await supabase
-    .from("notifications" as never)
-    .select("id, type, title, message, read_at, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const [{ data, error }, { count, error: countError }] = await Promise.all([
+    supabase
+      .from("notifications" as never)
+      .select("id, type, title, message, read_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("notifications" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("read_at", null)
+  ]);
+
+  if (error) {
+    console.warn("[notification-count] notifications list failed", {
+      message: error.message,
+      userId: user.id
+    });
+  }
+
+  if (countError) {
+    console.warn("[notification-count] page unread count failed", {
+      message: countError.message,
+      userId: user.id
+    });
+  } else {
+    console.info("[notification-count] page unread count loaded", {
+      unreadCount: count ?? 0,
+      userId: user.id
+    });
+  }
+
   const notifications = (data ?? []) as NotificationRow[];
-  const unreadCount = notifications.filter((notification) => !notification.read_at).length;
+  const unreadCount = count ?? notifications.filter((notification) => !notification.read_at).length;
 
   return (
     <div className="grid gap-6">
