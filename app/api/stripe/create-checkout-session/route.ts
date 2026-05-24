@@ -3,6 +3,8 @@ import {
   createPlatformCheckoutSession,
   isPaidSubscriptionPlan
 } from "@/lib/billing/platform-checkout";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
 
@@ -51,9 +53,26 @@ export async function POST(request: Request) {
     );
   }
 
+  const access = await getUserSubscriptionAccessForClient(supabase, user.id);
+  const upgrade = canCheckoutUpgrade(access.plan.id, plan);
+
+  console.info("[billing-upgrade] checkout request validated", {
+    allowed: upgrade.allowed,
+    currentPlanId: access.plan.id,
+    reason: upgrade.code,
+    requestedPlanId: plan,
+    userId: user.id
+  });
+
+  if (!upgrade.allowed || !upgrade.planId) {
+    return billingErrorRedirect(upgrade.code, upgrade.message);
+  }
+
+  const checkoutPlan = upgrade.planId;
+
   const checkout = await createPlatformCheckoutSession({
     customerEmail: user.email,
-    plan,
+    plan: checkoutPlan,
     userId: user.id
   });
 

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { billingPlans } from "@/lib/billing/plans";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -278,76 +279,86 @@ export default async function BillingPage({
         </Card>
       </div>
       <div className="grid gap-4 lg:grid-cols-4">
-        {billingPlans.map((plan) => (
-          <Card
-            className={`p-6 transition hover:-translate-y-0.5 hover:border-slate-300 ${
-              plan.id === currentPlan.id ? "border-ink shadow-sm" : ""
-            }`}
-            key={plan.id}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
-                {plan.name}
-              </h2>
-              {plan.id === currentPlan.id ? (
-                <span className="rounded-full bg-ink px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white">
-                  Current
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              {plan.description}
-            </p>
-            <p className="mt-6 text-4xl font-black tracking-[-0.04em] text-ink">
-              {priceLabel(plan.priceCents)}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-muted">per month</p>
-            <div className="mt-5 grid gap-2 rounded-3xl bg-slate-50 p-4 text-sm font-bold text-slate-600">
-              <div className="flex justify-between gap-3">
-                <span>Landings</span>
-                <span>{formatLimit(plan.landingLimit)}</span>
+        {billingPlans.map((plan) => {
+          const checkoutUpgrade = canCheckoutUpgrade(currentPlan.id, plan.id);
+
+          return (
+            <Card
+              className={`p-6 transition hover:-translate-y-0.5 hover:border-slate-300 ${
+                plan.id === currentPlan.id ? "border-ink shadow-sm" : ""
+              }`}
+              key={plan.id}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+                  {plan.name}
+                </h2>
+                {plan.id === currentPlan.id ? (
+                  <span className="rounded-full bg-ink px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white">
+                    Current
+                  </span>
+                ) : null}
               </div>
-              <div className="flex justify-between gap-3">
-                <span>Stores</span>
-                <span>{formatLimit(plan.storeLimit)}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span>Analytics</span>
-                <span className="capitalize">{plan.analytics}</span>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-2">
-              {plan.features.map((feature) => (
-                <div className="flex items-center gap-2 text-sm font-semibold text-ink" key={feature}>
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {feature}
+              <p className="mt-2 text-sm leading-6 text-muted">
+                {plan.description}
+              </p>
+              <p className="mt-6 text-4xl font-black tracking-[-0.04em] text-ink">
+                {priceLabel(plan.priceCents)}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-muted">per month</p>
+              <div className="mt-5 grid gap-2 rounded-3xl bg-slate-50 p-4 text-sm font-bold text-slate-600">
+                <div className="flex justify-between gap-3">
+                  <span>Landings</span>
+                  <span>{formatLimit(plan.landingLimit)}</span>
                 </div>
-              ))}
-            </div>
-            {plan.id === currentPlan.id && canManageSubscription ? (
-              <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
-                <Button className="w-full" type="submit">
-                  Manage subscription
+                <div className="flex justify-between gap-3">
+                  <span>Stores</span>
+                  <span>{formatLimit(plan.storeLimit)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Analytics</span>
+                  <span className="capitalize">{plan.analytics}</span>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-2">
+                {plan.features.map((feature) => (
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ink" key={feature}>
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {feature}
+                  </div>
+                ))}
+              </div>
+              {plan.id === currentPlan.id && canManageSubscription ? (
+                <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
+                  <Button className="w-full" type="submit">
+                    Manage subscription
+                  </Button>
+                </form>
+              ) : plan.id === currentPlan.id ? (
+                <Button className="mt-6 w-full" disabled type="button" variant="secondary">
+                  Current plan
                 </Button>
-              </form>
-            ) : plan.id === currentPlan.id ? (
-              <Button className="mt-6 w-full" disabled type="button" variant="secondary">
-                Current plan
-              </Button>
-            ) : plan.id === "free" ? (
-              <Button className="mt-6 w-full" disabled type="button" variant="secondary">
-                Included
-              </Button>
-            ) : (
-              <form action="/api/stripe/create-checkout-session" className="mt-6" method="POST">
-                <input name="plan" type="hidden" value={plan.id} />
-                <Button className="w-full" type="submit">
-                  Upgrade to {plan.name}
+              ) : checkoutUpgrade.allowed ? (
+                <form action="/api/stripe/create-checkout-session" className="mt-6" method="POST">
+                  <input name="plan" type="hidden" value={checkoutUpgrade.planId} />
+                  <Button className="w-full" type="submit">
+                    Upgrade to {plan.name}
+                  </Button>
+                </form>
+              ) : checkoutUpgrade.code === "downgrade_not_supported" && canManageSubscription ? (
+                <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
+                  <Button className="w-full" type="submit" variant="secondary">
+                    Manage in portal
+                  </Button>
+                </form>
+              ) : (
+                <Button className="mt-6 w-full" disabled type="button" variant="secondary">
+                  {plan.id === "free" ? "Included" : checkoutUpgrade.message}
                 </Button>
-              </form>
-            )}
-          </Card>
-        ))}
+              )}
+            </Card>
+          );
+        })}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-6 lg:p-8">

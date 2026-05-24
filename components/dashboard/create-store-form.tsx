@@ -2,12 +2,19 @@
 
 import { useState } from "react";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
+import type { PaidSubscriptionPlanId } from "@/lib/billing/platform-checkout";
 
 type CreateStoreFormProps = {
   currentPlan?: string | null;
+  recommendedPlan?: string | null;
+  recommendedPlanId?: PaidSubscriptionPlanId | null;
 };
 
-export default function CreateStoreForm({ currentPlan }: CreateStoreFormProps) {
+export default function CreateStoreForm({
+  currentPlan,
+  recommendedPlan,
+  recommendedPlanId
+}: CreateStoreFormProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
@@ -67,7 +74,8 @@ export default function CreateStoreForm({ currentPlan }: CreateStoreFormProps) {
           blockedAction="Store limit reached"
           currentPlan={currentPlan}
           reason={message || "Store limit reached on your current plan."}
-          recommendedPlan={currentPlan === "Pro" ? "Agency" : "Pro"}
+          recommendedPlan={recommendedPlan ?? "Pro"}
+          recommendedPlanId={recommendedPlanId}
         />
       ) : message ? (
         <p className="text-sm text-neutral-600">{message}</p>

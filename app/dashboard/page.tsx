@@ -120,8 +120,8 @@ export default async function DashboardPage({
                 Professional limits are active for store creation, custom domains, and advanced branding.
               </p>
             </div>
-            <ButtonLink href="/pricing" variant="secondary">
-              View pricing
+            <ButtonLink href="/dashboard/billing" variant="secondary">
+              View plans
             </ButtonLink>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">

@@ -21,6 +21,7 @@ import {
 import { applyTemplateToStore } from "@/lib/template-application-actions";
 import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -297,6 +298,12 @@ export default async function TemplatesPage({
   const aiDiffSummary = recordValue(aiApplicationPreview.diff_summary);
   const aiDraftSyncState = recordValue(aiApplicationPreview.draft_sync_state);
   const message = params.detail ?? (params.templateApply ? statusMessages[params.templateApply] : "");
+  const templateUpgrade = access
+    ? getRecommendedUpgrade({
+        blockedFeature: "premium_templates",
+        currentPlanId: access.plan.id
+      })
+    : null;
 
   return (
     <div className="grid gap-8">
@@ -309,8 +316,9 @@ export default async function TemplatesPage({
         <UpgradeRequiredCard
           blockedAction="Premium templates access"
           currentPlan={access.plan.name}
-          reason={params.detail ?? "Premium templates are unavailable on your current plan."}
-          recommendedPlan="Pro"
+          reason={templateUpgrade?.reason ?? params.detail ?? "Premium templates are unavailable on your current plan."}
+          recommendedPlan={templateUpgrade?.planName ?? "Starter"}
+          recommendedPlanId={templateUpgrade?.planId}
         />
       ) : message ? (
         <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-sm font-semibold text-muted shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)]">

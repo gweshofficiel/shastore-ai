@@ -7,6 +7,7 @@ import {
   canCreateStore,
   getCurrentUserSubscriptionAccess
 } from "@/lib/billing/access";
+import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
 function formatLimit(value: number | null) {
   return value === null ? "Unlimited" : value.toLocaleString();
@@ -20,6 +21,13 @@ export default async function NewStorePage({
   const query = await searchParams;
   const access = await getCurrentUserSubscriptionAccess();
   const canCreate = access ? canCreateStore(access) : true;
+  const storeUpgrade = access
+    ? getRecommendedUpgrade({
+        blockedResource: "stores",
+        currentPlanId: access.plan.id,
+        needsUnlimited: access.plan.id === "pro"
+      })
+    : null;
   const databaseError =
     query.error === "REAL_DATABASE_ERROR"
       ? query.detail ??
@@ -63,16 +71,19 @@ export default async function NewStorePage({
           <UpgradeRequiredCard
             blockedAction="Store limit reached"
             currentPlan={access.plan.name}
-            reason={
-              access.plan.id === "pro"
-                ? "Agency plan required for unlimited usage."
-                : "Store limit reached on your current plan."
-            }
-            recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+            reason={storeUpgrade?.reason ?? "Store limit reached on your current plan."}
+            recommendedPlan={storeUpgrade?.planName ?? "Pro"}
+            recommendedPlanId={storeUpgrade?.planId}
           />
         ) : null}
 
-        {canCreate ? <CreateStoreForm currentPlan={access?.plan.name} /> : null}
+        {canCreate ? (
+          <CreateStoreForm
+            currentPlan={access?.plan.name}
+            recommendedPlan={storeUpgrade?.planName}
+            recommendedPlanId={storeUpgrade?.planId}
+          />
+        ) : null}
 
         {canCreate ? <StoreBuilder databaseError={databaseError} /> : null}
       </div>

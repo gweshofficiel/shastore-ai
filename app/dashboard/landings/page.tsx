@@ -10,6 +10,7 @@ import {
   unpublishLandingPage
 } from "@/lib/landing-management-actions";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +105,13 @@ export default async function LandingsPage({ searchParams }: LandingsPageProps) 
     getLandings(params.q, params.status, currentPage)
   ]);
   const status = params.status ?? "all";
+  const landingUpgrade = access
+    ? getRecommendedUpgrade({
+        blockedResource: "landings",
+        currentPlanId: access.plan.id,
+        needsUnlimited: access.plan.id === "starter" || access.plan.id === "pro"
+      })
+    : null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -130,12 +138,9 @@ export default async function LandingsPage({ searchParams }: LandingsPageProps) 
         <UpgradeRequiredCard
           blockedAction="Landing page limit reached"
           currentPlan={access.plan.name}
-          reason={
-            access.plan.id === "pro"
-              ? "Agency plan required for unlimited usage."
-              : params.detail ?? "Landing page limit reached on your current plan."
-          }
-          recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+          reason={landingUpgrade?.reason ?? params.detail ?? "Landing page limit reached on your current plan."}
+          recommendedPlan={landingUpgrade?.planName ?? "Starter"}
+          recommendedPlanId={landingUpgrade?.planId}
         />
       ) : null}
       {params.draft ? (

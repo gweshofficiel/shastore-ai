@@ -16,6 +16,7 @@ import {
   storeDomainsMigrationMessage
 } from "@/lib/store-domains";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
 const statusMessages: Record<string, string> = {
   "custom-domain-saved": "Custom domain prepared for DNS verification.",
@@ -105,6 +106,14 @@ export default async function DomainsPage({
   ]);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
   const activeStoreId = data.activeStore?.id ?? "";
+  const domainUpgrade = access
+    ? getRecommendedUpgrade({
+        blockedFeature: "custom_domains",
+        blockedResource: "domains",
+        currentPlanId: access.plan.id,
+        needsUnlimited: access.plan.id === "pro"
+      })
+    : null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -126,12 +135,9 @@ export default async function DomainsPage({
         <UpgradeRequiredCard
           blockedAction="Custom domains require Pro"
           currentPlan={access.plan.name}
-          reason={
-            access.plan.id === "pro"
-              ? "Agency plan required for unlimited usage."
-              : "Custom domains require Pro."
-          }
-          recommendedPlan={access.plan.id === "pro" ? "Agency" : "Pro"}
+          reason={domainUpgrade?.reason ?? "Custom domains require Pro."}
+          recommendedPlan={domainUpgrade?.planName ?? "Pro"}
+          recommendedPlanId={domainUpgrade?.planId}
         />
       ) : null}
       {data.error ? (

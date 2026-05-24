@@ -1,18 +1,21 @@
-import { ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import type { PaidSubscriptionPlanId } from "@/lib/billing/platform-checkout";
 
 type UpgradeRequiredCardProps = {
   blockedAction: string;
   currentPlan?: string | null;
   reason: string;
   recommendedPlan: string;
+  recommendedPlanId?: PaidSubscriptionPlanId | null;
 };
 
 export function UpgradeRequiredCard({
   blockedAction,
   currentPlan,
   reason,
-  recommendedPlan
+  recommendedPlan,
+  recommendedPlanId
 }: UpgradeRequiredCardProps) {
   return (
     <Card className="border-amber-200 bg-amber-50 p-5 lg:p-6">
@@ -34,9 +37,16 @@ export function UpgradeRequiredCard({
             </span>
           </div>
         </div>
-        <ButtonLink className="w-fit shrink-0" href="/dashboard/billing">
-          View plans
-        </ButtonLink>
+        {recommendedPlanId ? (
+          <form action="/api/stripe/create-checkout-session" className="w-fit shrink-0" method="POST">
+            <input name="plan" type="hidden" value={recommendedPlanId} />
+            <Button type="submit">Upgrade to {recommendedPlan}</Button>
+          </form>
+        ) : (
+          <Button className="w-fit shrink-0" disabled type="button" variant="secondary">
+            Current top plan
+          </Button>
+        )}
       </div>
     </Card>
   );

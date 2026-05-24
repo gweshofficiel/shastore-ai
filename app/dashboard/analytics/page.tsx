@@ -6,6 +6,7 @@ import {
   assertFeatureAccess,
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
+import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import {
   commerceMigrationMessage,
   getCommerceAnalyticsSummary
@@ -40,6 +41,11 @@ export default async function AnalyticsPage() {
   try {
     assertFeatureAccess(access, "advanced_analytics");
   } catch (error) {
+    const analyticsUpgrade = getRecommendedUpgrade({
+      blockedFeature: "advanced_analytics",
+      currentPlanId: access.plan.id
+    });
+
     return (
       <div className="grid gap-6 lg:gap-8">
         <PageHeader
@@ -49,8 +55,9 @@ export default async function AnalyticsPage() {
         <UpgradeRequiredCard
           blockedAction="Advanced analytics require Pro"
           currentPlan={access.plan.name}
-          reason={billingEnforcementMessage(error) ?? "Advanced analytics require Pro."}
-          recommendedPlan="Pro"
+          reason={analyticsUpgrade.reason || billingEnforcementMessage(error) || "Advanced analytics require Pro."}
+          recommendedPlan={analyticsUpgrade.planName}
+          recommendedPlanId={analyticsUpgrade.planId}
         />
       </div>
     );
