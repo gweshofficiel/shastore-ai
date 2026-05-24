@@ -1,10 +1,7 @@
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getBillingPlan } from "@/lib/billing/plans";
-import {
-  isPaidSubscriptionPlan,
-  type PaidSubscriptionPlanId
-} from "@/lib/billing/platform-checkout";
+import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
+import { isPaidSubscriptionPlan } from "@/lib/billing/platform-checkout";
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete";
 
@@ -84,7 +81,7 @@ async function upsertUserSubscription(input: {
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   currentPeriodStart?: string | null;
-  planId: PaidSubscriptionPlanId;
+  planId: SubscriptionPlanId;
   status: SubscriptionStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -117,6 +114,62 @@ async function upsertUserSubscription(input: {
     });
     throw error;
   }
+
+  console.info("[stripe-webhook] user subscription upserted", {
+    planId: plan.id,
+    status: input.status,
+    stripeSubscriptionId: input.stripeSubscriptionId,
+    userId: input.userId
+  });
+}
+
+async function updateSubscriptionStatusByStripeReference(input: {
+  status: SubscriptionStatus;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+}) {
+  if (!input.stripeSubscriptionId && !input.stripeCustomerId) {
+    console.warn("[stripe-webhook] invoice status update skipped without Stripe reference", {
+      status: input.status
+    });
+    return null;
+  }
+
+  const supabase = getBillingSyncClient();
+  const query = supabase
+    .from("user_subscriptions" as never)
+    .update({
+      status: input.status,
+      updated_at: new Date().toISOString()
+    } as never)
+    .select("user_id, plan_id, status")
+    .limit(1);
+
+  const { data, error } = input.stripeSubscriptionId
+    ? await query.eq("stripe_subscription_id", input.stripeSubscriptionId)
+    : await query.eq("stripe_customer_id", input.stripeCustomerId as string);
+
+  if (error) {
+    console.error("[stripe-webhook] subscription status update failed", {
+      message: error.message,
+      status: input.status,
+      stripeCustomerId: input.stripeCustomerId,
+      stripeSubscriptionId: input.stripeSubscriptionId
+    });
+    throw error;
+  }
+
+  const subscription = (data ?? [])[0] as
+    | { plan_id: string | null; status: SubscriptionStatus | null; user_id: string | null }
+    | undefined;
+
+  console.info("[stripe-webhook] subscription status updated from invoice", {
+    status: input.status,
+    stripeSubscriptionId: input.stripeSubscriptionId,
+    userId: subscription?.user_id ?? null
+  });
+
+  return subscription?.user_id ?? null;
 }
 
 export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
@@ -165,6 +218,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     const userId = metadataValue(subscription.metadata, "userId", "user_id");
     const planId = paidPlanFromMetadata(subscription.metadata);
 
+    console.info("[stripe-webhook] subscription update received", {
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      eventId: event.id,
+      eventType: event.type,
+      status: subscription.status,
+      subscriptionId: subscription.id
+    });
+
     if (!userId || !planId) {
       console.error("[stripe-webhook] subscription event missing required metadata", {
         eventId: event.id,
@@ -178,15 +239,17 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       return;
     }
 
+    const status =
+      event.type === "customer.subscription.deleted"
+        ? "canceled"
+        : normalizeStatus(subscription.status);
+
     await upsertUserSubscription({
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       currentPeriodEnd: subscriptionPeriodDate(subscription, "current_period_end"),
       currentPeriodStart: subscriptionPeriodDate(subscription, "current_period_start"),
-      planId,
-      status:
-        event.type === "customer.subscription.deleted"
-          ? "canceled"
-          : normalizeStatus(subscription.status),
+      planId: status === "canceled" ? "free" : planId,
+      status,
       stripeCustomerId:
         typeof subscription.customer === "string"
           ? subscription.customer
@@ -226,7 +289,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       | undefined;
     const userId = subscription?.user_id ?? null;
 
-    await supabase.from("invoices" as never).upsert({
+    const { error: invoiceError } = await supabase.from("invoices" as never).upsert({
       amount_due: invoice.amount_due ?? 0,
       amount_paid: invoice.amount_paid ?? 0,
       currency: (invoice.currency ?? "usd").toUpperCase(),
@@ -240,6 +303,31 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       subscription_id: subscription?.id ?? null,
       user_id: userId
     } as never, { onConflict: "provider_invoice_id" });
+
+    if (invoiceError) {
+      console.error("[stripe-webhook] invoice upsert failed", {
+        eventId: event.id,
+        invoiceId: invoice.id,
+        message: invoiceError.message
+      });
+      throw invoiceError;
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      await updateSubscriptionStatusByStripeReference({
+        status: "past_due",
+        stripeCustomerId,
+        stripeSubscriptionId
+      });
+    }
+
+    if (event.type === "invoice.payment_succeeded") {
+      await updateSubscriptionStatusByStripeReference({
+        status: "active",
+        stripeCustomerId,
+        stripeSubscriptionId
+      });
+    }
 
     await logBillingEvent(event, userId);
     return;

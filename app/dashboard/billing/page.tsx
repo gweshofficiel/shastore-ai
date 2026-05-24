@@ -101,6 +101,9 @@ export default async function BillingPage({
   }
 
   const currentPlan = access.plan;
+  const canManageSubscription =
+    currentPlan.id !== "free" &&
+    (access.status === "active" || access.status === "trialing" || access.status === "past_due");
   const billingHistory = await getBillingHistory(access.userId);
   const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
   const landingPercent = usagePercent(access.usage.landingsUsed, access.usage.landingLimit);
@@ -247,6 +250,13 @@ export default async function BillingPage({
             <p className="font-black text-ink">Stripe subscription status</p>
             <p className="mt-1 capitalize text-muted">{access.status}</p>
           </div>
+          {canManageSubscription ? (
+            <form action="/api/stripe/billing-portal" className="mt-5" method="POST">
+              <Button className="w-full" type="submit">
+                Manage subscription
+              </Button>
+            </form>
+          ) : null}
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
             Configure <code>PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER</code>,{" "}
             <code>PLATFORM_BILLING_STRIPE_PRICE_ID_PRO</code>, and{" "}

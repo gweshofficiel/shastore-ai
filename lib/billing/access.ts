@@ -28,10 +28,29 @@ export type UserSubscriptionAccess = {
 };
 
 type SubscriptionRow = {
-  plan_id?: string | null;
-  status?: UserSubscriptionAccess["status"] | null;
+  cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
+  plan_id?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  status?: UserSubscriptionAccess["status"] | null;
 };
+
+function isSubscriptionStillActive(subscription: SubscriptionRow | null) {
+  if (!subscription) {
+    return false;
+  }
+
+  if (subscription.status === "trialing" || subscription.status === "active") {
+    if (!subscription.cancel_at_period_end || !subscription.current_period_end) {
+      return true;
+    }
+
+    return new Date(subscription.current_period_end).getTime() > Date.now();
+  }
+
+  return subscription.status === "past_due";
+}
 
 function isMissingBillingTable(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -100,12 +119,18 @@ export async function getUserSubscriptionAccess(
   }
 
   const subscription = data as SubscriptionRow | null;
-  const plan = getBillingPlan(subscription?.plan_id ?? "free");
+  const subscriptionIsActive = isSubscriptionStillActive(subscription);
+  const status = subscription
+    ? subscriptionIsActive
+      ? (subscription.status ?? "active")
+      : "canceled"
+    : "active";
+  const plan = getBillingPlan(subscriptionIsActive ? subscription?.plan_id : "free");
 
   return {
     userId,
     plan,
-    status: subscription?.status ?? "active",
+    status,
     currentPeriodEnd: subscription?.current_period_end ?? null,
     usage: {
       landingsUsed: landingsCount ?? 0,
