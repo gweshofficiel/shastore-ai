@@ -478,7 +478,9 @@ async function insertStoreDraftRow(
       provisioning_state: "pending",
       slug,
       store_data: input.storeData,
-      subscription_plan: "free"
+      store_name: input.name,
+      subscription_plan: "free",
+      workspace_id: userId
     },
     {
       ...base,
@@ -501,7 +503,7 @@ async function insertStoreDraftRow(
   let lastError: SupabaseLikeError | null = null;
 
   for (const payload of payloadAttempts) {
-    console.log("[saveStoreDraft] insert attempt keys:", Object.keys(payload).join(", "));
+    console.log("[store-create] insert attempt keys:", Object.keys(payload).join(", "));
 
     let result = await supabase
       .from("stores")
@@ -520,7 +522,11 @@ async function insertStoreDraftRow(
     }
 
     if (!result.error && result.data) {
-      console.log("[saveStoreDraft] insert success:", result.data);
+      console.info("[store-create] draft store inserted", {
+        storeId: result.data.id,
+        userId,
+        workspaceId: userId
+      });
       return { data: result.data, error: null };
     }
 

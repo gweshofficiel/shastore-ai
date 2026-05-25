@@ -22,9 +22,13 @@ type DraftStore = {
   created_at: string;
   id: string;
   name: string;
+  owner_user_id?: string | null;
   publication: PublicationRow | null;
   slug: string | null;
   status: string | null;
+  store_name?: string | null;
+  subscription_plan?: string | null;
+  workspace_id?: string | null;
 };
 
 type OwnedStore = {
@@ -150,6 +154,7 @@ async function loadDraftStores(
   return {
     draftStores: draftStores.map((store) => ({
       ...store,
+      name: store.store_name ?? store.name,
       publication:
         publicationRows.find((publication) => publication.store_id === store.id) ?? null
     })),
@@ -329,7 +334,7 @@ export default async function StoresPage({
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
               Loaded directly from the stores table for the current Supabase Auth user
-              (user_id or owner_user_id).
+              with owner-based isolation.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -363,6 +368,10 @@ export default async function StoresPage({
                     <p className="mt-1 text-sm font-semibold text-muted">
                       Status {isLocked ? formatStatus(storeAccess.state) : formatStatus(displayStatus, "draft")} · Created{" "}
                       {formatDate(store.created_at)}
+                    </p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                      Plan {store.subscription_plan ?? "free"} · Workspace{" "}
+                      {store.workspace_id ? store.workspace_id.slice(0, 8) : "current"}
                     </p>
                     {isLocked ? (
                       <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">

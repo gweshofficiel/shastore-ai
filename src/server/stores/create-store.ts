@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createStoreForUser } from "@/lib/stores/ownership";
 
 type CreateStoreInput = {
   ownerUserId: string;
@@ -13,10 +14,7 @@ export async function createStore(input: CreateStoreInput) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const normalizedSlug = input.slug
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-");
+  const normalizedSlug = input.slug.toLowerCase().trim().replace(/\s+/g, "-");
 
   const { data: existingStore } = await supabase
     .from("stores")
@@ -28,24 +26,12 @@ export async function createStore(input: CreateStoreInput) {
     throw new Error("Store slug already exists");
   }
 
-  const { data, error } = await supabase
-    .from("stores")
-    .insert({
-      owner_user_id: input.ownerUserId,
-      name: input.name,
-      slug: normalizedSlug,
-      description: input.description ?? null,
-      status: "draft",
-      provisioning_state: "pending",
-      subscription_plan: "free",
-      is_active: true,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return createStoreForUser(supabase, input.ownerUserId, {
+    description: input.description ?? null,
+    name: input.name,
+    slug: normalizedSlug,
+    status: "draft",
+    subscriptionPlan: "free",
+    workspaceId: input.ownerUserId
+  });
 }

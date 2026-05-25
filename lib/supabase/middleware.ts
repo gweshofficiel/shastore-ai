@@ -9,6 +9,7 @@ export async function updateSession(request: NextRequest) {
   const isProtectedRoute =
     request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/admin");
+  const isStoreDashboardRoute = request.nextUrl.pathname.startsWith("/dashboard/stores");
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -50,10 +51,23 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && isProtectedRoute) {
+    if (isStoreDashboardRoute) {
+      console.warn("[store-access] unauthenticated store dashboard request", {
+        path: request.nextUrl.pathname
+      });
+    }
+
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(redirectUrl);
+  }
+
+  if (user && isStoreDashboardRoute) {
+    console.info("[store-access] store dashboard session verified", {
+      path: request.nextUrl.pathname,
+      userId: user.id
+    });
   }
 
   return response;

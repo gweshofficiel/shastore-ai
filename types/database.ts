@@ -241,7 +241,9 @@ export type Database = {
           project_id: string | null;
           user_id: string;
           owner_user_id: string | null;
+          workspace_id: string;
           name: string;
+          store_name: string;
           description: string | null;
           logo_image_url: string | null;
           brand_color: string;
@@ -250,6 +252,7 @@ export type Database = {
           template_id: string;
           slug: string | null;
           store_data: Json;
+          subscription_plan: string;
           status: PublicationStatus;
           created_at: string;
           updated_at: string;
@@ -259,7 +262,9 @@ export type Database = {
           project_id?: string | null;
           user_id: string;
           owner_user_id?: string | null;
+          workspace_id?: string;
           name: string;
+          store_name?: string;
           description?: string | null;
           logo_image_url?: string | null;
           brand_color?: string;
@@ -268,6 +273,7 @@ export type Database = {
           template_id?: string;
           slug?: string | null;
           store_data?: Json;
+          subscription_plan?: string;
           status?: PublicationStatus;
           created_at?: string;
           updated_at?: string;

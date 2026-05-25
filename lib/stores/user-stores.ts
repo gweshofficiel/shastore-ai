@@ -4,11 +4,16 @@ export type UserStoreRow = {
   created_at: string;
   id: string;
   name: string;
+  owner_user_id?: string | null;
   slug: string | null;
   status: string | null;
+  store_name?: string | null;
+  subscription_plan?: string | null;
+  workspace_id?: string | null;
 };
 
-const storeSelect = "id, name, status, slug, created_at";
+const storeSelect =
+  "id, name, store_name, owner_user_id, workspace_id, subscription_plan, status, slug, created_at";
 
 function isMissingOwnerUserColumn(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
@@ -22,26 +27,14 @@ function mergeStoreRows(rows: UserStoreRow[] | null, merged: Map<string, UserSto
 }
 
 /**
- * Load stores owned by the authenticated user via user_id OR owner_user_id.
- * Uses two explicit queries so results are reliable across PostgREST versions and RLS.
+ * Load stores owned by the authenticated user. owner_user_id is canonical; user_id remains
+ * as a compatibility fallback for older Store Mode rows until all migrations are applied.
  */
 export async function fetchStoresForAuthUser(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ error: string | null; stores: UserStoreRow[] }> {
   const merged = new Map<string, UserStoreRow>();
-
-  const byUserId = await supabase
-    .from("stores")
-    .select(storeSelect)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (byUserId.error) {
-    return { stores: [], error: byUserId.error.message };
-  }
-
-  mergeStoreRows(byUserId.data as UserStoreRow[] | null, merged);
 
   const byOwner = await supabase
     .from("stores")
@@ -51,8 +44,20 @@ export async function fetchStoresForAuthUser(
 
   if (!byOwner.error) {
     mergeStoreRows(byOwner.data as UserStoreRow[] | null, merged);
-  } else if (!isMissingOwnerUserColumn(byOwner.error) && merged.size === 0) {
+  } else if (!isMissingOwnerUserColumn(byOwner.error)) {
     return { stores: [], error: byOwner.error.message };
+  }
+
+  const byUserId = await supabase
+    .from("stores")
+    .select(storeSelect)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (!byUserId.error) {
+    mergeStoreRows(byUserId.data as UserStoreRow[] | null, merged);
+  } else if (merged.size === 0) {
+    return { stores: [], error: byUserId.error.message };
   }
 
   const stores = Array.from(merged.values()).sort(
@@ -62,6 +67,8 @@ export async function fetchStoresForAuthUser(
 
   return { stores, error: null };
 }
+
+export const getUserStores = fetchStoresForAuthUser;
 
 export async function countStoresForAuthUser(supabase: SupabaseClient, userId: string) {
   const { stores, error } = await fetchStoresForAuthUser(supabase, userId);
