@@ -237,3 +237,64 @@ export async function sendBillingNotificationEmailSafe({
     });
   }
 }
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export async function sendWorkspaceInviteEmailSafe({
+  acceptUrl,
+  email,
+  role
+}: {
+  acceptUrl: string;
+  email: string;
+  role: string;
+}) {
+  try {
+    const provider = configuredProvider();
+
+    if (provider !== "resend" || !providerReady(provider)) {
+      console.warn("[team-invite-email] skipped provider unavailable", {
+        hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
+        hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
+        provider
+      });
+      return;
+    }
+
+    console.info("[team-invite-email] sending invite", { email, role });
+
+    const safeUrl = escapeHtml(acceptUrl);
+    const safeRole = escapeHtml(role);
+    const result = await sendWithResend({
+      html: `<p>You are invited to join SHASTORE AI as ${safeRole}.</p><p><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">Accept invitation</a></p><p>If the button does not work, copy and paste this link:</p><p><a href="${safeUrl}">${safeUrl}</a></p>`,
+      subject: "You are invited to join SHASTORE AI",
+      text: `You are invited to join SHASTORE AI as ${role}.\n\nAccept invitation: ${acceptUrl}`,
+      to: email
+    });
+
+    if (result.error) {
+      console.warn("[team-invite-email] send failed", {
+        email,
+        message: result.error
+      });
+      return;
+    }
+
+    console.info("[team-invite-email] sent", {
+      email,
+      resendMessageId: result.id
+    });
+  } catch (error) {
+    console.warn("[team-invite-email] failed safely", {
+      email,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+}

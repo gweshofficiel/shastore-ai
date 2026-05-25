@@ -1,7 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
+import { getPublicUrl } from "@/lib/deployment/config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,12 +20,14 @@ export type WorkspaceMember = {
 };
 
 export type WorkspaceInvite = {
+  accepted_at?: string | null;
   created_at: string;
   email: string;
+  expires_at?: string | null;
   id: string;
   invited_by: string;
   role: Exclude<WorkspaceRole, "owner">;
-  status: "pending" | "accepted" | "revoked";
+  status: "pending" | "accepted" | "revoked" | "expired";
   workspace_id: string;
 };
 
@@ -38,6 +43,19 @@ function normalizeRole(value: FormDataEntryValue | string | null): Exclude<Works
     : "editor";
 }
 
+function hashInviteToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function createInviteToken() {
+  const token = randomBytes(32).toString("base64url");
+
+  return {
+    token,
+    tokenHash: hashInviteToken(token)
+  };
+}
+
 function teamRedirect(status: string, message?: string): never {
   const params = new URLSearchParams({ team: status });
 
@@ -46,26 +64,6 @@ function teamRedirect(status: string, message?: string): never {
   }
 
   redirect(`/dashboard/team?${params.toString()}`);
-}
-
-async function resolveAuthUserIdByEmail(email: string) {
-  const admin = createAdminClient();
-
-  if (!admin) {
-    return null;
-  }
-
-  const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-
-  if (error) {
-    console.warn("[workspace-invite] auth email lookup failed", {
-      email,
-      message: error.message
-    });
-    return null;
-  }
-
-  return data.users.find((user) => user.email?.toLowerCase() === email)?.id ?? null;
 }
 
 async function ensureOwnerMembership(
@@ -145,8 +143,8 @@ export async function getWorkspaceMembers(
         .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: true }),
       supabase
-        .from("workspace_invites" as never)
-        .select("id, workspace_id, email, role, invited_by, status, created_at")
+        .from("workspace_invitations" as never)
+        .select("id, workspace_id, email, role, invited_by, status, expires_at, accepted_at, created_at")
         .eq("workspace_id", workspaceId)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
@@ -181,7 +179,7 @@ async function workspaceSeatCount(supabase: SupabaseClient, workspaceId: string)
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId),
     supabase
-      .from("workspace_invites" as never)
+      .from("workspace_invitations" as never)
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId)
       .eq("status", "pending")
@@ -233,31 +231,34 @@ export async function inviteMember(formData: FormData) {
     teamRedirect("error", "Only workspace owners and admins can invite team members.");
   }
 
-  const invitedUserId = await resolveAuthUserIdByEmail(email);
   const admin = createAdminClient();
   const client = admin ?? supabase;
+  const { token, tokenHash } = createInviteToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const acceptUrl = getPublicUrl(`/invite/${token}`);
 
-  console.info("[workspace-invite] creating invite", {
+  console.info("[team-invite] creating invite", {
     email,
-    invitedUserFound: Boolean(invitedUserId),
     role,
     userId: user.id,
     workspaceId
   });
 
-  const { error: inviteError } = await client.from("workspace_invites" as never).upsert(
+  const { error: inviteError } = await client.from("workspace_invitations" as never).upsert(
     {
       email,
+      expires_at: expiresAt,
       invited_by: user.id,
       role,
-      status: invitedUserId ? "accepted" : "pending",
+      status: "pending",
+      token_hash: tokenHash,
       workspace_id: workspaceId
     } as never,
     { onConflict: "workspace_id,email" }
   );
 
   if (inviteError) {
-    console.warn("[workspace-invite] invite upsert failed", {
+    console.warn("[team-invite] invite upsert failed", {
       email,
       message: inviteError.message,
       workspaceId
@@ -265,29 +266,10 @@ export async function inviteMember(formData: FormData) {
     teamRedirect("error", "Invite could not be created. Please try again.");
   }
 
-  if (invitedUserId) {
-    const { error: memberError } = await client.from("workspace_members" as never).upsert(
-      {
-        invited_by: user.id,
-        role,
-        user_id: invitedUserId,
-        workspace_id: workspaceId
-      } as never,
-      { onConflict: "workspace_id,user_id" }
-    );
-
-    if (memberError) {
-      console.warn("[workspace-member] member upsert failed", {
-        email,
-        message: memberError.message,
-        workspaceId
-      });
-      teamRedirect("error", "Member could not be added. Please try again.");
-    }
-  }
+  await sendWorkspaceInviteEmailSafe({ acceptUrl, email, role });
 
   revalidatePath("/dashboard/team");
-  teamRedirect(invitedUserId ? "member-added" : "invite-created");
+  teamRedirect("invite-created");
 }
 
 export async function removeMember(formData: FormData) {
@@ -336,7 +318,7 @@ export async function removeMember(formData: FormData) {
 
   if (inviteId) {
     const { error } = await client
-      .from("workspace_invites" as never)
+      .from("workspace_invitations" as never)
       .update({ status: "revoked" } as never)
       .eq("id", inviteId)
       .eq("workspace_id", workspaceId);
@@ -355,4 +337,167 @@ export async function removeMember(formData: FormData) {
 
   revalidatePath("/dashboard/team");
   teamRedirect("removed");
+}
+
+export async function resendInvite(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/team");
+  }
+
+  const workspaceId = String(formData.get("workspaceId") ?? user.id);
+  const inviteId = String(formData.get("inviteId") ?? "");
+  const management = await canManageWorkspace(supabase, workspaceId, user.id);
+
+  if (!management.allowed) {
+    teamRedirect("error", "Only workspace owners and admins can resend invites.");
+  }
+
+  const { token, tokenHash } = createInviteToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const admin = createAdminClient();
+  const client = admin ?? supabase;
+  const { data, error } = await client
+    .from("workspace_invitations" as never)
+    .update({
+      expires_at: expiresAt,
+      status: "pending",
+      token_hash: tokenHash
+    } as never)
+    .eq("id", inviteId)
+    .eq("workspace_id", workspaceId)
+    .eq("status", "pending")
+    .select("email, role")
+    .maybeSingle();
+
+  if (error || !data) {
+    console.warn("[team-invite] resend failed", {
+      inviteId,
+      message: error?.message ?? "Invite not found",
+      workspaceId
+    });
+    teamRedirect("error", "Invite could not be resent.");
+  }
+
+  const invite = data as { email: string; role: string };
+  await sendWorkspaceInviteEmailSafe({
+    acceptUrl: getPublicUrl(`/invite/${token}`),
+    email: invite.email,
+    role: invite.role
+  });
+
+  console.info("[team-invite] invite resent", {
+    email: invite.email,
+    inviteId,
+    workspaceId
+  });
+
+  revalidatePath("/dashboard/team");
+  teamRedirect("invite-resent");
+}
+
+export async function acceptInviteToken(token: string, userId: string, userEmail?: string | null) {
+  const tokenHash = hashInviteToken(token);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return { ok: false as const, message: "Invite acceptance is not configured." };
+  }
+
+  const { data, error } = await admin
+    .from("workspace_invitations" as never)
+    .select("id, workspace_id, email, role, status, expires_at, invited_by")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.warn("[team-invite-accept] invite lookup failed", {
+      message: error?.message ?? "Invite not found"
+    });
+    return { ok: false as const, message: "Invitation is invalid or expired." };
+  }
+
+  const invite = data as {
+    email: string;
+    expires_at: string;
+    id: string;
+    invited_by: string;
+    role: Exclude<WorkspaceRole, "owner">;
+    status: string;
+    workspace_id: string;
+  };
+
+  if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
+    await admin
+      .from("workspace_invitations" as never)
+      .update({ status: "expired" } as never)
+      .eq("id", invite.id)
+      .eq("status", "pending");
+    return { ok: false as const, message: "Invitation is invalid or expired." };
+  }
+
+  if (userEmail?.toLowerCase() !== invite.email.toLowerCase()) {
+    console.warn("[team-invite-accept] email mismatch", {
+      inviteEmail: invite.email,
+      userEmail: userEmail ?? null,
+      userId
+    });
+    return {
+      ok: false as const,
+      message: "Sign in with the email address that received this invitation."
+    };
+  }
+
+  const access = await getUserSubscriptionAccessForClient(admin, invite.workspace_id);
+  const seatsUsed = await workspaceSeatCount(admin, invite.workspace_id);
+
+  if (access.usage.teamMemberLimit !== null && seatsUsed > access.usage.teamMemberLimit) {
+    console.warn("[team-invite-accept] team member limit reached", {
+      limit: access.usage.teamMemberLimit,
+      seatsUsed,
+      userId,
+      workspaceId: invite.workspace_id
+    });
+    return {
+      ok: false as const,
+      message: "This workspace has reached its team member limit."
+    };
+  }
+
+  const { error: memberError } = await admin.from("workspace_members" as never).upsert(
+    {
+      invited_by: invite.invited_by,
+      role: invite.role,
+      user_id: userId,
+      workspace_id: invite.workspace_id
+    } as never,
+    { onConflict: "workspace_id,user_id" }
+  );
+
+  if (memberError) {
+    console.warn("[team-invite-accept] member upsert failed", {
+      message: memberError.message,
+      userId,
+      workspaceId: invite.workspace_id
+    });
+    return { ok: false as const, message: "Invitation could not be accepted." };
+  }
+
+  await admin
+    .from("workspace_invitations" as never)
+    .update({ accepted_at: new Date().toISOString(), status: "accepted" } as never)
+    .eq("id", invite.id);
+
+  console.info("[team-invite-accept] invite accepted", {
+    userId,
+    workspaceId: invite.workspace_id
+  });
+
+  return { ok: true as const, message: "Invitation accepted." };
 }

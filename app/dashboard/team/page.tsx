@@ -10,6 +10,7 @@ import {
   getWorkspaceMembers,
   inviteMember,
   removeMember,
+  resendInvite,
   type WorkspaceMember
 } from "@/lib/workspace-members";
 
@@ -104,11 +105,15 @@ export default async function TeamPage({
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
             {query.team === "invite-created"
-              ? "Invite created. Email delivery is prepared for a future step."
+              ? "Invite created and email delivery was attempted."
+              : query.team === "invite-resent"
+                ? "Invite email resent."
               : query.team === "member-added"
                 ? "Member added to the workspace."
                 : query.team === "removed"
                   ? "Team member or invite removed."
+                  : query.team === "invite-accepted"
+                    ? "Invitation accepted. Welcome to the workspace."
                   : "Team updated."}
           </p>
         </Card>
@@ -251,22 +256,40 @@ export default async function TeamPage({
                   <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
                     Pending {formatRole(invite.role)}
                   </p>
+                  {invite.expires_at ? (
+                    <p className="mt-1 text-xs font-semibold text-muted">
+                      Expires {new Intl.DateTimeFormat("en", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                      }).format(new Date(invite.expires_at))}
+                    </p>
+                  ) : null}
                 </div>
                 {management.allowed ? (
-                  <form action={removeMember}>
-                    <input name="workspaceId" type="hidden" value={workspaceId} />
-                    <input name="inviteId" type="hidden" value={invite.id} />
-                    <Button type="submit" variant="secondary">
-                      Revoke
-                    </Button>
-                  </form>
+                  <div className="flex flex-wrap gap-2">
+                    <form action={resendInvite}>
+                      <input name="workspaceId" type="hidden" value={workspaceId} />
+                      <input name="inviteId" type="hidden" value={invite.id} />
+                      <Button type="submit" variant="secondary">
+                        Resend
+                      </Button>
+                    </form>
+                    <form action={removeMember}>
+                      <input name="workspaceId" type="hidden" value={workspaceId} />
+                      <input name="inviteId" type="hidden" value={invite.id} />
+                      <Button type="submit" variant="secondary">
+                        Revoke
+                      </Button>
+                    </form>
+                  </div>
                 ) : null}
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-5 rounded-3xl bg-slate-50 p-4 text-sm font-semibold leading-6 text-muted">
-            No pending invites. Email sending can be connected later without changing this data model.
+            No pending invites.
           </p>
         )}
       </Card>
