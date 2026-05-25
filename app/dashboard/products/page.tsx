@@ -9,6 +9,7 @@ import {
   updateStoreOwnerProduct
 } from "@/lib/product-actions";
 import { createClient } from "@/lib/supabase/server";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -311,6 +312,39 @@ export default async function SellerProductsPage({
   searchParams: Promise<{ edit?: string; products?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+    if (!hasPermission(role, "can_edit_stores")) {
+      console.warn("[permission-denied] products page denied", {
+        permission: "can_edit_stores",
+        role,
+        userId: user.id,
+        workspaceId
+      });
+
+      return (
+        <div className="grid gap-6 lg:gap-8">
+          <PageHeader
+            description="Product access is assigned by workspace role."
+            title="Products"
+          />
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-800">
+              You do not have permission to manage products.
+            </p>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   const { activeStore, error, products, schemaIssue, stores } = await getProductsDashboardData(
     query.storeId
   );

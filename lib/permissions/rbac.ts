@@ -4,6 +4,14 @@ import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 export type WorkspaceRole = "owner" | "admin" | "editor" | "support";
 
 export type WorkspacePermission =
+  | "can_edit_stores"
+  | "can_edit_templates"
+  | "can_manage_billing"
+  | "can_manage_domains"
+  | "can_manage_team"
+  | "can_view_orders"
+  | "can_view_stores"
+  | "can_view_templates"
   | "manage_billing"
   | "manage_team"
   | "create_store"
@@ -19,39 +27,61 @@ export type WorkspacePermission =
 export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
   owner: [
     "manage_billing",
+    "can_manage_billing",
     "manage_team",
+    "can_manage_team",
     "create_store",
     "edit_store",
+    "can_view_stores",
+    "can_edit_stores",
     "publish_store",
     "manage_domains",
+    "can_manage_domains",
     "manage_products",
+    "can_view_templates",
+    "can_edit_templates",
     "view_orders",
+    "can_view_orders",
     "manage_orders",
     "view_analytics",
     "export_data"
   ],
   admin: [
+    "manage_billing",
+    "can_manage_billing",
     "manage_team",
+    "can_manage_team",
     "create_store",
     "edit_store",
+    "can_view_stores",
+    "can_edit_stores",
     "publish_store",
     "manage_domains",
+    "can_manage_domains",
     "manage_products",
+    "can_view_templates",
+    "can_edit_templates",
     "view_orders",
+    "can_view_orders",
     "manage_orders",
     "view_analytics",
     "export_data"
   ],
   editor: [
+    "can_view_templates",
+    "can_edit_templates",
     "create_store",
     "edit_store",
+    "can_view_stores",
+    "can_edit_stores",
     "publish_store",
     "manage_products",
     "view_orders",
+    "can_view_orders",
     "view_analytics",
     "export_data"
   ],
-  support: ["view_orders", "view_analytics"]
+  support: ["view_orders", "can_view_orders", "view_analytics"]
 };
 
 export class PermissionDeniedError extends Error {

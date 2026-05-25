@@ -23,6 +23,7 @@ import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -256,6 +257,39 @@ export default async function TemplatesPage({
   searchParams: Promise<{ category?: string; detail?: string; storeId?: string; templateApply?: string; templateId?: string }>;
 }) {
   const params = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+    if (!hasPermission(role, "can_view_templates")) {
+      console.warn("[permission-denied] templates page denied", {
+        permission: "can_view_templates",
+        role,
+        userId: user.id,
+        workspaceId
+      });
+
+      return (
+        <div className="grid gap-6 lg:gap-8">
+          <PageHeader
+            description="Template access is assigned by workspace role."
+            title="Templates"
+          />
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-800">
+              You do not have permission to view templates.
+            </p>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   const [access, stores] = await Promise.all([
     getCurrentUserSubscriptionAccess(),
     getClaimedStores()

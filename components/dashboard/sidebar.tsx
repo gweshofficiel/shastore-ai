@@ -7,24 +7,42 @@ import {
   getActiveWorkspaceForUser,
   switchActiveWorkspace
 } from "@/lib/workspaces/active-workspace";
+import { hasPermission, type WorkspacePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 
 const navItems = [
-  { href: "/dashboard", label: "Overview", icon: "overview" },
-  { href: "/dashboard/landings", label: "Landings", icon: "landings" },
-  { href: "/dashboard/stores", label: "Stores", icon: "stores" },
-  { href: "/dashboard/products", label: "Products", icon: "products" },
-  { href: "/dashboard/orders", label: "Orders", icon: "orders" },
-  { href: "/dashboard/customers", label: "Customers", icon: "customers" },
-  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics" },
-  { href: "/dashboard/payments", label: "Payments", icon: "payments" },
-  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping" },
-  { href: "/dashboard/templates", label: "Templates", icon: "templates" },
-  { href: "/dashboard/domains", label: "Domains", icon: "domains" },
-  { href: "/dashboard/team", label: "Team", icon: "team" },
-  { href: "/dashboard/billing", label: "Billing", icon: "billing" },
-  { href: "/dashboard/notifications", label: "Notifications", icon: "notifications" },
-  { href: "/dashboard/settings", label: "Settings", icon: "settings" }
+  { href: "/dashboard", label: "Overview", icon: "overview", ownerAdminOnly: true },
+  { href: "/dashboard/landings", label: "Landings", icon: "landings", permission: "can_edit_stores" },
+  { href: "/dashboard/stores", label: "Stores", icon: "stores", permission: "can_view_stores" },
+  { href: "/dashboard/products", label: "Products", icon: "products", permission: "can_edit_stores" },
+  { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "can_view_orders" },
+  { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "can_view_orders" },
+  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
+  { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "manage_orders" },
+  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "manage_orders" },
+  { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
+  { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },
+  { href: "/dashboard/team", label: "Team", icon: "team", permission: "can_manage_team" },
+  { href: "/dashboard/billing", label: "Billing", icon: "billing", permission: "can_manage_billing" },
+  { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", always: true },
+  { href: "/dashboard/settings", label: "Settings", icon: "settings", always: true }
 ] as const;
+
+function canSeeNavItem(
+  item: (typeof navItems)[number],
+  role: WorkspaceRole | null | undefined
+) {
+  if ("always" in item && item.always) {
+    return true;
+  }
+
+  if ("ownerAdminOnly" in item && item.ownerAdminOnly) {
+    return role === "owner" || role === "admin";
+  }
+
+  return "permission" in item
+    ? hasPermission(role, item.permission as WorkspacePermission)
+    : false;
+}
 
 async function getUnreadNotificationCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -81,7 +99,7 @@ export async function Sidebar() {
           </div>
         </div>
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:max-h-[calc(100vh-17rem)] lg:overflow-y-auto lg:pb-1">
-          {navItems.map((item) => {
+          {navItems.filter((item) => canSeeNavItem(item, selection?.activeWorkspaceRole)).map((item) => {
             return (
               <DashboardNavLink
                 href={item.href}

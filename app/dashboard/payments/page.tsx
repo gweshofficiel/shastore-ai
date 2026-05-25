@@ -8,6 +8,8 @@ import {
   commerceMigrationMessage,
   getCommercePaymentSettings
 } from "@/lib/commerce/data";
+import { createClient } from "@/lib/supabase/server";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,39 @@ export default async function PaymentsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const params = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+    if (!hasPermission(role, "manage_orders")) {
+      console.warn("[permission-denied] payments page denied", {
+        permission: "manage_orders",
+        role,
+        userId: user.id,
+        workspaceId
+      });
+
+      return (
+        <div className="grid gap-6 lg:gap-8">
+          <PageHeader
+            description="Payment settings are limited to order managers."
+            title="Payments"
+          />
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-800">
+              You do not have permission to manage payments.
+            </p>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   const settings = await getCommercePaymentSettings();
   const current = settings.items;
 

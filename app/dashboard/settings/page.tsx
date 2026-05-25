@@ -7,10 +7,19 @@ import {
   accountProfileUnavailableMessage,
   getOrCreateAccountProfile
 } from "@/lib/account-profiles";
+import { createClient } from "@/lib/supabase/server";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
+  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canManageCommerce = hasPermission(role, "manage_orders");
   const account = await getOrCreateAccountProfile("user");
 
   return (
@@ -41,14 +50,16 @@ export default async function SettingsPage() {
           Configure seller business details, policies, countries, shipping, and delivery
           agents without changing checkout, payments, storefronts, or billing.
         </p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          <ButtonLink href="/dashboard/settings/commerce" variant="secondary">
-            Commerce settings
-          </ButtonLink>
-          <ButtonLink href="/dashboard/shipping" variant="secondary">
-            Shipping
-          </ButtonLink>
-        </div>
+        {canManageCommerce ? (
+          <div className="mt-5 flex flex-wrap gap-3">
+            <ButtonLink href="/dashboard/settings/commerce" variant="secondary">
+              Commerce settings
+            </ButtonLink>
+            <ButtonLink href="/dashboard/shipping" variant="secondary">
+              Shipping
+            </ButtonLink>
+          </div>
+        ) : null}
       </Card>
     </div>
   );

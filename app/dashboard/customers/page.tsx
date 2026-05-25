@@ -3,6 +3,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/server";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -289,6 +290,39 @@ export default async function CustomersPage({
   searchParams: Promise<{ customerId?: string; q?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+    if (!hasPermission(role, "can_view_orders")) {
+      console.warn("[permission-denied] customers page denied", {
+        permission: "can_view_orders",
+        role,
+        userId: user.id,
+        workspaceId
+      });
+
+      return (
+        <div className="grid gap-6 lg:gap-8">
+          <PageHeader
+            description="Customer access is assigned by workspace role."
+            title="Customers"
+          />
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-800">
+              You do not have permission to view customers.
+            </p>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   const { activeStore, customerOrders, customers, error, schemaIssue, selectedCustomer, stores } =
     await getCustomersDashboardData({
       customerId: params.customerId,

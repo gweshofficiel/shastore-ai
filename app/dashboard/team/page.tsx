@@ -257,6 +257,20 @@ export default async function TeamPage({
       workspaceId
     });
 
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Team management is limited to workspace owners and admins."
+          title="Team"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to view team members, pending invites, suspended members,
+            or banned members.
+          </p>
+        </Card>
+      </div>
+    );
   }
 
   const { invites, invitesError, members, membersError } = await getWorkspaceMembers(
