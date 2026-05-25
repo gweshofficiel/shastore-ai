@@ -8,7 +8,10 @@ import { getPublicUrl } from "@/lib/deployment/config";
 import { hasPermission, requirePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { setActiveWorkspaceCookie } from "@/lib/workspaces/active-workspace";
+import {
+  getActiveWorkspaceForUser,
+  setActiveWorkspaceCookie
+} from "@/lib/workspaces/active-workspace";
 
 export type WorkspaceMember = {
   created_at: string;
@@ -74,6 +77,43 @@ function teamWorkspaceRedirect(status: string, workspaceId: string, message?: st
   }
 
   redirect(`/dashboard/team?${params.toString()}`);
+}
+
+async function requireActiveWorkspaceManagement(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string,
+  action: "remove" | "role-change"
+) {
+  const selection = await getActiveWorkspaceForUser({ supabase, userId });
+
+  if (selection.activeWorkspaceId !== workspaceId) {
+    console.warn("[team-member-permission-denied] attempted member management outside active workspace", {
+      action,
+      activeWorkspaceId: selection.activeWorkspaceId,
+      userId,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", selection.activeWorkspaceId, "Switch to that workspace before managing members.");
+  }
+
+  try {
+    const permission = await requirePermission({
+      permission: "manage_team",
+      supabase,
+      userId,
+      workspaceId
+    });
+
+    return permission;
+  } catch {
+    console.warn("[team-member-permission-denied] manage_team permission denied", {
+      action,
+      userId,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Only workspace owners and admins can manage team members.");
+  }
 }
 
 async function ensureOwnerMembership(
@@ -386,21 +426,55 @@ export async function removeMember(formData: FormData) {
   const memberId = String(formData.get("memberId") ?? "");
   const inviteId = String(formData.get("inviteId") ?? "");
 
-  try {
-    await requirePermission({
-      permission: "manage_team",
-      supabase,
-      userId: user.id,
-      workspaceId
-    });
-  } catch {
-    teamRedirect("error", "Only workspace owners and admins can remove team members.");
-  }
+  await requireActiveWorkspaceManagement(supabase, workspaceId, user.id, "remove");
 
   const admin = createAdminClient();
   const client = admin ?? supabase;
 
   if (memberId) {
+    const { data: targetMember, error: targetError } = await client
+      .from("workspace_members" as never)
+      .select("id, workspace_id, user_id, role")
+      .eq("id", memberId)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+
+    if (targetError || !targetMember) {
+      console.warn("[team-member-remove] target lookup failed", {
+        memberId,
+        message: targetError?.message ?? "Member not found",
+        userId: user.id,
+        workspaceId
+      });
+      teamWorkspaceRedirect("error", workspaceId, "Member could not be found.");
+    }
+
+    const target = targetMember as {
+      id: string;
+      role: WorkspaceRole;
+      user_id: string;
+      workspace_id: string;
+    };
+
+    if (target.user_id === user.id) {
+      console.warn("[team-member-remove] self-removal denied", {
+        memberId,
+        userId: user.id,
+        workspaceId
+      });
+      teamWorkspaceRedirect("error", workspaceId, "You cannot remove yourself from the workspace.");
+    }
+
+    if (target.role === "owner") {
+      console.warn("[team-member-remove] owner removal denied", {
+        memberId,
+        targetUserId: target.user_id,
+        userId: user.id,
+        workspaceId
+      });
+      teamWorkspaceRedirect("error", workspaceId, "Workspace owners cannot be removed from Team.");
+    }
+
     const { error } = await client
       .from("workspace_members" as never)
       .delete()
@@ -414,10 +488,16 @@ export async function removeMember(formData: FormData) {
         message: error.message,
         workspaceId
       });
-      teamRedirect("error", "Member could not be removed.");
+      teamWorkspaceRedirect("error", workspaceId, "Member could not be removed.");
     }
 
-    console.info("[workspace-member] member removed", { memberId, userId: user.id, workspaceId });
+    console.info("[team-member-remove] member removed", {
+      memberId,
+      targetRole: target.role,
+      targetUserId: target.user_id,
+      userId: user.id,
+      workspaceId
+    });
   }
 
   if (inviteId) {
@@ -433,7 +513,7 @@ export async function removeMember(formData: FormData) {
         message: error.message,
         workspaceId
       });
-      teamRedirect("error", "Invite could not be revoked.");
+      teamWorkspaceRedirect("error", workspaceId, "Invite could not be revoked.");
     }
 
     console.info("[workspace-invite] invite revoked", { inviteId, userId: user.id, workspaceId });
@@ -441,6 +521,101 @@ export async function removeMember(formData: FormData) {
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("removed", workspaceId);
+}
+
+export async function changeMemberRole(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/team");
+  }
+
+  const workspaceId = String(formData.get("workspaceId") ?? user.id);
+  const memberId = String(formData.get("memberId") ?? "");
+  const nextRole = normalizeRole(formData.get("role"));
+
+  await requireActiveWorkspaceManagement(supabase, workspaceId, user.id, "role-change");
+
+  const admin = createAdminClient();
+  const client = admin ?? supabase;
+  const { data: targetMember, error: targetError } = await client
+    .from("workspace_members" as never)
+    .select("id, workspace_id, user_id, role")
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (targetError || !targetMember) {
+    console.warn("[team-member-role-change] target lookup failed", {
+      memberId,
+      message: targetError?.message ?? "Member not found",
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member could not be found.");
+  }
+
+  const target = targetMember as {
+    id: string;
+    role: WorkspaceRole;
+    user_id: string;
+    workspace_id: string;
+  };
+
+  if (target.role === "owner") {
+    console.warn("[team-member-role-change] owner role change denied", {
+      memberId,
+      targetUserId: target.user_id,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Workspace owner roles cannot be changed from Team.");
+  }
+
+  if (target.role === nextRole) {
+    console.info("[team-member-role-change] role unchanged", {
+      memberId,
+      role: nextRole,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("member-role-updated", workspaceId);
+  }
+
+  const { error } = await client
+    .from("workspace_members" as never)
+    .update({ role: nextRole } as never)
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .neq("role", "owner");
+
+  if (error) {
+    console.warn("[team-member-role-change] update failed", {
+      memberId,
+      message: error.message,
+      nextRole,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member role could not be changed.");
+  }
+
+  console.info("[team-member-role-change] role updated", {
+    memberId,
+    nextRole,
+    previousRole: target.role,
+    targetUserId: target.user_id,
+    userId: user.id,
+    workspaceId
+  });
+
+  revalidatePath("/dashboard/team");
+  teamWorkspaceRedirect("member-role-updated", workspaceId);
 }
 
 export async function resendInvite(formData: FormData) {

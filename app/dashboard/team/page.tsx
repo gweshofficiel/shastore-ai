@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ConfirmSubmitButton } from "@/components/dashboard/confirm-submit-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import {
 } from "@/lib/workspaces/active-workspace";
 import {
   canManageWorkspace,
+  changeMemberRole,
   getWorkspaceMembers,
   inviteMember,
   removeMember,
@@ -181,6 +183,8 @@ export default async function TeamPage({
                 ? "Member added to the workspace."
                 : query.team === "removed"
                   ? "Team member or invite removed."
+                    : query.team === "member-role-updated"
+                      ? "Team member role updated."
                   : query.team === "invite-accepted"
                     ? "Invitation accepted. Welcome to the workspace."
                   : "Team updated."}
@@ -281,7 +285,7 @@ export default async function TeamPage({
         <div className="mt-5 grid gap-3">
           {members.map((member) => (
             <div
-              className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4"
+              className="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto]"
               key={member.id}
             >
               <div>
@@ -293,13 +297,39 @@ export default async function TeamPage({
                 </p>
               </div>
               {member.role !== "owner" && management.allowed ? (
-                <form action={removeMember}>
-                  <input name="workspaceId" type="hidden" value={workspaceId} />
-                  <input name="memberId" type="hidden" value={member.id} />
-                  <Button type="submit" variant="secondary">
-                    Remove
-                  </Button>
-                </form>
+                <div className="flex flex-wrap items-end gap-2">
+                  <form action={changeMemberRole} className="flex flex-wrap items-end gap-2">
+                    <input name="workspaceId" type="hidden" value={workspaceId} />
+                    <input name="memberId" type="hidden" value={member.id} />
+                    <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor={`role-${member.id}`}>
+                      <span>Change role</span>
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                        defaultValue={member.role}
+                        id={`role-${member.id}`}
+                        name="role"
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="editor">Editor</option>
+                        <option value="support">Support</option>
+                      </select>
+                    </label>
+                    <Button type="submit" variant="secondary">
+                      Change role
+                    </Button>
+                  </form>
+                  <form action={removeMember}>
+                    <input name="workspaceId" type="hidden" value={workspaceId} />
+                    <input name="memberId" type="hidden" value={member.id} />
+                    <ConfirmSubmitButton
+                      confirmMessage="Remove this member from the workspace?"
+                      type="submit"
+                      variant="secondary"
+                    >
+                      Remove
+                    </ConfirmSubmitButton>
+                  </form>
+                </div>
               ) : null}
             </div>
           ))}
