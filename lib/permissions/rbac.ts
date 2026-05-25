@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export type WorkspaceRole = "owner" | "admin" | "editor" | "support";
 
@@ -163,20 +164,13 @@ export async function requirePermission({
 }
 
 export async function getUserPrimaryWorkspaceId(supabase: SupabaseClient, userId: string) {
-  const { data, error } = await supabase
-    .from("workspace_members" as never)
-    .select("workspace_id, role, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const selection = await getActiveWorkspaceForUser({ supabase, userId });
 
-  if (error) {
-    console.warn("[rbac] primary workspace lookup failed", {
-      message: error.message,
-      userId
-    });
-  }
+  console.info("[workspace-selection] primary workspace resolved", {
+    source: selection.source,
+    userId,
+    workspaceId: selection.activeWorkspaceId
+  });
 
-  return (data as { workspace_id?: string | null } | null)?.workspace_id ?? userId;
+  return selection.activeWorkspaceId;
 }

@@ -8,6 +8,7 @@ import { getPublicUrl } from "@/lib/deployment/config";
 import { hasPermission, requirePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { setActiveWorkspaceCookie } from "@/lib/workspaces/active-workspace";
 
 export type WorkspaceMember = {
   created_at: string;
@@ -57,6 +58,16 @@ function createInviteToken() {
 
 function teamRedirect(status: string, message?: string): never {
   const params = new URLSearchParams({ team: status });
+
+  if (message) {
+    params.set("message", message.slice(0, 500));
+  }
+
+  redirect(`/dashboard/team?${params.toString()}`);
+}
+
+function teamWorkspaceRedirect(status: string, workspaceId: string, message?: string): never {
+  const params = new URLSearchParams({ team: status, workspace: workspaceId });
 
   if (message) {
     params.set("message", message.slice(0, 500));
@@ -278,7 +289,7 @@ export async function inviteMember(formData: FormData) {
   await sendWorkspaceInviteEmailSafe({ acceptUrl, email, role });
 
   revalidatePath("/dashboard/team");
-  teamRedirect("invite-created");
+  teamWorkspaceRedirect("invite-created", workspaceId);
 }
 
 export async function removeMember(formData: FormData) {
@@ -351,7 +362,7 @@ export async function removeMember(formData: FormData) {
   }
 
   revalidatePath("/dashboard/team");
-  teamRedirect("removed");
+  teamWorkspaceRedirect("removed", workspaceId);
 }
 
 export async function resendInvite(formData: FormData) {
@@ -420,7 +431,7 @@ export async function resendInvite(formData: FormData) {
   });
 
   revalidatePath("/dashboard/team");
-  teamRedirect("invite-resent");
+  teamWorkspaceRedirect("invite-resent", workspaceId);
 }
 
 async function markInvitationAccepted(
@@ -623,7 +634,11 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
         inviteId: invite.id,
         userId
       });
-      return { ok: true as const, message: "Invitation accepted." };
+      return {
+        ok: true as const,
+        message: "Invitation accepted.",
+        workspaceId: invite.workspace_id
+      };
     }
 
     if (invite.status !== "pending") {
@@ -637,7 +652,11 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
 
     const accepted = await markInvitationAccepted(admin, invite.id, invite.workspace_id, userId);
     return accepted.ok
-      ? { ok: true as const, message: "Invitation accepted." }
+      ? {
+          ok: true as const,
+          message: "Invitation accepted.",
+          workspaceId: invite.workspace_id
+        }
       : { ok: false as const, message: accepted.message };
   }
 
@@ -673,7 +692,11 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
 
   console.log("[invite-accept] success", { inviteId: invite.id, userId, workspaceId: invite.workspace_id });
 
-  return { ok: true as const, message: "Invitation accepted." };
+  return {
+    ok: true as const,
+    message: "Invitation accepted.",
+    workspaceId: invite.workspace_id
+  };
 }
 
 export async function acceptWorkspaceInvitation(token: string) {
@@ -699,8 +722,16 @@ export async function acceptWorkspaceInvitation(token: string) {
   const result = await acceptInviteToken(token, user.id, user.email);
 
   if (result.ok) {
-    console.log("[invite-accept-action] redirecting to team dashboard", { userId: user.id });
-    redirect("/dashboard/team?team=invite-accepted");
+    await setActiveWorkspaceCookie(result.workspaceId);
+    console.log("[invite-active-workspace-set] accepted invitation workspace selected", {
+      userId: user.id,
+      workspaceId: result.workspaceId
+    });
+    console.log("[invite-accept-action] redirecting to team dashboard", {
+      userId: user.id,
+      workspaceId: result.workspaceId
+    });
+    redirect(`/dashboard/team?team=invite-accepted&workspace=${encodeURIComponent(result.workspaceId)}`);
   }
 
   console.log("[invite-accept-action] acceptance failed", {

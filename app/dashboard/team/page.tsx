@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
-import { getUserPrimaryWorkspaceId } from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getActiveWorkspaceForUser,
+  switchActiveWorkspace
+} from "@/lib/workspaces/active-workspace";
 import {
   canManageWorkspace,
   getWorkspaceMembers,
@@ -50,7 +53,7 @@ async function resolveMemberEmails(members: WorkspaceMember[]) {
 export default async function TeamPage({
   searchParams
 }: {
-  searchParams: Promise<{ message?: string; team?: string }>;
+  searchParams: Promise<{ message?: string; team?: string; workspace?: string }>;
 }) {
   const query = await searchParams;
   const supabase = await createClient();
@@ -72,9 +75,23 @@ export default async function TeamPage({
     );
   }
 
-  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+  const selection = await getActiveWorkspaceForUser({
+    requestedWorkspaceId: query.workspace,
+    supabase,
+    userId: user.id
+  });
+  const workspaceId = selection.activeWorkspaceId;
+  const billingClient = createAdminClient() ?? supabase;
+
+  console.log("[workspace-selection] team page workspace selected", {
+    role: selection.activeWorkspaceRole,
+    source: selection.source,
+    userId: user.id,
+    workspaceId
+  });
+
   const [access, management] = await Promise.all([
-    getUserSubscriptionAccessForClient(supabase, workspaceId),
+    getUserSubscriptionAccessForClient(billingClient, workspaceId),
     canManageWorkspace(supabase, workspaceId, user.id)
   ]);
 
@@ -86,19 +103,6 @@ export default async function TeamPage({
       workspaceId
     });
 
-    return (
-      <div className="grid gap-6 lg:gap-8">
-        <PageHeader
-          description="Invite teammates to help manage your SHASTORE AI workspace securely."
-          title="Team"
-        />
-        <Card className="border-amber-200 bg-amber-50 p-5">
-          <p className="text-sm font-bold text-amber-800">
-            You do not have permission to manage team members.
-          </p>
-        </Card>
-      </div>
-    );
   }
 
   const { invites, invitesError, members, membersError } = await getWorkspaceMembers(
@@ -118,6 +122,46 @@ export default async function TeamPage({
         description="Invite teammates to help manage your SHASTORE AI workspace securely."
         title="Team"
       />
+
+      <Card className="p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Active workspace
+            </p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
+              {workspaceId === user.id ? "Personal workspace" : `Workspace ${workspaceId.slice(0, 8)}`}
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-muted">
+              Current role: {formatRole(selection.activeWorkspaceRole)}
+            </p>
+          </div>
+          <form action={switchActiveWorkspace} className="flex flex-wrap items-end gap-3">
+            <input name="next" type="hidden" value="/dashboard/team" />
+            <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="workspaceId">
+              <span>Switch workspace</span>
+              <select
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                defaultValue={workspaceId}
+                id="workspaceId"
+                name="workspaceId"
+              >
+                {selection.workspaces.map((workspace) => (
+                  <option key={workspace.workspaceId} value={workspace.workspaceId}>
+                    {workspace.isPersonal
+                      ? "Personal workspace"
+                      : `Workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
+                    - {formatRole(workspace.role)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button type="submit" variant="secondary">
+              Switch
+            </Button>
+          </form>
+        </div>
+      </Card>
 
       {query.team === "error" ? (
         <Card className="border-red-200 bg-red-50 p-5">
@@ -147,6 +191,14 @@ export default async function TeamPage({
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-bold text-amber-800">
             {membersError ?? invitesError}
+          </p>
+        </Card>
+      ) : null}
+      {!management.allowed ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You can view this workspace, but only owners and admins can invite or remove team
+            members.
           </p>
         </Card>
       ) : null}

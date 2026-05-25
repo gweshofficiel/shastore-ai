@@ -3,6 +3,10 @@ import { logout } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { DashboardNavLink } from "@/components/dashboard/nav-link";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getActiveWorkspaceForUser,
+  switchActiveWorkspace
+} from "@/lib/workspaces/active-workspace";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "overview" },
@@ -22,26 +26,20 @@ const navItems = [
   { href: "/dashboard/settings", label: "Settings", icon: "settings" }
 ] as const;
 
-async function getUnreadNotificationCount() {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return 0;
-  }
-
+async function getUnreadNotificationCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+) {
   const { count, error } = await supabase
     .from("notifications" as never)
     .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .is("read_at", null);
 
   if (error) {
     console.warn("[notification-count] unread count failed", {
       message: error.message,
-      userId: user.id
+      userId
     });
     return 0;
   }
@@ -50,14 +48,23 @@ async function getUnreadNotificationCount() {
 
   console.info("[notification-count] unread count loaded", {
     unreadCount,
-    userId: user.id
+    userId
   });
 
   return unreadCount;
 }
 
 export async function Sidebar() {
-  const unreadNotifications = await getUnreadNotificationCount();
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const [unreadNotifications, selection] = user
+    ? await Promise.all([
+        getUnreadNotificationCount(supabase, user.id),
+        getActiveWorkspaceForUser({ supabase, userId: user.id })
+      ])
+    : [0, null];
 
   return (
     <aside className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
@@ -90,9 +97,32 @@ export async function Sidebar() {
           <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
             Workspace
           </p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-            Generate copy, publish pages, and manage domains from one place.
-          </p>
+          {selection ? (
+            <form action={switchActiveWorkspace} className="mt-3 grid gap-3">
+              <input name="next" type="hidden" value="/dashboard" />
+              <select
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink outline-none"
+                defaultValue={selection.activeWorkspaceId}
+                name="workspaceId"
+              >
+                {selection.workspaces.map((workspace) => (
+                  <option key={workspace.workspaceId} value={workspace.workspaceId}>
+                    {workspace.isPersonal
+                      ? "Personal"
+                      : `Workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
+                    - {workspace.role}
+                  </option>
+                ))}
+              </select>
+              <Button type="submit" variant="secondary">
+                Switch workspace
+              </Button>
+            </form>
+          ) : (
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Generate copy, publish pages, and manage domains from one place.
+            </p>
+          )}
         </div>
         <form action={logout} className="hidden pt-4 lg:block">
           <Button className="w-full" type="submit" variant="secondary">
