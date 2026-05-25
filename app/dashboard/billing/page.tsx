@@ -235,7 +235,7 @@ export default async function BillingPage({
               ) : null}
             </div>
             {canManageSubscription ? (
-              <form action="/api/stripe/billing-portal" method="POST">
+              <form action="/api/billing/customer-portal" method="POST">
                 <Button type="submit">Reactivate billing</Button>
               </form>
             ) : (
@@ -338,7 +338,7 @@ export default async function BillingPage({
             </p>
           </div>
           {canManageSubscription ? (
-            <form action="/api/stripe/billing-portal" className="mt-5" method="POST">
+            <form action="/api/billing/customer-portal" className="mt-5" method="POST">
               <Button className="w-full" type="submit">
                 Manage subscription
               </Button>
@@ -409,7 +409,7 @@ export default async function BillingPage({
                 ))}
               </div>
               {plan.id === currentPlan.id && canManageSubscription ? (
-                <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
+                <form action="/api/billing/customer-portal" className="mt-6" method="POST">
                   <Button className="w-full" type="submit">
                     Manage subscription
                   </Button>
@@ -426,7 +426,7 @@ export default async function BillingPage({
                   </Button>
                 </form>
               ) : checkoutUpgrade.code === "downgrade_not_supported" && canManageSubscription ? (
-                <form action="/api/stripe/billing-portal" className="mt-6" method="POST">
+                <form action="/api/billing/customer-portal" className="mt-6" method="POST">
                   <Button className="w-full" type="submit" variant="secondary">
                     Manage in portal
                   </Button>
