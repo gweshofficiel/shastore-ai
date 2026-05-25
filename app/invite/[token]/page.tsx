@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { acceptInviteToken, getInviteTokenPreview } from "@/lib/workspace-members";
+import { acceptWorkspaceInvitation, getInviteTokenPreview } from "@/lib/workspace-members";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -80,14 +80,11 @@ export default async function InvitePage({
     userId: user.id
   });
 
-  const result = await acceptInviteToken(token, user.id, user.email);
+  console.log("[invite-page] calling acceptWorkspaceInvitation server action", {
+    userId: user.id
+  });
 
-  if (result.ok) {
-    console.info("[invite-page-accepted] invite accepted, redirecting to team", {
-      userId: user.id
-    });
-    redirect("/dashboard/team?team=invite-accepted");
-  }
+  const result = await acceptWorkspaceInvitation(token);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-12">

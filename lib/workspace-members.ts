@@ -423,29 +423,134 @@ export async function resendInvite(formData: FormData) {
   teamRedirect("invite-resent");
 }
 
+async function markInvitationAccepted(
+  client: SupabaseClient,
+  inviteId: string,
+  workspaceId: string,
+  userId: string
+) {
+  const { error } = await client
+    .from("workspace_invitations" as never)
+    .update({ accepted_at: new Date().toISOString(), status: "accepted" } as never)
+    .eq("id", inviteId);
+
+  if (error) {
+    console.log("[invite-accept] invitation status update failed", {
+      inviteId,
+      message: error.message,
+      userId,
+      workspaceId
+    });
+    return { ok: false as const, message: "Invitation could not be accepted." };
+  }
+
+  console.log("[invite-accept] invitation marked accepted", { inviteId, userId, workspaceId });
+  return { ok: true as const };
+}
+
+async function upsertWorkspaceMemberForInvite(
+  admin: ReturnType<typeof createAdminClient>,
+  userSupabase: SupabaseClient,
+  invite: {
+    invited_by: string;
+    role: Exclude<WorkspaceRole, "owner">;
+    workspace_id: string;
+  },
+  userId: string
+) {
+  const memberRow = {
+    invited_by: invite.invited_by,
+    role: invite.role,
+    user_id: userId,
+    workspace_id: invite.workspace_id
+  };
+
+  if (admin) {
+    console.log("[invite-accept] upserting workspace_members via service role", {
+      userId,
+      workspaceId: invite.workspace_id
+    });
+
+    const { data, error } = await admin
+      .from("workspace_members" as never)
+      .upsert(memberRow as never, { onConflict: "workspace_id,user_id" })
+      .select("id")
+      .maybeSingle();
+
+    if (!error && data) {
+      console.log("[invite-accept] workspace_members row confirmed (service role)", {
+        memberId: (data as { id: string }).id,
+        userId,
+        workspaceId: invite.workspace_id
+      });
+      return { ok: true as const };
+    }
+
+    console.log("[invite-accept] service role member upsert failed, trying authenticated client", {
+      message: error?.message ?? "no row returned",
+      userId,
+      workspaceId: invite.workspace_id
+    });
+  } else {
+    console.log("[invite-accept] service role unavailable; using authenticated client for member insert", {
+      userId,
+      workspaceId: invite.workspace_id
+    });
+  }
+
+  const { data, error } = await userSupabase
+    .from("workspace_members" as never)
+    .upsert(memberRow as never, { onConflict: "workspace_id,user_id" })
+    .select("id")
+    .maybeSingle();
+
+  if (error || !data) {
+    console.log("[invite-accept] authenticated member upsert failed", {
+      message: error?.message ?? "no row returned",
+      userId,
+      workspaceId: invite.workspace_id
+    });
+    return { ok: false as const, message: "Invitation could not be accepted." };
+  }
+
+  console.log("[invite-accept] workspace_members row confirmed (authenticated)", {
+    memberId: (data as { id: string }).id,
+    userId,
+    workspaceId: invite.workspace_id
+  });
+
+  return { ok: true as const };
+}
+
 export async function acceptInviteToken(token: string, userId: string, userEmail?: string | null) {
+  console.log("[invite-accept] start", { hasEmail: Boolean(userEmail), userId });
+
   const tokenHash = hashInviteToken(token);
   const admin = createAdminClient();
+  const userSupabase = await createClient();
 
   if (!admin) {
-    console.warn("[invite-auth-failed] invite acceptance service client unavailable");
+    console.log("[invite-accept] service role client unavailable; token lookup requires configuration");
     return { ok: false as const, message: "Invite acceptance is not configured." };
   }
 
+  console.log("[invite-accept] looking up invitation by token hash");
+
   const { data, error } = await admin
     .from("workspace_invitations" as never)
-    .select("id, workspace_id, email, role, status, expires_at, invited_by")
+    .select("id, workspace_id, email, role, status, expires_at, invited_by, accepted_at")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
   if (error || !data) {
-    console.warn("[invite-auth-failed] invite lookup failed", {
+    console.log("[invite-accept] invitation lookup failed", {
       message: error?.message ?? "Invite not found"
     });
     return { ok: false as const, message: "Invitation is invalid or expired." };
   }
 
   const invite = data as {
+    accepted_at: string | null;
     email: string;
     expires_at: string;
     id: string;
@@ -455,23 +560,38 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     workspace_id: string;
   };
 
-  if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
-    await admin
-      .from("workspace_invitations" as never)
-      .update({ status: "expired" } as never)
-      .eq("id", invite.id)
-      .eq("status", "pending");
-    console.warn("[invite-auth-failed] invite expired or not pending", {
+  console.log("[invite-accept] invitation loaded", {
+    inviteId: invite.id,
+    status: invite.status,
+    workspaceId: invite.workspace_id
+  });
+
+  if (invite.status === "revoked") {
+    console.log("[invite-accept] invitation revoked", { inviteId: invite.id, userId });
+    return { ok: false as const, message: "This invitation was revoked." };
+  }
+
+  const isExpired = new Date(invite.expires_at).getTime() < Date.now();
+
+  if (isExpired) {
+    if (invite.status === "pending") {
+      await admin
+        .from("workspace_invitations" as never)
+        .update({ status: "expired" } as never)
+        .eq("id", invite.id)
+        .eq("status", "pending");
+    }
+
+    console.log("[invite-accept] invitation expired", {
       inviteId: invite.id,
       status: invite.status,
-      userId,
-      workspaceId: invite.workspace_id
+      userId
     });
     return { ok: false as const, message: "Invitation is invalid or expired." };
   }
 
   if (userEmail?.toLowerCase() !== invite.email.toLowerCase()) {
-    console.warn("[invite-auth-mismatch] invite email mismatch", {
+    console.log("[invite-accept] email mismatch", {
       inviteEmail: invite.email,
       userEmail: userEmail ?? null,
       userId
@@ -482,62 +602,113 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     };
   }
 
-  const access = await getUserSubscriptionAccessForClient(admin, invite.workspace_id);
-  const seatsUsed = await workspaceSeatCount(admin, invite.workspace_id);
+  console.log("[invite-accept] email matches invitation", { inviteId: invite.id, userId });
 
-  if (access.usage.teamMemberLimit !== null && seatsUsed > access.usage.teamMemberLimit) {
-    console.warn("[invite-auth-failed] invite team member limit reached", {
-      limit: access.usage.teamMemberLimit,
-      seatsUsed,
+  const { data: existingMember } = await admin
+    .from("workspace_members" as never)
+    .select("id")
+    .eq("workspace_id", invite.workspace_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingMember) {
+    console.log("[invite-accept] user already a workspace member", {
+      memberId: (existingMember as { id: string }).id,
       userId,
       workspaceId: invite.workspace_id
     });
-    return {
-      ok: false as const,
-      message: "This workspace has reached its team member limit."
-    };
+
+    if (invite.status === "accepted") {
+      console.log("[invite-accept] invitation already accepted; idempotent success", {
+        inviteId: invite.id,
+        userId
+      });
+      return { ok: true as const, message: "Invitation accepted." };
+    }
+
+    if (invite.status !== "pending") {
+      console.log("[invite-accept] invitation not pending but membership exists", {
+        inviteId: invite.id,
+        status: invite.status,
+        userId
+      });
+      return { ok: false as const, message: "Invitation is invalid or expired." };
+    }
+
+    const accepted = await markInvitationAccepted(admin, invite.id, invite.workspace_id, userId);
+    return accepted.ok
+      ? { ok: true as const, message: "Invitation accepted." }
+      : { ok: false as const, message: accepted.message };
   }
 
-  const { error: memberError } = await admin.from("workspace_members" as never).upsert(
-    {
-      invited_by: invite.invited_by,
-      role: invite.role,
-      user_id: userId,
-      workspace_id: invite.workspace_id
-    } as never,
-    { onConflict: "workspace_id,user_id" }
-  );
-
-  if (memberError) {
-    console.warn("[invite-auth-failed] invite member upsert failed", {
-      message: memberError.message,
-      userId,
-      workspaceId: invite.workspace_id
-    });
-    return { ok: false as const, message: "Invitation could not be accepted." };
-  }
-
-  const { error: acceptError } = await admin
-    .from("workspace_invitations" as never)
-    .update({ accepted_at: new Date().toISOString(), status: "accepted" } as never)
-    .eq("id", invite.id);
-
-  if (acceptError) {
-    console.warn("[invite-auth-failed] invite status update failed", {
+  if (invite.status === "accepted") {
+    console.log("[invite-accept] invitation accepted but membership missing; creating membership", {
       inviteId: invite.id,
-      message: acceptError.message,
-      userId,
-      workspaceId: invite.workspace_id
+      userId
     });
-    return { ok: false as const, message: "Invitation could not be accepted." };
+  } else if (invite.status !== "pending") {
+    console.log("[invite-accept] invitation not acceptable", {
+      inviteId: invite.id,
+      status: invite.status,
+      userId
+    });
+    return { ok: false as const, message: "Invitation is invalid or expired." };
   }
 
-  console.info("[invite-auth-success] invite accepted", {
-    userId,
-    workspaceId: invite.workspace_id
-  });
+  console.log("[invite-accept] inserting workspace_members (seat reserved at invite time)");
+
+  const memberResult = await upsertWorkspaceMemberForInvite(admin, userSupabase, invite, userId);
+
+  if (!memberResult.ok) {
+    return { ok: false as const, message: memberResult.message };
+  }
+
+  const accepted = await markInvitationAccepted(admin, invite.id, invite.workspace_id, userId);
+
+  if (!accepted.ok) {
+    return { ok: false as const, message: accepted.message };
+  }
+
+  revalidatePath("/dashboard/team");
+
+  console.log("[invite-accept] success", { inviteId: invite.id, userId, workspaceId: invite.workspace_id });
 
   return { ok: true as const, message: "Invitation accepted." };
+}
+
+export async function acceptWorkspaceInvitation(token: string) {
+  "use server";
+
+  console.log("[invite-accept-action] server action invoked");
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    console.log("[invite-accept-action] no authenticated user; redirecting to login");
+    redirect(`/auth/login?invite=${encodeURIComponent(token)}`);
+  }
+
+  console.log("[invite-accept-action] authenticated user", {
+    userEmail: user.email ?? null,
+    userId: user.id
+  });
+
+  const result = await acceptInviteToken(token, user.id, user.email);
+
+  if (result.ok) {
+    console.log("[invite-accept-action] redirecting to team dashboard", { userId: user.id });
+    redirect("/dashboard/team?team=invite-accepted");
+  }
+
+  console.log("[invite-accept-action] acceptance failed", {
+    message: result.message,
+    userId: user.id
+  });
+
+  return result;
 }
 
 export async function getInviteTokenPreview(token: string) {
@@ -569,17 +740,28 @@ export async function getInviteTokenPreview(token: string) {
     status: string;
   };
 
-  if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
-    console.warn("[invite-auth-failed] invite preview expired or not pending", {
+  if (invite.status === "revoked") {
+    console.log("[invite-preview] invitation revoked", { inviteId: invite.id });
+    return { ok: false as const, email: null, message: "This invitation was revoked." };
+  }
+
+  if (new Date(invite.expires_at).getTime() < Date.now()) {
+    console.log("[invite-preview] invitation expired", { inviteId: invite.id, status: invite.status });
+    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+  }
+
+  if (invite.status !== "pending" && invite.status !== "accepted") {
+    console.log("[invite-preview] invitation not usable", {
       inviteId: invite.id,
       status: invite.status
     });
     return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
   }
 
-  console.info("[invite-auth-redirect] invite preview ready", {
+  console.log("[invite-preview] invitation ready for acceptance", {
     email: invite.email,
-    inviteId: invite.id
+    inviteId: invite.id,
+    status: invite.status
   });
 
   return { ok: true as const, email: invite.email, message: "Sign in or create an account to accept this invitation." };
