@@ -293,31 +293,52 @@ export default async function TeamPage({
             <p className="mt-1 text-sm font-semibold text-muted">
               Your role in this workspace: {formatRole(selection.activeWorkspaceRole)}
             </p>
+            {selection.staffId ? (
+              <p className="mt-2 w-fit rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+                Staff ID {selection.staffId}
+              </p>
+            ) : null}
+            {selection.managerEmail ? (
+              <p className="mt-2 text-sm font-semibold text-muted">
+                Manager: {selection.managerEmail}
+              </p>
+            ) : null}
+            {selection.isStaffLocked ? (
+              <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                Staff workspace lock active
+              </p>
+            ) : null}
           </div>
-          <form action={switchActiveWorkspace} className="flex flex-wrap items-end gap-3">
-            <input name="next" type="hidden" value="/dashboard/team" />
-            <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="workspaceId">
-              <span>Switch workspace</span>
-              <select
-                className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                defaultValue={workspaceId}
-                id="workspaceId"
-                name="workspaceId"
-              >
-                {selection.workspaces.map((workspace) => (
-                  <option key={workspace.workspaceId} value={workspace.workspaceId}>
-                    {workspace.isPersonal
-                      ? "Your workspace"
-                      : `Shared workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
-                    - {formatRole(workspace.role)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button type="submit" variant="secondary">
-              Switch
-            </Button>
-          </form>
+          {selection.workspaces.length > 1 ? (
+            <form action={switchActiveWorkspace} className="flex flex-wrap items-end gap-3">
+              <input name="next" type="hidden" value="/dashboard/team" />
+              <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="workspaceId">
+                <span>Switch workspace</span>
+                <select
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  defaultValue={workspaceId}
+                  id="workspaceId"
+                  name="workspaceId"
+                >
+                  {selection.workspaces.map((workspace) => (
+                    <option key={workspace.workspaceId} value={workspace.workspaceId}>
+                      {workspace.isPersonal
+                        ? "Your workspace"
+                        : `Assigned workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
+                      - {formatRole(workspace.role)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button type="submit" variant="secondary">
+                Switch
+              </Button>
+            </form>
+          ) : selection.isStaffLocked ? (
+            <div className="max-w-xs rounded-3xl bg-white p-4 text-sm font-semibold leading-6 text-muted">
+              This staff account is locked to its assigned workspace and role.
+            </div>
+          ) : null}
         </div>
       </Card>
 

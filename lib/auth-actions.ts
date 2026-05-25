@@ -135,6 +135,10 @@ export async function registerWithInvite(formData: FormData) {
     email: invite.email,
     password,
     options: {
+      data: {
+        shastore_invited_role: invite.role,
+        shastore_signup_source: "workspace_invite"
+      },
       emailRedirectTo: getPublicUrl(`/invite/${token}`)
     }
   });

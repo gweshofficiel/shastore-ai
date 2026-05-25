@@ -98,26 +98,49 @@ export async function Sidebar() {
             Workspace
           </p>
           {selection ? (
-            <form action={switchActiveWorkspace} className="mt-3 grid gap-3">
-              <input name="next" type="hidden" value="/dashboard" />
-              <select
-                className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink outline-none"
-                defaultValue={selection.activeWorkspaceId}
-                name="workspaceId"
-              >
-                {selection.workspaces.map((workspace) => (
-                  <option key={workspace.workspaceId} value={workspace.workspaceId}>
-                    {workspace.isPersonal
-                      ? "Personal"
-                      : `Workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
-                    - {workspace.role}
-                  </option>
-                ))}
-              </select>
-              <Button type="submit" variant="secondary">
-                Switch workspace
-              </Button>
-            </form>
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-2xl bg-white p-3">
+                <p className="text-sm font-black text-ink">
+                  {selection.activeWorkspaceId === user?.id
+                    ? "Your workspace"
+                    : `Assigned workspace ${selection.activeWorkspaceId.slice(0, 8)}`}
+                </p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                  {selection.staffId ?? selection.activeWorkspaceRole}
+                </p>
+                {selection.managerEmail ? (
+                  <p className="mt-1 text-xs font-semibold text-muted">
+                    Manager: {selection.managerEmail}
+                  </p>
+                ) : null}
+              </div>
+              {selection.workspaces.length > 1 ? (
+                <form action={switchActiveWorkspace} className="grid gap-3">
+                  <input name="next" type="hidden" value="/dashboard" />
+                  <select
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink outline-none"
+                    defaultValue={selection.activeWorkspaceId}
+                    name="workspaceId"
+                  >
+                    {selection.workspaces.map((workspace) => (
+                      <option key={workspace.workspaceId} value={workspace.workspaceId}>
+                        {workspace.isPersonal
+                          ? "Your workspace"
+                          : `Assigned workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
+                        - {workspace.role}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="submit" variant="secondary">
+                    Switch workspace
+                  </Button>
+                </form>
+              ) : selection.isStaffLocked ? (
+                <p className="text-xs font-semibold leading-5 text-muted">
+                  Staff accounts are locked to assigned workspaces.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="mt-2 text-sm font-semibold leading-6 text-muted">
               Generate copy, publish pages, and manage domains from one place.
