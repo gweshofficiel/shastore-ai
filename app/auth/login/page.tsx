@@ -29,7 +29,7 @@ export default async function AuthLoginPage({
   const inviteToken = safeInviteToken(query?.invite);
   const nextPath = inviteToken ? `/invite/${inviteToken}` : safeNextPath(query?.next);
   const registerHref = inviteToken
-    ? `/auth/register?invite=${encodeURIComponent(inviteToken)}`
+    ? `/invite/${encodeURIComponent(inviteToken)}/signup`
     : nextPath
       ? `/auth/register?next=${encodeURIComponent(nextPath)}`
       : "/auth/register";

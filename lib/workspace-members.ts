@@ -744,6 +744,12 @@ async function upsertWorkspaceMemberForInvite(
     if (!error && data) {
       console.log("[invite-accept] workspace_members row confirmed (service role)", {
         memberId: (data as { id: string }).id,
+        role: invite.role,
+        userId,
+        workspaceId: invite.workspace_id
+      });
+      console.log("[invite-accepted-role-assigned] invited role assigned", {
+        role: invite.role,
         userId,
         workspaceId: invite.workspace_id
       });
@@ -779,6 +785,12 @@ async function upsertWorkspaceMemberForInvite(
 
   console.log("[invite-accept] workspace_members row confirmed (authenticated)", {
     memberId: (data as { id: string }).id,
+    role: invite.role,
+    userId,
+    workspaceId: invite.workspace_id
+  });
+  console.log("[invite-accepted-role-assigned] invited role assigned", {
+    role: invite.role,
     userId,
     workspaceId: invite.workspace_id
   });
@@ -1001,12 +1013,12 @@ export async function getInviteTokenPreview(token: string) {
 
   if (!admin) {
     console.warn("[invite-auth-failed] invite preview service client unavailable");
-    return { ok: false as const, email: null, message: "Invite acceptance is not configured." };
+    return { ok: false as const, email: null, role: null, message: "Invite acceptance is not configured." };
   }
 
   const { data, error } = await admin
     .from("workspace_invitations" as never)
-    .select("id, email, status, expires_at")
+    .select("id, email, role, status, expires_at")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
@@ -1014,24 +1026,25 @@ export async function getInviteTokenPreview(token: string) {
     console.warn("[invite-auth-failed] invite preview lookup failed", {
       message: error?.message ?? "Invite not found"
     });
-    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+    return { ok: false as const, email: null, role: null, message: "Invitation is invalid or expired." };
   }
 
   const invite = data as {
     email: string;
     expires_at: string;
     id: string;
+    role: Exclude<WorkspaceRole, "owner">;
     status: string;
   };
 
   if (invite.status === "revoked") {
     console.log("[invite-preview] invitation revoked", { inviteId: invite.id });
-    return { ok: false as const, email: null, message: "This invitation was revoked." };
+    return { ok: false as const, email: null, role: null, message: "This invitation was revoked." };
   }
 
   if (new Date(invite.expires_at).getTime() < Date.now()) {
     console.log("[invite-preview] invitation expired", { inviteId: invite.id, status: invite.status });
-    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+    return { ok: false as const, email: null, role: null, message: "Invitation is invalid or expired." };
   }
 
   if (invite.status !== "pending" && invite.status !== "accepted") {
@@ -1039,14 +1052,20 @@ export async function getInviteTokenPreview(token: string) {
       inviteId: invite.id,
       status: invite.status
     });
-    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+    return { ok: false as const, email: null, role: null, message: "Invitation is invalid or expired." };
   }
 
   console.log("[invite-preview] invitation ready for acceptance", {
     email: invite.email,
     inviteId: invite.id,
+    role: invite.role,
     status: invite.status
   });
 
-  return { ok: true as const, email: invite.email, message: "Sign in or create an account to accept this invitation." };
+  return {
+    ok: true as const,
+    email: invite.email,
+    role: invite.role,
+    message: "Sign in or create an account to accept this invitation."
+  };
 }

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { getPublicUrl } from "@/lib/deployment/config";
 import { createClient } from "@/lib/supabase/server";
+import { getInviteTokenPreview } from "@/lib/workspace-members";
 
 function safeAuthRedirect(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
@@ -86,6 +87,72 @@ export async function register(formData: FormData) {
   }
 
   redirect(next);
+}
+
+export async function registerWithInvite(formData: FormData) {
+  const supabase = await createClient();
+  const token = String(formData.get("inviteToken") ?? "");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  console.log("[invite-signup-page] invite signup submitted", {
+    email,
+    hasToken: Boolean(token)
+  });
+
+  if (!token || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
+    redirect("/auth/register?error=invite");
+  }
+
+  if (password !== confirmPassword) {
+    redirect(`/invite/${encodeURIComponent(token)}/signup?error=password`);
+  }
+
+  const invite = await getInviteTokenPreview(token);
+
+  if (!invite.ok || !invite.email) {
+    redirect(`/invite/${encodeURIComponent(token)}/signup?error=invite`);
+  }
+
+  if (email !== invite.email.toLowerCase()) {
+    console.warn("[invite-signup-email-locked] attempted invited email change", {
+      attemptedEmail: email,
+      inviteEmail: invite.email
+    });
+    redirect(`/invite/${encodeURIComponent(token)}/signup?error=email`);
+  }
+
+  console.log("[invite-signup-email-locked] creating auth user with locked invite email", {
+    email: invite.email,
+    role: invite.role
+  });
+  console.log("[invite-signup-no-personal-workspace] signup will only create auth account", {
+    email: invite.email
+  });
+
+  const { error } = await supabase.auth.signUp({
+    email: invite.email,
+    password,
+    options: {
+      emailRedirectTo: getPublicUrl(`/invite/${token}`)
+    }
+  });
+
+  if (error) {
+    console.warn("[invite-auth-failed] invite signup failed", {
+      email: invite.email,
+      message: error.message
+    });
+    redirect(`/invite/${encodeURIComponent(token)}/signup?error=auth`);
+  }
+
+  console.info("[invite-auth-success] invite signup submitted", {
+    email: invite.email,
+    role: invite.role
+  });
+
+  redirect(`/invite/${encodeURIComponent(token)}`);
 }
 
 export async function logout() {

@@ -18,8 +18,8 @@ export default async function InvitePage({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    console.info("[invite-page-no-user-redirect] redirecting unauthenticated invite visitor");
-    redirect(`/auth/login?invite=${encodeURIComponent(token)}`);
+    console.info("[invite-page-no-user-redirect] redirecting unauthenticated invite visitor to locked signup");
+    redirect(`/invite/${encodeURIComponent(token)}/signup`);
   }
 
   console.info("[invite-auth-success] authenticated invite accept attempt", {

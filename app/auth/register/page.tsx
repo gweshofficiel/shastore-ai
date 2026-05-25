@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/auth/auth-form";
 import { register } from "@/lib/auth-actions";
 
@@ -27,6 +28,11 @@ export default async function AuthRegisterPage({
 }) {
   const query = await searchParams;
   const inviteToken = safeInviteToken(query?.invite);
+
+  if (inviteToken) {
+    redirect(`/invite/${encodeURIComponent(inviteToken)}/signup`);
+  }
+
   const nextPath = inviteToken ? `/invite/${inviteToken}` : safeNextPath(query?.next);
   const loginHref = inviteToken
     ? `/auth/login?invite=${encodeURIComponent(inviteToken)}`
