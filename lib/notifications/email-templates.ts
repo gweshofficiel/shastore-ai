@@ -1,9 +1,8 @@
 export type EmailNotificationType =
-  | "grace_period_started"
   | "payment_failed"
   | "payment_recovered"
-  | "subscription_canceled"
-  | "subscription_reactivated";
+  | "subscription_activated"
+  | "subscription_canceled";
 
 type EmailTemplate = {
   html: string;
@@ -14,11 +13,10 @@ type EmailTemplate = {
 type EmailTemplateMetadata = Record<string, unknown>;
 
 const supportedEmailTypes = new Set<string>([
-  "grace_period_started",
   "payment_failed",
   "payment_recovered",
-  "subscription_canceled",
-  "subscription_reactivated"
+  "subscription_activated",
+  "subscription_canceled"
 ]);
 
 function isEmailNotificationType(type: string): type is EmailNotificationType {
@@ -62,28 +60,23 @@ function templateContent(type: EmailNotificationType, metadata: EmailTemplateMet
         text:
           "Stripe could not collect your latest subscription payment. Update billing to avoid access restrictions."
       };
-    case "grace_period_started":
+    case "subscription_activated":
       return {
-        subject: "Your SHASTORE AI grace period has started",
-        text: gracePeriodUntil
-          ? `Your storefronts remain online during grace period. Protected billing actions are paused until payment is recovered. Grace period ends on ${gracePeriodUntil}.`
-          : "Your storefronts remain online during grace period. Protected billing actions are paused until payment is recovered."
+        subject: "Your SHASTORE AI subscription is active",
+        text: "Your SHASTORE AI subscription is active and paid features are available."
       };
     case "payment_recovered":
       return {
         subject: "Payment recovered for your SHASTORE AI subscription",
-        text: "Your payment succeeded and protected SHASTORE AI billing access has been restored."
+        text: gracePeriodUntil
+          ? `Your payment succeeded and protected SHASTORE AI billing access has been restored. Your grace period ending ${gracePeriodUntil} is now cleared.`
+          : "Your payment succeeded and protected SHASTORE AI billing access has been restored."
       };
     case "subscription_canceled":
       return {
         subject: "Your SHASTORE AI subscription was canceled",
         text:
           "Your subscription has ended. Your data remains safe, but paid access is locked until you reactivate."
-      };
-    case "subscription_reactivated":
-      return {
-        subject: "Your SHASTORE AI subscription is active again",
-        text: "Your subscription is active again and paid features are available."
       };
   }
 }
@@ -102,6 +95,6 @@ export function getBillingEmailTemplate(
   return {
     subject: content.subject,
     text: content.text,
-    html: `<p>${escapedText}</p><p>Open your SHASTORE AI dashboard to review billing and account notifications.</p>`
+    html: `<p>${escapedText}</p><p>Open your SHASTORE AI dashboard to review billing and account notifications.</p><p>Thank you,<br />The SHASTORE AI Team</p>`
   };
 }

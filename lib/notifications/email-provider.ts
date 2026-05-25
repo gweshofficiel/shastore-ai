@@ -2,7 +2,7 @@ import { Resend } from "resend";
 import { getBillingEmailTemplate } from "@/lib/notifications/email-templates";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-type EmailProviderName = "disabled" | "resend" | "postmark" | "sendgrid" | "unknown";
+type EmailProviderName = "disabled" | "resend" | "unknown";
 
 type EmailNotificationMetadata = Record<string, unknown>;
 
@@ -13,8 +13,8 @@ function configuredProvider(): EmailProviderName {
     return "disabled";
   }
 
-  if (provider === "resend" || provider === "postmark" || provider === "sendgrid") {
-    return provider;
+  if (provider === "resend") {
+    return "resend";
   }
 
   return "unknown";
@@ -129,6 +129,8 @@ export async function sendBillingNotificationEmailSafe({
 
     if (!providerReady(provider)) {
       console.warn("[email-notification-skipped] email provider not configured", {
+        hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
+        hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
         provider,
         type,
         userId
@@ -140,15 +142,6 @@ export async function sendBillingNotificationEmailSafe({
 
     if (!recipientEmail) {
       console.warn("[email-notification-skipped] recipient email unavailable", { type, userId });
-      return;
-    }
-
-    if (provider !== "resend") {
-      console.warn("[email-notification-skipped] email provider adapter not implemented", {
-        provider,
-        type,
-        userId
-      });
       return;
     }
 
