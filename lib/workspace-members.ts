@@ -149,6 +149,12 @@ export async function getWorkspaceMembers(
 ) {
   await ensureOwnerMembership(supabase, workspaceId, userId);
 
+  console.log("[workspace-members-query] loading roster for active workspace", {
+    filter: "workspace_id",
+    userId,
+    workspaceId
+  });
+
   const [{ data: members, error: membersError }, { data: invites, error: invitesError }] =
     await Promise.all([
       supabase
@@ -163,6 +169,67 @@ export async function getWorkspaceMembers(
         .eq("status", "pending")
         .order("created_at", { ascending: false })
     ]);
+
+  let visibleMembers = (members ?? []) as WorkspaceMember[];
+  const admin = createAdminClient();
+
+  if (admin) {
+    const { count: dbCount, error: dbCountError } = await admin
+      .from("workspace_members" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId);
+
+    console.log("[workspace-rls-check] comparing visible roster with database", {
+      dbCount: dbCount ?? 0,
+      dbCountError: dbCountError?.message ?? null,
+      rlsCount: visibleMembers.length,
+      userId,
+      workspaceId
+    });
+
+    if (!membersError && dbCount !== null && visibleMembers.length < dbCount) {
+      const { data: accessRow } = await supabase
+        .from("workspace_members" as never)
+        .select("role")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (accessRow) {
+        const { data: roster, error: rosterError } = await admin
+          .from("workspace_members" as never)
+          .select("id, workspace_id, user_id, role, invited_by, created_at")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: true });
+
+        if (!rosterError && roster) {
+          visibleMembers = roster as WorkspaceMember[];
+          console.log("[workspace-members-visible] trusted roster fallback applied", {
+            dbCount,
+            roles: visibleMembers.map((member) => member.role),
+            rlsCount: (members ?? []).length,
+            userId,
+            userIds: visibleMembers.map((member) => member.user_id),
+            workspaceId
+          });
+        }
+      }
+    }
+  } else {
+    console.log("[workspace-rls-check] service role unavailable for roster comparison", {
+      rlsCount: visibleMembers.length,
+      userId,
+      workspaceId
+    });
+  }
+
+  console.log("[workspace-members-visible] roster returned to app", {
+    roles: visibleMembers.map((member) => member.role),
+    userId,
+    userIds: visibleMembers.map((member) => member.user_id),
+    visibleCount: visibleMembers.length,
+    workspaceId
+  });
 
   if (membersError) {
     console.warn("[workspace-member] members lookup failed", {
@@ -181,7 +248,7 @@ export async function getWorkspaceMembers(
   return {
     invites: (invites ?? []) as WorkspaceInvite[],
     invitesError: invitesError?.message ?? null,
-    members: (members ?? []) as WorkspaceMember[],
+    members: visibleMembers,
     membersError: membersError?.message ?? null
   };
 }
