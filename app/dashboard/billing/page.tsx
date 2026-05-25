@@ -3,9 +3,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { billingPlans } from "@/lib/billing/plans";
-import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getCurrentUserSubscriptionAccess, planRank } from "@/lib/billing/access";
 import { getSubscriptionState } from "@/lib/billing/subscription-state";
-import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -185,6 +184,14 @@ export default async function BillingPage({
           </p>
         </Card>
       ) : null}
+      {query.billing === "plan_change_pending" ? (
+        <Card className="border-blue-200 bg-blue-50 p-5">
+          <p className="text-sm font-bold text-blue-800">
+            {query.message ??
+              "Plan change submitted. Your dashboard will update after Stripe confirms the subscription change."}
+          </p>
+        </Card>
+      ) : null}
       {!billingTablesReady ? (
         <Card className="border-blue-200 bg-blue-50 p-5">
           <p className="text-sm font-bold text-blue-800">
@@ -360,7 +367,15 @@ export default async function BillingPage({
       </div>
       <div className="grid gap-4 lg:grid-cols-4">
         {billingPlans.map((plan) => {
-          const checkoutUpgrade = canCheckoutUpgrade(currentPlan.id, plan.id);
+          const isCurrentPlan = plan.id === currentPlan.id;
+          const direction =
+            planRank(plan.id) > planRank(currentPlan.id) ? "upgrade" : "downgrade";
+          const planChangeLabel =
+            plan.id === "free"
+              ? "Downgrade to Free"
+              : direction === "upgrade"
+                ? `Upgrade to ${plan.name}`
+                : `Downgrade to ${plan.name}`;
 
           return (
             <Card
@@ -408,33 +423,27 @@ export default async function BillingPage({
                   </div>
                 ))}
               </div>
-              {plan.id === currentPlan.id && canManageSubscription ? (
+              {isCurrentPlan && canManageSubscription ? (
                 <form action="/api/billing/customer-portal" className="mt-6" method="POST">
                   <Button className="w-full" type="submit">
                     Manage subscription
                   </Button>
                 </form>
-              ) : plan.id === currentPlan.id ? (
+              ) : isCurrentPlan ? (
                 <Button className="mt-6 w-full" disabled type="button" variant="secondary">
                   Current plan
                 </Button>
-              ) : checkoutUpgrade.allowed ? (
-                <form action="/api/stripe/create-checkout-session" className="mt-6" method="POST">
-                  <input name="plan" type="hidden" value={checkoutUpgrade.planId} />
-                  <Button className="w-full" type="submit">
-                    Upgrade to {plan.name}
-                  </Button>
-                </form>
-              ) : checkoutUpgrade.code === "downgrade_not_supported" && canManageSubscription ? (
-                <form action="/api/billing/customer-portal" className="mt-6" method="POST">
-                  <Button className="w-full" type="submit" variant="secondary">
-                    Manage in portal
-                  </Button>
-                </form>
               ) : (
-                <Button className="mt-6 w-full" disabled type="button" variant="secondary">
-                  {plan.id === "free" ? "Included" : checkoutUpgrade.message}
-                </Button>
+                <form action="/api/billing/change-plan" className="mt-6" method="POST">
+                  <input name="plan" type="hidden" value={plan.id} />
+                  <Button
+                    className="w-full"
+                    type="submit"
+                    variant={direction === "downgrade" ? "secondary" : "primary"}
+                  >
+                    {planChangeLabel}
+                  </Button>
+                </form>
               )}
             </Card>
           );
