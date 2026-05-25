@@ -28,8 +28,8 @@ set search_path = public
 as $$
   select exists (
     select 1
-    from public.auth_workspace_ids() workspace_ids
-    where workspace_ids = candidate_workspace_id
+    from public.auth_workspace_ids() as workspace_ids(workspace_id)
+    where workspace_ids.workspace_id = candidate_workspace_id
   )
   or public.shastore_is_admin();
 $$;
@@ -45,6 +45,9 @@ on public.workspace_members
 for select
 to authenticated
 using (
-  workspace_id in (select public.auth_workspace_ids())
+  workspace_id in (
+    select workspace_ids.workspace_id
+    from public.auth_workspace_ids() as workspace_ids(workspace_id)
+  )
   or public.shastore_is_admin()
 );

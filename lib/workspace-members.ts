@@ -179,7 +179,7 @@ export async function getWorkspaceMembers(
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId);
 
-    console.log("[workspace-rls-check] comparing visible roster with database", {
+    console.log("[workspace-members-rls] comparing visible roster with database", {
       dbCount: dbCount ?? 0,
       dbCountError: dbCountError?.message ?? null,
       rlsCount: visibleMembers.length,
@@ -187,8 +187,8 @@ export async function getWorkspaceMembers(
       workspaceId
     });
 
-    if (!membersError && dbCount !== null && visibleMembers.length < dbCount) {
-      const { data: accessRow } = await supabase
+    if (dbCount !== null && (membersError || visibleMembers.length < dbCount)) {
+      const { data: accessRow } = await admin
         .from("workspace_members" as never)
         .select("role")
         .eq("workspace_id", workspaceId)
@@ -196,6 +196,12 @@ export async function getWorkspaceMembers(
         .maybeSingle();
 
       if (accessRow) {
+        console.log("[workspace-members-rls] current user membership verified for roster fallback", {
+          role: (accessRow as { role?: string | null }).role ?? null,
+          userId,
+          workspaceId
+        });
+
         const { data: roster, error: rosterError } = await admin
           .from("workspace_members" as never)
           .select("id, workspace_id, user_id, role, invited_by, created_at")
@@ -213,10 +219,15 @@ export async function getWorkspaceMembers(
             workspaceId
           });
         }
+      } else {
+        console.warn("[workspace-members-rls] roster fallback denied; user is not a workspace member", {
+          userId,
+          workspaceId
+        });
       }
     }
   } else {
-    console.log("[workspace-rls-check] service role unavailable for roster comparison", {
+    console.log("[workspace-members-rls] service role unavailable for roster comparison", {
       rlsCount: visibleMembers.length,
       userId,
       workspaceId
