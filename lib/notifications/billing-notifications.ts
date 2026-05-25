@@ -9,6 +9,7 @@ export type BillingNotificationType =
   | "subscription_activated"
   | "subscription_canceled"
   | "subscription_canceled_at_period_end"
+  | "subscription_plan_changed"
   | "subscription_reactivated"
   | "subscription_restricted";
 
@@ -45,6 +46,10 @@ const notificationCopy: Record<
     title: "Subscription scheduled to cancel",
     message:
       "Your subscription is scheduled to cancel at period end. Access continues until the current period ends."
+  },
+  subscription_plan_changed: {
+    title: "Subscription plan updated",
+    message: "Your SHASTORE AI plan has been updated."
   },
   subscription_reactivated: {
     title: "Subscription reactivated",

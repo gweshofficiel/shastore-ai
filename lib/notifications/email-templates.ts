@@ -2,7 +2,8 @@ export type EmailNotificationType =
   | "payment_failed"
   | "payment_recovered"
   | "subscription_activated"
-  | "subscription_canceled";
+  | "subscription_canceled"
+  | "subscription_plan_changed";
 
 type EmailTemplate = {
   html: string;
@@ -16,7 +17,8 @@ const supportedEmailTypes = new Set<string>([
   "payment_failed",
   "payment_recovered",
   "subscription_activated",
-  "subscription_canceled"
+  "subscription_canceled",
+  "subscription_plan_changed"
 ]);
 
 function isEmailNotificationType(type: string): type is EmailNotificationType {
@@ -77,6 +79,11 @@ function templateContent(type: EmailNotificationType, metadata: EmailTemplateMet
         subject: "Your SHASTORE AI subscription was canceled",
         text:
           "Your subscription has ended. Your data remains safe, but paid access is locked until you reactivate."
+      };
+    case "subscription_plan_changed":
+      return {
+        subject: "Your SHASTORE AI plan has been updated",
+        text: "Your SHASTORE AI plan has been updated. Open your dashboard to review your current plan, limits, and billing status."
       };
   }
 }

@@ -107,10 +107,15 @@ export async function sendBillingNotificationEmailSafe({
   type: string;
   userId: string;
 }) {
+  const isPlanChangeEmail = type === "subscription_plan_changed";
+
   try {
     const template = getBillingEmailTemplate(type, metadata);
 
     if (!template) {
+      if (isPlanChangeEmail) {
+        console.info("[plan-change-email] skipped unsupported template", { type, userId });
+      }
       console.info("[email-notification-skipped] unsupported notification type", { type, userId });
       return;
     }
@@ -118,16 +123,31 @@ export async function sendBillingNotificationEmailSafe({
     const provider = configuredProvider();
 
     if (provider === "disabled") {
+      if (isPlanChangeEmail) {
+        console.info("[plan-change-email] skipped disabled provider", { type, userId });
+      }
       console.info("[email-notification-skipped] email provider disabled", { type, userId });
       return;
     }
 
     if (provider === "unknown") {
+      if (isPlanChangeEmail) {
+        console.warn("[plan-change-email] skipped unsupported provider", { type, userId });
+      }
       console.warn("[email-notification-skipped] unsupported email provider", { type, userId });
       return;
     }
 
     if (!providerReady(provider)) {
+      if (isPlanChangeEmail) {
+        console.warn("[plan-change-email] skipped provider not configured", {
+          hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
+          hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
+          provider,
+          type,
+          userId
+        });
+      }
       console.warn("[email-notification-skipped] email provider not configured", {
         hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
         hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
@@ -141,8 +161,19 @@ export async function sendBillingNotificationEmailSafe({
     const recipientEmail = await resolveRecipientEmail(userId);
 
     if (!recipientEmail) {
+      if (isPlanChangeEmail) {
+        console.warn("[plan-change-email] skipped missing recipient", { type, userId });
+      }
       console.warn("[email-notification-skipped] recipient email unavailable", { type, userId });
       return;
+    }
+
+    if (isPlanChangeEmail) {
+      console.info("[plan-change-email] sending plan change email", {
+        provider,
+        type,
+        userId
+      });
     }
 
     console.info("[email-notification] sending billing email", {
@@ -159,6 +190,14 @@ export async function sendBillingNotificationEmailSafe({
     });
 
     if (result.error) {
+      if (isPlanChangeEmail) {
+        console.warn("[plan-change-email] send failed", {
+          message: result.error,
+          provider,
+          type,
+          userId
+        });
+      }
       console.warn("[email-notification-error] resend send failed", {
         message: result.error,
         provider,
@@ -168,6 +207,15 @@ export async function sendBillingNotificationEmailSafe({
       return;
     }
 
+    if (isPlanChangeEmail) {
+      console.info("[plan-change-email] sent", {
+        provider,
+        resendMessageId: result.id,
+        type,
+        userId
+      });
+    }
+
     console.info("[email-notification-sent] billing email sent", {
       provider,
       resendMessageId: result.id,
@@ -175,6 +223,13 @@ export async function sendBillingNotificationEmailSafe({
       userId
     });
   } catch (error) {
+    if (isPlanChangeEmail) {
+      console.warn("[plan-change-email] failed safely", {
+        message: error instanceof Error ? error.message : String(error),
+        type,
+        userId
+      });
+    }
     console.warn("[email-notification-error] email notification failed safely", {
       message: error instanceof Error ? error.message : String(error),
       type,

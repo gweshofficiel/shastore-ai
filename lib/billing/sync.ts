@@ -517,6 +517,12 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       (existingSubscription?.plan_id && isPaidSubscriptionPlan(existingSubscription.plan_id)
         ? existingSubscription.plan_id
         : null);
+    const previousPlanId = existingSubscription?.plan_id ?? null;
+    const planChanged =
+      event.type === "customer.subscription.updated" &&
+      Boolean(previousPlanId) &&
+      Boolean(planId) &&
+      previousPlanId !== planId;
 
     console.info("[stripe-webhook] subscription update received", {
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -527,6 +533,19 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       status: subscription.status,
       subscriptionId: subscription.id
     });
+
+    if (event.type === "customer.subscription.updated") {
+      console.info("[subscription-updated] subscription update resolved", {
+        eventId: event.id,
+        metadataPlanId: paidPlanFromMetadata(subscription.metadata),
+        planChanged,
+        previousPlanId,
+        pricePlanId,
+        resolvedPlanId: planId,
+        status: subscription.status,
+        subscriptionId: subscription.id
+      });
+    }
 
     if (!billingUserId || !planId) {
       console.error("[stripe-webhook] subscription event missing required metadata", {
@@ -578,6 +597,48 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       stripeSubscriptionId: subscription.id,
       userId: billingUserId
     });
+
+    if (planChanged) {
+      console.info("[subscription-updated] plan change detected", {
+        eventId: event.id,
+        newPlanId: planId,
+        previousPlanId,
+        pricePlanId,
+        status,
+        subscriptionId: subscription.id,
+        userId: billingUserId
+      });
+
+      console.info("[plan-change-notification] creating notification", {
+        eventId: event.id,
+        newPlanId: planId,
+        previousPlanId,
+        userId: notificationUserId
+      });
+
+      await createWebhookBillingNotification({
+        eventId: event.id,
+        metadata: {
+          eventType: event.type,
+          newPlanId: planId,
+          previousPlanId,
+          pricePlanId,
+          resolvedEmail: subscriptionCustomerEmail,
+          status
+        },
+        providerEventId: `${event.id}:plan-change`,
+        type: "subscription_plan_changed",
+        userId: notificationUserId,
+        webhookType: event.type
+      });
+
+      console.info("[plan-change-notification] notification flow completed", {
+        eventId: event.id,
+        newPlanId: planId,
+        previousPlanId,
+        userId: notificationUserId
+      });
+    }
 
     if (status === "canceled") {
       await createWebhookBillingNotification({
