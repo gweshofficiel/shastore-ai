@@ -428,6 +428,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   const admin = createAdminClient();
 
   if (!admin) {
+    console.warn("[invite-error] invite acceptance service client unavailable");
     return { ok: false as const, message: "Invite acceptance is not configured." };
   }
 
@@ -438,7 +439,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     .maybeSingle();
 
   if (error || !data) {
-    console.warn("[team-invite-accept] invite lookup failed", {
+    console.warn("[invite-error] invite lookup failed", {
       message: error?.message ?? "Invite not found"
     });
     return { ok: false as const, message: "Invitation is invalid or expired." };
@@ -460,11 +461,17 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
       .update({ status: "expired" } as never)
       .eq("id", invite.id)
       .eq("status", "pending");
+    console.warn("[invite-error] invite expired or not pending", {
+      inviteId: invite.id,
+      status: invite.status,
+      userId,
+      workspaceId: invite.workspace_id
+    });
     return { ok: false as const, message: "Invitation is invalid or expired." };
   }
 
   if (userEmail?.toLowerCase() !== invite.email.toLowerCase()) {
-    console.warn("[team-invite-accept] email mismatch", {
+    console.warn("[invite-error] invite email mismatch", {
       inviteEmail: invite.email,
       userEmail: userEmail ?? null,
       userId
@@ -479,7 +486,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   const seatsUsed = await workspaceSeatCount(admin, invite.workspace_id);
 
   if (access.usage.teamMemberLimit !== null && seatsUsed > access.usage.teamMemberLimit) {
-    console.warn("[team-invite-accept] team member limit reached", {
+    console.warn("[invite-error] invite team member limit reached", {
       limit: access.usage.teamMemberLimit,
       seatsUsed,
       userId,
@@ -502,7 +509,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   );
 
   if (memberError) {
-    console.warn("[team-invite-accept] member upsert failed", {
+    console.warn("[invite-error] invite member upsert failed", {
       message: memberError.message,
       userId,
       workspaceId: invite.workspace_id
@@ -515,10 +522,55 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     .update({ accepted_at: new Date().toISOString(), status: "accepted" } as never)
     .eq("id", invite.id);
 
-  console.info("[team-invite-accept] invite accepted", {
+  console.info("[invite-accept] invite accepted", {
     userId,
     workspaceId: invite.workspace_id
   });
 
   return { ok: true as const, message: "Invitation accepted." };
+}
+
+export async function getInviteTokenPreview(token: string) {
+  const tokenHash = hashInviteToken(token);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    console.warn("[invite-error] invite preview service client unavailable");
+    return { ok: false as const, email: null, message: "Invite acceptance is not configured." };
+  }
+
+  const { data, error } = await admin
+    .from("workspace_invitations" as never)
+    .select("id, email, status, expires_at")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.warn("[invite-error] invite preview lookup failed", {
+      message: error?.message ?? "Invite not found"
+    });
+    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+  }
+
+  const invite = data as {
+    email: string;
+    expires_at: string;
+    id: string;
+    status: string;
+  };
+
+  if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
+    console.warn("[invite-error] invite preview expired or not pending", {
+      inviteId: invite.id,
+      status: invite.status
+    });
+    return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
+  }
+
+  console.info("[invite-auth] invite preview ready", {
+    email: invite.email,
+    inviteId: invite.id
+  });
+
+  return { ok: true as const, email: invite.email, message: "Sign in or create an account to accept this invitation." };
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { getPublicUrl } from "@/lib/deployment/config";
 import { createClient } from "@/lib/supabase/server";
 
 function safeAuthRedirect(value: FormDataEntryValue | null) {
@@ -21,9 +22,19 @@ export async function login(formData: FormData) {
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
 
+  if (next.startsWith("/invite/")) {
+    console.info("[invite-auth] login requested for invite", { email });
+  }
+
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    if (next.startsWith("/invite/")) {
+      console.warn("[invite-error] invite login failed", {
+        email,
+        message: error.message
+      });
+    }
     redirect(`/login?error=auth&next=${encodeURIComponent(next)}`);
   }
 
@@ -36,15 +47,25 @@ export async function register(formData: FormData) {
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
 
+  if (next.startsWith("/invite/")) {
+    console.info("[invite-auth] signup requested for invite", { email });
+  }
+
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}${next}`
+      emailRedirectTo: getPublicUrl(next)
     }
   });
 
   if (error) {
+    if (next.startsWith("/invite/")) {
+      console.warn("[invite-error] invite signup failed", {
+        email,
+        message: error.message
+      });
+    }
     redirect(`/register?error=auth&next=${encodeURIComponent(next)}`);
   }
 
