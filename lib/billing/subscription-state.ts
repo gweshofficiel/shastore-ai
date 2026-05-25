@@ -1,6 +1,7 @@
 import type { BillingLimitResource, UserSubscriptionAccess } from "@/lib/billing/access";
 import { isStoreLocked, getRemainingDomainQuota } from "@/lib/billing/domain-access";
 import { getExpiryLockdownState } from "@/lib/billing/expiry-lockdown";
+import { getPlanLimits } from "@/lib/billing/plan-limits";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 
@@ -34,9 +35,14 @@ export type DerivedSubscriptionState = {
 };
 
 const resourceLabels: Record<BillingLimitResource, string> = {
+  aiGenerations: "AI generations",
   domains: "Custom domains",
+  exports: "Exports",
   landings: "Landing pages",
-  stores: "Stores"
+  projects: "Projects",
+  stores: "Stores",
+  teamMembers: "Team members",
+  templates: "Templates"
 };
 
 function overLimitResource(
@@ -65,18 +71,37 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
     status: access.status
   });
   const overLimitResources = [
+    overLimitResource("projects", access.usage.projectsUsed, access.usage.projectLimit),
     overLimitResource("stores", access.usage.storesUsed, access.usage.storeLimit),
     overLimitResource("landings", access.usage.landingsUsed, access.usage.landingLimit),
-    overLimitResource("domains", access.usage.domainsUsed, access.usage.domainLimit)
+    overLimitResource("domains", access.usage.domainsUsed, access.usage.domainLimit),
+    overLimitResource(
+      "aiGenerations",
+      access.usage.aiGenerationsUsed,
+      access.usage.aiGenerationsLimit
+    ),
+    overLimitResource("exports", access.usage.exportsUsed, access.usage.exportLimit),
+    overLimitResource("templates", access.usage.templatesUsed, access.usage.templateLimit),
+    overLimitResource(
+      "teamMembers",
+      access.usage.teamMembersUsed,
+      access.usage.teamMemberLimit
+    )
   ].filter((resource): resource is OverLimitResourceState => Boolean(resource));
   const hasOverLimitUsage = overLimitResources.length > 0;
   const primaryOverLimitResource = overLimitResources[0]?.resource;
   const proPlan = getBillingPlan("pro");
+  const proLimits = getPlanLimits("pro");
   const needsUnlimited = overLimitResources.some((resource) => {
     const proLimit = {
+      aiGenerations: proLimits.aiGenerations,
       domains: proPlan.domainLimit,
+      exports: proLimits.exports,
       landings: proPlan.landingLimit,
-      stores: proPlan.storeLimit
+      projects: proLimits.projects,
+      stores: proPlan.storeLimit,
+      teamMembers: proLimits.teamMembers,
+      templates: proLimits.templates
     }[resource.resource];
 
     return proLimit !== null && resource.used > proLimit;

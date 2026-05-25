@@ -7,6 +7,12 @@ import {
   buildClaimAccountPath,
   createActivationTokenRecord
 } from "@/lib/activation-tokens";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type { TemplateDemoProduct } from "@/lib/template-studio/types";
@@ -1022,10 +1028,23 @@ export async function markStoreDeliveryTransferDelivered(formData: FormData) {
 export async function generateManualDeliveryPdf(formData: FormData) {
   const returnTo = safeOrdersReturnPath(formData.get("returnTo"));
   const requestId = cleanText(formData.get("requestId"), 80);
-  const { profile, supabase } = await requireResellerProfile();
+  const { profile, supabase, user } = await requireResellerProfile();
 
   if (!requestId) {
     redirectWithError("Store purchase request could not be found.", returnTo);
+  }
+
+  const access = await getUserSubscriptionAccessForClient(supabase, user.id);
+
+  try {
+    assertFeatureAccess(access, "exports");
+    assertUsageWithinLimits(access, "exports");
+  } catch (error) {
+    redirectWithError(
+      billingEnforcementMessage(error) ??
+        "Your current plan has reached its export limit. Upgrade at /dashboard/billing.",
+      returnTo
+    );
   }
 
   const { data: requestData, error: requestError } = await supabase

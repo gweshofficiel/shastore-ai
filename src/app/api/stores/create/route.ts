@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       }
 
       assertUsageWithinLimits(access, "stores");
+      assertUsageWithinLimits(access, "projects");
     } catch (error) {
       return NextResponse.json(
         {

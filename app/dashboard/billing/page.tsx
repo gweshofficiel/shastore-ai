@@ -132,27 +132,54 @@ export default async function BillingPage({
   const subscriptionState = getSubscriptionState(access);
 
   const billingHistory = await getBillingHistory(access.userId);
-  const storePercent = usagePercent(access.usage.storesUsed, access.usage.storeLimit);
-  const landingPercent = usagePercent(access.usage.landingsUsed, access.usage.landingLimit);
-  const domainPercent = usagePercent(access.usage.domainsUsed, access.usage.domainLimit);
   const usageMeters = [
+    {
+      label: "Projects",
+      limit: access.usage.projectLimit,
+      percent: usagePercent(access.usage.projectsUsed, access.usage.projectLimit),
+      used: access.usage.projectsUsed
+    },
     {
       label: "Landing pages",
       limit: access.usage.landingLimit,
-      percent: landingPercent,
+      percent: usagePercent(access.usage.landingsUsed, access.usage.landingLimit),
       used: access.usage.landingsUsed
     },
     {
       label: "Stores",
       limit: access.usage.storeLimit,
-      percent: storePercent,
+      percent: usagePercent(access.usage.storesUsed, access.usage.storeLimit),
       used: access.usage.storesUsed
     },
     {
       label: "Domains",
       limit: access.usage.domainLimit,
-      percent: domainPercent,
+      percent: usagePercent(access.usage.domainsUsed, access.usage.domainLimit),
       used: access.usage.domainsUsed
+    },
+    {
+      label: "AI generations",
+      limit: access.usage.aiGenerationsLimit,
+      percent: usagePercent(access.usage.aiGenerationsUsed, access.usage.aiGenerationsLimit),
+      used: access.usage.aiGenerationsUsed
+    },
+    {
+      label: "Exports",
+      limit: access.usage.exportLimit,
+      percent: usagePercent(access.usage.exportsUsed, access.usage.exportLimit),
+      used: access.usage.exportsUsed
+    },
+    {
+      label: "Templates",
+      limit: access.usage.templateLimit,
+      percent: usagePercent(access.usage.templatesUsed, access.usage.templateLimit),
+      used: access.usage.templatesUsed
+    },
+    {
+      label: "Team members",
+      limit: access.usage.teamMemberLimit,
+      percent: usagePercent(access.usage.teamMembersUsed, access.usage.teamMemberLimit),
+      used: access.usage.teamMembersUsed
     }
   ];
 

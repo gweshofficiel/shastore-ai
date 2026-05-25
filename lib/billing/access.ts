@@ -9,7 +9,12 @@ import {
   type SubscriptionPlanId
 } from "@/lib/billing/plans";
 import { isPaidAccessLocked } from "@/lib/billing/expiry-lockdown";
-import { getBillingUsageForUser } from "@/lib/billing/usage";
+import {
+  canUseFeature,
+  getCurrentUsage,
+  getPlanLimits,
+  type PlanLimitResource
+} from "@/lib/billing/plan-limits";
 
 export type UserSubscriptionAccess = {
   userId: string;
@@ -21,6 +26,10 @@ export type UserSubscriptionAccess = {
   stripeSubscriptionId: string | null;
   cancelAtPeriodEnd: boolean;
   usage: {
+    aiGenerationsLimit: number | null;
+    aiGenerationsUsed: number;
+    exportLimit: number | null;
+    exportsUsed: number;
     landingsUsed: number;
     storesUsed: number;
     publishedStoresUsed: number;
@@ -29,12 +38,18 @@ export type UserSubscriptionAccess = {
     storageMbUsed: number | null;
     domainsUsed: number;
     landingLimit: number | null;
+    projectLimit: number | null;
+    projectsUsed: number;
     storeLimit: number | null;
     domainLimit: number | null;
+    teamMemberLimit: number | null;
+    teamMembersUsed: number;
+    templateLimit: number | null;
+    templatesUsed: number;
   };
 };
 
-export type BillingLimitResource = "domains" | "landings" | "stores";
+export type BillingLimitResource = PlanLimitResource;
 
 type SubscriptionRow = {
   cancel_at_period_end?: boolean | null;
@@ -86,7 +101,7 @@ export async function getUserSubscriptionAccessForClient(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserSubscriptionAccess> {
-  const usage = await getBillingUsageForUser(supabase, userId);
+  const usage = await getCurrentUsage(supabase, userId);
 
   const { data, error } = await supabase
     .from("user_subscriptions" as never)
@@ -106,6 +121,7 @@ export async function getUserSubscriptionAccessForClient(
       : "canceled"
     : "active";
   const plan = getBillingPlan(subscriptionIsActive ? subscription?.plan_id : "free");
+  const limits = getPlanLimits(plan.id);
 
   return {
     userId,
@@ -117,6 +133,8 @@ export async function getUserSubscriptionAccessForClient(
     stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
     cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
     usage: {
+      aiGenerationsLimit: limits.aiGenerations,
+      aiGenerationsUsed: usage.aiGenerationsUsed,
       landingsUsed: usage.landingsUsed,
       storesUsed: usage.storesUsed,
       publishedStoresUsed: usage.publishedStoresUsed,
@@ -124,9 +142,17 @@ export async function getUserSubscriptionAccessForClient(
       trafficUsed: usage.trafficUsed,
       storageMbUsed: usage.storageMbUsed,
       domainsUsed: usage.domainsUsed,
-      landingLimit: plan.landingLimit,
-      storeLimit: plan.storeLimit,
-      domainLimit: plan.domainLimit
+      exportLimit: limits.exports,
+      exportsUsed: usage.exportsUsed,
+      landingLimit: limits.landings,
+      projectLimit: limits.projects,
+      projectsUsed: usage.projectsUsed,
+      storeLimit: limits.stores,
+      domainLimit: limits.domains,
+      teamMemberLimit: limits.teamMembers,
+      teamMembersUsed: usage.teamMembersUsed,
+      templateLimit: limits.templates,
+      templatesUsed: usage.templatesUsed
     }
   };
 }
@@ -179,21 +205,71 @@ export function billingLimitState(
   access: UserSubscriptionAccess,
   resource: BillingLimitResource
 ) {
+  const limits = getPlanLimits(access.plan.id);
   const state = {
+    aiGenerations: {
+      allowed: canUseFeature({
+        feature: "ai_generation",
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: limits.aiGenerations,
+      used: access.usage.aiGenerationsUsed
+    },
     domains: {
       allowed: canCreateDomain(access),
       limit: access.usage.domainLimit,
       used: access.usage.domainsUsed
+    },
+    exports: {
+      allowed: canUseFeature({
+        feature: "exports",
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: limits.exports,
+      used: access.usage.exportsUsed
     },
     landings: {
       allowed: canCreateLanding(access),
       limit: access.usage.landingLimit,
       used: access.usage.landingsUsed
     },
+    projects: {
+      allowed: canUseFeature({
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: limits.projects,
+      used: access.usage.projectsUsed
+    },
     stores: {
       allowed: canCreateStore(access),
       limit: access.usage.storeLimit,
       used: access.usage.storesUsed
+    },
+    teamMembers: {
+      allowed: canUseFeature({
+        feature: "team_members",
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: limits.teamMembers,
+      used: access.usage.teamMembersUsed
+    },
+    templates: {
+      allowed: canUseFeature({
+        feature: "premium_templates",
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: limits.templates,
+      used: access.usage.templatesUsed
     }
   }[resource];
 

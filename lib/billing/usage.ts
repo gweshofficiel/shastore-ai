@@ -2,12 +2,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { countStoresForAuthUser } from "@/lib/stores/user-stores";
 
 export type BillingUsageMetrics = {
+  aiGenerationsUsed: number;
   domainsUsed: number;
+  exportsUsed: number;
   landingsUsed: number;
   ordersUsed: number;
+  projectsUsed: number;
   publishedStoresUsed: number;
   storageMbUsed: number | null;
   storesUsed: number;
+  teamMembersUsed: number;
+  templatesUsed: number;
   trafficUsed: number;
 };
 
@@ -142,6 +147,84 @@ async function countTraffic(supabase: SupabaseClient, userId: string) {
   return analyticsEvents + commerceAnalyticsEvents;
 }
 
+async function countTemplates(supabase: SupabaseClient, userId: string) {
+  const [stores, landings] = await Promise.all([
+    supabase
+      .from("stores")
+      .select("template_id")
+      .or(`user_id.eq.${userId},owner_user_id.eq.${userId}`),
+    supabase.from("landing_pages").select("template_id").eq("user_id", userId)
+  ]);
+
+  const templateIds = new Set<string>();
+
+  if (!stores.error) {
+    for (const store of (stores.data ?? []) as Array<{ template_id?: string | null }>) {
+      if (store.template_id) {
+        templateIds.add(store.template_id);
+      }
+    }
+  } else if (!isMissingOptionalMetricTable(stores.error, "stores")) {
+    console.warn("[billing-usage] fallback metric used", {
+      label: "templates_stores",
+      message: stores.error.message,
+      table: "stores"
+    });
+  }
+
+  if (!landings.error) {
+    for (const landing of (landings.data ?? []) as Array<{ template_id?: string | null }>) {
+      if (landing.template_id) {
+        templateIds.add(landing.template_id);
+      }
+    }
+  } else if (!isMissingOptionalMetricTable(landings.error, "landing_pages")) {
+    console.warn("[billing-usage] fallback metric used", {
+      label: "templates_landings",
+      message: landings.error.message,
+      table: "landing_pages"
+    });
+  }
+
+  return templateIds.size;
+}
+
+async function countExports(supabase: SupabaseClient, userId: string) {
+  const { data: profile, error: profileError } = await supabase
+    .from("reseller_profiles" as never)
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    if (isMissingOptionalMetricTable(profileError, "reseller_profiles")) {
+      return 0;
+    }
+
+    console.warn("[billing-usage] fallback metric used", {
+      label: "exports_reseller_profile",
+      message: profileError.message,
+      table: "reseller_profiles"
+    });
+    return 0;
+  }
+
+  const resellerId = (profile as { id?: string | null } | null)?.id ?? null;
+
+  if (!resellerId) {
+    return 0;
+  }
+
+  return countOptionalMetric(
+    "store_delivery_documents",
+    "store_delivery_documents",
+    supabase
+      .from("store_delivery_documents" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("reseller_id", resellerId)
+  );
+}
+
 export async function getBillingUsageForUser(
   supabase: SupabaseClient,
   userId: string
@@ -157,13 +240,34 @@ export async function getBillingUsageForUser(
   }
 
   const [
+    aiGenerationsUsed,
+    projectsUsed,
     landingsUsed,
     publishedStoresUsed,
     domainsUsed,
     commerceOrdersUsed,
     storeOrdersUsed,
-    trafficUsed
+    trafficUsed,
+    exportsUsed,
+    teamMembersUsed,
+    templatesUsed
   ] = await Promise.all([
+    countOptionalMetric(
+      "generations",
+      "generations",
+      supabase
+        .from("generations")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+    ),
+    countOptionalMetric(
+      "projects",
+      "projects",
+      supabase
+        .from("projects")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+    ),
     countOptionalMetric(
       "landing_pages",
       "landing_pages",
@@ -191,16 +295,32 @@ export async function getBillingUsageForUser(
         .eq("user_id", userId)
     ),
     countStoreOrders(supabase, userId),
-    countTraffic(supabase, userId)
+    countTraffic(supabase, userId),
+    countExports(supabase, userId),
+    countOptionalMetric(
+      "store_staff",
+      "store_staff",
+      supabase
+        .from("store_staff" as never)
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("staff_status", "active")
+    ),
+    countTemplates(supabase, userId)
   ]);
 
   const usage = {
+    aiGenerationsUsed,
     domainsUsed,
+    exportsUsed,
     landingsUsed,
     ordersUsed: commerceOrdersUsed + storeOrdersUsed,
+    projectsUsed,
     publishedStoresUsed,
     storageMbUsed: null,
     storesUsed: stores.count ?? 0,
+    teamMembersUsed,
+    templatesUsed,
     trafficUsed
   };
 

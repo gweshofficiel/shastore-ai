@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
 import { getOpenAI } from "@/lib/openai";
 import { createClient } from "@/lib/supabase/server";
 import type { AiLandingCopy } from "@/types/landing";
@@ -48,6 +54,27 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const product = copyRequestSchema.parse(body);
+    const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
+    const access = await getUserSubscriptionAccessForClient(supabase, user.id);
+
+    try {
+      assertFeatureAccess(access, "ai_generation");
+      assertUsageWithinLimits(access, "aiGenerations");
+    } catch (error) {
+      return NextResponse.json(
+        { error: billingEnforcementMessage(error) ?? "AI generation limit reached." },
+        { status: 403 }
+      );
+    }
+
     const openai = getOpenAI();
 
     const completion = await openai.chat.completions.create({
@@ -200,20 +227,13 @@ faq: array of 4 objects with question and answer strings`
     const copy = aiCopySchema.parse(JSON.parse(text)) as AiLandingCopy;
 
     try {
-      const supabase = await createClient();
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        await supabase.from("generations").insert({
-          user_id: user.id,
-          kind: "landing_copy",
-          prompt: product,
-          output: copy,
-          credits_used: 1
-        });
-      }
+      await supabase.from("generations").insert({
+        user_id: user.id,
+        kind: "landing_copy",
+        prompt: product,
+        output: copy,
+        credits_used: 1
+      });
     } catch {
       // Generation should still succeed if usage tracking is not migrated yet.
     }

@@ -44,11 +44,14 @@ function nextPaidPlan(currentPlanId: SubscriptionPlanId) {
 function minimumPlanForFeature(feature: BillingFeature): PaidSubscriptionPlanId {
   const minimums: Record<BillingFeature, PaidSubscriptionPlanId> = {
     advanced_analytics: "pro",
+    ai_generation: "starter",
     custom_branding: "pro",
     custom_domains: "starter",
+    exports: "starter",
     multi_store: "pro",
     premium_templates: "starter",
-    seo: "pro"
+    seo: "pro",
+    team_members: "pro"
   };
 
   return minimums[feature];
@@ -56,9 +59,14 @@ function minimumPlanForFeature(feature: BillingFeature): PaidSubscriptionPlanId 
 
 function minimumPlanForResource(resource: BillingLimitResource): PaidSubscriptionPlanId {
   const minimums: Record<BillingLimitResource, PaidSubscriptionPlanId> = {
+    aiGenerations: "starter",
     domains: "starter",
+    exports: "starter",
     landings: "starter",
-    stores: "pro"
+    projects: "starter",
+    stores: "pro",
+    teamMembers: "pro",
+    templates: "starter"
   };
 
   return minimums[resource];

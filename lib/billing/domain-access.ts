@@ -45,7 +45,7 @@ export function canConnectAnotherDomain(input: DomainAccessInput) {
     !isStoreLocked(input.storeAccess) &&
     (remaining === null || remaining > 0);
 
-  console.info("[billing-domain-limit] domain quota checked", {
+  console.info("[usage-check] domain quota checked", {
     allowed,
     domainLimit: input.subscription.usage.domainLimit,
     domainsUsed: input.subscription.usage.domainsUsed,
@@ -80,6 +80,15 @@ export async function assertCanConnectCustomDomain(
   const domainAccess = canConnectAnotherDomain({ storeAccess, subscription });
 
   if (!domainAccess.allowed) {
+    console.warn("[upgrade-required] custom domain blocked", {
+      domainLimit: subscription.usage.domainLimit,
+      domainsUsed: subscription.usage.domainsUsed,
+      planId: subscription.plan.id,
+      reason: domainAccess.reason,
+      storeAccessState: storeAccess.state,
+      storeId,
+      userId
+    });
     console.warn("[billing-domain-lock] custom domain mutation blocked", {
       domainLimit: subscription.usage.domainLimit,
       domainsUsed: subscription.usage.domainsUsed,

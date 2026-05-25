@@ -579,6 +579,7 @@ async function persistStoreDraftFromForm(
       assertFeatureAccess(access, "multi_store");
     }
 
+    assertUsageWithinLimits(access, "projects");
     assertUsageWithinLimits(access, "stores");
     assertFeatureAccess(access, "premium_templates", { templateId });
 

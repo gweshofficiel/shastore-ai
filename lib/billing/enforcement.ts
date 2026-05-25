@@ -10,14 +10,13 @@ import {
 } from "@/lib/billing/access";
 import type { SubscriptionPlanId } from "@/lib/billing/plans";
 import { getExpiryLockdownState, isPaidAccessLocked } from "@/lib/billing/expiry-lockdown";
+import {
+  canUseFeature as canUsePlanFeature,
+  getPlanLimits,
+  type PlanFeature
+} from "@/lib/billing/plan-limits";
 
-export type BillingFeature =
-  | "advanced_analytics"
-  | "custom_branding"
-  | "custom_domains"
-  | "multi_store"
-  | "premium_templates"
-  | "seo";
+export type BillingFeature = PlanFeature;
 
 export type BillingEnforcementCode =
   | "feature_unavailable"
@@ -54,46 +53,61 @@ export const planCapabilities: Record<
 > = {
   agency: {
     advanced_analytics: true,
+    ai_generation: true,
     custom_branding: true,
     custom_domains: true,
+    exports: true,
     multi_store: true,
     premium_templates: true,
-    seo: true
+    seo: true,
+    team_members: true
   },
   free: {
     advanced_analytics: false,
+    ai_generation: true,
     custom_branding: false,
     custom_domains: false,
+    exports: true,
     multi_store: false,
     premium_templates: false,
-    seo: false
+    seo: false,
+    team_members: false
   },
   pro: {
     advanced_analytics: true,
+    ai_generation: true,
     custom_branding: true,
     custom_domains: true,
+    exports: true,
     multi_store: true,
     premium_templates: true,
-    seo: true
+    seo: true,
+    team_members: true
   },
   starter: {
     advanced_analytics: false,
+    ai_generation: true,
     custom_branding: false,
     custom_domains: true,
+    exports: true,
     multi_store: false,
     premium_templates: true,
-    seo: false
+    seo: false,
+    team_members: false
   }
 };
 
 function featureMessage(feature: BillingFeature) {
   const messages: Record<BillingFeature, string> = {
     advanced_analytics: "Advanced analytics are unavailable on your current plan. Upgrade at /dashboard/billing.",
+    ai_generation: "AI generations are unavailable on your current plan. Upgrade at /dashboard/billing.",
     custom_branding: "Full branding controls are unavailable on your current plan. Upgrade at /dashboard/billing.",
     custom_domains: "Custom domains are unavailable on your current plan. Upgrade at /dashboard/billing.",
+    exports: "Exports are unavailable on your current plan. Upgrade at /dashboard/billing.",
     multi_store: "Multiple stores are unavailable on your current plan. Upgrade at /dashboard/billing.",
     premium_templates: "Premium templates are unavailable on your current plan. Upgrade at /dashboard/billing.",
-    seo: "SEO settings are unavailable on your current plan. Upgrade at /dashboard/billing."
+    seo: "SEO settings are unavailable on your current plan. Upgrade at /dashboard/billing.",
+    team_members: "Team members are unavailable on your current plan. Upgrade at /dashboard/billing."
   };
 
   return messages[feature];
@@ -101,9 +115,14 @@ function featureMessage(feature: BillingFeature) {
 
 function limitMessage(resource: BillingLimitResource) {
   const labels: Record<BillingLimitResource, string> = {
+    aiGenerations: "AI generation",
     domains: "domain",
+    exports: "export",
     landings: "landing page",
-    stores: "store"
+    projects: "project",
+    stores: "store",
+    teamMembers: "team member",
+    templates: "template"
   };
 
   return `Your current plan has reached its ${labels[resource]} limit. Upgrade at /dashboard/billing.`;
@@ -144,7 +163,11 @@ function featureAllowed(access: UserSubscriptionAccess, feature: BillingFeature,
     return canUseTemplate(access, templateId);
   }
 
-  return planCapabilities[access.plan.id][feature];
+  return canUsePlanFeature({
+    feature,
+    planId: access.plan.id,
+    usage: access.usage
+  }).allowed;
 }
 
 export function assertFeatureAccess(
@@ -154,7 +177,7 @@ export function assertFeatureAccess(
 ) {
   const allowed = featureAllowed(access, feature, options.templateId);
 
-  console.info("[billing-enforcement] feature access check", {
+  console.info("[plan-limit] feature access check", {
     allowed,
     feature,
     planId: access.plan.id,
@@ -164,6 +187,13 @@ export function assertFeatureAccess(
   });
 
   if (!allowed) {
+    console.warn("[upgrade-required] feature blocked", {
+      feature,
+      planId: access.plan.id,
+      status: access.status,
+      templateId: options.templateId ?? null,
+      userId: access.userId
+    });
     const expiry = getExpiryLockdownState(access);
     throw new BillingEnforcementError("feature_unavailable", expiry.reason ?? featureMessage(feature), {
       feature,
@@ -179,8 +209,9 @@ export function assertUsageWithinLimits(
   resource: BillingLimitResource
 ) {
   const state = billingLimitState(access, resource);
+  const limits = getPlanLimits(access.plan.id);
 
-  console.info("[billing-enforcement] usage limit check", {
+  console.info("[usage-check] usage limit check", {
     allowed: state.allowed,
     limit: state.limit,
     planId: state.planId,
@@ -191,6 +222,12 @@ export function assertUsageWithinLimits(
   });
 
   if (!isActiveForBilling(access)) {
+    console.warn("[upgrade-required] subscription inactive", {
+      planId: access.plan.id,
+      resource,
+      status: access.status,
+      userId: access.userId
+    });
     const expiry = getExpiryLockdownState(access);
     throw new BillingEnforcementError("subscription_inactive", expiry.reason ?? "Your subscription is not active. Upgrade at /dashboard/billing.", {
       limit: state.limit,
@@ -202,8 +239,15 @@ export function assertUsageWithinLimits(
   }
 
   if (!state.allowed) {
-    throw new BillingEnforcementError("limit_reached", limitMessage(resource), {
+    console.warn("[upgrade-required] usage limit blocked", {
       limit: state.limit,
+      planId: access.plan.id,
+      resource,
+      used: state.used,
+      userId: access.userId
+    });
+    throw new BillingEnforcementError("limit_reached", limitMessage(resource), {
+      limit: limits[resource],
       planId: access.plan.id,
       resource,
       status: access.status,
