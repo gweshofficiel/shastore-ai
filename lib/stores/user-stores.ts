@@ -60,6 +60,27 @@ export async function fetchStoresForAuthUser(
     return { stores: [], error: byUserId.error.message };
   }
 
+  const { data: memberships, error: membershipsError } = await supabase
+    .from("workspace_members" as never)
+    .select("workspace_id")
+    .eq("user_id", userId);
+
+  const workspaceIds = ((memberships ?? []) as Array<{ workspace_id?: string | null }>)
+    .map((membership) => membership.workspace_id)
+    .filter((workspaceId): workspaceId is string => Boolean(workspaceId));
+
+  if (!membershipsError && workspaceIds.length) {
+    const byWorkspace = await supabase
+      .from("stores")
+      .select(storeSelect)
+      .in("workspace_id", workspaceIds)
+      .order("created_at", { ascending: false });
+
+    if (!byWorkspace.error) {
+      mergeStoreRows(byWorkspace.data as UserStoreRow[] | null, merged);
+    }
+  }
+
   const stores = Array.from(merged.values()).sort(
     (left, right) =>
       new Date(right.created_at).getTime() - new Date(left.created_at).getTime()

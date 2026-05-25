@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { updateStoreOrderStatusAction } from "@/lib/store-order-actions";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import type { Json } from "@/types/database";
@@ -176,6 +177,25 @@ async function getStoreModeOrders(status: string) {
     };
   }
 
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+  const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+  if (!hasPermission(role, "view_orders")) {
+    console.warn("[permission-denied] orders page denied", {
+      permission: "view_orders",
+      role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return {
+      error: "You do not have permission to view orders.",
+      orders: [],
+      schemaIssue: null,
+      stores: []
+    };
+  }
+
   const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id);
 
   if (storesError) {
@@ -233,6 +253,13 @@ export default async function OrdersPage({
   const activeStatus = filterStatuses.includes(params.status ?? "") ? (params.status ?? "all") : "all";
   const message = statusMessage(params.orders);
   const { error, orders, schemaIssue, stores } = await getStoreModeOrders(activeStatus);
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
+  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canManageOrders = hasPermission(role, "manage_orders");
   const storesById = new Map(stores.map((store) => [store.id, store]));
 
   return (
@@ -358,24 +385,30 @@ export default async function OrdersPage({
                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                       Submitted total
                     </p>
-                    <form action={updateStoreOrderStatusAction} className="grid gap-3">
-                      <input name="orderId" type="hidden" value={order.id} />
-                      <label className="grid gap-2 text-left text-sm font-semibold text-ink">
-                        <span>Order status</span>
-                        <select
-                          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                          defaultValue={order.order_status}
-                          name="status"
-                        >
-                          {orderStatuses.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <Button type="submit">Update status</Button>
-                    </form>
+                    {canManageOrders ? (
+                      <form action={updateStoreOrderStatusAction} className="grid gap-3">
+                        <input name="orderId" type="hidden" value={order.id} />
+                        <label className="grid gap-2 text-left text-sm font-semibold text-ink">
+                          <span>Order status</span>
+                          <select
+                            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                            defaultValue={order.order_status}
+                            name="status"
+                          >
+                            {orderStatuses.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Button type="submit">Update status</Button>
+                      </form>
+                    ) : (
+                      <p className="text-sm font-bold text-muted">
+                        You do not have permission to update order status.
+                      </p>
+                    )}
                   </div>
                 </Card>
                 );

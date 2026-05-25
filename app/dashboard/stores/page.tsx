@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { publishStoreDraft } from "@/lib/store-actions";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreAccessMapForUser, type StoreAccessResult } from "@/lib/billing/store-access";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
@@ -268,6 +269,39 @@ export default async function StoresPage({
   }>;
 }) {
   const query = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
+  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canCreateStore = hasPermission(role, "create_store");
+  const canEditStore = hasPermission(role, "edit_store");
+  const canPublishStore = hasPermission(role, "publish_store");
+
+  if (user && !canCreateStore && !canEditStore && !canPublishStore) {
+    console.warn("[permission-denied] stores page denied", {
+      permission: "edit_store",
+      role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."
+          title="My Stores"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to manage stores.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const { draftStoreAccess, draftStores, draftStoresError, error, ownedStores, schemaIssue, subscription } =
     await getBuyerStores();
   const storeModeCount = draftStores.length;
@@ -280,7 +314,7 @@ export default async function StoresPage({
         show={Boolean(query.saved)}
       />
       <PageHeader
-        action={<ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>}
+        action={canCreateStore ? <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink> : undefined}
         description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."
         title="My Stores"
       />
@@ -385,7 +419,9 @@ export default async function StoresPage({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                    <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
+                    {canEditStore ? (
+                      <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
+                    ) : null}
                     {isPublished ? (
                       <ButtonLink
                         href={`/store/${publicSlug}`}
@@ -398,13 +434,15 @@ export default async function StoresPage({
                       <ButtonLink href="/dashboard/billing" variant="secondary">
                         Upgrade to unlock
                       </ButtonLink>
-                    ) : (
+                    ) : canPublishStore ? (
                       <form action={publishStoreDraft}>
                         <input name="storeId" type="hidden" value={store.id} />
                         <Button type="submit" variant="secondary">
                           Publish Store
                         </Button>
                       </form>
+                    ) : (
+                      <p className="text-sm font-bold text-muted">You do not have permission to publish.</p>
                     )}
                   </div>
                 </div>
@@ -418,7 +456,7 @@ export default async function StoresPage({
               Create a store draft, save it, and it will appear here immediately.
             </p>
             <div className="mt-4">
-              <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink>
+              {canCreateStore ? <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink> : null}
             </div>
           </div>
         )}

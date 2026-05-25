@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import { getUserPrimaryWorkspaceId } from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -71,11 +72,35 @@ export default async function TeamPage({
     );
   }
 
-  const workspaceId = user.id;
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
   const [access, management] = await Promise.all([
-    getUserSubscriptionAccessForClient(supabase, user.id),
+    getUserSubscriptionAccessForClient(supabase, workspaceId),
     canManageWorkspace(supabase, workspaceId, user.id)
   ]);
+
+  if (!management.allowed) {
+    console.warn("[permission-denied] team page denied", {
+      permission: "manage_team",
+      role: management.role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Invite teammates to help manage your SHASTORE AI workspace securely."
+          title="Team"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to manage team members.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const { invites, invitesError, members, membersError } = await getWorkspaceMembers(
     supabase,
     workspaceId,

@@ -8,6 +8,7 @@ import {
   assertCanUseExistingCustomDomain
 } from "@/lib/billing/domain-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getDomainBase } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
@@ -70,6 +71,17 @@ async function requireClaimedStore(formData: FormData) {
 
   if (!user) {
     redirect(`/login?next=${encodeURIComponent("/dashboard/domains")}`);
+  }
+
+  try {
+    await requirePermission({
+      permission: "manage_domains",
+      supabase,
+      userId: user.id,
+      workspaceId: await getUserPrimaryWorkspaceId(supabase, user.id)
+    });
+  } catch {
+    domainsRedirect(storeId, "not-authorized");
   }
 
   const claimedStore = await getClaimedStore(supabase, storeId);

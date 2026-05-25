@@ -6,6 +6,7 @@ import {
   isPaidSubscriptionPlan,
   resolvePlatformPriceId
 } from "@/lib/billing/platform-checkout";
+import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getPlatformBillingStripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
@@ -66,6 +67,19 @@ export async function POST(request: Request) {
   if (!user) {
     console.warn("[plan-change] unauthenticated request");
     return NextResponse.redirect(absoluteUrl("/login?next=/dashboard/billing"), 303);
+  }
+
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+
+  try {
+    await requirePermission({
+      permission: "manage_billing",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
+    return billingErrorRedirect("permission_denied", "You do not have permission to manage billing.");
   }
 
   const requestedPlan = normalizePlan(await readRequestedPlan(request));

@@ -11,6 +11,8 @@ import {
   commerceMigrationMessage,
   getCommerceAnalyticsSummary
 } from "@/lib/commerce/data";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +24,13 @@ function formatMoney(amount: number) {
 }
 
 export default async function AnalyticsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
   const access = await getCurrentUserSubscriptionAccess();
 
-  if (!access) {
+  if (!user || !access) {
     return (
       <div className="grid gap-6 lg:gap-8">
         <PageHeader
@@ -33,6 +39,32 @@ export default async function AnalyticsPage() {
         />
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-bold text-amber-800">Sign in to access analytics.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+  const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+  if (!hasPermission(role, "view_analytics")) {
+    console.warn("[permission-denied] analytics page denied", {
+      permission: "view_analytics",
+      role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Shared analytics foundation for visitors, WhatsApp clicks, page views, conversions, orders, products, and sources."
+          title="Analytics"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to view analytics.
+          </p>
         </Card>
       </div>
     );

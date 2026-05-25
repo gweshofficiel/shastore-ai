@@ -21,6 +21,8 @@ import {
   getRemainingDomainQuota
 } from "@/lib/billing/domain-access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
+import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { createClient } from "@/lib/supabase/server";
 
 const statusMessages: Record<string, string> = {
   "custom-domain-saved": "Custom domain prepared for DNS verification.",
@@ -105,6 +107,37 @@ export default async function DomainsPage({
   searchParams: Promise<{ checkSubdomain?: string; domains?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
+  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canManageDomainsPermission = hasPermission(role, "manage_domains");
+
+  if (user && !canManageDomainsPermission) {
+    console.warn("[permission-denied] domains page denied", {
+      permission: "manage_domains",
+      role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Production-safe domain foundation for buyer-owned stores: SHASTORE subdomains, future custom domains, verification state, and hostname resolution."
+          title="Store Domains"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to manage domains.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const [access, data] = await Promise.all([
     getCurrentUserSubscriptionAccess(),
     getStoreDomainsDashboardData(params.storeId, params.checkSubdomain)

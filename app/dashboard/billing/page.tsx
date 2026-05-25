@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { billingPlans } from "@/lib/billing/plans";
-import { getCurrentUserSubscriptionAccess, planRank } from "@/lib/billing/access";
+import { getUserSubscriptionAccessForClient, planRank } from "@/lib/billing/access";
+import { getUserPrimaryWorkspaceId, hasPermission, getUserWorkspaceRole } from "@/lib/permissions/rbac";
 import { getSubscriptionState } from "@/lib/billing/subscription-state";
 import { createClient } from "@/lib/supabase/server";
 
@@ -101,10 +102,13 @@ export default async function BillingPage({
   }>;
 }) {
   const query = await searchParams;
-  const access = await getCurrentUserSubscriptionAccess();
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
   const billingTablesReady = await getBillingTableAvailable();
 
-  if (!access) {
+  if (!user) {
     return (
       <div className="grid gap-6 lg:gap-8">
         <PageHeader
@@ -117,6 +121,34 @@ export default async function BillingPage({
       </div>
     );
   }
+
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+  const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
+
+  if (!hasPermission(role, "manage_billing")) {
+    console.warn("[permission-denied] billing page denied", {
+      permission: "manage_billing",
+      role,
+      userId: user.id,
+      workspaceId
+    });
+
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <PageHeader
+          description="Manage your SHASTORE AI subscription, store limits, and publishing access."
+          title="Billing"
+        />
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-800">
+            You do not have permission to manage billing.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  const access = await getUserSubscriptionAccessForClient(supabase, workspaceId);
 
   const currentPlan = access.plan;
   const isPaid = currentPlan.id !== "free";

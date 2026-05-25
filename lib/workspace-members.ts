@@ -5,10 +5,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
 import { getPublicUrl } from "@/lib/deployment/config";
+import { hasPermission, requirePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-
-export type WorkspaceRole = "owner" | "admin" | "editor" | "support";
 
 export type WorkspaceMember = {
   created_at: string;
@@ -71,6 +70,10 @@ async function ensureOwnerMembership(
   workspaceId: string,
   userId: string
 ) {
+  if (workspaceId !== userId) {
+    return;
+  }
+
   const admin = createAdminClient();
   const client = admin ?? supabase;
 
@@ -108,7 +111,7 @@ export async function canManageWorkspace(
     .maybeSingle();
 
   const role = (data as { role?: WorkspaceRole | null } | null)?.role ?? null;
-  const allowed = role === "owner" || role === "admin";
+  const allowed = hasPermission(role, "manage_team");
 
   console.info("[workspace-access] manage workspace checked", {
     allowed,
@@ -228,6 +231,12 @@ export async function inviteMember(formData: FormData) {
   const management = await canManageWorkspace(supabase, workspaceId, user.id);
 
   if (!management.allowed) {
+    console.warn("[permission-denied] team invite denied", {
+      permission: "manage_team",
+      role: management.role,
+      userId: user.id,
+      workspaceId
+    });
     teamRedirect("error", "Only workspace owners and admins can invite team members.");
   }
 
@@ -287,9 +296,15 @@ export async function removeMember(formData: FormData) {
   const workspaceId = String(formData.get("workspaceId") ?? user.id);
   const memberId = String(formData.get("memberId") ?? "");
   const inviteId = String(formData.get("inviteId") ?? "");
-  const management = await canManageWorkspace(supabase, workspaceId, user.id);
 
-  if (!management.allowed) {
+  try {
+    await requirePermission({
+      permission: "manage_team",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
     teamRedirect("error", "Only workspace owners and admins can remove team members.");
   }
 
@@ -353,9 +368,15 @@ export async function resendInvite(formData: FormData) {
 
   const workspaceId = String(formData.get("workspaceId") ?? user.id);
   const inviteId = String(formData.get("inviteId") ?? "");
-  const management = await canManageWorkspace(supabase, workspaceId, user.id);
 
-  if (!management.allowed) {
+  try {
+    await requirePermission({
+      permission: "manage_team",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
     teamRedirect("error", "Only workspace owners and admins can resend invites.");
   }
 

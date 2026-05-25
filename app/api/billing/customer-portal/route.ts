@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getPlatformBillingStripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
@@ -26,6 +27,19 @@ export async function POST() {
   if (!user) {
     console.warn("[customer-portal] unauthenticated request");
     return NextResponse.redirect(absoluteUrl("/login?next=/dashboard/billing"), 303);
+  }
+
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+
+  try {
+    await requirePermission({
+      permission: "manage_billing",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
+    return billingPortalRedirect("permission_denied", "You do not have permission to manage billing.");
   }
 
   console.info("[customer-portal] portal session requested", { userId: user.id });

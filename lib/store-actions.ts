@@ -20,6 +20,7 @@ import {
 import { assertPaidAccessNotLocked } from "@/lib/billing/expiry-lockdown";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { getUserPrimaryWorkspaceId, requirePermission, type WorkspacePermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
@@ -232,6 +233,20 @@ function storeOwnerOrFilter(userId: string) {
   return `user_id.eq.${userId},owner_user_id.eq.${userId}`;
 }
 
+async function requireDashboardPermission(
+  supabase: SupabaseClient,
+  userId: string,
+  permission: WorkspacePermission,
+  workspaceId?: string | null
+) {
+  await requirePermission({
+    permission,
+    supabase,
+    userId,
+    workspaceId: workspaceId ?? (await getUserPrimaryWorkspaceId(supabase, userId))
+  });
+}
+
 function isMissingOwnerUserColumn(error: SupabaseLikeError | null) {
   return isMissingColumn(error, "owner_user_id");
 }
@@ -266,7 +281,7 @@ async function getOwnedStoreForCatalogAction(
 ) {
   let result = await supabase
     .from("stores")
-    .select("id, name, slug, user_id, owner_user_id")
+    .select("id, name, slug, user_id, owner_user_id, workspace_id")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(userId))
     .maybeSingle();
@@ -274,10 +289,20 @@ async function getOwnedStoreForCatalogAction(
   if (result.error && isMissingOwnerUserColumn(asSupabaseError(result.error))) {
     result = await supabase
       .from("stores")
-      .select("id, name, slug, user_id")
+      .select("id, name, slug, user_id, workspace_id")
       .eq("id", storeId)
       .eq("user_id", userId)
       .maybeSingle();
+  }
+
+  const store = result.data as { workspace_id?: string | null } | null;
+
+  if (store) {
+    try {
+      await requireDashboardPermission(supabase, userId, "manage_products", store.workspace_id);
+    } catch {
+      return { data: null, error: null } as typeof result;
+    }
   }
 
   return result;
@@ -577,6 +602,12 @@ async function persistStoreDraftFromForm(
 
   if (!storeName) {
     return { ok: false, error: "Store name is required." };
+  }
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "create_store");
+  } catch {
+    return { ok: false, error: "You do not have permission to create stores." };
   }
 
   const access = await getUserSubscriptionAccess(user.id);
@@ -1638,13 +1669,19 @@ export async function saveStorePublicationSettings(formData: FormData) {
 
   const { data: store, error: storeError } = await supabase
     .from("stores")
-    .select("id, name, slug")
+    .select("id, name, slug, workspace_id")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeError || !store) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "publish_store", store.workspace_id);
+  } catch {
+    redirectWithStoreError(detailPath, "You do not have permission to update publication settings.");
   }
 
   try {
@@ -1799,13 +1836,19 @@ export async function saveStoreDomainSettings(formData: FormData) {
 
   const { data: store, error: storeError } = await supabase
     .from("stores")
-    .select("id, name, slug")
+    .select("id, name, slug, workspace_id")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeError || !store) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "manage_domains", store.workspace_id);
+  } catch {
+    redirectWithStoreError(detailPath, "You do not have permission to manage domains.");
   }
 
   try {
@@ -1928,6 +1971,12 @@ export async function unpublishStore(formData: FormData) {
     redirectWithStoreError("/dashboard/stores", "Store not found.");
   }
 
+  try {
+    await requireDashboardPermission(supabase, user.id, "publish_store");
+  } catch {
+    redirectWithStoreError(detailPath, "You do not have permission to publish stores.");
+  }
+
   const { data: rawPublication, error: publicationError } = await supabase
     .from("published_stores")
     .select("*")
@@ -1997,13 +2046,19 @@ export async function publishStoreDraft(formData: FormData) {
 
   const { data: store, error: storeLookupError } = await supabase
     .from("stores")
-    .select("id, name, slug")
+    .select("id, name, slug, workspace_id")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
 
   if (storeLookupError || !store) {
     redirectWithStoreError(detailPath, formatStoreActionError(storeLookupError));
+  }
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "publish_store", store.workspace_id);
+  } catch {
+    redirectWithStoreError(detailPath, "You do not have permission to publish stores.");
   }
 
   try {

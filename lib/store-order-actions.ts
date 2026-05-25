@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import type { Json } from "@/types/database";
@@ -253,6 +254,17 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
 
   if (userError || !user) {
     redirect(`/login?next=${encodeURIComponent(dashboardOrdersPath)}`);
+  }
+
+  try {
+    await requirePermission({
+      permission: "manage_orders",
+      supabase,
+      userId: user.id,
+      workspaceId: await getUserPrimaryWorkspaceId(supabase, user.id)
+    });
+  } catch {
+    orderStatusRedirect("not-authorized", orderId);
   }
 
   const { data, error } = await supabase
