@@ -58,7 +58,7 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     landings: 10,
     projects: 10,
     stores: 1,
-    teamMembers: 1,
+    teamMembers: 3,
     templates: 6,
     features: {
       advanced_analytics: false,
@@ -79,7 +79,7 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     landings: 10,
     projects: 15,
     stores: 5,
-    teamMembers: 3,
+    teamMembers: 10,
     templates: null,
     features: {
       advanced_analytics: true,

@@ -298,13 +298,12 @@ export async function getBillingUsageForUser(
     countTraffic(supabase, userId),
     countExports(supabase, userId),
     countOptionalMetric(
-      "store_staff",
-      "store_staff",
+      "workspace_members",
+      "workspace_members",
       supabase
-        .from("store_staff" as never)
+        .from("workspace_members" as never)
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("staff_status", "active")
+        .eq("workspace_id", userId)
     ),
     countTemplates(supabase, userId)
   ]);

@@ -15,6 +15,7 @@ import {
   Settings,
   Truck,
   Store,
+  UsersRound,
   UserRoundCheck,
   WalletCards
 } from "lucide-react";
@@ -34,7 +35,8 @@ const icons = {
   settings: Settings,
   shipping: Truck,
   landings: Store,
-  stores: ShoppingBag
+  stores: ShoppingBag,
+  team: UsersRound
 };
 
 export function DashboardNavLink({
