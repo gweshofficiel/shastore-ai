@@ -50,6 +50,36 @@ alter table if exists public.commerce_orders
 alter table if exists public.generations
   add column if not exists workspace_id uuid;
 
+alter table if exists public.ai_generations
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.templates
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_templates
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_products
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_categories
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_theme_settings
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_sections
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_themes
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_assets
+  add column if not exists workspace_id uuid;
+
+alter table if exists public.store_uploads
+  add column if not exists workspace_id uuid;
+
 do $$
 begin
   if to_regclass('public.stores') is not null then
@@ -129,6 +159,48 @@ begin
 
     create index if not exists store_orders_workspace_created_idx
       on public.store_orders(workspace_id, created_at desc);
+  end if;
+
+  if to_regclass('public.store_products') is not null and to_regclass('public.stores') is not null then
+    update public.store_products products
+    set workspace_id = coalesce(products.workspace_id, stores.workspace_id, products.user_id)
+    from public.stores stores
+    where products.store_id = stores.id
+      and products.workspace_id is null;
+
+    create index if not exists store_products_workspace_idx
+      on public.store_products(workspace_id, store_id);
+  end if;
+
+  if to_regclass('public.store_categories') is not null and to_regclass('public.stores') is not null then
+    update public.store_categories categories
+    set workspace_id = coalesce(categories.workspace_id, stores.workspace_id, categories.user_id)
+    from public.stores stores
+    where categories.store_id = stores.id
+      and categories.workspace_id is null;
+
+    create index if not exists store_categories_workspace_idx
+      on public.store_categories(workspace_id, store_id);
+  end if;
+
+  if to_regclass('public.store_theme_settings') is not null and to_regclass('public.stores') is not null then
+    update public.store_theme_settings settings
+    set workspace_id = coalesce(settings.workspace_id, stores.workspace_id, settings.user_id)
+    from public.stores stores
+    where settings.store_id = stores.id
+      and settings.workspace_id is null;
+  end if;
+
+  if to_regclass('public.ai_generations') is not null then
+    update public.ai_generations
+    set workspace_id = coalesce(workspace_id, user_id)
+    where workspace_id is null;
+  end if;
+
+  if to_regclass('public.generations') is not null then
+    update public.generations
+    set workspace_id = coalesce(workspace_id, user_id)
+    where workspace_id is null;
   end if;
 end $$;
 
@@ -240,3 +312,99 @@ for update
 to authenticated
 using (public.workspace_can_edit(workspace_id))
 with check (public.workspace_can_edit(workspace_id));
+
+do $$
+begin
+  if to_regclass('public.store_products') is not null then
+    alter table public.store_products enable row level security;
+    drop policy if exists "workspace members read store products" on public.store_products;
+    drop policy if exists "workspace editors write store products" on public.store_products;
+    drop policy if exists "public can read published store products" on public.store_products;
+    create policy "workspace members read store products"
+    on public.store_products
+    for select
+    to authenticated
+    using (public.can_access_workspace(workspace_id));
+    create policy "public can read published store products"
+    on public.store_products
+    for select
+    to anon, authenticated
+    using (
+      exists (
+        select 1
+        from public.stores stores
+        where stores.id = store_products.store_id
+          and stores.status = 'published'
+      )
+    );
+    create policy "workspace editors write store products"
+    on public.store_products
+    for all
+    to authenticated
+    using (public.workspace_can_edit(workspace_id))
+    with check (public.workspace_can_edit(workspace_id));
+  end if;
+
+  if to_regclass('public.store_categories') is not null then
+    alter table public.store_categories enable row level security;
+    drop policy if exists "workspace members read store categories" on public.store_categories;
+    drop policy if exists "workspace editors write store categories" on public.store_categories;
+    drop policy if exists "public can read published store categories" on public.store_categories;
+    create policy "workspace members read store categories"
+    on public.store_categories
+    for select
+    to authenticated
+    using (public.can_access_workspace(workspace_id));
+    create policy "public can read published store categories"
+    on public.store_categories
+    for select
+    to anon, authenticated
+    using (
+      exists (
+        select 1
+        from public.stores stores
+        where stores.id = store_categories.store_id
+          and stores.status = 'published'
+      )
+    );
+    create policy "workspace editors write store categories"
+    on public.store_categories
+    for all
+    to authenticated
+    using (public.workspace_can_edit(workspace_id))
+    with check (public.workspace_can_edit(workspace_id));
+  end if;
+
+  if to_regclass('public.store_theme_settings') is not null then
+    alter table public.store_theme_settings enable row level security;
+    drop policy if exists "workspace members read store theme settings" on public.store_theme_settings;
+    drop policy if exists "workspace editors write store theme settings" on public.store_theme_settings;
+    create policy "workspace members read store theme settings"
+    on public.store_theme_settings
+    for select
+    to authenticated
+    using (public.can_access_workspace(workspace_id));
+    create policy "workspace editors write store theme settings"
+    on public.store_theme_settings
+    for all
+    to authenticated
+    using (public.workspace_can_edit(workspace_id))
+    with check (public.workspace_can_edit(workspace_id));
+  end if;
+
+  if to_regclass('public.generations') is not null then
+    alter table public.generations enable row level security;
+    drop policy if exists "workspace members read generations" on public.generations;
+    drop policy if exists "workspace members write generations" on public.generations;
+    create policy "workspace members read generations"
+    on public.generations
+    for select
+    to authenticated
+    using (public.can_access_workspace(workspace_id));
+    create policy "workspace members write generations"
+    on public.generations
+    for insert
+    to authenticated
+    with check (public.can_access_workspace(workspace_id));
+  end if;
+end $$;

@@ -28,6 +28,7 @@ import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
 import { isValidHostname } from "@/lib/domains/utils";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 type DraftCategory = {
   id: string;
@@ -339,19 +340,20 @@ async function revalidateStoreCatalogPaths(
 async function confirmPersistedStore(
   supabase: SupabaseClient,
   userId: string,
-  storeId: string
+  storeId: string,
+  workspaceId: string
 ) {
   let result = await supabase
     .from("stores")
-    .select("id, name, status, user_id, owner_user_id, created_at")
+    .select("id, name, status, user_id, owner_user_id, workspace_id, created_at")
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(userId))
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
   if (result.error && isMissingOwnerUserColumn(asSupabaseError(result.error))) {
     result = await supabase
       .from("stores")
-      .select("id, name, status, user_id, created_at")
+      .select("id, name, status, user_id, workspace_id, created_at")
       .eq("id", storeId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -469,6 +471,7 @@ function buildStoreDataPayload({
 async function insertStoreDraftRow(
   supabase: SupabaseClient,
   userId: string,
+  workspaceId: string,
   input: {
     brandColor: string;
     currency: string;
@@ -505,7 +508,7 @@ async function insertStoreDraftRow(
       store_data: input.storeData,
       store_name: input.name,
       subscription_plan: "free",
-      workspace_id: userId
+      workspace_id: workspaceId
     },
     {
       ...base,
@@ -550,7 +553,12 @@ async function insertStoreDraftRow(
       console.info("[store-create] draft store inserted", {
         storeId: result.data.id,
         userId,
-        workspaceId: userId
+        workspaceId
+      });
+      console.info("[workspace-store-created] draft store inserted", {
+        storeId: result.data.id,
+        userId,
+        workspaceId
       });
       return { data: result.data, error: null };
     }
@@ -580,6 +588,15 @@ async function persistStoreDraftFromForm(
     return { ok: false, error: "Sign in required to save a store draft." };
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-store-access] creating store in active workspace", {
+    role: selection.activeWorkspaceRole,
+    userId: user.id,
+    workspaceId
+  });
+
   const storeName = String(formData.get("storeName") ?? "").trim();
   const storeDescription = String(formData.get("storeDescription") ?? "").trim();
   const brandColor = String(formData.get("brandColor") ?? "#0f172a").trim() || "#0f172a";
@@ -597,7 +614,8 @@ async function persistStoreDraftFromForm(
     products: products.length,
     storeName,
     templateId,
-    userId: user.id
+    userId: user.id,
+    workspaceId
   });
 
   if (!storeName) {
@@ -605,8 +623,12 @@ async function persistStoreDraftFromForm(
   }
 
   try {
-    await requireDashboardPermission(supabase, user.id, "create_store");
+    await requireDashboardPermission(supabase, user.id, "create_store", workspaceId);
   } catch {
+    console.warn("[workspace-store-access-denied] create_store denied", {
+      userId: user.id,
+      workspaceId
+    });
     return { ok: false, error: "You do not have permission to create stores." };
   }
 
@@ -653,7 +675,7 @@ async function persistStoreDraftFromForm(
     whatsappNumber
   });
 
-  const insertResult = await insertStoreDraftRow(supabase, user.id, {
+  const insertResult = await insertStoreDraftRow(supabase, user.id, workspaceId, {
     brandColor,
     currency,
     logoImageUrl,
@@ -684,7 +706,7 @@ async function persistStoreDraftFromForm(
     return { ok: false, error: "Store insert returned no id." };
   }
 
-  const persistedStore = await confirmPersistedStore(supabase, user.id, insertedStoreId);
+  const persistedStore = await confirmPersistedStore(supabase, user.id, insertedStoreId, workspaceId);
 
   if (persistedStore.error) {
     console.error("[saveStoreDraft] confirm select failed:", persistedStore.error);
@@ -704,6 +726,7 @@ async function persistStoreDraftFromForm(
     supabase,
     store.id,
     user.id,
+    workspaceId,
     templateId,
     themeSettings.primaryColor || brandColor,
     {
@@ -722,11 +745,12 @@ async function persistStoreDraftFromForm(
       .insert({
         store_id: store.id,
         user_id: user.id,
+        workspace_id: workspaceId,
         name: category.name,
         description: category.description || null,
         image_url: category.imageUrl ?? null,
         sort_order: index
-      })
+      } as never)
       .select("id")
       .single();
 
@@ -750,12 +774,13 @@ async function persistStoreDraftFromForm(
       store_id: store.id,
       category_id: mappedCategoryId,
       user_id: user.id,
+      workspace_id: workspaceId,
       name: product.name,
       description: product.description || null,
       price: product.price || null,
       image_url: product.imageUrl ?? null,
       sort_order: index
-    });
+    } as never);
 
     if (error) {
       console.warn("[saveStoreDraft] product insert warning:", error);
@@ -1001,6 +1026,7 @@ async function saveThemeSettings(
   supabase: SupabaseClient,
   storeId: string,
   userId: string,
+  workspaceId: string,
   templateId: string,
   brandColor: string,
   settings: StoreThemeSettings,
@@ -1009,11 +1035,12 @@ async function saveThemeSettings(
   const { error } = await supabase.from("store_theme_settings").insert({
     store_id: storeId,
     user_id: userId,
+    workspace_id: workspaceId,
     template_id: templateId,
     brand_color: brandColor,
     logo_image_url: logoImageUrl,
     settings
-  });
+  } as never);
 
   if (!error) {
     return;
@@ -1084,13 +1111,39 @@ export async function deleteStoreDraft(formData: FormData) {
   }
 
   const storeId = String(formData.get("storeId") ?? "");
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-store-access] deleting store from active workspace", {
+    storeId,
+    userId: user.id,
+    workspaceId
+  });
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "edit_store", workspaceId);
+  } catch {
+    console.warn("[workspace-store-access-denied] delete store denied", {
+      storeId,
+      userId: user.id,
+      workspaceId
+    });
+    redirectWithStoreError("/dashboard/stores", "You do not have permission to delete stores.");
+  }
+
   const { error } = await supabase
     .from("stores")
     .delete()
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(user.id));
+    .eq("workspace_id" as never, workspaceId as never);
 
   if (error) {
+    console.warn("[workspace-security-block] store delete blocked", {
+      message: error.message,
+      storeId,
+      userId: user.id,
+      workspaceId
+    });
     redirectWithStoreError("/dashboard/stores", formatStoreActionError(error));
   }
 

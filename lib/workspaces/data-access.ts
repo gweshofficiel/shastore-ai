@@ -73,8 +73,13 @@ export async function assertStoreInWorkspace(
     .maybeSingle();
 
   if (error || !data) {
-    console.warn("[workspace-access-denied] store outside active workspace", {
+    console.warn("[workspace-store-access-denied] store outside active workspace", {
       message: error?.message ?? "Store not found",
+      storeId,
+      userId,
+      workspaceId
+    });
+    console.warn("[workspace-security-block] unauthorized store access rejected", {
       storeId,
       userId,
       workspaceId
@@ -82,7 +87,7 @@ export async function assertStoreInWorkspace(
     return false;
   }
 
-  console.log("[workspace-data-access] store access scoped", {
+  console.log("[workspace-store-access] store access scoped", {
     storeId,
     userId,
     workspaceId

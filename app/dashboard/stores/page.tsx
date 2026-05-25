@@ -246,6 +246,14 @@ function formatStatus(value: string | null | undefined, fallback = "not connecte
   return value ? value.replace(/_/g, " ") : fallback;
 }
 
+function workspaceLabel(workspaceId: string | null, userId?: string) {
+  if (!workspaceId) {
+    return "Current workspace";
+  }
+
+  return workspaceId === userId ? "Your workspace" : `Shared workspace ${workspaceId.slice(0, 8)}`;
+}
+
 function badgeClass(status: string | null | undefined) {
   if (
     status === "active" ||
@@ -325,9 +333,22 @@ export default async function StoresPage({
       />
       <PageHeader
         action={canCreateStore ? <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink> : undefined}
-        description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."
-        title="My Stores"
+        description="Workspace-scoped stores. Switch workspaces to change which stores are visible."
+        title="Workspace Stores"
       />
+
+      <Card className="border-blue-100 bg-blue-50/60 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+          Active workspace
+        </p>
+        <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
+          {workspaceLabel(workspaceId, user?.id)}
+        </h2>
+        <p className="mt-1 text-sm font-semibold text-muted">
+          Your role: {role ? formatStatus(role) : "not signed in"}. This page only shows stores
+          owned by the active workspace.
+        </p>
+      </Card>
 
       {query.saved ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
@@ -377,8 +398,7 @@ export default async function StoresPage({
               Your stores
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-muted">
-              Loaded directly from the stores table for the current Supabase Auth user
-              with owner-based isolation.
+              Loaded from the active workspace with workspace membership isolation.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -461,9 +481,9 @@ export default async function StoresPage({
           </div>
         ) : (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
-            <p className="text-lg font-black text-ink">No saved stores in Store Mode yet.</p>
+            <p className="text-lg font-black text-ink">No stores in this workspace yet.</p>
             <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-muted">
-              Create a store draft, save it, and it will appear here immediately.
+              Create a store while this workspace is active, and it will appear here immediately.
             </p>
             <div className="mt-4">
               {canCreateStore ? <ButtonLink href="/dashboard/stores/new">Create store</ButtonLink> : null}

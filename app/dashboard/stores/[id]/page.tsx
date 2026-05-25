@@ -402,6 +402,16 @@ export default async function StoreDraftPage({
     .single();
 
   if (!store) {
+    console.warn("[workspace-store-access-denied] dashboard store detail blocked", {
+      storeId: id,
+      userId: user.id,
+      workspaceId
+    });
+    console.warn("[workspace-security-block] store detail URL tampering rejected", {
+      storeId: id,
+      userId: user.id,
+      workspaceId
+    });
     const { data: ownedStoreRows, error: ownedStoreError } = await supabase.rpc(
       "get_claimed_store_instances_for_current_user" as never
     );
