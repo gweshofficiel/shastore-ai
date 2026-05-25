@@ -9,7 +9,7 @@ function safeAuthRedirect(value: FormDataEntryValue | null) {
     return "/dashboard";
   }
 
-  if (value.startsWith("/login") || value.startsWith("/register")) {
+  if (value.startsWith("/login") || value.startsWith("/register") || value.startsWith("/auth")) {
     return "/dashboard";
   }
 
@@ -23,19 +23,27 @@ export async function login(formData: FormData) {
   const next = safeAuthRedirect(formData.get("next"));
 
   if (next.startsWith("/invite/")) {
-    console.info("[invite-auth] login requested for invite", { email });
+    console.info("[invite-auth-redirect] login requested for invite", { email });
   }
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     if (next.startsWith("/invite/")) {
-      console.warn("[invite-error] invite login failed", {
+      console.warn("[invite-auth-failed] invite login failed", {
         email,
         message: error.message
       });
     }
-    redirect(`/login?error=auth&next=${encodeURIComponent(next)}`);
+    redirect(
+      next.startsWith("/invite/")
+        ? `/auth/login?error=auth&invite=${encodeURIComponent(next.replace("/invite/", ""))}`
+        : `/login?error=auth&next=${encodeURIComponent(next)}`
+    );
+  }
+
+  if (next.startsWith("/invite/")) {
+    console.info("[invite-auth-success] invite login succeeded", { email });
   }
 
   redirect(next);
@@ -48,7 +56,7 @@ export async function register(formData: FormData) {
   const next = safeAuthRedirect(formData.get("next"));
 
   if (next.startsWith("/invite/")) {
-    console.info("[invite-auth] signup requested for invite", { email });
+    console.info("[invite-auth-redirect] signup requested for invite", { email });
   }
 
   const { error } = await supabase.auth.signUp({
@@ -61,12 +69,20 @@ export async function register(formData: FormData) {
 
   if (error) {
     if (next.startsWith("/invite/")) {
-      console.warn("[invite-error] invite signup failed", {
+      console.warn("[invite-auth-failed] invite signup failed", {
         email,
         message: error.message
       });
     }
-    redirect(`/register?error=auth&next=${encodeURIComponent(next)}`);
+    redirect(
+      next.startsWith("/invite/")
+        ? `/auth/register?error=auth&invite=${encodeURIComponent(next.replace("/invite/", ""))}`
+        : `/register?error=auth&next=${encodeURIComponent(next)}`
+    );
+  }
+
+  if (next.startsWith("/invite/")) {
+    console.info("[invite-auth-success] invite signup submitted", { email });
   }
 
   redirect(next);

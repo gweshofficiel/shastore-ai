@@ -428,7 +428,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   const admin = createAdminClient();
 
   if (!admin) {
-    console.warn("[invite-error] invite acceptance service client unavailable");
+    console.warn("[invite-auth-failed] invite acceptance service client unavailable");
     return { ok: false as const, message: "Invite acceptance is not configured." };
   }
 
@@ -439,7 +439,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     .maybeSingle();
 
   if (error || !data) {
-    console.warn("[invite-error] invite lookup failed", {
+    console.warn("[invite-auth-failed] invite lookup failed", {
       message: error?.message ?? "Invite not found"
     });
     return { ok: false as const, message: "Invitation is invalid or expired." };
@@ -461,7 +461,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
       .update({ status: "expired" } as never)
       .eq("id", invite.id)
       .eq("status", "pending");
-    console.warn("[invite-error] invite expired or not pending", {
+    console.warn("[invite-auth-failed] invite expired or not pending", {
       inviteId: invite.id,
       status: invite.status,
       userId,
@@ -471,7 +471,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   }
 
   if (userEmail?.toLowerCase() !== invite.email.toLowerCase()) {
-    console.warn("[invite-error] invite email mismatch", {
+    console.warn("[invite-auth-mismatch] invite email mismatch", {
       inviteEmail: invite.email,
       userEmail: userEmail ?? null,
       userId
@@ -486,7 +486,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   const seatsUsed = await workspaceSeatCount(admin, invite.workspace_id);
 
   if (access.usage.teamMemberLimit !== null && seatsUsed > access.usage.teamMemberLimit) {
-    console.warn("[invite-error] invite team member limit reached", {
+    console.warn("[invite-auth-failed] invite team member limit reached", {
       limit: access.usage.teamMemberLimit,
       seatsUsed,
       userId,
@@ -509,7 +509,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
   );
 
   if (memberError) {
-    console.warn("[invite-error] invite member upsert failed", {
+    console.warn("[invite-auth-failed] invite member upsert failed", {
       message: memberError.message,
       userId,
       workspaceId: invite.workspace_id
@@ -517,12 +517,22 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     return { ok: false as const, message: "Invitation could not be accepted." };
   }
 
-  await admin
+  const { error: acceptError } = await admin
     .from("workspace_invitations" as never)
     .update({ accepted_at: new Date().toISOString(), status: "accepted" } as never)
     .eq("id", invite.id);
 
-  console.info("[invite-accept] invite accepted", {
+  if (acceptError) {
+    console.warn("[invite-auth-failed] invite status update failed", {
+      inviteId: invite.id,
+      message: acceptError.message,
+      userId,
+      workspaceId: invite.workspace_id
+    });
+    return { ok: false as const, message: "Invitation could not be accepted." };
+  }
+
+  console.info("[invite-auth-success] invite accepted", {
     userId,
     workspaceId: invite.workspace_id
   });
@@ -535,7 +545,7 @@ export async function getInviteTokenPreview(token: string) {
   const admin = createAdminClient();
 
   if (!admin) {
-    console.warn("[invite-error] invite preview service client unavailable");
+    console.warn("[invite-auth-failed] invite preview service client unavailable");
     return { ok: false as const, email: null, message: "Invite acceptance is not configured." };
   }
 
@@ -546,7 +556,7 @@ export async function getInviteTokenPreview(token: string) {
     .maybeSingle();
 
   if (error || !data) {
-    console.warn("[invite-error] invite preview lookup failed", {
+    console.warn("[invite-auth-failed] invite preview lookup failed", {
       message: error?.message ?? "Invite not found"
     });
     return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
@@ -560,14 +570,14 @@ export async function getInviteTokenPreview(token: string) {
   };
 
   if (invite.status !== "pending" || new Date(invite.expires_at).getTime() < Date.now()) {
-    console.warn("[invite-error] invite preview expired or not pending", {
+    console.warn("[invite-auth-failed] invite preview expired or not pending", {
       inviteId: invite.id,
       status: invite.status
     });
     return { ok: false as const, email: null, message: "Invitation is invalid or expired." };
   }
 
-  console.info("[invite-auth] invite preview ready", {
+  console.info("[invite-auth-redirect] invite preview ready", {
     email: invite.email,
     inviteId: invite.id
   });
