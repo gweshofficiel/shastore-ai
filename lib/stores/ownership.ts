@@ -53,12 +53,14 @@ export async function getUserStores(supabase: SupabaseClient, userId: string) {
 export async function canAccessStore(
   supabase: SupabaseClient,
   userId: string,
-  storeId: string
+  storeId: string,
+  workspaceId?: string | null
 ) {
   const { data, error } = await supabase
     .from("stores")
     .select(ownerStoreSelect)
     .eq("id", storeId)
+    .eq("workspace_id" as never, (workspaceId ?? userId) as never)
     .maybeSingle();
 
   if (error) {
@@ -71,13 +73,14 @@ export async function canAccessStore(
   }
 
   const store = data as OwnedStoreRecord | null;
-  const allowed = Boolean(store && store.owner_user_id === userId);
+  const allowed = Boolean(store && store.workspace_id === (workspaceId ?? userId));
 
   console.info("[store-access] store access checked", {
     allowed,
     ownerUserId: store?.owner_user_id ?? null,
     storeId,
-    userId
+    userId,
+    workspaceId: workspaceId ?? userId
   });
 
   return {

@@ -129,6 +129,7 @@ import {
 import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/template-library";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -390,11 +391,14 @@ export default async function StoreDraftPage({
     notFound();
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
   const { data: store } = await supabase
     .from("stores")
     .select("*")
     .eq("id", id)
-    .or(`user_id.eq.${user.id},owner_user_id.eq.${user.id}`)
+    .eq("workspace_id" as never, workspaceId as never)
     .single();
 
   if (!store) {

@@ -32,9 +32,37 @@ function mergeStoreRows(rows: UserStoreRow[] | null, merged: Map<string, UserSto
  */
 export async function fetchStoresForAuthUser(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  workspaceId?: string | null
 ): Promise<{ error: string | null; stores: UserStoreRow[] }> {
   const merged = new Map<string, UserStoreRow>();
+
+  if (workspaceId) {
+    const byActiveWorkspace = await supabase
+      .from("stores")
+      .select(storeSelect)
+      .eq("workspace_id" as never, workspaceId as never)
+      .order("created_at", { ascending: false });
+
+    if (byActiveWorkspace.error) {
+      console.warn("[workspace-data-access] active workspace stores lookup failed", {
+        message: byActiveWorkspace.error.message,
+        userId,
+        workspaceId
+      });
+      return { stores: [], error: byActiveWorkspace.error.message };
+    }
+
+    const stores = (byActiveWorkspace.data ?? []) as UserStoreRow[];
+
+    console.log("[workspace-data-access] active workspace stores loaded", {
+      count: stores.length,
+      userId,
+      workspaceId
+    });
+
+    return { stores, error: null };
+  }
 
   const byOwner = await supabase
     .from("stores")
@@ -91,7 +119,11 @@ export async function fetchStoresForAuthUser(
 
 export const getUserStores = fetchStoresForAuthUser;
 
-export async function countStoresForAuthUser(supabase: SupabaseClient, userId: string) {
-  const { stores, error } = await fetchStoresForAuthUser(supabase, userId);
+export async function countStoresForAuthUser(
+  supabase: SupabaseClient,
+  userId: string,
+  workspaceId?: string | null
+) {
+  const { stores, error } = await fetchStoresForAuthUser(supabase, userId, workspaceId);
   return { count: stores.length, error };
 }

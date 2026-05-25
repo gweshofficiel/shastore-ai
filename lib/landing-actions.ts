@@ -9,6 +9,7 @@ import {
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { createFallbackCopy } from "@/templates/engine";
 import { landingTemplates } from "@/templates/registry";
 import type { AiLandingCopy, PaymentMethod, TemplateId } from "@/types/landing";
@@ -166,6 +167,14 @@ export async function publishLandingPage(formData: FormData) {
     redirect("/login");
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-data-access] landing create scoped", {
+    userId: user.id,
+    workspaceId
+  });
+
   const access = await getUserSubscriptionAccess(user.id);
   try {
     assertUsageWithinLimits(access, "landings");
@@ -232,16 +241,18 @@ export async function publishLandingPage(formData: FormData) {
   await supabase.from("products").insert({
     id: landingId,
     user_id: user.id,
+    workspace_id: workspaceId,
     name: productName,
     short_description: productDescription,
     long_description: longDescription || null,
     price: productPrice,
     compare_price: comparePrice || null
-  });
+  } as never);
 
   const { error } = await supabase.from("landing_pages").insert({
     id: landingId,
     user_id: user.id,
+    workspace_id: workspaceId,
     template_id: selectedTemplate.id as TemplateId,
     slug,
     status,
@@ -259,7 +270,7 @@ export async function publishLandingPage(formData: FormData) {
       themeSettings
     },
     published_at: status === "published" ? new Date().toISOString() : null
-  });
+  } as never);
 
   if (error) {
     throw error;
@@ -268,34 +279,38 @@ export async function publishLandingPage(formData: FormData) {
   await supabase.from("landing_settings").insert({
     landing_page_id: landingId,
     user_id: user.id,
+    workspace_id: workspaceId,
     cta_text: ctaText,
     brand_color: brandColor,
     whatsapp_number: whatsappNumber
-  });
+  } as never);
 
   for (const method of paymentMethods) {
     await supabase.from("landing_payment_methods").insert({
       landing_page_id: landingId,
       user_id: user.id,
+      workspace_id: workspaceId,
       method,
       enabled: true
-    });
+    } as never);
   }
 
   await supabase.from("landings").insert({
     user_id: user.id,
+    workspace_id: workspaceId,
     landing_page_id: landingId,
     title: productName,
     status: status === "published" ? "published" : "draft"
-  });
+  } as never);
 
   await supabase.from("publications").insert({
     user_id: user.id,
+    workspace_id: workspaceId,
     landing_page_id: landingId,
     url: `/l/${slug}`,
     status: status === "published" ? "published" : "draft",
     published_at: status === "published" ? new Date().toISOString() : null
-  });
+  } as never);
 
   await supabase.from("usage_events").insert({
     user_id: user.id,
@@ -311,11 +326,12 @@ export async function publishLandingPage(formData: FormData) {
     await supabase.from("product_images").insert({
       landing_page_id: landingId,
       user_id: user.id,
+      workspace_id: workspaceId,
       storage_path: upload.storage_path,
       public_url: upload.public_url,
       image_type: upload.image_type,
       sort_order: upload.sort_order
-    });
+    } as never);
   }
 
   if (status === "published") {
@@ -336,6 +352,9 @@ export async function updateLandingPage(formData: FormData) {
   if (!user) {
     redirect("/login");
   }
+
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
 
   const landingId = String(formData.get("landingId") ?? "");
   const productName = String(formData.get("productName") ?? "");
@@ -362,7 +381,7 @@ export async function updateLandingPage(formData: FormData) {
     .from("landing_pages")
     .select("id, slug, ai_copy")
     .eq("id", landingId)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .single();
 
   if (existingError || !existingLanding) {
@@ -425,7 +444,7 @@ export async function updateLandingPage(formData: FormData) {
       published_at: publishedAt
     })
     .eq("id", landingId)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   if (error) {
     throw error;
@@ -441,7 +460,7 @@ export async function updateLandingPage(formData: FormData) {
       compare_price: comparePrice || null
     })
     .eq("id", landingId)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   await supabase
     .from("landing_settings")
@@ -451,34 +470,35 @@ export async function updateLandingPage(formData: FormData) {
       whatsapp_number: whatsappNumber
     })
     .eq("landing_page_id", landingId)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   await supabase
     .from("landing_payment_methods")
     .delete()
     .eq("landing_page_id", landingId)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   for (const method of paymentMethods) {
     await supabase.from("landing_payment_methods").insert({
       landing_page_id: landingId,
       user_id: user.id,
+      workspace_id: workspaceId,
       method,
       enabled: true
-    });
+    } as never);
   }
 
   await supabase
     .from("landings")
     .update({ title: productName, status })
     .eq("landing_page_id", landingId)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   const { data: publication } = await supabase
     .from("publications")
     .select("id")
     .eq("landing_page_id", landingId)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
   if (publication) {
@@ -490,26 +510,28 @@ export async function updateLandingPage(formData: FormData) {
         published_at: publishedAt
       })
       .eq("id", publication.id)
-      .eq("user_id", user.id);
+      .eq("workspace_id" as never, workspaceId as never);
   } else {
     await supabase.from("publications").insert({
       user_id: user.id,
+      workspace_id: workspaceId,
       landing_page_id: landingId,
       url: `/l/${existingLanding.slug}`,
       status,
       published_at: publishedAt
-    });
+    } as never);
   }
 
   for (const upload of uploads) {
     await supabase.from("product_images").insert({
       landing_page_id: landingId,
       user_id: user.id,
+      workspace_id: workspaceId,
       storage_path: upload.storage_path,
       public_url: upload.public_url,
       image_type: upload.image_type,
       sort_order: upload.sort_order
-    });
+    } as never);
   }
 
   revalidatePath("/dashboard/landings");
@@ -532,6 +554,9 @@ export async function publishLandingPageById(formData: FormData) {
     redirect("/login");
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
   const landingId = String(formData.get("landingId") ?? "");
   const publishedAt = new Date().toISOString();
 
@@ -542,7 +567,7 @@ export async function publishLandingPageById(formData: FormData) {
       published_at: publishedAt
     })
     .eq("id", landingId)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .select("id, slug")
     .single();
 
@@ -556,13 +581,13 @@ export async function publishLandingPageById(formData: FormData) {
       status: "published"
     })
     .eq("landing_page_id", landing.id)
-    .eq("user_id", user.id);
+    .eq("workspace_id" as never, workspaceId as never);
 
   const { data: publication } = await supabase
     .from("publications")
     .select("id")
     .eq("landing_page_id", landing.id)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
   if (publication) {
@@ -574,15 +599,16 @@ export async function publishLandingPageById(formData: FormData) {
         published_at: publishedAt
       })
       .eq("id", publication.id)
-      .eq("user_id", user.id);
+      .eq("workspace_id" as never, workspaceId as never);
   } else {
     await supabase.from("publications").insert({
       user_id: user.id,
+      workspace_id: workspaceId,
       landing_page_id: landing.id,
       url: `/l/${landing.slug}`,
       status: "published",
       published_at: publishedAt
-    });
+    } as never);
   }
 
   await supabase.from("usage_events").insert({

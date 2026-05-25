@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import type {
   DnsVerification,
   DomainRecord,
@@ -68,6 +69,14 @@ export async function getDomainsDashboardData(): Promise<DomainsDashboardData> {
     };
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-data-access] domains dashboard scoped", {
+    userId: user.id,
+    workspaceId
+  });
+
   const [
     domainsResult,
     hostsResult,
@@ -79,33 +88,33 @@ export async function getDomainsDashboardData(): Promise<DomainsDashboardData> {
     supabase
       .from("domains" as never)
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false }),
     supabase
       .from("publication_hosts" as never)
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false }),
     supabase
       .from("dns_verifications" as never)
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false }),
     supabase
       .from("publish_events" as never)
       .select("*")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false })
       .limit(20),
     supabase
       .from("publications")
       .select("id, url, status, published_at")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false }),
     supabase
       .from("published_stores")
       .select("id, slug, url, status, published_at")
-      .eq("user_id", user.id)
+      .eq("workspace_id" as never, workspaceId as never)
       .order("created_at", { ascending: false })
   ]);
 

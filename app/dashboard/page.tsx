@@ -10,6 +10,7 @@ import {
   getOrCreateAccountProfile
 } from "@/lib/account-profiles";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,14 @@ async function getDashboardStats() {
     };
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-data-access] dashboard stats scoped", {
+    userId: user.id,
+    workspaceId
+  });
+
   const [
     { count: published },
     { count: drafts },
@@ -44,22 +53,22 @@ async function getDashboardStats() {
       supabase
         .from("landing_pages")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("workspace_id" as never, workspaceId as never)
         .eq("status", "published"),
       supabase
         .from("landing_pages")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("workspace_id" as never, workspaceId as never)
         .eq("status", "draft"),
-      countStoresForAuthUser(supabase, user.id),
+      countStoresForAuthUser(supabase, user.id, workspaceId),
       supabase
         .from("store_orders")
         .select("id", { count: "exact", head: true })
-        .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`),
+        .eq("workspace_id" as never, workspaceId as never),
       supabase
         .from("generations")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("workspace_id" as never, workspaceId as never)
     ]);
 
   return {

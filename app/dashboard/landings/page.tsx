@@ -12,6 +12,7 @@ import {
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 const pageSize = 8;
@@ -66,6 +67,14 @@ async function getLandings(query = "", status = "all", page = 1) {
     return { items: [], page: 1, total: 0, totalPages: 1 };
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  console.log("[workspace-data-access] landings list scoped", {
+    userId: user.id,
+    workspaceId
+  });
+
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
   let request = supabase
@@ -74,7 +83,7 @@ async function getLandings(query = "", status = "all", page = 1) {
       "id, product_name, slug, status, template_id, created_at, published_at, hero_image_url",
       { count: "exact" }
     )
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
     .range(from, to);
 

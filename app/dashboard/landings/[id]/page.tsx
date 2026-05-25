@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { normalizeLandingThemeSettings } from "@/lib/landing-theme";
 import { updateLandingPage } from "@/lib/landing-actions";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import type { AiLandingCopy, PaymentMethod, TemplateId } from "@/types/landing";
 
 export const dynamic = "force-dynamic";
@@ -39,11 +40,14 @@ export default async function EditLandingPage({ params }: EditLandingPageProps) 
     notFound();
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
   const { data: landing } = await supabase
     .from("landing_pages")
     .select("*")
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .single();
 
   if (!landing) {

@@ -196,7 +196,7 @@ async function getStoreModeOrders(status: string) {
     };
   }
 
-  const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id);
+  const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id, workspaceId);
 
   if (storesError) {
     return {
@@ -212,7 +212,7 @@ async function getStoreModeOrders(status: string) {
     .select(
       "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, created_at"
     )
-    .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`)
+    .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
     .limit(100);
 

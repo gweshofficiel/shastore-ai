@@ -73,7 +73,17 @@ export async function middleware(request: NextRequest) {
     return hostnameStorefront;
   }
 
-  return updateSession(request);
+  const response = await updateSession(request);
+  const activeWorkspaceId = request.cookies.get("shastore_active_workspace_id")?.value;
+
+  if (activeWorkspaceId) {
+    response.headers.set("x-shastore-active-workspace", activeWorkspaceId);
+    console.log("[workspace-data-access] middleware active workspace observed", {
+      workspaceId: activeWorkspaceId
+    });
+  }
+
+  return response;
 }
 
 export const config = {

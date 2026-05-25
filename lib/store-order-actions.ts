@@ -138,7 +138,7 @@ export async function createPublicStoreOrderAction(
 
   const { data: rawStore, error: storeError } = await admin
     .from("stores")
-    .select("id, user_id, owner_user_id, slug, status")
+    .select("id, user_id, owner_user_id, workspace_id, slug, status")
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle();
@@ -148,6 +148,7 @@ export async function createPublicStoreOrderAction(
     slug: string | null;
     status: string;
     user_id: string;
+    workspace_id: string | null;
   } | null;
 
   if (storeError || !store) {
@@ -195,6 +196,7 @@ export async function createPublicStoreOrderAction(
       store_id: store.id,
       user_id: store.user_id,
       owner_user_id: store.owner_user_id ?? store.user_id,
+      workspace_id: store.workspace_id ?? store.owner_user_id ?? store.user_id,
       customer_name: customerName,
       customer_phone: customerPhone,
       customer_email: customerEmail || null,
@@ -205,7 +207,7 @@ export async function createPublicStoreOrderAction(
       payment_method: "whatsapp",
       payment_status: "pending",
       order_status: "pending"
-    })
+    } as never)
     .select("id")
     .single();
 
@@ -257,11 +259,12 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   }
 
   try {
+    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     await requirePermission({
       permission: "manage_orders",
       supabase,
       userId: user.id,
-      workspaceId: await getUserPrimaryWorkspaceId(supabase, user.id)
+      workspaceId
     });
   } catch {
     orderStatusRedirect("not-authorized", orderId);
@@ -274,7 +277,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       updated_at: new Date().toISOString()
     })
     .eq("id", orderId)
-    .or(`owner_user_id.eq.${user.id},user_id.eq.${user.id}`)
+    .eq("workspace_id" as never, (await getUserPrimaryWorkspaceId(supabase, user.id)) as never)
     .select("id")
     .maybeSingle();
 
