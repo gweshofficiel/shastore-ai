@@ -18,9 +18,12 @@ export type WorkspaceMember = {
   id: string;
   invited_by: string | null;
   role: WorkspaceRole;
+  status: WorkspaceMemberStatus;
   user_id: string;
   workspace_id: string;
 };
+
+export type WorkspaceMemberStatus = "active" | "pending" | "suspended" | "banned";
 
 export type WorkspaceInvite = {
   accepted_at?: string | null;
@@ -35,6 +38,12 @@ export type WorkspaceInvite = {
 };
 
 const manageableRoles = new Set<WorkspaceRole>(["admin", "editor", "support"]);
+const manageableStatuses = new Set<WorkspaceMemberStatus>([
+  "active",
+  "pending",
+  "suspended",
+  "banned"
+]);
 
 function normalizeEmail(value: FormDataEntryValue | string | null) {
   return typeof value === "string" ? value.trim().toLowerCase().slice(0, 254) : "";
@@ -44,6 +53,12 @@ function normalizeRole(value: FormDataEntryValue | string | null): Exclude<Works
   return manageableRoles.has(value as WorkspaceRole)
     ? (value as Exclude<WorkspaceRole, "owner">)
     : "editor";
+}
+
+function normalizeMemberStatus(value: FormDataEntryValue | string | null) {
+  return manageableStatuses.has(value as WorkspaceMemberStatus)
+    ? (value as WorkspaceMemberStatus)
+    : "active";
 }
 
 function hashInviteToken(token: string) {
@@ -83,7 +98,7 @@ async function requireActiveWorkspaceManagement(
   supabase: SupabaseClient,
   workspaceId: string,
   userId: string,
-  action: "remove" | "role-change"
+  action: "remove" | "role-change" | "status-change"
 ) {
   const selection = await getActiveWorkspaceForUser({ supabase, userId });
 
@@ -195,22 +210,36 @@ export async function getWorkspaceMembers(
     workspaceId
   });
 
-  const [{ data: members, error: membersError }, { data: invites, error: invitesError }] =
-    await Promise.all([
-      supabase
-        .from("workspace_members" as never)
-        .select("id, workspace_id, user_id, role, invited_by, created_at")
-        .eq("workspace_id", workspaceId)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("workspace_invitations" as never)
-        .select("id, workspace_id, email, role, invited_by, status, expires_at, accepted_at, created_at")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-    ]);
+  let membersResult = await supabase
+    .from("workspace_members" as never)
+    .select("id, workspace_id, user_id, role, status, invited_by, created_at")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true });
 
-  let visibleMembers = (members ?? []) as WorkspaceMember[];
+  if (membersResult.error?.message?.toLowerCase().includes("status")) {
+    console.warn("[workspace-member-status] status column unavailable; treating members as active", {
+      message: membersResult.error.message,
+      workspaceId
+    });
+    membersResult = await supabase
+      .from("workspace_members" as never)
+      .select("id, workspace_id, user_id, role, invited_by, created_at")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: true });
+  }
+
+  const { data: invites, error: invitesError } = await supabase
+    .from("workspace_invitations" as never)
+    .select("id, workspace_id, email, role, invited_by, status, expires_at, accepted_at, created_at")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  const members = (membersResult.data ?? []) as Array<WorkspaceMember & { status?: WorkspaceMemberStatus | null }>;
+  const membersError = membersResult.error;
+  let visibleMembers = members.map((member) => ({
+    ...member,
+    status: normalizeMemberStatus(member.status ?? "active")
+  }));
   const admin = createAdminClient();
 
   if (admin) {
@@ -244,12 +273,17 @@ export async function getWorkspaceMembers(
 
         const { data: roster, error: rosterError } = await admin
           .from("workspace_members" as never)
-          .select("id, workspace_id, user_id, role, invited_by, created_at")
+          .select("id, workspace_id, user_id, role, status, invited_by, created_at")
           .eq("workspace_id", workspaceId)
           .order("created_at", { ascending: true });
 
         if (!rosterError && roster) {
-          visibleMembers = roster as WorkspaceMember[];
+          visibleMembers = (roster as Array<WorkspaceMember & { status?: WorkspaceMemberStatus | null }>).map(
+            (member) => ({
+              ...member,
+              status: normalizeMemberStatus(member.status ?? "active")
+            })
+          );
           console.log("[workspace-members-visible] trusted roster fallback applied", {
             dbCount,
             roles: visibleMembers.map((member) => member.role),
@@ -616,6 +650,107 @@ export async function changeMemberRole(formData: FormData) {
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("member-role-updated", workspaceId);
+}
+
+export async function changeMemberStatus(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/team");
+  }
+
+  const workspaceId = String(formData.get("workspaceId") ?? user.id);
+  const memberId = String(formData.get("memberId") ?? "");
+  const nextStatus = normalizeMemberStatus(formData.get("status"));
+
+  if (nextStatus === "pending") {
+    teamWorkspaceRedirect("error", workspaceId, "Pending status is reserved for invitations.");
+  }
+
+  await requireActiveWorkspaceManagement(supabase, workspaceId, user.id, "status-change");
+
+  const admin = createAdminClient();
+  const client = admin ?? supabase;
+  const { data: targetMember, error: targetError } = await client
+    .from("workspace_members" as never)
+    .select("id, workspace_id, user_id, role, status")
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (targetError || !targetMember) {
+    console.warn("[team-member-status-change] target lookup failed", {
+      memberId,
+      message: targetError?.message ?? "Member not found",
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member could not be found.");
+  }
+
+  const target = targetMember as {
+    id: string;
+    role: WorkspaceRole;
+    status?: WorkspaceMemberStatus | null;
+    user_id: string;
+    workspace_id: string;
+  };
+
+  if (target.role === "owner") {
+    console.warn("[team-member-status-change] owner status change denied", {
+      memberId,
+      nextStatus,
+      targetUserId: target.user_id,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Workspace owner status cannot be changed from Team.");
+  }
+
+  if (target.user_id === user.id && nextStatus !== "active") {
+    console.warn("[team-member-status-change] self-suspension denied", {
+      memberId,
+      nextStatus,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "You cannot suspend yourself.");
+  }
+
+  const { error } = await client
+    .from("workspace_members" as never)
+    .update({ status: nextStatus } as never)
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .neq("role", "owner");
+
+  if (error) {
+    console.warn("[team-member-status-change] update failed", {
+      memberId,
+      message: error.message,
+      nextStatus,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member status could not be changed.");
+  }
+
+  console.info("[team-member-status-change] status updated", {
+    memberId,
+    nextStatus,
+    previousStatus: normalizeMemberStatus(target.status ?? "active"),
+    targetUserId: target.user_id,
+    userId: user.id,
+    workspaceId
+  });
+
+  revalidatePath("/dashboard/team");
+  teamWorkspaceRedirect("member-status-updated", workspaceId);
 }
 
 export async function resendInvite(formData: FormData) {

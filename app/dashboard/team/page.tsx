@@ -13,6 +13,7 @@ import {
 import {
   canManageWorkspace,
   changeMemberRole,
+  changeMemberStatus,
   getWorkspaceMembers,
   inviteMember,
   removeMember,
@@ -24,6 +25,157 @@ export const dynamic = "force-dynamic";
 
 function formatRole(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function workspaceLabel(workspaceId: string, userId: string) {
+  return workspaceId === userId ? "Your workspace" : `Shared workspace ${workspaceId.slice(0, 8)}`;
+}
+
+function statusBadgeClass(status: string) {
+  if (status === "active") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "suspended") {
+    return "bg-amber-100 text-amber-800";
+  }
+
+  if (status === "banned") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
+function MemberStatusSection({
+  description,
+  managementAllowed,
+  memberEmails,
+  members,
+  title,
+  workspaceId
+}: {
+  description: string;
+  managementAllowed: boolean;
+  memberEmails: Map<string, string>;
+  members: WorkspaceMember[];
+  title: string;
+  workspaceId: string;
+}) {
+  return (
+    <Card className="p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            {title}
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+            {description}
+          </h2>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
+          {members.length}
+        </span>
+      </div>
+
+      {members.length ? (
+        <div className="mt-5 grid gap-3">
+          {members.map((member) => (
+            <div
+              className="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 xl:grid-cols-[1fr_auto]"
+              key={member.id}
+            >
+              <div>
+                <p className="font-black text-ink">
+                  {memberEmails.get(member.user_id) ?? member.user_id}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted">
+                    {formatRole(member.role)}
+                  </span>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusBadgeClass(member.status)}`}
+                  >
+                    {member.status}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                {member.role !== "owner" && managementAllowed ? (
+                  <>
+                    <form action={changeMemberRole} className="flex flex-wrap items-end gap-2">
+                      <input name="workspaceId" type="hidden" value={workspaceId} />
+                      <input name="memberId" type="hidden" value={member.id} />
+                      <label
+                        className="grid gap-2 text-sm font-semibold text-ink"
+                        htmlFor={`role-${member.id}`}
+                      >
+                        <span>Change role</span>
+                        <select
+                          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                          defaultValue={member.role}
+                          id={`role-${member.id}`}
+                          name="role"
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="editor">Editor</option>
+                          <option value="support">Support</option>
+                        </select>
+                      </label>
+                      <Button type="submit" variant="secondary">
+                        Change role
+                      </Button>
+                    </form>
+                    {member.status === "active" ? (
+                      <form action={changeMemberStatus}>
+                        <input name="workspaceId" type="hidden" value={workspaceId} />
+                        <input name="memberId" type="hidden" value={member.id} />
+                        <input name="status" type="hidden" value="suspended" />
+                        <ConfirmSubmitButton
+                          confirmMessage="Suspend this member's workspace access?"
+                          type="submit"
+                          variant="secondary"
+                        >
+                          Suspend
+                        </ConfirmSubmitButton>
+                      </form>
+                    ) : (
+                      <form action={changeMemberStatus}>
+                        <input name="workspaceId" type="hidden" value={workspaceId} />
+                        <input name="memberId" type="hidden" value={member.id} />
+                        <input name="status" type="hidden" value="active" />
+                        <Button type="submit" variant="secondary">
+                          Restore
+                        </Button>
+                      </form>
+                    )}
+                    <form action={removeMember}>
+                      <input name="workspaceId" type="hidden" value={workspaceId} />
+                      <input name="memberId" type="hidden" value={member.id} />
+                      <ConfirmSubmitButton
+                        confirmMessage="Remove this member from the workspace?"
+                        type="submit"
+                        variant="secondary"
+                      >
+                        Remove
+                      </ConfirmSubmitButton>
+                    </form>
+                  </>
+                ) : null}
+                <Button disabled type="button" variant="ghost">
+                  View activity
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-5 rounded-3xl bg-slate-50 p-4 text-sm font-semibold leading-6 text-muted">
+          No members in this status.
+        </p>
+      )}
+    </Card>
+  );
 }
 
 async function resolveMemberEmails(members: WorkspaceMember[]) {
@@ -117,6 +269,10 @@ export default async function TeamPage({
   const seatsUsed = members.length + invites.length;
   const seatsLabel = limit === null ? `${seatsUsed} / Unlimited` : `${seatsUsed} / ${limit}`;
   const seatsAtLimit = limit !== null && seatsUsed >= limit;
+  const activeMembers = members.filter((member) => member.status === "active");
+  const pendingMembers = members.filter((member) => member.status === "pending");
+  const suspendedMembers = members.filter((member) => member.status === "suspended");
+  const bannedMembers = members.filter((member) => member.status === "banned");
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -125,17 +281,17 @@ export default async function TeamPage({
         title="Team"
       />
 
-      <Card className="p-5">
+      <Card className="border-blue-100 bg-blue-50/60 p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
               Active workspace
             </p>
             <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
-              {workspaceId === user.id ? "Personal workspace" : `Workspace ${workspaceId.slice(0, 8)}`}
+              {workspaceLabel(workspaceId, user.id)}
             </h2>
             <p className="mt-1 text-sm font-semibold text-muted">
-              Current role: {formatRole(selection.activeWorkspaceRole)}
+              Your role in this workspace: {formatRole(selection.activeWorkspaceRole)}
             </p>
           </div>
           <form action={switchActiveWorkspace} className="flex flex-wrap items-end gap-3">
@@ -151,8 +307,8 @@ export default async function TeamPage({
                 {selection.workspaces.map((workspace) => (
                   <option key={workspace.workspaceId} value={workspace.workspaceId}>
                     {workspace.isPersonal
-                      ? "Personal workspace"
-                      : `Workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
+                      ? "Your workspace"
+                      : `Shared workspace ${workspace.workspaceId.slice(0, 8)}`}{" "}
                     - {formatRole(workspace.role)}
                   </option>
                 ))}
@@ -185,6 +341,8 @@ export default async function TeamPage({
                   ? "Team member or invite removed."
                     : query.team === "member-role-updated"
                       ? "Team member role updated."
+                      : query.team === "member-status-updated"
+                        ? "Team member status updated."
                   : query.team === "invite-accepted"
                     ? "Invitation accepted. Welcome to the workspace."
                   : "Team updated."}
@@ -267,74 +425,23 @@ export default async function TeamPage({
         </Card>
       </div>
 
-      <Card className="p-6 lg:p-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Members
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              Workspace access
-            </h2>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-            {members.length} active
-          </span>
-        </div>
+      <MemberStatusSection
+        description="Members with current workspace access"
+        managementAllowed={management.allowed}
+        memberEmails={memberEmails}
+        members={activeMembers}
+        title="Active members"
+        workspaceId={workspaceId}
+      />
 
-        <div className="mt-5 grid gap-3">
-          {members.map((member) => (
-            <div
-              className="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto]"
-              key={member.id}
-            >
-              <div>
-                <p className="font-black text-ink">
-                  {memberEmails.get(member.user_id) ?? member.user_id}
-                </p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                  {formatRole(member.role)}
-                </p>
-              </div>
-              {member.role !== "owner" && management.allowed ? (
-                <div className="flex flex-wrap items-end gap-2">
-                  <form action={changeMemberRole} className="flex flex-wrap items-end gap-2">
-                    <input name="workspaceId" type="hidden" value={workspaceId} />
-                    <input name="memberId" type="hidden" value={member.id} />
-                    <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor={`role-${member.id}`}>
-                      <span>Change role</span>
-                      <select
-                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                        defaultValue={member.role}
-                        id={`role-${member.id}`}
-                        name="role"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="editor">Editor</option>
-                        <option value="support">Support</option>
-                      </select>
-                    </label>
-                    <Button type="submit" variant="secondary">
-                      Change role
-                    </Button>
-                  </form>
-                  <form action={removeMember}>
-                    <input name="workspaceId" type="hidden" value={workspaceId} />
-                    <input name="memberId" type="hidden" value={member.id} />
-                    <ConfirmSubmitButton
-                      confirmMessage="Remove this member from the workspace?"
-                      type="submit"
-                      variant="secondary"
-                    >
-                      Remove
-                    </ConfirmSubmitButton>
-                  </form>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </Card>
+      <MemberStatusSection
+        description="Accepted accounts waiting for activation"
+        managementAllowed={management.allowed}
+        memberEmails={memberEmails}
+        members={pendingMembers}
+        title="Pending members"
+        workspaceId={workspaceId}
+      />
 
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -399,6 +506,37 @@ export default async function TeamPage({
             No pending invites.
           </p>
         )}
+      </Card>
+
+      <MemberStatusSection
+        description="Members temporarily blocked from workspace work"
+        managementAllowed={management.allowed}
+        memberEmails={memberEmails}
+        members={suspendedMembers}
+        title="Suspended members"
+        workspaceId={workspaceId}
+      />
+
+      <MemberStatusSection
+        description="Members blocked for policy or security reasons"
+        managementAllowed={management.allowed}
+        memberEmails={memberEmails}
+        members={bannedMembers}
+        title="Banned members"
+        workspaceId={workspaceId}
+      />
+
+      <Card className="border-dashed border-slate-300 bg-slate-50 p-6 lg:p-8">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+          Member activity overview
+        </p>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+          Activity history foundation
+        </h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+          Future activity views can show member actions, role changes, login activity, and
+          stores or pages touched in this workspace.
+        </p>
       </Card>
     </div>
   );
