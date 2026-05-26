@@ -60,35 +60,51 @@ function cleanColor(value: unknown, fallback: string) {
 }
 
 function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
+  const themeSettings = context.preview.themeSettings;
+  const themeConfig = context.preview.themeConfig;
+  const brandingConfig = context.preview.brandingConfig;
+  const colorPalette = isRecord(themeConfig.colorPalette)
+    ? themeConfig.colorPalette
+    : isRecord(themeConfig.color_palette)
+      ? themeConfig.color_palette
+      : {};
+  const typographyConfig = isRecord(themeConfig.typography) ? themeConfig.typography : {};
+  const logoConfig = isRecord(brandingConfig.logo) ? brandingConfig.logo : {};
+  const spacing = textValue(themeConfig.spacing, "comfortable");
+  const layoutKey = context.preview.layoutStyle || textValue(themeConfig.layout_key, "classic");
+
   return {
-    border_radius: "2rem",
+    border_radius: textValue(themeConfig.border_radius, "2rem"),
     color_palette: {
-      accent: "#f59e0b",
-      background: "#f8fafc",
-      muted: "#64748b",
-      primary: context.branding.primaryColor,
-      secondary: context.branding.secondaryColor,
-      surface: "#ffffff",
-      text: "#0f172a"
+      accent: cleanColor(colorPalette.accent, themeSettings.accentColor || "#f59e0b"),
+      background: cleanColor(colorPalette.background, "#f8fafc"),
+      muted: cleanColor(colorPalette.muted, "#64748b"),
+      primary: cleanColor(colorPalette.primary, themeSettings.primaryColor || context.branding.primaryColor),
+      secondary: cleanColor(colorPalette.secondary, themeSettings.secondaryColor || context.branding.secondaryColor),
+      surface: cleanColor(colorPalette.surface, "#ffffff"),
+      text: cleanColor(colorPalette.text, "#0f172a")
     },
     id: null,
     is_active: true,
-    layout_key: "classic",
+    layout_key: layoutKey,
     logo_config: {
       alt: context.settings.title,
-      mode: "text",
-      url: null
+      mode: themeSettings.logoUrl || typeof logoConfig.url === "string" ? "image" : "text",
+      url: themeSettings.logoUrl || (typeof logoConfig.url === "string" ? logoConfig.url : null)
     },
     owner_user_id: context.owner_user_id,
-    spacing: "comfortable",
+    spacing:
+      spacing === "compact" || spacing === "spacious" || spacing === "comfortable"
+        ? spacing
+        : "comfortable",
     store_instance_id: context.store_instance_id,
-    style_config: {},
+    style_config: themeConfig,
     theme_id: "shastore-modern",
-    theme_key: "modern",
+    theme_key: textValue(themeConfig.theme_key, "modern"),
     typography: {
-      body: "inter",
-      heading: "inter",
-      scale: "comfortable"
+      body: textValue(typographyConfig.body, themeSettings.bodyFont || "inter"),
+      heading: textValue(typographyConfig.heading, themeSettings.headingFont || "inter"),
+      scale: textValue(typographyConfig.scale, themeSettings.fontScale || "comfortable")
     }
   };
 }

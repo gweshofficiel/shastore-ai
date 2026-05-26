@@ -46,13 +46,19 @@ export type StoreBuilderState = {
 
 const supportedSectionTypes: StoreSectionType[] = [
   "hero",
+  "navbar",
   "banner",
   "product_grid",
   "featured_products",
+  "categories",
   "rich_text",
   "image",
   "CTA",
+  "cta",
   "testimonials",
+  "FAQ",
+  "faq",
+  "footer",
   "newsletter",
   "spacer"
 ];

@@ -8,18 +8,26 @@ import {
   loadVisualEditorState,
   resolveBuilderSections
 } from "@/lib/storefront/builder";
+import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
 
 export type StoreSectionType =
   | "hero"
+  | "navbar"
   | "banner"
   | "product_grid"
   | "featured_products"
+  | "categories"
   | "rich_text"
   | "image"
   | "CTA"
+  | "cta"
   | "testimonials"
+  | "FAQ"
+  | "faq"
+  | "footer"
   | "newsletter"
-  | "spacer";
+  | "spacer"
+  | (string & {});
 
 export type StoreSection = {
   id: string;
@@ -39,13 +47,19 @@ export type StorePageLayout = {
 
 const supportedSectionTypes: StoreSectionType[] = [
   "hero",
+  "navbar",
   "banner",
   "product_grid",
   "featured_products",
+  "categories",
   "rich_text",
   "image",
   "CTA",
+  "cta",
   "testimonials",
+  "FAQ",
+  "faq",
+  "footer",
   "newsletter",
   "spacer"
 ];
@@ -156,10 +170,18 @@ export async function resolveSectionLayout(context: StoreTenantContext): Promise
 
   const sections = await loadStoreSections(context);
 
+  if (sections.length) {
+    return {
+      builderPreview,
+      key: `${context.theme.layout_key}:saved`,
+      sections
+    };
+  }
+
   return {
     builderPreview,
-    key: context.theme.layout_key,
-    sections
+    key: `${context.theme.layout_key}:runtime`,
+    sections: await resolveStorefrontRuntimeSections(context)
   };
 }
 
@@ -181,7 +203,7 @@ function SectionShell({
   );
 }
 
-function ProductGridSection({ context }: { context: StoreTenantContext }) {
+function ProductGridSection({ context }: { context: StoreTenantContext; section?: StoreSection }) {
   const products = context.preview.products.slice(0, 6);
   const theme = context.preview.themeSettings;
   const categorizedProductIds = new Set<string>();
@@ -386,7 +408,229 @@ function ProductGridSection({ context }: { context: StoreTenantContext }) {
   );
 }
 
-export function SectionRenderer({
+function NavbarSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+  const theme = context.preview.themeSettings;
+
+  return (
+    <section
+      className={`px-4 py-5 sm:px-6 lg:px-8 ${theme.stickyHeader ? "sticky top-0 z-30 backdrop-blur" : ""}`}
+      style={{ backgroundColor: `${context.theme.colorPalette.surface}ee` }}
+    >
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/80 px-5 py-3 shadow-sm">
+        <Link className="flex min-w-0 items-center gap-3" href={`/store/${context.preview.store.slug}`}>
+          {context.theme.logo.url ? (
+            <img
+              alt={context.theme.logo.alt || context.settings.title}
+              className="h-10 w-10 rounded-full object-cover"
+              src={context.theme.logo.url}
+            />
+          ) : (
+            <span
+              className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-black text-white"
+              style={{ backgroundColor: context.theme.colorPalette.primary }}
+            >
+              {context.settings.title.slice(0, 1)}
+            </span>
+          )}
+          <span className="truncate text-sm font-black text-ink">{context.settings.title}</span>
+        </Link>
+        <nav className="hidden items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-muted sm:flex">
+          <a href="#products">Products</a>
+          <a href="#categories">Categories</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <Link
+          className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white"
+          href={`/store/${context.preview.store.slug}/cart`}
+          style={{ backgroundColor: context.theme.colorPalette.primary }}
+        >
+          Cart
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function HeroSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+  const config = section.config;
+  const theme = context.preview.themeSettings;
+  const title = textValue(config.title, theme.heroTitle || context.settings.title);
+  const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
+  const background =
+    theme.heroBackground === "image" && theme.bannerImageUrl
+      ? `linear-gradient(135deg, ${context.theme.colorPalette.primary}cc, ${context.theme.colorPalette.secondary}99), url("${theme.bannerImageUrl}") center/cover`
+      : `radial-gradient(circle at 20% 10%, ${context.theme.colorPalette.accent}33, transparent 30%), linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`;
+
+  return (
+    <SectionShell muted>
+      <div
+        className="rounded-[var(--store-border-radius)] px-6 py-16 text-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)] sm:px-10 lg:px-14 lg:py-24"
+        style={{ background }}
+      >
+        <div className="max-w-3xl">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-white/60">
+            {context.preview.templateId}
+          </p>
+          <h1 className="mt-5 text-5xl font-black tracking-[-0.07em] sm:text-7xl lg:text-8xl">
+            {title}
+          </h1>
+          {body ? <p className="mt-6 max-w-2xl text-base font-semibold leading-8 text-white/75">{body}</p> : null}
+          <div className="mt-8 flex flex-wrap gap-3">
+            <a className="rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950" href="#products">
+              Browse products
+            </a>
+            <a className="rounded-full border border-white/20 px-6 py-3 text-sm font-black text-white/80" href="#categories">
+              View categories
+            </a>
+          </div>
+        </div>
+      </div>
+    </SectionShell>
+  );
+}
+
+function CategoriesSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+  const categories = context.preview.categories.slice(0, 8);
+
+  if (!categories.length) {
+    return null;
+  }
+
+  return (
+    <SectionShell>
+      <div id="categories">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Categories</p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">Shop by category</h2>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {categories.map((category) => (
+            <article
+              className="overflow-hidden rounded-[var(--store-border-radius)] border border-slate-200 bg-white shadow-sm"
+              key={category.id}
+            >
+              {category.imageUrl ? (
+                <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
+              ) : (
+                <div
+                  className="aspect-[4/3]"
+                  style={{
+                    background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                  }}
+                />
+              )}
+              <div className="p-5">
+                <h3 className="text-lg font-black tracking-[-0.03em] text-ink">{category.name}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  {category.description || "Explore products in this collection."}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </SectionShell>
+  );
+}
+
+function TestimonialsSection({ section }: { context: StoreTenantContext; section: StoreSection }) {
+  const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 3) : [];
+  const testimonials = items.length
+    ? items
+    : [
+        { quote: "Fast ordering and a clean shopping experience.", name: "Happy customer" },
+        { quote: "The catalog is simple to browse on mobile.", name: "Store shopper" }
+      ];
+
+  return (
+    <SectionShell muted>
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Testimonials</p>
+      <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">What customers notice</h2>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        {testimonials.map((item, index) => (
+          <figure className="rounded-[var(--store-border-radius)] border border-slate-200 bg-white p-6" key={index}>
+            <blockquote className="text-sm font-semibold leading-7 text-muted">
+              “{textValue(item.quote, "Great store experience.")}”
+            </blockquote>
+            <figcaption className="mt-4 text-sm font-black text-ink">
+              {textValue(item.name, "Customer")}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </SectionShell>
+  );
+}
+
+function FaqSection({ section }: { context: StoreTenantContext; section: StoreSection }) {
+  const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 5) : [];
+  const faqs = items.length
+    ? items
+    : [
+        { answer: "Orders can be submitted through the store cart or WhatsApp when available.", question: "How do I order?" },
+        { answer: "Products and checkout options are managed by the store owner.", question: "Are products updated live?" }
+      ];
+
+  return (
+    <SectionShell>
+      <div id="faq">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">FAQ</p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">Common questions</h2>
+        <div className="mt-6 grid gap-3">
+          {faqs.map((item, index) => (
+            <details className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={index}>
+              <summary className="cursor-pointer text-sm font-black text-ink">
+                {textValue(item.question, "Question")}
+              </summary>
+              <p className="mt-3 text-sm leading-6 text-muted">{textValue(item.answer, "Answer coming soon.")}</p>
+            </details>
+          ))}
+        </div>
+      </div>
+    </SectionShell>
+  );
+}
+
+function CtaSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+  const title = textValue(section.config.title, `Ready to shop ${context.settings.title}?`);
+  const body = textValue(section.config.body, context.settings.description ?? "Browse the latest products and place your order.");
+
+  return (
+    <SectionShell muted>
+      <div
+        className="rounded-[var(--store-border-radius)] p-8 text-white sm:p-10"
+        style={{ background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})` }}
+      >
+        <h2 className="text-3xl font-black tracking-[-0.04em]">{title}</h2>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-white/75">{body}</p>
+        <a className="mt-6 inline-flex rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950" href="#products">
+          {context.preview.themeSettings.ctaText || "Shop now"}
+        </a>
+      </div>
+    </SectionShell>
+  );
+}
+
+function FooterSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+  const theme = context.preview.themeSettings;
+
+  return (
+    <footer
+      className="px-4 py-8 sm:px-6 lg:px-8"
+      style={{
+        backgroundColor: theme.footerBackgroundColor,
+        color: theme.footerTextColor
+      }}
+    >
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+        <p className="text-sm font-bold">
+          {theme.copyrightText || `© ${new Date().getFullYear()} ${context.settings.title}`}
+        </p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] opacity-75">Powered by SHASTORE AI</p>
+      </div>
+    </footer>
+  );
+}
+
+function GenericContentSection({
   context,
   section
 }: {
@@ -394,58 +638,12 @@ export function SectionRenderer({
   section: StoreSection;
 }) {
   const config = section.config;
-  const theme = context.preview.themeSettings;
-  const title = textValue(config.title, theme.heroTitle || context.settings.title);
-  const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
-
-  if (section.section_type === "spacer") {
-    return <div aria-hidden="true" className="h-8 sm:h-12" />;
-  }
-
-  if (section.section_type === "product_grid" || section.section_type === "featured_products") {
-    return <ProductGridSection context={context} />;
-  }
-
-  if (section.section_type === "hero") {
-    return (
-      <SectionShell muted>
-        <div
-          className="rounded-[2.5rem] px-6 py-16 text-white sm:px-10 lg:px-14"
-          style={{
-            background: theme.bannerImageUrl
-              ? `linear-gradient(135deg, ${context.theme.colorPalette.primary}cc, ${context.theme.colorPalette.secondary}99), url("${theme.bannerImageUrl}") center/cover`
-              : `linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`
-          }}
-        >
-          <p className="text-xs font-black uppercase tracking-[0.28em] text-white/60">
-            Public Storefront
-          </p>
-          <h1 className="mt-5 text-5xl font-black tracking-[-0.07em] sm:text-7xl">
-            {title}
-          </h1>
-          {body ? <p className="mt-5 max-w-2xl text-white/75">{body}</p> : null}
-        </div>
-      </SectionShell>
-    );
-  }
-
-  if (section.section_type === "image") {
-    const imageUrl = textValue(config.imageUrl);
-
-    return (
-      <SectionShell>
-        <div className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <p className="text-sm font-black text-ink">
-            {imageUrl ? `Image section prepared: ${imageUrl}` : "Image section placeholder"}
-          </p>
-        </div>
-      </SectionShell>
-    );
-  }
+  const title = textValue(config.title, context.settings.title);
+  const body = textValue(config.body, context.settings.description ?? "");
 
   return (
     <SectionShell muted={section.section_type === "banner" || section.section_type === "newsletter"}>
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-8">
+      <div className="rounded-[var(--store-border-radius)] border border-slate-200 bg-white p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
           {resolveSectionRenderer(section).replace("_", " ")}
         </p>
@@ -454,6 +652,56 @@ export function SectionRenderer({
       </div>
     </SectionShell>
   );
+}
+
+function MissingSectionRenderer({ section }: { context: StoreTenantContext; section: StoreSection }) {
+  return (
+    <SectionShell muted>
+      <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-center">
+        <p className="text-sm font-black text-ink">Unsupported storefront section</p>
+        <p className="mt-2 text-xs font-semibold text-muted">
+          The section type &quot;{section.section_type}&quot; is not available yet, so this safe placeholder is shown.
+        </p>
+      </div>
+    </SectionShell>
+  );
+}
+
+const sectionRegistry: Record<
+  string,
+  (props: { context: StoreTenantContext; section: StoreSection }) => ReactNode
+> = {
+  CTA: CtaSection,
+  FAQ: FaqSection,
+  banner: GenericContentSection,
+  categories: CategoriesSection,
+  cta: CtaSection,
+  faq: FaqSection,
+  featured_products: ProductGridSection,
+  footer: FooterSection,
+  hero: HeroSection,
+  image: GenericContentSection,
+  navbar: NavbarSection,
+  newsletter: GenericContentSection,
+  product_grid: ProductGridSection,
+  rich_text: GenericContentSection,
+  testimonials: TestimonialsSection
+};
+
+export function SectionRenderer({
+  context,
+  section
+}: {
+  context: StoreTenantContext;
+  section: StoreSection;
+}) {
+  const Renderer = sectionRegistry[section.section_type] ?? MissingSectionRenderer;
+
+  if (section.section_type === "spacer") {
+    return <div aria-hidden="true" className="h-8 sm:h-12" />;
+  }
+
+  return <Renderer context={context} section={section} />;
 }
 
 export async function DynamicSectionLoader({

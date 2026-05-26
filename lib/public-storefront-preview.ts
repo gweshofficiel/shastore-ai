@@ -30,8 +30,13 @@ export type PublicStorefrontPreview = {
     secondaryColor: string;
     themeMode: string;
   };
+  brandingConfig: Record<string, unknown>;
   categories: PublicStorefrontCategory[];
+  layoutStyle: string;
   products: PublicStorefrontProduct[];
+  sectionsSchema: unknown[];
+  templateId: string;
+  themeConfig: Record<string, unknown>;
   themeSettings: StoreThemeSettings;
   store: {
     description: string | null;
@@ -125,12 +130,17 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       secondaryColor: textValue(branding.secondaryColor, "#2563eb"),
       themeMode: textValue(branding.themeMode, "light")
     },
+    brandingConfig: isRecord(value.brandingConfig) ? value.brandingConfig : {},
     categories: Array.isArray(value.categories)
       ? value.categories.map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category))
       : [],
+    layoutStyle: textValue(value.layoutStyle, "classic"),
     products: Array.isArray(value.products)
       ? value.products.map(normalizeProduct).filter((product): product is PublicStorefrontProduct => Boolean(product))
       : [],
+    sectionsSchema: Array.isArray(value.sectionsSchema) ? value.sectionsSchema : [],
+    templateId: textValue(value.templateId, "general-starter"),
+    themeConfig: isRecord(value.themeConfig) ? value.themeConfig : {},
     themeSettings: normalizeStoreThemeSettings(value.themeSettings, defaultStoreThemeSettings),
     store: {
       description: textValue(store.description) || null,
@@ -202,7 +212,9 @@ async function loadStoreModePublicPreview(slug: string) {
   const client = createAdminClient() ?? (await createClient());
   const { data: rawStore, error: storeError } = await client
     .from("stores")
-    .select("id, name, description, brand_color, currency, whatsapp_number, status, slug, store_data")
+    .select(
+      "id, name, description, brand_color, currency, whatsapp_number, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+    )
     .eq("slug", normalizedSlug)
     .eq("status", "published")
     .maybeSingle();
@@ -215,6 +227,11 @@ async function loadStoreModePublicPreview(slug: string) {
     slug: string | null;
     status: string;
     store_data: unknown;
+    template_id?: string | null;
+    theme_color?: string | null;
+    theme_settings?: unknown;
+    font_style?: string | null;
+    layout_style?: string | null;
     whatsapp_number: string | null;
   } | null;
 
@@ -268,11 +285,23 @@ async function loadStoreModePublicPreview(slug: string) {
   const fallbackProducts = productsFromStoreData(store.store_data);
   const { data: themeRow } = await client
     .from("store_theme_settings")
-    .select("settings")
+    .select("settings, theme_settings, theme_color")
     .eq("store_id", store.id)
     .maybeSingle();
+  const themeRecord = (themeRow ?? {}) as {
+    settings?: unknown;
+    theme_color?: string | null;
+    theme_settings?: unknown;
+  };
+  const storeThemeSettings = isRecord(store.theme_settings) ? store.theme_settings : {};
+  const persistedThemeSettings = isRecord(themeRecord.theme_settings) ? themeRecord.theme_settings : {};
   const themeSettings = normalizeStoreThemeSettings(
-    (themeRow as { settings?: unknown } | null)?.settings,
+    {
+      ...storeThemeSettings,
+      ...persistedThemeSettings,
+      ...(isRecord(themeRecord.settings) ? themeRecord.settings : {}),
+      primaryColor: themeRecord.theme_color || store.theme_color || store.brand_color
+    },
     defaultStoreThemeSettings
   );
 
@@ -282,8 +311,13 @@ async function loadStoreModePublicPreview(slug: string) {
       secondaryColor: themeSettings.secondaryColor || "#2563eb",
       themeMode: "light"
     },
+    brandingConfig: {},
     categories: savedCategories.length ? savedCategories : fallbackCategories,
+    layoutStyle: store.layout_style || "classic",
     products: savedProducts.length ? savedProducts : fallbackProducts,
+    sectionsSchema: [],
+    templateId: store.template_id || "general-starter",
+    themeConfig: {},
     themeSettings,
     store: {
       currency: store.currency || "USD",

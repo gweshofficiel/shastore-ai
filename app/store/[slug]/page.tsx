@@ -6,6 +6,7 @@ import {
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
   getCurrentStoreContext,
@@ -420,6 +421,11 @@ export default async function PublicStorePage({
     <main className="min-h-screen bg-slate-50 text-ink">
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
+      <StorefrontHydration
+        layoutKey={context.theme.layout_key}
+        slug={store.slug}
+        templateId={preview.templateId}
+      />
       <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
       <footer
         className="px-4 py-8 sm:px-6 lg:px-8"
