@@ -230,12 +230,30 @@ async function loadStoreModePublicPreview(slug: string) {
   }
 
   const client = createAdminClient() ?? (await createClient());
+  const { data: rawPublication } = await client
+    .from("published_stores")
+    .select("store_id, status, visibility, slug")
+    .eq("slug", normalizedSlug)
+    .eq("status", "published")
+    .eq("visibility", "public")
+    .maybeSingle();
+  const publication = rawPublication as {
+    slug: string;
+    status: string;
+    store_id: string;
+    visibility: string;
+  } | null;
+
+  if (!publication) {
+    return null;
+  }
+
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
       "id, name, description, brand_color, currency, whatsapp_number, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
-    .eq("slug", normalizedSlug)
+    .eq("id", publication.store_id)
     .eq("status", "published")
     .maybeSingle();
   const store = rawStore as {
@@ -257,19 +275,6 @@ async function loadStoreModePublicPreview(slug: string) {
 
   if (storeError || !store?.slug) {
     return null;
-  }
-
-  const { data: rawPublication } = await client
-    .from("published_stores")
-    .select("status, visibility")
-    .eq("store_id", store.id)
-    .maybeSingle();
-  const publication = rawPublication as { status: string; visibility: string } | null;
-
-  if (publication) {
-    if (publication.status !== "published" || publication.visibility !== "public") {
-      return null;
-    }
   }
 
   const { data: products } = await client

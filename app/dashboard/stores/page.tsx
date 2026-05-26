@@ -4,7 +4,7 @@ import { StoreSaveToast } from "@/components/dashboard/store-save-toast";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { publishStoreDraft } from "@/lib/store-actions";
+import { publishStoreDraft, unpublishStore } from "@/lib/store-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreAccessMapForUser, type StoreAccessResult } from "@/lib/billing/store-access";
@@ -285,6 +285,7 @@ export default async function StoresPage({
     error?: string;
     published?: string;
     saved?: string;
+    unpublished?: string;
   }>;
 }) {
   const query = await searchParams;
@@ -368,7 +369,14 @@ export default async function StoresPage({
       {query.published ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
-            Store published successfully at /store/{query.published}.
+            Store published successfully at /store/{query.published} and /s/{query.published}.
+          </p>
+        </Card>
+      ) : null}
+      {query.unpublished ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-700">
+            Store unpublished. Public access is now disabled.
           </p>
         </Card>
       ) : null}
@@ -430,6 +438,20 @@ export default async function StoresPage({
                       Status {isLocked ? formatStatus(storeAccess.state) : formatStatus(displayStatus, "draft")} · Created{" "}
                       {formatDate(store.created_at)}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${badgeClass(displayStatus)}`}>
+                        {formatStatus(displayStatus, "draft")}
+                      </span>
+                      {isPublished ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                          Public
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                          Not public
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
                       Plan {store.subscription_plan ?? "free"} · Workspace{" "}
                       {store.workspace_id ? store.workspace_id.slice(0, 8) : "current"}
@@ -441,7 +463,7 @@ export default async function StoresPage({
                     ) : null}
                     {publicSlug ? (
                       <p className="mt-2 font-mono text-xs font-bold text-muted">
-                        /store/{publicSlug}
+                        /store/{publicSlug} · /s/{publicSlug}
                       </p>
                     ) : null}
                   </div>
@@ -450,13 +472,23 @@ export default async function StoresPage({
                       <ButtonLink href={`/dashboard/stores/${store.id}`}>Manage Store</ButtonLink>
                     ) : null}
                     {isPublished ? (
-                      <ButtonLink
-                        href={`/store/${publicSlug}`}
-                        target="_blank"
-                        variant="secondary"
-                      >
-                        Public Store
-                      </ButtonLink>
+                      <>
+                        <ButtonLink
+                          href={`/store/${publicSlug}`}
+                          target="_blank"
+                          variant="secondary"
+                        >
+                          Public Store
+                        </ButtonLink>
+                        {canPublishStore ? (
+                          <form action={unpublishStore}>
+                            <input name="storeId" type="hidden" value={store.id} />
+                            <Button type="submit" variant="secondary">
+                              Unpublish
+                            </Button>
+                          </form>
+                        ) : null}
+                      </>
                     ) : isLocked && canManageBilling ? (
                       <ButtonLink href="/dashboard/billing" variant="secondary">
                         Upgrade to unlock

@@ -2082,6 +2082,7 @@ export async function unpublishStore(formData: FormData) {
       redirectWithStoreError(detailPath, formatStoreActionError(error));
     }
     revalidatePath(`/store/${publication.slug}`);
+    revalidatePath(`/s/${publication.slug}`);
   }
 
   await recordStoreAuditLogSafe({
@@ -2293,6 +2294,7 @@ export async function publishStoreDraft(formData: FormData) {
   revalidatePath("/dashboard/stores");
   revalidatePath("/dashboard");
   revalidatePath(`/store/${publishedSlug}`);
+  revalidatePath(`/s/${publishedSlug}`);
   await recordStoreAuditLogSafe({
     action: "store_published",
     actorUserId: user.id,

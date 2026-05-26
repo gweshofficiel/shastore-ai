@@ -4275,7 +4275,7 @@ export default async function StoreDraftPage({
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
         action={<ButtonLink href="/dashboard/stores/new">Create another store</ButtonLink>}
-        description="Review the saved Store Mode draft. Public store publishing is not enabled yet."
+        description="Review the saved Store Mode draft, publish it safely, and manage public URLs."
         title={store.name}
       />
       {storeIsLocked ? (
@@ -4449,6 +4449,9 @@ export default async function StoreDraftPage({
                   <>
                     <ButtonLink href={`/store/${publication.slug}`} target="_blank">
                       Open public store
+                    </ButtonLink>
+                    <ButtonLink href={`/s/${publication.slug}`} target="_blank" variant="secondary">
+                      Open short URL
                     </ButtonLink>
                     <CopyStoreUrlButton url={`/store/${publication.slug}`} />
                   </>

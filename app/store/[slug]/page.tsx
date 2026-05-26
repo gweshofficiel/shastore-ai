@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   StorefrontTenantContextScript,
   StorefrontThemeTokens
@@ -16,6 +15,24 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+function StoreUnavailablePage() {
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-16 text-ink sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]">
+        <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+          Store unavailable
+        </p>
+        <h1 className="mt-4 text-4xl font-black tracking-[-0.05em]">
+          This store is not publicly available.
+        </h1>
+        <p className="mt-4 text-sm font-semibold leading-6 text-muted">
+          The store may still be in draft, unpublished, private, or temporarily restricted.
+        </p>
+      </div>
+    </main>
+  );
+}
 
 function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
   if (priceLabel) {
@@ -114,7 +131,7 @@ export default async function PublicStorePage({
   const preview = context?.preview;
 
   if (!preview || !context) {
-    notFound();
+    return <StoreUnavailablePage />;
   }
 
   const admin = createAdminClient();
@@ -126,22 +143,7 @@ export default async function PublicStorePage({
     : { allowed: true };
 
   if (!storefrontAccess.allowed) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-16 text-ink sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-            Store unavailable
-          </p>
-          <h1 className="mt-4 text-4xl font-black tracking-[-0.05em]">
-            This storefront is temporarily unavailable.
-          </h1>
-          <p className="mt-4 text-sm font-semibold leading-6 text-muted">
-            The store owner needs to update their SHASTORE AI subscription before this
-            storefront can be viewed again.
-          </p>
-        </div>
-      </main>
-    );
+    return <StoreUnavailablePage />;
   }
 
   const { branding, products, store } = preview;
