@@ -212,6 +212,7 @@ export default async function PublicProductDetailPage({
     ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
   const galleryUrls = productGalleryUrls(product.gallery);
+  const currency = product.currency || preview.store.currency;
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
@@ -285,9 +286,19 @@ export default async function PublicProductDetailPage({
               <h1 className="mt-3 text-4xl font-black leading-none tracking-[-0.06em] text-ink sm:text-6xl">
                 {product.title}
               </h1>
-              <p className="mt-5 text-2xl font-black text-ink">
-                {formatProductPrice(product.price, product.priceLabel, preview.store.currency)}
-              </p>
+              <div className="mt-5 flex flex-wrap items-end gap-3">
+                <p className="text-2xl font-black text-ink">
+                  {formatProductPrice(product.price, product.priceLabel, currency)}
+                </p>
+                {product.compareAtPrice ? (
+                  <p className="text-base font-bold text-slate-400 line-through">
+                    {formatProductPrice(product.compareAtPrice, null, currency)}
+                  </p>
+                ) : null}
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                  {currency}
+                </span>
+              </div>
               <p className="mt-6 text-base leading-8 text-muted">
                 {product.description || "No description has been added for this product yet."}
               </p>

@@ -8,6 +8,7 @@ export type PublicStorefrontProduct = {
   categoryId: string | null;
   categoryName: string | null;
   compareAtPrice: number | string | null;
+  currency: string | null;
   description: string | null;
   gallery: unknown[];
   id: string;
@@ -97,6 +98,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
       typeof value.compareAtPrice === "number" || typeof value.compareAtPrice === "string"
         ? value.compareAtPrice
         : null,
+    currency: textValue(value.currency) || null,
     description: textValue(value.description) || null,
     gallery: Array.isArray(value.gallery) ? value.gallery : [],
     id,
@@ -190,47 +192,6 @@ function categoriesFromStoreData(value: unknown) {
   return value.categories.filter(isRecord).map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category));
 }
 
-function productsFromStoreData(value: unknown) {
-  if (!isRecord(value) || !Array.isArray(value.products)) {
-    return [];
-  }
-
-  const categoriesById = new Map<string, string>();
-
-  if (Array.isArray(value.categories)) {
-    for (const category of value.categories) {
-      if (!isRecord(category)) {
-        continue;
-      }
-
-      const id = textValue(category.id);
-      const name = textValue(category.name);
-
-      if (id && name) {
-        categoriesById.set(id, name);
-      }
-    }
-  }
-
-  return value.products
-    .filter(isRecord)
-    .map((product, index) => ({
-      categoryId: textValue(product.categoryId) || null,
-      categoryName: categoriesById.get(textValue(product.categoryId)) ?? null,
-      compareAtPrice: null,
-      description: textValue(product.description) || null,
-      gallery: [],
-      id: textValue(product.id, `product-${index + 1}`),
-      imageUrl: textValue(product.imageUrl) || null,
-      price: textValue(product.price) || null,
-      priceLabel: textValue(product.price) || null,
-      sku: null,
-      status: "published",
-      title: textValue(product.name)
-    }))
-    .filter((product) => product.title);
-}
-
 async function loadStoreModePublicPreview(slug: string) {
   const normalizedSlug = slug.trim().toLowerCase();
 
@@ -309,6 +270,7 @@ async function loadStoreModePublicPreview(slug: string) {
     categoryName:
       typeof product.category_id === "string" ? categoriesById.get(product.category_id) ?? null : null,
     compareAtPrice: product.compare_at_price,
+    currency: textValue(product.currency) || null,
     gallery: Array.isArray(product.gallery) ? product.gallery : [],
     id: String(product.id ?? ""),
     title: textValue(product.title, textValue(product.name, "Untitled product")),
@@ -320,7 +282,6 @@ async function loadStoreModePublicPreview(slug: string) {
     status: textValue(product.status, "active")
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
-  const fallbackProducts = productsFromStoreData(store.store_data);
   const { data: themeRow } = await client
     .from("store_theme_settings")
     .select("settings, theme_settings, theme_color")
@@ -355,7 +316,7 @@ async function loadStoreModePublicPreview(slug: string) {
     categories: savedCategories.length ? savedCategories : fallbackCategories,
     fontStyle: store.font_style || "inter",
     layoutStyle: store.layout_style || "classic",
-    products: savedProducts.length ? savedProducts : fallbackProducts,
+    products: savedProducts,
     sectionsSchema: [],
     templateId: store.template_id || "general-starter",
     themeColor: themeSettings.primaryColor || store.theme_color || store.brand_color || "#0f172a",

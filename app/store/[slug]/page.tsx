@@ -66,6 +66,27 @@ function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, 
   return `https://wa.me/${number}?text=${text}`;
 }
 
+function productGalleryUrls(gallery: unknown[]) {
+  return gallery
+    .map((item) => {
+      if (typeof item === "string" && item.trim()) {
+        return item;
+      }
+
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return typeof record.url === "string"
+          ? record.url
+          : typeof record.publicUrl === "string"
+            ? record.publicUrl
+            : null;
+      }
+
+      return null;
+    })
+    .filter((url): url is string => Boolean(url));
+}
+
 export async function generateMetadata({
   params
 }: {
@@ -288,6 +309,9 @@ export default async function PublicStorePage({
                   store.title,
                   product.title
                 );
+                const galleryUrls = productGalleryUrls(product.gallery);
+                const primaryImage = product.imageUrl || galleryUrls[0] || null;
+                const currency = product.currency || store.currency;
 
                 return (
                   <article
@@ -295,11 +319,11 @@ export default async function PublicStorePage({
                     key={product.id}
                   >
                     <Link href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}>
-                      {product.imageUrl ? (
+                      {primaryImage ? (
                         <img
                           alt={product.title}
                           className="aspect-[4/3] w-full object-cover"
-                          src={product.imageUrl}
+                          src={primaryImage}
                         />
                       ) : (
                         <div
@@ -317,6 +341,18 @@ export default async function PublicStorePage({
                         </div>
                       )}
                     </Link>
+                    {galleryUrls.length ? (
+                      <div className="grid grid-cols-4 gap-2 px-4 pt-4">
+                        {galleryUrls.slice(0, 4).map((url) => (
+                          <img
+                            alt={`${product.title} gallery image`}
+                            className="aspect-square rounded-2xl object-cover"
+                            key={url}
+                            src={url}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="flex flex-1 flex-col p-5">
                       {product.categoryName ? (
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
@@ -332,9 +368,19 @@ export default async function PublicStorePage({
                         {product.description || "No description has been added for this product yet."}
                       </p>
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                        <p className="text-lg font-black text-ink">
-                          {formatProductPrice(product.price, product.priceLabel, store.currency)}
-                        </p>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <p className="text-lg font-black text-ink">
+                            {formatProductPrice(product.price, product.priceLabel, currency)}
+                          </p>
+                          {product.compareAtPrice ? (
+                            <p className="text-sm font-bold text-slate-400 line-through">
+                              {formatProductPrice(product.compareAtPrice, null, currency)}
+                            </p>
+                          ) : null}
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            {currency}
+                          </span>
+                        </div>
                         {product.sku ? (
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                             {product.sku}
@@ -406,11 +452,10 @@ export default async function PublicStorePage({
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                No products yet
+                Products coming soon
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                This store is live, but the catalog is empty. Products added in Store Builder
-                will appear here after the store is saved and published.
+                This store is live, but there are no active public products yet.
               </p>
             </div>
           )}

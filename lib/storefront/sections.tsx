@@ -140,6 +140,27 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }).format(numericPrice);
 }
 
+function productGalleryUrls(gallery: unknown[]) {
+  return gallery
+    .map((item) => {
+      if (typeof item === "string" && item.trim()) {
+        return item;
+      }
+
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return textValue(record.url) || textValue(record.publicUrl) || textValue(record.imageUrl);
+      }
+
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function productPrimaryImage(product: StoreTenantContext["preview"]["products"][number]) {
+  return product.imageUrl || productGalleryUrls(product.gallery)[0] || null;
+}
+
 function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
   const number = whatsappNumber?.replace(/\D/g, "");
 
@@ -323,7 +344,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
           {config.sections.productsDescription}
         </p>
       </div>
-      {products.length || context.preview.categories.length ? (
+      {products.length ? (
         <div className="grid gap-8">
           {productSections.map((section) => (
             <div className="grid gap-5" key={section.category.id}>
@@ -353,6 +374,9 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
               context.preview.store.title,
               product.title
             );
+            const galleryImages = productGalleryUrls(product.gallery);
+            const primaryImage = productPrimaryImage(product);
+            const currency = product.currency || context.preview.store.currency;
 
             return (
               <article
@@ -370,21 +394,37 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 <Link
                   href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
                 >
-                  {product.imageUrl ? (
+                  {primaryImage ? (
                     <img
                       alt={product.title}
                       className={`w-full object-cover ${config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-                      src={product.imageUrl}
+                      src={primaryImage}
                     />
                   ) : (
                     <div
-                      className={`${config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
+                      className={`flex items-end p-4 ${config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
                       style={{
                         background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
                       }}
-                    />
+                    >
+                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
+                        Image coming soon
+                      </span>
+                    </div>
                   )}
                 </Link>
+                {galleryImages.length ? (
+                  <div className={`grid gap-2 px-4 pt-4 ${config.key === "fashion-starter" ? "grid-cols-4" : "grid-cols-3"}`}>
+                    {galleryImages.slice(0, config.key === "electronics-starter" ? 3 : 4).map((url) => (
+                      <img
+                        alt={`${product.title} gallery image`}
+                        className={`aspect-square object-cover ${config.layout.productCard === "spec-card" ? "rounded-xl border border-cyan-400/20" : "rounded-2xl"}`}
+                        key={url}
+                        src={url}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className={config.layout.productCard === "spec-card" ? "p-4" : "p-5"}>
                   {product.categoryName ? (
                         <p
@@ -409,17 +449,23 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "No description has been added for this product yet."}
                   </p>
-                  <p
-                    className={`mt-5 border-t pt-5 text-lg font-black ${
+                  <div
+                    className={`mt-5 flex flex-wrap items-end gap-2 border-t pt-5 ${
                       config.key === "electronics-starter" ? "border-cyan-400/10 text-cyan-100" : "border-slate-100 text-ink"
                     }`}
                   >
-                    {formatProductPrice(
-                      product.price,
-                      product.priceLabel,
-                      context.preview.store.currency
-                    )}
-                  </p>
+                    <p className="text-lg font-black">
+                      {formatProductPrice(product.price, product.priceLabel, currency)}
+                    </p>
+                    {product.compareAtPrice ? (
+                      <p className={`text-sm font-bold line-through ${config.key === "electronics-starter" ? "text-slate-500" : "text-slate-400"}`}>
+                        {formatProductPrice(product.compareAtPrice, null, currency)}
+                      </p>
+                    ) : null}
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${config.key === "electronics-starter" ? "bg-cyan-400/10 text-cyan-100" : "bg-slate-100 text-slate-500"}`}>
+                      {currency}
+                    </span>
+                  </div>
                   <div className="mt-5 grid gap-2">
                     <AddToCartButton product={product} slug={context.preview.store.slug} />
                     <Link
@@ -484,10 +530,19 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
           ))}
         </div>
       ) : (
-        <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
-          <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-            No products yet
+        <div
+          className={`rounded-[2rem] border border-dashed p-10 text-center ${
+            config.key === "electronics-starter"
+              ? "border-cyan-400/20 bg-slate-900 text-cyan-50"
+              : "border-slate-300 bg-white text-ink"
+          }`}
+        >
+          <h3 className="text-2xl font-black tracking-[-0.03em]">
+            Products coming soon
           </h3>
+          <p className={`mx-auto mt-3 max-w-xl text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+            This published store does not have active products yet.
+          </p>
         </div>
       )}
       </div>
