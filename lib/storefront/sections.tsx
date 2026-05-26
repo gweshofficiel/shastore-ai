@@ -9,6 +9,7 @@ import {
   resolveBuilderSections
 } from "@/lib/storefront/builder";
 import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
+import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
 
 export type StoreSectionType =
   | "hero"
@@ -74,6 +75,48 @@ function textValue(value: unknown, fallback = "") {
 
 function numberValue(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function templateConfig(context: StoreTenantContext) {
+  return resolveStorefrontTemplateConfig({
+    fontStyle: context.preview.fontStyle,
+    layoutStyle: context.preview.layoutStyle,
+    templateId: context.preview.templateId,
+    themeColor: context.preview.themeColor,
+    themeSettings: context.preview.themeSettings
+  });
+}
+
+function sectionPaddingClass(context: StoreTenantContext) {
+  const config = templateConfig(context);
+
+  if (config.layout.spacing === "compact") {
+    return "px-4 py-7 sm:px-6 lg:px-8";
+  }
+
+  if (config.layout.spacing === "spacious") {
+    return "px-4 py-14 sm:px-6 lg:px-8 lg:py-20";
+  }
+
+  return "px-4 py-10 sm:px-6 lg:px-8";
+}
+
+function cardRadiusClass(context: StoreTenantContext) {
+  const config = templateConfig(context);
+
+  if (config.layout.productCard === "spec-card") {
+    return "rounded-2xl";
+  }
+
+  if (config.layout.productCard === "lookbook") {
+    return "rounded-[2.5rem]";
+  }
+
+  return "rounded-[var(--store-border-radius)]";
+}
+
+function headingStyle() {
+  return { fontFamily: "var(--store-font-heading)" };
 }
 
 function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
@@ -204,7 +247,8 @@ function SectionShell({
 }
 
 function ProductGridSection({ context }: { context: StoreTenantContext; section?: StoreSection }) {
-  const products = context.preview.products.slice(0, 6);
+  const config = templateConfig(context);
+  const products = context.preview.products.slice(0, config.key === "electronics-starter" ? 8 : 6);
   const theme = context.preview.themeSettings;
   const categorizedProductIds = new Set<string>();
   const categorySections = context.preview.categories.map((category) => {
@@ -253,18 +297,30 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
       ];
 
   return (
-    <SectionShell muted>
+    <section
+      className={`${sectionPaddingClass(context)} ${config.key === "electronics-starter" ? "bg-slate-950" : "bg-[var(--store-background)]"}`}
+      id="products"
+    >
+      <div className="mx-auto max-w-7xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Catalog
+          <p
+            className="text-xs font-black uppercase tracking-[0.22em]"
+            style={{ color: context.theme.colorPalette.accent }}
+          >
+            {config.label}
           </p>
-          <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-            Featured products
+          <h2
+            className={`mt-2 font-black tracking-[-0.04em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"} ${config.typography.scale === "large" ? "text-4xl" : "text-3xl"}`}
+            style={headingStyle()}
+          >
+            {config.sections.productsTitle}
           </h2>
         </div>
-        <p className="max-w-xl text-sm font-semibold leading-6 text-muted">
-          Real products saved in Store Builder are shown here for this published store.
+        <p
+          className={`max-w-xl text-sm font-semibold leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}
+        >
+          {config.sections.productsDescription}
         </p>
       </div>
       {products.length || context.preview.categories.length ? (
@@ -284,7 +340,13 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 </p>
               </div>
               {section.products.length ? (
-                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                <div
+                  className={`grid gap-5 ${
+                    config.layout.mobileDensity === "dense"
+                      ? "grid-cols-2 lg:grid-cols-4"
+                      : "sm:grid-cols-2 lg:grid-cols-3"
+                  }`}
+                >
                   {section.products.map((product) => {
             const whatsappHref = whatsappProductHref(
               context.preview.store.whatsappNumber,
@@ -294,7 +356,15 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
 
             return (
               <article
-                className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white"
+                className={`overflow-hidden border transition hover:-translate-y-1 ${
+                  config.layout.productCard === "spec-card"
+                    ? "border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)]"
+                    : config.layout.productCard === "glow-card"
+                      ? "border-pink-100 bg-white shadow-[0_24px_80px_-60px_rgba(236,72,153,0.9)]"
+                      : config.layout.productCard === "lookbook"
+                        ? "border-rose-100 bg-white shadow-[0_30px_90px_-70px_rgba(159,18,57,0.85)]"
+                        : "border-slate-200 bg-white"
+                } ${cardRadiusClass(context)}`}
                 key={product.id}
               >
                 <Link
@@ -303,35 +373,47 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   {product.imageUrl ? (
                     <img
                       alt={product.title}
-                      className="aspect-[4/3] w-full object-cover"
+                      className={`w-full object-cover ${config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
                       src={product.imageUrl}
                     />
                   ) : (
                     <div
-                      className="aspect-[4/3] bg-slate-100"
+                      className={`${config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
                       style={{
                         background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
                       }}
                     />
                   )}
                 </Link>
-                <div className="p-5">
+                <div className={config.layout.productCard === "spec-card" ? "p-4" : "p-5"}>
                   {product.categoryName ? (
-                    <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                        <p
+                          className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
+                          style={{ color: context.theme.colorPalette.accent }}
+                        >
                       {product.categoryName}
                     </p>
                   ) : null}
                   <Link
                     href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
                   >
-                    <h3 className="text-xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600">
+                    <h3
+                      className={`font-black tracking-[-0.03em] transition ${
+                        config.key === "electronics-starter" ? "text-white hover:text-cyan-200" : "text-ink hover:text-slate-600"
+                      } ${config.layout.productCard === "spec-card" ? "text-lg" : "text-xl"}`}
+                      style={headingStyle()}
+                    >
                       {product.title}
                     </h3>
                   </Link>
-                  <p className="mt-3 text-sm leading-6 text-muted">
+                  <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "No description has been added for this product yet."}
                   </p>
-                  <p className="mt-5 border-t border-slate-100 pt-5 text-lg font-black text-ink">
+                  <p
+                    className={`mt-5 border-t pt-5 text-lg font-black ${
+                      config.key === "electronics-starter" ? "border-cyan-400/10 text-cyan-100" : "border-slate-100 text-ink"
+                    }`}
+                  >
                     {formatProductPrice(
                       product.price,
                       product.priceLabel,
@@ -341,7 +423,11 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   <div className="mt-5 grid gap-2">
                     <AddToCartButton product={product} slug={context.preview.store.slug} />
                     <Link
-                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+                      className={`inline-flex h-11 items-center justify-center px-4 text-sm font-black transition ${cardRadiusClass(context)} ${
+                        config.key === "electronics-starter"
+                          ? "border border-cyan-400/20 bg-slate-950 text-cyan-100 hover:border-cyan-300"
+                          : "border border-slate-200 bg-white text-ink hover:border-slate-300 hover:bg-slate-50"
+                      }`}
                       href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
                     >
                       View product details
@@ -404,19 +490,36 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
           </h3>
         </div>
       )}
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 
 function NavbarSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
   const theme = context.preview.themeSettings;
+  const config = templateConfig(context);
 
   return (
     <section
-      className={`px-4 py-5 sm:px-6 lg:px-8 ${theme.stickyHeader ? "sticky top-0 z-30 backdrop-blur" : ""}`}
-      style={{ backgroundColor: `${context.theme.colorPalette.surface}ee` }}
+      className={`px-4 sm:px-6 lg:px-8 ${config.layout.navbar === "utility" ? "py-3" : "py-5"} ${theme.stickyHeader ? "sticky top-0 z-30 backdrop-blur" : ""}`}
+      style={{
+        backgroundColor:
+          config.layout.navbar === "utility"
+            ? "rgba(2,6,23,0.92)"
+            : `${context.theme.colorPalette.surface}ee`
+      }}
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/80 px-5 py-3 shadow-sm">
+      <div
+        className={`mx-auto flex max-w-7xl items-center justify-between gap-4 border px-5 py-3 shadow-sm ${
+          config.layout.navbar === "utility"
+            ? "rounded-2xl border-cyan-400/20 bg-slate-900/80"
+            : config.layout.navbar === "boutique"
+              ? "rounded-full border-rose-100 bg-white/85"
+              : config.layout.navbar === "soft"
+                ? "rounded-[2rem] border-pink-100 bg-white/85"
+                : "rounded-full border-slate-200 bg-white/80"
+        }`}
+      >
         <Link className="flex min-w-0 items-center gap-3" href={`/store/${context.preview.store.slug}`}>
           {context.theme.logo.url ? (
             <img
@@ -432,15 +535,24 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
               {context.settings.title.slice(0, 1)}
             </span>
           )}
-          <span className="truncate text-sm font-black text-ink">{context.settings.title}</span>
+          <span
+            className={`truncate text-sm font-black ${config.layout.navbar === "utility" ? "text-white" : "text-ink"}`}
+            style={headingStyle()}
+          >
+            {context.settings.title}
+          </span>
         </Link>
-        <nav className="hidden items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-muted sm:flex">
+        <nav
+          className={`hidden items-center gap-4 text-xs font-black uppercase tracking-[0.16em] sm:flex ${
+            config.layout.navbar === "utility" ? "text-cyan-100" : "text-muted"
+          }`}
+        >
           <a href="#products">Products</a>
           <a href="#categories">Categories</a>
           <a href="#faq">FAQ</a>
         </nav>
         <Link
-          className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white"
+          className={`${config.layout.navbar === "utility" ? "rounded-xl" : "rounded-full"} px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white`}
           href={`/store/${context.preview.store.slug}/cart`}
           style={{ backgroundColor: context.theme.colorPalette.primary }}
         >
@@ -453,6 +565,7 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
 
 function HeroSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = section.config;
+  const template = templateConfig(context);
   const theme = context.preview.themeSettings;
   const title = textValue(config.title, theme.heroTitle || context.settings.title);
   const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
@@ -462,16 +575,34 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
       : `radial-gradient(circle at 20% 10%, ${context.theme.colorPalette.accent}33, transparent 30%), linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`;
 
   return (
-    <SectionShell muted>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
       <div
-        className="rounded-[var(--store-border-radius)] px-6 py-16 text-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)] sm:px-10 lg:px-14 lg:py-24"
+        className={`overflow-hidden rounded-[var(--store-border-radius)] text-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)] ${
+          template.layout.hero === "technical-grid"
+            ? "grid gap-0 border border-cyan-400/20 bg-slate-950 lg:grid-cols-[1.1fr_0.9fr]"
+            : template.layout.hero === "editorial-split"
+              ? "grid gap-0 bg-white lg:grid-cols-[0.9fr_1.1fr]"
+              : "px-6 py-16 sm:px-10 lg:px-14 lg:py-24"
+        }`}
         style={{ background }}
       >
-        <div className="max-w-3xl">
+        <div
+          className={`max-w-3xl ${
+            template.layout.hero === "technical-grid" || template.layout.hero === "editorial-split"
+              ? "p-8 sm:p-10 lg:p-14"
+              : ""
+          }`}
+        >
           <p className="text-xs font-black uppercase tracking-[0.28em] text-white/60">
-            {context.preview.templateId}
+            {template.sections.heroEyebrow}
           </p>
-          <h1 className="mt-5 text-5xl font-black tracking-[-0.07em] sm:text-7xl lg:text-8xl">
+          <h1
+            className={`mt-5 font-black tracking-[-0.07em] ${
+              template.layout.mobileDensity === "dense" ? "text-4xl sm:text-6xl" : "text-5xl sm:text-7xl lg:text-8xl"
+            }`}
+            style={headingStyle()}
+          >
             {title}
           </h1>
           {body ? <p className="mt-6 max-w-2xl text-base font-semibold leading-8 text-white/75">{body}</p> : null}
@@ -484,12 +615,32 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
             </a>
           </div>
         </div>
+        {template.layout.hero === "technical-grid" ? (
+          <div className="grid content-center gap-4 border-t border-cyan-400/20 bg-slate-900/70 p-8 lg:border-l lg:border-t-0">
+            {["Fast checkout", "Live catalog", "Mobile ready"].map((item) => (
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4" key={item}>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">{item}</p>
+                <div className="mt-3 h-2 rounded-full bg-cyan-400/30" />
+              </div>
+            ))}
+          </div>
+        ) : template.layout.hero === "editorial-split" ? (
+          <div className="min-h-80 bg-white/10 p-6 lg:p-10">
+            <div className="flex h-full items-end rounded-[2rem] bg-white/20 p-6 ring-1 ring-white/20">
+              <p className="text-2xl font-black tracking-[-0.05em] text-white/90" style={headingStyle()}>
+                New season edit
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 
 function CategoriesSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+  const config = templateConfig(context);
   const categories = context.preview.categories.slice(0, 8);
 
   if (!categories.length) {
@@ -497,14 +648,32 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
   }
 
   return (
-    <SectionShell>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
       <div id="categories">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Categories</p>
-        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">Shop by category</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <p
+          className="text-xs font-black uppercase tracking-[0.22em]"
+          style={{ color: context.theme.colorPalette.accent }}
+        >
+          Categories
+        </p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+          {config.sections.categoriesTitle}
+        </h2>
+        <div
+          className={`mt-6 grid gap-4 ${
+            config.layout.mobileDensity === "dense" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4"
+          }`}
+        >
           {categories.map((category) => (
             <article
-              className="overflow-hidden rounded-[var(--store-border-radius)] border border-slate-200 bg-white shadow-sm"
+              className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
+                config.key === "electronics-starter"
+                  ? "border-cyan-400/20 bg-slate-900 text-white"
+                  : config.key === "beauty-starter"
+                    ? "border-pink-100"
+                    : "border-slate-200"
+              }`}
               key={category.id}
             >
               {category.imageUrl ? (
@@ -518,8 +687,13 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
                 />
               )}
               <div className="p-5">
-                <h3 className="text-lg font-black tracking-[-0.03em] text-ink">{category.name}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted">
+                <h3
+                  className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
+                  style={headingStyle()}
+                >
+                  {category.name}
+                </h3>
+                <p className={`mt-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                   {category.description || "Explore products in this collection."}
                 </p>
               </div>
@@ -527,11 +701,13 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
           ))}
         </div>
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 
-function TestimonialsSection({ section }: { context: StoreTenantContext; section: StoreSection }) {
+function TestimonialsSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+  const config = templateConfig(context);
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 3) : [];
   const testimonials = items.length
     ? items
@@ -541,26 +717,38 @@ function TestimonialsSection({ section }: { context: StoreTenantContext; section
       ];
 
   return (
-    <SectionShell muted>
-      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Testimonials</p>
-      <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">What customers notice</h2>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+      <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+        Testimonials
+      </p>
+      <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+        {config.sections.testimonialsTitle}
+      </h2>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {testimonials.map((item, index) => (
-          <figure className="rounded-[var(--store-border-radius)] border border-slate-200 bg-white p-6" key={index}>
+          <figure
+            className={`border bg-white p-6 ${cardRadiusClass(context)} ${
+              config.key === "electronics-starter" ? "border-cyan-400/20 bg-slate-900" : "border-slate-200"
+            }`}
+            key={index}
+          >
             <blockquote className="text-sm font-semibold leading-7 text-muted">
               “{textValue(item.quote, "Great store experience.")}”
             </blockquote>
-            <figcaption className="mt-4 text-sm font-black text-ink">
+            <figcaption className={`mt-4 text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
               {textValue(item.name, "Customer")}
             </figcaption>
           </figure>
         ))}
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 
-function FaqSection({ section }: { context: StoreTenantContext; section: StoreSection }) {
+function FaqSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+  const config = templateConfig(context);
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 5) : [];
   const faqs = items.length
     ? items
@@ -570,42 +758,57 @@ function FaqSection({ section }: { context: StoreTenantContext; section: StoreSe
       ];
 
   return (
-    <SectionShell>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
       <div id="faq">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">FAQ</p>
-        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">Common questions</h2>
+        <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>FAQ</p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+          {config.sections.faqTitle}
+        </h2>
         <div className="mt-6 grid gap-3">
           {faqs.map((item, index) => (
-            <details className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={index}>
-              <summary className="cursor-pointer text-sm font-black text-ink">
+            <details
+              className={`border bg-white p-5 ${config.key === "electronics-starter" ? "rounded-xl border-cyan-400/20 bg-slate-900" : "rounded-[1.5rem] border-slate-200"}`}
+              key={index}
+            >
+              <summary className={`cursor-pointer text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
                 {textValue(item.question, "Question")}
               </summary>
-              <p className="mt-3 text-sm leading-6 text-muted">{textValue(item.answer, "Answer coming soon.")}</p>
+              <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                {textValue(item.answer, "Answer coming soon.")}
+              </p>
             </details>
           ))}
         </div>
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 
 function CtaSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
-  const title = textValue(section.config.title, `Ready to shop ${context.settings.title}?`);
-  const body = textValue(section.config.body, context.settings.description ?? "Browse the latest products and place your order.");
+  const config = templateConfig(context);
+  const title = textValue(section.config.title, config.sections.ctaTitle || `Ready to shop ${context.settings.title}?`);
+  const body = textValue(
+    section.config.body,
+    config.sections.ctaBody || context.settings.description || "Browse the latest products and place your order."
+  );
 
   return (
-    <SectionShell muted>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
       <div
-        className="rounded-[var(--store-border-radius)] p-8 text-white sm:p-10"
+        className={`${cardRadiusClass(context)} p-8 text-white sm:p-10`}
         style={{ background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})` }}
       >
-        <h2 className="text-3xl font-black tracking-[-0.04em]">{title}</h2>
+        <h2 className="text-3xl font-black tracking-[-0.04em]" style={headingStyle()}>{title}</h2>
         <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-white/75">{body}</p>
         <a className="mt-6 inline-flex rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950" href="#products">
           {context.preview.themeSettings.ctaText || "Shop now"}
         </a>
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }
 

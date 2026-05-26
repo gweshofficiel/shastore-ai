@@ -1,5 +1,6 @@
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
 
 export type StoreThemeRecord = {
   id: string | null;
@@ -63,6 +64,13 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
   const themeSettings = context.preview.themeSettings;
   const themeConfig = context.preview.themeConfig;
   const brandingConfig = context.preview.brandingConfig;
+  const templateConfig = resolveStorefrontTemplateConfig({
+    fontStyle: context.preview.fontStyle,
+    layoutStyle: context.preview.layoutStyle,
+    templateId: context.preview.templateId,
+    themeColor: context.preview.themeColor,
+    themeSettings
+  });
   const colorPalette = isRecord(themeConfig.colorPalette)
     ? themeConfig.colorPalette
     : isRecord(themeConfig.color_palette)
@@ -70,19 +78,20 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
       : {};
   const typographyConfig = isRecord(themeConfig.typography) ? themeConfig.typography : {};
   const logoConfig = isRecord(brandingConfig.logo) ? brandingConfig.logo : {};
-  const spacing = textValue(themeConfig.spacing, "comfortable");
-  const layoutKey = context.preview.layoutStyle || textValue(themeConfig.layout_key, "classic");
+  const spacing = textValue(themeConfig.spacing, templateConfig.layout.spacing);
+  const layoutKey =
+    context.preview.layoutStyle || textValue(themeConfig.layout_key, templateConfig.layout.hero);
 
   return {
-    border_radius: textValue(themeConfig.border_radius, "2rem"),
+    border_radius: textValue(themeConfig.border_radius, templateConfig.key === "electronics-starter" ? "1rem" : "2rem"),
     color_palette: {
-      accent: cleanColor(colorPalette.accent, themeSettings.accentColor || "#f59e0b"),
-      background: cleanColor(colorPalette.background, "#f8fafc"),
-      muted: cleanColor(colorPalette.muted, "#64748b"),
-      primary: cleanColor(colorPalette.primary, themeSettings.primaryColor || context.branding.primaryColor),
-      secondary: cleanColor(colorPalette.secondary, themeSettings.secondaryColor || context.branding.secondaryColor),
-      surface: cleanColor(colorPalette.surface, "#ffffff"),
-      text: cleanColor(colorPalette.text, "#0f172a")
+      accent: cleanColor(colorPalette.accent, templateConfig.colorPalette.accent),
+      background: cleanColor(colorPalette.background, templateConfig.colorPalette.background),
+      muted: cleanColor(colorPalette.muted, templateConfig.colorPalette.muted),
+      primary: cleanColor(colorPalette.primary, templateConfig.colorPalette.primary),
+      secondary: cleanColor(colorPalette.secondary, templateConfig.colorPalette.secondary),
+      surface: cleanColor(colorPalette.surface, templateConfig.colorPalette.surface),
+      text: cleanColor(colorPalette.text, templateConfig.colorPalette.text)
     },
     id: null,
     is_active: true,
@@ -98,13 +107,16 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
         ? spacing
         : "comfortable",
     store_instance_id: context.store_instance_id,
-    style_config: themeConfig,
-    theme_id: "shastore-modern",
-    theme_key: textValue(themeConfig.theme_key, "modern"),
+    style_config: {
+      ...templateConfig,
+      ...themeConfig
+    },
+    theme_id: `shastore-${templateConfig.key}`,
+    theme_key: textValue(themeConfig.theme_key, templateConfig.key),
     typography: {
-      body: textValue(typographyConfig.body, themeSettings.bodyFont || "inter"),
-      heading: textValue(typographyConfig.heading, themeSettings.headingFont || "inter"),
-      scale: textValue(typographyConfig.scale, themeSettings.fontScale || "comfortable")
+      body: textValue(typographyConfig.body, templateConfig.typography.body),
+      heading: textValue(typographyConfig.heading, templateConfig.typography.heading),
+      scale: textValue(typographyConfig.scale, templateConfig.typography.scale)
     }
   };
 }
@@ -197,6 +209,18 @@ export function getBrandingConfig(theme: StoreThemeRecord, context: StoreTenantC
 export function resolveThemeTokens(theme: StoreThemeRecord): StoreThemeTokens {
   const spacingUnit =
     theme.spacing === "compact" ? "0.875rem" : theme.spacing === "spacious" ? "1.25rem" : "1rem";
+  const headingFamily =
+    theme.typography.heading === "serif"
+      ? "Georgia, Cambria, serif"
+      : theme.typography.heading === "mono"
+        ? "ui-monospace, SFMono-Regular, Menlo, monospace"
+        : "Inter, ui-sans-serif, system-ui, sans-serif";
+  const bodyFamily =
+    theme.typography.body === "serif"
+      ? "Georgia, Cambria, serif"
+      : theme.typography.body === "mono"
+        ? "ui-monospace, SFMono-Regular, Menlo, monospace"
+        : "Inter, ui-sans-serif, system-ui, sans-serif";
 
   return {
     borderRadius: theme.border_radius,
@@ -210,7 +234,9 @@ export function resolveThemeTokens(theme: StoreThemeRecord): StoreThemeTokens {
       "--store-secondary": theme.color_palette.secondary,
       "--store-spacing": spacingUnit,
       "--store-surface": theme.color_palette.surface,
-      "--store-text": theme.color_palette.text
+      "--store-text": theme.color_palette.text,
+      "--store-font-body": bodyFamily,
+      "--store-font-heading": headingFamily
     },
     layout_key: theme.layout_key,
     logo: theme.logo_config,

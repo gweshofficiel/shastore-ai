@@ -418,7 +418,14 @@ export default async function PublicStorePage({
   );
 
   return (
-    <main className="min-h-screen bg-slate-50 text-ink">
+    <main
+      className="min-h-screen text-ink"
+      style={{
+        backgroundColor: context.theme.colorPalette.background,
+        color: context.theme.colorPalette.text,
+        fontFamily: "var(--store-font-body)"
+      }}
+    >
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
       <StorefrontHydration

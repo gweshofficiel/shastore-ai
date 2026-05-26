@@ -187,8 +187,12 @@ export function AddToCartButton({ product, slug }: AddToCartButtonProps) {
 
   return (
     <button
-      className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-4 text-sm font-black text-white transition hover:bg-slate-800"
+      className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90"
       onClick={handleAddToCart}
+      style={{
+        backgroundColor: "var(--store-primary, #0f172a)",
+        borderRadius: "var(--store-border-radius, 9999px)"
+      }}
       type="button"
     >
       {added ? "Added to cart" : "Add to cart"}

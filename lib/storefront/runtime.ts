@@ -1,6 +1,7 @@
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StoreSection } from "@/lib/storefront/sections";
+import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
 
 type RuntimeSectionInput = {
   config?: unknown;
@@ -82,49 +83,63 @@ function hasSection(sections: StoreSection[], type: string) {
 }
 
 function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
+  const template = resolveStorefrontTemplateConfig({
+    fontStyle: context.preview.fontStyle,
+    layoutStyle: context.preview.layoutStyle,
+    templateId: context.preview.templateId,
+    themeColor: context.preview.themeColor,
+    themeSettings: context.preview.themeSettings
+  });
+  const order =
+    template.key === "beauty-starter"
+      ? ["navbar", "hero", "categories", "testimonials", "featured_products", "faq", "cta"]
+      : template.key === "electronics-starter"
+        ? ["navbar", "hero", "categories", "featured_products", "faq", "testimonials", "cta"]
+        : ["navbar", "hero", "featured_products", "categories", "testimonials", "faq", "cta"];
   const baseSections = [
     {
       id: "runtime-navbar",
-      order: 5,
+      order: (order.indexOf("navbar") + 1) * 10,
       type: "navbar",
       props: {}
     },
     {
       id: "runtime-hero",
-      order: 10,
+      order: (order.indexOf("hero") + 1) * 10,
       type: "hero",
       props: {
         title: context.preview.themeSettings.heroTitle || context.settings.title,
-        body: context.preview.themeSettings.heroSubtitle || context.settings.description
+        body: context.preview.themeSettings.heroSubtitle || context.settings.description,
+        templateKey: template.key
       }
     },
     {
       id: "runtime-categories",
-      order: 20,
+      order: (order.indexOf("categories") + 1) * 10,
       type: "categories",
       props: {}
     },
     {
       id: "runtime-featured-products",
-      order: 30,
+      order: (order.indexOf("featured_products") + 1) * 10,
       type: "featured_products",
       props: {}
     },
     {
       id: "runtime-testimonials",
-      order: 40,
+      order: (order.indexOf("testimonials") + 1) * 10,
       type: "testimonials",
       props: {}
     },
     {
       id: "runtime-faq",
-      order: 50,
+      order: (order.indexOf("faq") + 1) * 10,
       type: "faq",
       props: {}
     },
     {
       id: "runtime-cta",
-      order: 60,
+      order: (order.indexOf("cta") + 1) * 10,
       type: "cta",
       props: {}
     }

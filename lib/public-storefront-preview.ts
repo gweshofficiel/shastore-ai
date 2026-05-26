@@ -32,10 +32,12 @@ export type PublicStorefrontPreview = {
   };
   brandingConfig: Record<string, unknown>;
   categories: PublicStorefrontCategory[];
+  fontStyle: string;
   layoutStyle: string;
   products: PublicStorefrontProduct[];
   sectionsSchema: unknown[];
   templateId: string;
+  themeColor: string;
   themeConfig: Record<string, unknown>;
   themeSettings: StoreThemeSettings;
   store: {
@@ -56,6 +58,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function textValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizeRuntimeFont(value: unknown) {
+  if (value === "editorial" || value === "luxury" || value === "soft") {
+    return "serif";
+  }
+
+  if (value === "technical" || value === "mono") {
+    return "mono";
+  }
+
+  if (value === "display") {
+    return "display";
+  }
+
+  return "inter";
 }
 
 function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
@@ -134,12 +152,14 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
     categories: Array.isArray(value.categories)
       ? value.categories.map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category))
       : [],
+    fontStyle: textValue(value.fontStyle, "inter"),
     layoutStyle: textValue(value.layoutStyle, "classic"),
     products: Array.isArray(value.products)
       ? value.products.map(normalizeProduct).filter((product): product is PublicStorefrontProduct => Boolean(product))
       : [],
     sectionsSchema: Array.isArray(value.sectionsSchema) ? value.sectionsSchema : [],
     templateId: textValue(value.templateId, "general-starter"),
+    themeColor: textValue(value.themeColor, textValue(branding.primaryColor, "#0f172a")),
     themeConfig: isRecord(value.themeConfig) ? value.themeConfig : {},
     themeSettings: normalizeStoreThemeSettings(value.themeSettings, defaultStoreThemeSettings),
     store: {
@@ -300,6 +320,8 @@ async function loadStoreModePublicPreview(slug: string) {
       ...storeThemeSettings,
       ...persistedThemeSettings,
       ...(isRecord(themeRecord.settings) ? themeRecord.settings : {}),
+      bodyFont: normalizeRuntimeFont(store.font_style),
+      headingFont: normalizeRuntimeFont(store.font_style),
       primaryColor: themeRecord.theme_color || store.theme_color || store.brand_color
     },
     defaultStoreThemeSettings
@@ -313,10 +335,12 @@ async function loadStoreModePublicPreview(slug: string) {
     },
     brandingConfig: {},
     categories: savedCategories.length ? savedCategories : fallbackCategories,
+    fontStyle: store.font_style || "inter",
     layoutStyle: store.layout_style || "classic",
     products: savedProducts.length ? savedProducts : fallbackProducts,
     sectionsSchema: [],
     templateId: store.template_id || "general-starter",
+    themeColor: themeSettings.primaryColor || store.theme_color || store.brand_color || "#0f172a",
     themeConfig: {},
     themeSettings,
     store: {
