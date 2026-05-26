@@ -7,7 +7,9 @@ import type { StoreThemeSettings } from "@/types/storefront";
 export type PublicStorefrontProduct = {
   categoryId: string | null;
   categoryName: string | null;
+  compareAtPrice: number | string | null;
   description: string | null;
+  gallery: unknown[];
   id: string;
   imageUrl: string | null;
   price: number | string | null;
@@ -91,7 +93,12 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   return {
     categoryId: textValue(value.categoryId) || null,
     categoryName: textValue(value.categoryName) || null,
+    compareAtPrice:
+      typeof value.compareAtPrice === "number" || typeof value.compareAtPrice === "string"
+        ? value.compareAtPrice
+        : null,
     description: textValue(value.description) || null,
+    gallery: Array.isArray(value.gallery) ? value.gallery : [],
     id,
     imageUrl: textValue(value.imageUrl) || null,
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
@@ -210,7 +217,9 @@ function productsFromStoreData(value: unknown) {
     .map((product, index) => ({
       categoryId: textValue(product.categoryId) || null,
       categoryName: categoriesById.get(textValue(product.categoryId)) ?? null,
+      compareAtPrice: null,
       description: textValue(product.description) || null,
+      gallery: [],
       id: textValue(product.id, `product-${index + 1}`),
       imageUrl: textValue(product.imageUrl) || null,
       price: textValue(product.price) || null,
@@ -278,9 +287,10 @@ async function loadStoreModePublicPreview(slug: string) {
   }
 
   const { data: products } = await client
-    .from("store_products")
-    .select("id, name, description, price, image_url, category_id")
+    .from("store_products" as never)
+    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status")
     .eq("store_id", store.id)
+    .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
   const { data: categories } = await client
     .from("store_categories")
@@ -294,17 +304,20 @@ async function loadStoreModePublicPreview(slug: string) {
     name: category.name
   }));
   const categoriesById = new Map(savedCategories.map((category) => [category.id, category.name]));
-  const savedProducts = (products ?? []).map((product) => ({
-    categoryId: product.category_id,
-    categoryName: product.category_id ? categoriesById.get(product.category_id) ?? null : null,
-    id: product.id,
-    title: product.name,
-    description: product.description,
-    imageUrl: product.image_url,
-    price: product.price,
-    priceLabel: product.price,
+  const savedProducts = ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
+    categoryId: typeof product.category_id === "string" ? product.category_id : null,
+    categoryName:
+      typeof product.category_id === "string" ? categoriesById.get(product.category_id) ?? null : null,
+    compareAtPrice: product.compare_at_price,
+    gallery: Array.isArray(product.gallery) ? product.gallery : [],
+    id: String(product.id ?? ""),
+    title: textValue(product.title, textValue(product.name, "Untitled product")),
+    description: textValue(product.description) || null,
+    imageUrl: textValue(product.image_url) || null,
+    price: typeof product.price === "number" || typeof product.price === "string" ? product.price : null,
+    priceLabel: typeof product.price === "string" ? product.price : null,
     sku: null,
-    status: "published"
+    status: textValue(product.status, "active")
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const fallbackProducts = productsFromStoreData(store.store_data);

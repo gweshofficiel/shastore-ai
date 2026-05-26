@@ -93,9 +93,10 @@ export async function getPublishedStorefront(slug: string): Promise<StorefrontDa
       .eq("store_id", store.id)
       .order("sort_order", { ascending: true }),
     supabase
-      .from("store_products")
-      .select("id, category_id, name, description, price, image_url, sort_order")
+      .from("store_products" as never)
+      .select("id, category_id, title, name, description, price, image_url, sort_order, status")
       .eq("store_id", store.id)
+      .eq("status" as never, "active" as never)
       .order("sort_order", { ascending: true }),
     supabase
       .from("store_theme_settings")
@@ -162,13 +163,16 @@ export async function getPublishedStorefront(slug: string): Promise<StorefrontDa
         imageUrl: category.image_url
       })) ?? [],
     products:
-      products?.map((product) => ({
-        id: product.id,
-        categoryId: product.category_id,
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        imageUrl: product.image_url
+      ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
+        id: String(product.id ?? ""),
+        categoryId: typeof product.category_id === "string" ? product.category_id : null,
+        name:
+          (typeof product.title === "string" && product.title) ||
+          (typeof product.name === "string" && product.name) ||
+          "Untitled product",
+        description: typeof product.description === "string" ? product.description : null,
+        price: typeof product.price === "string" ? product.price : null,
+        imageUrl: typeof product.image_url === "string" ? product.image_url : null
       })) ?? []
   };
 }

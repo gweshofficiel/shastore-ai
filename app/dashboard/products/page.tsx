@@ -4,45 +4,44 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  archiveStoreOwnerProduct,
   createStoreOwnerProduct,
-  deleteStoreOwnerProduct,
   updateStoreOwnerProduct
 } from "@/lib/product-actions";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
 const productListPath = "/dashboard/products";
 
-type OwnedStore = {
-  access_role?: string | null;
-  id: string;
-  internal_slug?: string | null;
-  store_name?: string | null;
-};
-
 type ProductRow = {
   compare_at_price?: number | string | null;
   created_at: string;
+  currency?: string | null;
+  description?: string | null;
+  gallery?: unknown;
   id: string;
-  inventory_quantity?: number | null;
+  image_url?: string | null;
   name?: string | null;
   price?: number | string | null;
-  short_description?: string | null;
   sku?: string | null;
+  slug?: string | null;
   status?: string | null;
-  store_instance_id: string;
+  store_id: string;
   title?: string | null;
   updated_at?: string | null;
+  workspace_id?: string | null;
 };
 
 type ProductsDashboardData = {
-  activeStore: OwnedStore | null;
+  activeStore: UserStoreRow | null;
   error: string | null;
   products: ProductRow[];
   schemaIssue: string | null;
-  stores: OwnedStore[];
+  stores: UserStoreRow[];
 };
 
 function isMissingProductsFoundation(error: { code?: string; message?: string } | null) {
@@ -50,8 +49,7 @@ function isMissingProductsFoundation(error: { code?: string; message?: string } 
   return (
     error?.code === "PGRST202" ||
     error?.code === "PGRST205" ||
-    message.includes("store_instance_products") ||
-    message.includes("get_claimed_store_instances_for_current_user") ||
+    message.includes("store_products") ||
     message.includes("could not find")
   );
 }
@@ -83,27 +81,24 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     };
   }
 
-  const { data: claimedStores, error: claimedError } = await supabase.rpc(
-    "get_claimed_store_instances_for_current_user" as never
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+  const { stores, error: storesError } = await fetchStoresForAuthUser(
+    supabase,
+    user.id,
+    workspaceId
   );
 
-  if (claimedError) {
+  if (storesError) {
     return {
       activeStore: null,
-      error: isMissingProductsFoundation(claimedError)
-        ? null
-        : "Owned stores could not be loaded. Please try again.",
+      error: "Stores could not be loaded. Please try again.",
       products: [],
-      schemaIssue: isMissingProductsFoundation(claimedError)
-        ? "Missing ownership foundation: run the buyer activation and account claim migrations first."
-        : null,
+      schemaIssue: null,
       stores: []
     };
   }
 
-  const stores = ((claimedStores ?? []) as OwnedStore[]).filter(
-    (store) => !store.access_role || store.access_role === "owner" || store.access_role === "admin"
-  );
   const activeStore =
     stores.find((store) => store.id === selectedStoreId) ?? stores[0] ?? null;
 
@@ -118,11 +113,12 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   }
 
   const { data: products, error: productsError } = await supabase
-    .from("store_instance_products" as never)
+    .from("store_products" as never)
     .select(
-      "id, store_instance_id, title, name, short_description, status, price, compare_at_price, sku, inventory_quantity, created_at, updated_at"
+      "id, workspace_id, store_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, created_at, updated_at"
     )
-    .eq("store_instance_id", activeStore.id)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id", activeStore.id)
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -134,7 +130,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
         : "Products could not be loaded. Please try again.",
       products: [],
       schemaIssue: isMissingProductsFoundation(productsError)
-        ? "Missing products foundation: run the store owner products migration."
+        ? "Missing products foundation: run the workspace store product catalog migration."
         : null,
       stores
     };
@@ -154,7 +150,7 @@ function productTitle(product: ProductRow) {
 }
 
 function productStatus(product: ProductRow) {
-  return product.status === "published" ? "published" : "draft";
+  return product.status === "active" || product.status === "archived" ? product.status : "draft";
 }
 
 function moneyValue(value: ProductRow["price"]) {
@@ -186,17 +182,25 @@ function formatCurrency(value: ProductRow["price"]) {
 }
 
 function statusBadgeClass(status: string | null | undefined) {
-  return status === "published"
-    ? "bg-emerald-100 text-emerald-700"
-    : "bg-amber-100 text-amber-700";
+  if (status === "active") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "archived") {
+    return "bg-slate-100 text-slate-600";
+  }
+
+  return "bg-amber-100 text-amber-700";
 }
 
 function statusMessage(status: string | undefined) {
   const messages: Record<string, string> = {
     "create-failed": "Product could not be created. Check the fields and try again.",
+    archived: "Product archived.",
+    "archive-failed": "Product could not be archived. Please try again.",
     created: "Product created.",
-    deleted: "Product deleted.",
-    "delete-failed": "Product could not be deleted. Please try again.",
+    deleted: "Product archived.",
+    "delete-failed": "Product could not be archived. Please try again.",
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
     "not-authorized": "You do not have permission to manage that store.",
@@ -237,7 +241,8 @@ function SelectField({
         name={name}
       >
         <option value="draft">Draft</option>
-        <option value="published">Published</option>
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
       </select>
     </FieldLabel>
   );
@@ -256,11 +261,11 @@ function ProductFields({ product }: { product?: ProductRow }) {
         required
       />
       <Textarea
-        defaultValue={product?.short_description ?? ""}
-        id={product ? `short-description-${product.id}` : "short-description-new"}
-        label="Short description"
-        maxLength={500}
-        name="shortDescription"
+        defaultValue={product?.description ?? ""}
+        id={product ? `description-${product.id}` : "description-new"}
+        label="Description"
+        maxLength={1000}
+        name="description"
         placeholder="A concise product description for the store owner dashboard."
         rows={4}
       />
@@ -284,21 +289,19 @@ function ProductFields({ product }: { product?: ProductRow }) {
           type="number"
         />
         <Input
-          defaultValue={product?.sku ?? ""}
-          id={product ? `sku-${product.id}` : "sku-new"}
-          label="SKU"
-          maxLength={80}
-          name="sku"
-          placeholder="SKU-001"
+          defaultValue={product?.currency ?? "USD"}
+          id={product ? `currency-${product.id}` : "currency-new"}
+          label="Currency"
+          maxLength={3}
+          name="currency"
+          placeholder="USD"
         />
         <Input
-          defaultValue={String(product?.inventory_quantity ?? 0)}
-          id={product ? `inventory-${product.id}` : "inventory-new"}
-          label="Inventory"
-          min="0"
-          name="inventoryQuantity"
-          step="1"
-          type="number"
+          defaultValue={product?.image_url ?? ""}
+          id={product ? `image-url-${product.id}` : "image-url-new"}
+          label="Image URL"
+          name="imageUrl"
+          placeholder="https://example.com/product.jpg"
         />
       </div>
       <SelectField defaultValue={productStatus(product ?? ({} as ProductRow))} name="status" />
@@ -321,9 +324,9 @@ export default async function SellerProductsPage({
     const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
 
-    if (!hasPermission(role, "can_edit_stores")) {
+    if (!hasPermission(role, "manage_products")) {
       console.warn("[permission-denied] products page denied", {
-        permission: "can_edit_stores",
+        permission: "manage_products",
         role,
         userId: user.id,
         workspaceId
@@ -360,7 +363,7 @@ export default async function SellerProductsPage({
             </ButtonLink>
           ) : null
         }
-        description="Create and maintain the first stable ecommerce product records for claimed stores."
+        description="Create and maintain workspace-isolated ecommerce product records for stores."
         title="Products"
       />
 
@@ -388,11 +391,11 @@ export default async function SellerProductsPage({
             Products Foundation
           </p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-            No claimed stores yet
+            No stores in this workspace yet
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted">
-            Claim a store before creating products. Product records are isolated by
-            store instance and require claimed owner access.
+            Create a store before adding products. Product records are isolated by
+            workspace and store.
           </p>
         </Card>
       ) : null}
@@ -405,10 +408,10 @@ export default async function SellerProductsPage({
                 Active Store
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-                {activeStore.store_name || "Claimed store"}
+                {activeStore.store_name || activeStore.name || "Workspace store"}
               </h2>
               <p className="mt-1 text-sm text-muted">
-                Products are scoped to this store instance only.
+                Products are scoped to this workspace store only.
               </p>
             </div>
             <form className="flex flex-col gap-3 sm:min-w-[260px]" method="get">
@@ -421,7 +424,7 @@ export default async function SellerProductsPage({
                 >
                   {stores.map((store) => (
                     <option key={store.id} value={store.id}>
-                      {store.store_name || store.internal_slug || store.id}
+                      {store.store_name || store.name || store.slug || store.id}
                     </option>
                   ))}
                 </select>
@@ -468,8 +471,7 @@ export default async function SellerProductsPage({
                   No products yet
                 </h3>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                  Create the first draft product with a title, price, SKU, inventory, and
-                  short description.
+                  Add your first product with a title, price, image, and active/draft status.
                 </p>
               </Card>
             ) : null}
@@ -509,7 +511,7 @@ export default async function SellerProductsPage({
                             </span>
                           </div>
                           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                            {product.short_description || "No short description yet."}
+                            {product.description || "No description yet."}
                           </p>
                           <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                             <div className="rounded-2xl bg-slate-50 p-4">
@@ -532,18 +534,18 @@ export default async function SellerProductsPage({
                             </div>
                             <div className="rounded-2xl bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                SKU
+                                Currency
                               </p>
                               <p className="mt-1 font-black text-ink">
-                                {product.sku || "Not set"}
+                                {product.currency || "USD"}
                               </p>
                             </div>
                             <div className="rounded-2xl bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                Inventory
+                                Image
                               </p>
                               <p className="mt-1 font-black text-ink">
-                                {product.inventory_quantity ?? 0}
+                                {product.image_url ? "Connected" : "Not set"}
                               </p>
                             </div>
                           </div>
@@ -557,20 +559,20 @@ export default async function SellerProductsPage({
                           </ButtonLink>
                         </div>
                       </div>
-                      <details className="rounded-2xl border border-red-100 bg-red-50/60 p-4">
-                        <summary className="cursor-pointer text-sm font-black text-red-700">
-                          Delete product
+                      <details className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+                        <summary className="cursor-pointer text-sm font-black text-amber-700">
+                          Archive product
                         </summary>
-                        <form action={deleteStoreOwnerProduct} className="mt-4 grid gap-3">
+                        <form action={archiveStoreOwnerProduct} className="mt-4 grid gap-3">
                           <input name="storeId" type="hidden" value={activeStore.id} />
                           <input name="productId" type="hidden" value={product.id} />
-                          <p className="text-sm leading-6 text-red-700">
-                            This removes the product from this store instance. This does
-                            not touch media, checkout, carts, analytics, or store settings.
+                          <p className="text-sm leading-6 text-amber-700">
+                            This hides the product from public storefronts without deleting
+                            dashboard history or store settings.
                           </p>
                           <div>
-                            <Button className="bg-red-600 hover:bg-red-700" type="submit">
-                              Confirm delete
+                            <Button className="bg-amber-600 hover:bg-amber-700" type="submit">
+                              Confirm archive
                             </Button>
                           </div>
                         </form>

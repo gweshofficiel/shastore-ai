@@ -3,13 +3,16 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import {
+  assertStoreAccessInWorkspace,
+  getWorkspaceDataContext
+} from "@/lib/workspaces/data-access";
 
-type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
-
-type ClaimedStoreRow = {
-  access_role?: string | null;
+type WorkspaceStoreRow = {
   id: string;
+  name?: string | null;
+  slug?: string | null;
+  workspace_id?: string | null;
 };
 
 const productListPath = "/dashboard/products";
@@ -29,7 +32,7 @@ function cleanOptionalText(value: FormDataEntryValue | null, maxLength = 1000) {
 
 function cleanStatus(value: FormDataEntryValue | null) {
   const status = cleanText(value, 20);
-  return status === "published" ? "published" : "draft";
+  return status === "active" || status === "archived" ? status : "draft";
 }
 
 function cleanMoney(value: FormDataEntryValue | null) {
@@ -53,14 +56,19 @@ function cleanOptionalMoney(value: FormDataEntryValue | null) {
   return cleanMoney(text);
 }
 
-function cleanInventory(value: FormDataEntryValue | null) {
-  const parsed = Number.parseInt(cleanText(value, 20), 10);
+function cleanCurrency(value: FormDataEntryValue | null) {
+  const currency = cleanText(value, 8).toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+}
 
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0;
+function cleanUrl(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 700);
+
+  if (!text) {
+    return null;
   }
 
-  return parsed;
+  return text.startsWith("http://") || text.startsWith("https://") ? text : null;
 }
 
 function slugify(value: string) {
@@ -85,47 +93,36 @@ function productsRedirect(storeId: string, status?: string) {
   redirect(`${productListPath}?${params.toString()}`);
 }
 
-async function getClaimedStore(supabase: SupabaseClient, storeId: string) {
-  const { data, error } = await supabase.rpc(
-    "get_claimed_store_instances_for_current_user" as never
-  );
-
-  if (error || !Array.isArray(data)) {
-    return null;
-  }
-
-  return (
-    (data as ClaimedStoreRow[]).find(
-      (store) =>
-        store.id === storeId &&
-        (!store.access_role || store.access_role === "owner" || store.access_role === "admin")
-    ) ?? null
-  );
-}
-
-async function requireClaimedStore(formData: FormData) {
+async function requireWorkspaceStore(formData: FormData) {
   const storeId = cleanText(formData.get("storeId"), 80);
 
   if (!storeId) {
     redirect(`${productListPath}?products=missing-store`);
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const { supabase, user, workspaceId } = await getWorkspaceDataContext({
+    permission: "manage_products",
+    redirectTo: productListPath
+  });
+  const access = await assertStoreAccessInWorkspace({
+    permission: "manage_products",
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
 
-  if (!user) {
-    redirect(`/login?next=${encodeURIComponent(productListPath)}`);
-  }
-
-  const claimedStore = await getClaimedStore(supabase, storeId);
-
-  if (!claimedStore) {
+  if (!access.allowed) {
     redirect(`${productListPath}?products=not-authorized`);
   }
 
-  return { storeId, supabase };
+  return {
+    store: access.store as WorkspaceStoreRow,
+    storeId,
+    supabase,
+    user,
+    workspaceId
+  };
 }
 
 function productPayload(formData: FormData, productId?: string) {
@@ -139,9 +136,12 @@ function productPayload(formData: FormData, productId?: string) {
 
   return {
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
-    inventory_quantity: cleanInventory(formData.get("inventoryQuantity")),
+    currency: cleanCurrency(formData.get("currency")),
+    description: cleanOptionalText(formData.get("description"), 1000),
+    gallery: [] as unknown[],
+    image_url: cleanUrl(formData.get("imageUrl")),
     name: title,
-    price,
+    price: price.toFixed(2),
     price_label: price.toFixed(2),
     short_description: cleanOptionalText(formData.get("shortDescription"), 500),
     sku: cleanOptionalText(formData.get("sku"), 80),
@@ -152,16 +152,19 @@ function productPayload(formData: FormData, productId?: string) {
 }
 
 export async function createStoreOwnerProduct(formData: FormData) {
-  const { storeId, supabase } = await requireClaimedStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const payload = productPayload(formData);
 
   if (!payload) {
     productsRedirect(storeId, "missing-title");
   }
 
-  const { error } = await supabase.from("store_instance_products" as never).insert({
+  const { error } = await supabase.from("store_products" as never).insert({
     ...payload,
-    store_instance_id: storeId
+    owner_user_id: user.id,
+    store_id: storeId,
+    user_id: user.id,
+    workspace_id: workspaceId
   } as never);
 
   if (error) {
@@ -174,11 +177,16 @@ export async function createStoreOwnerProduct(formData: FormData) {
   }
 
   revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+  }
   productsRedirect(storeId, "created");
 }
 
 export async function updateStoreOwnerProduct(formData: FormData) {
-  const { storeId, supabase } = await requireClaimedStore(formData);
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
   const productId = cleanText(formData.get("productId"), 80);
   const payload = productPayload(formData, productId);
 
@@ -187,10 +195,14 @@ export async function updateStoreOwnerProduct(formData: FormData) {
   }
 
   const { error } = await supabase
-    .from("store_instance_products" as never)
-    .update(payload as never)
+    .from("store_products" as never)
+    .update({
+      ...payload,
+      updated_at: new Date().toISOString()
+    } as never)
     .eq("id", productId)
-    .eq("store_instance_id", storeId);
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
 
   if (error) {
     console.error("[products-foundation] update product failed", {
@@ -203,22 +215,31 @@ export async function updateStoreOwnerProduct(formData: FormData) {
   }
 
   revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+  }
   productsRedirect(storeId, "updated");
 }
 
-export async function deleteStoreOwnerProduct(formData: FormData) {
-  const { storeId, supabase } = await requireClaimedStore(formData);
+export async function archiveStoreOwnerProduct(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
   const productId = cleanText(formData.get("productId"), 80);
 
   if (!productId) {
-    productsRedirect(storeId, "delete-failed");
+    productsRedirect(storeId, "archive-failed");
   }
 
   const { error } = await supabase
-    .from("store_instance_products" as never)
-    .delete()
+    .from("store_products" as never)
+    .update({
+      status: "archived",
+      updated_at: new Date().toISOString()
+    } as never)
     .eq("id", productId)
-    .eq("store_instance_id", storeId);
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
 
   if (error) {
     console.error("[products-foundation] delete product failed", {
@@ -227,9 +248,16 @@ export async function deleteStoreOwnerProduct(formData: FormData) {
       productId,
       storeId
     });
-    productsRedirect(storeId, "delete-failed");
+    productsRedirect(storeId, "archive-failed");
   }
 
   revalidatePath(productListPath);
-  productsRedirect(storeId, "deleted");
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+  }
+  productsRedirect(storeId, "archived");
 }
+
+export const deleteStoreOwnerProduct = archiveStoreOwnerProduct;
