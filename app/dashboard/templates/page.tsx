@@ -22,7 +22,7 @@ import {
   applyTemplateToStore,
   applyWorkspaceStoreTemplate
 } from "@/lib/template-application-actions";
-import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
+import { getTemplateLibrary, validateTemplateSchema } from "@/lib/storefront/template-library";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
@@ -80,7 +80,7 @@ const statusMessages: Record<string, string> = {
   "openai-execution-missing-key": "OpenAI execution is ready but OPENAI_API_KEY is not configured.",
   "openai-execution-needs-customization": "Prepare AI customization suggestions before executing OpenAI.",
   "openai-execution-no-output": "No validated OpenAI output is ready to apply.",
-  applied: "Template applied to the selected store draft. Published storefront remains unchanged.",
+  applied: "Template applied successfully to the selected store.",
   "apply-failed": "Template application failed and rollback was attempted.",
   "draft-created": "Template draft was created.",
   "draft-failed": "Template draft could not be created.",
@@ -334,7 +334,9 @@ export default async function TemplatesPage({
   const selectedStoreId =
     stores.find((store) => store.id === params.storeId)?.id ?? stores[0]?.id ?? "";
   const selectedWorkspaceStoreId =
-    workspaceStores.find((store) => store.id === params.workspaceStoreId)?.id ??
+    workspaceStores.find(
+      (store) => store.id === params.workspaceStoreId || store.id === params.storeId
+    )?.id ??
     workspaceStores[0]?.id ??
     "";
   const selectedCategory = params.category ?? "all";
@@ -373,6 +375,16 @@ export default async function TemplatesPage({
   const aiDiffSummary = recordValue(aiApplicationPreview.diff_summary);
   const aiDraftSyncState = recordValue(aiApplicationPreview.draft_sync_state);
   const message = params.detail ?? (params.templateApply ? statusMessages[params.templateApply] : "");
+  const templateApplyStatus = params.templateApply ?? "";
+  const isTemplateApplySuccess =
+    templateApplyStatus === "applied" ||
+    templateApplyStatus === "theme-applied" ||
+    templateApplyStatus === "draft-created" ||
+    templateApplyStatus === "sections-replaced";
+  const isTemplateApplyError =
+    Boolean(templateApplyStatus) &&
+    !isTemplateApplySuccess &&
+    templateApplyStatus !== "upgrade-required";
   const templateUpgrade = access
     ? getRecommendedUpgrade({
         blockedFeature: "premium_templates",
@@ -396,8 +408,20 @@ export default async function TemplatesPage({
           recommendedPlanId={templateUpgrade?.planId}
         />
       ) : message ? (
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-sm font-semibold text-muted shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)]">
-          {message}
+        <div
+          className={`rounded-[2rem] border p-4 text-sm font-semibold shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] ${
+            isTemplateApplySuccess
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : isTemplateApplyError
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-slate-200 bg-white text-muted"
+          }`}
+          role="status"
+        >
+          <p className="text-xs font-black uppercase tracking-[0.18em] opacity-80">
+            {isTemplateApplySuccess ? "Success" : isTemplateApplyError ? "Action required" : "Notice"}
+          </p>
+          <p className="mt-2 leading-6">{message}</p>
         </div>
       ) : null}
 
@@ -853,7 +877,7 @@ export default async function TemplatesPage({
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => {
-          const draft = mapTemplateToBuilderDraft(template);
+          const draft = validateTemplateSchema(template.layout_schema).schema;
           const isApplied = appliedTemplate === template.id;
 
           return (

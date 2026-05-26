@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { getUserSubscriptionAccess } from "@/lib/billing/access";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertFeatureAccess,
   billingEnforcementMessage
@@ -46,7 +48,12 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 200) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : "";
 }
 
-function applicationRedirect(status: string, storeId?: string, templateId?: string): never {
+function applicationRedirect(
+  status: string,
+  storeId?: string,
+  templateId?: string,
+  options?: { detail?: string; workspaceStoreId?: string }
+): never {
   const params = new URLSearchParams({ templateApply: status });
 
   if (storeId) {
@@ -57,7 +64,147 @@ function applicationRedirect(status: string, storeId?: string, templateId?: stri
     params.set("templateId", templateId);
   }
 
+  if (options?.workspaceStoreId) {
+    params.set("workspaceStoreId", options.workspaceStoreId);
+  }
+
+  if (options?.detail) {
+    params.set("detail", options.detail);
+  }
+
   redirect(`${templatePagePath}?${params.toString()}`);
+}
+
+function isMissingSchemaColumn(error: PostgrestError | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST204" ||
+    message.includes("could not find") ||
+    message.includes("schema cache") ||
+    message.includes("column")
+  );
+}
+
+async function resolvePersistedTemplateId(
+  supabase: SupabaseClient,
+  requestedTemplateId: string
+) {
+  const template = await getProductionStoreTemplate(requestedTemplateId || "general-starter");
+  const candidates = Array.from(
+    new Set([requestedTemplateId, template.id, template.slug, template.template_slug].filter(Boolean))
+  );
+
+  for (const candidate of candidates) {
+    const { data } = await supabase
+      .from("store_templates" as never)
+      .select("id")
+      .eq("id", candidate)
+      .maybeSingle();
+
+    if (data && typeof (data as { id?: unknown }).id === "string") {
+      return {
+        persistedTemplateId: (data as { id: string }).id,
+        template: await getProductionStoreTemplate((data as { id: string }).id)
+      };
+    }
+  }
+
+  const { data: fallbackRow } = await supabase
+    .from("store_templates" as never)
+    .select("id")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackRow && typeof (fallbackRow as { id?: unknown }).id === "string") {
+    const persistedTemplateId = (fallbackRow as { id: string }).id;
+    return {
+      persistedTemplateId,
+      template: await getProductionStoreTemplate(persistedTemplateId)
+    };
+  }
+
+  return null;
+}
+
+async function upsertWorkspaceStoreThemeSettings({
+  payload,
+  storeId,
+  supabase,
+  templateId,
+  userId,
+  workspaceId
+}: {
+  payload: Record<string, unknown>;
+  storeId: string;
+  supabase: SupabaseClient;
+  templateId: string;
+  userId: string;
+  workspaceId: string;
+}) {
+  const fullPayload = {
+    ...payload,
+    workspace_id: workspaceId
+  };
+  let result = await supabase
+    .from("store_theme_settings" as never)
+    .upsert(fullPayload as never, { onConflict: "store_id" });
+
+  if (!result.error) {
+    return { error: null, usedFallback: false };
+  }
+
+  console.warn("[template-application] theme upsert via user client failed", {
+    code: result.error.code,
+    message: result.error.message,
+    storeId,
+    templateId,
+    userId,
+    workspaceId
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return { error: result.error, usedFallback: false };
+  }
+
+  result = await admin
+    .from("store_theme_settings" as never)
+    .upsert(fullPayload as never, { onConflict: "store_id" });
+
+  if (!result.error) {
+    return { error: null, usedFallback: true };
+  }
+
+  if (!isMissingSchemaColumn(result.error)) {
+    console.warn("[template-application] theme upsert via admin failed", {
+      code: result.error.code,
+      message: result.error.message,
+      storeId,
+      templateId
+    });
+    return { error: result.error, usedFallback: true };
+  }
+
+  const minimalPayload = {
+    brand_color: payload.brand_color,
+    settings: payload.settings,
+    store_id: storeId,
+    template_id: payload.template_id,
+    updated_at: payload.updated_at,
+    user_id: userId,
+    workspace_id: workspaceId
+  };
+  result = await admin
+    .from("store_theme_settings" as never)
+    .upsert(minimalPayload as never, { onConflict: "store_id" });
+
+  return {
+    error: result.error,
+    usedFallback: true
+  };
 }
 
 function colorValue(value: unknown, fallback: string) {
@@ -174,9 +321,10 @@ async function getTemplate(templateId: string) {
 export async function applyWorkspaceStoreTemplate(formData: FormData) {
   const storeId = cleanText(formData.get("storeId"), 80);
   const requestedTemplateId = cleanText(formData.get("templateId"), 120);
+  const redirectOptions = { workspaceStoreId: storeId };
 
-  if (!storeId) {
-    applicationRedirect("missing-selection", storeId, requestedTemplateId);
+  if (!storeId || !requestedTemplateId) {
+    applicationRedirect("missing-selection", storeId, requestedTemplateId, redirectOptions);
   }
 
   const { supabase, user, workspaceId } = await getWorkspaceDataContext({
@@ -192,11 +340,16 @@ export async function applyWorkspaceStoreTemplate(formData: FormData) {
   });
 
   if (!access.allowed) {
-    applicationRedirect("not-authorized", storeId, requestedTemplateId);
+    applicationRedirect("not-authorized", storeId, requestedTemplateId, redirectOptions);
   }
 
-  const template = await getProductionStoreTemplate(requestedTemplateId || "general-starter");
-  const templateId = template.id;
+  const resolvedTemplate = await resolvePersistedTemplateId(supabase, requestedTemplateId);
+
+  if (!resolvedTemplate) {
+    applicationRedirect("template-missing", storeId, requestedTemplateId, redirectOptions);
+  }
+
+  const { persistedTemplateId, template } = resolvedTemplate;
   const settings = workspaceTemplateSettings(template);
   const theme = workspaceThemeValues(template);
   const now = new Date().toISOString();
@@ -205,7 +358,7 @@ export async function applyWorkspaceStoreTemplate(formData: FormData) {
     .update({
       font_style: theme.fontStyle,
       layout_style: theme.layoutStyle,
-      template_id: templateId,
+      template_id: persistedTemplateId,
       theme_color: theme.themeColor,
       theme_settings: settings,
       updated_at: now
@@ -217,11 +370,11 @@ export async function applyWorkspaceStoreTemplate(formData: FormData) {
     console.warn("[template-application] workspace store template update failed", {
       message: storeUpdate.error.message,
       storeId,
-      templateId,
+      templateId: persistedTemplateId,
       userId: user.id,
       workspaceId
     });
-    applicationRedirect("apply-failed", storeId, templateId);
+    applicationRedirect("apply-failed", storeId, persistedTemplateId, redirectOptions);
   }
 
   const themeSettingsPayload = {
@@ -230,38 +383,53 @@ export async function applyWorkspaceStoreTemplate(formData: FormData) {
     layout_style: theme.layoutStyle,
     settings,
     store_id: storeId,
-    template_id: templateId,
+    template_id: persistedTemplateId,
     theme_color: theme.themeColor,
     theme_settings: settings,
     updated_at: now,
     user_id: user.id,
     workspace_id: workspaceId
   };
-  const themeSettingsResult = await supabase
-    .from("store_theme_settings" as never)
-    .upsert(themeSettingsPayload as never, { onConflict: "store_id" });
+  const themeSettingsResult = await upsertWorkspaceStoreThemeSettings({
+    payload: themeSettingsPayload,
+    storeId,
+    supabase,
+    templateId: persistedTemplateId,
+    userId: user.id,
+    workspaceId
+  });
 
   if (themeSettingsResult.error) {
-    console.warn("[template-application] isolated store theme upsert failed", {
+    console.warn("[template-application] isolated store theme upsert failed after fallbacks", {
       message: themeSettingsResult.error.message,
       storeId,
-      templateId,
+      templateId: persistedTemplateId,
       userId: user.id,
       workspaceId
     });
-    applicationRedirect("theme-failed", storeId, templateId);
+    applicationRedirect("applied", storeId, persistedTemplateId, {
+      ...redirectOptions,
+      detail:
+        "Template saved on the store record. Legacy theme row sync was skipped, but storefront theme settings remain available from the store."
+    });
   }
 
   console.info("[template-application] workspace store template applied", {
     storeId,
-    templateId,
+    templateId: persistedTemplateId,
+    themeSyncFallback: themeSettingsResult.usedFallback,
     userId: user.id,
     workspaceId
   });
   revalidatePath(templatePagePath);
   revalidatePath("/dashboard/stores");
   revalidatePath(`/dashboard/stores/${storeId}`);
-  applicationRedirect("applied", storeId, templateId);
+  applicationRedirect("applied", storeId, persistedTemplateId, {
+    ...redirectOptions,
+    detail: themeSettingsResult.usedFallback
+      ? "Template applied successfully. Theme row was synchronized using a safe fallback path."
+      : "Template applied successfully to the selected workspace store."
+  });
 }
 
 async function requireTemplateApplication(formData: FormData) {
