@@ -10,11 +10,16 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import {
   getTemplateLibrary,
+  getProductionStoreTemplate,
   mapTemplateToBuilderDraft,
   validateTemplateSchema,
   type StoreTemplateRecord
 } from "@/lib/storefront/template-library";
 import type { BuilderPageSchema } from "@/lib/storefront/builder";
+import {
+  assertStoreAccessInWorkspace,
+  getWorkspaceDataContext
+} from "@/lib/workspaces/data-access";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -63,6 +68,30 @@ function colorValue(value: unknown, fallback: string) {
 
 function textValue(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function workspaceTemplateSettings(template: StoreTemplateRecord) {
+  return {
+    ...template.default_theme_settings,
+    ...template.theme_config,
+    source: "workspace_template_application",
+    templateCategory: template.category,
+    templateId: template.id,
+    templateType: template.template_type
+  };
+}
+
+function workspaceThemeValues(template: StoreTemplateRecord) {
+  const settings = workspaceTemplateSettings(template) as Record<string, unknown>;
+
+  return {
+    fontStyle: textValue(settings.fontStyle, textValue(settings.font_style, "modern")),
+    layoutStyle: textValue(settings.layoutStyle, textValue(settings.layout_style, "classic")),
+    themeColor: colorValue(
+      settings.themeColor,
+      colorValue(settings.theme_color, colorValue(template.branding_config.primaryColor, "#0f172a"))
+    )
+  };
 }
 
 function normalizeThemePayload(template: StoreTemplateRecord, userId: string, storeId: string) {
@@ -140,6 +169,99 @@ async function getClaimedStore(supabase: SupabaseClient, storeId: string) {
 async function getTemplate(templateId: string) {
   const library = await getTemplateLibrary();
   return library.templates.find((template) => template.id === templateId) ?? null;
+}
+
+export async function applyWorkspaceStoreTemplate(formData: FormData) {
+  const storeId = cleanText(formData.get("storeId"), 80);
+  const requestedTemplateId = cleanText(formData.get("templateId"), 120);
+
+  if (!storeId) {
+    applicationRedirect("missing-selection", storeId, requestedTemplateId);
+  }
+
+  const { supabase, user, workspaceId } = await getWorkspaceDataContext({
+    permission: "can_edit_templates",
+    redirectTo: templatePagePath
+  });
+  const access = await assertStoreAccessInWorkspace({
+    permission: "can_edit_stores",
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (!access.allowed) {
+    applicationRedirect("not-authorized", storeId, requestedTemplateId);
+  }
+
+  const template = await getProductionStoreTemplate(requestedTemplateId || "general-starter");
+  const templateId = template.id;
+  const settings = workspaceTemplateSettings(template);
+  const theme = workspaceThemeValues(template);
+  const now = new Date().toISOString();
+  const storeUpdate = await supabase
+    .from("stores")
+    .update({
+      font_style: theme.fontStyle,
+      layout_style: theme.layoutStyle,
+      template_id: templateId,
+      theme_color: theme.themeColor,
+      theme_settings: settings,
+      updated_at: now
+    } as never)
+    .eq("id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (storeUpdate.error) {
+    console.warn("[template-application] workspace store template update failed", {
+      message: storeUpdate.error.message,
+      storeId,
+      templateId,
+      userId: user.id,
+      workspaceId
+    });
+    applicationRedirect("apply-failed", storeId, templateId);
+  }
+
+  const themeSettingsPayload = {
+    brand_color: theme.themeColor,
+    font_style: theme.fontStyle,
+    layout_style: theme.layoutStyle,
+    settings,
+    store_id: storeId,
+    template_id: templateId,
+    theme_color: theme.themeColor,
+    theme_settings: settings,
+    updated_at: now,
+    user_id: user.id,
+    workspace_id: workspaceId
+  };
+  const themeSettingsResult = await supabase
+    .from("store_theme_settings" as never)
+    .upsert(themeSettingsPayload as never, { onConflict: "store_id" });
+
+  if (themeSettingsResult.error) {
+    console.warn("[template-application] isolated store theme upsert failed", {
+      message: themeSettingsResult.error.message,
+      storeId,
+      templateId,
+      userId: user.id,
+      workspaceId
+    });
+    applicationRedirect("theme-failed", storeId, templateId);
+  }
+
+  console.info("[template-application] workspace store template applied", {
+    storeId,
+    templateId,
+    userId: user.id,
+    workspaceId
+  });
+  revalidatePath(templatePagePath);
+  revalidatePath("/dashboard/stores");
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  applicationRedirect("applied", storeId, templateId);
 }
 
 async function requireTemplateApplication(formData: FormData) {

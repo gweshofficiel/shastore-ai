@@ -18,12 +18,17 @@ import {
   applyControlledOpenAIToDraftAction,
   executeControlledOpenAIAction
 } from "@/lib/openai-execution-actions";
-import { applyTemplateToStore } from "@/lib/template-application-actions";
+import {
+  applyTemplateToStore,
+  applyWorkspaceStoreTemplate
+} from "@/lib/template-application-actions";
 import { mapTemplateToBuilderDraft, getTemplateLibrary } from "@/lib/storefront/template-library";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +37,15 @@ type ClaimedStoreRow = {
   id: string;
   internal_slug?: string | null;
   store_name?: string | null;
+};
+
+type WorkspaceTemplateStoreRow = {
+  id: string;
+  name: string;
+  store_name?: string | null;
+  template_id?: string | null;
+  theme_color?: string | null;
+  workspace_id?: string | null;
 };
 
 const statusMessages: Record<string, string> = {
@@ -110,6 +124,28 @@ async function getClaimedStores() {
   return (data as ClaimedStoreRow[]).filter(
     (store) => !store.access_role || store.access_role === "owner" || store.access_role === "admin"
   );
+}
+
+async function getWorkspaceTemplateStores(): Promise<WorkspaceTemplateStoreRow[]> {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const role = await getUserWorkspaceRole(supabase, selection.activeWorkspaceId, user.id);
+
+  if (!hasPermission(role, "can_view_stores")) {
+    return [];
+  }
+
+  const { stores } = await fetchStoresForAuthUser(supabase, user.id, selection.activeWorkspaceId);
+
+  return stores as WorkspaceTemplateStoreRow[];
 }
 
 async function getAppliedTemplateForStore(storeId: string) {
@@ -254,7 +290,7 @@ function textValue(record: Record<string, unknown>, key: string, fallback = "Not
 export default async function TemplatesPage({
   searchParams
 }: {
-  searchParams: Promise<{ category?: string; detail?: string; storeId?: string; templateApply?: string; templateId?: string }>;
+  searchParams: Promise<{ category?: string; detail?: string; storeId?: string; templateApply?: string; templateId?: string; workspaceStoreId?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -290,12 +326,17 @@ export default async function TemplatesPage({
     }
   }
 
-  const [access, stores] = await Promise.all([
+  const [access, stores, workspaceStores] = await Promise.all([
     getCurrentUserSubscriptionAccess(),
-    getClaimedStores()
+    getClaimedStores(),
+    getWorkspaceTemplateStores()
   ]);
   const selectedStoreId =
     stores.find((store) => store.id === params.storeId)?.id ?? stores[0]?.id ?? "";
+  const selectedWorkspaceStoreId =
+    workspaceStores.find((store) => store.id === params.workspaceStoreId)?.id ??
+    workspaceStores[0]?.id ??
+    "";
   const selectedCategory = params.category ?? "all";
   const library = await getTemplateLibrary();
   const appliedTemplate = await getAppliedTemplateForStore(selectedStoreId);
@@ -366,13 +407,40 @@ export default async function TemplatesPage({
             Apply target
           </p>
           <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-ink">
-            Select buyer-owned store
+            Select store targets
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Templates apply only to builder drafts. Published layouts remain active
-            until the owner explicitly publishes a future builder version.
+            Workspace templates save isolated theme settings on the selected store.
+            Claimed-store draft templates remain draft-only until explicitly published.
           </p>
         </div>
+        {workspaceStores.length ? (
+          <form className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <select
+              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-ink shadow-sm"
+              defaultValue={selectedWorkspaceStoreId}
+              name="workspaceStoreId"
+            >
+              {workspaceStores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.store_name ?? store.name ?? store.id}
+                  {store.template_id ? ` · ${store.template_id}` : ""}
+                </option>
+              ))}
+            </select>
+            {selectedCategory !== "all" ? (
+              <input name="category" type="hidden" value={selectedCategory} />
+            ) : null}
+            {selectedStoreId ? <input name="storeId" type="hidden" value={selectedStoreId} /> : null}
+            <Button type="submit" variant="secondary">
+              Select workspace store
+            </Button>
+          </form>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
+            Create a workspace store before applying isolated templates.
+          </p>
+        )}
         {stores.length ? (
           <form className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <select
@@ -389,8 +457,11 @@ export default async function TemplatesPage({
             {selectedCategory !== "all" ? (
               <input name="category" type="hidden" value={selectedCategory} />
             ) : null}
+            {selectedWorkspaceStoreId ? (
+              <input name="workspaceStoreId" type="hidden" value={selectedWorkspaceStoreId} />
+            ) : null}
             <Button type="submit" variant="secondary">
-              Select store
+              Select claimed store
             </Button>
           </form>
         ) : (
@@ -407,6 +478,16 @@ export default async function TemplatesPage({
               {appliedTemplate
                 ? `Draft currently references ${appliedTemplate}.`
                 : "No template application recorded in this store draft yet."}
+            </p>
+          </div>
+        ) : null}
+        {selectedWorkspaceStoreId ? (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-500">
+              Workspace theme target
+            </p>
+            <p className="mt-2 text-sm font-black text-ink">
+              Template changes will save only to store {selectedWorkspaceStoreId.slice(0, 8)} in the active workspace.
             </p>
           </div>
         ) : null}
@@ -743,7 +824,10 @@ export default async function TemplatesPage({
                 ? "border-slate-900 bg-slate-900 text-white"
                 : "border-slate-200 bg-white text-slate-600"
             }`}
-            href={selectedStoreId ? `/dashboard/templates?storeId=${selectedStoreId}` : "/dashboard/templates"}
+            href={`/dashboard/templates?${new URLSearchParams({
+              ...(selectedStoreId ? { storeId: selectedStoreId } : {}),
+              ...(selectedWorkspaceStoreId ? { workspaceStoreId: selectedWorkspaceStoreId } : {})
+            }).toString()}`}
           >
             All
           </a>
@@ -754,9 +838,11 @@ export default async function TemplatesPage({
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-600"
               }`}
-              href={`/dashboard/templates?category=${category.category_key}${
-                selectedStoreId ? `&storeId=${selectedStoreId}` : ""
-              }`}
+              href={`/dashboard/templates?${new URLSearchParams({
+                category: category.category_key,
+                ...(selectedStoreId ? { storeId: selectedStoreId } : {}),
+                ...(selectedWorkspaceStoreId ? { workspaceStoreId: selectedWorkspaceStoreId } : {})
+              }).toString()}`}
               key={category.category_key}
             >
               {category.name}
@@ -777,16 +863,18 @@ export default async function TemplatesPage({
                   className="min-h-48 rounded-[1.75rem] p-4 text-white shadow-inner"
                   style={{
                     background:
+                      template.preview_image
+                        ? `linear-gradient(135deg,rgba(15,23,42,.55),rgba(15,23,42,.1)),url(${template.preview_image}) center/cover` :
                       template.preview_gradient ??
                       "linear-gradient(135deg,#f8fafc,#2563eb 52%,#020617)"
                   }}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] backdrop-blur">
-                      {template.niche_category}
+                      {template.category}
                     </span>
                     <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-slate-900">
-                      {draft.sections.length} sections
+                      {template.template_type}
                     </span>
                   </div>
                   <div className="mt-12 max-w-sm">
@@ -827,13 +915,24 @@ export default async function TemplatesPage({
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                    Builder draft preview
+                    Store theme preview
                   </p>
                   <p className="mt-2 text-sm font-semibold text-muted">
                     Applies {draft.sections.length} editable section
-                    {draft.sections.length === 1 ? "" : "s"}, theme config, and branding config to draft only.
+                    {draft.sections.length === 1 ? "" : "s"}, isolated theme settings, color presets,
+                    and future-ready AI/multilingual template metadata.
                   </p>
                 </div>
+                <form action={applyWorkspaceStoreTemplate} className="grid gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
+                  <input name="storeId" type="hidden" value={selectedWorkspaceStoreId} />
+                  <input name="templateId" type="hidden" value={template.id} />
+                  <Button disabled={!selectedWorkspaceStoreId} type="submit">
+                    Apply template to workspace store
+                  </Button>
+                  <p className="text-xs font-semibold leading-5 text-blue-800">
+                    Saves template, theme color, font style, layout style, and JSON settings only for the selected store.
+                  </p>
+                </form>
                 <details className="rounded-2xl border border-slate-200 bg-white p-3">
                   <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-ink">
                     Confirm apply template

@@ -9,11 +9,13 @@ export type UserStoreRow = {
   status: string | null;
   store_name?: string | null;
   subscription_plan?: string | null;
+  template_id?: string | null;
+  theme_color?: string | null;
   workspace_id?: string | null;
 };
 
 const storeSelect =
-  "id, name, store_name, owner_user_id, workspace_id, subscription_plan, status, slug, created_at";
+  "id, name, store_name, owner_user_id, workspace_id, subscription_plan, status, slug, template_id, theme_color, created_at";
 
 function isMissingOwnerUserColumn(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();

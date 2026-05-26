@@ -14,18 +14,24 @@ export type TemplateCategoryRecord = {
 export type StoreTemplateRecord = {
   ai_customization_config: Record<string, unknown>;
   branding_config: Record<string, unknown>;
+  category: string;
   category_key: string;
+  default_theme_settings: Record<string, unknown>;
   description: string | null;
   id: string;
+  is_active: boolean;
   layout_schema: BuilderPageSchema;
   name: string;
   niche_category: string;
+  preview_image: string | null;
   preview_config: Record<string, unknown>;
   preview_gradient: string | null;
   preview_summary: string | null;
   responsive_preview_config: Record<string, unknown>;
   sections_schema: unknown[];
+  slug: string;
   template_slug: string;
+  template_type: string;
   theme_config: Record<string, unknown>;
 };
 
@@ -37,16 +43,12 @@ export type TemplateLibrary = {
 
 const fallbackCategories: TemplateCategoryRecord[] = [
   { category_key: "fashion", description: "Boutique apparel and seasonal edits.", name: "Fashion", sort_order: 10 },
-  { category_key: "beauty", description: "Skincare, cosmetics, and routines.", name: "Beauty", sort_order: 20 },
-  { category_key: "perfumes", description: "Fragrance notes, gifting, and collections.", name: "Perfumes", sort_order: 30 },
-  { category_key: "electronics", description: "Gadgets, smart bundles, and comparisons.", name: "Electronics", sort_order: 40 },
-  { category_key: "watches", description: "Timepieces, materials, and collections.", name: "Watches", sort_order: 50 },
-  { category_key: "furniture", description: "Room collections and material notes.", name: "Furniture", sort_order: 60 },
-  { category_key: "gym", description: "Training gear, classes, and supplements.", name: "Gym", sort_order: 70 },
-  { category_key: "pets", description: "Pet food, accessories, and care routines.", name: "Pets", sort_order: 80 },
-  { category_key: "restaurants", description: "Menus, specials, and reservations.", name: "Restaurants", sort_order: 90 },
-  { category_key: "cafes", description: "Drinks, pastries, and loyalty offers.", name: "Cafes", sort_order: 100 },
-  { category_key: "gadgets", description: "Smart accessories and launch offers.", name: "Gadgets", sort_order: 110 }
+  { category_key: "electronics", description: "Gadgets, smart bundles, and comparisons.", name: "Electronics", sort_order: 20 },
+  { category_key: "beauty", description: "Skincare, cosmetics, and routines.", name: "Beauty", sort_order: 30 },
+  { category_key: "perfume", description: "Fragrance notes, gifting, and collections.", name: "Perfume", sort_order: 40 },
+  { category_key: "restaurant", description: "Menus, specials, and reservations.", name: "Restaurant", sort_order: 50 },
+  { category_key: "jewelry", description: "Fine jewelry, collections, and gifting.", name: "Jewelry", sort_order: 60 },
+  { category_key: "general", description: "Flexible storefront layouts for any store.", name: "General", sort_order: 70 }
 ];
 
 const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).map((category, index) => {
@@ -61,9 +63,19 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
       primaryColor: "#0f172a",
       tone: "modern"
     },
+    category: category.category_key,
     category_key: category.category_key,
+    default_theme_settings: {
+      aiTemplateReady: true,
+      colorPresets: ["slate", "blue", "white"],
+      fontStyle: "modern",
+      layoutStyle: "classic",
+      multilingualReady: true,
+      themeColor: index % 2 === 0 ? "#2563eb" : "#f59e0b"
+    },
     description: category.description,
     id: `${category.category_key}-starter`,
+    is_active: true,
     layout_schema: normalizeBuilderPageSchema({
       sections: [
         {
@@ -81,6 +93,7 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
     }),
     name: `${category.name} Starter`,
     niche_category: category.category_key,
+    preview_image: null,
     preview_config: { devices: ["desktop", "tablet", "mobile"] },
     preview_gradient: "linear-gradient(135deg,#f8fafc,#2563eb 52%,#020617)",
     preview_summary: category.description,
@@ -90,7 +103,9 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
       tablet: "Tablet preview"
     },
     sections_schema: [],
+    slug: `${category.category_key}-starter`,
     template_slug: `${category.category_key}-starter`,
+    template_type: "store",
     theme_config: {
       border_radius: "2rem",
       layout_key: "classic",
@@ -141,30 +156,45 @@ function normalizeTemplate(value: unknown): StoreTemplateRecord | null {
   }
 
   const id = textValue(value.id);
-  const categoryKey = textValue(value.category_key, textValue(value.niche_category, "fashion"));
+  const categoryKey = textValue(
+    value.category_key,
+    textValue(value.category, textValue(value.niche_category, "general"))
+  );
 
   if (!id) {
     return null;
   }
 
   const layoutSchema = validateTemplateSchema(value.layout_schema).schema;
+  const defaultThemeSettings = recordValue(value.default_theme_settings);
+  const themeConfig = {
+    ...defaultThemeSettings,
+    ...recordValue(value.theme_config)
+  };
+  const slug = textValue(value.slug, textValue(value.template_slug, textValue(value.template_key, id)));
 
   return {
     ai_customization_config: recordValue(value.ai_customization_config),
     branding_config: recordValue(value.branding_config),
+    category: textValue(value.category, categoryKey),
     category_key: categoryKey,
+    default_theme_settings: defaultThemeSettings,
     description: typeof value.description === "string" ? value.description : null,
     id,
+    is_active: value.is_active !== false,
     layout_schema: layoutSchema,
     name: textValue(value.name, "Store Template"),
     niche_category: textValue(value.niche_category, categoryKey),
+    preview_image: typeof value.preview_image === "string" ? value.preview_image : null,
     preview_config: recordValue(value.preview_config),
     preview_gradient: typeof value.preview_gradient === "string" ? value.preview_gradient : null,
     preview_summary: typeof value.preview_summary === "string" ? value.preview_summary : null,
     responsive_preview_config: recordValue(value.responsive_preview_config),
     sections_schema: Array.isArray(value.sections_schema) ? value.sections_schema : [],
-    template_slug: textValue(value.template_slug, textValue(value.template_key, id)),
-    theme_config: recordValue(value.theme_config)
+    slug,
+    template_slug: slug,
+    template_type: textValue(value.template_type, "store"),
+    theme_config: themeConfig
   };
 }
 
@@ -178,6 +208,9 @@ function missingTemplateFoundation(error: unknown) {
   return (
     record.code === "PGRST202" ||
     record.code === "PGRST205" ||
+    message.includes("is_active") ||
+    message.includes("default_theme_settings") ||
+    message.includes("preview_image") ||
     message.includes("template_slug") ||
     message.includes("layout_schema") ||
     message.includes("template_sections") ||
@@ -209,9 +242,9 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
       supabase
         .from("store_templates" as never)
         .select(
-          "id, template_key, name, description, category_key, preview_gradient, template_slug, niche_category, preview_summary, preview_config, layout_schema, sections_schema, branding_config, theme_config, ai_customization_config, responsive_preview_config"
+          "id, template_key, name, description, category, category_key, preview_image, preview_gradient, slug, template_slug, template_type, niche_category, preview_summary, preview_config, layout_schema, sections_schema, branding_config, theme_config, default_theme_settings, ai_customization_config, responsive_preview_config, is_active"
         )
-        .eq("status", "published")
+        .eq("is_active", true)
         .order("created_at", { ascending: true })
     ]);
 
@@ -243,6 +276,19 @@ export async function getTemplatesByCategory(categoryKey: string) {
   const library = await getTemplateLibrary();
 
   return library.templates.filter((template) => template.niche_category === categoryKey);
+}
+
+export async function getProductionStoreTemplate(templateId?: string | null) {
+  const library = await getTemplateLibrary();
+  const requestedId = textValue(templateId, "general-starter");
+  const template =
+    library.templates.find((candidate) => candidate.id === requestedId || candidate.slug === requestedId) ??
+    library.templates.find((candidate) => candidate.id === "general-starter") ??
+    library.templates[0] ??
+    fallbackTemplates.find((candidate) => candidate.id === "general-starter") ??
+    fallbackTemplates[0];
+
+  return template;
 }
 
 export async function cloneTemplateToStore({

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
+import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StorePublication } from "@/types/storefront";
 import type { StorefrontData } from "@/types/storefront";
 
@@ -83,6 +84,7 @@ export async function getPublishedStorefront(slug: string): Promise<StorefrontDa
   if (!store) {
     notFound();
   }
+  const storeRecord = store as typeof store & Record<string, unknown>;
 
   const [{ data: categories }, { data: products }, { data: themeSettings }] = await Promise.all([
     supabase
@@ -97,27 +99,60 @@ export async function getPublishedStorefront(slug: string): Promise<StorefrontDa
       .order("sort_order", { ascending: true }),
     supabase
       .from("store_theme_settings")
-      .select("settings, logo_image_url, brand_color")
+      .select("settings, theme_settings, logo_image_url, brand_color, theme_color" as never)
       .eq("store_id", store.id)
       .maybeSingle()
   ]);
 
-  const normalizedTheme = normalizeStoreThemeSettings(themeSettings?.settings);
+  const productionTemplate = await getProductionStoreTemplate(
+    typeof store.template_id === "string" ? store.template_id : defaultStoreTemplateId
+  );
+  const storeThemeSettings =
+    storeRecord.theme_settings &&
+    typeof storeRecord.theme_settings === "object" &&
+    !Array.isArray(storeRecord.theme_settings)
+      ? (storeRecord.theme_settings as Record<string, unknown>)
+      : {};
+  const themeSettingsRecord = (themeSettings ?? {}) as Record<string, unknown>;
+  const persistedThemeSettings =
+    themeSettingsRecord.theme_settings &&
+    typeof themeSettingsRecord.theme_settings === "object" &&
+    !Array.isArray(themeSettingsRecord.theme_settings)
+      ? (themeSettingsRecord.theme_settings as Record<string, unknown>)
+      : {};
+  const normalizedTheme = normalizeStoreThemeSettings({
+    ...productionTemplate.default_theme_settings,
+    ...storeThemeSettings,
+    ...persistedThemeSettings,
+    ...(themeSettingsRecord.settings && typeof themeSettingsRecord.settings === "object"
+      ? (themeSettingsRecord.settings as Record<string, unknown>)
+      : {})
+  });
 
   return {
     id: store.id,
     slug: normalizedPublication.slug,
     name: store.name,
     description: store.description,
-    logoImageUrl: themeSettings?.logo_image_url || normalizedTheme.logoUrl || store.logo_image_url,
-    brandColor: store.brand_color,
+    logoImageUrl:
+      (typeof themeSettingsRecord.logo_image_url === "string" ? themeSettingsRecord.logo_image_url : null) ||
+      normalizedTheme.logoUrl ||
+      store.logo_image_url,
+    brandColor:
+      (typeof storeRecord.theme_color === "string" ? storeRecord.theme_color : null) ||
+      store.brand_color ||
+      normalizedTheme.primaryColor,
     currency: store.currency,
     whatsappNumber: store.whatsapp_number,
-    templateId: store.template_id || defaultStoreTemplateId,
+    templateId: productionTemplate.id || store.template_id || defaultStoreTemplateId,
     publication: normalizedPublication,
     themeSettings: {
       ...normalizedTheme,
-      primaryColor: themeSettings?.brand_color || normalizedTheme.primaryColor
+      primaryColor:
+        (typeof themeSettingsRecord.theme_color === "string" ? themeSettingsRecord.theme_color : null) ||
+        (typeof themeSettingsRecord.brand_color === "string" ? themeSettingsRecord.brand_color : null) ||
+        (typeof storeRecord.theme_color === "string" ? storeRecord.theme_color : null) ||
+        normalizedTheme.primaryColor
     },
     categories:
       categories?.map((category) => ({
