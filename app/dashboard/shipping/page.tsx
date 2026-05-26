@@ -24,9 +24,9 @@ export default async function SellerShippingPage({
     const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
 
-    if (!hasPermission(role, "manage_orders")) {
+    if (!hasPermission(role, "can_manage_shipping")) {
       console.warn("[permission-denied] shipping page denied", {
-        permission: "manage_orders",
+        permission: "can_manage_shipping",
         role,
         userId: user.id,
         workspaceId

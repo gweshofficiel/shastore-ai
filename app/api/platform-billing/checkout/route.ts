@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { createBillingCheckout } from "@/lib/billing/provider";
 import { getBillingPlan } from "@/lib/billing/plans";
-import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
+import { requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(absoluteUrl("/login?next=/dashboard/billing"), 303);
+  const access = await requireProtectedApiAccess({ permission: "can_manage_billing" });
+  if (access.response || !access.context) {
+    return access.response;
   }
 
+  const { user } = access.context;
   const formData = await request.formData();
   const plan = getBillingPlan(String(formData.get("planId") ?? "pro"));
 

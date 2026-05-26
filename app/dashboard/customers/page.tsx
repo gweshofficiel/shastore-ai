@@ -299,9 +299,9 @@ export default async function CustomersPage({
     const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
 
-    if (!hasPermission(role, "can_view_orders")) {
+    if (!hasPermission(role, "can_view_customers")) {
       console.warn("[permission-denied] customers page denied", {
-        permission: "can_view_orders",
+        permission: "can_view_customers",
         role,
         userId: user.id,
         workspaceId

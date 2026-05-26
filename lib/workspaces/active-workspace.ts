@@ -24,7 +24,14 @@ type StaffIdentity = {
 };
 
 function isWorkspaceRole(value: string | null | undefined): value is WorkspaceRole {
-  return value === "owner" || value === "admin" || value === "editor" || value === "support";
+  return (
+    value === "owner" ||
+    value === "admin" ||
+    value === "editor" ||
+    value === "support" ||
+    value === "billing_manager" ||
+    value === "viewer"
+  );
 }
 
 async function getActiveWorkspaceCookie() {

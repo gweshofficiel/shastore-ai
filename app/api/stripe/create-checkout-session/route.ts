@@ -5,8 +5,8 @@ import {
 } from "@/lib/billing/platform-checkout";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
-import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
+import { requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +35,12 @@ async function readPlan(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  const accessContext = await requireProtectedApiAccess({ permission: "can_manage_billing" });
+  if (accessContext.response || !accessContext.context) {
+    return accessContext.response;
   }
 
+  const { supabase, user } = accessContext.context;
   const plan = await readPlan(request);
 
   if (!plan || !isPaidSubscriptionPlan(plan)) {

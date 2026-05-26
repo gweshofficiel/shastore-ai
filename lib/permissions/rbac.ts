@@ -1,15 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
-export type WorkspaceRole = "owner" | "admin" | "editor" | "support";
+export type WorkspaceRole = "owner" | "admin" | "editor" | "support" | "billing_manager" | "viewer";
 
 export type WorkspacePermission =
+  | "can_manage_payments"
+  | "can_manage_shipping"
   | "can_edit_stores"
+  | "can_edit_landings"
   | "can_edit_templates"
   | "can_manage_billing"
   | "can_manage_domains"
   | "can_manage_team"
+  | "can_view_customers"
+  | "can_view_landings"
+  | "can_view_notifications"
   | "can_view_orders"
+  | "can_view_overview"
+  | "can_view_settings"
   | "can_view_stores"
   | "can_view_templates"
   | "manage_billing"
@@ -30,6 +38,9 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_manage_billing",
     "manage_team",
     "can_manage_team",
+    "can_view_overview",
+    "can_view_landings",
+    "can_edit_landings",
     "create_store",
     "edit_store",
     "can_view_stores",
@@ -42,15 +53,23 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_edit_templates",
     "view_orders",
     "can_view_orders",
+    "can_view_customers",
+    "can_manage_payments",
+    "can_manage_shipping",
     "manage_orders",
     "view_analytics",
-    "export_data"
+    "export_data",
+    "can_view_notifications",
+    "can_view_settings"
   ],
   admin: [
     "manage_billing",
     "can_manage_billing",
     "manage_team",
     "can_manage_team",
+    "can_view_overview",
+    "can_view_landings",
+    "can_edit_landings",
     "create_store",
     "edit_store",
     "can_view_stores",
@@ -63,11 +82,19 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_edit_templates",
     "view_orders",
     "can_view_orders",
+    "can_view_customers",
+    "can_manage_payments",
+    "can_manage_shipping",
     "manage_orders",
     "view_analytics",
-    "export_data"
+    "export_data",
+    "can_view_notifications",
+    "can_view_settings"
   ],
   editor: [
+    "can_view_overview",
+    "can_view_landings",
+    "can_edit_landings",
     "can_view_templates",
     "can_edit_templates",
     "create_store",
@@ -79,10 +106,69 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "view_orders",
     "can_view_orders",
     "view_analytics",
-    "export_data"
+    "export_data",
+    "can_view_notifications",
+    "can_view_settings"
   ],
-  support: ["view_orders", "can_view_orders", "view_analytics"]
+  support: [
+    "can_view_overview",
+    "view_orders",
+    "can_view_orders",
+    "can_view_customers",
+    "view_analytics",
+    "can_view_notifications",
+    "can_view_settings"
+  ],
+  billing_manager: [
+    "manage_billing",
+    "can_manage_billing",
+    "can_manage_payments",
+    "can_view_notifications",
+    "can_view_settings"
+  ],
+  viewer: ["can_view_overview", "can_view_notifications", "can_view_settings"]
 };
+
+export const dashboardRoutePermissions = [
+  { href: "/dashboard", label: "Overview", icon: "overview", permission: "can_view_overview" },
+  { href: "/dashboard/landings/new", label: "New landing", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
+  { href: "/dashboard/landings", label: "Landings", icon: "landings", permission: "can_view_landings" },
+  { href: "/dashboard/stores/new", label: "New store", icon: "stores", permission: "can_edit_stores", showInSidebar: false },
+  { href: "/dashboard/stores", label: "Stores", icon: "stores", permission: "can_view_stores" },
+  { href: "/dashboard/products", label: "Products", icon: "products", permission: "can_edit_stores" },
+  { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "can_view_orders" },
+  { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "can_view_customers" },
+  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
+  { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "can_manage_payments" },
+  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "can_manage_shipping" },
+  { href: "/dashboard/templates/studio", label: "Template studio", icon: "templates", permission: "can_edit_templates", showInSidebar: false },
+  { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
+  { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },
+  { href: "/dashboard/team", label: "Team", icon: "team", permission: "can_manage_team" },
+  { href: "/dashboard/billing", label: "Billing", icon: "billing", permission: "can_manage_billing" },
+  { href: "/dashboard/reseller", label: "Reseller", icon: "stores", permission: "can_manage_billing", showInSidebar: false },
+  { href: "/dashboard/projects", label: "Projects", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
+  { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", permission: "can_view_notifications" },
+  { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "can_manage_shipping", showInSidebar: false },
+  { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "can_view_settings" }
+] as const satisfies ReadonlyArray<{
+  href: string;
+  icon: string;
+  label: string;
+  permission: WorkspacePermission;
+  showInSidebar?: boolean;
+}>;
+
+export type DashboardRouteHref = (typeof dashboardRoutePermissions)[number]["href"];
+
+export function getDashboardPermissionForPath(pathname: string): WorkspacePermission {
+  const normalizedPath = pathname.split("?")[0]?.replace(/\/$/, "") || "/dashboard";
+  const match = [...dashboardRoutePermissions]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((route) => normalizedPath === route.href || normalizedPath.startsWith(`${route.href}/`));
+
+  return match?.permission ?? "can_view_overview";
+}
 
 export class PermissionDeniedError extends Error {
   permission: WorkspacePermission;
@@ -111,7 +197,14 @@ export class PermissionDeniedError extends Error {
 }
 
 function isWorkspaceRole(value: string | null | undefined): value is WorkspaceRole {
-  return value === "owner" || value === "admin" || value === "editor" || value === "support";
+  return (
+    value === "owner" ||
+    value === "admin" ||
+    value === "editor" ||
+    value === "support" ||
+    value === "billing_manager" ||
+    value === "viewer"
+  );
 }
 
 export function hasPermission(
@@ -133,7 +226,7 @@ export async function getUserWorkspaceRole(
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("role")
+    .select("role, status")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -147,7 +240,18 @@ export async function getUserWorkspaceRole(
     return null;
   }
 
-  const role = (data as { role?: string | null } | null)?.role ?? null;
+  const membership = data as { role?: string | null; status?: string | null } | null;
+  const status = membership?.status ?? "active";
+  if (status !== "active") {
+    console.warn("[rbac] inactive workspace role blocked", {
+      status,
+      userId,
+      workspaceId
+    });
+    return null;
+  }
+
+  const role = membership?.role ?? null;
   const resolvedRole = isWorkspaceRole(role) ? role : null;
 
   console.info("[rbac] workspace role resolved", {

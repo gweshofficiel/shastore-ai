@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
   const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
   const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
-  const canManageCommerce = hasPermission(role, "manage_orders");
+  const canManageCommerce = hasPermission(role, "can_manage_shipping");
   const account = await getOrCreateAccountProfile("user");
 
   return (

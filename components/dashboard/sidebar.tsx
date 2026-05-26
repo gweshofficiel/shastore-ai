@@ -7,42 +7,7 @@ import {
   getActiveWorkspaceForUser,
   switchActiveWorkspace
 } from "@/lib/workspaces/active-workspace";
-import { hasPermission, type WorkspacePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
-
-const navItems = [
-  { href: "/dashboard", label: "Overview", icon: "overview", ownerAdminOnly: true },
-  { href: "/dashboard/landings", label: "Landings", icon: "landings", permission: "can_edit_stores" },
-  { href: "/dashboard/stores", label: "Stores", icon: "stores", permission: "can_view_stores" },
-  { href: "/dashboard/products", label: "Products", icon: "products", permission: "can_edit_stores" },
-  { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "can_view_orders" },
-  { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "can_view_orders" },
-  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
-  { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "manage_orders" },
-  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "manage_orders" },
-  { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
-  { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },
-  { href: "/dashboard/team", label: "Team", icon: "team", permission: "can_manage_team" },
-  { href: "/dashboard/billing", label: "Billing", icon: "billing", permission: "can_manage_billing" },
-  { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", always: true },
-  { href: "/dashboard/settings", label: "Settings", icon: "settings", always: true }
-] as const;
-
-function canSeeNavItem(
-  item: (typeof navItems)[number],
-  role: WorkspaceRole | null | undefined
-) {
-  if ("always" in item && item.always) {
-    return true;
-  }
-
-  if ("ownerAdminOnly" in item && item.ownerAdminOnly) {
-    return role === "owner" || role === "admin";
-  }
-
-  return "permission" in item
-    ? hasPermission(role, item.permission as WorkspacePermission)
-    : false;
-}
+import { dashboardRoutePermissions, hasPermission } from "@/lib/permissions/rbac";
 
 async function getUnreadNotificationCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -99,11 +64,17 @@ export async function Sidebar() {
           </div>
         </div>
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:max-h-[calc(100vh-17rem)] lg:overflow-y-auto lg:pb-1">
-          {navItems.filter((item) => canSeeNavItem(item, selection?.activeWorkspaceRole)).map((item) => {
+          {dashboardRoutePermissions
+            .filter(
+              (item) =>
+                (!("showInSidebar" in item) || item.showInSidebar !== false) &&
+                hasPermission(selection?.activeWorkspaceRole, item.permission)
+            )
+            .map((item) => {
             return (
               <DashboardNavLink
                 href={item.href}
-                icon={item.icon}
+                icon={item.icon as never}
                 key={item.href}
                 label={item.label}
                 badge={item.href === "/dashboard/notifications" ? unreadNotifications : undefined}
@@ -118,11 +89,22 @@ export async function Sidebar() {
           {selection ? (
             <div className="mt-3 grid gap-3">
               <div className="rounded-2xl bg-white p-3">
-                <p className="text-sm font-black text-ink">
-                  {selection.activeWorkspaceId === user?.id
-                    ? "Your workspace"
-                    : `Assigned workspace ${selection.activeWorkspaceId.slice(0, 8)}`}
-                </p>
+                {selection.isStaffLocked ? (
+                  <>
+                    <p className="text-sm font-black uppercase tracking-[0.14em] text-ink">
+                      {selection.activeWorkspaceRole}
+                    </p>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-muted">
+                      Assigned mission: workspace tasks and support queue.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-black text-ink">
+                    {selection.activeWorkspaceId === user?.id
+                      ? "Your workspace"
+                      : `Assigned workspace ${selection.activeWorkspaceId.slice(0, 8)}`}
+                  </p>
+                )}
                 <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
                   {selection.staffId ?? selection.activeWorkspaceRole}
                 </p>
@@ -132,7 +114,7 @@ export async function Sidebar() {
                   </p>
                 ) : null}
               </div>
-              {selection.workspaces.length > 1 ? (
+              {!selection.isStaffLocked && selection.workspaces.length > 1 ? (
                 <form action={switchActiveWorkspace} className="grid gap-3">
                   <input name="next" type="hidden" value="/dashboard" />
                   <select

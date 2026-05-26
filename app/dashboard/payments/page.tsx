@@ -58,9 +58,9 @@ export default async function PaymentsPage({
     const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
 
-    if (!hasPermission(role, "manage_orders")) {
+    if (!hasPermission(role, "can_manage_payments")) {
       console.warn("[permission-denied] payments page denied", {
-        permission: "manage_orders",
+        permission: "can_manage_payments",
         role,
         userId: user.id,
         workspaceId

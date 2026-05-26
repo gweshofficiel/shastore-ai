@@ -3,8 +3,12 @@ import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/types/database";
 
 export async function updateSession(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-shastore-path", request.nextUrl.pathname);
   let response = NextResponse.next({
-    request
+    request: {
+      headers: requestHeaders
+    }
   });
   const isProtectedRoute =
     request.nextUrl.pathname.startsWith("/dashboard") ||
@@ -37,7 +41,11 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          response = NextResponse.next({ request });
+          response = NextResponse.next({
+            request: {
+              headers: requestHeaders
+            }
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );

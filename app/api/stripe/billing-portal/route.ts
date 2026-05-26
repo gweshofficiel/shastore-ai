@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { isPaidSubscriptionPlan } from "@/lib/billing/platform-checkout";
 import { getPlatformBillingStripe } from "@/lib/stripe";
-import { createClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/utils";
+import { requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 
 export const dynamic = "force-dynamic";
 
@@ -34,15 +34,12 @@ function subscriptionCanUsePortal(subscription: {
 }
 
 export async function POST() {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(absoluteUrl("/login?next=/dashboard/billing"), 303);
+  const accessContext = await requireProtectedApiAccess({ permission: "can_manage_billing" });
+  if (accessContext.response || !accessContext.context) {
+    return accessContext.response;
   }
 
+  const { supabase, user } = accessContext.context;
   console.info("[stripe-portal] portal session requested", { userId: user.id });
 
   const { data, error } = await supabase

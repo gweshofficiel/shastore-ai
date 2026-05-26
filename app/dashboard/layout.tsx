@@ -1,15 +1,23 @@
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { AccessDeniedSection } from "@/components/dashboard/access-denied";
+import { getDashboardPageAccess } from "@/lib/workspaces/data-access";
+import { headers } from "next/headers";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-shastore-path") ?? "/dashboard";
+  const access = await getDashboardPageAccess({ pathname });
+  const content = access.allowed ? children : <AccessDeniedSection />;
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_36%,#f1f5f9_100%)]">
       <Sidebar />
       <main className="min-w-0 px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8 xl:px-10">
-        <div className="mx-auto grid w-full max-w-7xl gap-8">{children}</div>
+        <div className="mx-auto grid w-full max-w-7xl gap-8">{content}</div>
       </main>
     </div>
   );

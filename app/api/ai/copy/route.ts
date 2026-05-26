@@ -7,7 +7,7 @@ import {
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
 import { getOpenAI } from "@/lib/openai";
-import { createClient } from "@/lib/supabase/server";
+import { requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 import type { AiLandingCopy } from "@/types/landing";
 
 const copyRequestSchema = z.object({
@@ -54,15 +54,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const product = copyRequestSchema.parse(body);
-    const supabase = await createClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
+    const accessContext = await requireProtectedApiAccess({
+      permission: "can_edit_landings"
+    });
 
-    if (!user) {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (accessContext.response || !accessContext.context) {
+      return accessContext.response;
     }
 
+    const { supabase, user } = accessContext.context;
     const access = await getUserSubscriptionAccessForClient(supabase, user.id);
 
     try {
