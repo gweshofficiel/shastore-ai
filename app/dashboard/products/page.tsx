@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ProductImageUploadFields } from "@/components/dashboard/product-image-upload-fields";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   archiveStoreOwnerProduct,
   createStoreOwnerProduct,
+  removeStoreOwnerProductImage,
+  uploadStoreOwnerProductImage,
   updateStoreOwnerProduct
 } from "@/lib/product-actions";
 import { createClient } from "@/lib/supabase/server";
@@ -36,10 +39,22 @@ type ProductRow = {
   workspace_id?: string | null;
 };
 
+type ProductImageRow = {
+  id: string;
+  image_role: "gallery" | "main";
+  product_id: string;
+  public_url: string;
+  sort_order: number;
+};
+
+type ProductWithImages = ProductRow & {
+  images: ProductImageRow[];
+};
+
 type ProductsDashboardData = {
   activeStore: UserStoreRow | null;
   error: string | null;
-  products: ProductRow[];
+  products: ProductWithImages[];
   schemaIssue: string | null;
   stores: UserStoreRow[];
 };
@@ -136,10 +151,31 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     };
   }
 
+  const productIds = ((products ?? []) as Array<{ id?: string }>).map((product) => product.id).filter(Boolean) as string[];
+  const { data: productImages } = productIds.length
+    ? await supabase
+        .from("product_images" as never)
+        .select("id, product_id, public_url, image_role, sort_order")
+        .eq("workspace_id" as never, workspaceId as never)
+        .eq("store_id", activeStore.id)
+        .in("product_id" as never, productIds as never)
+        .order("sort_order", { ascending: true })
+    : { data: [] };
+  const imagesByProduct = new Map<string, ProductImageRow[]>();
+
+  for (const image of (productImages ?? []) as unknown as ProductImageRow[]) {
+    const existing = imagesByProduct.get(image.product_id) ?? [];
+    existing.push(image);
+    imagesByProduct.set(image.product_id, existing);
+  }
+
   return {
     activeStore,
     error: null,
-    products: (products ?? []) as unknown as ProductRow[],
+    products: ((products ?? []) as unknown as ProductRow[]).map((product) => ({
+      ...product,
+      images: imagesByProduct.get(product.id) ?? []
+    })),
     schemaIssue: null,
     stores
   };
@@ -181,6 +217,31 @@ function formatCurrency(value: ProductRow["price"]) {
   }).format(Number(moneyValue(value)));
 }
 
+function galleryUrls(product: ProductRow) {
+  if (!Array.isArray(product.gallery)) {
+    return [];
+  }
+
+  return product.gallery
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return typeof record.url === "string"
+          ? record.url
+          : typeof record.publicUrl === "string"
+            ? record.publicUrl
+            : null;
+      }
+
+      return null;
+    })
+    .filter((url): url is string => Boolean(url));
+}
+
 function statusBadgeClass(status: string | null | undefined) {
   if (status === "active") {
     return "bg-emerald-100 text-emerald-700";
@@ -201,6 +262,13 @@ function statusMessage(status: string | undefined) {
     created: "Product created.",
     deleted: "Product archived.",
     "delete-failed": "Product could not be archived. Please try again.",
+    "image-failed": "Product image could not be uploaded. Please try again.",
+    "image-remove-failed": "Product image could not be removed. Please try again.",
+    "image-removed": "Product image removed.",
+    "image-too-large": "Product image is too large. Use an image up to 5MB.",
+    "image-uploaded": "Product image uploaded.",
+    "invalid-image": "Only JPG, JPEG, PNG, and WebP image files are allowed.",
+    "missing-image": "Choose an image before uploading.",
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
     "not-authorized": "You do not have permission to manage that store.",
@@ -295,13 +363,6 @@ function ProductFields({ product }: { product?: ProductRow }) {
           maxLength={3}
           name="currency"
           placeholder="USD"
-        />
-        <Input
-          defaultValue={product?.image_url ?? ""}
-          id={product ? `image-url-${product.id}` : "image-url-new"}
-          label="Image URL"
-          name="imageUrl"
-          placeholder="https://example.com/product.jpg"
         />
       </div>
       <SelectField defaultValue={productStatus(product ?? ({} as ProductRow))} name="status" />
@@ -478,6 +539,9 @@ export default async function SellerProductsPage({
 
             {products.map((product) => {
               const isEditing = query.edit === product.id;
+              const mainImage = product.images.find((image) => image.image_role === "main");
+              const galleryImages = product.images.filter((image) => image.image_role === "gallery");
+              const syncedGalleryUrls = galleryUrls(product);
 
               return (
                 <Card key={product.id} className="grid gap-5 p-5">
@@ -499,7 +563,21 @@ export default async function SellerProductsPage({
                   ) : (
                     <>
                       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-                        <div className="min-w-0">
+                        <div className="grid min-w-0 gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-50">
+                            {product.image_url ? (
+                              <img
+                                alt={productTitle(product)}
+                                className="aspect-square w-full object-cover"
+                                src={product.image_url}
+                              />
+                            ) : (
+                              <div className="flex aspect-square items-center justify-center p-6 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                                No image
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-3">
                             <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
                               {productTitle(product)}
@@ -549,6 +627,7 @@ export default async function SellerProductsPage({
                               </p>
                             </div>
                           </div>
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-3 lg:justify-end">
                           <ButtonLink
@@ -559,6 +638,84 @@ export default async function SellerProductsPage({
                           </ButtonLink>
                         </div>
                       </div>
+
+                      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-2">
+                        <div className="grid gap-3">
+                          <form action={uploadStoreOwnerProductImage} className="grid gap-3">
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="productId" type="hidden" value={product.id} />
+                            <input name="imageRole" type="hidden" value="main" />
+                            <label className="grid gap-2 text-sm font-semibold text-ink">
+                              <span>Main product image</span>
+                              <ProductImageUploadFields inputId={`main-image-${product.id}`} />
+                            </label>
+                            <Button type="submit">Upload / replace main image</Button>
+                          </form>
+                          {mainImage ? (
+                            <form action={removeStoreOwnerProductImage}>
+                              <input name="storeId" type="hidden" value={activeStore.id} />
+                              <input name="productId" type="hidden" value={product.id} />
+                              <input name="imageId" type="hidden" value={mainImage.id} />
+                              <Button type="submit" variant="ghost">
+                                Remove main image
+                              </Button>
+                            </form>
+                          ) : null}
+                        </div>
+
+                        <form action={uploadStoreOwnerProductImage} className="grid gap-3">
+                          <input name="storeId" type="hidden" value={activeStore.id} />
+                          <input name="productId" type="hidden" value={product.id} />
+                          <input name="imageRole" type="hidden" value="gallery" />
+                          <label className="grid gap-2 text-sm font-semibold text-ink">
+                            <span>Gallery image</span>
+                            <ProductImageUploadFields inputId={`gallery-image-${product.id}`} />
+                          </label>
+                          <div>
+                            <Button type="submit" variant="secondary">
+                              Add gallery image
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+
+                      {galleryImages.length || syncedGalleryUrls.length ? (
+                        <div className="grid gap-3">
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                            Product gallery
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            {galleryImages.map((image) => (
+                              <div key={image.id} className="grid gap-2">
+                                <img
+                                  alt={`${productTitle(product)} gallery image`}
+                                  className="h-24 w-24 rounded-2xl border border-slate-200 object-cover"
+                                  src={image.public_url}
+                                />
+                                <form action={removeStoreOwnerProductImage}>
+                                  <input name="storeId" type="hidden" value={activeStore.id} />
+                                  <input name="productId" type="hidden" value={product.id} />
+                                  <input name="imageId" type="hidden" value={image.id} />
+                                  <Button type="submit" variant="ghost">
+                                    Remove
+                                  </Button>
+                                </form>
+                              </div>
+                            ))}
+                            {!galleryImages.length
+                              ? syncedGalleryUrls.map((url) => (
+                                  <img
+                                    key={url}
+                                    alt={`${productTitle(product)} gallery image`}
+                                    className="h-24 w-24 rounded-2xl border border-slate-200 object-cover"
+                                    src={url}
+                                  />
+                                ))
+                              : null}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <details className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
                         <summary className="cursor-pointer text-sm font-black text-amber-700">
                           Archive product

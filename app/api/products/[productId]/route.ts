@@ -25,11 +25,6 @@ function cleanStatus(value: unknown) {
   return value === "active" || value === "archived" ? value : "draft";
 }
 
-function cleanUrl(value: unknown) {
-  const text = cleanText(value, 700);
-  return text.startsWith("http://") || text.startsWith("https://") ? text : null;
-}
-
 function slugify(value: string) {
   return (
     value
@@ -105,8 +100,6 @@ export async function PATCH(
       compare_at_price: cleanOptionalMoney(body?.compareAtPrice),
       currency: cleanCurrency(body?.currency),
       description: cleanText(body?.description, 1000) || null,
-      gallery: Array.isArray(body?.gallery) ? body.gallery : [],
-      image_url: cleanUrl(body?.imageUrl),
       name: title,
       price: cleanMoney(body?.price).toFixed(2),
       slug: `${slugify(title)}-${productId.slice(0, 8)}`,

@@ -16,6 +16,20 @@ type WorkspaceStoreRow = {
 };
 
 const productListPath = "/dashboard/products";
+const imageBucket = "product-images";
+const maxImageSize = 5 * 1024 * 1024;
+const allowedImageExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
+const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+type ProductImageRole = "gallery" | "main";
+
+type ProductImageRecord = {
+  id: string;
+  image_role: ProductImageRole;
+  public_url: string;
+  storage_bucket: string;
+  storage_path: string;
+};
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 1000) {
   if (typeof value !== "string") {
@@ -61,14 +75,30 @@ function cleanCurrency(value: FormDataEntryValue | null) {
   return /^[A-Z]{3}$/.test(currency) ? currency : "USD";
 }
 
-function cleanUrl(value: FormDataEntryValue | null) {
-  const text = cleanText(value, 700);
+function cleanImageRole(value: FormDataEntryValue | null): ProductImageRole {
+  return cleanText(value, 20) === "main" ? "main" : "gallery";
+}
 
-  if (!text) {
-    return null;
+function imageExtension(file: File) {
+  return file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+}
+
+function validateImageFile(file: FormDataEntryValue | null) {
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "missing-image" as const, file: null };
   }
 
-  return text.startsWith("http://") || text.startsWith("https://") ? text : null;
+  const extension = imageExtension(file);
+
+  if (!allowedImageExtensions.has(extension) || !allowedImageTypes.has(file.type)) {
+    return { error: "invalid-image" as const, file: null };
+  }
+
+  if (file.size > maxImageSize) {
+    return { error: "image-too-large" as const, file: null };
+  }
+
+  return { error: null, file };
 }
 
 function slugify(value: string) {
@@ -91,6 +121,46 @@ function productsRedirect(storeId: string, status?: string) {
   }
 
   redirect(`${productListPath}?${params.toString()}`);
+}
+
+async function loadProtectedProduct({
+  productId,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  productId: string;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  const { data } = await supabase
+    .from("store_products" as never)
+    .select("id, image_url, gallery")
+    .eq("id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  return (data ?? null) as {
+    gallery?: unknown;
+    id: string;
+    image_url?: string | null;
+  } | null;
+}
+
+function normalizeGallery(value: unknown) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "object" && item !== null) : [];
+}
+
+async function revalidateProductImagePaths(store: WorkspaceStoreRow, storeId: string, productId: string) {
+  revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+    revalidatePath(`/store/${store.slug}/product/${productId}`);
+  }
 }
 
 async function requireWorkspaceStore(formData: FormData) {
@@ -138,8 +208,6 @@ function productPayload(formData: FormData, productId?: string) {
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
     currency: cleanCurrency(formData.get("currency")),
     description: cleanOptionalText(formData.get("description"), 1000),
-    gallery: [] as unknown[],
-    image_url: cleanUrl(formData.get("imageUrl")),
     name: title,
     price: price.toFixed(2),
     price_label: price.toFixed(2),
@@ -261,3 +329,230 @@ export async function archiveStoreOwnerProduct(formData: FormData) {
 }
 
 export const deleteStoreOwnerProduct = archiveStoreOwnerProduct;
+
+export async function uploadStoreOwnerProductImage(formData: FormData) {
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
+  const productId = cleanText(formData.get("productId"), 80);
+  const role = cleanImageRole(formData.get("imageRole"));
+  const validation = validateImageFile(formData.get("productImage"));
+
+  if (!productId) {
+    productsRedirect(storeId, "image-failed");
+  }
+
+  if (validation.error || !validation.file) {
+    productsRedirect(storeId, validation.error ?? "image-failed");
+  }
+
+  const product = await loadProtectedProduct({ productId, storeId, supabase, workspaceId });
+
+  if (!product) {
+    productsRedirect(storeId, "image-failed");
+  }
+
+  const protectedProduct = product as {
+    gallery?: unknown;
+    id: string;
+    image_url?: string | null;
+  };
+  const file = validation.file as File;
+  const extension = imageExtension(file);
+  const storagePath = `${user.id}/stores/${storeId}/products/${productId}/${role}-${randomUUID()}.${extension}`;
+  const { error: uploadError } = await supabase.storage.from(imageBucket).upload(storagePath, file, {
+    cacheControl: "31536000",
+    contentType: file.type,
+    upsert: false
+  });
+
+  if (uploadError) {
+    console.error("[product-images] upload failed", {
+      code: uploadError.name,
+      message: uploadError.message,
+      productId,
+      storeId
+    });
+    productsRedirect(storeId, "image-failed");
+  }
+
+  const {
+    data: { publicUrl }
+  } = supabase.storage.from(imageBucket).getPublicUrl(storagePath);
+  const sortOrder =
+    role === "main"
+      ? 0
+      : normalizeGallery(protectedProduct.gallery).length + 1;
+
+  if (role === "main") {
+    const { data: existingMain } = await supabase
+      .from("product_images" as never)
+      .select("id, storage_bucket, storage_path")
+      .eq("product_id", productId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, workspaceId as never)
+      .eq("image_role" as never, "main" as never)
+      .maybeSingle();
+
+    if (existingMain) {
+      const existing = existingMain as unknown as ProductImageRecord;
+      await supabase.storage.from(existing.storage_bucket).remove([existing.storage_path]);
+      await supabase
+        .from("product_images" as never)
+        .delete()
+        .eq("id", existing.id)
+        .eq("product_id", productId)
+        .eq("store_id", storeId)
+        .eq("workspace_id" as never, workspaceId as never);
+    }
+  }
+
+  const { data: imageRow, error: imageError } = await supabase
+    .from("product_images" as never)
+    .insert(
+      {
+        content_type: file.type,
+        file_name: file.name.slice(0, 180),
+        file_size: file.size,
+        image_role: role,
+        owner_user_id: user.id,
+        product_id: productId,
+        public_url: publicUrl,
+        sort_order: sortOrder,
+        storage_bucket: imageBucket,
+        storage_path: storagePath,
+        store_id: storeId,
+        workspace_id: workspaceId
+      } as never
+    )
+    .select("id, public_url, image_role, storage_bucket, storage_path")
+    .single();
+
+  if (imageError || !imageRow) {
+    await supabase.storage.from(imageBucket).remove([storagePath]);
+    console.error("[product-images] metadata insert failed", {
+      code: imageError?.code,
+      message: imageError?.message,
+      productId,
+      storeId
+    });
+    productsRedirect(storeId, "image-failed");
+  }
+
+  const normalizedImage = imageRow as unknown as ProductImageRecord;
+
+  if (role === "main") {
+    await supabase
+      .from("store_products" as never)
+      .update({
+        image_url: publicUrl,
+        updated_at: new Date().toISOString()
+      } as never)
+      .eq("id", productId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, workspaceId as never);
+  } else {
+    const gallery = [
+      ...normalizeGallery(protectedProduct.gallery),
+      {
+        id: normalizedImage.id,
+        publicUrl,
+        role: "gallery",
+        storagePath,
+        url: publicUrl
+      }
+    ];
+
+    await supabase
+      .from("store_products" as never)
+      .update({
+        gallery,
+        updated_at: new Date().toISOString()
+      } as never)
+      .eq("id", productId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, workspaceId as never);
+  }
+
+  await revalidateProductImagePaths(store, storeId, productId);
+  productsRedirect(storeId, "image-uploaded");
+}
+
+export async function removeStoreOwnerProductImage(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const productId = cleanText(formData.get("productId"), 80);
+  const imageId = cleanText(formData.get("imageId"), 80);
+
+  if (!productId || !imageId) {
+    productsRedirect(storeId, "image-remove-failed");
+  }
+
+  const product = await loadProtectedProduct({ productId, storeId, supabase, workspaceId });
+
+  if (!product) {
+    productsRedirect(storeId, "image-remove-failed");
+  }
+
+  const protectedProduct = product as {
+    gallery?: unknown;
+    id: string;
+    image_url?: string | null;
+  };
+  const { data: image, error: imageError } = await supabase
+    .from("product_images" as never)
+    .select("id, image_role, public_url, storage_bucket, storage_path")
+    .eq("id", imageId)
+    .eq("product_id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  if (imageError || !image) {
+    productsRedirect(storeId, "image-remove-failed");
+  }
+
+  const imageRecord = image as unknown as ProductImageRecord;
+
+  await supabase.storage.from(imageRecord.storage_bucket).remove([imageRecord.storage_path]);
+  const { error: deleteError } = await supabase
+    .from("product_images" as never)
+    .delete()
+    .eq("id", imageId)
+    .eq("product_id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (deleteError) {
+    productsRedirect(storeId, "image-remove-failed");
+  }
+
+  if (imageRecord.image_role === "main" && protectedProduct.image_url === imageRecord.public_url) {
+    await supabase
+      .from("store_products" as never)
+      .update({
+        image_url: null,
+        updated_at: new Date().toISOString()
+      } as never)
+      .eq("id", productId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, workspaceId as never);
+  }
+
+  if (imageRecord.image_role === "gallery") {
+    const gallery = normalizeGallery(protectedProduct.gallery).filter((item) => {
+      const record = item as Record<string, unknown>;
+      return record.id !== imageRecord.id && record.url !== imageRecord.public_url;
+    });
+
+    await supabase
+      .from("store_products" as never)
+      .update({
+        gallery,
+        updated_at: new Date().toISOString()
+      } as never)
+      .eq("id", productId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, workspaceId as never);
+  }
+
+  await revalidateProductImagePaths(store, storeId, productId);
+  productsRedirect(storeId, "image-removed");
+}

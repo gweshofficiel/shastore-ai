@@ -46,6 +46,27 @@ function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, 
   return `https://wa.me/${number}?text=${text}`;
 }
 
+function productGalleryUrls(gallery: unknown[]) {
+  return gallery
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return typeof record.url === "string"
+          ? record.url
+          : typeof record.publicUrl === "string"
+            ? record.publicUrl
+            : null;
+      }
+
+      return null;
+    })
+    .filter((url): url is string => Boolean(url));
+}
+
 export async function generateMetadata({
   params
 }: ProductDetailPageProps): Promise<Metadata> {
@@ -190,6 +211,7 @@ export default async function PublicProductDetailPage({
   const heroBackground = theme.bannerImageUrl
     ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
+  const galleryUrls = productGalleryUrls(product.gallery);
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
@@ -240,6 +262,18 @@ export default async function PublicProductDetailPage({
                   </span>
                 </div>
               )}
+              {galleryUrls.length ? (
+                <div className="grid grid-cols-3 gap-3 border-t border-slate-100 p-4">
+                  {galleryUrls.slice(0, 6).map((url) => (
+                    <img
+                      alt={`${product.title} gallery image`}
+                      className="aspect-square rounded-2xl object-cover"
+                      key={url}
+                      src={url}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <article className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)] sm:p-8 lg:p-10">
