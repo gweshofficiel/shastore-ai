@@ -12,7 +12,7 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
 
 export async function listStores() {
   const { supabase, user, workspaceId } = await getWorkspaceDataContext({
-    permission: "edit_store",
+    permission: "can_view_stores",
     redirectTo: "/dashboard/stores"
   });
   const result = await fetchStoresForAuthUser(supabase, user.id, workspaceId);
@@ -28,7 +28,7 @@ export async function listStores() {
 
 export async function createStore(formData: FormData) {
   const { supabase, user, workspaceId } = await getWorkspaceDataContext({
-    permission: "create_store",
+    permission: "can_edit_stores",
     redirectTo: "/dashboard/stores"
   });
   const name = cleanText(formData.get("name") ?? formData.get("storeName"), 160);
@@ -60,7 +60,7 @@ export async function createStore(formData: FormData) {
 
 export async function updateStore(formData: FormData) {
   const { supabase, user, workspaceId } = await getWorkspaceDataContext({
-    permission: "edit_store",
+    permission: "can_edit_stores",
     redirectTo: "/dashboard/stores"
   });
   const storeId = cleanText(formData.get("storeId"), 120);
@@ -111,7 +111,7 @@ export async function updateStore(formData: FormData) {
 
 export async function deleteStore(formData: FormData) {
   const { supabase, user, workspaceId } = await getWorkspaceDataContext({
-    permission: "edit_store",
+    permission: "can_edit_stores",
     redirectTo: "/dashboard/stores"
   });
   const storeId = cleanText(formData.get("storeId"), 120);

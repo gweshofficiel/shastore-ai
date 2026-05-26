@@ -29,6 +29,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
 import { isValidHostname } from "@/lib/domains/utils";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
+import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
 
 type DraftCategory = {
   id: string;
@@ -280,11 +281,13 @@ async function getOwnedStoreForCatalogAction(
   userId: string,
   storeId: string
 ) {
+  const selection = await getActiveWorkspaceForUser({ supabase, userId });
+  const workspaceId = selection.activeWorkspaceId;
   let result = await supabase
     .from("stores")
     .select("id, name, slug, user_id, owner_user_id, workspace_id")
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(userId))
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
   if (result.error && isMissingOwnerUserColumn(asSupabaseError(result.error))) {
@@ -292,6 +295,7 @@ async function getOwnedStoreForCatalogAction(
       .from("stores")
       .select("id, name, slug, user_id, workspace_id")
       .eq("id", storeId)
+      .eq("workspace_id" as never, workspaceId as never)
       .eq("user_id", userId)
       .maybeSingle();
   }
@@ -300,7 +304,7 @@ async function getOwnedStoreForCatalogAction(
 
   if (store) {
     try {
-      await requireDashboardPermission(supabase, userId, "manage_products", store.workspace_id);
+      await requireDashboardPermission(supabase, userId, "can_edit_stores", store.workspace_id);
     } catch {
       return { data: null, error: null } as typeof result;
     }
@@ -514,18 +518,25 @@ async function insertStoreDraftRow(
       ...base,
       owner_user_id: userId,
       slug,
-      store_data: input.storeData
+      store_data: input.storeData,
+      workspace_id: workspaceId
     },
     {
       ...base,
       owner_user_id: userId,
-      slug
+      slug,
+      workspace_id: workspaceId
     },
     {
       ...base,
-      owner_user_id: userId
+      owner_user_id: userId,
+      workspace_id: workspaceId
     },
-    base
+    {
+      ...base,
+      owner_user_id: userId,
+      workspace_id: workspaceId
+    }
   ];
 
   let lastError: SupabaseLikeError | null = null;
@@ -2024,9 +2035,17 @@ export async function unpublishStore(formData: FormData) {
     redirectWithStoreError("/dashboard/stores", "Store not found.");
   }
 
-  try {
-    await requireDashboardPermission(supabase, user.id, "publish_store");
-  } catch {
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+  const storeAccess = await assertStoreAccessInWorkspace({
+    permission: "publish_store",
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (!storeAccess.allowed) {
     redirectWithStoreError(detailPath, "You do not have permission to publish stores.");
   }
 
@@ -2034,7 +2053,7 @@ export async function unpublishStore(formData: FormData) {
     .from("published_stores")
     .select("*")
     .eq("store_id", storeId)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
   const publication = rawPublication as StorePublicationRow | null;
 
@@ -2046,7 +2065,7 @@ export async function unpublishStore(formData: FormData) {
     .from("stores")
     .update({ status: "unpublished", updated_at: new Date().toISOString() })
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(user.id));
+    .eq("workspace_id" as never, workspaceId as never);
 
   if (publication) {
     const { error } = await supabase
@@ -2057,7 +2076,7 @@ export async function unpublishStore(formData: FormData) {
         updated_at: new Date().toISOString()
       } as never)
       .eq("id", publication.id)
-      .eq("user_id", user.id);
+      .eq("workspace_id" as never, workspaceId as never);
 
     if (error) {
       redirectWithStoreError(detailPath, formatStoreActionError(error));
@@ -2097,20 +2116,34 @@ export async function publishStoreDraft(formData: FormData) {
     redirectWithStoreError("/dashboard/stores", "Store not found.");
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
   const { data: store, error: storeLookupError } = await supabase
     .from("stores")
     .select("id, name, slug, workspace_id")
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(user.id))
+    .eq("workspace_id" as never, workspaceId as never)
     .single();
 
   if (storeLookupError || !store) {
-    redirectWithStoreError(detailPath, formatStoreActionError(storeLookupError));
+    console.warn("[workspace-security-block] publish store outside active workspace blocked", {
+      message: storeLookupError?.message ?? "Store not found in active workspace",
+      storeId,
+      userId: user.id,
+      workspaceId
+    });
+    redirectWithStoreError(detailPath, "You do not have permission to access this store.");
   }
 
-  try {
-    await requireDashboardPermission(supabase, user.id, "publish_store", store.workspace_id);
-  } catch {
+  const storeAccess = await assertStoreAccessInWorkspace({
+    permission: "publish_store",
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (!storeAccess.allowed) {
     redirectWithStoreError(detailPath, "You do not have permission to publish stores.");
   }
 
@@ -2136,12 +2169,12 @@ export async function publishStoreDraft(formData: FormData) {
         .from("store_categories")
         .select("id")
         .eq("store_id", store.id)
-        .eq("user_id", user.id),
+        .eq("workspace_id" as never, workspaceId as never),
       supabase
         .from("store_products")
         .select("id")
         .eq("store_id", store.id)
-        .eq("user_id", user.id)
+        .eq("workspace_id" as never, workspaceId as never)
     ]);
 
   if (categoriesError) {
@@ -2169,7 +2202,7 @@ export async function publishStoreDraft(formData: FormData) {
     .from("published_stores")
     .select("*")
     .eq("store_id", store.id)
-    .eq("user_id", user.id)
+    .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
   const publication = rawPublication as StorePublicationRow | null;
   const publicationTableMissing = isMissingTable(
@@ -2206,7 +2239,7 @@ export async function publishStoreDraft(formData: FormData) {
       updated_at: publishedAt
     })
     .eq("id", storeId)
-    .or(storeOwnerOrFilter(user.id))
+    .eq("workspace_id" as never, workspaceId as never)
     .select("id, name, slug")
     .single();
 
@@ -2235,7 +2268,7 @@ export async function publishStoreDraft(formData: FormData) {
         updated_at: publishedAt
       } as never)
       .eq("id", publication.id)
-      .eq("user_id", user.id);
+      .eq("workspace_id" as never, workspaceId as never);
 
     if (error) {
       redirectWithStoreError(detailPath, formatStoreActionError(error));
@@ -2244,6 +2277,7 @@ export async function publishStoreDraft(formData: FormData) {
     const { error } = await supabase.from("published_stores").insert({
       store_id: updatedStore.id,
       user_id: user.id,
+      workspace_id: workspaceId,
       slug: publishedSlug,
       url: `/store/${publishedSlug}`,
       status: "published",

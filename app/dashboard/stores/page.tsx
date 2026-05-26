@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AccessDeniedSection } from "@/components/dashboard/access-denied";
 import { StoreSaveToast } from "@/components/dashboard/store-save-toast";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
@@ -293,30 +294,26 @@ export default async function StoresPage({
   } = await supabase.auth.getUser();
   const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
   const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canViewStores = hasPermission(role, "can_view_stores");
   const canCreateStore = hasPermission(role, "create_store");
   const canEditStore = hasPermission(role, "edit_store");
   const canPublishStore = hasPermission(role, "publish_store");
+  const canManageBilling = hasPermission(role, "can_manage_billing");
 
-  if (user && !canCreateStore && !canEditStore && !canPublishStore) {
+  if (user && !canViewStores) {
     console.warn("[permission-denied] stores page denied", {
-      permission: "edit_store",
+      permission: "can_view_stores",
       role,
       userId: user.id,
       workspaceId
     });
 
     return (
-      <div className="grid gap-6 lg:gap-8">
-        <PageHeader
-          description="Manage stores attached to your buyer account. Platform billing stays separate from store payments."
-          title="My Stores"
-        />
-        <Card className="border-amber-200 bg-amber-50 p-5">
-          <p className="text-sm font-bold text-amber-800">
-            You do not have permission to manage stores.
-          </p>
-        </Card>
-      </div>
+      <AccessDeniedSection
+        description="Store access is restricted for your current workspace role."
+        message="You do not have permission to access this store."
+        title="Store access denied"
+      />
     );
   }
 
@@ -460,10 +457,12 @@ export default async function StoresPage({
                       >
                         Public Store
                       </ButtonLink>
-                    ) : isLocked ? (
+                    ) : isLocked && canManageBilling ? (
                       <ButtonLink href="/dashboard/billing" variant="secondary">
                         Upgrade to unlock
                       </ButtonLink>
+                    ) : isLocked ? (
+                      <p className="text-sm font-bold text-muted">Store locked by workspace billing.</p>
                     ) : canPublishStore ? (
                       <form action={publishStoreDraft}>
                         <input name="storeId" type="hidden" value={store.id} />

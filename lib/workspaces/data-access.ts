@@ -321,3 +321,74 @@ export async function assertStoreInWorkspace(
 
   return true;
 }
+
+export async function assertStoreAccessInWorkspace({
+  permission = "can_view_stores",
+  storeId,
+  supabase,
+  userId,
+  workspaceId
+}: {
+  permission?: WorkspacePermission;
+  storeId: string;
+  supabase: SupabaseClient;
+  userId: string;
+  workspaceId: string;
+}) {
+  const { role, status } = await getWorkspaceMembershipAccess(supabase, workspaceId, userId);
+
+  if (status !== "active" || !hasPermission(role, permission)) {
+    console.warn("[workspace-store-access-denied] store permission blocked", {
+      permission,
+      role,
+      status,
+      storeId,
+      userId,
+      workspaceId
+    });
+
+    return {
+      allowed: false,
+      reason: "You do not have permission to access this store.",
+      store: null
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("stores")
+    .select("id, workspace_id, owner_user_id, name, store_name, slug, status, created_at, updated_at")
+    .eq("id", storeId)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.warn("[workspace-security-block] store workspace mismatch blocked", {
+      message: error?.message ?? "Store not found in active workspace",
+      permission,
+      storeId,
+      userId,
+      workspaceId
+    });
+
+    return {
+      allowed: false,
+      reason: "You do not have permission to access this store.",
+      store: null
+    };
+  }
+
+  console.log("[workspace-store-access] store permission granted", {
+    permission,
+    role,
+    status,
+    storeId,
+    userId,
+    workspaceId
+  });
+
+  return {
+    allowed: true,
+    reason: null,
+    store: data
+  };
+}

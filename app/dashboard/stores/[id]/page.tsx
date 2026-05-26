@@ -67,6 +67,7 @@ import {
   restoreBuilderVersion
 } from "@/lib/builder-version-actions";
 import { CopyStoreUrlButton } from "@/components/dashboard/copy-store-url-button";
+import { AccessDeniedSection } from "@/components/dashboard/access-denied";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -130,6 +131,8 @@ import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
+import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
+import { hasPermission } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -420,7 +423,13 @@ export default async function StoreDraftPage({
     );
 
     if (ownedStoreError || !ownedStore) {
-      notFound();
+      return (
+        <AccessDeniedSection
+          description="This store is outside your active workspace or your role cannot open it."
+          message="You do not have permission to access this store."
+          title="Store access denied"
+        />
+      );
     }
 
     const { defaults, snapshot: management } = await loadBuyerStoreManagementSnapshot(
@@ -4203,6 +4212,24 @@ export default async function StoreDraftPage({
     );
   }
 
+  const storeWorkspaceAccess = await assertStoreAccessInWorkspace({
+    permission: "can_view_stores",
+    storeId: id,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (!storeWorkspaceAccess.allowed) {
+    return (
+      <AccessDeniedSection
+        description="This store is outside your active workspace or your role cannot open it."
+        message="You do not have permission to access this store."
+        title="Store access denied"
+      />
+    );
+  }
+
   const [{ data: categories }, { data: products }, { data: themeRow }] = await Promise.all([
     supabase
       .from("store_categories")
@@ -4234,6 +4261,7 @@ export default async function StoreDraftPage({
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
   const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
+  const canManageBilling = hasPermission(selection.activeWorkspaceRole, "can_manage_billing");
   const storeIsLocked =
     storeAccess.state === "locked_by_plan" || storeAccess.state === "suspended";
   const billingRestriction = getExpiryLockdownState(storeAccess.subscription);
@@ -4261,7 +4289,9 @@ export default async function StoreDraftPage({
                 {storeAccess.reason}
               </p>
             </div>
-            <ButtonLink href="/dashboard/billing">Upgrade to unlock</ButtonLink>
+            {canManageBilling ? (
+              <ButtonLink href="/dashboard/billing">Upgrade to unlock</ButtonLink>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -4278,7 +4308,9 @@ export default async function StoreDraftPage({
                   : billingRestriction.reason}
               </p>
             </div>
-            <ButtonLink href="/dashboard/billing">Reactivate subscription</ButtonLink>
+            {canManageBilling ? (
+              <ButtonLink href="/dashboard/billing">Reactivate subscription</ButtonLink>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -4295,7 +4327,7 @@ export default async function StoreDraftPage({
                   : `Custom domain usage: ${storeAccess.subscription.usage.domainsUsed} / ${storeAccess.subscription.usage.domainLimit}.`}
               </p>
             </div>
-            <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink>
+            {canManageBilling ? <ButtonLink href="/dashboard/billing">Upgrade plan</ButtonLink> : null}
           </div>
         </Card>
       ) : null}
