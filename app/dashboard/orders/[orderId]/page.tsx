@@ -30,6 +30,14 @@ type OrderItem = {
   subtotal: number;
 };
 
+type OrderEvent = {
+  created_at: string;
+  event_type: string;
+  message: string;
+  new_value: string | null;
+  previous_value: string | null;
+};
+
 function numericValue(value: number | string | null | undefined) {
   if (typeof value === "number") {
     return value;
@@ -57,6 +65,16 @@ function formatDate(value: string | null) {
 
   return new Intl.DateTimeFormat("en", {
     day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     month: "short",
     year: "numeric"
   }).format(new Date(value));
@@ -110,6 +128,10 @@ function fulfillmentBadgeClass(status: string | null | undefined) {
   }
 
   return "bg-slate-100 text-slate-700";
+}
+
+function eventTypeLabel(type: string) {
+  return type.replaceAll("_", " ");
 }
 
 function statusMessage(value: string | undefined) {
@@ -172,6 +194,32 @@ function parseStoreOrderItems(value: Json): OrderItem[] {
       title: typeof item.title === "string" ? item.title : "Product",
       subtotal: typeof item.total === "number" ? item.total : numericValue(item.total as string | null)
     }));
+}
+
+async function loadOrderEvents({
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("order_events" as never)
+    .select("event_type, previous_value, new_value, message, created_at")
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .order("created_at" as never, { ascending: false } as never);
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as unknown as OrderEvent[];
 }
 
 async function loadOrderDetail(orderId: string, sourceHint?: string) {
@@ -245,6 +293,13 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       } | null;
 
       if (row && storeIds.has(row.store_id)) {
+        const events = await loadOrderEvents({
+          orderId: row.id,
+          source: "store_orders",
+          supabase,
+          workspaceId
+        });
+
         return {
           canManageOrders,
           error: null,
@@ -260,6 +315,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            events,
             fulfillment_status: row.fulfillment_status ?? "unfulfilled",
             id: row.id,
             internal_note: row.internal_note ?? null,
@@ -336,6 +392,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           title: item.product_title ?? "Product",
           subtotal: numericValue(item.subtotal)
         }));
+        const events = await loadOrderEvents({
+          orderId: row.id,
+          source: "orders",
+          supabase,
+          workspaceId
+        });
 
         return {
           canManageOrders,
@@ -352,6 +414,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            events,
             fulfillment_status: row.fulfillment_status ?? "unfulfilled",
             id: row.id,
             internal_note: row.internal_note,
@@ -467,6 +530,43 @@ export default async function OrderDetailPage({
               </p>
             </div>
           ) : null}
+
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Order timeline
+            </p>
+            {order.events?.length ? (
+              <div className="mt-4 grid gap-3">
+                {order.events.map((event, index) => (
+                  <div
+                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                    key={`${event.event_type}-${event.created_at}-${index}`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-black capitalize text-ink">
+                        {eventTypeLabel(event.event_type)}
+                      </p>
+                      <p className="text-xs font-bold text-slate-400">
+                        {formatDateTime(event.created_at)}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                      {event.message}
+                    </p>
+                    {event.previous_value || event.new_value ? (
+                      <p className="mt-2 text-xs font-bold text-slate-500">
+                        {event.previous_value ?? "empty"} → {event.new_value ?? "empty"}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+                No timeline events have been recorded for this order yet.
+              </p>
+            )}
+          </div>
 
           <div className="grid gap-3">
             <h3 className="text-xl font-black tracking-[-0.03em] text-ink">Order items</h3>

@@ -183,6 +183,60 @@ function logOrderDraftFailure(
   });
 }
 
+async function recordOrderEventSafe({
+  actorUserId,
+  eventType,
+  message,
+  metadata,
+  newValue,
+  orderId,
+  orderSource,
+  previousValue,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  actorUserId?: string | null;
+  eventType:
+    | "order_created"
+    | "status_changed"
+    | "fulfillment_changed"
+    | "payment_status_changed"
+    | "seller_note_updated";
+  message: string;
+  metadata?: Record<string, unknown>;
+  newValue?: string | null;
+  orderId: string;
+  orderSource: StoreOrderStatusSource;
+  previousValue?: string | null;
+  storeId: string;
+  supabase: NonNullable<ReturnType<typeof createAdminClient>> | Awaited<ReturnType<typeof createClient>>;
+  workspaceId?: string | null;
+}) {
+  const { error } = await supabase.from("order_events" as never).insert({
+    actor_user_id: actorUserId ?? null,
+    event_type: eventType,
+    message,
+    metadata: (metadata ?? {}) as Json,
+    new_value: newValue ?? null,
+    order_id: orderId,
+    order_source: orderSource,
+    previous_value: previousValue ?? null,
+    store_id: storeId,
+    workspace_id: workspaceId ?? null
+  } as never);
+
+  if (error) {
+    console.warn("[store-orders] order event insert skipped", {
+      code: error.code,
+      eventType,
+      message: error.message,
+      orderId,
+      orderSource
+    });
+  }
+}
+
 async function resolveStoreInstanceId(
   admin: NonNullable<ReturnType<typeof createAdminClient>>,
   store: { id: string; slug: string | null }
@@ -392,6 +446,24 @@ async function persistStorefrontOrderDraft({
     }
 
     if (itemsInserted) {
+      await recordOrderEventSafe({
+        eventType: "order_created",
+        message: `Order draft created from public storefront for ${customerName}.`,
+        metadata: {
+          currency,
+          deliveryFee,
+          deliveryMethod,
+          itemCount: items.length,
+          subtotal,
+          total
+        },
+        newValue: "draft",
+        orderId: orderRow.id,
+        orderSource: "orders",
+        storeId: store.id,
+        supabase: admin,
+        workspaceId
+      });
       return { orderId: orderRow.id, table: "orders" as const };
     }
 
@@ -473,6 +545,25 @@ async function persistStorefrontOrderDraft({
     );
     return null;
   }
+
+  await recordOrderEventSafe({
+    eventType: "order_created",
+    message: `Order draft created from public storefront for ${customerName}.`,
+    metadata: {
+      currency,
+      deliveryFee,
+      deliveryMethod,
+      itemCount: items.length,
+      subtotal,
+      total
+    },
+    newValue: "draft",
+    orderId: storeOrderRow.id,
+    orderSource: "store_orders",
+    storeId: store.id,
+    supabase: admin,
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
 
   return { orderId: storeOrderRow.id, table: "store_orders" as const };
 }
@@ -814,11 +905,19 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const tableName = source === "orders" ? "orders" : "store_orders";
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
-    .select("id, order_status")
+    .select("id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note")
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
-  const currentOrderRow = currentOrder as { id: string; order_status: string | null } | null;
+  const currentOrderRow = currentOrder as {
+    id: string;
+    internal_note?: string | null;
+    order_status: string | null;
+    payment_status?: string | null;
+    store_id?: string | null;
+    store_instance_id?: string | null;
+    workspace_id?: string | null;
+  } | null;
 
   if (currentError) {
     console.error("[store-orders] status lookup failed", {
@@ -920,6 +1019,53 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
+  const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
+
+  if (eventStoreId && currentOrderRow.order_status !== status) {
+    await recordOrderEventSafe({
+      actorUserId: user.id,
+      eventType: "status_changed",
+      message: `Order status changed from ${currentOrderRow.order_status ?? "unknown"} to ${status}.`,
+      newValue: status,
+      orderId,
+      orderSource: source,
+      previousValue: currentOrderRow.order_status,
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
+  }
+
+  if (eventStoreId && currentOrderRow.payment_status && currentOrderRow.payment_status !== "pending") {
+    await recordOrderEventSafe({
+      actorUserId: user.id,
+      eventType: "payment_status_changed",
+      message: `Payment status changed from ${currentOrderRow.payment_status} to pending.`,
+      newValue: "pending",
+      orderId,
+      orderSource: source,
+      previousValue: currentOrderRow.payment_status,
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
+  }
+
+  if (eventStoreId && internalNote && internalNote !== (currentOrderRow.internal_note ?? "")) {
+    await recordOrderEventSafe({
+      actorUserId: user.id,
+      eventType: "seller_note_updated",
+      message: "Internal seller note updated.",
+      newValue: internalNote,
+      orderId,
+      orderSource: source,
+      previousValue: currentOrderRow.internal_note ?? null,
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
+  }
+
   revalidatePath(dashboardOrdersPath);
   revalidatePath(returnTo);
   revalidatePath("/dashboard");
@@ -970,7 +1116,7 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   const tableName = source === "orders" ? "orders" : "store_orders";
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
-    .select("id, delivery_method, fulfillment_status")
+    .select("id, store_id, store_instance_id, workspace_id, delivery_method, fulfillment_status")
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
@@ -978,6 +1124,9 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
     delivery_method: string | null;
     fulfillment_status: string | null;
     id: string;
+    store_id?: string | null;
+    store_instance_id?: string | null;
+    workspace_id?: string | null;
   } | null;
 
   if (currentError) {
@@ -1029,6 +1178,23 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
 
   if (!data) {
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
+
+  if (eventStoreId && currentOrderRow.fulfillment_status !== fulfillmentStatus) {
+    await recordOrderEventSafe({
+      actorUserId: user.id,
+      eventType: "fulfillment_changed",
+      message: `Fulfillment status changed from ${currentOrderRow.fulfillment_status ?? "unfulfilled"} to ${fulfillmentStatus}.`,
+      newValue: fulfillmentStatus,
+      orderId,
+      orderSource: source,
+      previousValue: currentOrderRow.fulfillment_status ?? "unfulfilled",
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
   }
 
   revalidatePath(dashboardOrdersPath);
