@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createPublicStoreOrderDraftAction,
+  type PublicStoreOrderState
+} from "@/lib/store-order-actions";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -41,25 +45,13 @@ type CartUpdatedDetail = {
   storeId: string;
 };
 
-type CheckoutDraft = {
-  customerAddress: string;
-  customerEmail: string;
-  customerName: string;
-  customerNotes: string;
-  customerPhone: string;
-  currency: string;
-  items: Array<{
-    productId: string;
-    quantity: number;
-    title: string;
-    unitPrice: number;
-  }>;
-  storeId: string;
-  subtotal: number;
-  total: number;
-};
-
 const CART_UPDATED_EVENT = "shastore-cart-updated";
+const initialOrderDraftState: PublicStoreOrderState = {
+  error: null,
+  message: null,
+  ok: false,
+  orderId: null
+};
 
 /** Canonical per-store cart key (stable across slug changes). */
 export function cartStorageKey(storeId: string) {
@@ -361,42 +353,11 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
   );
   const { items, persistItems } = useStoreCart(scope);
   const [checkoutStarted, setCheckoutStarted] = useState(false);
-  const [draft, setDraft] = useState<CheckoutDraft | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [draftState, submitDraft, isDraftPending] = useActionState(
+    createPublicStoreOrderDraftAction,
+    initialOrderDraftState
+  );
   const total = useMemo(() => cartTotal(items), [items]);
-
-  function handlePrepareOrderDraft(formData: FormData) {
-    const customerName = String(formData.get("customerName") ?? "").trim();
-    const customerPhone = String(formData.get("customerPhone") ?? "").trim();
-    const customerEmail = String(formData.get("customerEmail") ?? "").trim();
-    const customerAddress = String(formData.get("customerAddress") ?? "").trim();
-    const customerNotes = String(formData.get("customerNotes") ?? "").trim();
-
-    if (!customerName || !customerPhone) {
-      setDraft(null);
-      setFormError("Customer full name and phone are required before checkout can continue.");
-      return;
-    }
-
-    setFormError(null);
-    setDraft({
-      customerAddress,
-      customerEmail,
-      customerName,
-      customerNotes,
-      customerPhone,
-      currency,
-      items: items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        title: item.title,
-        unitPrice: parsePrice(item.price)
-      })),
-      storeId,
-      subtotal: total,
-      total
-    });
-  }
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -411,14 +372,12 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
           : item
       )
     );
-    setDraft(null);
   }
 
   function removeItem(itemId: string) {
     persistItems(
       items.filter((item) => item.id !== itemId && item.productId !== itemId)
     );
-    setDraft(null);
   }
 
   if (!items.length) {
@@ -553,7 +512,6 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
               className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
               onClick={() => {
                 setCheckoutStarted(true);
-                setFormError(null);
               }}
               type="button"
             >
@@ -564,11 +522,17 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
         {checkoutStarted ? (
           <form
             className="mt-5 grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              handlePrepareOrderDraft(new FormData(event.currentTarget));
-            }}
+            action={submitDraft}
           >
+          <input name="slug" type="hidden" value={slug} />
+          <input name="storeId" type="hidden" value={storeId} />
+          <input
+            name="items"
+            type="hidden"
+            value={JSON.stringify(
+              items.map((item) => ({ id: item.productId, quantity: item.quantity }))
+            )}
+          />
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Customer full name *</span>
             <input
@@ -612,21 +576,22 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
               placeholder="Delivery notes, preferred time, or special requests"
             />
           </label>
-          {formError ? (
+          {draftState.error ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
-              {formError}
+              {draftState.error}
             </div>
           ) : null}
-          {draft ? (
+          {draftState.message ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
-              Order draft prepared for {draft.customerName}. Payment and order submission remain disabled.
+              {draftState.message} Payment and order submission remain disabled.
             </div>
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={isDraftPending}
             type="submit"
           >
-            Prepare order draft
+            {isDraftPending ? "Preparing draft..." : "Prepare order draft"}
           </button>
           </form>
         ) : null}
