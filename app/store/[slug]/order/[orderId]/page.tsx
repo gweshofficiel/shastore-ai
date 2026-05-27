@@ -382,8 +382,8 @@ export default async function PublicOrderConfirmationPage({
                 Contact seller on WhatsApp
               </a>
             ) : (
-              <span className="inline-flex h-11 items-center justify-center rounded-full bg-slate-100 px-5 text-sm font-black text-muted">
-                WhatsApp contact unavailable
+              <span className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-100 px-5 py-2 text-sm font-black text-muted">
+                WhatsApp contact is not set for this store yet
               </span>
             )}
             <Link

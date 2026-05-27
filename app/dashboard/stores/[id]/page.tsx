@@ -4556,6 +4556,9 @@ export default async function StoreDraftPage({
             name="whatsappNumber"
             placeholder="+15551234567"
           />
+          <p className="-mt-3 text-xs font-semibold leading-5 text-muted">
+            Used for the public checkout handoff. Include the country code, or leave empty to remove WhatsApp checkout contact.
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               defaultValue={publication?.seo_title ?? ""}

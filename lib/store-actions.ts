@@ -95,6 +95,30 @@ function cleanUrl(value: FormDataEntryValue | null) {
   return text.startsWith("https://") || text.startsWith("http://") ? text : "";
 }
 
+function normalizeWhatsAppContact(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 80);
+
+  if (!text) {
+    return { error: null, value: null };
+  }
+
+  const digits = text.replace(/\D/g, "");
+  const hasInvalidCharacters = /[^0-9+\s().-]/.test(text);
+  const hasInvalidPlus = text.includes("+") && !text.trim().startsWith("+");
+
+  if (hasInvalidCharacters || hasInvalidPlus || digits.length < 7 || digits.length > 20) {
+    return {
+      error: "Enter a valid WhatsApp number with country code, for example +15551234567.",
+      value: null
+    };
+  }
+
+  return {
+    error: null,
+    value: text.trim().startsWith("+") ? `+${digits}` : digits
+  };
+}
+
 function cleanHostname(value: FormDataEntryValue | null) {
   if (!value || typeof value !== "string") {
     return "";
@@ -1778,8 +1802,12 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const subdomain = cleanSubdomain(formData.get("subdomain"));
   const hostname = publicationHostname(customDomain, subdomain);
   const visibility = parseVisibility(formData.get("visibility"));
-  const whatsappNumber = cleanText(formData.get("whatsappNumber"), 80);
+  const whatsappContact = normalizeWhatsAppContact(formData.get("whatsappNumber"));
   const now = new Date().toISOString();
+
+  if (whatsappContact.error) {
+    redirectWithStoreError(detailPath, whatsappContact.error);
+  }
   if (isStorePlanGatingEnabled()) {
     const access = await getUserSubscriptionAccess(user.id);
 
@@ -1864,7 +1892,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
   }
   const { error: storeContactError } = await supabase
     .from("stores")
-    .update({ whatsapp_number: whatsappNumber || null } as never)
+    .update({ whatsapp_number: whatsappContact.value } as never)
     .eq("id", store.id)
     .or(storeOwnerOrFilter(user.id));
 
