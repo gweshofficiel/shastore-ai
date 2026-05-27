@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -30,11 +30,26 @@ type CartPageClientProps = {
   storeId: string;
 };
 
-function cartKey(storeId: string) {
+type CartScope = {
+  currency: string;
+  slug: string;
+  storeId: string;
+};
+
+type CartUpdatedDetail = {
+  slug: string;
+  storeId: string;
+};
+
+const CART_UPDATED_EVENT = "shastore-cart-updated";
+
+/** Canonical per-store cart key (stable across slug changes). */
+export function cartStorageKey(storeId: string) {
   return `shastore_cart_${storeId}`;
 }
 
-function legacyCartKey(slug: string) {
+/** Legacy slug-only key — cleared on every write to prevent stale rehydration. */
+function legacyCartStorageKey(slug: string) {
   return `shastore_cart_${slug}`;
 }
 
@@ -55,7 +70,8 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
         return (
           item &&
           typeof item === "object" &&
-          (typeof item.id === "string" || typeof (item as { productId?: unknown }).productId === "string") &&
+          (typeof item.id === "string" ||
+            typeof (item as { productId?: unknown }).productId === "string") &&
           typeof item.title === "string" &&
           typeof item.quantity === "number" &&
           (!("storeId" in item) || item.storeId === storeId)
@@ -63,11 +79,12 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
       })
       .map((item) => ({
         categoryName: typeof item.categoryName === "string" ? item.categoryName : null,
-        currency: typeof item.currency === "string" && item.currency.trim() ? item.currency : currency,
+        currency:
+          typeof item.currency === "string" && item.currency.trim() ? item.currency : currency,
         id:
           typeof item.id === "string"
             ? item.id
-            : ((item as { productId: string }).productId),
+            : (item as { productId: string }).productId,
         image: (() => {
           const legacyItem = item as unknown as { imageUrl?: unknown };
           return typeof item.image === "string"
@@ -92,24 +109,70 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
   }
 }
 
-function readCart(storeId: string, slug: string, currency: string) {
+function dispatchCartUpdated(scope: CartScope) {
+  window.dispatchEvent(
+    new CustomEvent<CartUpdatedDetail>(CART_UPDATED_EVENT, {
+      detail: { slug: scope.slug, storeId: scope.storeId }
+    })
+  );
+}
+
+/** Read cart for one store only — never fall back to legacy after canonical key exists. */
+export function readStoreCart(scope: CartScope): CartItem[] {
   if (typeof window === "undefined") {
     return [];
   }
 
-  const scopedItems = parseCartItems(window.localStorage.getItem(cartKey(storeId)), storeId, currency);
+  const key = cartStorageKey(scope.storeId);
+  const raw = window.localStorage.getItem(key);
 
-  if (scopedItems.length) {
-    return scopedItems;
+  if (raw !== null) {
+    return parseCartItems(raw, scope.storeId, scope.currency);
   }
 
-  return parseCartItems(window.localStorage.getItem(legacyCartKey(slug)), storeId, currency);
+  const legacyRaw = window.localStorage.getItem(legacyCartStorageKey(scope.slug));
+
+  if (legacyRaw === null) {
+    return [];
+  }
+
+  const migrated = parseCartItems(legacyRaw, scope.storeId, scope.currency);
+  writeStoreCart(scope, migrated);
+  return migrated;
 }
 
-function writeCart(storeId: string, slug: string, items: CartItem[]) {
-  const scopedItems = items.filter((item) => item.storeId === storeId);
-  window.localStorage.setItem(cartKey(storeId), JSON.stringify(scopedItems));
-  window.dispatchEvent(new CustomEvent("shastore-cart-updated", { detail: { slug, storeId } }));
+/** Persist cart; removes storage when empty and always clears legacy slug cart. */
+export function writeStoreCart(scope: CartScope, items: CartItem[]) {
+  const scopedItems = items.filter((item) => item.storeId === scope.storeId);
+  const key = cartStorageKey(scope.storeId);
+
+  if (!scopedItems.length) {
+    window.localStorage.removeItem(key);
+  } else {
+    window.localStorage.setItem(key, JSON.stringify(scopedItems));
+  }
+
+  window.localStorage.removeItem(legacyCartStorageKey(scope.slug));
+  dispatchCartUpdated(scope);
+}
+
+/** Clear cart for one store (state + localStorage + header sync). */
+export function clearStoreCart(scope: CartScope) {
+  writeStoreCart(scope, []);
+}
+
+export function cartItemCount(items: CartItem[]) {
+  return items.reduce((total, item) => total + item.quantity, 0);
+}
+
+function isCartEventForScope(event: Event, storeId: string) {
+  const detail = (event as CustomEvent<CartUpdatedDetail>).detail;
+
+  if (!detail?.storeId) {
+    return true;
+  }
+
+  return detail.storeId === storeId;
 }
 
 function parsePrice(value: number | string | null) {
@@ -169,19 +232,65 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((total, item) => total + parsePrice(item.price) * item.quantity, 0);
 }
 
+function useStoreCart(scope: CartScope) {
+  const [items, setItems] = useState<CartItem[]>([]);
+
+  const syncFromStorage = useCallback(() => {
+    setItems(readStoreCart(scope));
+  }, [scope]);
+
+  useEffect(() => {
+    syncFromStorage();
+
+    function handleCartChange(event: Event) {
+      if (!isCartEventForScope(event, scope.storeId)) {
+        return;
+      }
+
+      syncFromStorage();
+    }
+
+    window.addEventListener(CART_UPDATED_EVENT, handleCartChange);
+    window.addEventListener("storage", handleCartChange);
+
+    return () => {
+      window.removeEventListener(CART_UPDATED_EVENT, handleCartChange);
+      window.removeEventListener("storage", handleCartChange);
+    };
+  }, [scope, syncFromStorage]);
+
+  const persistItems = useCallback(
+    (next: CartItem[]) => {
+      writeStoreCart(scope, next);
+      setItems(readStoreCart(scope));
+    },
+    [scope]
+  );
+
+  return { items, persistItems, syncFromStorage };
+}
+
 export function AddToCartButton({ currency, product, slug, storeId }: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
+  const scope = useMemo(
+    () => ({ currency, slug, storeId }),
+    [currency, slug, storeId]
+  );
 
   function handleAddToCart() {
-    const current = readCart(storeId, slug, currency);
-    const existing = current.find((item) => item.id === product.id);
+    const current = readStoreCart(scope);
+    const existing = current.find(
+      (item) => item.productId === product.id || item.id === product.id
+    );
     const next = existing
       ? current.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.productId === product.id || item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         )
       : [...current, toCartItem(product, storeId, currency)];
 
-    writeCart(storeId, slug, next);
+    writeStoreCart(scope, next);
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
   }
@@ -210,21 +319,12 @@ export function CartNavLink({
   slug: string;
   storeId: string;
 }) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    function updateCount() {
-      setCount(readCart(storeId, slug, currency).reduce((total, item) => total + item.quantity, 0));
-    }
-
-    updateCount();
-    window.addEventListener("storage", updateCount);
-    window.addEventListener("shastore-cart-updated", updateCount);
-    return () => {
-      window.removeEventListener("storage", updateCount);
-      window.removeEventListener("shastore-cart-updated", updateCount);
-    };
-  }, [currency, slug, storeId]);
+  const scope = useMemo(
+    () => ({ currency, slug, storeId }),
+    [currency, slug, storeId]
+  );
+  const { items } = useStoreCart(scope);
+  const count = cartItemCount(items);
 
   return (
     <Link
@@ -236,36 +336,33 @@ export function CartNavLink({
   );
 }
 
-export function CartPageClient({
-  currency,
-  slug,
-  storeId
-}: CartPageClientProps) {
-  const [items, setItems] = useState<CartItem[]>([]);
-
-  useEffect(() => {
-    setItems(readCart(storeId, slug, currency));
-  }, [currency, slug, storeId]);
-
+export function CartPageClient({ currency, slug, storeId }: CartPageClientProps) {
+  const scope = useMemo(
+    () => ({ currency, slug, storeId }),
+    [currency, slug, storeId]
+  );
+  const { items, persistItems } = useStoreCart(scope);
   const total = useMemo(() => cartTotal(items), [items]);
 
-  function updateItems(next: CartItem[]) {
-    const scopedItems = next.filter((item) => item.storeId === storeId);
-    setItems(scopedItems);
-    writeCart(storeId, slug, scopedItems);
-  }
-
   function updateQuantity(itemId: string, quantity: number) {
-    const nextQuantity = Math.max(1, quantity);
-    updateItems(
+    if (quantity < 1) {
+      removeItem(itemId);
+      return;
+    }
+
+    persistItems(
       items.map((item) =>
-        item.id === itemId ? { ...item, quantity: nextQuantity } : item
+        item.id === itemId || item.productId === itemId
+          ? { ...item, quantity: Math.max(1, quantity) }
+          : item
       )
     );
   }
 
   function removeItem(itemId: string) {
-    updateItems(items.filter((item) => item.id !== itemId));
+    persistItems(
+      items.filter((item) => item.id !== itemId && item.productId !== itemId)
+    );
   }
 
   if (!items.length) {
@@ -291,7 +388,7 @@ export function CartPageClient({
         {items.map((item) => (
           <article
             className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 sm:grid-cols-[120px_minmax(0,1fr)]"
-            key={item.id}
+            key={item.productId}
           >
             {item.image ? (
               <img
@@ -324,7 +421,7 @@ export function CartPageClient({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   className="h-10 w-10 rounded-full border border-slate-200 bg-white text-lg font-black text-ink"
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                  onClick={() => updateQuantity(item.productId, item.quantity - 1)}
                   type="button"
                 >
                   -
@@ -334,14 +431,14 @@ export function CartPageClient({
                 </span>
                 <button
                   className="h-10 w-10 rounded-full border border-slate-200 bg-white text-lg font-black text-ink"
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                  onClick={() => updateQuantity(item.productId, item.quantity + 1)}
                   type="button"
                 >
                   +
                 </button>
                 <button
                   className="ml-auto h-10 rounded-full bg-red-50 px-4 text-sm font-black text-red-600"
-                  onClick={() => removeItem(item.id)}
+                  onClick={() => removeItem(item.productId)}
                   type="button"
                 >
                   Remove
