@@ -24,6 +24,8 @@ type StoreOrderItem = {
 };
 
 type StoreOrderRow = {
+  cancelled_at?: string | null;
+  confirmed_at?: string | null;
   created_at: string;
   currency?: string | null;
   customer_address: string | null;
@@ -36,12 +38,15 @@ type StoreOrderRow = {
   payment_method: string;
   payment_status: string;
   source?: "orders" | "store_orders";
+  internal_note?: string | null;
   store_id: string;
   subtotal: number | string;
   total: number | string;
 };
 
 type DraftOrderRow = {
+  cancelled_at: string | null;
+  confirmed_at: string | null;
   created_at: string;
   currency: string | null;
   customer_address: string | null;
@@ -53,6 +58,7 @@ type DraftOrderRow = {
   order_status: string;
   payment_method: string | null;
   payment_status: string | null;
+  internal_note: string | null;
   store_id: string | null;
   store_instance_id: string | null;
   subtotal: number | string;
@@ -274,7 +280,7 @@ async function getStoreModeOrders(status: string) {
   let storeOrdersRequest = supabase
     .from("store_orders")
     .select(
-      "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, created_at"
+      "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
@@ -288,7 +294,7 @@ async function getStoreModeOrders(status: string) {
   let draftOrdersRequest = supabase
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, created_at"
+      "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
@@ -342,12 +348,14 @@ async function getStoreModeOrders(status: string) {
 
   const normalizedStoreOrders = storeOrdersError
     ? []
-    : ((storeOrders ?? []) as StoreOrderRow[]).map((order) => ({
+    : ((storeOrders ?? []) as unknown as StoreOrderRow[]).map((order) => ({
         ...order,
         currency: "USD",
         source: "store_orders" as const
       }));
   const normalizedDraftOrders = draftOrders.map((order) => ({
+    cancelled_at: order.cancelled_at,
+    confirmed_at: order.confirmed_at,
     created_at: order.created_at,
     currency: order.currency ?? "USD",
     customer_address: order.customer_address ?? order.notes,
@@ -355,6 +363,7 @@ async function getStoreModeOrders(status: string) {
     customer_name: order.customer_name,
     customer_phone: order.customer_phone,
     id: order.id,
+    internal_note: order.internal_note,
     items: draftItemsToOrderItems(draftItemsByOrderId.get(order.id) ?? []) as Json,
     order_status: order.order_status,
     payment_method: order.payment_method ?? "manual",
@@ -485,18 +494,34 @@ export default async function OrdersPage({
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${statusBadgeClass(order.order_status)}`}
                       >
-                        order {order.order_status}
+                        Order status: {order.order_status}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        pay via {order.payment_method}
+                        Payment method: {order.payment_method || "manual"}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        payment {order.payment_status}
+                        Payment status: {order.payment_status || "pending"}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                         {formatDate(order.created_at)}
                       </span>
                     </div>
+                    <div className="mt-3 grid gap-2 text-sm text-muted sm:grid-cols-2">
+                      <p>
+                        Confirmed: {order.confirmed_at ? formatDate(order.confirmed_at) : "Not confirmed"}
+                      </p>
+                      <p>
+                        Cancelled: {order.cancelled_at ? formatDate(order.cancelled_at) : "Not cancelled"}
+                      </p>
+                    </div>
+                    {order.internal_note ? (
+                      <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+                          Internal seller note
+                        </p>
+                        <p className="mt-1 leading-6">{order.internal_note}</p>
+                      </div>
+                    ) : null}
                     {items.length ? (
                       <div className="mt-4 grid gap-2">
                         {items.map((item, index) => (
@@ -533,6 +558,7 @@ export default async function OrdersPage({
                       <OrderStatusActions
                         action={updateStoreOrderStatusAction}
                         currentStatus={order.order_status}
+                        internalNote={order.internal_note ?? ""}
                         orderId={order.id}
                         source={order.source}
                       />

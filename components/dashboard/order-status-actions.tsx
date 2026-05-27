@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 type OrderStatusActionsProps = {
   action: (formData: FormData) => void | Promise<void>;
   currentStatus: string;
+  internalNote?: string;
   orderId: string;
   source: "orders" | "store_orders";
 };
@@ -47,6 +48,7 @@ function StatusActionButton({
 export function OrderStatusActions({
   action,
   currentStatus,
+  internalNote,
   orderId,
   source
 }: OrderStatusActionsProps) {
@@ -73,6 +75,15 @@ export function OrderStatusActions({
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
         Status actions
       </p>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Internal seller note optional</span>
+        <textarea
+          className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={internalNote}
+          name="internalNote"
+          placeholder="Private confirmation, cancellation, or customer follow-up note"
+        />
+      </label>
       {optimisticStatus ? (
         <p className="text-xs font-bold text-blue-700">
           Updating status to {displayedStatus}...

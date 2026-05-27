@@ -665,6 +665,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const orderId = cleanText(formData.get("orderId"), 80);
   const status = cleanText(formData.get("status"), 40);
   const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
+  const internalNote = cleanText(formData.get("internalNote"), 1000);
 
   if (!orderId) {
     orderStatusRedirect("missing-order");
@@ -729,10 +730,32 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     orderStatusRedirect("invalid-transition", orderId);
   }
 
-  const updatePayload = {
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, string | null> = {
     order_status: status,
-    updated_at: new Date().toISOString()
+    payment_method: "manual",
+    payment_status: "pending",
+    updated_at: now
   };
+
+  if (internalNote) {
+    updatePayload.internal_note = internalNote;
+  }
+
+  if (status === "confirmed") {
+    updatePayload.confirmed_at = now;
+    updatePayload.cancelled_at = null;
+  }
+
+  if (status === "pending" || status === "draft") {
+    updatePayload.confirmed_at = null;
+    updatePayload.cancelled_at = null;
+  }
+
+  if (status === "cancelled") {
+    updatePayload.cancelled_at = now;
+  }
+
   let { data, error } = await supabase
     .from(tableName as never)
     .update(updatePayload as never)
@@ -742,9 +765,26 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     .maybeSingle();
 
   if (error && source === "store_orders" && status === "cancelled") {
+    const fallbackPayload = { ...updatePayload, order_status: "canceled" };
     const fallback = await supabase
       .from("store_orders" as never)
-      .update({ ...updatePayload, order_status: "canceled" } as never)
+      .update(fallbackPayload as never)
+      .eq("id" as never, orderId as never)
+      .eq("workspace_id" as never, workspaceId as never)
+      .select("id")
+      .maybeSingle();
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error && error.code === "PGRST204") {
+    const minimalPayload = {
+      order_status: status,
+      updated_at: now
+    };
+    const fallback = await supabase
+      .from(tableName as never)
+      .update(minimalPayload as never)
       .eq("id" as never, orderId as never)
       .eq("workspace_id" as never, workspaceId as never)
       .select("id")
