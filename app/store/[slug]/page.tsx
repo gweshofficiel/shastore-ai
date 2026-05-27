@@ -66,6 +66,17 @@ function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, 
   return `https://wa.me/${number}?text=${text}`;
 }
 
+function whatsappStoreHref(whatsappNumber: string | null, storeTitle: string) {
+  const number = whatsappNumber?.replace(/\D/g, "");
+
+  if (!number) {
+    return null;
+  }
+
+  const text = encodeURIComponent(`Hi, I need support from ${storeTitle}.`);
+  return `https://wa.me/${number}?text=${text}`;
+}
+
 function phoneHref(phone: string | null) {
   const number = phone?.replace(/[^\d+]/g, "");
   return number ? `tel:${number}` : null;
@@ -199,6 +210,14 @@ export default async function PublicStorePage({
   });
   const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
   const supportPhoneHref = phoneHref(store.supportPhone);
+  const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
+  const hasContactData = Boolean(
+    store.whatsappNumber ||
+      store.supportEmail ||
+      store.supportPhone ||
+      store.businessAddress ||
+      store.businessHours
+  );
   const productSections = categorySections.length
     ? [
         ...categorySections,
@@ -511,21 +530,45 @@ export default async function PublicStorePage({
             <p className="mt-3 text-sm font-semibold leading-6 text-muted">
               Contact details are managed by the store owner and shown only when configured.
             </p>
+            {contactWhatsappHref ? (
+              <a
+                className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700"
+                href={contactWhatsappHref}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Contact on WhatsApp
+              </a>
+            ) : null}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ContactCard
-              href={store.supportEmail ? `mailto:${store.supportEmail}` : null}
-              label="Support email"
-              value={store.supportEmail}
-            />
-            <ContactCard
-              href={supportPhoneHref}
-              label="Support phone"
-              value={store.supportPhone}
-            />
-            <ContactCard label="Business address" value={store.businessAddress} />
-            <ContactCard label="Business hours" value={store.businessHours} />
-          </div>
+          {hasContactData ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ContactCard
+                href={contactWhatsappHref}
+                label="WhatsApp"
+                value={store.whatsappNumber}
+              />
+              <ContactCard
+                href={store.supportEmail ? `mailto:${store.supportEmail}` : null}
+                label="Support email"
+                value={store.supportEmail}
+              />
+              <ContactCard
+                href={supportPhoneHref}
+                label="Support phone"
+                value={store.supportPhone}
+              />
+              <ContactCard label="Business address" value={store.businessAddress} />
+              <ContactCard label="Business hours" value={store.businessHours} />
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
+              <p className="text-sm font-black text-ink">Contact details are not configured yet.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                The store owner can add WhatsApp, email, phone, address, and hours from the dashboard.
+              </p>
+            </div>
+          )}
         </div>
       </section>
       <footer
