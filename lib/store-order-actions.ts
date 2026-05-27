@@ -183,6 +183,33 @@ function logOrderDraftFailure(
   });
 }
 
+function logSupabaseDiagnostic(
+  stage: string,
+  context: Record<string, unknown>,
+  error?: { code?: string; details?: string; hint?: string; message?: string } | null
+) {
+  const payload = {
+    stage,
+    ...context,
+    supabase: error
+      ? {
+          code: error.code,
+          details: error.details,
+          error,
+          hint: error.hint,
+          message: error.message
+        }
+      : null
+  };
+
+  if (error) {
+    console.error("[store-orders][diagnostic]", payload);
+    return;
+  }
+
+  console.info("[store-orders][diagnostic]", payload);
+}
+
 async function recordOrderEventSafe({
   actorUserId,
   eventType,
@@ -213,6 +240,15 @@ async function recordOrderEventSafe({
   supabase: NonNullable<ReturnType<typeof createAdminClient>> | Awaited<ReturnType<typeof createClient>>;
   workspaceId?: string | null;
 }) {
+  logSupabaseDiagnostic("order_events.insert.before", {
+    eventType,
+    hasActorUserId: Boolean(actorUserId),
+    orderId,
+    orderSource,
+    storeId,
+    workspaceId
+  });
+
   const { error } = await supabase.from("order_events" as never).insert({
     actor_user_id: actorUserId ?? null,
     event_type: eventType,
@@ -227,12 +263,33 @@ async function recordOrderEventSafe({
   } as never);
 
   if (error) {
+    logSupabaseDiagnostic(
+      "order_events.insert.failed",
+      {
+        eventType,
+        orderId,
+        orderSource,
+        storeId,
+        workspaceId
+      },
+      error
+    );
     console.warn("[store-orders] order event insert skipped", {
       code: error.code,
+      details: error.details,
       eventType,
+      hint: error.hint,
       message: error.message,
       orderId,
       orderSource
+    });
+  } else {
+    logSupabaseDiagnostic("order_events.insert.succeeded", {
+      eventType,
+      orderId,
+      orderSource,
+      storeId,
+      workspaceId
     });
   }
 }
@@ -903,6 +960,14 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   }
 
   const tableName = source === "orders" ? "orders" : "store_orders";
+  logSupabaseDiagnostic("order_status.lookup.before", {
+    orderId,
+    select: "id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note",
+    source,
+    status,
+    tableName,
+    workspaceId
+  });
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
     .select("id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note")
@@ -920,8 +985,22 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   } | null;
 
   if (currentError) {
+    logSupabaseDiagnostic(
+      "order_status.lookup.failed",
+      {
+        orderId,
+        select: "id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note",
+        source,
+        status,
+        tableName,
+        workspaceId
+      },
+      currentError
+    );
     console.error("[store-orders] status lookup failed", {
       code: currentError.code,
+      details: currentError.details,
+      hint: currentError.hint,
       message: currentError.message,
       orderId,
       source,
@@ -931,8 +1010,25 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   }
 
   if (!currentOrderRow) {
+    logSupabaseDiagnostic("order_status.lookup.no_row", {
+      orderId,
+      source,
+      status,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
+
+  logSupabaseDiagnostic("order_status.lookup.succeeded", {
+    currentOrderStatus: currentOrderRow.order_status,
+    hasInternalNote: Boolean(currentOrderRow.internal_note),
+    orderId,
+    source,
+    status,
+    tableName,
+    workspaceId: currentOrderRow.workspace_id ?? workspaceId
+  });
 
   if (
     (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") &&
@@ -967,6 +1063,15 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     updatePayload.cancelled_at = now;
   }
 
+  logSupabaseDiagnostic("order_status.update.before", {
+    orderId,
+    source,
+    status,
+    tableName,
+    updateColumns: Object.keys(updatePayload),
+    workspaceId
+  });
+
   let { data, error } = await supabase
     .from(tableName as never)
     .update(updatePayload as never)
@@ -975,8 +1080,40 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     .select("id")
     .maybeSingle();
 
+  if (error) {
+    logSupabaseDiagnostic(
+      "order_status.update.initial_failed",
+      {
+        orderId,
+        source,
+        status,
+        tableName,
+        updateColumns: Object.keys(updatePayload),
+        workspaceId
+      },
+      error
+    );
+  } else {
+    logSupabaseDiagnostic("order_status.update.initial_completed", {
+      hasUpdatedRow: Boolean(data),
+      orderId,
+      source,
+      status,
+      tableName,
+      workspaceId
+    });
+  }
+
   if (error && source === "store_orders" && status === "cancelled") {
     const fallbackPayload = { ...updatePayload, order_status: "canceled" };
+    logSupabaseDiagnostic("order_status.update.cancelled_fallback.before", {
+      orderId,
+      source,
+      status,
+      tableName: "store_orders",
+      updateColumns: Object.keys(fallbackPayload),
+      workspaceId
+    });
     const fallback = await supabase
       .from("store_orders" as never)
       .update(fallbackPayload as never)
@@ -986,6 +1123,29 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       .maybeSingle();
     data = fallback.data;
     error = fallback.error;
+    if (fallback.error) {
+      logSupabaseDiagnostic(
+        "order_status.update.cancelled_fallback.failed",
+        {
+          orderId,
+          source,
+          status,
+          tableName: "store_orders",
+          updateColumns: Object.keys(fallbackPayload),
+          workspaceId
+        },
+        fallback.error
+      );
+    } else {
+      logSupabaseDiagnostic("order_status.update.cancelled_fallback.completed", {
+        hasUpdatedRow: Boolean(fallback.data),
+        orderId,
+        source,
+        status,
+        tableName: "store_orders",
+        workspaceId
+      });
+    }
   }
 
   if (error && error.code === "PGRST204") {
@@ -993,6 +1153,14 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       order_status: status,
       updated_at: now
     };
+    logSupabaseDiagnostic("order_status.update.minimal_fallback.before", {
+      orderId,
+      source,
+      status,
+      tableName,
+      updateColumns: Object.keys(minimalPayload),
+      workspaceId
+    });
     const fallback = await supabase
       .from(tableName as never)
       .update(minimalPayload as never)
@@ -1002,11 +1170,48 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       .maybeSingle();
     data = fallback.data;
     error = fallback.error;
+    if (fallback.error) {
+      logSupabaseDiagnostic(
+        "order_status.update.minimal_fallback.failed",
+        {
+          orderId,
+          source,
+          status,
+          tableName,
+          updateColumns: Object.keys(minimalPayload),
+          workspaceId
+        },
+        fallback.error
+      );
+    } else {
+      logSupabaseDiagnostic("order_status.update.minimal_fallback.completed", {
+        hasUpdatedRow: Boolean(fallback.data),
+        orderId,
+        source,
+        status,
+        tableName,
+        workspaceId
+      });
+    }
   }
 
   if (error) {
+    logSupabaseDiagnostic(
+      "order_status.update.failed",
+      {
+        orderId,
+        source,
+        status,
+        tableName,
+        updateColumns: Object.keys(updatePayload),
+        workspaceId
+      },
+      error
+    );
     console.error("[store-orders] status update failed", {
       code: error.code,
+      details: error.details,
+      hint: error.hint,
       message: error.message,
       orderId,
       source,
@@ -1016,8 +1221,23 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   }
 
   if (!data) {
+    logSupabaseDiagnostic("order_status.update.no_row", {
+      orderId,
+      source,
+      status,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
+
+  logSupabaseDiagnostic("order_status.update.succeeded", {
+    orderId,
+    source,
+    status,
+    tableName,
+    workspaceId
+  });
 
   const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
 
