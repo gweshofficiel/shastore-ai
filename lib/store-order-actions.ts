@@ -22,13 +22,12 @@ type CartSubmitItem = {
 
 const dashboardOrdersPath = "/dashboard/orders";
 const storeOrderStatuses = new Set([
+  "draft",
   "pending",
   "confirmed",
-  "processing",
-  "shipped",
-  "delivered",
-  "canceled"
+  "cancelled"
 ]);
+type StoreOrderStatusSource = "orders" | "store_orders";
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
@@ -85,7 +84,7 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
   }
 }
 
-function orderStatusRedirect(status: string, orderId?: string) {
+function orderStatusRedirect(status: string, orderId?: string): never {
   const params = new URLSearchParams({ orders: status });
 
   if (orderId) {
@@ -665,12 +664,13 @@ export async function createPublicStoreOrderDraftAction(
 export async function updateStoreOrderStatusAction(formData: FormData) {
   const orderId = cleanText(formData.get("orderId"), 80);
   const status = cleanText(formData.get("status"), 40);
+  const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
 
   if (!orderId) {
     orderStatusRedirect("missing-order");
   }
 
-  if (!storeOrderStatuses.has(status)) {
+  if (!storeOrderStatuses.has(status) || (source !== "orders" && source !== "store_orders")) {
     orderStatusRedirect("invalid-status", orderId);
   }
 
@@ -684,8 +684,10 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     redirect(`/login?next=${encodeURIComponent(dashboardOrdersPath)}`);
   }
 
+  let workspaceId: string | null = null;
+
   try {
-    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
     await requirePermission({
       permission: "manage_orders",
       supabase,
@@ -696,22 +698,67 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     orderStatusRedirect("not-authorized", orderId);
   }
 
-  const { data, error } = await supabase
-    .from("store_orders")
-    .update({
-      order_status: status,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", orderId)
-    .eq("workspace_id" as never, (await getUserPrimaryWorkspaceId(supabase, user.id)) as never)
+  const tableName = source === "orders" ? "orders" : "store_orders";
+  const { data: currentOrder, error: currentError } = await supabase
+    .from(tableName as never)
+    .select("id, order_status")
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+  const currentOrderRow = currentOrder as { id: string; order_status: string | null } | null;
+
+  if (currentError) {
+    console.error("[store-orders] status lookup failed", {
+      code: currentError.code,
+      message: currentError.message,
+      orderId,
+      source,
+      status
+    });
+    orderStatusRedirect("status-failed", orderId);
+  }
+
+  if (!currentOrderRow) {
+    orderStatusRedirect("not-authorized", orderId);
+  }
+
+  if (
+    (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") &&
+    status !== "cancelled"
+  ) {
+    orderStatusRedirect("invalid-transition", orderId);
+  }
+
+  const updatePayload = {
+    order_status: status,
+    updated_at: new Date().toISOString()
+  };
+  let { data, error } = await supabase
+    .from(tableName as never)
+    .update(updatePayload as never)
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
     .select("id")
     .maybeSingle();
+
+  if (error && source === "store_orders" && status === "cancelled") {
+    const fallback = await supabase
+      .from("store_orders" as never)
+      .update({ ...updatePayload, order_status: "canceled" } as never)
+      .eq("id" as never, orderId as never)
+      .eq("workspace_id" as never, workspaceId as never)
+      .select("id")
+      .maybeSingle();
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error("[store-orders] status update failed", {
       code: error.code,
       message: error.message,
       orderId,
+      source,
       status
     });
     orderStatusRedirect("status-failed", orderId);

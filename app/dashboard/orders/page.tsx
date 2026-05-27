@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { OrderStatusActions } from "@/components/dashboard/order-status-actions";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { updateStoreOrderStatusAction } from "@/lib/store-order-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
@@ -8,7 +10,7 @@ import type { Json } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-const orderStatuses = ["draft", "pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "canceled"];
+const orderStatuses = ["draft", "pending", "confirmed", "cancelled"];
 const filterStatuses = ["all", ...orderStatuses];
 
 type StoreOrderItem = {
@@ -128,6 +130,10 @@ function statusMessage(value: string | undefined) {
     "invalid-status": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "That order status is not supported."
+    },
+    "invalid-transition": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Cancelled orders cannot be moved back to another status."
     },
     "missing-order": {
       className: "border-red-200 bg-red-50 text-red-700",
@@ -388,6 +394,13 @@ export default async function OrdersPage({
   const activeStatus = filterStatuses.includes(params.status ?? "") ? (params.status ?? "all") : "all";
   const message = statusMessage(params.orders);
   const { error, orders, schemaIssue, stores } = await getStoreModeOrders(activeStatus);
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
+  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
+  const canManageOrders = hasPermission(role, "manage_orders");
   const storesById = new Map(stores.map((store) => [store.id, store]));
 
   return (
@@ -516,6 +529,18 @@ export default async function OrdersPage({
                     <p className="rounded-2xl bg-slate-50 p-3 text-sm font-bold text-muted">
                       Payment, fulfillment, and shipping actions are not enabled yet.
                     </p>
+                    {canManageOrders && order.source ? (
+                      <OrderStatusActions
+                        action={updateStoreOrderStatusAction}
+                        currentStatus={order.order_status}
+                        orderId={order.id}
+                        source={order.source}
+                      />
+                    ) : (
+                      <p className="text-sm font-bold text-muted">
+                        You do not have permission to update order status.
+                      </p>
+                    )}
                   </div>
                 </Card>
                 );
