@@ -41,6 +41,24 @@ type CartUpdatedDetail = {
   storeId: string;
 };
 
+type CheckoutDraft = {
+  customerAddress: string;
+  customerEmail: string;
+  customerName: string;
+  customerNotes: string;
+  customerPhone: string;
+  currency: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    title: string;
+    unitPrice: number;
+  }>;
+  storeId: string;
+  subtotal: number;
+  total: number;
+};
+
 const CART_UPDATED_EVENT = "shastore-cart-updated";
 
 /** Canonical per-store cart key (stable across slug changes). */
@@ -342,7 +360,43 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
     [currency, slug, storeId]
   );
   const { items, persistItems } = useStoreCart(scope);
+  const [checkoutStarted, setCheckoutStarted] = useState(false);
+  const [draft, setDraft] = useState<CheckoutDraft | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const total = useMemo(() => cartTotal(items), [items]);
+
+  function handlePrepareOrderDraft(formData: FormData) {
+    const customerName = String(formData.get("customerName") ?? "").trim();
+    const customerPhone = String(formData.get("customerPhone") ?? "").trim();
+    const customerEmail = String(formData.get("customerEmail") ?? "").trim();
+    const customerAddress = String(formData.get("customerAddress") ?? "").trim();
+    const customerNotes = String(formData.get("customerNotes") ?? "").trim();
+
+    if (!customerName || !customerPhone) {
+      setDraft(null);
+      setFormError("Customer full name and phone are required before checkout can continue.");
+      return;
+    }
+
+    setFormError(null);
+    setDraft({
+      customerAddress,
+      customerEmail,
+      customerName,
+      customerNotes,
+      customerPhone,
+      currency,
+      items: items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        title: item.title,
+        unitPrice: parsePrice(item.price)
+      })),
+      storeId,
+      subtotal: total,
+      total
+    });
+  }
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -357,12 +411,14 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
           : item
       )
     );
+    setDraft(null);
   }
 
   function removeItem(itemId: string) {
     persistItems(
       items.filter((item) => item.id !== itemId && item.productId !== itemId)
     );
+    setDraft(null);
   }
 
   if (!items.length) {
@@ -456,10 +512,32 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
         <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
           Order summary
         </h2>
+        <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5">
+          {items.map((item) => (
+            <div
+              className="flex items-start justify-between gap-3 text-sm"
+              key={`summary-${item.productId}`}
+            >
+              <div>
+                <p className="font-black text-ink">{item.title}</p>
+                <p className="mt-1 font-bold text-muted">
+                  {item.quantity} x {displayPrice(item, item.currency || currency)}
+                </p>
+              </div>
+              <p className="font-black text-ink">
+                {formatMoney(parsePrice(item.price) * item.quantity, item.currency || currency)}
+              </p>
+            </div>
+          ))}
+        </div>
         <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 text-sm font-bold text-muted">
           <div className="flex justify-between">
             <span>Subtotal</span>
             <span>{formatMoney(total, currency)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Currency</span>
+            <span>{currency}</span>
           </div>
           <div className="flex justify-between text-lg font-black text-ink">
             <span>Total</span>
@@ -470,29 +548,49 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
             Checkout is not enabled yet. This cart is ready for the next checkout phase.
           </div>
+          {!checkoutStarted ? (
+            <button
+              className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+              onClick={() => {
+                setCheckoutStarted(true);
+                setFormError(null);
+              }}
+              type="button"
+            >
+              Continue to checkout details
+            </button>
+          ) : null}
+        </div>
+        {checkoutStarted ? (
+          <form
+            className="mt-5 grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handlePrepareOrderDraft(new FormData(event.currentTarget));
+            }}
+          >
           <label className="grid gap-2 text-sm font-semibold text-ink">
-            <span>Customer name</span>
+            <span>Customer full name *</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-              disabled
               name="customerName"
               placeholder="Full name"
+              required
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
-            <span>Phone</span>
+            <span>Phone *</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-              disabled
               name="customerPhone"
               placeholder="+15551234567"
+              required
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Email optional</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-              disabled
               name="customerEmail"
               placeholder="customer@example.com"
               type="email"
@@ -502,19 +600,36 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
             <span>Address optional</span>
             <textarea
               className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-              disabled
               name="customerAddress"
-              placeholder="Delivery address or notes"
+              placeholder="Delivery address"
             />
           </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Notes optional</span>
+            <textarea
+              className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="customerNotes"
+              placeholder="Delivery notes, preferred time, or special requests"
+            />
+          </label>
+          {formError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              {formError}
+            </div>
+          ) : null}
+          {draft ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+              Order draft prepared for {draft.customerName}. Payment and order submission remain disabled.
+            </div>
+          ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled
             type="submit"
           >
-            Submit order · Coming soon
+            Prepare order draft
           </button>
-        </div>
+          </form>
+        ) : null}
         <div className="mt-6 grid gap-3">
           <button
             className="h-12 rounded-full bg-slate-100 px-5 text-sm font-black text-slate-400"
