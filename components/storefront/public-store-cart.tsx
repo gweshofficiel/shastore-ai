@@ -588,10 +588,14 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={isDraftPending}
+            disabled={isDraftPending || draftState.ok}
             type="submit"
           >
-            {isDraftPending ? "Preparing draft..." : "Prepare order draft"}
+            {isDraftPending
+              ? "Preparing draft..."
+              : draftState.ok
+                ? "Draft prepared"
+                : "Prepare order draft"}
           </button>
           </form>
         ) : null}

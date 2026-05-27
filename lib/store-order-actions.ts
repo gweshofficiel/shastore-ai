@@ -95,6 +95,289 @@ function orderStatusRedirect(status: string, orderId?: string) {
   redirect(`${dashboardOrdersPath}?${params.toString()}`);
 }
 
+function generateDraftOrderNumber() {
+  const stamp = Date.now().toString(36).toUpperCase();
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `DR-${stamp}-${suffix}`;
+}
+
+function isActivePublicProduct(status: string | null) {
+  return !status || status === "active";
+}
+
+function logOrderDraftFailure(
+  stage: string,
+  context: Record<string, unknown>,
+  error: { code?: string; details?: string; hint?: string; message?: string } | null
+) {
+  console.error("[store-orders] order draft persistence failed", {
+    stage,
+    ...context,
+    supabase: error
+      ? {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          message: error.message
+        }
+      : null
+  });
+}
+
+async function resolveStoreInstanceId(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  store: { id: string; slug: string | null }
+) {
+  const { data: instanceById, error: instanceByIdError } = await admin
+    .from("store_instances" as never)
+    .select("id")
+    .eq("id", store.id)
+    .maybeSingle();
+  const instanceByIdRow = instanceById as { id: string } | null;
+
+  if (!instanceByIdError && instanceByIdRow?.id) {
+    return instanceByIdRow.id;
+  }
+
+  if (store.slug) {
+    const { data: instanceBySlug, error: instanceBySlugError } = await admin
+      .from("store_instances" as never)
+      .select("id")
+      .eq("internal_slug", store.slug)
+      .maybeSingle();
+    const instanceBySlugRow = instanceBySlug as { id: string } | null;
+
+    if (!instanceBySlugError && instanceBySlugRow?.id) {
+      return instanceBySlugRow.id;
+    }
+  }
+
+  return store.id;
+}
+
+type DraftLineItem = {
+  currency: string;
+  product_id: string;
+  product_image: string | null;
+  product_title: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+};
+
+async function persistStorefrontOrderDraft({
+  admin,
+  store,
+  customerName,
+  customerPhone,
+  customerEmail,
+  customerAddress,
+  customerNotes,
+  items,
+  currency,
+  subtotal,
+  slug
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  store: {
+    currency: string | null;
+    id: string;
+    owner_user_id: string | null;
+    slug: string | null;
+    user_id: string;
+    workspace_id: string | null;
+  };
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  customerAddress: string;
+  customerNotes: string;
+  items: DraftLineItem[];
+  currency: string;
+  subtotal: number;
+  slug: string;
+}) {
+  const workspaceId = store.workspace_id;
+  const storeInstanceId = await resolveStoreInstanceId(admin, store);
+  const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
+  const orderNumber = generateDraftOrderNumber();
+
+  const legacyOrderPayload: Record<string, unknown> = {
+    store_instance_id: storeInstanceId,
+    order_number: orderNumber,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_email: customerEmail || null,
+    notes: combinedNotes,
+    subtotal,
+    total: subtotal,
+    currency,
+    order_status: "draft",
+    payment_status: "pending",
+    fulfillment_status: "pending"
+  };
+
+  const extendedOrderPayload: Record<string, unknown> = {
+    ...legacyOrderPayload,
+    store_id: store.id,
+    user_id: store.user_id,
+    owner_user_id: store.owner_user_id ?? store.user_id,
+    workspace_id: workspaceId,
+    customer_address: customerAddress || null,
+    payment_method: "manual",
+    source: "public_storefront"
+  };
+
+  let orderRow: { id: string } | null = null;
+  let lastOrderError: { code?: string; details?: string; hint?: string; message?: string } | null =
+    null;
+
+  const orderPayloadCandidates = [
+    legacyOrderPayload,
+    extendedOrderPayload,
+    { ...legacyOrderPayload, order_status: "pending" },
+    { ...extendedOrderPayload, order_status: "pending" }
+  ];
+
+  for (const orderPayload of orderPayloadCandidates) {
+    const { data: order, error: orderError } = await admin
+      .from("orders" as never)
+      .insert(orderPayload as never)
+      .select("id")
+      .single();
+
+    if (!orderError && order) {
+      orderRow = order as { id: string };
+      break;
+    }
+
+    lastOrderError = orderError;
+    const message = (orderError?.message ?? "").toLowerCase();
+    const missingColumn =
+      orderError?.code === "PGRST204" ||
+      message.includes("column") ||
+      message.includes("schema cache");
+    const invalidStatus =
+      message.includes("order_status") || message.includes("check constraint");
+
+    if (!missingColumn && !invalidStatus) {
+      break;
+    }
+  }
+
+  if (orderRow) {
+    const legacyItemRows = items.map((item) => ({
+      order_id: orderRow.id,
+      store_instance_id: storeInstanceId,
+      product_title: item.product_title,
+      quantity: item.quantity,
+      unit_price: item.price,
+      total_price: item.subtotal
+    }));
+
+    const extendedItemRows = items.map((item) => ({
+      order_id: orderRow.id,
+      store_id: store.id,
+      workspace_id: workspaceId,
+      product_id: item.product_id,
+      product_title: item.product_title,
+      product_image: item.product_image,
+      quantity: item.quantity,
+      price: item.price,
+      subtotal: item.subtotal,
+      currency: item.currency,
+      unit_price: item.price,
+      total_price: item.subtotal,
+      store_instance_id: storeInstanceId
+    }));
+
+    let itemsInserted = false;
+
+    for (const orderItems of [legacyItemRows, extendedItemRows]) {
+      const { error: itemsError } = await admin
+        .from("order_items" as never)
+        .insert(orderItems as never);
+
+      if (!itemsError) {
+        itemsInserted = true;
+        break;
+      }
+
+      lastOrderError = itemsError;
+      const message = (itemsError.message ?? "").toLowerCase();
+      const missingColumn =
+        itemsError.code === "PGRST204" ||
+        message.includes("column") ||
+        message.includes("schema cache");
+
+      if (!missingColumn) {
+        break;
+      }
+    }
+
+    if (itemsInserted) {
+      return { orderId: orderRow.id, table: "orders" as const };
+    }
+
+    await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
+    logOrderDraftFailure(
+      "order_items_insert",
+      { extendedItemRows, legacyItemRows, orderId: orderRow.id, slug, storeId: store.id },
+      lastOrderError
+    );
+  } else {
+    logOrderDraftFailure(
+      "orders_insert",
+      { extendedOrderPayload, legacyOrderPayload, slug, storeId: store.id },
+      lastOrderError
+    );
+  }
+
+  const legacyItems = items.map((item) => ({
+    categoryName: null,
+    id: item.product_id,
+    imageUrl: item.product_image,
+    price: item.price,
+    priceLabel: null,
+    quantity: item.quantity,
+    title: item.product_title,
+    total: item.subtotal
+  }));
+
+  const { data: storeOrder, error: storeOrderError } = await admin
+    .from("store_orders")
+    .insert({
+      store_id: store.id,
+      user_id: store.user_id,
+      owner_user_id: store.owner_user_id ?? store.user_id,
+      workspace_id: workspaceId ?? store.owner_user_id ?? store.user_id,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_email: customerEmail || null,
+      customer_address: customerAddress || null,
+      items: legacyItems as Json,
+      subtotal,
+      total: subtotal,
+      payment_method: "manual",
+      payment_status: "pending",
+      order_status: "draft"
+    } as never)
+    .select("id")
+    .single();
+  const storeOrderRow = storeOrder as { id: string } | null;
+
+  if (storeOrderError || !storeOrderRow) {
+    logOrderDraftFailure(
+      "store_orders_fallback_insert",
+      { legacyItems, slug, storeId: store.id, subtotal },
+      storeOrderError
+    );
+    return null;
+  }
+
+  return { orderId: storeOrderRow.id, table: "store_orders" as const };
+}
+
 export async function createPublicStoreOrderAction(
   _prev: PublicStoreOrderState | null,
   formData: FormData
@@ -312,7 +595,7 @@ export async function createPublicStoreOrderDraftAction(
     .map((item) => {
       const product = productsById.get(item.id);
 
-      if (!product || product.status !== "active") {
+      if (!product || !isActivePublicProduct(product.status)) {
         return null;
       }
 
@@ -343,72 +626,23 @@ export async function createPublicStoreOrderDraftAction(
 
   const currency = items[0]?.currency || store.currency || preview.store.currency || "USD";
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
-  const { data: order, error: orderError } = await admin
-    .from("orders" as never)
-    .insert({
-      store_id: store.id,
-      store_instance_id: store.id,
-      user_id: store.user_id,
-      owner_user_id: store.owner_user_id ?? store.user_id,
-      workspace_id: store.workspace_id ?? store.owner_user_id ?? store.user_id,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      customer_email: customerEmail || null,
-      customer_address: customerAddress || null,
-      notes: customerNotes || null,
-      subtotal,
-      total: subtotal,
-      currency,
-      order_status: "draft",
-      payment_method: "manual",
-      payment_status: "pending",
-      fulfillment_status: "pending",
-      source: "public_storefront"
-    } as never)
-    .select("id")
-    .single();
-  const orderRow = order as { id: string } | null;
+  const persisted = await persistStorefrontOrderDraft({
+    admin,
+    store,
+    customerName,
+    customerPhone,
+    customerEmail,
+    customerAddress,
+    customerNotes,
+    items,
+    currency,
+    subtotal,
+    slug
+  });
 
-  if (orderError || !orderRow) {
-    console.error("[store-orders] create public draft failed", {
-      code: orderError?.code,
-      message: orderError?.message,
-      slug
-    });
+  if (!persisted) {
     return {
       error: "Order draft could not be prepared. Please try again.",
-      message: null,
-      ok: false,
-      orderId: null
-    };
-  }
-
-  const orderItems = items.map((item) => ({
-    order_id: orderRow.id,
-    store_id: store.id,
-    workspace_id: store.workspace_id ?? store.owner_user_id ?? store.user_id,
-    product_id: item.product_id,
-    product_title: item.product_title,
-    product_image: item.product_image,
-    price: item.price,
-    quantity: item.quantity,
-    subtotal: item.subtotal,
-    currency: item.currency
-  }));
-  const { error: itemsError } = await admin
-    .from("order_items" as never)
-    .insert(orderItems as never);
-
-  if (itemsError) {
-    await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
-    console.error("[store-orders] create public draft items failed", {
-      code: itemsError.code,
-      message: itemsError.message,
-      orderId: orderRow.id,
-      slug
-    });
-    return {
-      error: "Order draft items could not be saved. Please try again.",
       message: null,
       ok: false,
       orderId: null
@@ -418,11 +652,13 @@ export async function createPublicStoreOrderDraftAction(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/orders");
 
+  const reference = persisted.orderId.slice(0, 8).toUpperCase();
+
   return {
     error: null,
-    message: `Order draft prepared. Reference: ${orderRow.id.slice(0, 8).toUpperCase()}.`,
+    message: `Order draft prepared. Reference: ${reference}.`,
     ok: true,
-    orderId: orderRow.id
+    orderId: persisted.orderId
   };
 }
 
