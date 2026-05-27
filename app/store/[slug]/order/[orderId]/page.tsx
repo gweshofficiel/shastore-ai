@@ -308,6 +308,12 @@ export default async function PublicOrderConfirmationPage({
             Keep this reference for follow-up with the store: Order {orderReference(order.id)}.
             Payments are still disabled, so no charge has been made.
           </p>
+          <Link
+            className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+            href={`/store/${slug}/track?reference=${orderReference(order.id)}`}
+          >
+            Track this order
+          </Link>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Order reference" value={orderReference(order.id)} />
