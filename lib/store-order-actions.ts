@@ -659,15 +659,7 @@ export async function createPublicStoreOrderDraftAction(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/orders");
-
-  const reference = persisted.orderId.slice(0, 8).toUpperCase();
-
-  return {
-    error: null,
-    message: `Order draft prepared. Reference: ${reference}.`,
-    ok: true,
-    orderId: persisted.orderId
-  };
+  redirect(`/store/${slug}/order/${persisted.orderId}?source=${persisted.table}`);
 }
 
 export async function updateStoreOrderStatusAction(formData: FormData) {
