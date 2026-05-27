@@ -1778,6 +1778,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const subdomain = cleanSubdomain(formData.get("subdomain"));
   const hostname = publicationHostname(customDomain, subdomain);
   const visibility = parseVisibility(formData.get("visibility"));
+  const whatsappNumber = cleanText(formData.get("whatsappNumber"), 80);
   const now = new Date().toISOString();
   if (isStorePlanGatingEnabled()) {
     const access = await getUserSubscriptionAccess(user.id);
@@ -1861,6 +1862,15 @@ export async function saveStorePublicationSettings(formData: FormData) {
   if (error) {
     redirectWithStoreError(detailPath, formatStoreActionError(error));
   }
+  const { error: storeContactError } = await supabase
+    .from("stores")
+    .update({ whatsapp_number: whatsappNumber || null } as never)
+    .eq("id", store.id)
+    .or(storeOwnerOrFilter(user.id));
+
+  if (storeContactError) {
+    redirectWithStoreError(detailPath, formatStoreActionError(storeContactError));
+  }
   await recordStoreAuditLogSafe({
     action: "store_updated",
     actorUserId: user.id,
@@ -1876,6 +1886,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
   revalidatePath("/dashboard/stores");
   if (publication?.status === "published") {
     revalidatePath(`/store/${slug}`);
+    revalidatePath(`/store/${slug}/track`);
   }
 
   redirect(`/dashboard/stores/${store.id}?publication=saved`);

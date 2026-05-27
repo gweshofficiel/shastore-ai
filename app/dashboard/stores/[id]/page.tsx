@@ -4549,6 +4549,13 @@ export default async function StoreDraftPage({
               placeholder="shop.example.com"
             />
           </div>
+          <Input
+            defaultValue={store.whatsapp_number ?? ""}
+            id="publication-whatsapp-number"
+            label="WhatsApp contact number"
+            name="whatsappNumber"
+            placeholder="+15551234567"
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               defaultValue={publication?.seo_title ?? ""}

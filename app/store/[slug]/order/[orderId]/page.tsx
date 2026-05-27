@@ -28,6 +28,16 @@ type ConfirmationItem = {
   title: string;
 };
 
+function whatsappHref(number: string | null, message: string) {
+  const destination = number?.replace(/\D/g, "");
+
+  if (!destination) {
+    return null;
+  }
+
+  return `https://wa.me/${destination}?text=${encodeURIComponent(message)}`;
+}
+
 function numericValue(value: number | string | null | undefined) {
   if (typeof value === "number") {
     return value;
@@ -50,6 +60,39 @@ function formatMoney(amount: number | string, currency = "USD") {
 
 function orderReference(id: string) {
   return id.slice(0, 8).toUpperCase();
+}
+
+function productsSummary(items: ConfirmationItem[]) {
+  if (!items.length) {
+    return "Products snapshot unavailable";
+  }
+
+  return items.map((item) => `${item.title} x${item.quantity}`).join(", ");
+}
+
+function whatsAppOrderMessage({
+  order,
+  storeTitle
+}: {
+  order: {
+    currency: string;
+    customer_name: string;
+    id: string;
+    items: ConfirmationItem[];
+    total: number | string;
+  };
+  storeTitle: string | null;
+}) {
+  const lines = [
+    `Hi ${storeTitle ?? "there"}, I am following up on my order.`,
+    `Order reference: ${orderReference(order.id)}`,
+    `Customer: ${order.customer_name}`,
+    `Total: ${formatMoney(order.total, order.currency)}`,
+    `Currency: ${order.currency}`,
+    `Products: ${productsSummary(order.items)}`
+  ];
+
+  return lines.join("\n");
 }
 
 function parseStoreOrderItems(value: Json): ConfirmationItem[] {
@@ -105,13 +148,18 @@ async function loadPublicOrderConfirmation({
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
-    return { order: null, reason: "store-not-found" as const, storeTitle: null };
+    return { order: null, reason: "store-not-found" as const, storeTitle: null, whatsappNumber: null };
   }
 
   const admin = createAdminClient();
 
   if (!admin) {
-    return { order: null, reason: "not-configured" as const, storeTitle: preview.store.title };
+    return {
+      order: null,
+      reason: "not-configured" as const,
+      storeTitle: preview.store.title,
+      whatsappNumber: preview.store.whatsappNumber
+    };
   }
 
   const storefrontAccess = await getPublicStorefrontAccess({
@@ -120,7 +168,12 @@ async function loadPublicOrderConfirmation({
   });
 
   if (!storefrontAccess.allowed) {
-    return { order: null, reason: "store-unavailable" as const, storeTitle: preview.store.title };
+    return {
+      order: null,
+      reason: "store-unavailable" as const,
+      storeTitle: preview.store.title,
+      whatsappNumber: preview.store.whatsappNumber
+    };
   }
 
   const storeInstanceIds = await getStoreInstanceIds(preview.store.id, slug);
@@ -182,7 +235,8 @@ async function loadPublicOrderConfirmation({
               total: row.total
             },
             reason: null,
-            storeTitle: preview.store.title
+            storeTitle: preview.store.title,
+            whatsappNumber: preview.store.whatsappNumber
           };
         }
       }
@@ -218,13 +272,19 @@ async function loadPublicOrderConfirmation({
             total: row.total
           },
           reason: null,
-          storeTitle: preview.store.title
+          storeTitle: preview.store.title,
+          whatsappNumber: preview.store.whatsappNumber
         };
       }
     }
   }
 
-  return { order: null, reason: "order-not-found" as const, storeTitle: preview.store.title };
+  return {
+    order: null,
+    reason: "order-not-found" as const,
+    storeTitle: preview.store.title,
+    whatsappNumber: preview.store.whatsappNumber
+  };
 }
 
 export async function generateMetadata({
@@ -245,11 +305,14 @@ export default async function PublicOrderConfirmationPage({
 }: PublicOrderConfirmationPageProps) {
   const { orderId, slug } = await params;
   const { source } = await searchParams;
-  const { order, reason, storeTitle } = await loadPublicOrderConfirmation({
+  const { order, reason, storeTitle, whatsappNumber } = await loadPublicOrderConfirmation({
     orderId,
     slug,
     sourceHint: source
   });
+  const whatsappUrl = order
+    ? whatsappHref(whatsappNumber, whatsAppOrderMessage({ order, storeTitle }))
+    : null;
 
   if (!order) {
     return (
@@ -308,12 +371,28 @@ export default async function PublicOrderConfirmationPage({
             Keep this reference for follow-up with the store: Order {orderReference(order.id)}.
             Payments are still disabled, so no charge has been made.
           </p>
-          <Link
-            className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
-            href={`/store/${slug}/track?reference=${orderReference(order.id)}`}
-          >
-            Track this order
-          </Link>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {whatsappUrl ? (
+              <a
+                className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700"
+                href={whatsappUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Contact seller on WhatsApp
+              </a>
+            ) : (
+              <span className="inline-flex h-11 items-center justify-center rounded-full bg-slate-100 px-5 text-sm font-black text-muted">
+                WhatsApp contact unavailable
+              </span>
+            )}
+            <Link
+              className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+              href={`/store/${slug}/track?reference=${orderReference(order.id)}`}
+            >
+              Track this order
+            </Link>
+          </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Order reference" value={orderReference(order.id)} />
@@ -377,6 +456,10 @@ export default async function PublicOrderConfirmationPage({
             <p className="mt-1 text-sm font-bold text-muted">{order.currency}</p>
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
               Payments are disabled. The seller will confirm this order manually.
+            </div>
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-6 text-muted">
+              WhatsApp handoff sends only the order reference, customer name, total,
+              currency, and product summary.
             </div>
           </aside>
         </section>
