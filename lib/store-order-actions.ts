@@ -84,14 +84,23 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
   }
 }
 
-function orderStatusRedirect(status: string, orderId?: string): never {
+function safeOrderReturnPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return dashboardOrdersPath;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.startsWith("/dashboard/orders") ? trimmed : dashboardOrdersPath;
+}
+
+function orderStatusReturnRedirect(returnTo: string, status: string, orderId?: string): never {
   const params = new URLSearchParams({ orders: status });
 
   if (orderId) {
     params.set("orderId", orderId);
   }
 
-  redirect(`${dashboardOrdersPath}?${params.toString()}`);
+  redirect(`${returnTo}?${params.toString()}`);
 }
 
 function generateDraftOrderNumber() {
@@ -666,13 +675,14 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const status = cleanText(formData.get("status"), 40);
   const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
   const internalNote = cleanText(formData.get("internalNote"), 1000);
+  const returnTo = safeOrderReturnPath(formData.get("returnTo"));
 
   if (!orderId) {
-    orderStatusRedirect("missing-order");
+    orderStatusReturnRedirect(returnTo, "missing-order");
   }
 
   if (!storeOrderStatuses.has(status) || (source !== "orders" && source !== "store_orders")) {
-    orderStatusRedirect("invalid-status", orderId);
+    orderStatusReturnRedirect(returnTo, "invalid-status", orderId);
   }
 
   const supabase = await createClient();
@@ -682,7 +692,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    redirect(`/login?next=${encodeURIComponent(dashboardOrdersPath)}`);
+    redirect(`/login?next=${encodeURIComponent(returnTo)}`);
   }
 
   let workspaceId: string | null = null;
@@ -696,7 +706,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       workspaceId
     });
   } catch {
-    orderStatusRedirect("not-authorized", orderId);
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
   const tableName = source === "orders" ? "orders" : "store_orders";
@@ -716,18 +726,18 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       source,
       status
     });
-    orderStatusRedirect("status-failed", orderId);
+    orderStatusReturnRedirect(returnTo, "status-failed", orderId);
   }
 
   if (!currentOrderRow) {
-    orderStatusRedirect("not-authorized", orderId);
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
   if (
     (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") &&
     status !== "cancelled"
   ) {
-    orderStatusRedirect("invalid-transition", orderId);
+    orderStatusReturnRedirect(returnTo, "invalid-transition", orderId);
   }
 
   const now = new Date().toISOString();
@@ -801,14 +811,15 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       source,
       status
     });
-    orderStatusRedirect("status-failed", orderId);
+    orderStatusReturnRedirect(returnTo, "status-failed", orderId);
   }
 
   if (!data) {
-    orderStatusRedirect("not-authorized", orderId);
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
   revalidatePath(dashboardOrdersPath);
+  revalidatePath(returnTo);
   revalidatePath("/dashboard");
-  orderStatusRedirect("status-updated", orderId);
+  orderStatusReturnRedirect(returnTo, "status-updated", orderId);
 }

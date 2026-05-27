@@ -476,7 +476,13 @@ export default async function OrdersPage({
                   <Card className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_320px]" key={order.id}>
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                      Order {orderReference(order.id)}
+                      <ButtonLink
+                        className="h-auto rounded-none bg-transparent p-0 font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400 shadow-none hover:bg-transparent hover:text-ink"
+                        href={`/dashboard/orders/${order.id}?source=${order.source ?? "store_orders"}`}
+                        variant="ghost"
+                      >
+                        Order {orderReference(order.id)}
+                      </ButtonLink>
                     </p>
                     <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
                       {order.customer_name}
@@ -490,6 +496,13 @@ export default async function OrdersPage({
                       Store: {store?.name ?? order.store_id}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted">{itemSummary(items)}</p>
+                    <ButtonLink
+                      className="mt-4"
+                      href={`/dashboard/orders/${order.id}?source=${order.source ?? "store_orders"}`}
+                      variant="secondary"
+                    >
+                      View order details
+                    </ButtonLink>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${statusBadgeClass(order.order_status)}`}

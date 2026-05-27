@@ -8,6 +8,7 @@ type OrderStatusActionsProps = {
   currentStatus: string;
   internalNote?: string;
   orderId: string;
+  returnTo?: string;
   source: "orders" | "store_orders";
 };
 
@@ -50,6 +51,7 @@ export function OrderStatusActions({
   currentStatus,
   internalNote,
   orderId,
+  returnTo,
   source
 }: OrderStatusActionsProps) {
   const normalizedStatus = currentStatus === "canceled" ? "cancelled" : currentStatus;
@@ -71,6 +73,7 @@ export function OrderStatusActions({
       }}
     >
       <input name="orderId" type="hidden" value={orderId} />
+      {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
       <input name="source" type="hidden" value={source} />
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
         Status actions
