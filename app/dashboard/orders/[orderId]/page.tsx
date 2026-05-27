@@ -260,7 +260,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, out_for_delivery_at, fulfilled_at, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -281,12 +281,17 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         delivery_fee?: number | string | null;
         delivery_method?: string | null;
         fulfillment_status?: string | null;
+        fulfillment_notes?: string | null;
+        fulfilled_at?: string | null;
         id: string;
         internal_note?: string | null;
         items: Json;
         order_status: string;
+        out_for_delivery_at?: string | null;
         payment_method: string | null;
         payment_status: string | null;
+        preparing_at?: string | null;
+        ready_for_pickup_at?: string | null;
         store_id: string;
         subtotal: number | string;
         total: number | string;
@@ -317,13 +322,18 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_method: row.delivery_method ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "unfulfilled",
+            fulfillment_notes: row.fulfillment_notes ?? null,
+            fulfilled_at: row.fulfilled_at ?? null,
             id: row.id,
             internal_note: row.internal_note ?? null,
             items: parseStoreOrderItems(row.items),
             notes: row.customer_address,
             order_status: row.order_status,
+            out_for_delivery_at: row.out_for_delivery_at ?? null,
             payment_method: row.payment_method ?? "manual",
             payment_status: row.payment_status ?? "pending",
+            preparing_at: row.preparing_at ?? null,
+            ready_for_pickup_at: row.ready_for_pickup_at ?? null,
             source: "store_orders" as const,
             store_id: row.store_id,
             subtotal: row.subtotal,
@@ -416,13 +426,18 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_method: row.delivery_method ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "unfulfilled",
+            fulfillment_notes: null,
+            fulfilled_at: null,
             id: row.id,
             internal_note: row.internal_note,
             items,
             notes: row.notes,
             order_status: row.order_status,
+            out_for_delivery_at: null,
             payment_method: row.payment_method ?? "manual",
             payment_status: row.payment_status ?? "pending",
+            preparing_at: null,
+            ready_for_pickup_at: null,
             source: "orders" as const,
             store_id: storeId,
             subtotal: row.subtotal,
@@ -511,6 +526,10 @@ export default async function OrderDetailPage({
             <Info label="Created" value={formatDate(order.created_at)} />
             <Info label="Confirmed" value={formatDate(order.confirmed_at)} />
             <Info label="Cancelled" value={formatDate(order.cancelled_at)} />
+            <Info label="Preparing" value={formatDate(order.preparing_at)} />
+            <Info label="Ready for pickup" value={formatDate(order.ready_for_pickup_at)} />
+            <Info label="Out for delivery" value={formatDate(order.out_for_delivery_at)} />
+            <Info label="Fulfilled" value={formatDate(order.fulfilled_at)} />
           </div>
 
           {order.notes ? (
@@ -527,6 +546,17 @@ export default async function OrderDetailPage({
               </p>
               <p className="mt-2 text-sm font-semibold leading-6 text-amber-900">
                 {order.internal_note}
+              </p>
+            </div>
+          ) : null}
+
+          {order.fulfillment_notes ? (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">
+                Fulfillment notes
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-blue-950">
+                {order.fulfillment_notes}
               </p>
             </div>
           ) : null}
@@ -650,7 +680,9 @@ export default async function OrderDetailPage({
                 action={updateStoreOrderFulfillmentStatusAction}
                 currentStatus={order.fulfillment_status ?? "unfulfilled"}
                 deliveryMethod={order.delivery_method}
+                fulfillmentNotes={order.fulfillment_notes}
                 orderId={order.id}
+                orderStatus={order.order_status}
                 returnTo={returnTo}
                 source={order.source}
               />

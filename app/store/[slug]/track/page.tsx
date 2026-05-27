@@ -78,6 +78,34 @@ function fulfillmentStatusLabel(status: string | null | undefined) {
   return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
 }
 
+function fulfillmentSteps(deliveryMethod: string | null | undefined) {
+  const middle =
+    deliveryMethod === "pickup"
+      ? [{ label: "Ready for pickup", value: "ready_for_pickup" }]
+      : deliveryMethod === "delivery"
+        ? [{ label: "Out for delivery", value: "out_for_delivery" }]
+        : [];
+
+  return [
+    { label: "Order received", value: "unfulfilled" },
+    { label: "Preparing", value: "preparing" },
+    ...middle,
+    { label: "Fulfilled", value: "fulfilled" }
+  ];
+}
+
+function fulfillmentStepIndex(status: string | null | undefined, deliveryMethod: string | null | undefined) {
+  const normalized = status && status !== "pending" ? status : "unfulfilled";
+  const steps = fulfillmentSteps(deliveryMethod);
+  const index = steps.findIndex((step) => step.value === normalized);
+
+  if (index >= 0) {
+    return index;
+  }
+
+  return normalized === "out_for_delivery" || normalized === "ready_for_pickup" ? steps.length - 2 : 0;
+}
+
 function referenceMatches(orderId: string, reference: string) {
   const normalizedReference = normalizeReference(reference);
 
@@ -397,6 +425,33 @@ export default async function PublicOrderTrackingPage({
                       Product snapshots are not available for this order.
                     </p>
                   )}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Fulfillment progress
+                </p>
+                <div className="mt-4 grid gap-3">
+                  {fulfillmentSteps(order.delivery_method).map((step, index) => {
+                    const activeIndex = fulfillmentStepIndex(order.fulfillment_status, order.delivery_method);
+                    const isComplete = index <= activeIndex;
+
+                    return (
+                      <div className="flex items-center gap-3" key={step.value}>
+                        <span
+                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+                            isComplete ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400"
+                          }`}
+                        >
+                          {index + 1}
+                        </span>
+                        <span className={`text-sm font-black ${isComplete ? "text-ink" : "text-slate-400"}`}>
+                          {step.label}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -36,7 +36,20 @@ const fulfillmentStatuses = new Set([
   "out_for_delivery",
   "fulfilled"
 ]);
+type FulfillmentStatus =
+  | "unfulfilled"
+  | "preparing"
+  | "ready_for_pickup"
+  | "out_for_delivery"
+  | "fulfilled";
 type StoreOrderStatusSource = "orders" | "store_orders";
+
+const fulfillmentTimestampColumns: Partial<Record<FulfillmentStatus, string>> = {
+  fulfilled: "fulfilled_at",
+  out_for_delivery: "out_for_delivery_at",
+  preparing: "preparing_at",
+  ready_for_pickup: "ready_for_pickup_at"
+};
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
@@ -1294,7 +1307,8 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
 
 export async function updateStoreOrderFulfillmentStatusAction(formData: FormData) {
   const orderId = cleanText(formData.get("orderId"), 80);
-  const fulfillmentStatus = cleanText(formData.get("fulfillmentStatus"), 60);
+  const fulfillmentStatus = cleanText(formData.get("fulfillmentStatus"), 60) as FulfillmentStatus;
+  const fulfillmentNotes = cleanText(formData.get("fulfillmentNotes"), 1000);
   const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
   const returnTo = safeOrderReturnPath(formData.get("returnTo"));
 
@@ -1334,25 +1348,52 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   }
 
   const tableName = source === "orders" ? "orders" : "store_orders";
+  logSupabaseDiagnostic("order_fulfillment.lookup.before", {
+    fulfillmentStatus,
+    orderId,
+    select: "id, store_id, store_instance_id, workspace_id, order_status, delivery_method, fulfillment_status, fulfillment_notes",
+    source,
+    tableName,
+    workspaceId
+  });
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
-    .select("id, store_id, store_instance_id, workspace_id, delivery_method, fulfillment_status")
+    .select(
+      source === "store_orders"
+        ? "id, store_id, store_instance_id, workspace_id, order_status, delivery_method, fulfillment_status, fulfillment_notes"
+        : "id, store_id, store_instance_id, workspace_id, order_status, delivery_method, fulfillment_status"
+    )
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
   const currentOrderRow = currentOrder as {
     delivery_method: string | null;
+    fulfillment_notes?: string | null;
     fulfillment_status: string | null;
     id: string;
+    order_status?: string | null;
     store_id?: string | null;
     store_instance_id?: string | null;
     workspace_id?: string | null;
   } | null;
 
   if (currentError) {
+    logSupabaseDiagnostic(
+      "order_fulfillment.lookup.failed",
+      {
+        fulfillmentStatus,
+        orderId,
+        source,
+        tableName,
+        workspaceId
+      },
+      currentError
+    );
     console.error("[store-orders] fulfillment lookup failed", {
       code: currentError.code,
+      details: currentError.details,
       fulfillmentStatus,
+      hint: currentError.hint,
       message: currentError.message,
       orderId,
       source
@@ -1361,34 +1402,145 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   }
 
   if (!currentOrderRow) {
+    logSupabaseDiagnostic("order_fulfillment.lookup.no_row", {
+      fulfillmentStatus,
+      orderId,
+      source,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
   const deliveryMethod = currentOrderRow.delivery_method;
+  const currentFulfillmentStatus =
+    currentOrderRow.fulfillment_status && currentOrderRow.fulfillment_status !== "pending"
+      ? currentOrderRow.fulfillment_status
+      : "unfulfilled";
+
+  logSupabaseDiagnostic("order_fulfillment.lookup.succeeded", {
+    currentFulfillmentStatus,
+    deliveryMethod,
+    fulfillmentStatus,
+    hasFulfillmentNotes: Boolean(currentOrderRow.fulfillment_notes),
+    orderId,
+    orderStatus: currentOrderRow.order_status,
+    source,
+    tableName,
+    workspaceId: currentOrderRow.workspace_id ?? workspaceId
+  });
+
+  if (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_cancelled", {
+      fulfillmentStatus,
+      orderId,
+      orderStatus: currentOrderRow.order_status,
+      source,
+      tableName,
+      workspaceId
+    });
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  if (currentFulfillmentStatus === "fulfilled") {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_locked_fulfilled", {
+      fulfillmentStatus,
+      orderId,
+      source,
+      tableName,
+      workspaceId
+    });
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  if (currentOrderRow.order_status === "draft" && fulfillmentStatus === "fulfilled") {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_draft_fulfilled", {
+      fulfillmentStatus,
+      orderId,
+      orderStatus: currentOrderRow.order_status,
+      source,
+      tableName,
+      workspaceId
+    });
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
 
   if (fulfillmentStatus === "ready_for_pickup" && deliveryMethod !== "pickup") {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_pickup_method", {
+      deliveryMethod,
+      fulfillmentStatus,
+      orderId,
+      source,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
   }
 
   if (fulfillmentStatus === "out_for_delivery" && deliveryMethod !== "delivery") {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_delivery_method", {
+      deliveryMethod,
+      fulfillmentStatus,
+      orderId,
+      source,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
   }
 
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, string | null> = {
+    fulfillment_status: fulfillmentStatus,
+    updated_at: now
+  };
+  const timestampColumn = fulfillmentTimestampColumns[fulfillmentStatus];
+
+  if (source === "store_orders") {
+    if (timestampColumn) {
+      updatePayload[timestampColumn] = now;
+    }
+
+    if (fulfillmentNotes) {
+      updatePayload.fulfillment_notes = fulfillmentNotes;
+    }
+  }
+
+  logSupabaseDiagnostic("order_fulfillment.update.before", {
+    fulfillmentStatus,
+    orderId,
+    source,
+    tableName,
+    updateColumns: Object.keys(updatePayload),
+    workspaceId
+  });
+
   const { data, error } = await supabase
     .from(tableName as never)
-    .update({
-      fulfillment_status: fulfillmentStatus,
-      updated_at: new Date().toISOString()
-    } as never)
+    .update(updatePayload as never)
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .select("id")
     .maybeSingle();
 
   if (error) {
+    logSupabaseDiagnostic(
+      "order_fulfillment.update.failed",
+      {
+        fulfillmentStatus,
+        orderId,
+        source,
+        tableName,
+        updateColumns: Object.keys(updatePayload),
+        workspaceId
+      },
+      error
+    );
     console.error("[store-orders] fulfillment update failed", {
       code: error.code,
+      details: error.details,
       fulfillmentStatus,
+      hint: error.hint,
       message: error.message,
       orderId,
       source
@@ -1397,20 +1549,39 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   }
 
   if (!data) {
+    logSupabaseDiagnostic("order_fulfillment.update.no_row", {
+      fulfillmentStatus,
+      orderId,
+      source,
+      tableName,
+      workspaceId
+    });
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
+  logSupabaseDiagnostic("order_fulfillment.update.succeeded", {
+    fulfillmentStatus,
+    orderId,
+    source,
+    tableName,
+    workspaceId
+  });
+
   const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
 
-  if (eventStoreId && currentOrderRow.fulfillment_status !== fulfillmentStatus) {
+  if (eventStoreId && currentFulfillmentStatus !== fulfillmentStatus) {
     await recordOrderEventSafe({
       actorUserId: user.id,
       eventType: "fulfillment_changed",
-      message: `Fulfillment status changed from ${currentOrderRow.fulfillment_status ?? "unfulfilled"} to ${fulfillmentStatus}.`,
+      message: `Fulfillment status changed from ${currentFulfillmentStatus} to ${fulfillmentStatus}.`,
+      metadata: {
+        hasFulfillmentNotes: Boolean(fulfillmentNotes),
+        timestampColumn: timestampColumn ?? null
+      },
       newValue: fulfillmentStatus,
       orderId,
       orderSource: source,
-      previousValue: currentOrderRow.fulfillment_status ?? "unfulfilled",
+      previousValue: currentFulfillmentStatus,
       storeId: eventStoreId,
       supabase,
       workspaceId
@@ -1421,4 +1592,25 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   revalidatePath(returnTo);
   revalidatePath("/dashboard");
   orderStatusReturnRedirect(returnTo, "fulfillment-updated", orderId);
+}
+
+function withFulfillmentStatus(formData: FormData, fulfillmentStatus: FulfillmentStatus) {
+  formData.set("fulfillmentStatus", fulfillmentStatus);
+  return formData;
+}
+
+export async function markPreparing(formData: FormData) {
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "preparing"));
+}
+
+export async function markReadyForPickup(formData: FormData) {
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "ready_for_pickup"));
+}
+
+export async function markOutForDelivery(formData: FormData) {
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "out_for_delivery"));
+}
+
+export async function markFulfilled(formData: FormData) {
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "fulfilled"));
 }

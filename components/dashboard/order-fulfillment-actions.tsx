@@ -10,7 +10,9 @@ type OrderFulfillmentActionsProps = {
   action: FulfillmentAction;
   currentStatus: string;
   deliveryMethod?: string | null;
+  fulfillmentNotes?: string | null;
   orderId: string;
+  orderStatus: string;
   returnTo?: string;
   source: OrderSource;
 };
@@ -23,7 +25,25 @@ const statuses = [
   { label: "Fulfilled", value: "fulfilled" }
 ];
 
-function isStatusAllowed(status: string, deliveryMethod?: string | null) {
+function isStatusAllowed({
+  currentStatus,
+  deliveryMethod,
+  orderStatus,
+  status
+}: {
+  currentStatus: string;
+  deliveryMethod?: string | null;
+  orderStatus: string;
+  status: string;
+}) {
+  if (orderStatus === "cancelled" || orderStatus === "canceled" || currentStatus === "fulfilled") {
+    return false;
+  }
+
+  if (orderStatus === "draft" && status === "fulfilled") {
+    return false;
+  }
+
   if (status === "ready_for_pickup") {
     return deliveryMethod === "pickup";
   }
@@ -39,15 +59,20 @@ function FulfillmentButton({
   currentStatus,
   deliveryMethod,
   label,
+  orderStatus,
   value
 }: {
   currentStatus: string;
   deliveryMethod?: string | null;
   label: string;
+  orderStatus: string;
   value: string;
 }) {
   const { pending } = useFormStatus();
-  const disabled = pending || currentStatus === value || !isStatusAllowed(value, deliveryMethod);
+  const disabled =
+    pending ||
+    currentStatus === value ||
+    !isStatusAllowed({ currentStatus, deliveryMethod, orderStatus, status: value });
 
   return (
     <button
@@ -66,7 +91,9 @@ export function OrderFulfillmentActions({
   action,
   currentStatus,
   deliveryMethod,
+  fulfillmentNotes,
   orderId,
+  orderStatus,
   returnTo,
   source
 }: OrderFulfillmentActionsProps) {
@@ -97,6 +124,15 @@ export function OrderFulfillmentActions({
       <p className="text-sm font-bold text-muted">
         Current fulfillment: {displayedStatus.replaceAll("_", " ")}
       </p>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Fulfillment notes optional</span>
+        <textarea
+          className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={fulfillmentNotes ?? ""}
+          name="fulfillmentNotes"
+          placeholder="Private packing, pickup, or delivery notes"
+        />
+      </label>
       {optimisticStatus ? (
         <p className="text-xs font-bold text-blue-700">
           Updating fulfillment to {displayedStatus.replaceAll("_", " ")}...
@@ -109,12 +145,14 @@ export function OrderFulfillmentActions({
             deliveryMethod={deliveryMethod}
             key={status.value}
             label={status.label}
+            orderStatus={orderStatus}
             value={status.value}
           />
         ))}
       </div>
       <p className="text-xs font-semibold leading-5 text-muted">
-        Pickup orders can be marked ready for pickup. Delivery orders can be marked out for delivery.
+        Cancelled and fulfilled orders are locked. Pickup orders can be marked ready for pickup.
+        Delivery orders can be marked out for delivery.
       </p>
     </form>
   );

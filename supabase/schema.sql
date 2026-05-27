@@ -196,6 +196,11 @@ create table store_orders (
   fulfillment_status text not null default 'unfulfilled',
   delivery_method text,
   delivery_fee numeric(12, 2) not null default 0,
+  preparing_at timestamptz,
+  ready_for_pickup_at timestamptz,
+  out_for_delivery_at timestamptz,
+  fulfilled_at timestamptz,
+  fulfillment_notes text,
   confirmed_at timestamptz,
   cancelled_at timestamptz,
   internal_note text,
@@ -399,6 +404,8 @@ create index store_orders_store_created_idx on store_orders(store_id, created_at
 create index store_orders_workspace_id_idx on store_orders(workspace_id);
 create index store_orders_store_instance_id_idx on store_orders(store_instance_id);
 create index store_orders_workspace_created_idx on store_orders(workspace_id, created_at desc);
+create index store_orders_fulfillment_status_idx on store_orders(workspace_id, fulfillment_status, created_at desc);
+create index store_orders_fulfilled_at_idx on store_orders(workspace_id, fulfilled_at desc);
 create index landings_user_id_idx on landings(user_id);
 create index generations_user_id_idx on generations(user_id);
 create index domains_user_id_idx on domains(user_id);
