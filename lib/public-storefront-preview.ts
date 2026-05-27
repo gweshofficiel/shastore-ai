@@ -49,10 +49,13 @@ export type PublicStorefrontPreview = {
     businessHours: string | null;
     description: string | null;
     id: string;
+    privacyPolicy: string | null;
+    refundPolicy: string | null;
     slug: string;
     status: string;
     supportEmail: string | null;
     supportPhone: string | null;
+    termsOfService: string | null;
     title: string;
     visibility: string;
     currency: string;
@@ -182,10 +185,13 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       businessHours: textValue(store.businessHours) || null,
       description: textValue(store.description) || null,
       id,
+      privacyPolicy: textValue(store.privacyPolicy, "") || null,
+      refundPolicy: textValue(store.refundPolicy, "") || null,
       slug,
       status: textValue(store.status, "active"),
       supportEmail: textValue(store.supportEmail) || null,
       supportPhone: textValue(store.supportPhone) || null,
+      termsOfService: textValue(store.termsOfService, "") || null,
       title,
       visibility: textValue(store.visibility, "public"),
       currency: textValue(store.currency, "USD"),
@@ -231,7 +237,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -252,8 +258,11 @@ async function loadStoreModePublicPreview(slug: string) {
     layout_style?: string | null;
     business_address?: string | null;
     business_hours?: string | null;
+    privacy_policy?: string | null;
+    refund_policy?: string | null;
     support_email?: string | null;
     support_phone?: string | null;
+    terms_of_service?: string | null;
     whatsapp_number: string | null;
   } | null;
 
@@ -343,10 +352,13 @@ async function loadStoreModePublicPreview(slug: string) {
       currency: store.currency || "USD",
       description: store.description,
       id: store.id,
+      privacyPolicy: store.privacy_policy || null,
+      refundPolicy: store.refund_policy || null,
       slug: store.slug,
       status: "active",
       supportEmail: store.support_email || null,
       supportPhone: store.support_phone || null,
+      termsOfService: store.terms_of_service || null,
       title: store.name,
       visibility: publication?.visibility ?? "public",
       whatsappNumber: store.whatsapp_number || null

@@ -4261,8 +4261,11 @@ export default async function StoreDraftPage({
   const storeContact = store as typeof store & {
     business_address?: string | null;
     business_hours?: string | null;
+    privacy_policy?: string | null;
+    refund_policy?: string | null;
     support_email?: string | null;
     support_phone?: string | null;
+    terms_of_service?: string | null;
   };
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
@@ -4597,6 +4600,36 @@ export default async function StoreDraftPage({
               name="businessHours"
               placeholder="Mon-Fri 9:00-18:00"
             />
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-black text-ink">Public legal pages</p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              These store-specific policies are shown on the public storefront footer links.
+              Leave a field empty to show a clean placeholder page.
+            </p>
+            <div className="mt-4 grid gap-4">
+              <Textarea
+                defaultValue={storeContact.privacy_policy ?? ""}
+                id="publication-privacy-policy"
+                label="Privacy policy"
+                name="privacyPolicy"
+                placeholder="Explain how this store handles customer data, contact details, and order information."
+              />
+              <Textarea
+                defaultValue={storeContact.terms_of_service ?? ""}
+                id="publication-terms-of-service"
+                label="Terms of service"
+                name="termsOfService"
+                placeholder="Add store terms, purchase conditions, and customer responsibilities."
+              />
+              <Textarea
+                defaultValue={storeContact.refund_policy ?? ""}
+                id="publication-refund-policy"
+                label="Refund policy"
+                name="refundPolicy"
+                placeholder="Describe returns, refunds, exchanges, and support contact steps."
+              />
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input

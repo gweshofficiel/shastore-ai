@@ -1829,6 +1829,9 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const supportPhone = normalizeSupportPhone(formData.get("supportPhone"));
   const businessAddress = cleanText(formData.get("businessAddress"), 1000) || null;
   const businessHours = cleanText(formData.get("businessHours"), 500) || null;
+  const privacyPolicy = cleanText(formData.get("privacyPolicy"), 20000) || null;
+  const termsOfService = cleanText(formData.get("termsOfService"), 20000) || null;
+  const refundPolicy = cleanText(formData.get("refundPolicy"), 20000) || null;
   const now = new Date().toISOString();
 
   if (whatsappContact.error) {
@@ -1927,8 +1930,11 @@ export async function saveStorePublicationSettings(formData: FormData) {
     .update({
       business_address: businessAddress,
       business_hours: businessHours,
+      privacy_policy: privacyPolicy,
+      refund_policy: refundPolicy,
       support_email: supportEmail.value,
       support_phone: supportPhone.value,
+      terms_of_service: termsOfService,
       whatsapp_number: whatsappContact.value
     } as never)
     .eq("id", store.id)

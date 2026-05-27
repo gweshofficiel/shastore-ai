@@ -209,11 +209,12 @@ export default async function PublicStorePage({
     return { category, products: categoryProducts };
   });
   const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
+  const supportEmail = store.supportEmail?.trim() || null;
   const supportPhoneHref = phoneHref(store.supportPhone);
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
   const hasContactData = Boolean(
     store.whatsappNumber ||
-      store.supportEmail ||
+      supportEmail ||
       store.supportPhone ||
       store.businessAddress ||
       store.businessHours
@@ -549,9 +550,9 @@ export default async function PublicStorePage({
                 value={store.whatsappNumber}
               />
               <ContactCard
-                href={store.supportEmail ? `mailto:${store.supportEmail}` : null}
+                href={supportEmail ? `mailto:${supportEmail}` : null}
                 label="Support email"
-                value={store.supportEmail}
+                value={supportEmail}
               />
               <ContactCard
                 href={supportPhoneHref}
@@ -582,9 +583,18 @@ export default async function PublicStorePage({
           <p className="text-sm font-bold">
             {theme.copyrightText || `© ${new Date().getFullYear()} ${store.title}`}
           </p>
-          <p className="text-xs font-black uppercase tracking-[0.18em] opacity-75">
-            Powered by SHASTORE AI
-          </p>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
+            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/privacy`}>
+              Privacy
+            </Link>
+            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/terms`}>
+              Terms
+            </Link>
+            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/refund`}>
+              Refund
+            </Link>
+            <span>Powered by SHASTORE AI</span>
+          </div>
         </div>
       </footer>
     </main>
