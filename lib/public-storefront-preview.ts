@@ -251,7 +251,7 @@ async function loadStoreModePublicPreview(slug: string) {
     .from("store_products" as never)
     .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status")
     .eq("store_id", store.id)
-    .in("status" as never, ["active", "published"] as never)
+    .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
   const { data: categories } = await client
     .from("store_categories")

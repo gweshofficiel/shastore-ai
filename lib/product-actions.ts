@@ -103,6 +103,10 @@ function cleanImageRole(value: FormDataEntryValue | null): ProductImageRole {
   return cleanText(value, 20) === "main" ? "main" : "gallery";
 }
 
+function cleanVisibilityStatus(value: FormDataEntryValue | null) {
+  return cleanText(value, 20) === "active" ? "active" : "draft";
+}
+
 function imageExtension(file: File) {
   return file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
 }
@@ -496,6 +500,48 @@ export async function archiveStoreOwnerProduct(formData: FormData) {
 }
 
 export const deleteStoreOwnerProduct = archiveStoreOwnerProduct;
+
+export async function setStoreOwnerProductVisibility(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const productId = cleanText(formData.get("productId"), 80);
+  const status = cleanVisibilityStatus(formData.get("visibilityStatus"));
+
+  if (!productId) {
+    productsRedirect(storeId, "visibility-failed");
+  }
+
+  const { error } = await supabase
+    .from("store_products" as never)
+    .update({
+      status,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    console.error("[products-visibility] update failed", {
+      code: error.code,
+      message: error.message,
+      productId,
+      status,
+      storeId,
+      workspaceId
+    });
+    productsRedirect(storeId, "visibility-failed");
+  }
+
+  revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+    revalidatePath(`/store/${store.slug}/product/${productId}`);
+  }
+
+  productsRedirect(storeId, status === "active" ? "published" : "unpublished");
+}
 
 export async function uploadStoreOwnerProductImage(formData: FormData) {
   const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);

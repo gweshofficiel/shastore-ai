@@ -8,6 +8,7 @@ import {
   archiveStoreOwnerProduct,
   createStoreOwnerProduct,
   removeStoreOwnerProductImage,
+  setStoreOwnerProductVisibility,
   uploadStoreOwnerProductImage,
   updateStoreOwnerProduct
 } from "@/lib/product-actions";
@@ -273,7 +274,10 @@ function statusMessage(status: string | undefined) {
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
     "not-authorized": "You do not have permission to manage that store.",
+    published: "Product published and visible on the public storefront.",
+    unpublished: "Product moved back to draft and hidden from the public storefront.",
     "update-failed": "Product could not be updated. Check the fields and try again.",
+    "visibility-failed": "Product visibility could not be updated. Please try again.",
     updated: "Product updated."
   };
 
@@ -631,6 +635,23 @@ export default async function SellerProductsPage({
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-3 lg:justify-end">
+                          {productStatus(product) === "active" ? (
+                            <form action={setStoreOwnerProductVisibility}>
+                              <input name="storeId" type="hidden" value={activeStore.id} />
+                              <input name="productId" type="hidden" value={product.id} />
+                              <input name="visibilityStatus" type="hidden" value="draft" />
+                              <Button type="submit" variant="secondary">
+                                Unpublish
+                              </Button>
+                            </form>
+                          ) : productStatus(product) === "draft" ? (
+                            <form action={setStoreOwnerProductVisibility}>
+                              <input name="storeId" type="hidden" value={activeStore.id} />
+                              <input name="productId" type="hidden" value={product.id} />
+                              <input name="visibilityStatus" type="hidden" value="active" />
+                              <Button type="submit">Publish</Button>
+                            </form>
+                          ) : null}
                           <ButtonLink
                             href={`${productListPath}?storeId=${activeStore.id}&edit=${product.id}`}
                             variant="secondary"

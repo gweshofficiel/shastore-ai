@@ -162,7 +162,7 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
 }
 
 function isPublicProductStatus(status: string | null) {
-  return !status || status === "active" || status === "published";
+  return status === "active";
 }
 
 function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
