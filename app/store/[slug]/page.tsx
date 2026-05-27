@@ -66,6 +66,11 @@ function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, 
   return `https://wa.me/${number}?text=${text}`;
 }
 
+function phoneHref(phone: string | null) {
+  const number = phone?.replace(/[^\d+]/g, "");
+  return number ? `tel:${number}` : null;
+}
+
 function productGalleryUrls(gallery: unknown[]) {
   return gallery
     .map((item) => {
@@ -193,6 +198,7 @@ export default async function PublicStorePage({
     return { category, products: categoryProducts };
   });
   const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
+  const supportPhoneHref = phoneHref(store.supportPhone);
   const productSections = categorySections.length
     ? [
         ...categorySections,
@@ -493,6 +499,35 @@ export default async function PublicStorePage({
         templateId={preview.templateId}
       />
       <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
+      <section className="px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Contact and support
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+              Need help with this store?
+            </h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+              Contact details are managed by the store owner and shown only when configured.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ContactCard
+              href={store.supportEmail ? `mailto:${store.supportEmail}` : null}
+              label="Support email"
+              value={store.supportEmail}
+            />
+            <ContactCard
+              href={supportPhoneHref}
+              label="Support phone"
+              value={store.supportPhone}
+            />
+            <ContactCard label="Business address" value={store.businessAddress} />
+            <ContactCard label="Business hours" value={store.businessHours} />
+          </div>
+        </div>
+      </section>
       <footer
         className="px-4 py-8 sm:px-6 lg:px-8"
         style={{
@@ -510,5 +545,30 @@ export default async function PublicStorePage({
         </div>
       </footer>
     </main>
+  );
+}
+
+function ContactCard({
+  href,
+  label,
+  value
+}: {
+  href?: string | null;
+  label: string;
+  value?: string | null;
+}) {
+  const content = value || "Not configured yet";
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      {href && value ? (
+        <a className="mt-2 block break-words text-sm font-black text-ink transition hover:text-slate-600" href={href}>
+          {content}
+        </a>
+      ) : (
+        <p className="mt-2 whitespace-pre-line break-words text-sm font-bold text-muted">{content}</p>
+      )}
+    </div>
   );
 }

@@ -95,7 +95,7 @@ function cleanUrl(value: FormDataEntryValue | null) {
   return text.startsWith("https://") || text.startsWith("http://") ? text : "";
 }
 
-function normalizeWhatsAppContact(value: FormDataEntryValue | null) {
+function normalizePhoneContact(value: FormDataEntryValue | null, label: string) {
   const text = cleanText(value, 80);
 
   if (!text) {
@@ -108,7 +108,7 @@ function normalizeWhatsAppContact(value: FormDataEntryValue | null) {
 
   if (hasInvalidCharacters || hasInvalidPlus || digits.length < 7 || digits.length > 20) {
     return {
-      error: "Enter a valid WhatsApp number with country code, for example +15551234567.",
+      error: `Enter a valid ${label} with country code, for example +15551234567.`,
       value: null
     };
   }
@@ -117,6 +117,28 @@ function normalizeWhatsAppContact(value: FormDataEntryValue | null) {
     error: null,
     value: text.trim().startsWith("+") ? `+${digits}` : digits
   };
+}
+
+function normalizeWhatsAppContact(value: FormDataEntryValue | null) {
+  return normalizePhoneContact(value, "WhatsApp number");
+}
+
+function normalizeSupportPhone(value: FormDataEntryValue | null) {
+  return normalizePhoneContact(value, "support phone number");
+}
+
+function normalizeSupportEmail(value: FormDataEntryValue | null) {
+  const email = cleanText(value, 180);
+
+  if (!email) {
+    return { error: null, value: null };
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid support email address.", value: null };
+  }
+
+  return { error: null, value: email };
 }
 
 function cleanHostname(value: FormDataEntryValue | null) {
@@ -1803,10 +1825,20 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const hostname = publicationHostname(customDomain, subdomain);
   const visibility = parseVisibility(formData.get("visibility"));
   const whatsappContact = normalizeWhatsAppContact(formData.get("whatsappNumber"));
+  const supportEmail = normalizeSupportEmail(formData.get("supportEmail"));
+  const supportPhone = normalizeSupportPhone(formData.get("supportPhone"));
+  const businessAddress = cleanText(formData.get("businessAddress"), 1000) || null;
+  const businessHours = cleanText(formData.get("businessHours"), 500) || null;
   const now = new Date().toISOString();
 
   if (whatsappContact.error) {
     redirectWithStoreError(detailPath, whatsappContact.error);
+  }
+  if (supportEmail.error) {
+    redirectWithStoreError(detailPath, supportEmail.error);
+  }
+  if (supportPhone.error) {
+    redirectWithStoreError(detailPath, supportPhone.error);
   }
   if (isStorePlanGatingEnabled()) {
     const access = await getUserSubscriptionAccess(user.id);
@@ -1892,7 +1924,13 @@ export async function saveStorePublicationSettings(formData: FormData) {
   }
   const { error: storeContactError } = await supabase
     .from("stores")
-    .update({ whatsapp_number: whatsappContact.value } as never)
+    .update({
+      business_address: businessAddress,
+      business_hours: businessHours,
+      support_email: supportEmail.value,
+      support_phone: supportPhone.value,
+      whatsapp_number: whatsappContact.value
+    } as never)
     .eq("id", store.id)
     .or(storeOwnerOrFilter(user.id));
 

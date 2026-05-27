@@ -45,10 +45,14 @@ export type PublicStorefrontPreview = {
   themeConfig: Record<string, unknown>;
   themeSettings: StoreThemeSettings;
   store: {
+    businessAddress: string | null;
+    businessHours: string | null;
     description: string | null;
     id: string;
     slug: string;
     status: string;
+    supportEmail: string | null;
+    supportPhone: string | null;
     title: string;
     visibility: string;
     currency: string;
@@ -174,10 +178,14 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
     themeConfig: isRecord(value.themeConfig) ? value.themeConfig : {},
     themeSettings: normalizeStoreThemeSettings(value.themeSettings, defaultStoreThemeSettings),
     store: {
+      businessAddress: textValue(store.businessAddress) || null,
+      businessHours: textValue(store.businessHours) || null,
       description: textValue(store.description) || null,
       id,
       slug,
       status: textValue(store.status, "active"),
+      supportEmail: textValue(store.supportEmail) || null,
+      supportPhone: textValue(store.supportPhone) || null,
       title,
       visibility: textValue(store.visibility, "public"),
       currency: textValue(store.currency, "USD"),
@@ -223,7 +231,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, name, description, brand_color, currency, whatsapp_number, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -242,6 +250,10 @@ async function loadStoreModePublicPreview(slug: string) {
     theme_settings?: unknown;
     font_style?: string | null;
     layout_style?: string | null;
+    business_address?: string | null;
+    business_hours?: string | null;
+    support_email?: string | null;
+    support_phone?: string | null;
     whatsapp_number: string | null;
   } | null;
 
@@ -326,11 +338,15 @@ async function loadStoreModePublicPreview(slug: string) {
     themeConfig: {},
     themeSettings,
     store: {
+      businessAddress: store.business_address || null,
+      businessHours: store.business_hours || null,
       currency: store.currency || "USD",
       description: store.description,
       id: store.id,
       slug: store.slug,
       status: "active",
+      supportEmail: store.support_email || null,
+      supportPhone: store.support_phone || null,
       title: store.name,
       visibility: publication?.visibility ?? "public",
       whatsappNumber: store.whatsapp_number || null

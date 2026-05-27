@@ -4258,6 +4258,12 @@ export default async function StoreDraftPage({
     .eq("user_id", user.id)
     .maybeSingle();
   const publication = rawPublication as PublicationRow | null;
+  const storeContact = store as typeof store & {
+    business_address?: string | null;
+    business_hours?: string | null;
+    support_email?: string | null;
+    support_phone?: string | null;
+  };
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
   const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
@@ -4559,6 +4565,39 @@ export default async function StoreDraftPage({
           <p className="-mt-3 text-xs font-semibold leading-5 text-muted">
             Used for the public checkout handoff. Include the country code, or leave empty to remove WhatsApp checkout contact.
           </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              defaultValue={storeContact.support_email ?? ""}
+              id="publication-support-email"
+              label="Support email"
+              name="supportEmail"
+              placeholder="support@example.com"
+              type="email"
+            />
+            <Input
+              defaultValue={storeContact.support_phone ?? ""}
+              id="publication-support-phone"
+              label="Support phone"
+              name="supportPhone"
+              placeholder="+15551234567"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Textarea
+              defaultValue={storeContact.business_address ?? ""}
+              id="publication-business-address"
+              label="Business address"
+              name="businessAddress"
+              placeholder="Store pickup address, office, or service area"
+            />
+            <Textarea
+              defaultValue={storeContact.business_hours ?? ""}
+              id="publication-business-hours"
+              label="Business hours"
+              name="businessHours"
+              placeholder="Mon-Fri 9:00-18:00"
+            />
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               defaultValue={publication?.seo_title ?? ""}
