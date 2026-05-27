@@ -16,6 +16,7 @@ export type PublicStorefrontProduct = {
   price: number | string | null;
   priceLabel: string | null;
   sku: string | null;
+  slug: string | null;
   status: string | null;
   title: string;
 };
@@ -106,6 +107,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
     priceLabel: textValue(value.priceLabel) || null,
     sku: textValue(value.sku) || null,
+    slug: textValue(value.slug) || null,
     status: textValue(value.status) || null,
     title
   };
@@ -279,6 +281,7 @@ async function loadStoreModePublicPreview(slug: string) {
     price: typeof product.price === "number" || typeof product.price === "string" ? product.price : null,
     priceLabel: typeof product.price === "string" ? product.price : null,
     sku: null,
+    slug: textValue(product.slug) || null,
     status: textValue(product.status, "active")
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);

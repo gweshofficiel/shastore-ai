@@ -165,6 +165,13 @@ function isPublicProductStatus(status: string | null) {
   return status === "active";
 }
 
+function publicProductHref(
+  storeSlug: string,
+  product: StoreTenantContext["preview"]["products"][number]
+) {
+  return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
+}
+
 function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
   const number = whatsappNumber?.replace(/\D/g, "");
 
@@ -428,7 +435,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 key={product.id}
               >
                 <Link
-                  href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                  href={publicProductHref(context.preview.store.slug, product)}
                 >
                   {primaryImage ? (
                     <img
@@ -471,7 +478,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                     </p>
                   ) : null}
                   <Link
-                    href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                    href={publicProductHref(context.preview.store.slug, product)}
                   >
                     <h3
                       className={`font-black tracking-[-0.03em] transition ${
@@ -510,7 +517,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                           ? "border border-cyan-400/20 bg-slate-950 text-cyan-100 hover:border-cyan-300"
                           : "border border-slate-200 bg-white text-ink hover:border-slate-300 hover:bg-slate-50"
                       }`}
-                      href={`/store/${context.preview.store.slug}/product/${encodeURIComponent(product.id)}`}
+                      href={publicProductHref(context.preview.store.slug, product)}
                     >
                       View product details
                     </Link>

@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
-import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import {
+  getPublicStorefrontPreview,
+  type PublicStorefrontProduct
+} from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +70,15 @@ function productGalleryUrls(gallery: unknown[]) {
     .filter((url): url is string => Boolean(url));
 }
 
+function resolvePublicProduct(
+  products: PublicStorefrontProduct[],
+  productPathSegment: string
+) {
+  const decodedProductId = decodeURIComponent(productPathSegment);
+
+  return products.find((item) => item.id === decodedProductId || item.slug === decodedProductId);
+}
+
 export async function generateMetadata({
   params
 }: ProductDetailPageProps): Promise<Metadata> {
@@ -96,7 +108,7 @@ export async function generateMetadata({
     }
   }
 
-  const product = preview.products.find((item) => item.id === decodeURIComponent(productId));
+  const product = resolvePublicProduct(preview.products, productId);
 
   if (!product) {
     return {
@@ -175,8 +187,7 @@ export default async function PublicProductDetailPage({
     );
   }
 
-  const decodedProductId = decodeURIComponent(productId);
-  const product = preview.products.find((item) => item.id === decodedProductId);
+  const product = resolvePublicProduct(preview.products, productId);
 
   if (!product) {
     return (

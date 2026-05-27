@@ -87,6 +87,13 @@ function productGalleryUrls(gallery: unknown[]) {
     .filter((url): url is string => Boolean(url));
 }
 
+function publicProductHref(
+  storeSlug: string,
+  product: { id: string; slug?: string | null }
+) {
+  return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
+}
+
 export async function generateMetadata({
   params
 }: {
@@ -318,7 +325,7 @@ export default async function PublicStorePage({
                     className="group flex flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
                     key={product.id}
                   >
-                    <Link href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}>
+                    <Link href={publicProductHref(store.slug, product)}>
                       {primaryImage ? (
                         <img
                           alt={product.title}
@@ -359,7 +366,7 @@ export default async function PublicStorePage({
                           {product.categoryName}
                         </p>
                       ) : null}
-                      <Link href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}>
+                      <Link href={publicProductHref(store.slug, product)}>
                         <h3 className="text-xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600">
                           {product.title}
                         </h3>
@@ -391,7 +398,7 @@ export default async function PublicStorePage({
                         <AddToCartButton product={product} slug={store.slug} />
                         <Link
                           className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
-                          href={`/store/${store.slug}/product/${encodeURIComponent(product.id)}`}
+                          href={publicProductHref(store.slug, product)}
                         >
                           View product details
                         </Link>
