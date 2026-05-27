@@ -62,6 +62,18 @@ function orderReference(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
 
+function deliveryMethodLabel(value: string | null | undefined) {
+  if (value === "delivery") {
+    return "Delivery";
+  }
+
+  if (value === "pickup") {
+    return "Pickup";
+  }
+
+  return "Not selected";
+}
+
 function productsSummary(items: ConfirmationItem[]) {
   if (!items.length) {
     return "Products snapshot unavailable";
@@ -77,6 +89,7 @@ function whatsAppOrderMessage({
   order: {
     currency: string;
     customer_name: string;
+    delivery_method?: string | null;
     id: string;
     items: ConfirmationItem[];
     total: number | string;
@@ -87,6 +100,7 @@ function whatsAppOrderMessage({
     `Hi ${storeTitle ?? "there"}, I am following up on my order.`,
     `Order reference: ${orderReference(order.id)}`,
     `Customer: ${order.customer_name}`,
+    `Delivery method: ${deliveryMethodLabel(order.delivery_method)}`,
     `Total: ${formatMoney(order.total, order.currency)}`,
     `Currency: ${order.currency}`,
     `Products: ${productsSummary(order.items)}`
@@ -184,7 +198,7 @@ async function loadPublicOrderConfirmation({
       const { data, error } = await admin
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, total, currency, order_status, payment_status"
+          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, total, currency, order_status, payment_status"
         )
         .eq("id" as never, orderId as never)
         .maybeSingle();
@@ -193,6 +207,8 @@ async function loadPublicOrderConfirmation({
         const row = data as unknown as {
           currency: string | null;
           customer_name: string;
+          delivery_fee?: number | string | null;
+          delivery_method?: string | null;
           id: string;
           order_status: string | null;
           payment_status: string | null;
@@ -227,6 +243,8 @@ async function loadPublicOrderConfirmation({
             order: {
               currency: row.currency ?? preview.store.currency ?? "USD",
               customer_name: row.customer_name,
+              delivery_fee: row.delivery_fee ?? 0,
+              delivery_method: row.delivery_method ?? null,
               id: row.id,
               items,
               order_status: row.order_status ?? "draft",
@@ -245,7 +263,7 @@ async function loadPublicOrderConfirmation({
     if (source === "store_orders") {
       const { data, error } = await admin
         .from("store_orders")
-        .select("id, store_id, customer_name, items, total, order_status, payment_status")
+        .select("id, store_id, customer_name, delivery_method, delivery_fee, items, total, order_status, payment_status")
         .eq("id", orderId)
         .eq("store_id", preview.store.id)
         .maybeSingle();
@@ -253,6 +271,8 @@ async function loadPublicOrderConfirmation({
       if (!error && data) {
         const row = data as unknown as {
           customer_name: string;
+          delivery_fee?: number | string | null;
+          delivery_method?: string | null;
           id: string;
           items: Json;
           order_status: string | null;
@@ -264,6 +284,8 @@ async function loadPublicOrderConfirmation({
           order: {
             currency: preview.store.currency ?? "USD",
             customer_name: row.customer_name,
+            delivery_fee: row.delivery_fee ?? 0,
+            delivery_method: row.delivery_method ?? null,
             id: row.id,
             items: parseStoreOrderItems(row.items),
             order_status: row.order_status ?? "draft",
@@ -397,6 +419,7 @@ export default async function PublicOrderConfirmationPage({
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Order reference" value={orderReference(order.id)} />
             <Info label="Customer" value={order.customer_name} />
+            <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
             <Info label="Order status" value={order.order_status} />
             <Info label="Payment status" value={order.payment_status} />
           </div>
@@ -454,6 +477,10 @@ export default async function PublicOrderConfirmationPage({
               {formatMoney(order.total, order.currency)}
             </p>
             <p className="mt-1 text-sm font-bold text-muted">{order.currency}</p>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-6 text-muted">
+              <p>Delivery method: {deliveryMethodLabel(order.delivery_method)}</p>
+              <p>Delivery fee: {formatMoney(order.delivery_fee ?? 0, order.currency)}</p>
+            </div>
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
               Payments are disabled. The seller will confirm this order manually.
             </div>

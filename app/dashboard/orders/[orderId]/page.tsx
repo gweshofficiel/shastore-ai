@@ -62,6 +62,18 @@ function orderReference(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
 
+function deliveryMethodLabel(value: string | null | undefined) {
+  if (value === "delivery") {
+    return "Delivery";
+  }
+
+  if (value === "pickup") {
+    return "Pickup";
+  }
+
+  return "Not selected";
+}
+
 function statusBadgeClass(status: string | null | undefined) {
   if (status === "draft") {
     return "bg-slate-100 text-slate-700";
@@ -166,7 +178,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -184,6 +196,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_email: string | null;
         customer_name: string;
         customer_phone: string;
+        delivery_fee?: number | string | null;
+        delivery_method?: string | null;
         id: string;
         internal_note?: string | null;
         items: Json;
@@ -209,6 +223,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_email: row.customer_email,
             customer_name: row.customer_name,
             customer_phone: row.customer_phone,
+            delivery_fee: row.delivery_fee ?? 0,
+            delivery_method: row.delivery_method ?? null,
             id: row.id,
             internal_note: row.internal_note ?? null,
             items: parseStoreOrderItems(row.items),
@@ -229,7 +245,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id" as never, orderId as never)
         .eq("workspace_id" as never, workspaceId as never)
@@ -248,6 +264,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_email: string | null;
         customer_name: string;
         customer_phone: string;
+        delivery_fee?: number | string | null;
+        delivery_method?: string | null;
         id: string;
         internal_note: string | null;
         notes: string | null;
@@ -295,6 +313,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_email: row.customer_email,
             customer_name: row.customer_name,
             customer_phone: row.customer_phone,
+            delivery_fee: row.delivery_fee ?? 0,
+            delivery_method: row.delivery_method ?? null,
             id: row.id,
             internal_note: row.internal_note,
             items,
@@ -384,6 +404,8 @@ export default async function OrderDetailPage({
             <Info label="Phone" value={order.customer_phone} />
             <Info label="Email" value={order.customer_email || "Not provided"} />
             <Info label="Address" value={order.customer_address || "Not provided"} />
+            <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
+            <Info label="Delivery fee" value={formatMoney(order.delivery_fee ?? 0, order.currency)} />
             <Info label="Created" value={formatDate(order.created_at)} />
             <Info label="Confirmed" value={formatDate(order.confirmed_at)} />
             <Info label="Cancelled" value={formatDate(order.cancelled_at)} />
@@ -467,7 +489,8 @@ export default async function OrderDetailPage({
               </p>
             </div>
             <p className="rounded-2xl bg-slate-50 p-3 text-sm font-bold text-muted">
-              Payment, fulfillment, and shipping actions remain disabled.
+              Payment, fulfillment, and shipping actions remain disabled. Delivery method:{" "}
+              {deliveryMethodLabel(order.delivery_method)}.
             </p>
           </Card>
 

@@ -47,6 +47,8 @@ type CartScope = {
   storeId: string;
 };
 
+type CheckoutDeliveryMethod = "delivery" | "pickup" | "none";
+
 type CartUpdatedDetail = {
   slug: string;
   storeId: string;
@@ -249,6 +251,20 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((total, item) => total + parsePrice(item.price) * item.quantity, 0);
 }
 
+function defaultDeliveryMethod(
+  deliverySettings: CartPageClientProps["deliverySettings"]
+): CheckoutDeliveryMethod {
+  if (deliverySettings.deliveryEnabled) {
+    return "delivery";
+  }
+
+  if (deliverySettings.pickupEnabled) {
+    return "pickup";
+  }
+
+  return "none";
+}
+
 function useStoreCart(scope: CartScope) {
   const [items, setItems] = useState<CartItem[]>([]);
 
@@ -364,7 +380,13 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
     createPublicStoreOrderDraftAction,
     initialOrderDraftState
   );
+  const [deliveryMethod, setDeliveryMethod] = useState<CheckoutDeliveryMethod>(
+    defaultDeliveryMethod(deliverySettings)
+  );
   const total = useMemo(() => cartTotal(items), [items]);
+  const selectedDeliveryFee =
+    deliveryMethod === "delivery" ? deliverySettings.deliveryFee ?? 0 : 0;
+  const finalTotal = Number((total + selectedDeliveryFee).toFixed(2));
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -505,6 +527,45 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Delivery summary
             </p>
+            {deliverySettings.deliveryEnabled || deliverySettings.pickupEnabled ? (
+              <div className="mt-3 grid gap-2">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Choose method
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {deliverySettings.deliveryEnabled ? (
+                    <button
+                      className={`rounded-2xl border px-3 py-2 text-left text-sm font-black transition ${
+                        deliveryMethod === "delivery"
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 bg-white text-ink"
+                      }`}
+                      onClick={() => setDeliveryMethod("delivery")}
+                      type="button"
+                    >
+                      Delivery
+                    </button>
+                  ) : null}
+                  {deliverySettings.pickupEnabled ? (
+                    <button
+                      className={`rounded-2xl border px-3 py-2 text-left text-sm font-black transition ${
+                        deliveryMethod === "pickup"
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 bg-white text-ink"
+                      }`}
+                      onClick={() => setDeliveryMethod("pickup")}
+                      type="button"
+                    >
+                      Pickup
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs font-semibold leading-5 text-muted">
+                The store has not enabled delivery or pickup options yet.
+              </p>
+            )}
             <div className="mt-3 grid gap-2">
               <div className="flex justify-between">
                 <span>Delivery</span>
@@ -515,12 +576,8 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
                 <span>{deliverySettings.pickupEnabled ? "Available" : "Not enabled"}</span>
               </div>
               <div className="flex justify-between">
-                <span>Delivery fee</span>
-                <span>
-                  {deliverySettings.deliveryFee !== null
-                    ? formatMoney(deliverySettings.deliveryFee, currency)
-                    : "Not configured"}
-                </span>
+                <span>Selected fee</span>
+                <span>{formatMoney(selectedDeliveryFee, currency)}</span>
               </div>
               {deliverySettings.freeDeliveryThreshold !== null ? (
                 <div className="flex justify-between">
@@ -535,7 +592,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
               </p>
             ) : null}
             <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
-              Delivery fees are informational and are not added to this draft total yet.
+              Delivery fees are only applied when Delivery is selected. Pickup stays free.
             </p>
           </div>
           <div className="flex justify-between">
@@ -544,7 +601,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           </div>
           <div className="flex justify-between text-lg font-black text-ink">
             <span>Total</span>
-            <span>{formatMoney(total, currency)}</span>
+            <span>{formatMoney(finalTotal, currency)}</span>
           </div>
         </div>
         <div className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
@@ -570,6 +627,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           >
           <input name="slug" type="hidden" value={slug} />
           <input name="storeId" type="hidden" value={storeId} />
+          <input name="deliveryMethod" type="hidden" value={deliveryMethod} />
           <input
             name="items"
             type="hidden"

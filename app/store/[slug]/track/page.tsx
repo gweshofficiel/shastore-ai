@@ -62,6 +62,18 @@ function orderReference(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
 
+function deliveryMethodLabel(value: string | null | undefined) {
+  if (value === "delivery") {
+    return "Delivery";
+  }
+
+  if (value === "pickup") {
+    return "Pickup";
+  }
+
+  return "Not selected";
+}
+
 function referenceMatches(orderId: string, reference: string) {
   const normalizedReference = normalizeReference(reference);
 
@@ -147,7 +159,7 @@ async function loadTrackedOrder({
   const { data: rawOrders } = await admin
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_phone, total, currency, order_status, payment_status, created_at"
+      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, total, currency, order_status, payment_status, created_at"
     )
     .eq("customer_phone" as never, phone as never)
     .order("created_at" as never, { ascending: false } as never)
@@ -156,6 +168,8 @@ async function loadTrackedOrder({
     created_at: string;
     currency: string | null;
     customer_phone: string;
+    delivery_fee?: number | string | null;
+    delivery_method?: string | null;
     id: string;
     order_status: string | null;
     payment_status: string | null;
@@ -185,6 +199,8 @@ async function loadTrackedOrder({
       order: {
         created_at: order.created_at,
         currency: order.currency ?? preview.store.currency ?? "USD",
+        delivery_fee: order.delivery_fee ?? 0,
+        delivery_method: order.delivery_method ?? null,
         id: order.id,
         items,
         order_status: order.order_status ?? "draft",
@@ -198,13 +214,15 @@ async function loadTrackedOrder({
 
   const { data: rawStoreOrders } = await admin
     .from("store_orders")
-    .select("id, store_id, customer_phone, items, total, order_status, payment_status, created_at")
+    .select("id, store_id, customer_phone, delivery_method, delivery_fee, items, total, order_status, payment_status, created_at")
     .eq("store_id", preview.store.id)
     .eq("customer_phone", phone)
     .order("created_at", { ascending: false })
     .limit(20);
   const storeOrder = ((rawStoreOrders ?? []) as unknown as Array<{
     created_at: string;
+    delivery_fee?: number | string | null;
+    delivery_method?: string | null;
     id: string;
     items: Json;
     order_status: string | null;
@@ -217,6 +235,8 @@ async function loadTrackedOrder({
       order: {
         created_at: storeOrder.created_at,
         currency: preview.store.currency ?? "USD",
+        delivery_fee: storeOrder.delivery_fee ?? 0,
+        delivery_method: storeOrder.delivery_method ?? null,
         id: storeOrder.id,
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
@@ -343,6 +363,7 @@ export default async function PublicOrderTrackingPage({
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Info label="Order status" value={order.order_status} />
                 <Info label="Payment status" value={order.payment_status} />
+                <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
                 <Info label="Created" value={formatDate(order.created_at)} />
                 <Info label="Currency" value={order.currency} />
               </div>
@@ -379,6 +400,10 @@ export default async function PublicOrderTrackingPage({
                 {formatMoney(order.total, order.currency)}
               </p>
               <p className="mt-1 text-sm font-bold text-muted">{order.currency}</p>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-6 text-muted">
+                <p>Delivery method: {deliveryMethodLabel(order.delivery_method)}</p>
+                <p>Delivery fee: {formatMoney(order.delivery_fee ?? 0, order.currency)}</p>
+              </div>
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
                 Payments are disabled. This page only shows public tracking status.
               </div>

@@ -20,6 +20,8 @@ type CartSubmitItem = {
   quantity: number;
 };
 
+type DeliveryMethod = "delivery" | "pickup" | "none";
+
 const dashboardOrdersPath = "/dashboard/orders";
 const storeOrderStatuses = new Set([
   "draft",
@@ -82,6 +84,48 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
   } catch {
     return [];
   }
+}
+
+function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
+  return value === "delivery" || value === "pickup" ? value : "none";
+}
+
+function resolveDeliverySelection({
+  requestedMethod,
+  storeDeliveryEnabled,
+  storeDeliveryFee,
+  storePickupEnabled
+}: {
+  requestedMethod: DeliveryMethod;
+  storeDeliveryEnabled: boolean;
+  storeDeliveryFee: number | null;
+  storePickupEnabled: boolean;
+}) {
+  if (requestedMethod === "delivery") {
+    if (!storeDeliveryEnabled) {
+      return { error: "Delivery is not available for this store right now." as const };
+    }
+
+    return {
+      deliveryFee: Number((storeDeliveryFee ?? 0).toFixed(2)),
+      deliveryMethod: "delivery" as const,
+      error: null
+    };
+  }
+
+  if (requestedMethod === "pickup") {
+    if (!storePickupEnabled) {
+      return { error: "Pickup is not available for this store right now." as const };
+    }
+
+    return { deliveryFee: 0, deliveryMethod: "pickup" as const, error: null };
+  }
+
+  if (storeDeliveryEnabled || storePickupEnabled) {
+    return { error: "Choose a delivery method before preparing your order." as const };
+  }
+
+  return { deliveryFee: 0, deliveryMethod: "none" as const, error: null };
 }
 
 function safeOrderReturnPath(value: FormDataEntryValue | null) {
@@ -183,6 +227,8 @@ async function persistStorefrontOrderDraft({
   customerNotes,
   items,
   currency,
+  deliveryFee,
+  deliveryMethod,
   subtotal,
   slug
 }: {
@@ -202,6 +248,8 @@ async function persistStorefrontOrderDraft({
   customerNotes: string;
   items: DraftLineItem[];
   currency: string;
+  deliveryFee: number;
+  deliveryMethod: DeliveryMethod;
   subtotal: number;
   slug: string;
 }) {
@@ -209,6 +257,7 @@ async function persistStorefrontOrderDraft({
   const storeInstanceId = await resolveStoreInstanceId(admin, store);
   const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
   const orderNumber = generateDraftOrderNumber();
+  const total = Number((subtotal + deliveryFee).toFixed(2));
 
   const legacyOrderPayload: Record<string, unknown> = {
     store_instance_id: storeInstanceId,
@@ -217,8 +266,10 @@ async function persistStorefrontOrderDraft({
     customer_phone: customerPhone,
     customer_email: customerEmail || null,
     notes: combinedNotes,
+    delivery_fee: deliveryFee,
+    delivery_method: deliveryMethod,
     subtotal,
-    total: subtotal,
+    total,
     currency,
     order_status: "draft",
     payment_status: "pending",
@@ -243,6 +294,12 @@ async function persistStorefrontOrderDraft({
   const orderPayloadCandidates = [
     legacyOrderPayload,
     extendedOrderPayload,
+    Object.fromEntries(
+      Object.entries(legacyOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+    ),
+    Object.fromEntries(
+      Object.entries(extendedOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+    ),
     { ...legacyOrderPayload, order_status: "pending" },
     { ...extendedOrderPayload, order_status: "pending" }
   ];
@@ -352,32 +409,52 @@ async function persistStorefrontOrderDraft({
     total: item.subtotal
   }));
 
-  const { data: storeOrder, error: storeOrderError } = await admin
-    .from("store_orders")
-    .insert({
-      store_id: store.id,
-      user_id: store.user_id,
-      owner_user_id: store.owner_user_id ?? store.user_id,
-      workspace_id: workspaceId ?? store.owner_user_id ?? store.user_id,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      customer_email: customerEmail || null,
-      customer_address: customerAddress || null,
-      items: legacyItems as Json,
-      subtotal,
-      total: subtotal,
-      payment_method: "manual",
-      payment_status: "pending",
-      order_status: "draft"
-    } as never)
-    .select("id")
-    .single();
-  const storeOrderRow = storeOrder as { id: string } | null;
+  const storeOrderPayload: Record<string, unknown> = {
+    store_id: store.id,
+    user_id: store.user_id,
+    owner_user_id: store.owner_user_id ?? store.user_id,
+    workspace_id: workspaceId ?? store.owner_user_id ?? store.user_id,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_email: customerEmail || null,
+    customer_address: customerAddress || null,
+    delivery_fee: deliveryFee,
+    delivery_method: deliveryMethod,
+    items: legacyItems as Json,
+    subtotal,
+    total,
+    payment_method: "manual",
+    payment_status: "pending",
+    order_status: "draft"
+  };
+  let storeOrderRow: { id: string } | null = null;
+  let storeOrderError: { code?: string; details?: string; hint?: string; message?: string } | null =
+    null;
 
-  if (storeOrderError || !storeOrderRow) {
+  for (const payload of [
+    storeOrderPayload,
+    Object.fromEntries(
+      Object.entries(storeOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+    )
+  ]) {
+    const { data: storeOrder, error } = await admin
+      .from("store_orders")
+      .insert(payload as never)
+      .select("id")
+      .single();
+
+    if (!error && storeOrder) {
+      storeOrderRow = storeOrder as { id: string };
+      break;
+    }
+
+    storeOrderError = error;
+  }
+
+  if (!storeOrderRow) {
     logOrderDraftFailure(
       "store_orders_fallback_insert",
-      { legacyItems, slug, storeId: store.id, subtotal },
+      { legacyItems, slug, storeId: store.id, storeOrderPayload, subtotal },
       storeOrderError
     );
     return null;
@@ -541,6 +618,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
+  const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
   const requestedItems = parseCartItems(formData.get("items"));
 
   if (!slug) {
@@ -634,6 +712,22 @@ export async function createPublicStoreOrderDraftAction(
 
   const currency = items[0]?.currency || store.currency || preview.store.currency || "USD";
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
+  const deliverySelection = resolveDeliverySelection({
+    requestedMethod: requestedDeliveryMethod,
+    storeDeliveryEnabled: preview.store.deliveryEnabled,
+    storeDeliveryFee: preview.store.deliveryFee,
+    storePickupEnabled: preview.store.pickupEnabled
+  });
+
+  if (deliverySelection.error) {
+    return {
+      error: deliverySelection.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
   const persisted = await persistStorefrontOrderDraft({
     admin,
     store,
@@ -644,6 +738,8 @@ export async function createPublicStoreOrderDraftAction(
     customerNotes,
     items,
     currency,
+    deliveryFee: deliverySelection.deliveryFee,
+    deliveryMethod: deliverySelection.deliveryMethod,
     subtotal,
     slug
   });
