@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
@@ -35,6 +36,23 @@ type ProtectedProductRecord = {
   gallery?: unknown;
   id: string;
   image_url?: string | null;
+};
+
+type ProductImagePayload = {
+  content_type: string;
+  file_name: string;
+  file_size: number;
+  image_role: ProductImageRole;
+  image_type: ProductImageRole;
+  owner_user_id: string;
+  product_id: string;
+  public_url: string;
+  sort_order: number;
+  storage_bucket: string;
+  storage_path: string;
+  store_id: string;
+  user_id: string;
+  workspace_id: string;
 };
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 1000) {
@@ -181,6 +199,125 @@ function galleryItem({
     storagePath,
     url: publicUrl
   };
+}
+
+async function insertProductImageMetadata({
+  payload,
+  supabase
+}: {
+  payload: ProductImagePayload;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+}) {
+  const insertSelect = "id, public_url, image_role, storage_bucket, storage_path";
+  const userInsert = (await supabase
+    .from("product_images" as never)
+    .insert(payload as never)
+    .select(insertSelect)
+    .single()) as {
+    data: unknown;
+    error: { code?: string; message?: string } | null;
+  };
+
+  if (!userInsert.error && userInsert.data) {
+    return {
+      error: null,
+      image: userInsert.data as unknown as ProductImageRecord,
+      usedAdminFallback: false
+    };
+  }
+
+  logProductImageError("metadata insert failed with user client", {
+    code: userInsert.error?.code,
+    message: userInsert.error?.message,
+    productId: payload.product_id,
+    storagePath: payload.storage_path,
+    storeId: payload.store_id,
+    userId: payload.user_id
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return {
+      error: userInsert.error ?? new Error("Admin client unavailable"),
+      image: null,
+      usedAdminFallback: false
+    };
+  }
+
+  const adminInsert = (await admin
+    .from("product_images" as never)
+    .insert(payload as never)
+    .select(insertSelect)
+    .single()) as {
+    data: unknown;
+    error: { code?: string; message?: string } | null;
+  };
+
+  if (adminInsert.error || !adminInsert.data) {
+    logProductImageError("metadata insert failed with admin client", {
+      code: adminInsert.error?.code,
+      message: adminInsert.error?.message,
+      productId: payload.product_id,
+      storagePath: payload.storage_path,
+      storeId: payload.store_id,
+      userId: payload.user_id
+    });
+
+    return {
+      error: adminInsert.error ?? userInsert.error ?? new Error("Metadata insert failed"),
+      image: null,
+      usedAdminFallback: true
+    };
+  }
+
+  return {
+    error: null,
+    image: adminInsert.data as unknown as ProductImageRecord,
+    usedAdminFallback: true
+  };
+}
+
+async function deleteProductImageMetadata({
+  image,
+  productId,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  image: ProductImageRecord;
+  productId: string;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  const userDelete = await supabase
+    .from("product_images" as never)
+    .delete()
+    .eq("id", image.id)
+    .eq("product_id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (!userDelete.error) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return userDelete.error;
+  }
+
+  const adminDelete = await admin
+    .from("product_images" as never)
+    .delete()
+    .eq("id", image.id)
+    .eq("product_id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  return adminDelete.error ?? null;
 }
 
 async function revalidateProductImagePaths(store: WorkspaceStoreRow, storeId: string, productId: string) {
@@ -459,15 +596,83 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
     productsRedirect(storeId, "image-save-failed");
   }
 
+  const metadataPayload: ProductImagePayload = {
+    content_type: file.type,
+    file_name: file.name.slice(0, 180),
+    file_size: file.size,
+    image_role: role,
+    image_type: role,
+    owner_user_id: user.id,
+    product_id: productId,
+    public_url: publicUrl,
+    sort_order: sortOrder,
+    storage_bucket: imageBucket,
+    storage_path: storagePath,
+    store_id: storeId,
+    user_id: user.id,
+    workspace_id: workspaceId
+  };
+  const metadataResult = await insertProductImageMetadata({
+    payload: metadataPayload,
+    supabase
+  });
+
+  if (metadataResult.error || !metadataResult.image) {
+    await supabase.storage.from(imageBucket).remove([storagePath]);
+    const rollback =
+      role === "main"
+        ? await supabase
+            .from("store_products" as never)
+            .update({
+              image_url: protectedProduct.image_url ?? null,
+              updated_at: new Date().toISOString()
+            } as never)
+            .eq("id", productId)
+            .eq("store_id", storeId)
+            .eq("workspace_id" as never, workspaceId as never)
+        : await supabase
+            .from("store_products" as never)
+            .update({
+              gallery: normalizeGallery(protectedProduct.gallery),
+              updated_at: new Date().toISOString()
+            } as never)
+            .eq("id", productId)
+            .eq("store_id", storeId)
+            .eq("workspace_id" as never, workspaceId as never);
+
+    if (rollback.error) {
+      logProductImageError("product image rollback failed after metadata error", {
+        code: rollback.error.code,
+        message: rollback.error.message,
+        productId,
+        storagePath,
+        storeId,
+        userId: user.id
+      });
+    }
+
+    logProductImageError("metadata insert failed after product update", {
+      code: "metadata-insert-failed",
+      message: metadataResult.error instanceof Error ? metadataResult.error.message : "Unknown metadata error",
+      productId,
+      storagePath,
+      storeId,
+      userId: user.id
+    });
+    await revalidateProductImagePaths(store, storeId, productId);
+    productsRedirect(storeId, "image-save-failed");
+  }
+
+  const normalizedImage = metadataResult.image as ProductImageRecord;
+
   if (role === "main" && previousMain) {
-    await supabase.storage.from(previousMain.storage_bucket).remove([previousMain.storage_path]);
-    const { error: previousDeleteError } = await supabase
-      .from("product_images" as never)
-      .delete()
-      .eq("id", previousMain.id)
-      .eq("product_id", productId)
-      .eq("store_id", storeId)
-      .eq("workspace_id" as never, workspaceId as never);
+    const previousDeleteError = await deleteProductImageMetadata({
+      image: previousMain,
+      productId,
+      storeId,
+      supabase,
+      workspaceId
+    });
 
     if (previousDeleteError) {
       logProductImageError("previous main metadata delete failed", {
@@ -478,44 +683,10 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
         storeId,
         userId: user.id
       });
+    } else {
+      await supabase.storage.from(previousMain.storage_bucket).remove([previousMain.storage_path]);
     }
   }
-
-  const { data: imageRow, error: imageError } = await supabase
-    .from("product_images" as never)
-    .insert(
-      {
-        content_type: file.type,
-        file_name: file.name.slice(0, 180),
-        file_size: file.size,
-        image_role: role,
-        owner_user_id: user.id,
-        product_id: productId,
-        public_url: publicUrl,
-        sort_order: sortOrder,
-        storage_bucket: imageBucket,
-        storage_path: storagePath,
-        store_id: storeId,
-        workspace_id: workspaceId
-      } as never
-    )
-    .select("id, public_url, image_role, storage_bucket, storage_path")
-    .single();
-
-  if (imageError || !imageRow) {
-    logProductImageError("metadata insert failed after product update", {
-      code: imageError?.code,
-      message: imageError?.message,
-      productId,
-      storagePath,
-      storeId,
-      userId: user.id
-    });
-    await revalidateProductImagePaths(store, storeId, productId);
-    productsRedirect(storeId, "image-uploaded-metadata-warning");
-  }
-
-  const normalizedImage = imageRow as unknown as ProductImageRecord;
 
   if (role === "gallery") {
     const gallery = [

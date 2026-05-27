@@ -268,7 +268,6 @@ function statusMessage(status: string | undefined) {
     "image-save-failed": "Image uploaded, but product image data could not be saved. Please try again.",
     "image-too-large": "Product image is too large. Use an image up to 5MB.",
     "image-uploaded": "Product image uploaded.",
-    "image-uploaded-metadata-warning": "Product image uploaded and saved. Image metadata will resync on the next update.",
     "invalid-image": "Only JPG, JPEG, PNG, and WebP image files are allowed.",
     "missing-image": "Choose an image before uploading.",
     "missing-store": "Choose a claimed store before managing products.",

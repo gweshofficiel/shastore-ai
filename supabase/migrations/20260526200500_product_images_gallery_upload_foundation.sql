@@ -7,10 +7,10 @@ on conflict (id) do nothing;
 
 create table if not exists public.product_images (
   id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null,
-  store_id uuid not null references public.stores(id) on delete cascade,
-  product_id uuid not null references public.store_products(id) on delete cascade,
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  workspace_id uuid,
+  store_id uuid references public.stores(id) on delete cascade,
+  product_id uuid references public.store_products(id) on delete cascade,
+  owner_user_id uuid references auth.users(id) on delete cascade,
   storage_bucket text not null default 'product-images',
   storage_path text not null,
   public_url text not null,
@@ -24,14 +24,39 @@ create table if not exists public.product_images (
   constraint product_images_bucket_check check (storage_bucket = 'product-images')
 );
 
+alter table if exists public.product_images
+  add column if not exists workspace_id uuid,
+  add column if not exists store_id uuid references public.stores(id) on delete cascade,
+  add column if not exists product_id uuid references public.store_products(id) on delete cascade,
+  add column if not exists owner_user_id uuid references auth.users(id) on delete cascade,
+  add column if not exists storage_bucket text not null default 'product-images',
+  add column if not exists image_role text not null default 'gallery',
+  add column if not exists file_name text,
+  add column if not exists content_type text,
+  add column if not exists file_size integer;
+
+alter table if exists public.product_images
+  alter column landing_page_id drop not null;
+
+update public.product_images
+set
+  image_role = coalesce(nullif(image_role, ''), nullif(image_type, ''), 'gallery'),
+  storage_bucket = coalesce(nullif(storage_bucket, ''), 'product-images'),
+  owner_user_id = coalesce(owner_user_id, user_id),
+  workspace_id = coalesce(workspace_id, user_id)
+where image_role is null
+   or storage_bucket is null
+   or owner_user_id is null
+   or workspace_id is null;
+
 create unique index if not exists product_images_storage_path_unique_idx
   on public.product_images(storage_bucket, storage_path);
 
 create index if not exists product_images_workspace_store_product_idx
   on public.product_images(workspace_id, store_id, product_id, image_role, sort_order);
 
-create unique index if not exists product_images_one_main_per_product_idx
-  on public.product_images(product_id)
+create index if not exists product_images_main_product_idx
+  on public.product_images(product_id, created_at desc)
   where image_role = 'main';
 
 alter table public.product_images enable row level security;
