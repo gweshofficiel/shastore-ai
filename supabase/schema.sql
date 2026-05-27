@@ -106,6 +106,7 @@ create table stores (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references projects(id) on delete set null,
   user_id uuid not null references auth.users(id) on delete cascade,
+  workspace_id uuid,
   name text not null,
   description text,
   logo_image_url text,
@@ -171,6 +172,33 @@ create table store_theme_settings (
   brand_color text not null default '#0f172a',
   logo_image_url text,
   settings jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table store_orders (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references stores(id) on delete cascade,
+  store_instance_id uuid references stores(id) on delete cascade,
+  workspace_id uuid,
+  user_id uuid references auth.users(id) on delete set null,
+  owner_user_id uuid references auth.users(id) on delete set null,
+  customer_name text not null,
+  customer_phone text not null,
+  customer_email text,
+  customer_address text,
+  items jsonb not null default '[]'::jsonb,
+  subtotal numeric(12, 2) not null default 0 check (subtotal >= 0),
+  total numeric(12, 2) not null default 0 check (total >= 0),
+  payment_method text not null default 'manual',
+  payment_status text not null default 'pending',
+  order_status text not null default 'pending',
+  fulfillment_status text not null default 'unfulfilled',
+  delivery_method text,
+  delivery_fee numeric(12, 2) not null default 0,
+  confirmed_at timestamptz,
+  cancelled_at timestamptz,
+  internal_note text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -294,6 +322,7 @@ alter table store_categories enable row level security;
 alter table store_products enable row level security;
 alter table store_templates enable row level security;
 alter table store_theme_settings enable row level security;
+alter table store_orders enable row level security;
 alter table published_stores enable row level security;
 alter table templates enable row level security;
 alter table landings enable row level security;
@@ -366,6 +395,10 @@ create index store_products_category_id_idx on store_products(category_id);
 create index store_theme_settings_store_id_idx on store_theme_settings(store_id);
 create index published_stores_slug_idx on published_stores(slug);
 create index published_stores_store_id_idx on published_stores(store_id);
+create index store_orders_store_created_idx on store_orders(store_id, created_at desc);
+create index store_orders_workspace_id_idx on store_orders(workspace_id);
+create index store_orders_store_instance_id_idx on store_orders(store_instance_id);
+create index store_orders_workspace_created_idx on store_orders(workspace_id, created_at desc);
 create index landings_user_id_idx on landings(user_id);
 create index generations_user_id_idx on generations(user_id);
 create index domains_user_id_idx on domains(user_id);
