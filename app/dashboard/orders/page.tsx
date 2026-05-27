@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { updateStoreOrderStatusAction } from "@/lib/store-order-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
@@ -9,7 +8,7 @@ import type { Json } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-const orderStatuses = ["pending", "confirmed", "processing", "shipped", "delivered", "canceled"];
+const orderStatuses = ["draft", "pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "canceled"];
 const filterStatuses = ["all", ...orderStatuses];
 
 type StoreOrderItem = {
@@ -24,6 +23,7 @@ type StoreOrderItem = {
 
 type StoreOrderRow = {
   created_at: string;
+  currency?: string | null;
   customer_address: string | null;
   customer_email: string | null;
   customer_name: string;
@@ -33,9 +33,38 @@ type StoreOrderRow = {
   order_status: string;
   payment_method: string;
   payment_status: string;
+  source?: "orders" | "store_orders";
   store_id: string;
   subtotal: number | string;
   total: number | string;
+};
+
+type DraftOrderRow = {
+  created_at: string;
+  currency: string | null;
+  customer_address: string | null;
+  customer_email: string | null;
+  customer_name: string;
+  customer_phone: string;
+  id: string;
+  notes: string | null;
+  order_status: string;
+  payment_method: string | null;
+  payment_status: string | null;
+  store_id: string | null;
+  store_instance_id: string | null;
+  subtotal: number | string;
+  total: number | string;
+};
+
+type DraftOrderItemRow = {
+  currency: string | null;
+  order_id: string;
+  price: number | string | null;
+  product_id: string | null;
+  product_title: string | null;
+  quantity: number | null;
+  subtotal: number | string | null;
 };
 
 function numericValue(value: number | string | null | undefined) {
@@ -58,6 +87,10 @@ function formatMoney(amount: number | string, currency = "USD") {
   }).format(numericValue(amount));
 }
 
+function orderReference(id: string) {
+  return id.slice(0, 8).toUpperCase();
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     day: "numeric",
@@ -67,15 +100,19 @@ function formatDate(value: string) {
 }
 
 function statusBadgeClass(status: string | null | undefined) {
+  if (status === "draft") {
+    return "bg-slate-100 text-slate-700";
+  }
+
   if (status === "delivered") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "confirmed" || status === "processing" || status === "shipped") {
+  if (status === "confirmed" || status === "processing" || status === "shipped" || status === "pending") {
     return "bg-blue-100 text-blue-700";
   }
 
-  if (status === "canceled") {
+  if (status === "canceled" || status === "cancelled") {
     return "bg-red-100 text-red-700";
   }
 
@@ -143,12 +180,33 @@ function itemSummary(items: StoreOrderItem[]) {
     .join(", ");
 }
 
+function draftItemsToOrderItems(items: DraftOrderItemRow[]): StoreOrderItem[] {
+  return items.map((item) => ({
+    id: item.product_id ?? undefined,
+    price: numericValue(item.price),
+    quantity: item.quantity ?? 1,
+    title: item.product_title ?? "Product",
+    total: numericValue(item.subtotal)
+  }));
+}
+
 function isMissingStoreOrders(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
   return (
     error?.code === "PGRST205" ||
     message.includes("store_orders") ||
     message.includes("could not find")
+  );
+}
+
+function isMissingDraftOrders(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST205" ||
+    message.includes("orders") ||
+    message.includes("order_items") ||
+    message.includes("could not find") ||
+    message.includes("schema cache")
   );
 }
 
@@ -207,7 +265,7 @@ async function getStoreModeOrders(status: string) {
     };
   }
 
-  let request = supabase
+  let storeOrdersRequest = supabase
     .from("store_orders")
     .select(
       "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, created_at"
@@ -217,26 +275,103 @@ async function getStoreModeOrders(status: string) {
     .limit(100);
 
   if (orderStatuses.includes(status)) {
-    request = request.eq("order_status", status);
+    storeOrdersRequest = storeOrdersRequest.eq("order_status", status);
   }
 
-  const { data, error } = await request;
+  const { data: storeOrders, error: storeOrdersError } = await storeOrdersRequest;
+  let draftOrdersRequest = supabase
+    .from("orders" as never)
+    .select(
+      "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, created_at"
+    )
+    .eq("workspace_id" as never, workspaceId as never)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
-  if (error) {
+  if (orderStatuses.includes(status)) {
+    draftOrdersRequest = draftOrdersRequest.eq("order_status" as never, status as never);
+  }
+
+  const { data: rawDraftOrders, error: draftOrdersError } = await draftOrdersRequest;
+
+  if (storeOrdersError && draftOrdersError) {
     return {
-      error: isMissingStoreOrders(error) ? null : "Orders could not be loaded. Please try again.",
+      error:
+        isMissingStoreOrders(storeOrdersError) && isMissingDraftOrders(draftOrdersError)
+          ? null
+          : "Orders could not be loaded. Please try again.",
       orders: [],
-      schemaIssue: isMissingStoreOrders(error)
-        ? "Missing Store Mode orders foundation: run the store_orders migration."
+      schemaIssue: isMissingStoreOrders(storeOrdersError) && isMissingDraftOrders(draftOrdersError)
+        ? "Missing seller orders foundation: run the store_orders and order draft migrations."
         : null,
       stores
     };
   }
 
+  const draftOrders = draftOrdersError ? [] : ((rawDraftOrders ?? []) as unknown as DraftOrderRow[]);
+  const draftOrderIds = draftOrders.map((order) => order.id);
+  const { data: rawDraftItems, error: draftItemsError } = draftOrderIds.length
+    ? await supabase
+        .from("order_items" as never)
+        .select("order_id, product_id, product_title, price, quantity, subtotal, currency")
+        .in("order_id" as never, draftOrderIds as never)
+    : { data: [], error: null };
+
+  if (draftItemsError && !isMissingDraftOrders(draftItemsError)) {
+    console.error("[dashboard-orders] order items could not be loaded", {
+      code: draftItemsError.code,
+      message: draftItemsError.message
+    });
+  }
+
+  const draftItemsByOrderId = new Map<string, DraftOrderItemRow[]>();
+
+  if (!draftItemsError) {
+    for (const item of (rawDraftItems ?? []) as unknown as DraftOrderItemRow[]) {
+      const current = draftItemsByOrderId.get(item.order_id) ?? [];
+      current.push(item);
+      draftItemsByOrderId.set(item.order_id, current);
+    }
+  }
+
+  const normalizedStoreOrders = storeOrdersError
+    ? []
+    : ((storeOrders ?? []) as StoreOrderRow[]).map((order) => ({
+        ...order,
+        currency: "USD",
+        source: "store_orders" as const
+      }));
+  const normalizedDraftOrders = draftOrders.map((order) => ({
+    created_at: order.created_at,
+    currency: order.currency ?? "USD",
+    customer_address: order.customer_address ?? order.notes,
+    customer_email: order.customer_email,
+    customer_name: order.customer_name,
+    customer_phone: order.customer_phone,
+    id: order.id,
+    items: draftItemsToOrderItems(draftItemsByOrderId.get(order.id) ?? []) as Json,
+    order_status: order.order_status,
+    payment_method: order.payment_method ?? "manual",
+    payment_status: order.payment_status ?? "pending",
+    source: "orders" as const,
+    store_id: order.store_id ?? order.store_instance_id ?? "",
+    subtotal: order.subtotal,
+    total: order.total
+  }));
+  const orders = [...normalizedStoreOrders, ...normalizedDraftOrders]
+    .filter((order) => stores.some((store) => store.id === order.store_id))
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    .slice(0, 100);
+
   return {
     error: null,
-    orders: (data ?? []) as StoreOrderRow[],
-    schemaIssue: null,
+    orders,
+    schemaIssue:
+      storeOrdersError && isMissingStoreOrders(storeOrdersError)
+        ? "Legacy store orders table is missing; showing available draft orders only."
+        : draftOrdersError && isMissingDraftOrders(draftOrdersError)
+          ? "Order draft tables are missing; showing available legacy store orders only."
+          : null,
     stores
   };
 }
@@ -253,13 +388,6 @@ export default async function OrdersPage({
   const activeStatus = filterStatuses.includes(params.status ?? "") ? (params.status ?? "all") : "all";
   const message = statusMessage(params.orders);
   const { error, orders, schemaIssue, stores } = await getStoreModeOrders(activeStatus);
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-  const workspaceId = user ? await getUserPrimaryWorkspaceId(supabase, user.id) : null;
-  const role = user && workspaceId ? await getUserWorkspaceRole(supabase, workspaceId, user.id) : null;
-  const canManageOrders = hasPermission(role, "manage_orders");
   const storesById = new Map(stores.map((store) => [store.id, store]));
 
   return (
@@ -287,7 +415,7 @@ export default async function OrdersPage({
         </Card>
       ) : null}
 
-      {!schemaIssue && !error && stores.length === 0 ? (
+      {!error && stores.length === 0 ? (
         <Card className="p-8 text-center">
           <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
             No stores yet
@@ -301,7 +429,7 @@ export default async function OrdersPage({
         </Card>
       ) : null}
 
-      {!schemaIssue && !error && stores.length > 0 ? (
+      {!error && stores.length > 0 ? (
         orders.length ? (
           <div className="grid gap-5">
             <Card className="p-5">
@@ -326,7 +454,7 @@ export default async function OrdersPage({
                   <Card className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_320px]" key={order.id}>
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                      Order {order.id.slice(0, 8)}
+                      Order {orderReference(order.id)}
                     </p>
                     <h2 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
                       {order.customer_name}
@@ -371,7 +499,7 @@ export default async function OrdersPage({
                                   </p>
                                 ) : null}
                               </div>
-                              <span className="font-black text-ink">{formatMoney(item.total ?? 0)}</span>
+                              <span className="font-black text-ink">{formatMoney(item.total ?? 0, order.currency ?? "USD")}</span>
                             </div>
                           </div>
                         ))}
@@ -380,35 +508,14 @@ export default async function OrdersPage({
                   </div>
                   <div className="grid gap-4 self-center text-left lg:text-right">
                     <p className="text-2xl font-black tracking-[-0.03em] text-ink">
-                      {formatMoney(order.total)}
+                      {formatMoney(order.total, order.currency ?? "USD")}
                     </p>
                     <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                      Submitted total
+                      {order.currency ?? "USD"} total
                     </p>
-                    {canManageOrders ? (
-                      <form action={updateStoreOrderStatusAction} className="grid gap-3">
-                        <input name="orderId" type="hidden" value={order.id} />
-                        <label className="grid gap-2 text-left text-sm font-semibold text-ink">
-                          <span>Order status</span>
-                          <select
-                            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                            defaultValue={order.order_status}
-                            name="status"
-                          >
-                            {orderStatuses.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <Button type="submit">Update status</Button>
-                      </form>
-                    ) : (
-                      <p className="text-sm font-bold text-muted">
-                        You do not have permission to update order status.
-                      </p>
-                    )}
+                    <p className="rounded-2xl bg-slate-50 p-3 text-sm font-bold text-muted">
+                      Payment, fulfillment, and shipping actions are not enabled yet.
+                    </p>
                   </div>
                 </Card>
                 );
