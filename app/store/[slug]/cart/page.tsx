@@ -127,8 +127,7 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
         <CartPageClient
           currency={preview.store.currency}
           slug={preview.store.slug}
-          storeTitle={preview.store.title}
-          whatsappNumber={preview.store.whatsappNumber}
+          storeId={preview.store.id}
         />
       </div>
     </main>

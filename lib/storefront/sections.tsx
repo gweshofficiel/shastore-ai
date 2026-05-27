@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AddToCartButton } from "@/components/storefront/public-store-cart";
+import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -510,7 +510,12 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                     </span>
                   </div>
                   <div className="mt-5 grid gap-2">
-                    <AddToCartButton product={product} slug={context.preview.store.slug} />
+                    <AddToCartButton
+                      currency={currency}
+                      product={product}
+                      slug={context.preview.store.slug}
+                      storeId={context.preview.store.id}
+                    />
                     <Link
                       className={`inline-flex h-11 items-center justify-center px-4 text-sm font-black transition ${cardRadiusClass(context)} ${
                         config.key === "electronics-starter"
@@ -649,13 +654,11 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
           <a href="#categories">Categories</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <Link
-          className={`${config.layout.navbar === "utility" ? "rounded-xl" : "rounded-full"} px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white`}
-          href={`/store/${context.preview.store.slug}/cart`}
-          style={{ backgroundColor: context.theme.colorPalette.primary }}
-        >
-          Cart
-        </Link>
+        <CartNavLink
+          currency={context.preview.store.currency}
+          slug={context.preview.store.slug}
+          storeId={context.preview.store.id}
+        />
       </div>
     </section>
   );

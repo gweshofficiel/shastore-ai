@@ -1,47 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
-import {
-  createPublicStoreOrderAction,
-  type PublicStoreOrderState
-} from "@/lib/store-order-actions";
+import { useEffect, useMemo, useState } from "react";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
   categoryName: string | null;
+  currency: string;
   id: string;
-  imageUrl: string | null;
+  image: string | null;
   price: number | string | null;
   priceLabel: string | null;
+  productId: string;
   quantity: number;
+  storeId: string;
   title: string;
 };
 
 type AddToCartButtonProps = {
+  currency: string;
   product: PublicStorefrontProduct;
   slug: string;
+  storeId: string;
 };
 
 type CartPageClientProps = {
   currency: string;
   slug: string;
-  storeTitle: string;
-  whatsappNumber: string | null;
+  storeId: string;
 };
 
-const initialOrderState: PublicStoreOrderState = {
-  error: null,
-  message: null,
-  ok: false,
-  orderId: null
-};
+function cartKey(storeId: string) {
+  return `shastore_cart_${storeId}`;
+}
 
-function cartKey(slug: string) {
+function legacyCartKey(slug: string) {
   return `shastore_cart_${slug}`;
 }
 
-function parseCartItems(value: string | null): CartItem[] {
+function parseCartItems(value: string | null, storeId: string, currency: string): CartItem[] {
   if (!value) {
     return [];
   }
@@ -58,31 +55,61 @@ function parseCartItems(value: string | null): CartItem[] {
         return (
           item &&
           typeof item === "object" &&
-          typeof item.id === "string" &&
+          (typeof item.id === "string" || typeof (item as { productId?: unknown }).productId === "string") &&
           typeof item.title === "string" &&
-          typeof item.quantity === "number"
+          typeof item.quantity === "number" &&
+          (!("storeId" in item) || item.storeId === storeId)
         );
       })
       .map((item) => ({
-        ...item,
-        quantity: Math.max(1, Math.floor(item.quantity))
+        categoryName: typeof item.categoryName === "string" ? item.categoryName : null,
+        currency: typeof item.currency === "string" && item.currency.trim() ? item.currency : currency,
+        id:
+          typeof item.id === "string"
+            ? item.id
+            : ((item as { productId: string }).productId),
+        image: (() => {
+          const legacyItem = item as unknown as { imageUrl?: unknown };
+          return typeof item.image === "string"
+            ? item.image
+            : typeof legacyItem.imageUrl === "string"
+              ? legacyItem.imageUrl
+              : null;
+        })(),
+        price:
+          typeof item.price === "number" || typeof item.price === "string" ? item.price : null,
+        priceLabel: typeof item.priceLabel === "string" ? item.priceLabel : null,
+        productId:
+          typeof (item as { productId?: unknown }).productId === "string"
+            ? (item as { productId: string }).productId
+            : item.id,
+        quantity: Math.max(1, Math.floor(item.quantity)),
+        storeId,
+        title: item.title
       }));
   } catch {
     return [];
   }
 }
 
-function readCart(slug: string) {
+function readCart(storeId: string, slug: string, currency: string) {
   if (typeof window === "undefined") {
     return [];
   }
 
-  return parseCartItems(window.localStorage.getItem(cartKey(slug)));
+  const scopedItems = parseCartItems(window.localStorage.getItem(cartKey(storeId)), storeId, currency);
+
+  if (scopedItems.length) {
+    return scopedItems;
+  }
+
+  return parseCartItems(window.localStorage.getItem(legacyCartKey(slug)), storeId, currency);
 }
 
-function writeCart(slug: string, items: CartItem[]) {
-  window.localStorage.setItem(cartKey(slug), JSON.stringify(items));
-  window.dispatchEvent(new CustomEvent("shastore-cart-updated", { detail: { slug } }));
+function writeCart(storeId: string, slug: string, items: CartItem[]) {
+  const scopedItems = items.filter((item) => item.storeId === storeId);
+  window.localStorage.setItem(cartKey(storeId), JSON.stringify(scopedItems));
+  window.dispatchEvent(new CustomEvent("shastore-cart-updated", { detail: { slug, storeId } }));
 }
 
 function parsePrice(value: number | string | null) {
@@ -119,14 +146,21 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
   return formatMoney(numeric, currency);
 }
 
-function toCartItem(product: PublicStorefrontProduct): CartItem {
+function toCartItem(
+  product: PublicStorefrontProduct,
+  storeId: string,
+  currency: string
+): CartItem {
   return {
     categoryName: product.categoryName,
+    currency: product.currency || currency,
     id: product.id,
-    imageUrl: product.imageUrl,
+    image: product.imageUrl,
     price: product.price,
     priceLabel: product.priceLabel,
+    productId: product.id,
     quantity: 1,
+    storeId,
     title: product.title
   };
 }
@@ -135,52 +169,19 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((total, item) => total + parsePrice(item.price) * item.quantity, 0);
 }
 
-function whatsappCheckoutHref({
-  items,
-  storeTitle,
-  total,
-  whatsappNumber,
-  currency
-}: {
-  currency: string;
-  items: CartItem[];
-  storeTitle: string;
-  total: number;
-  whatsappNumber: string | null;
-}) {
-  const number = whatsappNumber?.replace(/\D/g, "");
-
-  if (!number || !items.length) {
-    return null;
-  }
-
-  const lines = [
-    `Hi, I want to place an order from ${storeTitle}.`,
-    "",
-    ...items.map((item) => {
-      const unitPrice = displayPrice(item, currency);
-      return `- ${item.title} x${item.quantity} (${unitPrice})`;
-    }),
-    "",
-    `Total: ${formatMoney(total, currency)}`
-  ];
-
-  return `https://wa.me/${number}?text=${encodeURIComponent(lines.join("\n"))}`;
-}
-
-export function AddToCartButton({ product, slug }: AddToCartButtonProps) {
+export function AddToCartButton({ currency, product, slug, storeId }: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
 
   function handleAddToCart() {
-    const current = readCart(slug);
+    const current = readCart(storeId, slug, currency);
     const existing = current.find((item) => item.id === product.id);
     const next = existing
       ? current.map((item) =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         )
-      : [...current, toCartItem(product)];
+      : [...current, toCartItem(product, storeId, currency)];
 
-    writeCart(slug, next);
+    writeCart(storeId, slug, next);
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
   }
@@ -200,12 +201,20 @@ export function AddToCartButton({ product, slug }: AddToCartButtonProps) {
   );
 }
 
-export function CartNavLink({ slug }: { slug: string }) {
+export function CartNavLink({
+  currency,
+  slug,
+  storeId
+}: {
+  currency: string;
+  slug: string;
+  storeId: string;
+}) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
     function updateCount() {
-      setCount(readCart(slug).reduce((total, item) => total + item.quantity, 0));
+      setCount(readCart(storeId, slug, currency).reduce((total, item) => total + item.quantity, 0));
     }
 
     updateCount();
@@ -215,7 +224,7 @@ export function CartNavLink({ slug }: { slug: string }) {
       window.removeEventListener("storage", updateCount);
       window.removeEventListener("shastore-cart-updated", updateCount);
     };
-  }, [slug]);
+  }, [currency, slug, storeId]);
 
   return (
     <Link
@@ -230,40 +239,20 @@ export function CartNavLink({ slug }: { slug: string }) {
 export function CartPageClient({
   currency,
   slug,
-  storeTitle,
-  whatsappNumber
+  storeId
 }: CartPageClientProps) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [orderState, submitOrder, isSubmitting] = useActionState(
-    createPublicStoreOrderAction,
-    initialOrderState
-  );
 
   useEffect(() => {
-    setItems(readCart(slug));
-  }, [slug]);
-
-  useEffect(() => {
-    if (!orderState.ok) {
-      return;
-    }
-
-    updateItems([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderState.ok]);
+    setItems(readCart(storeId, slug, currency));
+  }, [currency, slug, storeId]);
 
   const total = useMemo(() => cartTotal(items), [items]);
-  const whatsappHref = whatsappCheckoutHref({
-    currency,
-    items,
-    storeTitle,
-    total,
-    whatsappNumber
-  });
 
   function updateItems(next: CartItem[]) {
-    setItems(next);
-    writeCart(slug, next);
+    const scopedItems = next.filter((item) => item.storeId === storeId);
+    setItems(scopedItems);
+    writeCart(storeId, slug, scopedItems);
   }
 
   function updateQuantity(itemId: string, quantity: number) {
@@ -282,11 +271,6 @@ export function CartPageClient({
   if (!items.length) {
     return (
       <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
-        {orderState.message ? (
-          <div className="mx-auto mb-5 max-w-xl rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
-            {orderState.message}
-          </div>
-        ) : null}
         <h1 className="text-3xl font-black tracking-[-0.04em] text-ink">Your cart is empty</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
           Add products from the public store before checkout.
@@ -309,11 +293,11 @@ export function CartPageClient({
             className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 sm:grid-cols-[120px_minmax(0,1fr)]"
             key={item.id}
           >
-            {item.imageUrl ? (
+            {item.image ? (
               <img
                 alt={item.title}
                 className="aspect-square w-full rounded-[1.5rem] object-cover"
-                src={item.imageUrl}
+                src={item.image}
               />
             ) : (
               <div className="aspect-square rounded-[1.5rem] bg-slate-100" />
@@ -330,11 +314,11 @@ export function CartPageClient({
                     {item.title}
                   </h2>
                   <p className="mt-1 text-sm font-bold text-muted">
-                    {displayPrice(item, currency)}
+                    {displayPrice(item, item.currency || currency)}
                   </p>
                 </div>
                 <p className="text-lg font-black text-ink">
-                  {formatMoney(parsePrice(item.price) * item.quantity, currency)}
+                  {formatMoney(parsePrice(item.price) * item.quantity, item.currency || currency)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -385,47 +369,33 @@ export function CartPageClient({
             <span>{formatMoney(total, currency)}</span>
           </div>
         </div>
-        <form action={submitOrder} className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
-          <input name="slug" type="hidden" value={slug} />
-          <input
-            name="items"
-            type="hidden"
-            value={JSON.stringify(
-              items.map((item) => ({ id: item.id, quantity: item.quantity }))
-            )}
-          />
-          {orderState.error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
-              {orderState.error}
-            </div>
-          ) : null}
-          {orderState.message ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
-              {orderState.message}
-            </div>
-          ) : null}
+        <div className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+            Checkout is not enabled yet. This cart is ready for the next checkout phase.
+          </div>
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Customer name</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              disabled
               name="customerName"
               placeholder="Full name"
-              required
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Phone</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              disabled
               name="customerPhone"
               placeholder="+15551234567"
-              required
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Email optional</span>
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              disabled
               name="customerEmail"
               placeholder="customer@example.com"
               type="email"
@@ -435,37 +405,27 @@ export function CartPageClient({
             <span>Address optional</span>
             <textarea
               className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              disabled
               name="customerAddress"
               placeholder="Delivery address or notes"
             />
           </label>
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={isSubmitting}
+            disabled
             type="submit"
           >
-            {isSubmitting ? "Submitting order..." : "Submit order"}
+            Submit order · Coming soon
           </button>
-        </form>
+        </div>
         <div className="mt-6 grid gap-3">
-          {whatsappHref ? (
-            <a
-              className="inline-flex h-12 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700"
-              href={whatsappHref}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Order via WhatsApp
-            </a>
-          ) : (
-            <button
-              className="h-12 rounded-full bg-slate-100 px-5 text-sm font-black text-slate-400"
-              disabled
-              type="button"
-            >
-              WhatsApp unavailable
-            </button>
-          )}
+          <button
+            className="h-12 rounded-full bg-slate-100 px-5 text-sm font-black text-slate-400"
+            disabled
+            type="button"
+          >
+            WhatsApp checkout · Coming soon
+          </button>
           <button
             className="h-12 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
             disabled

@@ -246,7 +246,11 @@ export default async function PublicProductDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <CartNavLink slug={preview.store.slug} />
+              <CartNavLink
+                currency={preview.store.currency}
+                slug={preview.store.slug}
+                storeId={preview.store.id}
+              />
               <Link
                 className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
                 href={`/store/${preview.store.slug}`}
@@ -315,7 +319,12 @@ export default async function PublicProductDetailPage({
               </p>
 
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
-                <AddToCartButton product={product} slug={preview.store.slug} />
+                <AddToCartButton
+                  currency={currency}
+                  product={product}
+                  slug={preview.store.slug}
+                  storeId={preview.store.id}
+                />
                 {whatsappHref ? (
                   <a
                     className="inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-black text-white transition"

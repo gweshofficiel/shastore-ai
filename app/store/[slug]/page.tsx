@@ -244,7 +244,7 @@ export default async function PublicStorePage({
                 <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
               </div>
             </div>
-            <CartNavLink slug={store.slug} />
+            <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
           </header>
 
           <div
@@ -395,7 +395,12 @@ export default async function PublicStorePage({
                         ) : null}
                       </div>
                       <div className="mt-5 grid gap-2">
-                        <AddToCartButton product={product} slug={store.slug} />
+                        <AddToCartButton
+                          currency={currency}
+                          product={product}
+                          slug={store.slug}
+                          storeId={store.id}
+                        />
                         <Link
                           className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
                           href={publicProductHref(store.slug, product)}
