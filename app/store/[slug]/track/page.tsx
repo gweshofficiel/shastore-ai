@@ -74,6 +74,10 @@ function deliveryMethodLabel(value: string | null | undefined) {
   return "Not selected";
 }
 
+function fulfillmentStatusLabel(status: string | null | undefined) {
+  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+}
+
 function referenceMatches(orderId: string, reference: string) {
   const normalizedReference = normalizeReference(reference);
 
@@ -159,7 +163,7 @@ async function loadTrackedOrder({
   const { data: rawOrders } = await admin
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, total, currency, order_status, payment_status, created_at"
+      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, currency, order_status, payment_status, created_at"
     )
     .eq("customer_phone" as never, phone as never)
     .order("created_at" as never, { ascending: false } as never)
@@ -170,6 +174,7 @@ async function loadTrackedOrder({
     customer_phone: string;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
+    fulfillment_status?: string | null;
     id: string;
     order_status: string | null;
     payment_status: string | null;
@@ -201,6 +206,7 @@ async function loadTrackedOrder({
         currency: order.currency ?? preview.store.currency ?? "USD",
         delivery_fee: order.delivery_fee ?? 0,
         delivery_method: order.delivery_method ?? null,
+        fulfillment_status: order.fulfillment_status ?? "unfulfilled",
         id: order.id,
         items,
         order_status: order.order_status ?? "draft",
@@ -214,7 +220,7 @@ async function loadTrackedOrder({
 
   const { data: rawStoreOrders } = await admin
     .from("store_orders")
-    .select("id, store_id, customer_phone, delivery_method, delivery_fee, items, total, order_status, payment_status, created_at")
+    .select("id, store_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, order_status, payment_status, created_at")
     .eq("store_id", preview.store.id)
     .eq("customer_phone", phone)
     .order("created_at", { ascending: false })
@@ -223,6 +229,7 @@ async function loadTrackedOrder({
     created_at: string;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
+    fulfillment_status?: string | null;
     id: string;
     items: Json;
     order_status: string | null;
@@ -237,6 +244,7 @@ async function loadTrackedOrder({
         currency: preview.store.currency ?? "USD",
         delivery_fee: storeOrder.delivery_fee ?? 0,
         delivery_method: storeOrder.delivery_method ?? null,
+        fulfillment_status: storeOrder.fulfillment_status ?? "unfulfilled",
         id: storeOrder.id,
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
@@ -363,6 +371,7 @@ export default async function PublicOrderTrackingPage({
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Info label="Order status" value={order.order_status} />
                 <Info label="Payment status" value={order.payment_status} />
+                <Info label="Fulfillment" value={fulfillmentStatusLabel(order.fulfillment_status)} />
                 <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
                 <Info label="Created" value={formatDate(order.created_at)} />
                 <Info label="Currency" value={order.currency} />

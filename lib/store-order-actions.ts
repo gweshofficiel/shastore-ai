@@ -29,6 +29,13 @@ const storeOrderStatuses = new Set([
   "confirmed",
   "cancelled"
 ]);
+const fulfillmentStatuses = new Set([
+  "unfulfilled",
+  "preparing",
+  "ready_for_pickup",
+  "out_for_delivery",
+  "fulfilled"
+]);
 type StoreOrderStatusSource = "orders" | "store_orders";
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
@@ -273,7 +280,7 @@ async function persistStorefrontOrderDraft({
     currency,
     order_status: "draft",
     payment_status: "pending",
-    fulfillment_status: "pending"
+    fulfillment_status: "unfulfilled"
   };
 
   const extendedOrderPayload: Record<string, unknown> = {
@@ -295,10 +302,14 @@ async function persistStorefrontOrderDraft({
     legacyOrderPayload,
     extendedOrderPayload,
     Object.fromEntries(
-      Object.entries(legacyOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+      Object.entries(legacyOrderPayload).filter(
+        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+      )
     ),
     Object.fromEntries(
-      Object.entries(extendedOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+      Object.entries(extendedOrderPayload).filter(
+        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+      )
     ),
     { ...legacyOrderPayload, order_status: "pending" },
     { ...extendedOrderPayload, order_status: "pending" }
@@ -420,6 +431,7 @@ async function persistStorefrontOrderDraft({
     customer_address: customerAddress || null,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
+    fulfillment_status: "unfulfilled",
     items: legacyItems as Json,
     subtotal,
     total,
@@ -434,7 +446,9 @@ async function persistStorefrontOrderDraft({
   for (const payload of [
     storeOrderPayload,
     Object.fromEntries(
-      Object.entries(storeOrderPayload).filter(([key]) => key !== "delivery_fee" && key !== "delivery_method")
+      Object.entries(storeOrderPayload).filter(
+        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+      )
     )
   ]) {
     const { data: storeOrder, error } = await admin
@@ -910,4 +924,115 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   revalidatePath(returnTo);
   revalidatePath("/dashboard");
   orderStatusReturnRedirect(returnTo, "status-updated", orderId);
+}
+
+export async function updateStoreOrderFulfillmentStatusAction(formData: FormData) {
+  const orderId = cleanText(formData.get("orderId"), 80);
+  const fulfillmentStatus = cleanText(formData.get("fulfillmentStatus"), 60);
+  const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
+  const returnTo = safeOrderReturnPath(formData.get("returnTo"));
+
+  if (!orderId) {
+    orderStatusReturnRedirect(returnTo, "missing-order");
+  }
+
+  if (
+    !fulfillmentStatuses.has(fulfillmentStatus) ||
+    (source !== "orders" && source !== "store_orders")
+  ) {
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  }
+
+  let workspaceId: string | null = null;
+
+  try {
+    workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    await requirePermission({
+      permission: "manage_orders",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  const tableName = source === "orders" ? "orders" : "store_orders";
+  const { data: currentOrder, error: currentError } = await supabase
+    .from(tableName as never)
+    .select("id, delivery_method, fulfillment_status")
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+  const currentOrderRow = currentOrder as {
+    delivery_method: string | null;
+    fulfillment_status: string | null;
+    id: string;
+  } | null;
+
+  if (currentError) {
+    console.error("[store-orders] fulfillment lookup failed", {
+      code: currentError.code,
+      fulfillmentStatus,
+      message: currentError.message,
+      orderId,
+      source
+    });
+    orderStatusReturnRedirect(returnTo, "fulfillment-failed", orderId);
+  }
+
+  if (!currentOrderRow) {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  const deliveryMethod = currentOrderRow.delivery_method;
+
+  if (fulfillmentStatus === "ready_for_pickup" && deliveryMethod !== "pickup") {
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  if (fulfillmentStatus === "out_for_delivery" && deliveryMethod !== "delivery") {
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  const { data, error } = await supabase
+    .from(tableName as never)
+    .update({
+      fulfillment_status: fulfillmentStatus,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[store-orders] fulfillment update failed", {
+      code: error.code,
+      fulfillmentStatus,
+      message: error.message,
+      orderId,
+      source
+    });
+    orderStatusReturnRedirect(returnTo, "fulfillment-failed", orderId);
+  }
+
+  if (!data) {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  revalidatePath(dashboardOrdersPath);
+  revalidatePath(returnTo);
+  revalidatePath("/dashboard");
+  orderStatusReturnRedirect(returnTo, "fulfillment-updated", orderId);
 }

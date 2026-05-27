@@ -1,9 +1,13 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { OrderFulfillmentActions } from "@/components/dashboard/order-fulfillment-actions";
 import { OrderStatusActions } from "@/components/dashboard/order-status-actions";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
-import { updateStoreOrderStatusAction } from "@/lib/store-order-actions";
+import {
+  updateStoreOrderFulfillmentStatusAction,
+  updateStoreOrderStatusAction
+} from "@/lib/store-order-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import type { Json } from "@/types/database";
@@ -90,11 +94,33 @@ function statusBadgeClass(status: string | null | undefined) {
   return "bg-amber-100 text-amber-700";
 }
 
+function fulfillmentStatusLabel(status: string | null | undefined) {
+  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+}
+
+function fulfillmentBadgeClass(status: string | null | undefined) {
+  const normalized = status && status !== "pending" ? status : "unfulfilled";
+
+  if (normalized === "fulfilled") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (normalized === "preparing" || normalized === "ready_for_pickup" || normalized === "out_for_delivery") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
 function statusMessage(value: string | undefined) {
   const messages: Record<string, { className: string; text: string }> = {
     "invalid-status": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "That order status is not supported."
+    },
+    "invalid-fulfillment": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That fulfillment status is not allowed for this order delivery method."
     },
     "invalid-transition": {
       className: "border-red-200 bg-red-50 text-red-700",
@@ -111,6 +137,14 @@ function statusMessage(value: string | undefined) {
     "status-failed": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Order status could not be updated. Please try again."
+    },
+    "fulfillment-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Fulfillment status could not be updated. Please try again."
+    },
+    "fulfillment-updated": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Fulfillment status updated."
     },
     "status-updated": {
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -178,7 +212,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -198,6 +232,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_phone: string;
         delivery_fee?: number | string | null;
         delivery_method?: string | null;
+        fulfillment_status?: string | null;
         id: string;
         internal_note?: string | null;
         items: Json;
@@ -225,6 +260,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            fulfillment_status: row.fulfillment_status ?? "unfulfilled",
             id: row.id,
             internal_note: row.internal_note ?? null,
             items: parseStoreOrderItems(row.items),
@@ -245,7 +281,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id" as never, orderId as never)
         .eq("workspace_id" as never, workspaceId as never)
@@ -266,6 +302,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_phone: string;
         delivery_fee?: number | string | null;
         delivery_method?: string | null;
+        fulfillment_status?: string | null;
         id: string;
         internal_note: string | null;
         notes: string | null;
@@ -315,6 +352,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            fulfillment_status: row.fulfillment_status ?? "unfulfilled",
             id: row.id,
             internal_note: row.internal_note,
             items,
@@ -406,6 +444,7 @@ export default async function OrderDetailPage({
             <Info label="Address" value={order.customer_address || "Not provided"} />
             <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
             <Info label="Delivery fee" value={formatMoney(order.delivery_fee ?? 0, order.currency)} />
+            <Info label="Fulfillment" value={fulfillmentStatusLabel(order.fulfillment_status)} />
             <Info label="Created" value={formatDate(order.created_at)} />
             <Info label="Confirmed" value={formatDate(order.confirmed_at)} />
             <Info label="Cancelled" value={formatDate(order.cancelled_at)} />
@@ -473,6 +512,9 @@ export default async function OrderDetailPage({
               <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${statusBadgeClass(order.order_status)}`}>
                 Order status: {order.order_status}
               </span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${fulfillmentBadgeClass(order.fulfillment_status)}`}>
+                Fulfillment: {fulfillmentStatusLabel(order.fulfillment_status)}
+              </span>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                 Payment method: {order.payment_method}
               </span>
@@ -495,14 +537,24 @@ export default async function OrderDetailPage({
           </Card>
 
           {canManageOrders ? (
-            <OrderStatusActions
-              action={updateStoreOrderStatusAction}
-              currentStatus={order.order_status}
-              internalNote={order.internal_note ?? ""}
-              orderId={order.id}
-              returnTo={returnTo}
-              source={order.source}
-            />
+            <>
+              <OrderStatusActions
+                action={updateStoreOrderStatusAction}
+                currentStatus={order.order_status}
+                internalNote={order.internal_note ?? ""}
+                orderId={order.id}
+                returnTo={returnTo}
+                source={order.source}
+              />
+              <OrderFulfillmentActions
+                action={updateStoreOrderFulfillmentStatusAction}
+                currentStatus={order.fulfillment_status ?? "unfulfilled"}
+                deliveryMethod={order.delivery_method}
+                orderId={order.id}
+                returnTo={returnTo}
+                source={order.source}
+              />
+            </>
           ) : (
             <Card className="p-5">
               <p className="text-sm font-bold text-muted">

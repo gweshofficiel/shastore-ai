@@ -32,6 +32,7 @@ type StoreOrderRow = {
   customer_email: string | null;
   customer_name: string;
   customer_phone: string;
+  fulfillment_status?: string | null;
   id: string;
   items: Json;
   order_status: string;
@@ -55,6 +56,7 @@ type DraftOrderRow = {
   customer_phone: string;
   id: string;
   notes: string | null;
+  fulfillment_status: string | null;
   order_status: string;
   payment_method: string | null;
   payment_status: string | null;
@@ -125,6 +127,24 @@ function statusBadgeClass(status: string | null | undefined) {
   }
 
   return "bg-amber-100 text-amber-700";
+}
+
+function fulfillmentStatusLabel(status: string | null | undefined) {
+  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+}
+
+function fulfillmentBadgeClass(status: string | null | undefined) {
+  const normalized = status && status !== "pending" ? status : "unfulfilled";
+
+  if (normalized === "fulfilled") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (normalized === "preparing" || normalized === "ready_for_pickup" || normalized === "out_for_delivery") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
 }
 
 function filterHref(status: string) {
@@ -280,7 +300,7 @@ async function getStoreModeOrders(status: string) {
   let storeOrdersRequest = supabase
     .from("store_orders")
     .select(
-      "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+      "id, store_id, customer_name, customer_phone, customer_email, customer_address, items, subtotal, total, payment_method, payment_status, order_status, fulfillment_status, confirmed_at, cancelled_at, internal_note, created_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
@@ -294,7 +314,7 @@ async function getStoreModeOrders(status: string) {
   let draftOrdersRequest = supabase
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+      "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, notes, subtotal, total, currency, payment_method, payment_status, order_status, fulfillment_status, confirmed_at, cancelled_at, internal_note, created_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .order("created_at", { ascending: false })
@@ -365,6 +385,7 @@ async function getStoreModeOrders(status: string) {
     id: order.id,
     internal_note: order.internal_note,
     items: draftItemsToOrderItems(draftItemsByOrderId.get(order.id) ?? []) as Json,
+    fulfillment_status: order.fulfillment_status ?? "unfulfilled",
     order_status: order.order_status,
     payment_method: order.payment_method ?? "manual",
     payment_status: order.payment_status ?? "pending",
@@ -508,6 +529,11 @@ export default async function OrdersPage({
                         className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${statusBadgeClass(order.order_status)}`}
                       >
                         Order status: {order.order_status}
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${fulfillmentBadgeClass(order.fulfillment_status)}`}
+                      >
+                        Fulfillment: {fulfillmentStatusLabel(order.fulfillment_status)}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                         Payment method: {order.payment_method || "manual"}
