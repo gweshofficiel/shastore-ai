@@ -4261,6 +4261,11 @@ export default async function StoreDraftPage({
   const storeContact = store as typeof store & {
     business_address?: string | null;
     business_hours?: string | null;
+    delivery_enabled?: boolean | null;
+    delivery_fee?: number | string | null;
+    delivery_notes?: string | null;
+    free_delivery_threshold?: number | string | null;
+    pickup_enabled?: boolean | null;
     privacy_policy?: string | null;
     refund_policy?: string | null;
     support_email?: string | null;
@@ -4599,6 +4604,62 @@ export default async function StoreDraftPage({
               label="Business hours"
               name="businessHours"
               placeholder="Mon-Fri 9:00-18:00"
+            />
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-black text-ink">Delivery and pickup</p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Show basic fulfillment options publicly. Fees are informational only for now
+              and are not added to checkout totals yet.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-bold text-ink">
+                <input
+                  className="h-4 w-4 rounded border-slate-300"
+                  defaultChecked={Boolean(storeContact.delivery_enabled)}
+                  name="deliveryEnabled"
+                  type="checkbox"
+                />
+                Delivery available
+              </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-bold text-ink">
+                <input
+                  className="h-4 w-4 rounded border-slate-300"
+                  defaultChecked={Boolean(storeContact.pickup_enabled)}
+                  name="pickupEnabled"
+                  type="checkbox"
+                />
+                Pickup available
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Input
+                defaultValue={storeContact.delivery_fee ?? ""}
+                id="publication-delivery-fee"
+                label="Delivery fee"
+                min="0"
+                name="deliveryFee"
+                placeholder="0.00"
+                step="0.01"
+                type="number"
+              />
+              <Input
+                defaultValue={storeContact.free_delivery_threshold ?? ""}
+                id="publication-free-delivery-threshold"
+                label="Free delivery threshold"
+                min="0"
+                name="freeDeliveryThreshold"
+                placeholder="100.00"
+                step="0.01"
+                type="number"
+              />
+            </div>
+            <Textarea
+              defaultValue={storeContact.delivery_notes ?? ""}
+              id="publication-delivery-notes"
+              label="Delivery notes"
+              name="deliveryNotes"
+              placeholder="Delivery areas, pickup instructions, timing, or fulfillment notes."
             />
           </div>
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">

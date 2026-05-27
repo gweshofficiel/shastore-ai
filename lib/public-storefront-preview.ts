@@ -47,8 +47,13 @@ export type PublicStorefrontPreview = {
   store: {
     businessAddress: string | null;
     businessHours: string | null;
+    deliveryEnabled: boolean;
+    deliveryFee: number | null;
+    deliveryNotes: string | null;
     description: string | null;
+    freeDeliveryThreshold: number | null;
     id: string;
+    pickupEnabled: boolean;
     privacyPolicy: string | null;
     refundPolicy: string | null;
     slug: string;
@@ -69,6 +74,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function textValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function booleanValue(value: unknown, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 function normalizeRuntimeFont(value: unknown) {
@@ -183,8 +205,13 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
     store: {
       businessAddress: textValue(store.businessAddress) || null,
       businessHours: textValue(store.businessHours) || null,
+      deliveryEnabled: booleanValue(store.deliveryEnabled),
+      deliveryFee: numberValue(store.deliveryFee),
+      deliveryNotes: textValue(store.deliveryNotes, "") || null,
       description: textValue(store.description) || null,
+      freeDeliveryThreshold: numberValue(store.freeDeliveryThreshold),
       id,
+      pickupEnabled: booleanValue(store.pickupEnabled),
       privacyPolicy: textValue(store.privacyPolicy, "") || null,
       refundPolicy: textValue(store.refundPolicy, "") || null,
       slug,
@@ -237,7 +264,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -258,6 +285,11 @@ async function loadStoreModePublicPreview(slug: string) {
     layout_style?: string | null;
     business_address?: string | null;
     business_hours?: string | null;
+    delivery_enabled?: boolean | null;
+    delivery_fee?: number | string | null;
+    delivery_notes?: string | null;
+    free_delivery_threshold?: number | string | null;
+    pickup_enabled?: boolean | null;
     privacy_policy?: string | null;
     refund_policy?: string | null;
     support_email?: string | null;
@@ -350,8 +382,13 @@ async function loadStoreModePublicPreview(slug: string) {
       businessAddress: store.business_address || null,
       businessHours: store.business_hours || null,
       currency: store.currency || "USD",
+      deliveryEnabled: Boolean(store.delivery_enabled),
+      deliveryFee: numberValue(store.delivery_fee),
+      deliveryNotes: store.delivery_notes || null,
       description: store.description,
+      freeDeliveryThreshold: numberValue(store.free_delivery_threshold),
       id: store.id,
+      pickupEnabled: Boolean(store.pickup_enabled),
       privacyPolicy: store.privacy_policy || null,
       refundPolicy: store.refund_policy || null,
       slug: store.slug,

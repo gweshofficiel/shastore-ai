@@ -30,6 +30,13 @@ type AddToCartButtonProps = {
 
 type CartPageClientProps = {
   currency: string;
+  deliverySettings: {
+    deliveryEnabled: boolean;
+    deliveryFee: number | null;
+    deliveryNotes: string | null;
+    freeDeliveryThreshold: number | null;
+    pickupEnabled: boolean;
+  };
   slug: string;
   storeId: string;
 };
@@ -346,7 +353,7 @@ export function CartNavLink({
   );
 }
 
-export function CartPageClient({ currency, slug, storeId }: CartPageClientProps) {
+export function CartPageClient({ currency, deliverySettings, slug, storeId }: CartPageClientProps) {
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
     [currency, slug, storeId]
@@ -493,6 +500,43 @@ export function CartPageClient({ currency, slug, storeId }: CartPageClientProps)
           <div className="flex justify-between">
             <span>Subtotal</span>
             <span>{formatMoney(total, currency)}</span>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Delivery summary
+            </p>
+            <div className="mt-3 grid gap-2">
+              <div className="flex justify-between">
+                <span>Delivery</span>
+                <span>{deliverySettings.deliveryEnabled ? "Available" : "Not enabled"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Pickup</span>
+                <span>{deliverySettings.pickupEnabled ? "Available" : "Not enabled"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Delivery fee</span>
+                <span>
+                  {deliverySettings.deliveryFee !== null
+                    ? formatMoney(deliverySettings.deliveryFee, currency)
+                    : "Not configured"}
+                </span>
+              </div>
+              {deliverySettings.freeDeliveryThreshold !== null ? (
+                <div className="flex justify-between">
+                  <span>Free delivery from</span>
+                  <span>{formatMoney(deliverySettings.freeDeliveryThreshold, currency)}</span>
+                </div>
+              ) : null}
+            </div>
+            {deliverySettings.deliveryNotes ? (
+              <p className="mt-3 whitespace-pre-line text-xs font-semibold leading-5 text-muted">
+                {deliverySettings.deliveryNotes}
+              </p>
+            ) : null}
+            <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+              Delivery fees are informational and are not added to this draft total yet.
+            </p>
           </div>
           <div className="flex justify-between">
             <span>Currency</span>

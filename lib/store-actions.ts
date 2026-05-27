@@ -95,6 +95,21 @@ function cleanUrl(value: FormDataEntryValue | null) {
   return text.startsWith("https://") || text.startsWith("http://") ? text : "";
 }
 
+function formBoolean(formData: FormData, key: string) {
+  return formData.get(key) === "on";
+}
+
+function cleanMoney(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 40);
+
+  if (!text) {
+    return null;
+  }
+
+  const amount = Number(text);
+  return Number.isFinite(amount) ? Math.max(0, Number(amount.toFixed(2))) : null;
+}
+
 function normalizePhoneContact(value: FormDataEntryValue | null, label: string) {
   const text = cleanText(value, 80);
 
@@ -1832,6 +1847,11 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const privacyPolicy = cleanText(formData.get("privacyPolicy"), 20000) || null;
   const termsOfService = cleanText(formData.get("termsOfService"), 20000) || null;
   const refundPolicy = cleanText(formData.get("refundPolicy"), 20000) || null;
+  const deliveryEnabled = formBoolean(formData, "deliveryEnabled");
+  const pickupEnabled = formBoolean(formData, "pickupEnabled");
+  const deliveryFee = cleanMoney(formData.get("deliveryFee"));
+  const freeDeliveryThreshold = cleanMoney(formData.get("freeDeliveryThreshold"));
+  const deliveryNotes = cleanText(formData.get("deliveryNotes"), 1000) || null;
   const now = new Date().toISOString();
 
   if (whatsappContact.error) {
@@ -1930,6 +1950,11 @@ export async function saveStorePublicationSettings(formData: FormData) {
     .update({
       business_address: businessAddress,
       business_hours: businessHours,
+      delivery_enabled: deliveryEnabled,
+      delivery_fee: deliveryFee,
+      delivery_notes: deliveryNotes,
+      free_delivery_threshold: freeDeliveryThreshold,
+      pickup_enabled: pickupEnabled,
       privacy_policy: privacyPolicy,
       refund_policy: refundPolicy,
       support_email: supportEmail.value,

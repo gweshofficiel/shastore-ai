@@ -219,6 +219,13 @@ export default async function PublicStorePage({
       store.businessAddress ||
       store.businessHours
   );
+  const hasDeliveryData = Boolean(
+    store.deliveryEnabled ||
+      store.pickupEnabled ||
+      store.deliveryFee !== null ||
+      store.freeDeliveryThreshold !== null ||
+      store.deliveryNotes
+  );
   const productSections = categorySections.length
     ? [
         ...categorySections,
@@ -519,6 +526,59 @@ export default async function PublicStorePage({
         templateId={preview.templateId}
       />
       <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
+      <section className="px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Delivery and pickup
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+              Fulfillment options
+            </h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+              Delivery settings are managed by the store owner. Checkout fees remain informational until fulfillment is enabled.
+            </p>
+          </div>
+          {hasDeliveryData ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ContactCard
+                label="Delivery"
+                value={store.deliveryEnabled ? "Available" : "Not enabled yet"}
+              />
+              <ContactCard
+                label="Pickup"
+                value={store.pickupEnabled ? "Available" : "Not enabled yet"}
+              />
+              <ContactCard
+                label="Delivery fee"
+                value={
+                  store.deliveryFee !== null
+                    ? formatProductPrice(store.deliveryFee, null, store.currency)
+                    : "Not configured yet"
+                }
+              />
+              <ContactCard
+                label="Free delivery threshold"
+                value={
+                  store.freeDeliveryThreshold !== null
+                    ? formatProductPrice(store.freeDeliveryThreshold, null, store.currency)
+                    : "Not configured yet"
+                }
+              />
+              <div className="sm:col-span-2">
+                <ContactCard label="Delivery notes" value={store.deliveryNotes} />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
+              <p className="text-sm font-black text-ink">Delivery details are not configured yet.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                The store owner can add delivery, pickup, fees, and fulfillment notes from the dashboard.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
       <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>

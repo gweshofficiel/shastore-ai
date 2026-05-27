@@ -126,6 +126,13 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
 
         <CartPageClient
           currency={preview.store.currency}
+          deliverySettings={{
+            deliveryEnabled: preview.store.deliveryEnabled,
+            deliveryFee: preview.store.deliveryFee,
+            deliveryNotes: preview.store.deliveryNotes,
+            freeDeliveryThreshold: preview.store.freeDeliveryThreshold,
+            pickupEnabled: preview.store.pickupEnabled
+          }}
           slug={preview.store.slug}
           storeId={preview.store.id}
         />
