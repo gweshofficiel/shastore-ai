@@ -161,6 +161,10 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
   return product.imageUrl || productGalleryUrls(product.gallery)[0] || null;
 }
 
+function isPublicProductStatus(status: string | null) {
+  return !status || status === "active" || status === "published";
+}
+
 function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
   const number = whatsappNumber?.replace(/\D/g, "");
 
@@ -219,6 +223,36 @@ export async function loadStoreSections(context: StoreTenantContext): Promise<St
     .filter((section): section is StoreSection => Boolean(section));
 }
 
+function hasProductSection(sections: StoreSection[]) {
+  return sections.some((section) =>
+    ["featured_products", "product_grid"].includes(section.section_type.toLowerCase())
+  );
+}
+
+function withLiveProductSection(context: StoreTenantContext, sections: StoreSection[]) {
+  if (hasProductSection(sections)) {
+    return sections;
+  }
+
+  const maxOrder = sections.reduce(
+    (current, section) => Math.max(current, section.section_order),
+    0
+  );
+
+  return [
+    ...sections,
+    {
+      config: {},
+      id: "runtime-live-featured-products",
+      owner_user_id: context.owner_user_id,
+      section_enabled: true,
+      section_order: maxOrder + 10,
+      section_type: "featured_products",
+      store_instance_id: context.store_instance_id
+    }
+  ].sort((left, right) => left.section_order - right.section_order);
+}
+
 export async function resolveSectionLayout(context: StoreTenantContext): Promise<StorePageLayout> {
   const builderState = await loadVisualEditorState(context);
   const builderSections = resolveBuilderSections(builderState, context);
@@ -228,7 +262,7 @@ export async function resolveSectionLayout(context: StoreTenantContext): Promise
     return {
       builderPreview,
       key: `${context.theme.layout_key}:builder`,
-      sections: builderSections
+      sections: withLiveProductSection(context, builderSections)
     };
   }
 
@@ -238,7 +272,7 @@ export async function resolveSectionLayout(context: StoreTenantContext): Promise
     return {
       builderPreview,
       key: `${context.theme.layout_key}:saved`,
-      sections
+      sections: withLiveProductSection(context, sections)
     };
   }
 
@@ -269,7 +303,9 @@ function SectionShell({
 
 function ProductGridSection({ context }: { context: StoreTenantContext; section?: StoreSection }) {
   const config = templateConfig(context);
-  const products = context.preview.products.slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const products = context.preview.products
+    .filter((product) => isPublicProductStatus(product.status))
+    .slice(0, config.key === "electronics-starter" ? 8 : 6);
   const theme = context.preview.themeSettings;
   const categorizedProductIds = new Set<string>();
   const categorySections = context.preview.categories.map((category) => {
