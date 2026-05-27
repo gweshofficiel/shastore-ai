@@ -31,6 +31,12 @@ type ProductImageRecord = {
   storage_path: string;
 };
 
+type ProtectedProductRecord = {
+  gallery?: unknown;
+  id: string;
+  image_url?: string | null;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 1000) {
   if (typeof value !== "string") {
     return "";
@@ -101,6 +107,16 @@ function validateImageFile(file: FormDataEntryValue | null) {
   return { error: null, file };
 }
 
+function logProductImageError(
+  event: string,
+  details: Record<string, string | number | null | undefined>
+) {
+  console.error(`[product-images] ${event}`, {
+    ...details,
+    bucket: imageBucket
+  });
+}
+
 function slugify(value: string) {
   const slug = value
     .toLowerCase()
@@ -142,15 +158,29 @@ async function loadProtectedProduct({
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
-  return (data ?? null) as {
-    gallery?: unknown;
-    id: string;
-    image_url?: string | null;
-  } | null;
+  return (data ?? null) as ProtectedProductRecord | null;
 }
 
 function normalizeGallery(value: unknown) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "object" && item !== null) : [];
+}
+
+function galleryItem({
+  imageId,
+  publicUrl,
+  storagePath
+}: {
+  imageId: string | null;
+  publicUrl: string;
+  storagePath: string;
+}) {
+  return {
+    ...(imageId ? { id: imageId } : {}),
+    publicUrl,
+    role: "gallery",
+    storagePath,
+    url: publicUrl
+  };
 }
 
 async function revalidateProductImagePaths(store: WorkspaceStoreRow, storeId: string, productId: string) {
@@ -350,14 +380,10 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
     productsRedirect(storeId, "image-failed");
   }
 
-  const protectedProduct = product as {
-    gallery?: unknown;
-    id: string;
-    image_url?: string | null;
-  };
+  const protectedProduct = product as ProtectedProductRecord;
   const file = validation.file as File;
   const extension = imageExtension(file);
-  const storagePath = `${user.id}/stores/${storeId}/products/${productId}/${role}-${randomUUID()}.${extension}`;
+  const storagePath = `${user.id}/${storeId}/${productId}/${role}-${randomUUID()}.${extension}`;
   const { error: uploadError } = await supabase.storage.from(imageBucket).upload(storagePath, file, {
     cacheControl: "31536000",
     contentType: file.type,
@@ -365,11 +391,13 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
   });
 
   if (uploadError) {
-    console.error("[product-images] upload failed", {
+    logProductImageError("upload failed", {
       code: uploadError.name,
       message: uploadError.message,
       productId,
-      storeId
+      storagePath,
+      storeId,
+      userId: user.id
     });
     productsRedirect(storeId, "image-failed");
   }
@@ -381,27 +409,75 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
     role === "main"
       ? 0
       : normalizeGallery(protectedProduct.gallery).length + 1;
+  const { data: existingMain } =
+    role === "main"
+      ? await supabase
+          .from("product_images" as never)
+          .select("id, storage_bucket, storage_path")
+          .eq("product_id", productId)
+          .eq("store_id", storeId)
+          .eq("workspace_id" as never, workspaceId as never)
+          .eq("image_role" as never, "main" as never)
+          .maybeSingle()
+      : { data: null };
+  const previousMain = existingMain as unknown as ProductImageRecord | null;
 
-  if (role === "main") {
-    const { data: existingMain } = await supabase
+  const productUpdate =
+    role === "main"
+      ? await supabase
+          .from("store_products" as never)
+          .update({
+            image_url: publicUrl,
+            updated_at: new Date().toISOString()
+          } as never)
+          .eq("id", productId)
+          .eq("store_id", storeId)
+          .eq("workspace_id" as never, workspaceId as never)
+      : await supabase
+          .from("store_products" as never)
+          .update({
+            gallery: [
+              ...normalizeGallery(protectedProduct.gallery),
+              galleryItem({ imageId: null, publicUrl, storagePath })
+            ],
+            updated_at: new Date().toISOString()
+          } as never)
+          .eq("id", productId)
+          .eq("store_id", storeId)
+          .eq("workspace_id" as never, workspaceId as never);
+
+  if (productUpdate.error) {
+    await supabase.storage.from(imageBucket).remove([storagePath]);
+    logProductImageError("product update failed after upload", {
+      code: productUpdate.error.code,
+      message: productUpdate.error.message,
+      productId,
+      storagePath,
+      storeId,
+      userId: user.id
+    });
+    productsRedirect(storeId, "image-save-failed");
+  }
+
+  if (role === "main" && previousMain) {
+    await supabase.storage.from(previousMain.storage_bucket).remove([previousMain.storage_path]);
+    const { error: previousDeleteError } = await supabase
       .from("product_images" as never)
-      .select("id, storage_bucket, storage_path")
+      .delete()
+      .eq("id", previousMain.id)
       .eq("product_id", productId)
       .eq("store_id", storeId)
-      .eq("workspace_id" as never, workspaceId as never)
-      .eq("image_role" as never, "main" as never)
-      .maybeSingle();
+      .eq("workspace_id" as never, workspaceId as never);
 
-    if (existingMain) {
-      const existing = existingMain as unknown as ProductImageRecord;
-      await supabase.storage.from(existing.storage_bucket).remove([existing.storage_path]);
-      await supabase
-        .from("product_images" as never)
-        .delete()
-        .eq("id", existing.id)
-        .eq("product_id", productId)
-        .eq("store_id", storeId)
-        .eq("workspace_id" as never, workspaceId as never);
+    if (previousDeleteError) {
+      logProductImageError("previous main metadata delete failed", {
+        code: previousDeleteError.code,
+        message: previousDeleteError.message,
+        productId,
+        storagePath: previousMain.storage_path,
+        storeId,
+        userId: user.id
+      });
     }
   }
 
@@ -427,41 +503,27 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
     .single();
 
   if (imageError || !imageRow) {
-    await supabase.storage.from(imageBucket).remove([storagePath]);
-    console.error("[product-images] metadata insert failed", {
+    logProductImageError("metadata insert failed after product update", {
       code: imageError?.code,
       message: imageError?.message,
       productId,
-      storeId
+      storagePath,
+      storeId,
+      userId: user.id
     });
-    productsRedirect(storeId, "image-failed");
+    await revalidateProductImagePaths(store, storeId, productId);
+    productsRedirect(storeId, "image-uploaded-metadata-warning");
   }
 
   const normalizedImage = imageRow as unknown as ProductImageRecord;
 
-  if (role === "main") {
-    await supabase
-      .from("store_products" as never)
-      .update({
-        image_url: publicUrl,
-        updated_at: new Date().toISOString()
-      } as never)
-      .eq("id", productId)
-      .eq("store_id", storeId)
-      .eq("workspace_id" as never, workspaceId as never);
-  } else {
+  if (role === "gallery") {
     const gallery = [
       ...normalizeGallery(protectedProduct.gallery),
-      {
-        id: normalizedImage.id,
-        publicUrl,
-        role: "gallery",
-        storagePath,
-        url: publicUrl
-      }
+      galleryItem({ imageId: normalizedImage.id, publicUrl, storagePath })
     ];
 
-    await supabase
+    const { error: gallerySyncError } = await supabase
       .from("store_products" as never)
       .update({
         gallery,
@@ -470,6 +532,17 @@ export async function uploadStoreOwnerProductImage(formData: FormData) {
       .eq("id", productId)
       .eq("store_id", storeId)
       .eq("workspace_id" as never, workspaceId as never);
+
+    if (gallerySyncError) {
+      logProductImageError("gallery metadata id sync failed", {
+        code: gallerySyncError.code,
+        message: gallerySyncError.message,
+        productId,
+        storagePath,
+        storeId,
+        userId: user.id
+      });
+    }
   }
 
   await revalidateProductImagePaths(store, storeId, productId);
