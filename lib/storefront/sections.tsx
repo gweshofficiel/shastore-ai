@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -520,6 +521,12 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                       slug={context.preview.store.slug}
                       storeId={context.preview.store.id}
                     />
+                    <WishlistButton
+                      currency={currency}
+                      product={product}
+                      slug={context.preview.store.slug}
+                      storeId={context.preview.store.id}
+                    />
                     <Link
                       className={`inline-flex h-11 items-center justify-center px-4 text-sm font-black transition ${cardRadiusClass(context)} ${
                         config.key === "electronics-starter"
@@ -658,11 +665,18 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
           <a href="#categories">Categories</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <CartNavLink
-          currency={context.preview.store.currency}
-          slug={context.preview.store.slug}
-          storeId={context.preview.store.id}
-        />
+        <div className="flex flex-wrap gap-2">
+          <WishlistNavLink
+            currency={context.preview.store.currency}
+            slug={context.preview.store.slug}
+            storeId={context.preview.store.id}
+          />
+          <CartNavLink
+            currency={context.preview.store.currency}
+            slug={context.preview.store.slug}
+            storeId={context.preview.store.id}
+          />
+        </div>
       </div>
     </section>
   );

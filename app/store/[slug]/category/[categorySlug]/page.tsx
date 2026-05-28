@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -156,6 +157,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                 slug={preview.store.slug}
                 storeId={preview.store.id}
               />
+              <WishlistNavLink
+                currency={preview.store.currency}
+                slug={preview.store.slug}
+                storeId={preview.store.id}
+              />
               <Link
                 className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
                 href={`/store/${preview.store.slug}`}
@@ -216,6 +222,12 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                         </p>
                       </div>
                       <AddToCartButton
+                        currency={currency}
+                        product={product}
+                        slug={preview.store.slug}
+                        storeId={preview.store.id}
+                      />
+                      <WishlistButton
                         currency={currency}
                         product={product}
                         slug={preview.store.slug}

@@ -5,6 +5,7 @@ import {
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
@@ -283,7 +284,10 @@ export default async function PublicStorePage({
                 <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
               </div>
             </div>
-            <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+            <div className="flex flex-wrap gap-2">
+              <WishlistNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+              <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+            </div>
           </header>
 
           <div
@@ -444,6 +448,12 @@ export default async function PublicStorePage({
                       </div>
                       <div className="mt-5 grid gap-2">
                         <AddToCartButton
+                          currency={currency}
+                          product={product}
+                          slug={store.slug}
+                          storeId={store.id}
+                        />
+                        <WishlistButton
                           currency={currency}
                           product={product}
                           slug={store.slug}

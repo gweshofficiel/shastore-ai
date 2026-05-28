@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitProductReview } from "@/lib/product-review-actions";
 import { getApprovedProductReviews } from "@/lib/product-reviews";
@@ -283,6 +284,11 @@ export default async function PublicProductDetailPage({
                 slug={preview.store.slug}
                 storeId={preview.store.id}
               />
+              <WishlistNavLink
+                currency={preview.store.currency}
+                slug={preview.store.slug}
+                storeId={preview.store.id}
+              />
               <Link
                 className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
                 href={`/store/${preview.store.slug}`}
@@ -360,6 +366,12 @@ export default async function PublicProductDetailPage({
 
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
                 <AddToCartButton
+                  currency={currency}
+                  product={product}
+                  slug={preview.store.slug}
+                  storeId={preview.store.id}
+                />
+                <WishlistButton
                   currency={currency}
                   product={product}
                   slug={preview.store.slug}
