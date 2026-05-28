@@ -490,14 +490,27 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
           availableStock: 0
         }
       : isProductBlocked(product, currentQuantity + 1);
-  const stockMessage = selectedAvailability.blocked
-    ? selectedAvailability.message ?? "This product is out of stock or quantity is not available."
-    : selectedAvailability.availableStock !== null && selectedAvailability.availableStock <= currentQuantity + 1
-      ? "Last available item."
-      : null;
+  const selectedStockQuantity = selectedVariant
+    ? parseStockQuantity(selectedVariant.stockQuantity)
+    : parseStockQuantity(product.stockQuantity);
+  const isOutOfStock = selectedVariant
+    ? selectedVariant.status !== "active" || selectedStockQuantity <= 0
+    : product.variants.length
+      ? true
+      : product.trackInventory &&
+        (product.inventoryStatus === "out_of_stock" || selectedStockQuantity <= 0);
+  const isAddToCartDisabled = isOutOfStock || selectedAvailability.blocked;
+  const stockMessage = isOutOfStock
+    ? "غير متوفر في المخزون"
+    : selectedAvailability.blocked
+      ? selectedAvailability.message ?? "This product is out of stock or quantity is not available."
+      : selectedAvailability.availableStock !== null &&
+          selectedAvailability.availableStock <= currentQuantity + 1
+        ? "Last available item."
+        : null;
 
   function handleAddToCart() {
-    if (selectedAvailability.blocked) {
+    if (isAddToCartDisabled) {
       return;
     }
 
@@ -547,21 +560,31 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
         </label>
       ) : null}
       {stockMessage ? (
-        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+        <p
+          className={`rounded-2xl border px-4 py-3 text-center text-base font-black ${
+            isOutOfStock
+              ? "border-red-600 bg-red-600 text-white shadow-lg shadow-red-200"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
           {stockMessage}
         </p>
       ) : null}
       <button
-        className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={selectedAvailability.blocked}
+        className={`inline-flex h-11 items-center justify-center border px-4 text-sm font-black transition ${
+          isAddToCartDisabled
+            ? "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-50"
+            : "border-transparent text-white hover:opacity-90"
+        }`}
+        disabled={isAddToCartDisabled}
         onClick={handleAddToCart}
         style={{
-          backgroundColor: "var(--store-primary, #0f172a)",
+          backgroundColor: isAddToCartDisabled ? undefined : "var(--store-primary, #0f172a)",
           borderRadius: "var(--store-border-radius, 9999px)"
         }}
         type="button"
       >
-        {selectedAvailability.blocked ? "Unavailable" : added ? "Added to cart" : "Add to cart"}
+        {isAddToCartDisabled ? "Unavailable" : added ? "Added to cart" : "Add to cart"}
       </button>
     </div>
   );
