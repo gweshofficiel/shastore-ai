@@ -94,6 +94,25 @@ function cleanOptionalMoney(value: FormDataEntryValue | null) {
   return cleanMoney(text);
 }
 
+function cleanInteger(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 20);
+  if (!text) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(text, 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function cleanOptionalInteger(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 20);
+  if (!text) {
+    return null;
+  }
+
+  return cleanInteger(text);
+}
+
 function cleanCurrency(value: FormDataEntryValue | null) {
   const currency = cleanText(value, 8).toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : "USD";
@@ -379,6 +398,10 @@ function productPayload(formData: FormData, productId?: string) {
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
     currency: cleanCurrency(formData.get("currency")),
     description: cleanOptionalText(formData.get("description"), 1000),
+    inventory_status: formData.get("trackInventory") === "on" && cleanInteger(formData.get("stockQuantity")) <= 0
+      ? "out_of_stock"
+      : "in_stock",
+    low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
     name: title,
     price: price.toFixed(2),
     price_label: price.toFixed(2),
@@ -386,7 +409,9 @@ function productPayload(formData: FormData, productId?: string) {
     sku: cleanOptionalText(formData.get("sku"), 80),
     slug: `${slugify(title)}-${slugSuffix}`,
     status: cleanStatus(formData.get("status")),
-    title
+    stock_quantity: cleanInteger(formData.get("stockQuantity")),
+    title,
+    track_inventory: formData.get("trackInventory") === "on"
   };
 }
 

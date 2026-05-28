@@ -87,6 +87,25 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   return value.trim().slice(0, maxLength);
 }
 
+function cleanInteger(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 20);
+  if (!text) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(text, 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function cleanOptionalInteger(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 20);
+  if (!text) {
+    return null;
+  }
+
+  return cleanInteger(text);
+}
+
 function cleanUrl(value: FormDataEntryValue | null) {
   const text = cleanText(value, 500);
   if (!text) {
@@ -1439,6 +1458,8 @@ export async function createManagedStoreProduct(formData: FormData) {
   const description = cleanText(formData.get("productDescription"), 1000);
   const imageUrl = cleanUrl(formData.get("productImageUrl"));
   const categoryId = cleanText(formData.get("categoryId"), 80);
+  const stockQuantity = cleanInteger(formData.get("stockQuantity"));
+  const trackInventory = formData.get("trackInventory") === "on";
   const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
 
   if (!storeId || !name) {
@@ -1485,8 +1506,12 @@ export async function createManagedStoreProduct(formData: FormData) {
       description: description || null,
       price: price || null,
       image_url: imageUrl || null,
+      stock_quantity: stockQuantity,
+      track_inventory: trackInventory,
+      low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
+      inventory_status: trackInventory && stockQuantity <= 0 ? "out_of_stock" : "in_stock",
       sort_order: count ?? 0
-    })
+    } as never)
     .select("id")
     .single();
 
@@ -1515,6 +1540,8 @@ export async function updateManagedStoreProduct(formData: FormData) {
   const description = cleanText(formData.get("productDescription"), 1000);
   const imageUrl = cleanUrl(formData.get("productImageUrl"));
   const categoryId = cleanText(formData.get("categoryId"), 80);
+  const stockQuantity = cleanInteger(formData.get("stockQuantity"));
+  const trackInventory = formData.get("trackInventory") === "on";
   const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
 
   if (!storeId || !productId || !name) {
@@ -1553,8 +1580,12 @@ export async function updateManagedStoreProduct(formData: FormData) {
       description: description || null,
       price: price || null,
       image_url: imageUrl || null,
+      stock_quantity: stockQuantity,
+      track_inventory: trackInventory,
+      low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
+      inventory_status: trackInventory && stockQuantity <= 0 ? "out_of_stock" : "in_stock",
       updated_at: new Date().toISOString()
-    })
+    } as never)
     .eq("id", productId)
     .eq("store_id", storeId)
     .eq("user_id", user.id);

@@ -13,12 +13,15 @@ type CartItem = {
   currency: string;
   id: string;
   image: string | null;
+  inventoryStatus?: string | null;
   price: number | string | null;
   priceLabel: string | null;
   productId: string;
   quantity: number;
+  stockQuantity?: number | null;
   storeId: string;
   title: string;
+  trackInventory?: boolean;
 };
 
 type AddToCartButtonProps = {
@@ -117,6 +120,10 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
               ? legacyItem.imageUrl
               : null;
         })(),
+        inventoryStatus:
+          typeof (item as { inventoryStatus?: unknown }).inventoryStatus === "string"
+            ? (item as { inventoryStatus: string }).inventoryStatus
+            : null,
         price:
           typeof item.price === "number" || typeof item.price === "string" ? item.price : null,
         priceLabel: typeof item.priceLabel === "string" ? item.priceLabel : null,
@@ -125,8 +132,13 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
             ? (item as { productId: string }).productId
             : item.id,
         quantity: Math.max(1, Math.floor(item.quantity)),
+        stockQuantity:
+          typeof (item as { stockQuantity?: unknown }).stockQuantity === "number"
+            ? (item as { stockQuantity: number }).stockQuantity
+            : null,
         storeId,
-        title: item.title
+        title: item.title,
+        trackInventory: (item as { trackInventory?: unknown }).trackInventory === true
       }));
   } catch {
     return [];
@@ -243,12 +255,15 @@ function toCartItem(
     currency: product.currency || currency,
     id: product.id,
     image: product.imageUrl,
+    inventoryStatus: product.inventoryStatus,
     price: product.price,
     priceLabel: product.priceLabel,
     productId: product.id,
     quantity: 1,
+    stockQuantity: product.stockQuantity,
     storeId,
-    title: product.title
+    title: product.title,
+    trackInventory: product.trackInventory
   };
 }
 
@@ -310,12 +325,19 @@ function useStoreCart(scope: CartScope) {
 
 export function AddToCartButton({ currency, product, slug, storeId }: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
+  const isOutOfStock =
+    product.trackInventory &&
+    ((product.stockQuantity ?? 0) <= 0 || product.inventoryStatus === "out_of_stock");
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
     [currency, slug, storeId]
   );
 
   function handleAddToCart() {
+    if (isOutOfStock) {
+      return;
+    }
+
     const current = readStoreCart(scope);
     const existing = current.find(
       (item) => item.productId === product.id || item.id === product.id
@@ -323,7 +345,13 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
     const next = existing
       ? current.map((item) =>
           item.productId === product.id || item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? {
+                ...item,
+                quantity: Math.min(
+                  item.quantity + 1,
+                  product.trackInventory ? product.stockQuantity ?? 0 : item.quantity + 1
+                )
+              }
             : item
         )
       : [...current, toCartItem(product, storeId, currency)];
@@ -336,6 +364,7 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
   return (
     <button
       className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90"
+      disabled={isOutOfStock}
       onClick={handleAddToCart}
       style={{
         backgroundColor: "var(--store-primary, #0f172a)",
@@ -343,7 +372,7 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
       }}
       type="button"
     >
-      {added ? "Added to cart" : "Add to cart"}
+      {isOutOfStock ? "Out of stock" : added ? "Added to cart" : "Add to cart"}
     </button>
   );
 }
@@ -412,7 +441,13 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
     persistItems(
       items.map((item) =>
         item.id === itemId || item.productId === itemId
-          ? { ...item, quantity: Math.max(1, quantity) }
+          ? {
+              ...item,
+              quantity: Math.max(
+                1,
+                Math.min(quantity, item.trackInventory ? item.stockQuantity ?? 0 : quantity)
+              )
+            }
           : item
       )
     );

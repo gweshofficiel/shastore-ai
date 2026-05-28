@@ -148,6 +148,10 @@ function statusMessage(value: string | undefined) {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Cancelled orders cannot be moved back to another status."
     },
+    "inventory-insufficient": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Order could not be confirmed because one or more products do not have enough stock."
+    },
     "missing-order": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Choose an order before updating status."

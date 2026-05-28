@@ -13,12 +13,16 @@ export type PublicStorefrontProduct = {
   gallery: unknown[];
   id: string;
   imageUrl: string | null;
+  inventoryStatus: string | null;
+  lowStockThreshold: number | null;
   price: number | string | null;
   priceLabel: string | null;
   sku: string | null;
   slug: string | null;
   status: string | null;
   title: string;
+  stockQuantity: number | null;
+  trackInventory: boolean;
 };
 
 export type PublicStorefrontCategory = {
@@ -137,12 +141,16 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     gallery: Array.isArray(value.gallery) ? value.gallery : [],
     id,
     imageUrl: textValue(value.imageUrl) || null,
+    inventoryStatus: textValue(value.inventoryStatus) || null,
+    lowStockThreshold: typeof value.lowStockThreshold === "number" ? value.lowStockThreshold : null,
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
     priceLabel: textValue(value.priceLabel) || null,
     sku: textValue(value.sku) || null,
     slug: textValue(value.slug) || null,
     status: textValue(value.status) || null,
-    title
+    title,
+    stockQuantity: typeof value.stockQuantity === "number" ? value.stockQuantity : null,
+    trackInventory: value.trackInventory === true
   };
 }
 
@@ -322,7 +330,7 @@ async function loadStoreModePublicPreview(slug: string) {
 
   const { data: products } = await client
     .from("store_products" as never)
-    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status")
+    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status")
     .eq("store_id", store.id)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
@@ -346,6 +354,8 @@ async function loadStoreModePublicPreview(slug: string) {
     currency: textValue(product.currency) || null,
     gallery: Array.isArray(product.gallery) ? product.gallery : [],
     id: String(product.id ?? ""),
+    inventoryStatus: textValue(product.inventory_status) || null,
+    lowStockThreshold: typeof product.low_stock_threshold === "number" ? product.low_stock_threshold : null,
     title: textValue(product.title, textValue(product.name, "Untitled product")),
     description: textValue(product.description) || null,
     imageUrl: textValue(product.image_url) || null,
@@ -353,7 +363,9 @@ async function loadStoreModePublicPreview(slug: string) {
     priceLabel: typeof product.price === "string" ? product.price : null,
     sku: null,
     slug: textValue(product.slug) || null,
-    status: textValue(product.status, "active")
+    status: textValue(product.status, "active"),
+    stockQuantity: typeof product.stock_quantity === "number" ? product.stock_quantity : null,
+    trackInventory: product.track_inventory === true
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const { data: themeRow } = await client

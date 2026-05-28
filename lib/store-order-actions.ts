@@ -740,6 +740,25 @@ export async function createPublicStoreOrderAction(
   }
 
   const productsById = new Map(preview.products.map((product) => [product.id, product]));
+  const insufficientStockItem = requestedItems.find((item) => {
+    const product = productsById.get(item.id);
+    return (
+      product?.trackInventory &&
+      ((product.stockQuantity ?? 0) < Math.max(1, item.quantity) ||
+        product.inventoryStatus === "out_of_stock")
+    );
+  });
+
+  if (insufficientStockItem) {
+    const product = productsById.get(insufficientStockItem.id);
+    return {
+      error: `${product?.title ?? "A product"} does not have enough stock for checkout.`,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
   const items = requestedItems
     .map((item) => {
       const product = productsById.get(item.id);
@@ -1303,6 +1322,10 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   }
 
   if (error) {
+    if (String(error.message ?? "").toLowerCase().includes("insufficient inventory")) {
+      orderStatusReturnRedirect(returnTo, "inventory-insufficient", orderId);
+    }
+
     logSupabaseDiagnostic(
       "order_status.update.failed",
       {

@@ -29,13 +29,17 @@ type ProductRow = {
   gallery?: unknown;
   id: string;
   image_url?: string | null;
+  inventory_status?: string | null;
+  low_stock_threshold?: number | null;
   name?: string | null;
   price?: number | string | null;
   sku?: string | null;
   slug?: string | null;
   status?: string | null;
+  stock_quantity?: number | null;
   store_id: string;
   title?: string | null;
+  track_inventory?: boolean | null;
   updated_at?: string | null;
   workspace_id?: string | null;
 };
@@ -131,7 +135,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   const { data: products, error: productsError } = await supabase
     .from("store_products" as never)
     .select(
-      "id, workspace_id, store_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, created_at, updated_at"
+      "id, workspace_id, store_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, created_at, updated_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
@@ -255,6 +259,33 @@ function statusBadgeClass(status: string | null | undefined) {
   return "bg-amber-100 text-amber-700";
 }
 
+function inventoryLabel(product: ProductRow) {
+  if (!product.track_inventory) {
+    return "Not tracked";
+  }
+
+  return `${product.stock_quantity ?? 0} in stock`;
+}
+
+function inventoryBadgeClass(product: ProductRow) {
+  if (!product.track_inventory) {
+    return "bg-slate-100 text-slate-600";
+  }
+
+  if ((product.stock_quantity ?? 0) <= 0 || product.inventory_status === "out_of_stock") {
+    return "bg-rose-100 text-rose-700";
+  }
+
+  if (
+    product.low_stock_threshold != null &&
+    (product.stock_quantity ?? 0) <= product.low_stock_threshold
+  ) {
+    return "bg-amber-100 text-amber-700";
+  }
+
+  return "bg-emerald-100 text-emerald-700";
+}
+
 function statusMessage(status: string | undefined) {
   const messages: Record<string, string> = {
     "create-failed": "Product could not be created. Check the fields and try again.",
@@ -371,6 +402,43 @@ function ProductFields({ product }: { product?: ProductRow }) {
         />
       </div>
       <SelectField defaultValue={productStatus(product ?? ({} as ProductRow))} name="status" />
+      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+        <label className="flex items-start gap-3 text-sm font-semibold text-ink">
+          <input
+            className="mt-1 h-4 w-4 rounded border-slate-300"
+            defaultChecked={Boolean(product?.track_inventory)}
+            name="trackInventory"
+            type="checkbox"
+          />
+          <span>
+            Track inventory
+            <span className="mt-1 block text-xs font-medium leading-5 text-muted">
+              When enabled, checkout is blocked if the requested quantity exceeds available stock.
+            </span>
+          </span>
+        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={String(product?.stock_quantity ?? 0)}
+            id={product ? `stock-quantity-${product.id}` : "stock-quantity-new"}
+            label="Stock quantity"
+            min="0"
+            name="stockQuantity"
+            step="1"
+            type="number"
+          />
+          <Input
+            defaultValue={product?.low_stock_threshold == null ? "" : String(product.low_stock_threshold)}
+            id={product ? `low-stock-threshold-${product.id}` : "low-stock-threshold-new"}
+            label="Low stock threshold"
+            min="0"
+            name="lowStockThreshold"
+            placeholder="Optional"
+            step="1"
+            type="number"
+          />
+        </div>
+      </div>
     </>
   );
 }
@@ -537,7 +605,7 @@ export default async function SellerProductsPage({
                   No products yet
                 </h3>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                  Add your first product with a title, price, image, and active/draft status.
+                Add your first product with a title, price, stock, and active/draft status.
                 </p>
               </Card>
             ) : null}
@@ -592,6 +660,11 @@ export default async function SellerProductsPage({
                             >
                               {productStatus(product)}
                             </span>
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${inventoryBadgeClass(product)}`}
+                            >
+                              {inventoryLabel(product)}
+                            </span>
                           </div>
                           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
                             {product.description || "No description yet."}
@@ -625,10 +698,10 @@ export default async function SellerProductsPage({
                             </div>
                             <div className="rounded-2xl bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                Image
+                                Inventory
                               </p>
                               <p className="mt-1 font-black text-ink">
-                                {product.image_url ? "Connected" : "Not set"}
+                                {inventoryLabel(product)}
                               </p>
                             </div>
                           </div>

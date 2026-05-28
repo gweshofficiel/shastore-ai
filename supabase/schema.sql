@@ -142,6 +142,10 @@ create table store_categories (
   name text not null,
   description text,
   image_url text,
+  stock_quantity integer not null default 0 check (stock_quantity >= 0),
+  track_inventory boolean not null default false,
+  low_stock_threshold integer check (low_stock_threshold is null or low_stock_threshold >= 0),
+  inventory_status text not null default 'in_stock' check (inventory_status in ('in_stock', 'out_of_stock')),
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
@@ -177,6 +181,19 @@ create table store_products (
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table inventory_movements (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid,
+  store_id uuid not null references stores(id) on delete cascade,
+  product_id uuid not null references store_products(id) on delete cascade,
+  order_source text not null check (order_source in ('orders', 'store_orders')),
+  order_id uuid not null,
+  movement_type text not null check (movement_type in ('decrement', 'restock')),
+  quantity integer not null check (quantity > 0),
+  created_at timestamptz not null default now(),
+  unique (order_source, order_id, product_id, movement_type)
 );
 
 create table store_templates (

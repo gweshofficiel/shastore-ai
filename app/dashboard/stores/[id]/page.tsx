@@ -4251,8 +4251,8 @@ export default async function StoreDraftPage({
       .eq("user_id", user.id)
       .order("sort_order", { ascending: true }),
     supabase
-      .from("store_products")
-      .select("id, name, description, price, image_url, category_id, sort_order")
+      .from("store_products" as never)
+      .select("id, name, description, price, image_url, category_id, sort_order, stock_quantity, track_inventory, low_stock_threshold, inventory_status")
       .eq("store_id", store.id)
       .eq("user_id", user.id)
       .order("sort_order", { ascending: true }),
@@ -4263,6 +4263,18 @@ export default async function StoreDraftPage({
       .eq("user_id", user.id)
       .maybeSingle()
   ]);
+  const catalogProducts = (products ?? []) as unknown as Array<{
+    category_id: string | null;
+    description: string | null;
+    id: string;
+    image_url: string | null;
+    inventory_status?: string | null;
+    low_stock_threshold?: number | null;
+    name: string;
+    price: string | null;
+    stock_quantity?: number | null;
+    track_inventory?: boolean | null;
+  }>;
   const themeSettings = normalizeStoreThemeSettings(themeRow?.settings);
   const { data: rawPublication } = await supabase
     .from("published_stores")
@@ -4533,7 +4545,7 @@ export default async function StoreDraftPage({
               {store.description || "A premium store homepage draft."}
             </p>
             <div className="mt-5 grid gap-2">
-              {(products ?? []).slice(0, 3).map((product) => (
+              {catalogProducts.slice(0, 3).map((product) => (
                 <div
                   className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"
                   key={product.id}
@@ -5400,6 +5412,37 @@ export default async function StoreDraftPage({
               name="productImageUrl"
               placeholder="https://example.com/product.jpg"
             />
+            <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <label className="flex items-start gap-3 text-sm font-semibold text-ink">
+                <input className="mt-1 h-4 w-4 rounded border-slate-300" name="trackInventory" type="checkbox" />
+                <span>
+                  Track inventory
+                  <span className="mt-1 block text-xs font-medium leading-5 text-muted">
+                    Checkout is blocked when tracked stock is unavailable.
+                  </span>
+                </span>
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  defaultValue="0"
+                  id="new-product-stock"
+                  label="Stock quantity"
+                  min="0"
+                  name="stockQuantity"
+                  step="1"
+                  type="number"
+                />
+                <Input
+                  id="new-product-low-stock"
+                  label="Low stock threshold"
+                  min="0"
+                  name="lowStockThreshold"
+                  placeholder="Optional"
+                  step="1"
+                  type="number"
+                />
+              </div>
+            </div>
             <label className="grid gap-2 text-sm font-semibold text-ink">
               <span>Category</span>
               <select
@@ -5419,8 +5462,8 @@ export default async function StoreDraftPage({
             </div>
           </form>
           <div className="mt-5 grid gap-4">
-            {(products ?? []).length ? (
-              (products ?? []).map((product) => (
+            {catalogProducts.length ? (
+              catalogProducts.map((product) => (
                 <form
                   action={updateManagedStoreProduct}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
@@ -5470,6 +5513,43 @@ export default async function StoreDraftPage({
                       name="productImageUrl"
                       placeholder="https://example.com/product.jpg"
                     />
+                    <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+                      <label className="flex items-start gap-3 text-sm font-semibold text-ink">
+                        <input
+                          className="mt-1 h-4 w-4 rounded border-slate-300"
+                          defaultChecked={Boolean(product.track_inventory)}
+                          name="trackInventory"
+                          type="checkbox"
+                        />
+                        <span>
+                          Track inventory
+                          <span className="mt-1 block text-xs font-medium leading-5 text-muted">
+                            Current status: {product.inventory_status === "out_of_stock" ? "out of stock" : "in stock"}
+                          </span>
+                        </span>
+                      </label>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Input
+                          defaultValue={String(product.stock_quantity ?? 0)}
+                          id={`product-${product.id}-stock`}
+                          label="Stock quantity"
+                          min="0"
+                          name="stockQuantity"
+                          step="1"
+                          type="number"
+                        />
+                        <Input
+                          defaultValue={product.low_stock_threshold == null ? "" : String(product.low_stock_threshold)}
+                          id={`product-${product.id}-low-stock`}
+                          label="Low stock threshold"
+                          min="0"
+                          name="lowStockThreshold"
+                          placeholder="Optional"
+                          step="1"
+                          type="number"
+                        />
+                      </div>
+                    </div>
                     <label className="grid gap-2 text-sm font-semibold text-ink">
                       <span>Category</span>
                       <select
@@ -5501,7 +5581,7 @@ export default async function StoreDraftPage({
             ) : (
               <p className="text-sm leading-6 text-muted">No products saved yet.</p>
             )}
-            {(products ?? []).map((product) => (
+            {catalogProducts.map((product) => (
               <form
                 action={deleteManagedStoreProduct}
                 className="hidden"
