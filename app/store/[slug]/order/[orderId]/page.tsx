@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ClearStoreCartOnOrderSuccess } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { submitPurchasedProductReview } from "@/lib/product-review-actions";
+import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -14,6 +16,7 @@ type PublicOrderConfirmationPageProps = {
     slug: string;
   }>;
   searchParams: Promise<{
+    review?: string;
     source?: string;
   }>;
 };
@@ -28,6 +31,19 @@ type ConfirmationItem = {
   subtotal: number;
   title: string;
 };
+
+function reviewMessage(status: string | undefined) {
+  const messages: Record<string, string> = {
+    "already-submitted": "Review already submitted for this product.",
+    failed: "Review could not be submitted. Please try again.",
+    invalid: "Choose a rating from 1 to 5 and add a review comment.",
+    "invalid-product": "That product was not found in this order.",
+    "not-configured": "Review submission is not configured yet.",
+    submitted: "Review submitted and waiting for approval."
+  };
+
+  return status ? messages[status] : null;
+}
 
 function whatsappHref(number: string | null, message: string) {
   const destination = number?.replace(/\D/g, "");
@@ -199,7 +215,7 @@ async function loadPublicOrderConfirmation({
       const { data, error } = await admin
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, total, total_amount, currency, order_status, payment_status"
+          "id, workspace_id, store_id, store_instance_id, customer_name, customer_phone, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, total, total_amount, currency, order_status, payment_status"
         )
         .eq("id" as never, orderId as never)
         .maybeSingle();
@@ -208,6 +224,7 @@ async function loadPublicOrderConfirmation({
         const row = data as unknown as {
           currency: string | null;
           customer_name: string;
+          customer_phone?: string | null;
           delivery_fee?: number | string | null;
           delivery_method?: string | null;
           id: string;
@@ -221,6 +238,7 @@ async function loadPublicOrderConfirmation({
           tax_rate?: number | string | null;
           total: number | string;
           total_amount?: number | string | null;
+          workspace_id?: string | null;
         };
         const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
 
@@ -249,6 +267,7 @@ async function loadPublicOrderConfirmation({
             order: {
               currency: row.currency ?? preview.store.currency ?? "USD",
               customer_name: row.customer_name,
+              customer_phone: row.customer_phone ?? null,
               delivery_fee: row.delivery_fee ?? 0,
               delivery_method: row.delivery_method ?? null,
               id: row.id,
@@ -261,7 +280,8 @@ async function loadPublicOrderConfirmation({
               tax_name: row.tax_name ?? null,
               tax_rate: row.tax_rate ?? 0,
               prices_include_tax: Boolean(row.prices_include_tax),
-              total: row.total_amount ?? row.total
+              total: row.total_amount ?? row.total,
+              workspace_id: row.workspace_id ?? preview.store.workspaceId ?? null
             },
             reason: null,
             storeTitle: preview.store.title,
@@ -274,7 +294,7 @@ async function loadPublicOrderConfirmation({
     if (source === "store_orders") {
       const { data, error } = await admin
         .from("store_orders")
-        .select("id, store_id, customer_name, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, total_amount, order_status, payment_status")
+        .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, total_amount, order_status, payment_status")
         .eq("id", orderId)
         .eq("store_id", preview.store.id)
         .maybeSingle();
@@ -282,6 +302,7 @@ async function loadPublicOrderConfirmation({
       if (!error && data) {
         const row = data as unknown as {
           customer_name: string;
+          customer_phone?: string | null;
           delivery_fee?: number | string | null;
           delivery_method?: string | null;
           id: string;
@@ -294,12 +315,14 @@ async function loadPublicOrderConfirmation({
           tax_rate?: number | string | null;
           total: number | string;
           total_amount?: number | string | null;
+          workspace_id?: string | null;
         };
 
         return {
           order: {
             currency: preview.store.currency ?? "USD",
             customer_name: row.customer_name,
+            customer_phone: row.customer_phone ?? null,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
             id: row.id,
@@ -312,7 +335,8 @@ async function loadPublicOrderConfirmation({
             tax_name: row.tax_name ?? null,
             tax_rate: row.tax_rate ?? 0,
             prices_include_tax: Boolean(row.prices_include_tax),
-            total: row.total_amount ?? row.total
+            total: row.total_amount ?? row.total,
+            workspace_id: row.workspace_id ?? preview.store.workspaceId ?? null
           },
           reason: null,
           storeTitle: preview.store.title,
@@ -347,7 +371,7 @@ export default async function PublicOrderConfirmationPage({
   searchParams
 }: PublicOrderConfirmationPageProps) {
   const { orderId, slug } = await params;
-  const { source } = await searchParams;
+  const { review, source } = await searchParams;
   const { order, reason, storeTitle, whatsappNumber } = await loadPublicOrderConfirmation({
     orderId,
     slug,
@@ -356,6 +380,14 @@ export default async function PublicOrderConfirmationPage({
   const whatsappUrl = order
     ? whatsappHref(whatsappNumber, whatsAppOrderMessage({ order, storeTitle }))
     : null;
+  const reviewStatuses = order
+    ? await getProductReviewStatusByOrder({
+        orderId: order.id,
+        storeId: order.store_id
+      })
+    : new Map<string, string>();
+  const reviewStatusMessage = reviewMessage(review);
+  const returnTo = `/store/${slug}/order/${orderId}${source ? `?source=${encodeURIComponent(source)}` : ""}`;
 
   if (!order) {
     return (
@@ -450,6 +482,15 @@ export default async function PublicOrderConfirmationPage({
             <Info label="Order status" value={order.order_status} />
             <Info label="Payment status" value={order.payment_status} />
           </div>
+          {reviewStatusMessage ? (
+            <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
+              review === "submitted" || review === "already-submitted"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}>
+              {reviewStatusMessage}
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -477,11 +518,33 @@ export default async function PublicOrderConfirmationPage({
                     ) : (
                       <div className="h-20 w-20 rounded-2xl bg-slate-200" />
                     )}
-                    <div>
+                    <div className="grid gap-3">
                       <p className="font-black text-ink">{item.title}</p>
                       <p className="mt-1 text-sm font-semibold text-muted">
                         Quantity {item.quantity} x {formatMoney(item.price, order.currency)}
                       </p>
+                      {item.id ? (
+                        reviewStatuses.has(item.id) ? (
+                          <span className="inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                            Review submitted
+                          </span>
+                        ) : (
+                          <details className="rounded-2xl border border-slate-200 bg-white p-3">
+                            <summary className="cursor-pointer text-sm font-black text-ink">
+                              Leave a review
+                            </summary>
+                            <ReviewForm
+                              customerName={order.customer_name}
+                              customerPhone={order.customer_phone ?? ""}
+                              orderId={order.id}
+                              productId={item.id}
+                              returnTo={returnTo}
+                              storeId={order.store_id}
+                              workspaceId={order.workspace_id ?? ""}
+                            />
+                          </details>
+                        )
+                      ) : null}
                     </div>
                     <p className="font-black text-ink">
                       {formatMoney(item.subtotal, order.currency)}
@@ -526,6 +589,75 @@ export default async function PublicOrderConfirmationPage({
         </section>
       </div>
     </main>
+  );
+}
+
+function ReviewForm({
+  customerName,
+  customerPhone,
+  orderId,
+  productId,
+  returnTo,
+  storeId,
+  workspaceId
+}: {
+  customerName: string;
+  customerPhone: string;
+  orderId: string;
+  productId: string;
+  returnTo: string;
+  storeId: string;
+  workspaceId: string;
+}) {
+  return (
+    <form action={submitPurchasedProductReview} className="mt-3 grid gap-3">
+      <input name="customerName" type="hidden" value={customerName} />
+      <input name="customerPhone" type="hidden" value={customerPhone} />
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="productId" type="hidden" value={productId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="storeId" type="hidden" value={storeId} />
+      <input name="workspaceId" type="hidden" value={workspaceId} />
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Rating</span>
+        <select
+          className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          name="rating"
+          required
+        >
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Good</option>
+          <option value="3">3 - Okay</option>
+          <option value="2">2 - Poor</option>
+          <option value="1">1 - Bad</option>
+        </select>
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Title</span>
+        <input
+          className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          maxLength={140}
+          name="title"
+          placeholder="Great product"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Comment</span>
+        <textarea
+          className="min-h-24 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          maxLength={2000}
+          name="comment"
+          placeholder="Share your experience."
+          required
+        />
+      </label>
+      <button
+        className="h-10 rounded-full bg-ink px-4 text-sm font-black text-white transition hover:bg-slate-800"
+        type="submit"
+      >
+        Submit review
+      </button>
+    </form>
   );
 }
 

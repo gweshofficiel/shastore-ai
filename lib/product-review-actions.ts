@@ -29,6 +29,20 @@ function dashboardRedirect(storeId: string, status: string): never {
   redirect(`${reviewsPath}?${params.toString()}`);
 }
 
+function safeReviewReturnPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return "/store";
+  }
+
+  const path = value.trim();
+  return path.startsWith("/store/") ? path : "/store";
+}
+
+function redirectBackToReviewSurface(returnTo: string, status: string): never {
+  const separator = returnTo.includes("?") ? "&" : "?";
+  redirect(`${returnTo}${separator}review=${encodeURIComponent(status)}`);
+}
+
 function parseRating(value: FormDataEntryValue | null) {
   const parsed = Number.parseInt(cleanText(value, 10), 10);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -37,6 +51,21 @@ function parseRating(value: FormDataEntryValue | null) {
 function reviewStatus(value: FormDataEntryValue | null) {
   const status = cleanText(value, 20);
   return status === "approved" || status === "rejected" ? status : "pending";
+}
+
+function storeOrderIncludesProduct(value: unknown, productId: string) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  return value.some((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return false;
+    }
+
+    const record = item as Record<string, unknown>;
+    return record.id === productId || record.product_id === productId;
+  });
 }
 
 export async function submitProductReview(formData: FormData) {
@@ -166,4 +195,118 @@ export async function moderateProductReview(formData: FormData) {
 
   revalidatePath(reviewsPath);
   dashboardRedirect(storeId, status);
+}
+
+export async function submitPurchasedProductReview(formData: FormData) {
+  const returnTo = safeReviewReturnPath(formData.get("returnTo"));
+  const orderId = cleanText(formData.get("orderId"), 80);
+  const productId = cleanText(formData.get("productId"), 80);
+  const storeId = cleanText(formData.get("storeId"), 80);
+  const submittedWorkspaceId = cleanText(formData.get("workspaceId"), 80);
+  const customerName = cleanText(formData.get("customerName"), 160);
+  const customerPhone = cleanText(formData.get("customerPhone"), 80);
+  const title = cleanText(formData.get("title"), 140);
+  const comment = cleanText(formData.get("comment"), 2000);
+  const rating = parseRating(formData.get("rating"));
+
+  if (!orderId || !productId || !storeId || rating < 1 || rating > 5 || !comment) {
+    redirectBackToReviewSurface(returnTo, "invalid");
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    redirectBackToReviewSurface(returnTo, "not-configured");
+  }
+
+  const { data: storeRow } = await admin
+    .from("stores")
+    .select("workspace_id")
+    .eq("id", storeId)
+    .eq("status", "published")
+    .maybeSingle();
+  const workspaceId =
+    submittedWorkspaceId ||
+    ((storeRow as { workspace_id?: string | null } | null)?.workspace_id ?? "");
+
+  if (!workspaceId) {
+    redirectBackToReviewSurface(returnTo, "failed");
+  }
+
+  const { data: storeOrder } = await admin
+    .from("store_orders")
+    .select("items")
+    .eq("id", orderId)
+    .eq("store_id", storeId)
+    .maybeSingle();
+  let orderContainsProduct = storeOrderIncludesProduct(
+    (storeOrder as { items?: unknown } | null)?.items,
+    productId
+  );
+
+  if (!orderContainsProduct) {
+    const { data: orderRow } = await admin
+      .from("orders" as never)
+      .select("id, store_id, store_instance_id")
+      .eq("id" as never, orderId as never)
+      .maybeSingle();
+    const orderStore = orderRow as {
+      store_id?: string | null;
+      store_instance_id?: string | null;
+    } | null;
+
+    if (orderStore?.store_id === storeId || orderStore?.store_instance_id === storeId) {
+      const { data: orderItems } = await admin
+        .from("order_items" as never)
+        .select("product_id")
+        .eq("order_id" as never, orderId as never);
+      orderContainsProduct = ((orderItems ?? []) as unknown as Array<{ product_id: string | null }>).some(
+        (item) => item.product_id === productId
+      );
+    }
+  }
+
+  if (!orderContainsProduct) {
+    redirectBackToReviewSurface(returnTo, "invalid-product");
+  }
+
+  const { data: existingReview } = await admin
+    .from("product_reviews" as never)
+    .select("id")
+    .eq("store_id" as never, storeId as never)
+    .eq("product_id" as never, productId as never)
+    .eq("order_id" as never, orderId as never)
+    .maybeSingle();
+
+  if (existingReview) {
+    redirectBackToReviewSurface(returnTo, "already-submitted");
+  }
+
+  const { error } = await admin.from("product_reviews" as never).insert({
+    comment,
+    customer_name: customerName || "Customer",
+    customer_phone: customerPhone || null,
+    order_id: orderId,
+    product_id: productId,
+    rating,
+    status: "pending",
+    store_id: storeId,
+    title: title || null,
+    workspace_id: workspaceId
+  } as never);
+
+  if (error) {
+    console.error("[product-reviews] purchased submit failed", {
+      code: error.code,
+      message: error.message,
+      orderId,
+      productId,
+      storeId
+    });
+    redirectBackToReviewSurface(returnTo, "failed");
+  }
+
+  revalidatePath(returnTo.split("?")[0] ?? returnTo);
+  revalidatePath(reviewsPath);
+  redirectBackToReviewSurface(returnTo, "submitted");
 }

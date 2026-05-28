@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { submitPurchasedProductReview } from "@/lib/product-review-actions";
+import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -14,10 +16,12 @@ type PublicOrderTrackingPageProps = {
   searchParams: Promise<{
     phone?: string;
     reference?: string;
+    review?: string;
   }>;
 };
 
 type TrackingItem = {
+  id?: string;
   quantity: number;
   title: string;
 };
@@ -74,6 +78,19 @@ function deliveryMethodLabel(value: string | null | undefined) {
   return "Not selected";
 }
 
+function reviewMessage(status: string | undefined) {
+  const messages: Record<string, string> = {
+    "already-submitted": "Review already submitted for this product.",
+    failed: "Review could not be submitted. Please try again.",
+    invalid: "Choose a rating from 1 to 5 and add a review comment.",
+    "invalid-product": "That product was not found in this order.",
+    "not-configured": "Review submission is not configured yet.",
+    submitted: "Review submitted and waiting for approval."
+  };
+
+  return status ? messages[status] : null;
+}
+
 function fulfillmentStatusLabel(status: string | null | undefined) {
   return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
 }
@@ -126,6 +143,12 @@ function parseStoreOrderItems(value: Json): TrackingItem[] {
       return Boolean(item && typeof item === "object" && !Array.isArray(item));
     })
     .map((item) => ({
+      id:
+        typeof item.id === "string"
+          ? item.id
+          : typeof item.product_id === "string"
+            ? item.product_id
+            : undefined,
       quantity: typeof item.quantity === "number" ? item.quantity : 1,
       title: typeof item.title === "string" ? item.title : "Product"
     }));
@@ -191,7 +214,7 @@ async function loadTrackedOrder({
   const { data: rawOrders } = await admin
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, total_amount, currency, order_status, payment_status, created_at"
+      "id, workspace_id, store_id, store_instance_id, customer_name, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, total_amount, currency, order_status, payment_status, created_at"
     )
     .eq("customer_phone" as never, phone as never)
     .order("created_at" as never, { ascending: false } as never)
@@ -199,6 +222,7 @@ async function loadTrackedOrder({
   const orders = (rawOrders ?? []) as unknown as Array<{
     created_at: string;
     currency: string | null;
+    customer_name?: string | null;
     customer_phone: string;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
@@ -210,6 +234,7 @@ async function loadTrackedOrder({
     store_instance_id: string | null;
     total: number | string;
     total_amount?: number | string | null;
+    workspace_id?: string | null;
   }>;
   const order = orders.find((row) => {
     const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
@@ -219,12 +244,14 @@ async function loadTrackedOrder({
   if (order) {
     const { data: rawItems } = await admin
       .from("order_items" as never)
-      .select("product_title, quantity")
+      .select("product_id, product_title, quantity")
       .eq("order_id" as never, order.id as never);
     const items = ((rawItems ?? []) as unknown as Array<{
+      product_id: string | null;
       product_title: string | null;
       quantity: number | null;
     }>).map((item) => ({
+      id: item.product_id ?? undefined,
       quantity: item.quantity ?? 1,
       title: item.product_title ?? "Product"
     }));
@@ -233,6 +260,8 @@ async function loadTrackedOrder({
       order: {
         created_at: order.created_at,
         currency: order.currency ?? preview.store.currency ?? "USD",
+        customer_name: order.customer_name ?? "Customer",
+        customer_phone: order.customer_phone,
         delivery_fee: order.delivery_fee ?? 0,
         delivery_method: order.delivery_method ?? null,
         fulfillment_status: order.fulfillment_status ?? "unfulfilled",
@@ -240,7 +269,9 @@ async function loadTrackedOrder({
         items,
         order_status: order.order_status ?? "draft",
         payment_status: order.payment_status ?? "pending",
-        total: order.total_amount ?? order.total
+        store_id: preview.store.id,
+        total: order.total_amount ?? order.total,
+        workspace_id: order.workspace_id ?? preview.store.workspaceId ?? null
       },
       reason: null,
       storeTitle: preview.store.title
@@ -249,13 +280,15 @@ async function loadTrackedOrder({
 
   const { data: rawStoreOrders } = await admin
     .from("store_orders")
-    .select("id, store_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, total_amount, order_status, payment_status, created_at")
+    .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, total_amount, order_status, payment_status, created_at")
     .eq("store_id", preview.store.id)
     .eq("customer_phone", phone)
     .order("created_at", { ascending: false })
     .limit(20);
   const storeOrder = ((rawStoreOrders ?? []) as unknown as Array<{
     created_at: string;
+    customer_name?: string | null;
+    customer_phone?: string | null;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
     fulfillment_status?: string | null;
@@ -265,6 +298,7 @@ async function loadTrackedOrder({
     payment_status: string | null;
     total: number | string;
     total_amount?: number | string | null;
+    workspace_id?: string | null;
   }>).find((row) => referenceMatches(row.id, reference));
 
   if (storeOrder) {
@@ -272,6 +306,8 @@ async function loadTrackedOrder({
       order: {
         created_at: storeOrder.created_at,
         currency: preview.store.currency ?? "USD",
+        customer_name: storeOrder.customer_name ?? "Customer",
+        customer_phone: storeOrder.customer_phone ?? phone,
         delivery_fee: storeOrder.delivery_fee ?? 0,
         delivery_method: storeOrder.delivery_method ?? null,
         fulfillment_status: storeOrder.fulfillment_status ?? "unfulfilled",
@@ -279,7 +315,9 @@ async function loadTrackedOrder({
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
         payment_status: storeOrder.payment_status ?? "pending",
-        total: storeOrder.total_amount ?? storeOrder.total
+        store_id: preview.store.id,
+        total: storeOrder.total_amount ?? storeOrder.total,
+        workspace_id: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
       },
       reason: null,
       storeTitle: preview.store.title
@@ -313,6 +351,14 @@ export default async function PublicOrderTrackingPage({
   const { order, reason, storeTitle } = hasLookup
     ? await loadTrackedOrder({ phone, reference, slug })
     : { order: null, reason: "missing-lookup" as const, storeTitle: null };
+  const reviewStatuses = order
+    ? await getProductReviewStatusByOrder({
+        orderId: order.id,
+        storeId: order.store_id
+      })
+    : new Map<string, string>();
+  const reviewStatusMessage = reviewMessage(query.review);
+  const returnTo = `/store/${slug}/track?reference=${encodeURIComponent(reference)}&phone=${encodeURIComponent(phone)}`;
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-ink sm:px-6 lg:px-8">
@@ -406,6 +452,15 @@ export default async function PublicOrderTrackingPage({
                 <Info label="Created" value={formatDate(order.created_at)} />
                 <Info label="Currency" value={order.currency} />
               </div>
+              {reviewStatusMessage ? (
+                <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
+                  query.review === "submitted" || query.review === "already-submitted"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  {reviewStatusMessage}
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -415,11 +470,35 @@ export default async function PublicOrderTrackingPage({
                   {order.items.length ? (
                     order.items.map((item, index) => (
                       <div
-                        className="flex flex-wrap justify-between gap-3 text-sm font-bold text-ink"
-                        key={`${item.title}-${index}`}
+                        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-bold text-ink"
+                        key={`${item.id ?? item.title}-${index}`}
                       >
-                        <span>{item.title}</span>
-                        <span>x{item.quantity}</span>
+                        <div className="flex flex-wrap justify-between gap-3">
+                          <span>{item.title}</span>
+                          <span>x{item.quantity}</span>
+                        </div>
+                        {item.id ? (
+                          reviewStatuses.has(item.id) ? (
+                            <span className="inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                              Review submitted
+                            </span>
+                          ) : (
+                            <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                              <summary className="cursor-pointer text-sm font-black text-ink">
+                                Leave a review
+                              </summary>
+                              <ReviewForm
+                                customerName={order.customer_name}
+                                customerPhone={order.customer_phone ?? phone}
+                                orderId={order.id}
+                                productId={item.id}
+                                returnTo={returnTo}
+                                storeId={order.store_id}
+                                workspaceId={order.workspace_id ?? ""}
+                              />
+                            </details>
+                          )
+                        ) : null}
                       </div>
                     ))
                   ) : (
@@ -478,6 +557,75 @@ export default async function PublicOrderTrackingPage({
         ) : null}
       </div>
     </main>
+  );
+}
+
+function ReviewForm({
+  customerName,
+  customerPhone,
+  orderId,
+  productId,
+  returnTo,
+  storeId,
+  workspaceId
+}: {
+  customerName: string;
+  customerPhone: string;
+  orderId: string;
+  productId: string;
+  returnTo: string;
+  storeId: string;
+  workspaceId: string;
+}) {
+  return (
+    <form action={submitPurchasedProductReview} className="mt-3 grid gap-3">
+      <input name="customerName" type="hidden" value={customerName} />
+      <input name="customerPhone" type="hidden" value={customerPhone} />
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="productId" type="hidden" value={productId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="storeId" type="hidden" value={storeId} />
+      <input name="workspaceId" type="hidden" value={workspaceId} />
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Rating</span>
+        <select
+          className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          name="rating"
+          required
+        >
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Good</option>
+          <option value="3">3 - Okay</option>
+          <option value="2">2 - Poor</option>
+          <option value="1">1 - Bad</option>
+        </select>
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Title</span>
+        <input
+          className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          maxLength={140}
+          name="title"
+          placeholder="Great product"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Comment</span>
+        <textarea
+          className="min-h-24 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          maxLength={2000}
+          name="comment"
+          placeholder="Share your experience."
+          required
+        />
+      </label>
+      <button
+        className="h-10 rounded-full bg-ink px-4 text-sm font-black text-white transition hover:bg-slate-800"
+        type="submit"
+      >
+        Submit review
+      </button>
+    </form>
   );
 }
 

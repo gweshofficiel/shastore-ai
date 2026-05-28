@@ -173,3 +173,30 @@ export async function verifyPurchasedProductForReview({
 
   return null;
 }
+
+export async function getProductReviewStatusByOrder({
+  orderId,
+  storeId
+}: {
+  orderId: string;
+  storeId: string;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return new Map<string, string>();
+  }
+
+  const { data } = await admin
+    .from("product_reviews" as never)
+    .select("product_id, status")
+    .eq("store_id" as never, storeId as never)
+    .eq("order_id" as never, orderId as never);
+
+  return new Map(
+    ((data ?? []) as unknown as Array<{ product_id: string; status: string }>).map((review) => [
+      review.product_id,
+      review.status
+    ])
+  );
+}
