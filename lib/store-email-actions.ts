@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { processPendingStoreEmailQueue } from "@/lib/store-email-delivery";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
 const emailPath = "/dashboard/email";
@@ -20,6 +21,27 @@ function formBoolean(value: FormDataEntryValue | null) {
 
 function emailRedirect(storeId: string, status: string): never {
   const params = new URLSearchParams({ email: status, storeId });
+  redirect(`${emailPath}?${params.toString()}`);
+}
+
+function emailResultRedirect({
+  failed,
+  processed,
+  sent,
+  storeId
+}: {
+  failed: number;
+  processed: number;
+  sent: number;
+  storeId: string;
+}): never {
+  const params = new URLSearchParams({
+    email: "queue-processed",
+    failed: String(failed),
+    processed: String(processed),
+    sent: String(sent),
+    storeId
+  });
   redirect(`${emailPath}?${params.toString()}`);
 }
 
@@ -63,4 +85,40 @@ export async function saveStoreEmailSettings(formData: FormData) {
 
   revalidatePath(emailPath);
   emailRedirect(storeId, "settings-saved");
+}
+
+export async function processStoreEmailQueueAction(formData: FormData) {
+  const storeId = cleanText(formData.get("storeId"), 80);
+
+  if (!storeId) {
+    redirect(`${emailPath}?email=missing-store`);
+  }
+
+  const { supabase, workspaceId } = await getWorkspaceDataContext({
+    permission: "can_view_notifications",
+    redirectTo: emailPath
+  });
+  const { data: storeRow, error: storeError } = await supabase
+    .from("stores" as never)
+    .select("id")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (storeError || !storeRow) {
+    emailRedirect(storeId, "not-authorized");
+  }
+
+  const result = await processPendingStoreEmailQueue({
+    limit: 10,
+    storeId,
+    workspaceId
+  });
+
+  revalidatePath(emailPath);
+  emailResultRedirect({
+    failed: result.failed,
+    processed: result.processed,
+    sent: result.sent,
+    storeId
+  });
 }

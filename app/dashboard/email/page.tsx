@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { saveStoreEmailSettings } from "@/lib/store-email-actions";
+import { processStoreEmailQueueAction, saveStoreEmailSettings } from "@/lib/store-email-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -20,10 +20,13 @@ type EmailSettingsRow = {
 };
 
 type EmailLogRow = {
+  attempt_count?: number | null;
   created_at: string;
   error_message?: string | null;
   id: string;
   recipient: string;
+  resend_message_id?: string | null;
+  sent_at?: string | null;
   status: string;
   subject: string;
   template_key: string;
@@ -40,6 +43,8 @@ type EmailDashboardData = {
 function message(status: string | undefined) {
   const messages: Record<string, string> = {
     "missing-store": "Choose a store before managing email settings.",
+    "not-authorized": "You do not have permission to manage email for that store.",
+    "queue-processed": "Email queue processed.",
     "settings-failed": "Email settings could not be saved.",
     "settings-saved": "Email settings saved."
   };
@@ -112,7 +117,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
       .maybeSingle(),
     supabase
       .from("email_event_logs" as never)
-      .select("id, recipient, subject, template_key, status, error_message, created_at")
+      .select("id, recipient, subject, template_key, status, error_message, resend_message_id, sent_at, attempt_count, created_at")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("created_at" as never, { ascending: false } as never)
@@ -158,11 +163,15 @@ function Toggle({
 export default async function EmailSettingsPage({
   searchParams
 }: {
-  searchParams: Promise<{ email?: string; storeId?: string }>;
+  searchParams: Promise<{ email?: string; failed?: string; processed?: string; sent?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
   const { activeStore, error, logs, settings, stores } = await getEmailDashboardData(query.storeId);
   const statusMessage = message(query.email);
+  const queueResult =
+    query.email === "queue-processed"
+      ? `${query.sent ?? "0"} sent, ${query.failed ?? "0"} failed, ${query.processed ?? "0"} processed.`
+      : null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -173,7 +182,9 @@ export default async function EmailSettingsPage({
 
       {statusMessage ? (
         <Card className="border-blue-200 bg-blue-50 p-5">
-          <p className="text-sm font-bold text-blue-800">{statusMessage}</p>
+          <p className="text-sm font-bold text-blue-800">
+            {statusMessage} {queueResult}
+          </p>
         </Card>
       ) : null}
 
@@ -270,9 +281,22 @@ export default async function EmailSettingsPage({
           </Card>
 
           <Card className="p-5 lg:p-6">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Recent email logs
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  Recent email logs
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Pending logs can be delivered through Resend without changing checkout behavior.
+                </p>
+              </div>
+              <form action={processStoreEmailQueueAction}>
+                <input name="storeId" type="hidden" value={activeStore.id} />
+                <Button type="submit" variant="secondary">
+                  Process pending
+                </Button>
+              </form>
+            </div>
             <div className="mt-5 grid gap-3">
               {logs.length ? (
                 logs.map((log) => (
@@ -293,7 +317,22 @@ export default async function EmailSettingsPage({
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                         {formatDate(log.created_at)}
                       </span>
+                      {log.attempt_count ? (
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                          {log.attempt_count} attempt{log.attempt_count === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {log.sent_at ? (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                          Sent {formatDate(log.sent_at)}
+                        </span>
+                      ) : null}
                     </div>
+                    {log.resend_message_id ? (
+                      <p className="mt-3 text-xs font-bold text-muted">
+                        Resend message: {log.resend_message_id}
+                      </p>
+                    ) : null}
                     {log.error_message ? (
                       <p className="mt-3 text-sm font-semibold text-red-700">{log.error_message}</p>
                     ) : null}
