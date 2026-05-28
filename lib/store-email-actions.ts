@@ -45,6 +45,14 @@ function emailResultRedirect({
   redirect(`${emailPath}?${params.toString()}`);
 }
 
+function emailActionRedirect(storeId: string, status: string): never {
+  const params = new URLSearchParams({
+    email: status,
+    storeId
+  });
+  redirect(`${emailPath}?${params.toString()}`);
+}
+
 export async function saveStoreEmailSettings(formData: FormData) {
   const storeId = cleanText(formData.get("storeId"), 80);
   const senderName = cleanText(formData.get("senderName"), 160);
@@ -121,4 +129,48 @@ export async function processStoreEmailQueueAction(formData: FormData) {
     sent: result.sent,
     storeId
   });
+}
+
+export async function retryStoreEmailNowAction(formData: FormData) {
+  const storeId = cleanText(formData.get("storeId"), 80);
+  const logId = cleanText(formData.get("logId"), 80);
+
+  if (!storeId || !logId) {
+    redirect(`${emailPath}?email=missing-store`);
+  }
+
+  const { supabase, workspaceId } = await getWorkspaceDataContext({
+    permission: "can_view_notifications",
+    redirectTo: emailPath
+  });
+  const { error } = await supabase
+    .from("email_event_logs" as never)
+    .update({
+      error_message: null,
+      last_error: null,
+      locked_at: null,
+      locked_by: null,
+      next_retry_at: null,
+      status: "pending",
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, logId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .in("status" as never, ["retry_pending", "failed"] as never)
+    .is("resend_message_id" as never, null);
+
+  if (error) {
+    console.error("[store-email] retry now failed", {
+      code: error.code,
+      logId,
+      message: error.message,
+      storeId,
+      workspaceId
+    });
+    emailActionRedirect(storeId, "retry-failed");
+  }
+
+  revalidatePath(emailPath);
+  emailActionRedirect(storeId, "retry-ready");
 }

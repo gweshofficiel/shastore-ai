@@ -2,7 +2,11 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { processStoreEmailQueueAction, saveStoreEmailSettings } from "@/lib/store-email-actions";
+import {
+  processStoreEmailQueueAction,
+  retryStoreEmailNowAction,
+  saveStoreEmailSettings
+} from "@/lib/store-email-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -24,8 +28,11 @@ type EmailLogRow = {
   created_at: string;
   error_message?: string | null;
   id: string;
+  last_error?: string | null;
+  next_retry_at?: string | null;
   recipient: string;
   resend_message_id?: string | null;
+  retry_count?: number | null;
   sent_at?: string | null;
   status: string;
   subject: string;
@@ -45,6 +52,8 @@ function message(status: string | undefined) {
     "missing-store": "Choose a store before managing email settings.",
     "not-authorized": "You do not have permission to manage email for that store.",
     "queue-processed": "Email queue processed.",
+    "retry-failed": "Email retry could not be prepared.",
+    "retry-ready": "Email is ready to retry.",
     "settings-failed": "Email settings could not be saved.",
     "settings-saved": "Email settings saved."
   };
@@ -63,6 +72,28 @@ function formatDate(value: string) {
     minute: "2-digit",
     month: "short"
   }).format(new Date(value));
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    failed: "Failed",
+    pending: "Pending",
+    retry_pending: "Retry Pending",
+    sent: "Sent"
+  };
+
+  return labels[status] ?? status;
+}
+
+function statusClass(status: string) {
+  const classes: Record<string, string> = {
+    failed: "bg-red-50 text-red-700",
+    pending: "bg-white text-muted",
+    retry_pending: "bg-amber-50 text-amber-700",
+    sent: "bg-emerald-50 text-emerald-700"
+  };
+
+  return classes[status] ?? "bg-white text-muted";
 }
 
 async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDashboardData> {
@@ -117,7 +148,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
       .maybeSingle(),
     supabase
       .from("email_event_logs" as never)
-      .select("id, recipient, subject, template_key, status, error_message, resend_message_id, sent_at, attempt_count, created_at")
+      .select("id, recipient, subject, template_key, status, error_message, last_error, resend_message_id, sent_at, attempt_count, retry_count, next_retry_at, created_at")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("created_at" as never, { ascending: false } as never)
@@ -306,8 +337,8 @@ export default async function EmailSettingsPage({
                         <p className="text-sm font-black text-ink">{log.subject}</p>
                         <p className="mt-1 text-sm font-semibold text-muted">{log.recipient}</p>
                       </div>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted">
-                        {log.status}
+                      <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(log.status)}`}>
+                        {statusLabel(log.status)}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -320,6 +351,16 @@ export default async function EmailSettingsPage({
                       {log.attempt_count ? (
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                           {log.attempt_count} attempt{log.attempt_count === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {log.retry_count ? (
+                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                          {log.retry_count} retr{log.retry_count === 1 ? "y" : "ies"}
+                        </span>
+                      ) : null}
+                      {log.next_retry_at ? (
+                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                          Retry {formatDate(log.next_retry_at)}
                         </span>
                       ) : null}
                       {log.sent_at ? (
@@ -335,6 +376,18 @@ export default async function EmailSettingsPage({
                     ) : null}
                     {log.error_message ? (
                       <p className="mt-3 text-sm font-semibold text-red-700">{log.error_message}</p>
+                    ) : null}
+                    {log.last_error && log.last_error !== log.error_message ? (
+                      <p className="mt-3 text-sm font-semibold text-red-700">{log.last_error}</p>
+                    ) : null}
+                    {log.status === "retry_pending" || log.status === "failed" ? (
+                      <form action={retryStoreEmailNowAction} className="mt-4">
+                        <input name="storeId" type="hidden" value={activeStore.id} />
+                        <input name="logId" type="hidden" value={log.id} />
+                        <Button type="submit" variant="secondary">
+                          Retry now
+                        </Button>
+                      </form>
                     ) : null}
                   </div>
                 ))

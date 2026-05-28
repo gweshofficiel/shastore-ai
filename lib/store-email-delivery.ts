@@ -12,6 +12,7 @@ type ClaimedEmailLog = {
   id: string;
   metadata: Record<string, unknown> | null;
   recipient: string;
+  retry_count?: number | null;
   store_id: string;
   subject: string;
   template_key: StoreEmailTemplateKey;
@@ -66,6 +67,38 @@ function isSupportedTemplate(value: string): value is StoreEmailTemplateKey {
   return supportedTemplates.has(value);
 }
 
+function retryDelayMs(nextRetryCount: number) {
+  if (nextRetryCount <= 1) {
+    return 5_000;
+  }
+
+  if (nextRetryCount === 2) {
+    return 30_000;
+  }
+
+  return 5 * 60_000;
+}
+
+function classifyTemporaryError(error: unknown) {
+  const detail = error as { message?: string; name?: string; statusCode?: number };
+  const message = detail?.message ?? String(error ?? "");
+  const statusCode = typeof detail?.statusCode === "number" ? detail.statusCode : null;
+  const normalized = message.toLowerCase();
+
+  return (
+    statusCode === 429 ||
+    statusCode === 408 ||
+    (statusCode !== null && statusCode >= 500) ||
+    normalized.includes("429") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("temporar") ||
+    normalized.includes("unavailable") ||
+    normalized.includes("network")
+  );
+}
+
 async function markEmailLogFailed(id: string, errorMessage: string) {
   const admin = createAdminClient();
 
@@ -77,8 +110,10 @@ async function markEmailLogFailed(id: string, errorMessage: string) {
     .from("email_event_logs" as never)
     .update({
       error_message: errorMessage.slice(0, 500),
+      last_error: errorMessage.slice(0, 500),
       locked_at: null,
       locked_by: null,
+      next_retry_at: null,
       status: "failed",
       updated_at: new Date().toISOString()
     } as never)
@@ -97,8 +132,10 @@ async function markEmailLogSent(id: string, resendMessageId: string | null) {
     .from("email_event_logs" as never)
     .update({
       error_message: null,
+      last_error: null,
       locked_at: null,
       locked_by: null,
+      next_retry_at: null,
       provider: "resend",
       resend_message_id: resendMessageId,
       sent_at: new Date().toISOString(),
@@ -110,20 +147,32 @@ async function markEmailLogSent(id: string, resendMessageId: string | null) {
     .is("resend_message_id" as never, null);
 }
 
-async function releaseEmailLogForRetry(id: string, errorMessage: string) {
+async function scheduleEmailLogRetry(id: string, errorMessage: string, currentRetryCount: number) {
   const admin = createAdminClient();
 
   if (!admin) {
     return;
   }
 
+  const nextRetryCount = currentRetryCount + 1;
+
+  if (nextRetryCount > 3) {
+    await markEmailLogFailed(id, errorMessage);
+    return;
+  }
+
+  const nextRetryAt = new Date(Date.now() + retryDelayMs(nextRetryCount)).toISOString();
+
   await admin
     .from("email_event_logs" as never)
     .update({
       error_message: errorMessage.slice(0, 500),
+      last_error: errorMessage.slice(0, 500),
       locked_at: null,
       locked_by: null,
-      status: "pending",
+      next_retry_at: nextRetryAt,
+      retry_count: nextRetryCount,
+      status: "retry_pending",
       updated_at: new Date().toISOString()
     } as never)
     .eq("id" as never, id as never)
@@ -137,7 +186,7 @@ async function sendEmailLog(log: ClaimedEmailLog) {
   }
 
   if (!configuredForResend()) {
-    await releaseEmailLogForRetry(log.id, "Resend is not configured.");
+    await markEmailLogFailed(log.id, "Resend is not configured.");
     return false;
   }
 
@@ -157,10 +206,10 @@ async function sendEmailLog(log: ClaimedEmailLog) {
   if (error) {
     const message = error.message || "Resend delivery failed.";
 
-    if (log.attempt_count >= 5) {
-      await markEmailLogFailed(log.id, message);
+    if (classifyTemporaryError(error)) {
+      await scheduleEmailLogRetry(log.id, message, log.retry_count ?? 0);
     } else {
-      await releaseEmailLogForRetry(log.id, message);
+      await markEmailLogFailed(log.id, message);
     }
 
     return false;
@@ -223,9 +272,10 @@ export async function processPendingStoreEmailQueue({
       }
     } catch (error) {
       result.failed += 1;
-      await releaseEmailLogForRetry(
+      await scheduleEmailLogRetry(
         log.id,
-        error instanceof Error ? error.message : "Unexpected delivery error."
+        error instanceof Error ? error.message : "Unexpected delivery error.",
+        log.retry_count ?? 0
       );
     }
   }
