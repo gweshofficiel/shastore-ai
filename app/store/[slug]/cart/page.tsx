@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CartPageClient } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods";
+import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -98,7 +99,10 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
     );
   }
 
-  const shippingMethods = await getPublicShippingMethodsForStore(preview.store.id);
+  const [shippingMethods, taxSettings] = await Promise.all([
+    getPublicShippingMethodsForStore(preview.store.id),
+    getPublicTaxSettingsForStore(preview.store.id)
+  ]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-5 text-ink sm:px-6 lg:px-8">
@@ -140,6 +144,7 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
           shippingMethods={shippingMethods}
           slug={preview.store.slug}
           storeId={preview.store.id}
+          taxSettings={taxSettings}
         />
       </div>
     </main>

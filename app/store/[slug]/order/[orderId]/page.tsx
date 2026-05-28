@@ -199,7 +199,7 @@ async function loadPublicOrderConfirmation({
       const { data, error } = await admin
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, total, currency, order_status, payment_status"
+          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, total, currency, order_status, payment_status"
         )
         .eq("id" as never, orderId as never)
         .maybeSingle();
@@ -213,8 +213,12 @@ async function loadPublicOrderConfirmation({
           id: string;
           order_status: string | null;
           payment_status: string | null;
+          prices_include_tax?: boolean | null;
           store_id: string | null;
           store_instance_id: string | null;
+          tax_amount?: number | string | null;
+          tax_name?: string | null;
+          tax_rate?: number | string | null;
           total: number | string;
         };
         const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
@@ -252,6 +256,10 @@ async function loadPublicOrderConfirmation({
               payment_status: row.payment_status ?? "pending",
               source: "orders" as const,
               store_id: preview.store.id,
+              tax_amount: row.tax_amount ?? 0,
+              tax_name: row.tax_name ?? null,
+              tax_rate: row.tax_rate ?? 0,
+              prices_include_tax: Boolean(row.prices_include_tax),
               total: row.total
             },
             reason: null,
@@ -265,7 +273,7 @@ async function loadPublicOrderConfirmation({
     if (source === "store_orders") {
       const { data, error } = await admin
         .from("store_orders")
-        .select("id, store_id, customer_name, delivery_method, delivery_fee, items, total, order_status, payment_status")
+        .select("id, store_id, customer_name, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, order_status, payment_status")
         .eq("id", orderId)
         .eq("store_id", preview.store.id)
         .maybeSingle();
@@ -279,6 +287,10 @@ async function loadPublicOrderConfirmation({
           items: Json;
           order_status: string | null;
           payment_status: string | null;
+          prices_include_tax?: boolean | null;
+          tax_amount?: number | string | null;
+          tax_name?: string | null;
+          tax_rate?: number | string | null;
           total: number | string;
         };
 
@@ -294,6 +306,10 @@ async function loadPublicOrderConfirmation({
             payment_status: row.payment_status ?? "pending",
             source: "store_orders" as const,
             store_id: preview.store.id,
+            tax_amount: row.tax_amount ?? 0,
+            tax_name: row.tax_name ?? null,
+            tax_rate: row.tax_rate ?? 0,
+            prices_include_tax: Boolean(row.prices_include_tax),
             total: row.total
           },
           reason: null,
@@ -489,6 +505,13 @@ export default async function PublicOrderConfirmationPage({
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-6 text-muted">
               <p>Delivery method: {deliveryMethodLabel(order.delivery_method)}</p>
               <p>Delivery fee: {formatMoney(order.delivery_fee ?? 0, order.currency)}</p>
+              {numericValue(order.tax_amount) > 0 ? (
+                <p>
+                  {order.tax_name ?? "Tax"} ({numericValue(order.tax_rate)}%
+                  {order.prices_include_tax ? " included" : ""}):{" "}
+                  {formatMoney(order.tax_amount, order.currency)}
+                </p>
+              ) : null}
             </div>
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
               Payments are disabled. The seller will confirm this order manually.

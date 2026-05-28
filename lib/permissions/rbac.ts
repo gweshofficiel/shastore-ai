@@ -141,6 +141,7 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "can_view_customers" },
   { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
   { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "can_manage_payments" },
+  { href: "/dashboard/tax", label: "Tax", icon: "payments", permission: "can_manage_payments" },
   { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "can_manage_shipping" },
   { href: "/dashboard/templates/studio", label: "Template studio", icon: "templates", permission: "can_edit_templates", showInSidebar: false },
   { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },

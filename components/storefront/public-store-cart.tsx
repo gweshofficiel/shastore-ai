@@ -7,6 +7,7 @@ import {
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
 import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
+import { calculateTax, type PublicTaxSettings } from "@/lib/tax-calculation";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -49,6 +50,7 @@ type CartPageClientProps = {
   shippingMethods?: PublicShippingMethod[];
   slug: string;
   storeId: string;
+  taxSettings?: PublicTaxSettings | null;
 };
 
 type CartScope = {
@@ -660,7 +662,8 @@ export function CartPageClient({
   products,
   shippingMethods = [],
   slug,
-  storeId
+  storeId,
+  taxSettings = null
 }: CartPageClientProps) {
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
@@ -719,7 +722,13 @@ export function CartPageClient({
     : deliveryMethod === "delivery"
       ? deliverySettings.deliveryFee ?? 0
       : 0;
-  const finalTotal = Number((Math.max(0, total - discountAmount) + selectedDeliveryFee).toFixed(2));
+  const taxCalculation = calculateTax({
+    discountAmount,
+    shippingFee: selectedDeliveryFee,
+    subtotal: total,
+    taxSettings
+  });
+  const finalTotal = taxCalculation.total;
 
   useEffect(() => {
     setAppliedCoupon(null);
@@ -1100,6 +1109,15 @@ export function CartPageClient({
             <span>Currency</span>
             <span>{currency}</span>
           </div>
+          {taxSettings?.taxEnabled ? (
+            <div className="flex justify-between">
+              <span>
+                {taxCalculation.taxName ?? taxSettings.taxName} ({taxCalculation.taxRate}%)
+                {taxCalculation.pricesIncludeTax ? " included" : ""}
+              </span>
+              <span>{formatMoney(taxCalculation.taxAmount, currency)}</span>
+            </div>
+          ) : null}
           <div className="flex justify-between text-lg font-black text-ink">
             <span>Total</span>
             <span>{formatMoney(finalTotal, currency)}</span>

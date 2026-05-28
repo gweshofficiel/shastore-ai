@@ -264,7 +264,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, out_for_delivery_at, fulfilled_at, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, out_for_delivery_at, fulfilled_at, items, subtotal, total, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -296,8 +296,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         payment_status: string | null;
         preparing_at?: string | null;
         ready_for_pickup_at?: string | null;
+        prices_include_tax?: boolean | null;
         store_id: string;
         subtotal: number | string;
+        tax_amount?: number | string | null;
+        tax_name?: string | null;
+        tax_rate?: number | string | null;
         total: number | string;
       } | null;
 
@@ -341,6 +345,10 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             source: "store_orders" as const,
             store_id: row.store_id,
             subtotal: row.subtotal,
+            tax_amount: row.tax_amount ?? 0,
+            tax_name: row.tax_name ?? null,
+            tax_rate: row.tax_rate ?? 0,
+            prices_include_tax: Boolean(row.prices_include_tax),
             total: row.total
           }
         };
@@ -351,7 +359,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, fulfillment_status, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, notes, subtotal, total, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id" as never, orderId as never)
         .eq("workspace_id" as never, workspaceId as never)
@@ -381,7 +389,11 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         payment_status: string | null;
         store_id: string | null;
         store_instance_id: string | null;
+        prices_include_tax?: boolean | null;
         subtotal: number | string;
+        tax_amount?: number | string | null;
+        tax_name?: string | null;
+        tax_rate?: number | string | null;
         total: number | string;
       } | null;
       const storeId = row?.store_id ?? row?.store_instance_id ?? "";
@@ -445,6 +457,10 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             source: "orders" as const,
             store_id: storeId,
             subtotal: row.subtotal,
+            tax_amount: row.tax_amount ?? 0,
+            tax_name: row.tax_name ?? null,
+            tax_rate: row.tax_rate ?? 0,
+            prices_include_tax: Boolean(row.prices_include_tax),
             total: row.total
           }
         };
@@ -526,6 +542,10 @@ export default async function OrderDetailPage({
             <Info label="Address" value={order.customer_address || "Not provided"} />
             <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
             <Info label="Delivery fee" value={formatMoney(order.delivery_fee ?? 0, order.currency)} />
+            <Info
+              label={order.tax_name ? `${order.tax_name}${order.prices_include_tax ? " included" : ""}` : "Tax"}
+              value={formatMoney(order.tax_amount ?? 0, order.currency)}
+            />
             <Info label="Fulfillment" value={fulfillmentStatusLabel(order.fulfillment_status)} />
             <Info label="Created" value={formatDate(order.created_at)} />
             <Info label="Confirmed" value={formatDate(order.confirmed_at)} />
@@ -668,6 +688,13 @@ export default async function OrderDetailPage({
               Payment, fulfillment, and shipping actions remain disabled. Delivery method:{" "}
               {deliveryMethodLabel(order.delivery_method)}.
             </p>
+            {numericValue(order.tax_amount) > 0 ? (
+              <p className="rounded-2xl bg-slate-50 p-3 text-sm font-bold text-muted">
+                {order.tax_name ?? "Tax"} at {numericValue(order.tax_rate)}%
+                {order.prices_include_tax ? " is included in item prices" : " was added at checkout"}:{" "}
+                {formatMoney(order.tax_amount, order.currency)}.
+              </p>
+            ) : null}
           </Card>
 
           {canManageOrders ? (
