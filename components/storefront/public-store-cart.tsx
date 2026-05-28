@@ -616,6 +616,33 @@ export function CartNavLink({
   );
 }
 
+export function ClearStoreCartOnOrderSuccess({
+  currency,
+  orderId,
+  slug,
+  storeId
+}: {
+  currency: string;
+  orderId: string;
+  slug: string;
+  storeId: string;
+}) {
+  const scope = useMemo(
+    () => ({ currency, slug, storeId }),
+    [currency, slug, storeId]
+  );
+
+  useEffect(() => {
+    if (!orderId) {
+      return;
+    }
+
+    clearStoreCart(scope);
+  }, [orderId, scope]);
+
+  return null;
+}
+
 export function CartPageClient({
   currency,
   deliverySettings,

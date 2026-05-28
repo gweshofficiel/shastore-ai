@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ClearStoreCartOnOrderSuccess } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -250,6 +251,7 @@ async function loadPublicOrderConfirmation({
               order_status: row.order_status ?? "draft",
               payment_status: row.payment_status ?? "pending",
               source: "orders" as const,
+              store_id: preview.store.id,
               total: row.total
             },
             reason: null,
@@ -291,6 +293,7 @@ async function loadPublicOrderConfirmation({
             order_status: row.order_status ?? "draft",
             payment_status: row.payment_status ?? "pending",
             source: "store_orders" as const,
+            store_id: preview.store.id,
             total: row.total
           },
           reason: null,
@@ -366,6 +369,12 @@ export default async function PublicOrderConfirmationPage({
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-ink sm:px-6 lg:px-8">
+      <ClearStoreCartOnOrderSuccess
+        currency={order.currency}
+        orderId={order.id}
+        slug={slug}
+        storeId={order.store_id}
+      />
       <div className="mx-auto grid max-w-5xl gap-6">
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
           <div>
