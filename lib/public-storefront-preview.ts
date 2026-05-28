@@ -364,7 +364,18 @@ async function loadStoreModePublicPreview(slug: string) {
     sku: null,
     slug: textValue(product.slug) || null,
     status: textValue(product.status, "active"),
-    stockQuantity: typeof product.stock_quantity === "number" ? product.stock_quantity : null,
+    stockQuantity: (() => {
+      if (typeof product.stock_quantity === "number" && Number.isFinite(product.stock_quantity)) {
+        return product.stock_quantity;
+      }
+
+      if (typeof product.stock_quantity === "string" && product.stock_quantity.trim()) {
+        const parsed = Number.parseInt(product.stock_quantity, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+
+      return null;
+    })(),
     trackInventory: product.track_inventory === true
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);

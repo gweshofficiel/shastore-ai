@@ -11,6 +11,7 @@ import {
   validateStoreCoupon,
   type StoreCouponRow
 } from "@/lib/store-coupons";
+import { validateCheckoutInventory } from "@/lib/store-inventory";
 import type { Json } from "@/types/database";
 
 export type PublicStoreOrderState = {
@@ -739,26 +740,22 @@ export async function createPublicStoreOrderAction(
     return { error: "Store not found or unpublished.", message: null, ok: false, orderId: null };
   }
 
-  const productsById = new Map(preview.products.map((product) => [product.id, product]));
-  const insufficientStockItem = requestedItems.find((item) => {
-    const product = productsById.get(item.id);
-    return (
-      product?.trackInventory &&
-      ((product.stockQuantity ?? 0) < Math.max(1, item.quantity) ||
-        product.inventoryStatus === "out_of_stock")
-    );
+  const inventoryCheck = await validateCheckoutInventory({
+    admin,
+    storeId: store.id,
+    requestedItems
   });
 
-  if (insufficientStockItem) {
-    const product = productsById.get(insufficientStockItem.id);
+  if (!inventoryCheck.ok) {
     return {
-      error: `${product?.title ?? "A product"} does not have enough stock for checkout.`,
+      error: inventoryCheck.error,
       message: null,
       ok: false,
       orderId: null
     };
   }
 
+  const productsById = new Map(preview.products.map((product) => [product.id, product]));
   const items = requestedItems
     .map((item) => {
       const product = productsById.get(item.id);
@@ -942,6 +939,21 @@ export async function createPublicStoreOrderDraftAction(
 
   if (storeError || !store) {
     return { error: "Store not found or unpublished.", message: null, ok: false, orderId: null };
+  }
+
+  const inventoryCheck = await validateCheckoutInventory({
+    admin,
+    storeId: store.id,
+    requestedItems
+  });
+
+  if (!inventoryCheck.ok) {
+    return {
+      error: inventoryCheck.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
   }
 
   const productsById = new Map(preview.products.map((product) => [product.id, product]));
