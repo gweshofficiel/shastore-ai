@@ -44,6 +44,7 @@ type CartPageClientProps = {
     freeDeliveryThreshold: number | null;
     pickupEnabled: boolean;
   };
+  products: PublicStorefrontProduct[];
   slug: string;
   storeId: string;
 };
@@ -316,6 +317,101 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((total, item) => total + parsePrice(item.price) * item.quantity, 0);
 }
 
+function parseStockQuantity(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function isProductBlocked(product: PublicStorefrontProduct, quantity: number) {
+  if (!product.trackInventory) {
+    return { blocked: false as const, message: null, availableStock: null };
+  }
+
+  const availableStock = parseStockQuantity(product.stockQuantity);
+
+  if (product.inventoryStatus === "out_of_stock" || availableStock <= 0) {
+    return {
+      blocked: true as const,
+      message: "This product is out of stock.",
+      availableStock
+    };
+  }
+
+  if (quantity > availableStock) {
+    return {
+      blocked: true as const,
+      message: `Only ${availableStock} available.`,
+      availableStock
+    };
+  }
+
+  return { blocked: false as const, message: null, availableStock };
+}
+
+function isVariantBlocked(
+  variant: PublicStorefrontProduct["variants"][number] | null,
+  quantity: number
+) {
+  if (!variant || variant.status !== "active") {
+    return {
+      blocked: true as const,
+      message: "This option is no longer available.",
+      availableStock: 0
+    };
+  }
+
+  const availableStock = parseStockQuantity(variant.stockQuantity);
+
+  if (availableStock <= 0) {
+    return {
+      blocked: true as const,
+      message: "This option is out of stock.",
+      availableStock
+    };
+  }
+
+  if (quantity > availableStock) {
+    return {
+      blocked: true as const,
+      message: `Only ${availableStock} available for this option.`,
+      availableStock
+    };
+  }
+
+  return { blocked: false as const, message: null, availableStock };
+}
+
+function cartItemAvailability(
+  item: CartItem,
+  productsById: Map<string, PublicStorefrontProduct>
+) {
+  const product = productsById.get(item.productId);
+
+  if (!product || product.status !== "active") {
+    return {
+      blocked: true as const,
+      message: "This product is no longer available.",
+      availableStock: 0
+    };
+  }
+
+  if (item.variantId) {
+    return isVariantBlocked(
+      product.variants.find((variant) => variant.id === item.variantId) ?? null,
+      item.quantity
+    );
+  }
+
+  if (product.variants.length) {
+    return {
+      blocked: true as const,
+      message: "Choose an available option for this product again.",
+      availableStock: 0
+    };
+  }
+
+  return isProductBlocked(product, item.quantity);
+}
+
 function defaultDeliveryMethod(
   deliverySettings: CartPageClientProps["deliverySettings"]
 ): CheckoutDeliveryMethod {
@@ -373,18 +469,35 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants[0]?.id ?? "");
   const selectedVariant =
     product.variants.find((variant) => variant.id === selectedVariantId) ?? null;
-  const isOutOfStock =
-    selectedVariant
-      ? (selectedVariant.stockQuantity ?? 0) <= 0 || selectedVariant.status !== "active"
-      : product.trackInventory &&
-        ((product.stockQuantity ?? 0) <= 0 || product.inventoryStatus === "out_of_stock");
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
     [currency, slug, storeId]
   );
+  const { items } = useStoreCart(scope);
+  const currentLineId = cartLineId(product.id, selectedVariant?.id);
+  const currentQuantity =
+    items.find(
+      (item) =>
+        item.id === currentLineId ||
+        (item.productId === product.id && item.variantId === (selectedVariant?.id ?? null))
+    )?.quantity ?? 0;
+  const selectedAvailability = selectedVariant
+    ? isVariantBlocked(selectedVariant, currentQuantity + 1)
+    : product.variants.length
+      ? {
+          blocked: true as const,
+          message: "Choose an available option.",
+          availableStock: 0
+        }
+      : isProductBlocked(product, currentQuantity + 1);
+  const stockMessage = selectedAvailability.blocked
+    ? selectedAvailability.message ?? "This product is out of stock or quantity is not available."
+    : selectedAvailability.availableStock !== null && selectedAvailability.availableStock <= currentQuantity + 1
+      ? "Last available item."
+      : null;
 
   function handleAddToCart() {
-    if (isOutOfStock) {
+    if (selectedAvailability.blocked) {
       return;
     }
 
@@ -433,9 +546,14 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
           </select>
         </label>
       ) : null}
+      {stockMessage ? (
+        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+          {stockMessage}
+        </p>
+      ) : null}
       <button
         className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isOutOfStock}
+        disabled={selectedAvailability.blocked}
         onClick={handleAddToCart}
         style={{
           backgroundColor: "var(--store-primary, #0f172a)",
@@ -443,7 +561,7 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
         }}
         type="button"
       >
-        {isOutOfStock ? "Out of stock" : added ? "Added to cart" : "Add to cart"}
+        {selectedAvailability.blocked ? "Unavailable" : added ? "Added to cart" : "Add to cart"}
       </button>
     </div>
   );
@@ -475,7 +593,13 @@ export function CartNavLink({
   );
 }
 
-export function CartPageClient({ currency, deliverySettings, slug, storeId }: CartPageClientProps) {
+export function CartPageClient({
+  currency,
+  deliverySettings,
+  products,
+  slug,
+  storeId
+}: CartPageClientProps) {
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
     [currency, slug, storeId]
@@ -493,6 +617,23 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponPending, setCouponPending] = useState(false);
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+  const itemAvailabilityById = useMemo(
+    () =>
+      new Map(
+        items.map((item) => [
+          item.id,
+          cartItemAvailability(item, productsById)
+        ])
+      ),
+    [items, productsById]
+  );
+  const hasUnavailableItems = [...itemAvailabilityById.values()].some(
+    (availability) => availability.blocked
+  );
   const total = useMemo(() => cartTotal(items), [items]);
   const discountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
   const selectedDeliveryFee =
@@ -511,17 +652,26 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
     }
 
     persistItems(
-      items.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              quantity: Math.max(
-                1,
-                Math.min(quantity, item.trackInventory ? item.stockQuantity ?? 0 : quantity)
-              )
-            }
-          : item
-      )
+      items.map((item) => {
+        if (item.id !== itemId) {
+          return item;
+        }
+
+        const product = productsById.get(item.productId);
+        const variant = item.variantId
+          ? product?.variants.find((candidate) => candidate.id === item.variantId) ?? null
+          : null;
+        const maxQuantity = variant
+          ? parseStockQuantity(variant.stockQuantity)
+          : product?.trackInventory
+            ? parseStockQuantity(product.stockQuantity)
+            : quantity;
+
+        return {
+          ...item,
+          quantity: Math.max(1, Math.min(quantity, maxQuantity || item.quantity))
+        };
+      })
     );
   }
 
@@ -595,9 +745,14 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid gap-4">
-        {items.map((item) => (
+        {items.map((item) => {
+          const availability = itemAvailabilityById.get(item.id);
+
+          return (
           <article
-            className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 sm:grid-cols-[120px_minmax(0,1fr)]"
+            className={`grid gap-4 rounded-[2rem] border bg-white p-4 sm:grid-cols-[120px_minmax(0,1fr)] ${
+              availability?.blocked ? "border-red-200" : "border-slate-200"
+            }`}
             key={item.id}
           >
             {item.image ? (
@@ -660,9 +815,16 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
                   Remove
                 </button>
               </div>
+              {availability?.blocked ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+                  {availability.message ??
+                    "This product is out of stock or quantity is not available."}
+                </div>
+              ) : null}
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       <aside className="h-fit rounded-[2rem] border border-slate-200 bg-white p-5 lg:sticky lg:top-6">
@@ -817,12 +979,18 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           </div>
         </div>
         <div className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
+          {hasUnavailableItems ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              Fix unavailable cart items before checkout.
+            </div>
+          ) : null}
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
             Checkout is not enabled yet. This cart is ready for the next checkout phase.
           </div>
           {!checkoutStarted ? (
             <button
-              className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+              className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              disabled={hasUnavailableItems}
               onClick={() => {
                 setCheckoutStarted(true);
               }}
@@ -907,7 +1075,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={isDraftPending || draftState.ok}
+            disabled={hasUnavailableItems || isDraftPending || draftState.ok}
             type="submit"
           >
             {isDraftPending

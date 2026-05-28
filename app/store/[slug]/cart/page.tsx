@@ -133,6 +133,7 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
             freeDeliveryThreshold: preview.store.freeDeliveryThreshold,
             pickupEnabled: preview.store.pickupEnabled
           }}
+          products={preview.products}
           slug={preview.store.slug}
           storeId={preview.store.id}
         />
