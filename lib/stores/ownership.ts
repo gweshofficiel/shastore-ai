@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveUniqueStoreSlug } from "@/lib/stores/slug";
+import { ensurePersonalWorkspaceOwnerMembership } from "@/lib/workspace-members";
 
 export type OwnedStoreRecord = {
   created_at: string;
@@ -101,6 +102,13 @@ export async function createStoreForUser(
     throw new Error("Store name is required.");
   }
 
+  const workspaceId = input.workspaceId?.trim();
+  if (!workspaceId) {
+    throw new Error("Active workspace is required to create a store.");
+  }
+
+  await ensurePersonalWorkspaceOwnerMembership(supabase, workspaceId, userId);
+
   const storeId = crypto.randomUUID();
   const slug = input.slug?.trim() || (await resolveUniqueStoreSlug(supabase, storeName, storeId));
 
@@ -115,7 +123,7 @@ export async function createStoreForUser(
     subscription_plan: input.subscriptionPlan ?? "free",
     template_id: input.templateId ?? "modern-store",
     user_id: userId,
-    workspace_id: input.workspaceId ?? userId
+    workspace_id: workspaceId
   };
 
   console.info("[store-create] creating store for user", {

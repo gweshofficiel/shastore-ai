@@ -21,6 +21,7 @@ import { assertPaidAccessNotLocked } from "@/lib/billing/expiry-lockdown";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { getUserPrimaryWorkspaceId, requirePermission, type WorkspacePermission } from "@/lib/permissions/rbac";
+import { ensurePersonalWorkspaceOwnerMembership } from "@/lib/workspace-members";
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
@@ -703,6 +704,8 @@ async function persistStoreDraftFromForm(
     });
     return { ok: false, error: "You do not have permission to create stores." };
   }
+
+  await ensurePersonalWorkspaceOwnerMembership(supabase, workspaceId, user.id);
 
   const access = await getUserSubscriptionAccess(user.id);
   try {

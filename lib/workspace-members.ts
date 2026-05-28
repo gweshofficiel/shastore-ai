@@ -131,7 +131,7 @@ async function requireActiveWorkspaceManagement(
   }
 }
 
-async function ensureOwnerMembership(
+export async function ensurePersonalWorkspaceOwnerMembership(
   supabase: SupabaseClient,
   workspaceId: string,
   userId: string
@@ -167,7 +167,7 @@ export async function canManageWorkspace(
   workspaceId: string,
   userId: string
 ) {
-  await ensureOwnerMembership(supabase, workspaceId, userId);
+  await ensurePersonalWorkspaceOwnerMembership(supabase, workspaceId, userId);
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
@@ -202,7 +202,7 @@ export async function getWorkspaceMembers(
   workspaceId: string,
   userId: string
 ) {
-  await ensureOwnerMembership(supabase, workspaceId, userId);
+  await ensurePersonalWorkspaceOwnerMembership(supabase, workspaceId, userId);
 
   console.log("[workspace-members-query] loading roster for active workspace", {
     filter: "workspace_id",

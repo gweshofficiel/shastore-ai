@@ -6,6 +6,7 @@ import {
   assertUsageWithinLimits,
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { createStore } from "../../../../server/stores/create-store";
 
 const supabase = createSupabaseClient(
@@ -81,11 +82,18 @@ export async function POST(req: Request) {
       );
     }
 
+    const selection = await getActiveWorkspaceForUser({
+      supabase: userSupabase,
+      userId: authResult.data.user.id
+    });
+
     const store = await createStore({
-      ownerUserId: authResult.data.user.id,
-      name,
-      slug,
       description,
+      name,
+      ownerUserId: authResult.data.user.id,
+      slug,
+      supabase: userSupabase,
+      workspaceId: selection.activeWorkspaceId
     });
 
     return NextResponse.json({ success: true, store }, { status: 201 });
