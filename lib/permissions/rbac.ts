@@ -152,6 +152,7 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/reseller", label: "Reseller", icon: "stores", permission: "can_manage_billing", showInSidebar: false },
   { href: "/dashboard/projects", label: "Projects", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
   { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", permission: "can_view_notifications" },
+  { href: "/dashboard/email", label: "Email", icon: "notifications", permission: "can_view_notifications" },
   { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "can_manage_shipping", showInSidebar: false },
   { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "can_view_settings" }
 ] as const satisfies ReadonlyArray<{

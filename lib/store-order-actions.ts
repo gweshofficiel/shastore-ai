@@ -22,6 +22,7 @@ import {
   createOrderNotificationSafe,
   createStoreNotificationSafe
 } from "@/lib/notifications/store-notifications";
+import { queueStoreEmailEventSafe } from "@/lib/store-email-queue";
 import type { Json } from "@/types/database";
 
 export type PublicStoreOrderState = {
@@ -686,6 +687,19 @@ async function persistStorefrontOrderDraft({
         type: "new_order",
         workspaceId
       });
+      await queueStoreEmailEventSafe({
+        metadata: {
+          customerName,
+          orderReference: orderRow.id.slice(0, 8),
+          orderSource: "orders",
+          storeName: slug,
+          totalAmount: total
+        },
+        recipient: customerEmail,
+        storeId: store.id,
+        templateKey: "order_confirmation",
+        workspaceId
+      });
       if (coupon) {
         await createStoreNotificationSafe({
           message: `Coupon ${coupon.code} was used on order ${orderRow.id.slice(0, 8)}.`,
@@ -844,6 +858,19 @@ async function persistStorefrontOrderDraft({
     storeId: store.id,
     totalAmount: total,
     type: "new_order",
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+  await queueStoreEmailEventSafe({
+    metadata: {
+      customerName,
+      orderReference: storeOrderRow.id.slice(0, 8),
+      orderSource: "store_orders",
+      storeName: slug,
+      totalAmount: total
+    },
+    recipient: customerEmail,
+    storeId: store.id,
+    templateKey: "order_confirmation",
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
   });
   if (coupon) {
@@ -1109,6 +1136,19 @@ export async function createPublicStoreOrderAction(
     storeId: store.id,
     totalAmount: total,
     type: "new_order",
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+  await queueStoreEmailEventSafe({
+    metadata: {
+      customerName,
+      orderReference: (order as { id: string }).id.slice(0, 8),
+      orderSource: "store_orders",
+      storeName: slug,
+      totalAmount: total
+    },
+    recipient: customerEmail,
+    storeId: store.id,
+    templateKey: "order_confirmation",
     workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
   });
   if (couponResult?.ok) {
@@ -1409,7 +1449,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const tableName = source === "orders" ? "orders" : "store_orders";
   logSupabaseDiagnostic("order_status.lookup.before", {
     orderId,
-    select: "id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note",
+    select: "id, store_id, store_instance_id, workspace_id, customer_name, customer_email, total_amount, total, order_status, payment_status, internal_note",
     source,
     status,
     tableName,
@@ -1417,12 +1457,13 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   });
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
-    .select("id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note")
+    .select("id, store_id, store_instance_id, workspace_id, customer_name, customer_email, total_amount, total, order_status, payment_status, internal_note")
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
   const currentOrderRow = currentOrder as {
     id: string;
+    customer_email?: string | null;
     customer_name?: string | null;
     internal_note?: string | null;
     order_status: string | null;
@@ -1439,7 +1480,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       "order_status.lookup.failed",
       {
         orderId,
-        select: "id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note",
+        select: "id, store_id, store_instance_id, workspace_id, customer_name, customer_email, total_amount, total, order_status, payment_status, internal_note",
         source,
         status,
         tableName,
@@ -1754,8 +1795,33 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       type: status === "confirmed" ? "order_confirmed" : "order_cancelled",
       workspaceId
     });
+    await queueStoreEmailEventSafe({
+      metadata: {
+        customerName: currentOrderRow.customer_name ?? "Customer",
+        orderReference: orderId.slice(0, 8),
+        orderSource: source,
+        orderStatus: status,
+        totalAmount: parsePrice(currentOrderRow.total_amount ?? currentOrderRow.total ?? null)
+      },
+      recipient: currentOrderRow.customer_email ?? null,
+      storeId: eventStoreId,
+      templateKey: "order_status_update",
+      workspaceId
+    });
 
     if (status === "confirmed") {
+      await queueStoreEmailEventSafe({
+        metadata: {
+          customerName: currentOrderRow.customer_name ?? "Customer",
+          orderReference: orderId.slice(0, 8),
+          orderSource: source,
+          totalAmount: parsePrice(currentOrderRow.total_amount ?? currentOrderRow.total ?? null)
+        },
+        recipient: currentOrderRow.customer_email ?? null,
+        storeId: eventStoreId,
+        templateKey: "review_request",
+        workspaceId
+      });
       await createLowStockNotificationsForOrderSafe({
         orderId,
         orderSource: source,
