@@ -146,6 +146,25 @@ create table store_categories (
   created_at timestamptz not null default now()
 );
 
+create table store_coupons (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references stores(id) on delete cascade,
+  workspace_id uuid not null,
+  code text not null,
+  discount_type text not null check (discount_type in ('percentage', 'fixed')),
+  discount_value numeric(12, 2) not null check (discount_value > 0),
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  usage_limit integer check (usage_limit is null or usage_limit >= 0),
+  used_count integer not null default 0 check (used_count >= 0),
+  minimum_order_amount numeric(12, 2) not null default 0 check (minimum_order_amount >= 0),
+  starts_at timestamptz,
+  ends_at timestamptz,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (ends_at is null or starts_at is null or ends_at >= starts_at)
+);
+
 create table store_products (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references stores(id) on delete cascade,
@@ -194,6 +213,12 @@ create table store_orders (
   items jsonb not null default '[]'::jsonb,
   subtotal numeric(12, 2) not null default 0 check (subtotal >= 0),
   total numeric(12, 2) not null default 0 check (total >= 0),
+  coupon_id uuid references store_coupons(id) on delete set null,
+  coupon_code text,
+  discount_type text,
+  discount_value numeric(12, 2),
+  discount_amount numeric(12, 2) not null default 0,
+  order_subtotal_before_discount numeric(12, 2),
   payment_method text not null default 'manual',
   payment_status text not null default 'pending',
   order_status text not null default 'pending',

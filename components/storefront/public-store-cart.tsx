@@ -49,6 +49,11 @@ type CartScope = {
 
 type CheckoutDeliveryMethod = "delivery" | "pickup" | "none";
 
+type AppliedCoupon = {
+  code: string;
+  discountAmount: number;
+};
+
 type CartUpdatedDetail = {
   slug: string;
   storeId: string;
@@ -383,10 +388,20 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
   const [deliveryMethod, setDeliveryMethod] = useState<CheckoutDeliveryMethod>(
     defaultDeliveryMethod(deliverySettings)
   );
+  const [couponCode, setCouponCode] = useState("");
+  const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponPending, setCouponPending] = useState(false);
   const total = useMemo(() => cartTotal(items), [items]);
+  const discountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
   const selectedDeliveryFee =
     deliveryMethod === "delivery" ? deliverySettings.deliveryFee ?? 0 : 0;
-  const finalTotal = Number((total + selectedDeliveryFee).toFixed(2));
+  const finalTotal = Number((Math.max(0, total - discountAmount) + selectedDeliveryFee).toFixed(2));
+
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponMessage(null);
+  }, [total]);
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -407,6 +422,50 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
     persistItems(
       items.filter((item) => item.id !== itemId && item.productId !== itemId)
     );
+  }
+
+  async function applyCoupon() {
+    const code = couponCode.trim();
+
+    if (!code) {
+      setCouponMessage("Enter a coupon code.");
+      setAppliedCoupon(null);
+      return;
+    }
+
+    setCouponPending(true);
+    setCouponMessage(null);
+
+    try {
+      const response = await fetch("/api/store-coupons/validate", {
+        body: JSON.stringify({ code, slug, storeId, subtotal: total }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
+      });
+      const data = (await response.json()) as {
+        code?: string;
+        discountAmount?: number;
+        error?: string;
+      };
+
+      if (!response.ok || !data.code || typeof data.discountAmount !== "number") {
+        setAppliedCoupon(null);
+        setCouponMessage(data.error ?? "Coupon could not be applied.");
+        return;
+      }
+
+      setAppliedCoupon({
+        code: data.code,
+        discountAmount: data.discountAmount
+      });
+      setCouponCode(data.code);
+      setCouponMessage(`${data.code} applied.`);
+    } catch {
+      setAppliedCoupon(null);
+      setCouponMessage("Coupon could not be applied.");
+    } finally {
+      setCouponPending(false);
+    }
   }
 
   if (!items.length) {
@@ -525,6 +584,40 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Coupon
+            </p>
+            <div className="mt-3 flex gap-2">
+              <input
+                className="h-11 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                onChange={(event) => {
+                  setCouponCode(event.target.value);
+                  setAppliedCoupon(null);
+                  setCouponMessage(null);
+                }}
+                placeholder="WELCOME10"
+                value={couponCode}
+              />
+              <button
+                className="h-11 rounded-full bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-300"
+                disabled={couponPending}
+                onClick={applyCoupon}
+                type="button"
+              >
+                {couponPending ? "Checking..." : "Apply"}
+              </button>
+            </div>
+            {couponMessage ? (
+              <p className="mt-2 text-xs font-bold text-muted">{couponMessage}</p>
+            ) : null}
+            {appliedCoupon ? (
+              <div className="mt-3 flex justify-between text-emerald-700">
+                <span>Discount ({appliedCoupon.code})</span>
+                <span>-{formatMoney(discountAmount, currency)}</span>
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Delivery summary
             </p>
             {deliverySettings.deliveryEnabled || deliverySettings.pickupEnabled ? (
@@ -628,6 +721,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           <input name="slug" type="hidden" value={slug} />
           <input name="storeId" type="hidden" value={storeId} />
           <input name="deliveryMethod" type="hidden" value={deliveryMethod} />
+          <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
           <input
             name="items"
             type="hidden"

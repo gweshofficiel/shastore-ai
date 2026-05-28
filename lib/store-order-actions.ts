@@ -6,6 +6,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import {
+  incrementCouponUsage,
+  validateStoreCoupon,
+  type StoreCouponRow
+} from "@/lib/store-coupons";
 import type { Json } from "@/types/database";
 
 export type PublicStoreOrderState = {
@@ -360,6 +365,8 @@ async function persistStorefrontOrderDraft({
   currency,
   deliveryFee,
   deliveryMethod,
+  coupon,
+  discountAmount,
   subtotal,
   slug
 }: {
@@ -381,6 +388,8 @@ async function persistStorefrontOrderDraft({
   currency: string;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
+  coupon: StoreCouponRow | null;
+  discountAmount: number;
   subtotal: number;
   slug: string;
 }) {
@@ -388,7 +397,22 @@ async function persistStorefrontOrderDraft({
   const storeInstanceId = await resolveStoreInstanceId(admin, store);
   const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
   const orderNumber = generateDraftOrderNumber();
-  const total = Number((subtotal + deliveryFee).toFixed(2));
+  const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
+  const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
+  const total = Number((discountedSubtotal + deliveryFee).toFixed(2));
+  const couponPayload = coupon
+    ? {
+        coupon_code: coupon.code,
+        coupon_id: coupon.id,
+        discount_amount: safeDiscountAmount,
+        discount_type: coupon.discount_type,
+        discount_value: Number(coupon.discount_value),
+        order_subtotal_before_discount: subtotal
+      }
+    : {
+        discount_amount: 0,
+        order_subtotal_before_discount: subtotal
+      };
 
   const legacyOrderPayload: Record<string, unknown> = {
     store_instance_id: storeInstanceId,
@@ -399,7 +423,7 @@ async function persistStorefrontOrderDraft({
     notes: combinedNotes,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
-    subtotal,
+    subtotal: discountedSubtotal,
     total,
     currency,
     order_status: "draft",
@@ -409,6 +433,7 @@ async function persistStorefrontOrderDraft({
 
   const extendedOrderPayload: Record<string, unknown> = {
     ...legacyOrderPayload,
+    ...couponPayload,
     store_id: store.id,
     user_id: store.user_id,
     owner_user_id: store.owner_user_id ?? store.user_id,
@@ -516,6 +541,11 @@ async function persistStorefrontOrderDraft({
     }
 
     if (itemsInserted) {
+      if (coupon && !(await incrementCouponUsage(admin, coupon))) {
+        await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
+        return null;
+      }
+
       await recordOrderEventSafe({
         eventType: "order_created",
         message: `Order draft created from public storefront for ${customerName}.`,
@@ -575,8 +605,9 @@ async function persistStorefrontOrderDraft({
     delivery_method: deliveryMethod,
     fulfillment_status: "unfulfilled",
     items: legacyItems as Json,
-    subtotal,
+    subtotal: discountedSubtotal,
     total,
+    ...couponPayload,
     payment_method: "manual",
     payment_status: "pending",
     order_status: "draft"
@@ -616,6 +647,11 @@ async function persistStorefrontOrderDraft({
     return null;
   }
 
+  if (coupon && !(await incrementCouponUsage(admin, coupon))) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, storeOrderRow.id as never);
+    return null;
+  }
+
   await recordOrderEventSafe({
     eventType: "order_created",
     message: `Order draft created from public storefront for ${customerName}.`,
@@ -647,6 +683,7 @@ export async function createPublicStoreOrderAction(
   const customerPhone = cleanText(formData.get("customerPhone"), 80);
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
+  const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
   if (!slug) {
@@ -736,7 +773,27 @@ export async function createPublicStoreOrderAction(
     };
   }
 
-  const total = Number(items.reduce((sum, item) => sum + item.total, 0).toFixed(2));
+  const subtotal = Number(items.reduce((sum, item) => sum + item.total, 0).toFixed(2));
+  const couponResult = couponCode
+    ? await validateStoreCoupon(admin, {
+        code: couponCode,
+        storeId: store.id,
+        subtotal,
+        workspaceId: store.workspace_id
+      })
+    : null;
+
+  if (couponResult && !couponResult.ok) {
+    return {
+      error: couponResult.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  const discountAmount = couponResult?.ok ? couponResult.discountAmount : 0;
+  const total = Number(Math.max(0, subtotal - discountAmount).toFixed(2));
   const { data: order, error: orderError } = await admin
     .from("store_orders")
     .insert({
@@ -751,6 +808,12 @@ export async function createPublicStoreOrderAction(
       items: items as Json,
       subtotal: total,
       total,
+      coupon_id: couponResult?.ok ? couponResult.coupon.id : null,
+      coupon_code: couponResult?.ok ? couponResult.coupon.code : null,
+      discount_type: couponResult?.ok ? couponResult.coupon.discount_type : null,
+      discount_value: couponResult?.ok ? Number(couponResult.coupon.discount_value) : null,
+      discount_amount: discountAmount,
+      order_subtotal_before_discount: subtotal,
       payment_method: "whatsapp",
       payment_status: "pending",
       order_status: "pending"
@@ -766,6 +829,16 @@ export async function createPublicStoreOrderAction(
     });
     return {
       error: "Order could not be submitted. Please try again.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  if (couponResult?.ok && !(await incrementCouponUsage(admin, couponResult.coupon))) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, (order as { id: string }).id as never);
+    return {
+      error: "Coupon usage limit has been reached.",
       message: null,
       ok: false,
       orderId: null
@@ -793,6 +866,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
+  const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
   const requestedItems = parseCartItems(formData.get("items"));
 
@@ -903,6 +977,24 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
+  const couponResult = couponCode
+    ? await validateStoreCoupon(admin, {
+        code: couponCode,
+        storeId: store.id,
+        subtotal,
+        workspaceId: store.workspace_id
+      })
+    : null;
+
+  if (couponResult && !couponResult.ok) {
+    return {
+      error: couponResult.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
   const persisted = await persistStorefrontOrderDraft({
     admin,
     store,
@@ -915,6 +1007,8 @@ export async function createPublicStoreOrderDraftAction(
     currency,
     deliveryFee: deliverySelection.deliveryFee,
     deliveryMethod: deliverySelection.deliveryMethod,
+    coupon: couponResult?.ok ? couponResult.coupon : null,
+    discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     subtotal,
     slug
   });

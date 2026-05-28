@@ -4512,6 +4512,9 @@ export default async function StoreDraftPage({
             <ButtonLink href="/dashboard/stores/new" variant="secondary">
               New draft
             </ButtonLink>
+            <ButtonLink href={`/dashboard/coupons?storeId=${store.id}`} variant="secondary">
+              Manage coupons
+            </ButtonLink>
           </div>
         </Card>
         <Card className="p-5 lg:p-6">
