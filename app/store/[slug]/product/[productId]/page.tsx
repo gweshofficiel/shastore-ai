@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { submitProductReview } from "@/lib/product-review-actions";
+import { getApprovedProductReviews } from "@/lib/product-reviews";
 import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
@@ -14,6 +16,9 @@ type ProductDetailPageProps = {
   params: Promise<{
     productId: string;
     slug: string;
+  }>;
+  searchParams: Promise<{
+    review?: string;
   }>;
 };
 
@@ -79,6 +84,26 @@ function resolvePublicProduct(
   return products.find((item) => item.id === decodedProductId || item.slug === decodedProductId);
 }
 
+function reviewMessage(status: string | undefined) {
+  const messages: Record<string, string> = {
+    failed: "Review could not be submitted. Please try again.",
+    invalid: "Choose a rating from 1 to 5 and add a review comment.",
+    "not-configured": "Review submission is not configured yet.",
+    "purchase-required": "We could not match that order reference and phone to this product.",
+    submitted: "Review submitted for moderation."
+  };
+
+  return status ? messages[status] : null;
+}
+
+function ratingStars(rating: number) {
+  if (rating <= 0) {
+    return "No ratings yet";
+  }
+
+  return `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
+}
+
 export async function generateMetadata({
   params
 }: ProductDetailPageProps): Promise<Metadata> {
@@ -137,9 +162,11 @@ export async function generateMetadata({
 }
 
 export default async function PublicProductDetailPage({
-  params
+  params,
+  searchParams
 }: ProductDetailPageProps) {
   const { productId, slug } = await params;
+  const query = await searchParams;
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
@@ -224,6 +251,11 @@ export default async function PublicProductDetailPage({
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
   const galleryUrls = productGalleryUrls(product.gallery);
   const currency = product.currency || preview.store.currency;
+  const { reviews, summary } = await getApprovedProductReviews({
+    productId: product.id,
+    storeId: preview.store.id
+  });
+  const message = reviewMessage(query.review);
 
   return (
     <main className="min-h-screen bg-slate-50 text-ink">
@@ -314,6 +346,14 @@ export default async function PublicProductDetailPage({
                   {currency}
                 </span>
               </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
+                <span className="text-amber-500">{ratingStars(summary.averageRating)}</span>
+                <span className="text-muted">
+                  {summary.reviewCount
+                    ? `${summary.averageRating.toFixed(1)} from ${summary.reviewCount} ${summary.reviewCount === 1 ? "review" : "reviews"}`
+                    : "No approved reviews yet"}
+                </span>
+              </div>
               <p className="mt-6 text-base leading-8 text-muted">
                 {product.description || "No description has been added for this product yet."}
               </p>
@@ -363,6 +403,127 @@ export default async function PublicProductDetailPage({
               </div>
             </article>
           </div>
+
+          <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Customer Reviews
+              </p>
+              <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+                {summary.reviewCount
+                  ? `${summary.averageRating.toFixed(1)} average rating`
+                  : "No approved reviews yet"}
+              </h2>
+              <div className="mt-5 grid gap-4">
+                {reviews.length ? (
+                  reviews.map((review) => (
+                    <article className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={review.id}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-amber-500">{ratingStars(review.rating)}</p>
+                          <h3 className="mt-1 text-lg font-black text-ink">
+                            {review.title || "Customer review"}
+                          </h3>
+                          <p className="mt-1 text-xs font-bold text-muted">
+                            {review.customerName}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-muted">{review.comment}</p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
+                    Approved reviews will appear here after moderation.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Write a Review
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+                Purchased this product?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Enter your order reference and phone number. Reviews are moderated before publishing.
+              </p>
+              {message ? (
+                <div className={`mt-4 rounded-2xl border p-3 text-sm font-bold ${
+                  query.review === "submitted"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  {message}
+                </div>
+              ) : null}
+              <form action={submitProductReview} className="mt-5 grid gap-3">
+                <input name="slug" type="hidden" value={preview.store.slug} />
+                <input name="storeId" type="hidden" value={preview.store.id} />
+                <input name="workspaceId" type="hidden" value={preview.store.workspaceId ?? ""} />
+                <input name="productId" type="hidden" value={product.id} />
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Order reference *</span>
+                  <input
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    name="orderReference"
+                    placeholder="First 8 characters from your order"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Phone used at checkout *</span>
+                  <input
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    name="customerPhone"
+                    placeholder="+15551234567"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Rating *</span>
+                  <select
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    name="rating"
+                    required
+                  >
+                    <option value="5">5 - Excellent</option>
+                    <option value="4">4 - Good</option>
+                    <option value="3">3 - Okay</option>
+                    <option value="2">2 - Poor</option>
+                    <option value="1">1 - Bad</option>
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Title</span>
+                  <input
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    maxLength={140}
+                    name="title"
+                    placeholder="Great product"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Comment *</span>
+                  <textarea
+                    className="min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    maxLength={2000}
+                    name="comment"
+                    placeholder="Share your experience."
+                    required
+                  />
+                </label>
+                <button
+                  className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+                  type="submit"
+                >
+                  Submit review
+                </button>
+              </form>
+            </div>
+          </section>
         </div>
       </section>
       <footer
