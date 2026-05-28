@@ -341,7 +341,9 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   description: "Products that are not assigned to a category yet.",
                   id: "uncategorized",
                   imageUrl: null,
-                  name: "More products"
+                  name: "More products",
+                  slug: null,
+                  status: "active"
                 },
                 products: uncategorizedProducts
               }
@@ -354,7 +356,9 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
             description: "Real products saved in Store Builder are shown here for this published store.",
             id: "featured",
             imageUrl: null,
-            name: "Featured products"
+            name: "Featured products",
+            slug: null,
+            status: "active"
           },
           products
         }
@@ -767,14 +771,15 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
           }`}
         >
           {categories.map((category) => (
-            <article
+            <Link
               className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
                 config.key === "electronics-starter"
                   ? "border-cyan-400/20 bg-slate-900 text-white"
                   : config.key === "beauty-starter"
                     ? "border-pink-100"
                     : "border-slate-200"
-              }`}
+              } transition hover:-translate-y-0.5 hover:shadow-lg`}
+              href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
               key={category.id}
             >
               {category.imageUrl ? (
@@ -798,7 +803,7 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
                   {category.description || "Explore products in this collection."}
                 </p>
               </div>
-            </article>
+            </Link>
           ))}
         </div>
       </div>

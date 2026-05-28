@@ -170,7 +170,7 @@ function slugify(value: string) {
   return slug || "product";
 }
 
-function productsRedirect(storeId: string, status?: string) {
+function productsRedirect(storeId: string, status?: string): never {
   const params = new URLSearchParams({ storeId });
 
   if (status) {
@@ -200,6 +200,32 @@ async function loadProtectedProduct({
     .maybeSingle();
 
   return (data ?? null) as ProtectedProductRecord | null;
+}
+
+async function categoryBelongsToStore({
+  categoryId,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  categoryId: string | null;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  if (!categoryId) {
+    return true;
+  }
+
+  const { data } = await supabase
+    .from("store_categories" as never)
+    .select("id")
+    .eq("id", categoryId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  return Boolean(data);
 }
 
 function normalizeGallery(value: unknown) {
@@ -389,12 +415,14 @@ function productPayload(formData: FormData, productId?: string) {
   const title = cleanText(formData.get("title"), 180);
   const price = cleanMoney(formData.get("price"));
   const slugSuffix = productId ? productId.slice(0, 8) : randomUUID().slice(0, 8);
+  const categoryId = cleanText(formData.get("categoryId"), 80);
 
   if (!title) {
     return null;
   }
 
   return {
+    category_id: categoryId || null,
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
     currency: cleanCurrency(formData.get("currency")),
     description: cleanOptionalText(formData.get("description"), 1000),
@@ -448,6 +476,10 @@ export async function createStoreOwnerProduct(formData: FormData) {
     productsRedirect(storeId, "missing-title");
   }
 
+  if (!(await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId }))) {
+    productsRedirect(storeId, "category-not-found");
+  }
+
   const { error } = await supabase.from("store_products" as never).insert({
     ...payload,
     owner_user_id: user.id,
@@ -481,6 +513,10 @@ export async function updateStoreOwnerProduct(formData: FormData) {
 
   if (!productId || !payload) {
     productsRedirect(storeId, "update-failed");
+  }
+
+  if (!(await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId }))) {
+    productsRedirect(storeId, "category-not-found");
   }
 
   const { error } = await supabase

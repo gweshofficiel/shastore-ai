@@ -45,6 +45,8 @@ export type PublicStorefrontCategory = {
   id: string;
   imageUrl: string | null;
   name: string;
+  slug: string | null;
+  status: string | null;
 };
 
 export type PublicStorefrontPreview = {
@@ -203,7 +205,9 @@ function normalizeCategory(value: unknown): PublicStorefrontCategory | null {
     description: textValue(value.description) || null,
     id,
     imageUrl: textValue(value.imageUrl) || null,
-    name
+    name,
+    slug: textValue(value.slug) || null,
+    status: textValue(value.status, "active")
   };
 }
 
@@ -380,15 +384,18 @@ async function loadStoreModePublicPreview(slug: string) {
         .order("created_at", { ascending: true })
     : { data: [] };
   const { data: categories } = await client
-    .from("store_categories")
-    .select("id, name, description, image_url")
-    .eq("store_id", store.id)
+    .from("store_categories" as never)
+    .select("id, name, slug, description, image_url, status")
+    .eq("store_id" as never, store.id as never)
+    .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
-  const savedCategories = (categories ?? []).map((category) => ({
-    description: category.description,
-    id: category.id,
-    imageUrl: category.image_url,
-    name: category.name
+  const savedCategories = ((categories ?? []) as Array<Record<string, unknown>>).map((category) => ({
+    description: textValue(category.description) || null,
+    id: String(category.id ?? ""),
+    imageUrl: textValue(category.image_url) || null,
+    name: textValue(category.name, "Category"),
+    slug: textValue(category.slug) || null,
+    status: textValue(category.status, "active")
   }));
   const categoriesById = new Map(savedCategories.map((category) => [category.id, category.name]));
   const variantsByProduct = new Map<string, PublicStorefrontVariant[]>();

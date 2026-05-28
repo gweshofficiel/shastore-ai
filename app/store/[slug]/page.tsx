@@ -238,7 +238,9 @@ export default async function PublicStorePage({
                   description: "Products that are not assigned to a category yet.",
                   id: "uncategorized",
                   imageUrl: null,
-                  name: "More products"
+                  name: "More products",
+                  slug: null,
+                  status: "active"
                 },
                 products: uncategorizedProducts
               }
@@ -251,7 +253,9 @@ export default async function PublicStorePage({
             description: "Products shown here are published products scoped to this store only.",
             id: "featured",
             imageUrl: null,
-            name: "Featured products"
+            name: "Featured products",
+            slug: null,
+            status: "active"
           },
           products
         }
@@ -335,9 +339,18 @@ export default async function PublicStorePage({
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                       Category
                     </p>
-                    <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                      {section.category.name}
-                    </h3>
+                    {section.category.slug ? (
+                      <Link
+                        className="text-2xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600"
+                        href={`/store/${store.slug}/category/${encodeURIComponent(section.category.slug)}`}
+                      >
+                        {section.category.name}
+                      </Link>
+                    ) : (
+                      <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
+                        {section.category.name}
+                      </h3>
+                    )}
                     <p className="text-sm leading-6 text-muted">
                       {section.category.description ||
                         "Products assigned to this category will appear here."}

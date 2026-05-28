@@ -24,6 +24,7 @@ export const dynamic = "force-dynamic";
 const productListPath = "/dashboard/products";
 
 type ProductRow = {
+  category_id?: string | null;
   compare_at_price?: number | string | null;
   created_at: string;
   currency?: string | null;
@@ -74,8 +75,16 @@ type ProductWithImages = ProductRow & {
   variants: ProductVariantRow[];
 };
 
+type CategoryRow = {
+  id: string;
+  name: string;
+  slug?: string | null;
+  status?: string | null;
+};
+
 type ProductsDashboardData = {
   activeStore: UserStoreRow | null;
+  categories: CategoryRow[];
   error: string | null;
   products: ProductWithImages[];
   schemaIssue: string | null;
@@ -102,6 +111,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   if (userError) {
     return {
       activeStore: null,
+      categories: [],
       error: "We could not verify your session. Please sign in again.",
       products: [],
       schemaIssue: null,
@@ -112,6 +122,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   if (!user) {
     return {
       activeStore: null,
+      categories: [],
       error: "Sign in to manage products.",
       products: [],
       schemaIssue: null,
@@ -130,6 +141,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   if (storesError) {
     return {
       activeStore: null,
+      categories: [],
       error: "Stores could not be loaded. Please try again.",
       products: [],
       schemaIssue: null,
@@ -143,6 +155,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   if (!activeStore) {
     return {
       activeStore: null,
+      categories: [],
       error: null,
       products: [],
       schemaIssue: null,
@@ -153,7 +166,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   const { data: products, error: productsError } = await supabase
     .from("store_products" as never)
     .select(
-      "id, workspace_id, store_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, created_at, updated_at"
+      "id, workspace_id, store_id, category_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, created_at, updated_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
@@ -163,6 +176,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   if (productsError) {
     return {
       activeStore,
+      categories: [],
       error: isMissingProductsFoundation(productsError)
         ? null
         : "Products could not be loaded. Please try again.",
@@ -173,6 +187,14 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
       stores
     };
   }
+
+  const { data: categories } = await supabase
+    .from("store_categories" as never)
+    .select("id, name, slug, status")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id", activeStore.id)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
 
   const productIds = ((products ?? []) as Array<{ id?: string }>).map((product) => product.id).filter(Boolean) as string[];
   const { data: productImages } = productIds.length
@@ -210,6 +232,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
 
   return {
     activeStore,
+    categories: (categories ?? []) as unknown as CategoryRow[],
     error: null,
     products: ((products ?? []) as unknown as ProductRow[]).map((product) => ({
       ...product,
@@ -326,6 +349,7 @@ function statusMessage(status: string | undefined) {
     "create-failed": "Product could not be created. Check the fields and try again.",
     archived: "Product archived.",
     "archive-failed": "Product could not be archived. Please try again.",
+    "category-not-found": "Selected category was not found for this store.",
     created: "Product created.",
     deleted: "Product archived.",
     "delete-failed": "Product could not be archived. Please try again.",
@@ -390,7 +414,13 @@ function SelectField({
   );
 }
 
-function ProductFields({ product }: { product?: ProductRow }) {
+function ProductFields({
+  categories,
+  product
+}: {
+  categories: CategoryRow[];
+  product?: ProductRow;
+}) {
   return (
     <>
       <Input
@@ -439,6 +469,21 @@ function ProductFields({ product }: { product?: ProductRow }) {
           placeholder="USD"
         />
       </div>
+      <FieldLabel label="Category">
+        <select
+          className="h-12 min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={product?.category_id ?? ""}
+          name="categoryId"
+        >
+          <option value="">No category</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+              {category.status === "inactive" ? " (inactive)" : ""}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
       <SelectField defaultValue={productStatus(product ?? ({} as ProductRow))} name="status" />
       <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
         <label className="flex items-start gap-3 text-sm font-semibold text-ink">
@@ -619,7 +664,7 @@ export default async function SellerProductsPage({
     }
   }
 
-  const { activeStore, error, products, schemaIssue, stores } = await getProductsDashboardData(
+  const { activeStore, categories, error, products, schemaIssue, stores } = await getProductsDashboardData(
     query.storeId
   );
   const message = statusMessage(query.products);
@@ -629,9 +674,14 @@ export default async function SellerProductsPage({
       <PageHeader
         action={
           activeStore ? (
-            <ButtonLink href={`/dashboard/stores/${activeStore.id}`} variant="secondary">
-              Store settings
-            </ButtonLink>
+            <div className="flex flex-wrap gap-2">
+              <ButtonLink href={`/dashboard/categories?storeId=${activeStore.id}`} variant="secondary">
+                Categories
+              </ButtonLink>
+              <ButtonLink href={`/dashboard/stores/${activeStore.id}`} variant="secondary">
+                Store settings
+              </ButtonLink>
+            </div>
           ) : null
         }
         description="Create and maintain workspace-isolated ecommerce product records for stores."
@@ -717,7 +767,7 @@ export default async function SellerProductsPage({
             </div>
             <form action={createStoreOwnerProduct} className="grid gap-4">
               <input name="storeId" type="hidden" value={activeStore.id} />
-              <ProductFields />
+              <ProductFields categories={categories} />
               <div className="flex justify-end">
                 <Button type="submit">Create product</Button>
               </div>
@@ -759,7 +809,7 @@ export default async function SellerProductsPage({
                     <form action={updateStoreOwnerProduct} className="grid gap-4">
                       <input name="storeId" type="hidden" value={activeStore.id} />
                       <input name="productId" type="hidden" value={product.id} />
-                      <ProductFields product={product} />
+                      <ProductFields categories={categories} product={product} />
                       <div className="flex flex-wrap justify-end gap-3">
                         <ButtonLink
                           href={`${productListPath}?storeId=${activeStore.id}`}
@@ -802,6 +852,11 @@ export default async function SellerProductsPage({
                             >
                               {inventoryLabel(product)}
                             </span>
+                            {product.category_id ? (
+                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-blue-700">
+                                {categories.find((category) => category.id === product.category_id)?.name ?? "Category"}
+                              </span>
+                            ) : null}
                           </div>
                           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
                             {product.description || "No description yet."}

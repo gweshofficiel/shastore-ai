@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
@@ -113,6 +114,18 @@ function cleanUrl(value: FormDataEntryValue | null) {
   }
 
   return text.startsWith("https://") || text.startsWith("http://") ? text : "";
+}
+
+function slugify(value: string) {
+  const slug = value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+
+  return slug || "category";
 }
 
 function formBoolean(formData: FormData, key: string) {
@@ -1306,16 +1319,20 @@ export async function createManagedStoreCategory(formData: FormData) {
     .from("store_categories")
     .select("id", { count: "exact", head: true })
     .eq("store_id", storeId)
+    .eq("workspace_id" as never, store.workspace_id as never)
     .eq("user_id", user.id);
 
   const { error } = await supabase.from("store_categories").insert({
     store_id: storeId,
     user_id: user.id,
+    workspace_id: store.workspace_id,
     name,
+    slug: `${slugify(name)}-${randomUUID().slice(0, 8)}`,
     description: description || null,
     image_url: imageUrl || null,
+    status: "active",
     sort_order: count ?? 0
-  });
+  } as never);
 
   if (error) {
     redirectWithStoreError(detailPath, formatStoreActionError(error));
@@ -1361,11 +1378,13 @@ export async function updateManagedStoreCategory(formData: FormData) {
     .from("store_categories")
     .update({
       name,
+      slug: slugify(name),
       description: description || null,
       image_url: imageUrl || null
-    })
+    } as never)
     .eq("id", categoryId)
     .eq("store_id", storeId)
+    .eq("workspace_id" as never, store.workspace_id as never)
     .eq("user_id", user.id);
 
   if (error) {

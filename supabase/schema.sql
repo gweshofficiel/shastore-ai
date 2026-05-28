@@ -139,15 +139,19 @@ create table store_categories (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references stores(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
+  workspace_id uuid,
   name text not null,
+  slug text not null,
   description text,
   image_url text,
+  status text not null default 'active' check (status in ('active', 'inactive')),
   stock_quantity integer not null default 0 check (stock_quantity >= 0),
   track_inventory boolean not null default false,
   low_stock_threshold integer check (low_stock_threshold is null or low_stock_threshold >= 0),
   inventory_status text not null default 'in_stock' check (inventory_status in ('in_stock', 'out_of_stock')),
   sort_order integer not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table store_coupons (
@@ -455,8 +459,19 @@ create policy "Users manage own projects" on projects
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users manage own stores" on stores
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users manage own store categories" on store_categories
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "workspace members read store categories" on store_categories
+  for select to authenticated using (can_access_workspace(workspace_id));
+create policy "public can read published store categories" on store_categories
+  for select to anon, authenticated using (
+    status = 'active'
+    and exists (
+      select 1 from stores
+      where stores.id = store_categories.store_id
+        and stores.status = 'published'
+    )
+  );
+create policy "workspace editors write store categories" on store_categories
+  for all to authenticated using (workspace_can_edit(workspace_id)) with check (workspace_can_edit(workspace_id));
 create policy "Users manage own store products" on store_products
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Store templates are readable" on store_templates
@@ -487,6 +502,8 @@ create index projects_user_id_idx on projects(user_id);
 create index stores_user_id_idx on stores(user_id);
 create index stores_project_id_idx on stores(project_id);
 create index store_categories_store_id_idx on store_categories(store_id);
+create unique index store_categories_store_slug_idx on store_categories(store_id, slug);
+create index store_categories_workspace_status_idx on store_categories(workspace_id, store_id, status, sort_order);
 create index store_products_store_id_idx on store_products(store_id);
 create index store_products_category_id_idx on store_products(category_id);
 create index store_theme_settings_store_id_idx on store_theme_settings(store_id);
