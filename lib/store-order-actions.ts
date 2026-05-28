@@ -423,8 +423,8 @@ async function persistStorefrontOrderDraft({
     null;
 
   const orderPayloadCandidates = [
-    legacyOrderPayload,
     extendedOrderPayload,
+    legacyOrderPayload,
     Object.fromEntries(
       Object.entries(legacyOrderPayload).filter(
         ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
