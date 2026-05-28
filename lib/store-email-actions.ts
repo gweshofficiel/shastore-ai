@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { processDueCustomerLifecycleEvents } from "@/lib/customer-lifecycle-emails";
 import { processPendingStoreEmailQueue } from "@/lib/store-email-delivery";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
@@ -26,11 +27,13 @@ function emailRedirect(storeId: string, status: string): never {
 
 function emailResultRedirect({
   failed,
+  lifecycleQueued,
   processed,
   sent,
   storeId
 }: {
   failed: number;
+  lifecycleQueued?: number;
   processed: number;
   sent: number;
   storeId: string;
@@ -38,6 +41,7 @@ function emailResultRedirect({
   const params = new URLSearchParams({
     email: "queue-processed",
     failed: String(failed),
+    lifecycleQueued: String(lifecycleQueued ?? 0),
     processed: String(processed),
     sent: String(sent),
     storeId
@@ -72,7 +76,9 @@ export async function saveStoreEmailSettings(formData: FormData) {
     enable_low_stock_alert: formBoolean(formData.get("enableLowStockAlert")),
     enable_order_confirmation: formBoolean(formData.get("enableOrderConfirmation")),
     enable_order_status_update: formBoolean(formData.get("enableOrderStatusUpdate")),
+    enable_review_reminder: formBoolean(formData.get("enableReviewReminder")),
     enable_review_request: formBoolean(formData.get("enableReviewRequest")),
+    enable_thank_you: formBoolean(formData.get("enableThankYou")),
     reply_to_email: replyToEmail || null,
     sender_name: senderName || null,
     store_id: storeId,
@@ -116,6 +122,11 @@ export async function processStoreEmailQueueAction(formData: FormData) {
     emailRedirect(storeId, "not-authorized");
   }
 
+  const lifecycleResult = await processDueCustomerLifecycleEvents({
+    limit: 10,
+    storeId,
+    workspaceId
+  });
   const result = await processPendingStoreEmailQueue({
     limit: 10,
     storeId,
@@ -125,6 +136,7 @@ export async function processStoreEmailQueueAction(formData: FormData) {
   revalidatePath(emailPath);
   emailResultRedirect({
     failed: result.failed,
+    lifecycleQueued: lifecycleResult.queued,
     processed: result.processed,
     sent: result.sent,
     storeId

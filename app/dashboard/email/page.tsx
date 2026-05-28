@@ -18,7 +18,9 @@ type EmailSettingsRow = {
   enable_low_stock_alert?: boolean | null;
   enable_order_confirmation?: boolean | null;
   enable_order_status_update?: boolean | null;
+  enable_review_reminder?: boolean | null;
   enable_review_request?: boolean | null;
+  enable_thank_you?: boolean | null;
   reply_to_email?: string | null;
   sender_name?: string | null;
 };
@@ -42,9 +44,18 @@ type EmailLogRow = {
 type EmailDashboardData = {
   activeStore: UserStoreRow | null;
   error: string | null;
+  lifecycleEvents: LifecycleEventRow[];
   logs: EmailLogRow[];
   settings: EmailSettingsRow | null;
   stores: UserStoreRow[];
+};
+
+type LifecycleEventRow = {
+  created_at: string;
+  event_type: string;
+  id: string;
+  processed_at?: string | null;
+  scheduled_for: string;
 };
 
 function message(status: string | undefined) {
@@ -107,6 +118,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
     return {
       activeStore: null,
       error: "Sign in to manage email settings.",
+      lifecycleEvents: [],
       logs: [],
       settings: null,
       stores: []
@@ -121,6 +133,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
     return {
       activeStore: null,
       error: "Stores could not be loaded. Please try again.",
+      lifecycleEvents: [],
       logs: [],
       settings: null,
       stores: []
@@ -133,16 +146,17 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
     return {
       activeStore: null,
       error: null,
+      lifecycleEvents: [],
       logs: [],
       settings: null,
       stores
     };
   }
 
-  const [settingsResult, logsResult] = await Promise.all([
+  const [settingsResult, logsResult, lifecycleResult] = await Promise.all([
     supabase
       .from("store_email_settings" as never)
-      .select("sender_name, reply_to_email, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_low_stock_alert, enable_customer_welcome")
+      .select("sender_name, reply_to_email, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_review_reminder, enable_low_stock_alert, enable_customer_welcome, enable_thank_you")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .maybeSingle(),
@@ -153,12 +167,21 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
       .eq("store_id" as never, activeStore.id as never)
       .order("created_at" as never, { ascending: false } as never)
       .limit(30)
+    ,
+    supabase
+      .from("customer_lifecycle_events" as never)
+      .select("id, event_type, scheduled_for, processed_at, created_at")
+      .eq("workspace_id" as never, workspaceId as never)
+      .eq("store_id" as never, activeStore.id as never)
+      .order("created_at" as never, { ascending: false } as never)
+      .limit(20)
   ]);
 
-  if (settingsResult.error || logsResult.error) {
+  if (settingsResult.error || logsResult.error || lifecycleResult.error) {
     return {
       activeStore,
       error: "Email tables could not be loaded. Confirm the email foundation migration has been applied.",
+      lifecycleEvents: [],
       logs: [],
       settings: null,
       stores
@@ -168,6 +191,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
   return {
     activeStore,
     error: null,
+    lifecycleEvents: (lifecycleResult.data ?? []) as unknown as LifecycleEventRow[],
     logs: (logsResult.data ?? []) as unknown as EmailLogRow[],
     settings: (settingsResult.data as unknown as EmailSettingsRow | null) ?? null,
     stores
@@ -194,14 +218,14 @@ function Toggle({
 export default async function EmailSettingsPage({
   searchParams
 }: {
-  searchParams: Promise<{ email?: string; failed?: string; processed?: string; sent?: string; storeId?: string }>;
+  searchParams: Promise<{ email?: string; failed?: string; lifecycleQueued?: string; processed?: string; sent?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, error, logs, settings, stores } = await getEmailDashboardData(query.storeId);
+  const { activeStore, error, lifecycleEvents, logs, settings, stores } = await getEmailDashboardData(query.storeId);
   const statusMessage = message(query.email);
   const queueResult =
     query.email === "queue-processed"
-      ? `${query.sent ?? "0"} sent, ${query.failed ?? "0"} failed, ${query.processed ?? "0"} processed.`
+      ? `${query.sent ?? "0"} sent, ${query.failed ?? "0"} failed, ${query.processed ?? "0"} processed, ${query.lifecycleQueued ?? "0"} lifecycle queued.`
       : null;
 
   return (
@@ -292,9 +316,19 @@ export default async function EmailSettingsPage({
                   name="enableOrderStatusUpdate"
                 />
                 <Toggle
+                  defaultChecked={checked(settings?.enable_thank_you)}
+                  label="Thank you"
+                  name="enableThankYou"
+                />
+                <Toggle
                   defaultChecked={checked(settings?.enable_review_request)}
                   label="Review request"
                   name="enableReviewRequest"
+                />
+                <Toggle
+                  defaultChecked={checked(settings?.enable_review_reminder)}
+                  label="Review reminder"
+                  name="enableReviewReminder"
                 />
                 <Toggle
                   defaultChecked={checked(settings?.enable_low_stock_alert)}
@@ -394,6 +428,43 @@ export default async function EmailSettingsPage({
               ) : (
                 <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-muted">
                   No email events have been queued for this store yet.
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-5 lg:col-span-2 lg:p-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Customer lifecycle events
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Welcome emails, thank you emails, and scheduled review reminders are tracked here before they enter the email queue.
+            </p>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {lifecycleEvents.length ? (
+                lifecycleEvents.map((event) => (
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={event.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-black text-ink">
+                        {event.event_type.replace(/_/g, " ")}
+                      </p>
+                      <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${event.processed_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                        {event.processed_at ? "Processed" : "Scheduled"}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                      Scheduled {formatDate(event.scheduled_for)}
+                    </p>
+                    {event.processed_at ? (
+                      <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                        Processed {formatDate(event.processed_at)}
+                      </p>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-muted md:col-span-3">
+                  No lifecycle email events have been created for this store yet.
                 </p>
               )}
             </div>

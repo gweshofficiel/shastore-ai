@@ -21,7 +21,9 @@ type StoreEmailSettings = {
   enable_low_stock_alert?: boolean | null;
   enable_order_confirmation?: boolean | null;
   enable_order_status_update?: boolean | null;
+  enable_review_reminder?: boolean | null;
   enable_review_request?: boolean | null;
+  enable_thank_you?: boolean | null;
   reply_to_email?: string | null;
   sender_name?: string | null;
 };
@@ -31,7 +33,9 @@ const settingByTemplate: Record<StoreEmailTemplateKey, keyof StoreEmailSettings>
   low_stock_alert: "enable_low_stock_alert",
   order_confirmation: "enable_order_confirmation",
   order_status_update: "enable_order_status_update",
-  review_request: "enable_review_request"
+  review_reminder: "enable_review_reminder",
+  review_request: "enable_review_request",
+  thank_you: "enable_thank_you"
 };
 
 function cleanEmail(value: string | null | undefined) {
@@ -119,7 +123,7 @@ export async function queueStoreEmailEventSafe({
 
     const { data: settingsRow } = await admin
       .from("store_email_settings" as never)
-      .select("sender_name, reply_to_email, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_low_stock_alert, enable_customer_welcome")
+      .select("sender_name, reply_to_email, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_review_reminder, enable_low_stock_alert, enable_customer_welcome, enable_thank_you")
       .eq("workspace_id" as never, resolvedWorkspaceId as never)
       .eq("store_id" as never, storeId as never)
       .maybeSingle();

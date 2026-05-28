@@ -36,7 +36,9 @@ const supportedTemplates = new Set<string>([
   "customer_welcome",
   "order_confirmation",
   "order_status_update",
-  "review_request"
+  "review_reminder",
+  "review_request",
+  "thank_you"
 ]);
 
 function configuredForResend() {

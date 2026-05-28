@@ -22,6 +22,7 @@ import {
   createOrderNotificationSafe,
   createStoreNotificationSafe
 } from "@/lib/notifications/store-notifications";
+import { createCustomerLifecycleEventsForConfirmedOrderSafe } from "@/lib/customer-lifecycle-emails";
 import { queueStoreEmailEventSafe } from "@/lib/store-email-queue";
 import type { Json } from "@/types/database";
 
@@ -1810,6 +1811,15 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
     });
 
     if (status === "confirmed") {
+      await createCustomerLifecycleEventsForConfirmedOrderSafe({
+        customerEmail: currentOrderRow.customer_email ?? null,
+        customerName: currentOrderRow.customer_name ?? null,
+        orderId,
+        orderSource: source,
+        storeId: eventStoreId,
+        totalAmount: parsePrice(currentOrderRow.total_amount ?? currentOrderRow.total ?? null),
+        workspaceId
+      });
       await queueStoreEmailEventSafe({
         metadata: {
           customerName: currentOrderRow.customer_name ?? "Customer",

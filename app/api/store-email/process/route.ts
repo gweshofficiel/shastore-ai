@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { processDueCustomerLifecycleEvents } from "@/lib/customer-lifecycle-emails";
 import { processPendingStoreEmailQueue } from "@/lib/store-email-delivery";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
   }
 
+  const lifecycleResult = await processDueCustomerLifecycleEvents({
+    limit: typeof body.limit === "number" ? body.limit : 10,
+    storeId: typeof body.storeId === "string" ? body.storeId : null,
+    workspaceId
+  });
   const result = await processPendingStoreEmailQueue({
     limit: typeof body.limit === "number" ? body.limit : 10,
     storeId: typeof body.storeId === "string" ? body.storeId : null,
     workspaceId
   });
 
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({ lifecycle: lifecycleResult, ok: true, ...result });
 }

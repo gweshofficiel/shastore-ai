@@ -3,7 +3,9 @@ export type StoreEmailTemplateKey =
   | "low_stock_alert"
   | "order_confirmation"
   | "order_status_update"
-  | "review_request";
+  | "review_reminder"
+  | "review_request"
+  | "thank_you";
 
 type StoreEmailTemplateMetadata = Record<string, unknown>;
 
@@ -63,6 +65,11 @@ export function getStoreEmailTemplate(
       subject: `How was your order from ${storeName}?`,
       text: `Hello ${customerName}, thank you for your order ${orderReference}. You can leave a product review from your order page.`
     };
+  } else if (templateKey === "review_reminder") {
+    content = {
+      subject: `Reminder: review your order from ${storeName}`,
+      text: `Hello ${customerName}, we hope you are enjoying your order ${orderReference}. You can leave a product review from your order page.`
+    };
   } else if (templateKey === "low_stock_alert") {
     content = {
       subject: `Low stock alert: ${productName}`,
@@ -71,7 +78,12 @@ export function getStoreEmailTemplate(
   } else if (templateKey === "customer_welcome") {
     content = {
       subject: `Welcome to ${storeName}`,
-      text: `Hello ${customerName}, welcome to ${storeName}.`
+      text: `Hello ${customerName}, welcome to ${storeName}. Thank you for placing your first order with us.`
+    };
+  } else if (templateKey === "thank_you") {
+    content = {
+      subject: `Thank you for your order from ${storeName}`,
+      text: `Hello ${customerName}, thank you for your order ${orderReference}. We are preparing it now.`
     };
   } else {
     content = {
