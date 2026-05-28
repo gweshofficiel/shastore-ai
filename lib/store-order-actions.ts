@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
+import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import {
   incrementCouponUsage,
@@ -192,6 +193,10 @@ function resolveDeliverySelection({
   }
 
   return { deliveryFee: 0, deliveryMethod: "none" as const, error: null };
+}
+
+function deliveryMethodForShippingMethod(method: PublicShippingMethod): DeliveryMethod {
+  return method.type === "local_pickup" ? "pickup" : "delivery";
 }
 
 function safeOrderReturnPath(value: FormDataEntryValue | null) {
@@ -410,6 +415,7 @@ async function persistStorefrontOrderDraft({
   currency,
   deliveryFee,
   deliveryMethod,
+  shippingMethod,
   coupon,
   discountAmount,
   subtotal,
@@ -433,6 +439,7 @@ async function persistStorefrontOrderDraft({
   currency: string;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
+  shippingMethod: PublicShippingMethod | null;
   coupon: StoreCouponRow | null;
   discountAmount: number;
   subtotal: number;
@@ -468,6 +475,9 @@ async function persistStorefrontOrderDraft({
     notes: combinedNotes,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
+    shipping_method_id: shippingMethod?.id ?? null,
+    shipping_method_name: shippingMethod?.name ?? null,
+    shipping_method_type: shippingMethod?.type ?? null,
     subtotal: discountedSubtotal,
     total,
     currency,
@@ -497,12 +507,28 @@ async function persistStorefrontOrderDraft({
     legacyOrderPayload,
     Object.fromEntries(
       Object.entries(legacyOrderPayload).filter(
-        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+        ([key]) =>
+          ![
+            "delivery_fee",
+            "delivery_method",
+            "fulfillment_status",
+            "shipping_method_id",
+            "shipping_method_name",
+            "shipping_method_type"
+          ].includes(key)
       )
     ),
     Object.fromEntries(
       Object.entries(extendedOrderPayload).filter(
-        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+        ([key]) =>
+          ![
+            "delivery_fee",
+            "delivery_method",
+            "fulfillment_status",
+            "shipping_method_id",
+            "shipping_method_name",
+            "shipping_method_type"
+          ].includes(key)
       )
     ),
     { ...legacyOrderPayload, order_status: "pending" },
@@ -652,6 +678,9 @@ async function persistStorefrontOrderDraft({
     customer_address: customerAddress || null,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
+    shipping_method_id: shippingMethod?.id ?? null,
+    shipping_method_name: shippingMethod?.name ?? null,
+    shipping_method_type: shippingMethod?.type ?? null,
     fulfillment_status: "unfulfilled",
     items: legacyItems as Json,
     subtotal: discountedSubtotal,
@@ -669,7 +698,15 @@ async function persistStorefrontOrderDraft({
     storeOrderPayload,
     Object.fromEntries(
       Object.entries(storeOrderPayload).filter(
-        ([key]) => key !== "delivery_fee" && key !== "delivery_method" && key !== "fulfillment_status"
+        ([key]) =>
+          ![
+            "delivery_fee",
+            "delivery_method",
+            "fulfillment_status",
+            "shipping_method_id",
+            "shipping_method_name",
+            "shipping_method_type"
+          ].includes(key)
       )
     )
   ]) {
@@ -733,6 +770,7 @@ export async function createPublicStoreOrderAction(
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const couponCode = cleanText(formData.get("couponCode"), 80);
+  const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
   if (!slug) {
@@ -864,7 +902,29 @@ export async function createPublicStoreOrderAction(
   }
 
   const discountAmount = couponResult?.ok ? couponResult.discountAmount : 0;
-  const total = Number(Math.max(0, subtotal - discountAmount).toFixed(2));
+  const shippingMethod = requestedShippingMethodId
+    ? await getPublicShippingMethodForStore({
+        methodId: requestedShippingMethodId,
+        storeId: store.id
+      })
+    : null;
+
+  if (requestedShippingMethodId && !shippingMethod) {
+    return {
+      error: "Selected shipping method is no longer available.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  const deliveryFee = shippingMethod
+    ? shippingMethod.freeShippingThreshold != null && subtotal >= shippingMethod.freeShippingThreshold
+      ? 0
+      : shippingMethod.fee
+    : 0;
+  const deliveryMethod = shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
+  const total = Number(Math.max(0, subtotal - discountAmount + deliveryFee).toFixed(2));
   const { data: order, error: orderError } = await admin
     .from("store_orders")
     .insert({
@@ -876,6 +936,11 @@ export async function createPublicStoreOrderAction(
       customer_phone: customerPhone,
       customer_email: customerEmail || null,
       customer_address: customerAddress || null,
+      delivery_fee: deliveryFee,
+      delivery_method: deliveryMethod,
+      shipping_method_id: shippingMethod?.id ?? null,
+      shipping_method_name: shippingMethod?.name ?? null,
+      shipping_method_type: shippingMethod?.type ?? null,
       items: items as Json,
       subtotal: total,
       total,
@@ -939,6 +1004,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
+  const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
   if (!slug) {
@@ -1054,12 +1120,37 @@ export async function createPublicStoreOrderDraftAction(
 
   const currency = items[0]?.currency || store.currency || preview.store.currency || "USD";
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
-  const deliverySelection = resolveDeliverySelection({
-    requestedMethod: requestedDeliveryMethod,
-    storeDeliveryEnabled: preview.store.deliveryEnabled,
-    storeDeliveryFee: preview.store.deliveryFee,
-    storePickupEnabled: preview.store.pickupEnabled
-  });
+  const shippingMethod = requestedShippingMethodId
+    ? await getPublicShippingMethodForStore({
+        methodId: requestedShippingMethodId,
+        storeId: store.id
+      })
+    : null;
+
+  if (requestedShippingMethodId && !shippingMethod) {
+    return {
+      error: "Selected shipping method is no longer available.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  const deliverySelection = shippingMethod
+    ? {
+        deliveryFee:
+          shippingMethod.freeShippingThreshold != null && subtotal >= shippingMethod.freeShippingThreshold
+            ? 0
+            : shippingMethod.fee,
+        deliveryMethod: deliveryMethodForShippingMethod(shippingMethod),
+        error: null
+      }
+    : resolveDeliverySelection({
+        requestedMethod: requestedDeliveryMethod,
+        storeDeliveryEnabled: preview.store.deliveryEnabled,
+        storeDeliveryFee: preview.store.deliveryFee,
+        storePickupEnabled: preview.store.pickupEnabled
+      });
 
   if (deliverySelection.error) {
     return {
@@ -1100,6 +1191,7 @@ export async function createPublicStoreOrderDraftAction(
     currency,
     deliveryFee: deliverySelection.deliveryFee,
     deliveryMethod: deliverySelection.deliveryMethod,
+    shippingMethod,
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     subtotal,

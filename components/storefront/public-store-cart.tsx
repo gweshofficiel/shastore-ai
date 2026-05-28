@@ -6,6 +6,7 @@ import {
   createPublicStoreOrderDraftAction,
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
+import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -45,6 +46,7 @@ type CartPageClientProps = {
     pickupEnabled: boolean;
   };
   products: PublicStorefrontProduct[];
+  shippingMethods?: PublicShippingMethod[];
   slug: string;
   storeId: string;
 };
@@ -413,8 +415,17 @@ function cartItemAvailability(
 }
 
 function defaultDeliveryMethod(
-  deliverySettings: CartPageClientProps["deliverySettings"]
+  deliverySettings: CartPageClientProps["deliverySettings"],
+  shippingMethods: PublicShippingMethod[] = []
 ): CheckoutDeliveryMethod {
+  if (shippingMethods[0]?.type === "local_pickup") {
+    return "pickup";
+  }
+
+  if (shippingMethods.length) {
+    return "delivery";
+  }
+
   if (deliverySettings.deliveryEnabled) {
     return "delivery";
   }
@@ -647,6 +658,7 @@ export function CartPageClient({
   currency,
   deliverySettings,
   products,
+  shippingMethods = [],
   slug,
   storeId
 }: CartPageClientProps) {
@@ -660,9 +672,18 @@ export function CartPageClient({
     createPublicStoreOrderDraftAction,
     initialOrderDraftState
   );
-  const [deliveryMethod, setDeliveryMethod] = useState<CheckoutDeliveryMethod>(
-    defaultDeliveryMethod(deliverySettings)
+  const activeShippingMethods = useMemo(
+    () => shippingMethods.filter((method) => method.type !== "local_pickup"),
+    [shippingMethods]
   );
+  const activePickupMethods = useMemo(
+    () => shippingMethods.filter((method) => method.type === "local_pickup"),
+    [shippingMethods]
+  );
+  const [deliveryMethod, setDeliveryMethod] = useState<CheckoutDeliveryMethod>(
+    defaultDeliveryMethod(deliverySettings, shippingMethods)
+  );
+  const [shippingMethodId, setShippingMethodId] = useState(shippingMethods[0]?.id ?? "");
   const [couponCode, setCouponCode] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
@@ -686,14 +707,34 @@ export function CartPageClient({
   );
   const total = useMemo(() => cartTotal(items), [items]);
   const discountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
-  const selectedDeliveryFee =
-    deliveryMethod === "delivery" ? deliverySettings.deliveryFee ?? 0 : 0;
+  const selectedShippingMethod =
+    shippingMethods.find((method) => method.id === shippingMethodId) ?? null;
+  const shippingThresholdReached =
+    selectedShippingMethod?.freeShippingThreshold != null &&
+    Math.max(0, total - discountAmount) >= selectedShippingMethod.freeShippingThreshold;
+  const selectedDeliveryFee = selectedShippingMethod
+    ? shippingThresholdReached
+      ? 0
+      : selectedShippingMethod.fee
+    : deliveryMethod === "delivery"
+      ? deliverySettings.deliveryFee ?? 0
+      : 0;
   const finalTotal = Number((Math.max(0, total - discountAmount) + selectedDeliveryFee).toFixed(2));
 
   useEffect(() => {
     setAppliedCoupon(null);
     setCouponMessage(null);
   }, [total]);
+
+  useEffect(() => {
+    if (!shippingMethods.length || shippingMethods.some((method) => method.id === shippingMethodId)) {
+      return;
+    }
+
+    const nextMethod = shippingMethods[0];
+    setShippingMethodId(nextMethod.id);
+    setDeliveryMethod(nextMethod.type === "local_pickup" ? "pickup" : "delivery");
+  }, [shippingMethodId, shippingMethods]);
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -951,7 +992,38 @@ export function CartPageClient({
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Delivery summary
             </p>
-            {deliverySettings.deliveryEnabled || deliverySettings.pickupEnabled ? (
+            {shippingMethods.length ? (
+              <div className="mt-3 grid gap-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Choose shipping method
+                </p>
+                <div className="grid gap-2">
+                  {shippingMethods.map((method) => (
+                    <button
+                      className={`rounded-2xl border px-3 py-3 text-left text-sm font-black transition ${
+                        shippingMethodId === method.id
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 bg-white text-ink"
+                      }`}
+                      key={method.id}
+                      onClick={() => {
+                        setShippingMethodId(method.id);
+                        setDeliveryMethod(method.type === "local_pickup" ? "pickup" : "delivery");
+                      }}
+                      type="button"
+                    >
+                      <span className="block">{method.name}</span>
+                      <span className={`mt-1 block text-xs ${shippingMethodId === method.id ? "text-white/70" : "text-muted"}`}>
+                        {method.type.replace(/_/g, " ")} · {formatMoney(method.fee, currency)}
+                        {method.estimatedMinDays || method.estimatedMaxDays
+                          ? ` · ${method.estimatedMinDays ?? method.estimatedMaxDays}-${method.estimatedMaxDays ?? method.estimatedMinDays} days`
+                          : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : deliverySettings.deliveryEnabled || deliverySettings.pickupEnabled ? (
               <div className="mt-3 grid gap-2">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                   Choose method
@@ -993,11 +1065,11 @@ export function CartPageClient({
             <div className="mt-3 grid gap-2">
               <div className="flex justify-between">
                 <span>Delivery</span>
-                <span>{deliverySettings.deliveryEnabled ? "Available" : "Not enabled"}</span>
+                <span>{activeShippingMethods.length || deliverySettings.deliveryEnabled ? "Available" : "Not enabled"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Pickup</span>
-                <span>{deliverySettings.pickupEnabled ? "Available" : "Not enabled"}</span>
+                <span>{activePickupMethods.length || deliverySettings.pickupEnabled ? "Available" : "Not enabled"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Selected fee</span>
@@ -1015,8 +1087,13 @@ export function CartPageClient({
                 {deliverySettings.deliveryNotes}
               </p>
             ) : null}
+            {selectedShippingMethod?.deliveryNotes ? (
+              <p className="mt-3 whitespace-pre-line text-xs font-semibold leading-5 text-muted">
+                {selectedShippingMethod.deliveryNotes}
+              </p>
+            ) : null}
             <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
-              Delivery fees are only applied when Delivery is selected. Pickup stays free.
+              The selected shipping method fee is included in your order total.
             </p>
           </div>
           <div className="flex justify-between">
@@ -1058,6 +1135,7 @@ export function CartPageClient({
           <input name="slug" type="hidden" value={slug} />
           <input name="storeId" type="hidden" value={storeId} />
           <input name="deliveryMethod" type="hidden" value={deliveryMethod} />
+          <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
           <input
             name="items"
