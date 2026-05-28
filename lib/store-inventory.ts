@@ -39,23 +39,33 @@ export function parseStockQuantity(value: unknown) {
   return 0;
 }
 
+function tracksInventory(value: unknown) {
+  return value === true || value === "t" || value === 1 || value === "1";
+}
+
 export function aggregateCheckoutCartItems(items: CheckoutCartItem[]) {
-  const quantities = new Map<string, number>();
+  const quantities = new Map<string, CheckoutCartItem>();
 
   for (const item of items) {
-    if (!item.id) {
+    const productId = item.id?.trim();
+    if (!productId) {
       continue;
     }
 
+    const variantId =
+      typeof item.variantId === "string" && item.variantId.trim() ? item.variantId.trim() : null;
     const quantity = Math.max(1, Math.floor(item.quantity));
-    const key = `${item.id}:${item.variantId ?? ""}`;
-    quantities.set(key, (quantities.get(key) ?? 0) + quantity);
+    const key = `${productId}::${variantId ?? ""}`;
+    const existing = quantities.get(key);
+
+    quantities.set(key, {
+      id: productId,
+      quantity: (existing?.quantity ?? 0) + quantity,
+      variantId
+    });
   }
 
-  return [...quantities.entries()].map(([key, quantity]) => {
-    const [id, variantId] = key.split(":");
-    return { id, quantity, variantId: variantId || null };
-  });
+  return [...quantities.values()];
 }
 
 export async function validateCheckoutInventory({
@@ -73,13 +83,17 @@ export async function validateCheckoutInventory({
     return { ok: true as const };
   }
 
-  const productIds = items.map((item) => item.id);
-  const variantIds = items
-    .map((item) => item.variantId)
-    .filter((variantId): variantId is string => Boolean(variantId));
+  const productIds = [...new Set(items.map((item) => item.id))];
+  const variantIds = [
+    ...new Set(
+      items
+        .map((item) => item.variantId)
+        .filter((variantId): variantId is string => Boolean(variantId))
+    )
+  ];
   const { data, error } = await admin
     .from("store_products" as never)
-    .select("id, store_id, status, track_inventory, stock_quantity, inventory_status")
+    .select("id, store_id, workspace_id, status, track_inventory, stock_quantity, inventory_status")
     .eq("store_id", storeId)
     .in("id", productIds);
 
@@ -96,7 +110,35 @@ export async function validateCheckoutInventory({
   const productsById = new Map(
     ((data ?? []) as InventoryProductRow[]).map((product) => [product.id, product])
   );
-  const { data: variants, error: variantsError } = variantIds.length
+  const { data: productVariants, error: productVariantsError } = await admin
+    .from("product_variants" as never)
+    .select("id, product_id, store_id, status, stock_quantity")
+    .eq("store_id", storeId)
+    .in("product_id", productIds);
+
+  if (productVariantsError) {
+    console.error("[store-inventory] checkout product variants lookup failed", {
+      code: productVariantsError.code,
+      message: productVariantsError.message,
+      productIds,
+      storeId
+    });
+    return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+  }
+
+  const activeVariantCountByProduct = new Map<string, number>();
+  for (const variant of (productVariants ?? []) as InventoryVariantRow[]) {
+    if (variant.status !== "active") {
+      continue;
+    }
+
+    activeVariantCountByProduct.set(
+      variant.product_id,
+      (activeVariantCountByProduct.get(variant.product_id) ?? 0) + 1
+    );
+  }
+
+  const { data: selectedVariants, error: variantsError } = variantIds.length
     ? await admin
         .from("product_variants" as never)
         .select("id, product_id, store_id, status, stock_quantity")
@@ -115,7 +157,7 @@ export async function validateCheckoutInventory({
   }
 
   const variantsById = new Map(
-    ((variants ?? []) as InventoryVariantRow[]).map((variant) => [variant.id, variant])
+    ((selectedVariants ?? []) as InventoryVariantRow[]).map((variant) => [variant.id, variant])
   );
 
   for (const item of items) {
@@ -125,16 +167,20 @@ export async function validateCheckoutInventory({
       return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
     }
 
+    const requestedQuantity = Math.max(1, Math.floor(item.quantity));
+    const requiresVariantSelection = (activeVariantCountByProduct.get(item.id) ?? 0) > 0;
+
     if (item.variantId) {
       const variant = variantsById.get(item.variantId);
-      const requestedQuantity = Math.max(1, Math.floor(item.quantity));
+      const availableStock = parseStockQuantity(variant?.stock_quantity);
 
       if (
         !variant ||
         variant.store_id !== storeId ||
         variant.product_id !== item.id ||
         variant.status !== "active" ||
-        parseStockQuantity(variant.stock_quantity) < requestedQuantity
+        availableStock <= 0 ||
+        availableStock < requestedQuantity
       ) {
         return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
       }
@@ -142,12 +188,15 @@ export async function validateCheckoutInventory({
       continue;
     }
 
-    if (product.track_inventory !== true) {
+    if (requiresVariantSelection) {
+      return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+    }
+
+    if (!tracksInventory(product.track_inventory)) {
       continue;
     }
 
     const availableStock = parseStockQuantity(product.stock_quantity);
-    const requestedQuantity = Math.max(1, Math.floor(item.quantity));
 
     if (
       product.inventory_status === "out_of_stock" ||

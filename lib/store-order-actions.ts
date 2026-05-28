@@ -106,12 +106,20 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
           productId?: unknown;
           quantity: number;
           variantId?: unknown;
+          variant_id?: unknown;
         };
+
+        const variantId =
+          typeof rawItem.variantId === "string"
+            ? rawItem.variantId
+            : typeof rawItem.variant_id === "string"
+              ? rawItem.variant_id
+              : null;
 
         return {
           id: typeof rawItem.id === "string" ? rawItem.id : String(rawItem.productId ?? ""),
           quantity: Math.max(1, Math.floor(rawItem.quantity)),
-          variantId: typeof rawItem.variantId === "string" ? rawItem.variantId : null
+          variantId
         };
       });
   } catch {
