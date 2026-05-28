@@ -24,6 +24,7 @@ export type PublicStoreOrderState = {
 type CartSubmitItem = {
   id: string;
   quantity: number;
+  variantId?: string | null;
 };
 
 type DeliveryMethod = "delivery" | "pickup" | "none";
@@ -100,11 +101,17 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
         );
       })
       .map((item) => {
-        const rawItem = item as unknown as { id?: unknown; productId?: unknown; quantity: number };
+        const rawItem = item as unknown as {
+          id?: unknown;
+          productId?: unknown;
+          quantity: number;
+          variantId?: unknown;
+        };
 
         return {
           id: typeof rawItem.id === "string" ? rawItem.id : String(rawItem.productId ?? ""),
-          quantity: Math.max(1, Math.floor(rawItem.quantity))
+          quantity: Math.max(1, Math.floor(rawItem.quantity)),
+          variantId: typeof rawItem.variantId === "string" ? rawItem.variantId : null
         };
       });
   } catch {
@@ -114,6 +121,31 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
 
 function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
   return value === "delivery" || value === "pickup" ? value : "none";
+}
+
+function variantOptionsPayload(
+  variant:
+    | {
+        optionColor: string | null;
+        optionCustomName: string | null;
+        optionCustomValue: string | null;
+        optionMaterial: string | null;
+        optionSize: string | null;
+      }
+    | null
+) {
+  if (!variant) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    [
+      ["Size", variant.optionSize],
+      ["Color", variant.optionColor],
+      ["Material", variant.optionMaterial],
+      [variant.optionCustomName || "", variant.optionCustomValue]
+    ].filter(([label, value]) => label && value)
+  );
 }
 
 function resolveDeliverySelection({
@@ -352,6 +384,10 @@ type DraftLineItem = {
   quantity: number;
   price: number;
   subtotal: number;
+  variant_id?: string | null;
+  variant_name?: string | null;
+  variant_options?: Json;
+  variant_sku?: string | null;
 };
 
 async function persistStorefrontOrderDraft({
@@ -506,6 +542,10 @@ async function persistStorefrontOrderDraft({
       store_id: store.id,
       workspace_id: workspaceId,
       product_id: item.product_id,
+      variant_id: item.variant_id ?? null,
+      variant_name: item.variant_name ?? null,
+      variant_sku: item.variant_sku ?? null,
+      variant_options: item.variant_options ?? {},
       product_title: item.product_title,
       product_image: item.product_image,
       quantity: item.quantity,
@@ -519,7 +559,7 @@ async function persistStorefrontOrderDraft({
 
     let itemsInserted = false;
 
-    for (const orderItems of [legacyItemRows, extendedItemRows]) {
+    for (const orderItems of [extendedItemRows, legacyItemRows]) {
       const { error: itemsError } = await admin
         .from("order_items" as never)
         .insert(orderItems as never);
@@ -764,7 +804,10 @@ export async function createPublicStoreOrderAction(
         return null;
       }
 
-      const unitPrice = parsePrice(product.price);
+      const variant = item.variantId
+        ? product.variants.find((candidate) => candidate.id === item.variantId) ?? null
+        : null;
+      const unitPrice = parsePrice(variant?.priceOverride ?? product.price);
       const lineTotal = unitPrice * item.quantity;
 
       return {
@@ -775,7 +818,11 @@ export async function createPublicStoreOrderAction(
         priceLabel: product.priceLabel,
         quantity: item.quantity,
         title: product.title,
-        total: lineTotal
+        total: lineTotal,
+        variant_id: variant?.id ?? null,
+        variant_name: variant?.name ?? null,
+        variant_options: variantOptionsPayload(variant) as Json,
+        variant_sku: variant?.sku ?? null
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -965,7 +1012,10 @@ export async function createPublicStoreOrderDraftAction(
         return null;
       }
 
-      const unitPrice = parsePrice(product.price);
+      const variant = item.variantId
+        ? product.variants.find((candidate) => candidate.id === item.variantId) ?? null
+        : null;
+      const unitPrice = parsePrice(variant?.priceOverride ?? product.price);
       const quantity = Math.max(1, item.quantity);
       const subtotal = Number((unitPrice * quantity).toFixed(2));
 
@@ -976,7 +1026,11 @@ export async function createPublicStoreOrderDraftAction(
         product_title: product.title,
         quantity,
         price: unitPrice,
-        subtotal
+        subtotal,
+        variant_id: variant?.id ?? null,
+        variant_name: variant?.name ?? null,
+        variant_options: variantOptionsPayload(variant) as Json,
+        variant_sku: variant?.sku ?? null
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));

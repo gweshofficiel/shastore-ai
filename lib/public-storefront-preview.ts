@@ -4,6 +4,20 @@ import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-cont
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import type { StoreThemeSettings } from "@/types/storefront";
 
+export type PublicStorefrontVariant = {
+  id: string;
+  name: string;
+  optionColor: string | null;
+  optionCustomName: string | null;
+  optionCustomValue: string | null;
+  optionMaterial: string | null;
+  optionSize: string | null;
+  priceOverride: number | string | null;
+  sku: string | null;
+  status: string | null;
+  stockQuantity: number | null;
+};
+
 export type PublicStorefrontProduct = {
   categoryId: string | null;
   categoryName: string | null;
@@ -23,6 +37,7 @@ export type PublicStorefrontProduct = {
   title: string;
   stockQuantity: number | null;
   trackInventory: boolean;
+  variants: PublicStorefrontVariant[];
 };
 
 export type PublicStorefrontCategory = {
@@ -150,7 +165,25 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     status: textValue(value.status) || null,
     title,
     stockQuantity: typeof value.stockQuantity === "number" ? value.stockQuantity : null,
-    trackInventory: value.trackInventory === true
+    trackInventory: value.trackInventory === true,
+    variants: Array.isArray(value.variants)
+      ? value.variants.filter((variant): variant is PublicStorefrontVariant => isRecord(variant)).map((variant) => ({
+          id: textValue(variant.id),
+          name: textValue(variant.name, "Variant"),
+          optionColor: textValue(variant.optionColor) || null,
+          optionCustomName: textValue(variant.optionCustomName) || null,
+          optionCustomValue: textValue(variant.optionCustomValue) || null,
+          optionMaterial: textValue(variant.optionMaterial) || null,
+          optionSize: textValue(variant.optionSize) || null,
+          priceOverride:
+            typeof variant.priceOverride === "number" || typeof variant.priceOverride === "string"
+              ? variant.priceOverride
+              : null,
+          sku: textValue(variant.sku) || null,
+          status: textValue(variant.status, "active"),
+          stockQuantity: typeof variant.stockQuantity === "number" ? variant.stockQuantity : null
+        }))
+      : []
   };
 }
 
@@ -334,6 +367,18 @@ async function loadStoreModePublicPreview(slug: string) {
     .eq("store_id", store.id)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
+  const productIds = ((products ?? []) as Array<{ id?: unknown }>)
+    .map((product) => (typeof product.id === "string" ? product.id : null))
+    .filter((id): id is string => Boolean(id));
+  const { data: variants } = productIds.length
+    ? await client
+        .from("product_variants" as never)
+        .select("id, product_id, name, option_size, option_color, option_material, option_custom_name, option_custom_value, sku, price_override, stock_quantity, status")
+        .eq("store_id", store.id)
+        .eq("status" as never, "active" as never)
+        .in("product_id" as never, productIds as never)
+        .order("created_at", { ascending: true })
+    : { data: [] };
   const { data: categories } = await client
     .from("store_categories")
     .select("id, name, description, image_url")
@@ -346,6 +391,37 @@ async function loadStoreModePublicPreview(slug: string) {
     name: category.name
   }));
   const categoriesById = new Map(savedCategories.map((category) => [category.id, category.name]));
+  const variantsByProduct = new Map<string, PublicStorefrontVariant[]>();
+  for (const variant of (variants ?? []) as Array<Record<string, unknown>>) {
+    const productId = typeof variant.product_id === "string" ? variant.product_id : null;
+    if (!productId) {
+      continue;
+    }
+
+    const savedVariants = variantsByProduct.get(productId) ?? [];
+    savedVariants.push({
+      id: String(variant.id ?? ""),
+      name: textValue(variant.name, "Variant"),
+      optionColor: textValue(variant.option_color) || null,
+      optionCustomName: textValue(variant.option_custom_name) || null,
+      optionCustomValue: textValue(variant.option_custom_value) || null,
+      optionMaterial: textValue(variant.option_material) || null,
+      optionSize: textValue(variant.option_size) || null,
+      priceOverride:
+        typeof variant.price_override === "number" || typeof variant.price_override === "string"
+          ? variant.price_override
+          : null,
+      sku: textValue(variant.sku) || null,
+      status: textValue(variant.status, "active"),
+      stockQuantity:
+        typeof variant.stock_quantity === "number"
+          ? variant.stock_quantity
+          : typeof variant.stock_quantity === "string" && variant.stock_quantity.trim()
+            ? Number.parseInt(variant.stock_quantity, 10)
+            : null
+    });
+    variantsByProduct.set(productId, savedVariants);
+  }
   const savedProducts = ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
     categoryId: typeof product.category_id === "string" ? product.category_id : null,
     categoryName:
@@ -376,7 +452,8 @@ async function loadStoreModePublicPreview(slug: string) {
 
       return null;
     })(),
-    trackInventory: product.track_inventory === true
+    trackInventory: product.track_inventory === true,
+    variants: variantsByProduct.get(String(product.id ?? "")) ?? []
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const { data: themeRow } = await client

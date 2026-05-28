@@ -6,6 +6,7 @@ export const INVENTORY_CHECKOUT_ERROR =
 export type CheckoutCartItem = {
   id: string;
   quantity: number;
+  variantId?: string | null;
 };
 
 type InventoryProductRow = {
@@ -15,6 +16,14 @@ type InventoryProductRow = {
   stock_quantity: unknown;
   store_id: string;
   track_inventory: boolean | null;
+};
+
+type InventoryVariantRow = {
+  id: string;
+  product_id: string;
+  status: string | null;
+  stock_quantity: unknown;
+  store_id: string;
 };
 
 export function parseStockQuantity(value: unknown) {
@@ -39,10 +48,14 @@ export function aggregateCheckoutCartItems(items: CheckoutCartItem[]) {
     }
 
     const quantity = Math.max(1, Math.floor(item.quantity));
-    quantities.set(item.id, (quantities.get(item.id) ?? 0) + quantity);
+    const key = `${item.id}:${item.variantId ?? ""}`;
+    quantities.set(key, (quantities.get(key) ?? 0) + quantity);
   }
 
-  return [...quantities.entries()].map(([id, quantity]) => ({ id, quantity }));
+  return [...quantities.entries()].map(([key, quantity]) => {
+    const [id, variantId] = key.split(":");
+    return { id, quantity, variantId: variantId || null };
+  });
 }
 
 export async function validateCheckoutInventory({
@@ -61,6 +74,9 @@ export async function validateCheckoutInventory({
   }
 
   const productIds = items.map((item) => item.id);
+  const variantIds = items
+    .map((item) => item.variantId)
+    .filter((variantId): variantId is string => Boolean(variantId));
   const { data, error } = await admin
     .from("store_products" as never)
     .select("id, store_id, status, track_inventory, stock_quantity, inventory_status")
@@ -80,12 +96,50 @@ export async function validateCheckoutInventory({
   const productsById = new Map(
     ((data ?? []) as InventoryProductRow[]).map((product) => [product.id, product])
   );
+  const { data: variants, error: variantsError } = variantIds.length
+    ? await admin
+        .from("product_variants" as never)
+        .select("id, product_id, store_id, status, stock_quantity")
+        .eq("store_id", storeId)
+        .in("id", variantIds as never)
+    : { data: [], error: null };
+
+  if (variantsError) {
+    console.error("[store-inventory] checkout variant validation query failed", {
+      code: variantsError.code,
+      message: variantsError.message,
+      storeId,
+      variantIds
+    });
+    return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+  }
+
+  const variantsById = new Map(
+    ((variants ?? []) as InventoryVariantRow[]).map((variant) => [variant.id, variant])
+  );
 
   for (const item of items) {
     const product = productsById.get(item.id);
 
     if (!product || product.store_id !== storeId) {
       return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+    }
+
+    if (item.variantId) {
+      const variant = variantsById.get(item.variantId);
+      const requestedQuantity = Math.max(1, Math.floor(item.quantity));
+
+      if (
+        !variant ||
+        variant.store_id !== storeId ||
+        variant.product_id !== item.id ||
+        variant.status !== "active" ||
+        parseStockQuantity(variant.stock_quantity) < requestedQuantity
+      ) {
+        return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+      }
+
+      continue;
     }
 
     if (product.track_inventory !== true) {

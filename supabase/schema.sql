@@ -178,7 +178,30 @@ create table store_products (
   description text,
   price text,
   image_url text,
+  stock_quantity integer not null default 0 check (stock_quantity >= 0),
+  track_inventory boolean not null default false,
+  low_stock_threshold integer check (low_stock_threshold is null or low_stock_threshold >= 0),
+  inventory_status text not null default 'in_stock' check (inventory_status in ('in_stock', 'out_of_stock')),
   sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table product_variants (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references store_products(id) on delete cascade,
+  store_id uuid not null references stores(id) on delete cascade,
+  workspace_id uuid,
+  name text not null,
+  option_size text,
+  option_color text,
+  option_material text,
+  option_custom_name text,
+  option_custom_value text,
+  sku text,
+  price_override numeric(12, 2) check (price_override is null or price_override >= 0),
+  stock_quantity integer not null default 0 check (stock_quantity >= 0),
+  status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -188,12 +211,12 @@ create table inventory_movements (
   workspace_id uuid,
   store_id uuid not null references stores(id) on delete cascade,
   product_id uuid not null references store_products(id) on delete cascade,
+  variant_id uuid references product_variants(id) on delete set null,
   order_source text not null check (order_source in ('orders', 'store_orders')),
   order_id uuid not null,
   movement_type text not null check (movement_type in ('decrement', 'restock')),
   quantity integer not null check (quantity > 0),
-  created_at timestamptz not null default now(),
-  unique (order_source, order_id, product_id, movement_type)
+  created_at timestamptz not null default now()
 );
 
 create table store_templates (

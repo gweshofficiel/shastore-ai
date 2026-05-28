@@ -22,6 +22,10 @@ type CartItem = {
   storeId: string;
   title: string;
   trackInventory?: boolean;
+  variantId?: string | null;
+  variantName?: string | null;
+  variantOptions?: Record<string, string>;
+  variantSku?: string | null;
 };
 
 type AddToCartButtonProps = {
@@ -138,7 +142,23 @@ function parseCartItems(value: string | null, storeId: string, currency: string)
             : null,
         storeId,
         title: item.title,
-        trackInventory: (item as { trackInventory?: unknown }).trackInventory === true
+        trackInventory: (item as { trackInventory?: unknown }).trackInventory === true,
+        variantId:
+          typeof (item as { variantId?: unknown }).variantId === "string"
+            ? (item as { variantId: string }).variantId
+            : null,
+        variantName:
+          typeof (item as { variantName?: unknown }).variantName === "string"
+            ? (item as { variantName: string }).variantName
+            : null,
+        variantOptions:
+          item.variantOptions && typeof item.variantOptions === "object"
+            ? (item.variantOptions as Record<string, string>)
+            : {},
+        variantSku:
+          typeof (item as { variantSku?: unknown }).variantSku === "string"
+            ? (item as { variantSku: string }).variantSku
+            : null
       }));
   } catch {
     return [];
@@ -245,25 +265,50 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
   return formatMoney(numeric, currency);
 }
 
+function variantOptions(variant: PublicStorefrontProduct["variants"][number] | null) {
+  if (!variant) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    [
+      ["Size", variant.optionSize],
+      ["Color", variant.optionColor],
+      ["Material", variant.optionMaterial],
+      [variant.optionCustomName || "", variant.optionCustomValue]
+    ].filter(([label, value]) => label && value)
+  ) as Record<string, string>;
+}
+
+function cartLineId(productId: string, variantId?: string | null) {
+  return variantId ? `${productId}:${variantId}` : productId;
+}
+
 function toCartItem(
   product: PublicStorefrontProduct,
   storeId: string,
-  currency: string
+  currency: string,
+  variant: PublicStorefrontProduct["variants"][number] | null = null
 ): CartItem {
+  const price = variant?.priceOverride ?? product.price;
   return {
     categoryName: product.categoryName,
     currency: product.currency || currency,
-    id: product.id,
+    id: cartLineId(product.id, variant?.id),
     image: product.imageUrl,
-    inventoryStatus: product.inventoryStatus,
-    price: product.price,
-    priceLabel: product.priceLabel,
+    inventoryStatus: variant && (variant.stockQuantity ?? 0) <= 0 ? "out_of_stock" : product.inventoryStatus,
+    price,
+    priceLabel: variant?.priceOverride ? null : product.priceLabel,
     productId: product.id,
     quantity: 1,
-    stockQuantity: product.stockQuantity,
+    stockQuantity: variant ? variant.stockQuantity : product.stockQuantity,
     storeId,
     title: product.title,
-    trackInventory: product.trackInventory
+    trackInventory: variant ? true : product.trackInventory,
+    variantId: variant?.id ?? null,
+    variantName: variant?.name ?? null,
+    variantOptions: variantOptions(variant),
+    variantSku: variant?.sku ?? null
   };
 }
 
@@ -325,9 +370,14 @@ function useStoreCart(scope: CartScope) {
 
 export function AddToCartButton({ currency, product, slug, storeId }: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState(product.variants[0]?.id ?? "");
+  const selectedVariant =
+    product.variants.find((variant) => variant.id === selectedVariantId) ?? null;
   const isOutOfStock =
-    product.trackInventory &&
-    ((product.stockQuantity ?? 0) <= 0 || product.inventoryStatus === "out_of_stock");
+    selectedVariant
+      ? (selectedVariant.stockQuantity ?? 0) <= 0 || selectedVariant.status !== "active"
+      : product.trackInventory &&
+        ((product.stockQuantity ?? 0) <= 0 || product.inventoryStatus === "out_of_stock");
   const scope = useMemo(
     () => ({ currency, slug, storeId }),
     [currency, slug, storeId]
@@ -339,22 +389,24 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
     }
 
     const current = readStoreCart(scope);
+    const lineId = cartLineId(product.id, selectedVariant?.id);
+    const availableStock = selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
     const existing = current.find(
-      (item) => item.productId === product.id || item.id === product.id
+      (item) => item.id === lineId || (item.productId === product.id && item.variantId === selectedVariant?.id)
     );
     const next = existing
       ? current.map((item) =>
-          item.productId === product.id || item.id === product.id
+          item.id === lineId || (item.productId === product.id && item.variantId === selectedVariant?.id)
             ? {
                 ...item,
                 quantity: Math.min(
                   item.quantity + 1,
-                  product.trackInventory ? product.stockQuantity ?? 0 : item.quantity + 1
+                  selectedVariant || product.trackInventory ? availableStock : item.quantity + 1
                 )
               }
             : item
         )
-      : [...current, toCartItem(product, storeId, currency)];
+      : [...current, toCartItem(product, storeId, currency, selectedVariant)];
 
     writeStoreCart(scope, next);
     setAdded(true);
@@ -362,18 +414,38 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
   }
 
   return (
-    <button
-      className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90"
-      disabled={isOutOfStock}
-      onClick={handleAddToCart}
-      style={{
-        backgroundColor: "var(--store-primary, #0f172a)",
-        borderRadius: "var(--store-border-radius, 9999px)"
-      }}
-      type="button"
-    >
-      {isOutOfStock ? "Out of stock" : added ? "Added to cart" : "Add to cart"}
-    </button>
+    <div className="grid gap-3">
+      {product.variants.length ? (
+        <label className="grid gap-2 text-sm font-bold text-ink">
+          <span>Choose option</span>
+          <select
+            className="h-11 rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-ink"
+            onChange={(event) => setSelectedVariantId(event.target.value)}
+            value={selectedVariantId}
+          >
+            {product.variants.map((variant) => (
+              <option key={variant.id} value={variant.id}>
+                {variant.name}
+                {variant.priceOverride ? ` · ${formatMoney(parsePrice(variant.priceOverride), product.currency || currency)}` : ""}
+                {(variant.stockQuantity ?? 0) <= 0 ? " · out of stock" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <button
+        className="inline-flex h-11 items-center justify-center px-4 text-sm font-black text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isOutOfStock}
+        onClick={handleAddToCart}
+        style={{
+          backgroundColor: "var(--store-primary, #0f172a)",
+          borderRadius: "var(--store-border-radius, 9999px)"
+        }}
+        type="button"
+      >
+        {isOutOfStock ? "Out of stock" : added ? "Added to cart" : "Add to cart"}
+      </button>
+    </div>
   );
 }
 
@@ -440,7 +512,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
 
     persistItems(
       items.map((item) =>
-        item.id === itemId || item.productId === itemId
+        item.id === itemId
           ? {
               ...item,
               quantity: Math.max(
@@ -455,7 +527,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
 
   function removeItem(itemId: string) {
     persistItems(
-      items.filter((item) => item.id !== itemId && item.productId !== itemId)
+      items.filter((item) => item.id !== itemId)
     );
   }
 
@@ -526,7 +598,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
         {items.map((item) => (
           <article
             className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 sm:grid-cols-[120px_minmax(0,1fr)]"
-            key={item.productId}
+            key={item.id}
           >
             {item.image ? (
               <img
@@ -548,6 +620,12 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
                   <h2 className="text-xl font-black tracking-[-0.03em] text-ink">
                     {item.title}
                   </h2>
+                  {item.variantName ? (
+                    <p className="mt-1 text-xs font-bold text-muted">
+                      {item.variantName}
+                      {item.variantSku ? ` · ${item.variantSku}` : ""}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm font-bold text-muted">
                     {displayPrice(item, item.currency || currency)}
                   </p>
@@ -559,7 +637,7 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   className="h-10 w-10 rounded-full border border-slate-200 bg-white text-lg font-black text-ink"
-                  onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
                   type="button"
                 >
                   -
@@ -569,14 +647,14 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
                 </span>
                 <button
                   className="h-10 w-10 rounded-full border border-slate-200 bg-white text-lg font-black text-ink"
-                  onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
                   type="button"
                 >
                   +
                 </button>
                 <button
                   className="ml-auto h-10 rounded-full bg-red-50 px-4 text-sm font-black text-red-600"
-                  onClick={() => removeItem(item.productId)}
+                  onClick={() => removeItem(item.id)}
                   type="button"
                 >
                   Remove
@@ -598,10 +676,16 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
           {items.map((item) => (
             <div
               className="flex items-start justify-between gap-3 text-sm"
-              key={`summary-${item.productId}`}
+              key={`summary-${item.id}`}
             >
               <div>
                 <p className="font-black text-ink">{item.title}</p>
+                {item.variantName ? (
+                  <p className="mt-1 text-xs font-bold text-muted">
+                    {item.variantName}
+                    {item.variantSku ? ` · ${item.variantSku}` : ""}
+                  </p>
+                ) : null}
                 <p className="mt-1 font-bold text-muted">
                   {item.quantity} x {displayPrice(item, item.currency || currency)}
                 </p>
@@ -761,7 +845,11 @@ export function CartPageClient({ currency, deliverySettings, slug, storeId }: Ca
             name="items"
             type="hidden"
             value={JSON.stringify(
-              items.map((item) => ({ id: item.productId, quantity: item.quantity }))
+              items.map((item) => ({
+                id: item.productId,
+                quantity: item.quantity,
+                variantId: item.variantId ?? null
+              }))
             )}
           />
           <label className="grid gap-2 text-sm font-semibold text-ink">

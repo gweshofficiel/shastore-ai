@@ -415,6 +415,31 @@ function productPayload(formData: FormData, productId?: string) {
   };
 }
 
+function variantStatus(value: FormDataEntryValue | null) {
+  return cleanText(value, 20) === "inactive" ? "inactive" : "active";
+}
+
+function variantPayload(formData: FormData) {
+  const name = cleanText(formData.get("variantName"), 140);
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    option_color: cleanOptionalText(formData.get("variantColor"), 80),
+    option_custom_name: cleanOptionalText(formData.get("variantCustomName"), 80),
+    option_custom_value: cleanOptionalText(formData.get("variantCustomValue"), 120),
+    option_material: cleanOptionalText(formData.get("variantMaterial"), 120),
+    option_size: cleanOptionalText(formData.get("variantSize"), 80),
+    price_override: cleanOptionalMoney(formData.get("variantPrice")),
+    sku: cleanOptionalText(formData.get("variantSku"), 80),
+    status: variantStatus(formData.get("variantStatus")),
+    stock_quantity: cleanInteger(formData.get("variantStockQuantity"))
+  };
+}
+
 export async function createStoreOwnerProduct(formData: FormData) {
   const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const payload = productPayload(formData);
@@ -485,6 +510,92 @@ export async function updateStoreOwnerProduct(formData: FormData) {
     revalidatePath(`/s/${store.slug}`);
   }
   productsRedirect(storeId, "updated");
+}
+
+export async function createStoreOwnerProductVariant(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const productId = cleanText(formData.get("productId"), 80);
+  const payload = variantPayload(formData);
+
+  if (!productId || !payload) {
+    productsRedirect(storeId, "variant-failed");
+  }
+
+  const product = await loadProtectedProduct({ productId, storeId, supabase, workspaceId });
+
+  if (!product) {
+    productsRedirect(storeId, "variant-failed");
+  }
+
+  const { error } = await supabase.from("product_variants" as never).insert({
+    ...payload,
+    product_id: productId,
+    store_id: storeId,
+    workspace_id: workspaceId
+  } as never);
+
+  if (error) {
+    console.error("[product-variants] create failed", {
+      code: error.code,
+      message: error.message,
+      productId,
+      storeId
+    });
+    productsRedirect(storeId, "variant-failed");
+  }
+
+  revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+    revalidatePath(`/store/${store.slug}/product/${productId}`);
+  }
+
+  productsRedirect(storeId, "variant-created");
+}
+
+export async function updateStoreOwnerProductVariant(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const productId = cleanText(formData.get("productId"), 80);
+  const variantId = cleanText(formData.get("variantId"), 80);
+  const payload = variantPayload(formData);
+
+  if (!productId || !variantId || !payload) {
+    productsRedirect(storeId, "variant-failed");
+  }
+
+  const { error } = await supabase
+    .from("product_variants" as never)
+    .update({
+      ...payload,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id", variantId)
+    .eq("product_id", productId)
+    .eq("store_id", storeId)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    console.error("[product-variants] update failed", {
+      code: error.code,
+      message: error.message,
+      productId,
+      storeId,
+      variantId
+    });
+    productsRedirect(storeId, "variant-failed");
+  }
+
+  revalidatePath(productListPath);
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+    revalidatePath(`/store/${store.slug}/product/${productId}`);
+  }
+
+  productsRedirect(storeId, "variant-updated");
 }
 
 export async function archiveStoreOwnerProduct(formData: FormData) {

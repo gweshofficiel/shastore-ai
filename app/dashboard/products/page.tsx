@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   archiveStoreOwnerProduct,
+  createStoreOwnerProductVariant,
   createStoreOwnerProduct,
   removeStoreOwnerProductImage,
   setStoreOwnerProductVisibility,
   uploadStoreOwnerProductImage,
-  updateStoreOwnerProduct
+  updateStoreOwnerProduct,
+  updateStoreOwnerProductVariant
 } from "@/lib/product-actions";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
@@ -52,8 +54,24 @@ type ProductImageRow = {
   sort_order: number;
 };
 
+type ProductVariantRow = {
+  id: string;
+  name: string;
+  option_color?: string | null;
+  option_custom_name?: string | null;
+  option_custom_value?: string | null;
+  option_material?: string | null;
+  option_size?: string | null;
+  price_override?: number | string | null;
+  product_id: string;
+  sku?: string | null;
+  status?: string | null;
+  stock_quantity?: number | null;
+};
+
 type ProductWithImages = ProductRow & {
   images: ProductImageRow[];
+  variants: ProductVariantRow[];
 };
 
 type ProductsDashboardData = {
@@ -173,13 +191,30 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     existing.push(image);
     imagesByProduct.set(image.product_id, existing);
   }
+  const { data: productVariants } = productIds.length
+    ? await supabase
+        .from("product_variants" as never)
+        .select("id, product_id, name, option_size, option_color, option_material, option_custom_name, option_custom_value, sku, price_override, stock_quantity, status")
+        .eq("workspace_id" as never, workspaceId as never)
+        .eq("store_id", activeStore.id)
+        .in("product_id" as never, productIds as never)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+  const variantsByProduct = new Map<string, ProductVariantRow[]>();
+
+  for (const variant of (productVariants ?? []) as unknown as ProductVariantRow[]) {
+    const existing = variantsByProduct.get(variant.product_id) ?? [];
+    existing.push(variant);
+    variantsByProduct.set(variant.product_id, existing);
+  }
 
   return {
     activeStore,
     error: null,
     products: ((products ?? []) as unknown as ProductRow[]).map((product) => ({
       ...product,
-      images: imagesByProduct.get(product.id) ?? []
+      images: imagesByProduct.get(product.id) ?? [],
+      variants: variantsByProduct.get(product.id) ?? []
     })),
     schemaIssue: null,
     stores
@@ -308,6 +343,9 @@ function statusMessage(status: string | undefined) {
     published: "Product published and visible on the public storefront.",
     unpublished: "Product moved back to draft and hidden from the public storefront.",
     "update-failed": "Product could not be updated. Check the fields and try again.",
+    "variant-created": "Variant created.",
+    "variant-failed": "Variant could not be saved. Check the fields and try again.",
+    "variant-updated": "Variant updated.",
     "visibility-failed": "Product visibility could not be updated. Please try again.",
     updated: "Product updated."
   };
@@ -439,6 +477,105 @@ function ProductFields({ product }: { product?: ProductRow }) {
           />
         </div>
       </div>
+    </>
+  );
+}
+
+function VariantFields({ productId, variant }: { productId: string; variant?: ProductVariantRow }) {
+  return (
+    <>
+      <input name="productId" type="hidden" value={productId} />
+      {variant ? <input name="variantId" type="hidden" value={variant.id} /> : null}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Input
+          defaultValue={variant?.name ?? ""}
+          id={variant ? `variant-${variant.id}-name` : `variant-${productId}-name`}
+          label="Variant name"
+          maxLength={140}
+          name="variantName"
+          placeholder="Red / Large"
+          required
+        />
+        <Input
+          defaultValue={variant?.sku ?? ""}
+          id={variant ? `variant-${variant.id}-sku` : `variant-${productId}-sku`}
+          label="SKU"
+          maxLength={80}
+          name="variantSku"
+          placeholder="SKU-RED-L"
+        />
+        <Input
+          defaultValue={variant?.price_override == null ? "" : moneyValue(variant.price_override)}
+          id={variant ? `variant-${variant.id}-price` : `variant-${productId}-price`}
+          label="Price override"
+          min="0"
+          name="variantPrice"
+          step="0.01"
+          type="number"
+        />
+        <Input
+          defaultValue={String(variant?.stock_quantity ?? 0)}
+          id={variant ? `variant-${variant.id}-stock` : `variant-${productId}-stock`}
+          label="Variant stock"
+          min="0"
+          name="variantStockQuantity"
+          step="1"
+          type="number"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Input
+          defaultValue={variant?.option_size ?? ""}
+          id={variant ? `variant-${variant.id}-size` : `variant-${productId}-size`}
+          label="Size"
+          maxLength={80}
+          name="variantSize"
+          placeholder="S, M, L"
+        />
+        <Input
+          defaultValue={variant?.option_color ?? ""}
+          id={variant ? `variant-${variant.id}-color` : `variant-${productId}-color`}
+          label="Color"
+          maxLength={80}
+          name="variantColor"
+          placeholder="Black"
+        />
+        <Input
+          defaultValue={variant?.option_material ?? ""}
+          id={variant ? `variant-${variant.id}-material` : `variant-${productId}-material`}
+          label="Material"
+          maxLength={120}
+          name="variantMaterial"
+          placeholder="Cotton"
+        />
+        <Input
+          defaultValue={variant?.option_custom_name ?? ""}
+          id={variant ? `variant-${variant.id}-custom-name` : `variant-${productId}-custom-name`}
+          label="Custom option"
+          maxLength={80}
+          name="variantCustomName"
+          placeholder="Style"
+        />
+        <Input
+          defaultValue={variant?.option_custom_value ?? ""}
+          id={variant ? `variant-${variant.id}-custom-value` : `variant-${productId}-custom-value`}
+          label="Custom value"
+          maxLength={120}
+          name="variantCustomValue"
+          placeholder="Premium"
+        />
+      </div>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Variant status</span>
+        <select
+          className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={variant?.status === "inactive" ? "inactive" : "active"}
+          name="variantStatus"
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </label>
     </>
   );
 }
@@ -732,6 +869,50 @@ export default async function SellerProductsPage({
                             Edit
                           </ButtonLink>
                         </div>
+                      </div>
+
+                      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                            Product variants
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-muted">
+                            Add size, color, material, or custom options with variant-specific SKU, price, and stock.
+                          </p>
+                        </div>
+                        {product.variants.length ? (
+                          <div className="grid gap-3">
+                            {product.variants.map((variant) => (
+                              <form
+                                action={updateStoreOwnerProductVariant}
+                                className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+                                key={variant.id}
+                              >
+                                <input name="storeId" type="hidden" value={activeStore.id} />
+                                <VariantFields productId={product.id} variant={variant} />
+                                <div className="flex justify-end">
+                                  <Button type="submit" variant="secondary">
+                                    Save variant
+                                  </Button>
+                                </div>
+                              </form>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="rounded-2xl bg-white p-4 text-sm font-semibold text-muted">
+                            No variants yet. Product-level price and inventory will continue to be used.
+                          </p>
+                        )}
+                        <form
+                          action={createStoreOwnerProductVariant}
+                          className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4"
+                        >
+                          <input name="storeId" type="hidden" value={activeStore.id} />
+                          <VariantFields productId={product.id} />
+                          <div className="flex justify-end">
+                            <Button type="submit">Add variant</Button>
+                          </div>
+                        </form>
                       </div>
 
                       <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-2">
