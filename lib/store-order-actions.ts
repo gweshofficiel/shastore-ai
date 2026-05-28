@@ -683,7 +683,7 @@ async function persistStorefrontOrderDraft({
         orderSource: "orders",
         storeId: store.id,
         totalAmount: total,
-        type: "new_order_created",
+        type: "new_order",
         workspaceId
       });
       if (coupon) {
@@ -843,7 +843,7 @@ async function persistStorefrontOrderDraft({
     orderSource: "store_orders",
     storeId: store.id,
     totalAmount: total,
-    type: "new_order_created",
+    type: "new_order",
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
   });
   if (coupon) {
@@ -1100,6 +1100,32 @@ export async function createPublicStoreOrderAction(
       ok: false,
       orderId: null
     };
+  }
+
+  await createOrderNotificationSafe({
+    customerName,
+    orderId: (order as { id: string }).id,
+    orderSource: "store_orders",
+    storeId: store.id,
+    totalAmount: total,
+    type: "new_order",
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+  if (couponResult?.ok) {
+    await createStoreNotificationSafe({
+      message: `Coupon ${couponResult.coupon.code} was used on order ${(order as { id: string }).id.slice(0, 8)}.`,
+      metadata: {
+        couponCode: couponResult.coupon.code,
+        couponId: couponResult.coupon.id,
+        discountAmount,
+        orderId: (order as { id: string }).id,
+        orderSource: "store_orders"
+      },
+      storeId: store.id,
+      title: "Coupon used",
+      type: "coupon_used",
+      workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+    });
   }
 
   revalidatePath("/dashboard");

@@ -145,7 +145,7 @@ export async function submitProductReview(formData: FormData) {
   }
 
   await createStoreNotificationSafe({
-    message: `${purchase.customerName || "A customer"} submitted a product review waiting for approval.`,
+    message: `${purchase.customerName || "A customer"} submitted a review for product ${productId.slice(0, 8)} waiting for approval.`,
     metadata: {
       orderId: purchase.orderId,
       productId,
@@ -153,7 +153,7 @@ export async function submitProductReview(formData: FormData) {
       reviewId: (reviewRow as { id?: string } | null)?.id ?? null
     },
     storeId,
-    title: "Review submitted",
+    title: "New review submitted",
     type: "review_submitted",
     workspaceId
   });
@@ -327,7 +327,7 @@ export async function submitPurchasedProductReview(formData: FormData) {
   }
 
   await createStoreNotificationSafe({
-    message: `${customerName || "A customer"} submitted a product review waiting for approval.`,
+    message: `${customerName || "A customer"} submitted a review for product ${productId.slice(0, 8)} waiting for approval.`,
     metadata: {
       orderId,
       productId,
@@ -335,7 +335,7 @@ export async function submitPurchasedProductReview(formData: FormData) {
       reviewId: (reviewRow as { id?: string } | null)?.id ?? null
     },
     storeId,
-    title: "Review submitted",
+    title: "New review submitted",
     type: "review_submitted",
     workspaceId
   });

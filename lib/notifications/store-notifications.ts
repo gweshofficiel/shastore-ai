@@ -5,8 +5,8 @@ import type { Json } from "@/types/database";
 
 export type StoreNotificationType =
   | "coupon_used"
-  | "low_stock_product"
-  | "new_order_created"
+  | "low_stock"
+  | "new_order"
   | "order_cancelled"
   | "order_confirmed"
   | "review_submitted";
@@ -28,7 +28,7 @@ type OrderNotificationInput = {
   orderSource: "orders" | "store_orders";
   storeId: string;
   totalAmount?: number | null;
-  type: Extract<StoreNotificationType, "new_order_created" | "order_cancelled" | "order_confirmed">;
+  type: Extract<StoreNotificationType, "new_order" | "order_cancelled" | "order_confirmed">;
   workspaceId?: string | null;
 };
 
@@ -236,7 +236,7 @@ function orderNotificationCopy(input: OrderNotificationInput) {
   }
 
   return {
-    message: `${customer} created a new order${input.totalAmount ? ` worth ${input.totalAmount.toFixed(2)}` : ""}.`,
+    message: `${customer} created order ${input.orderId.slice(0, 8)}${input.totalAmount ? ` with total ${input.totalAmount.toFixed(2)}` : ""}.`,
     title: "New order received"
   };
 }
@@ -419,8 +419,8 @@ export async function createLowStockNotificationsForOrderSafe({
             threshold: LOW_STOCK_THRESHOLD
           },
           storeId,
-          title: "Low stock product",
-          type: "low_stock_product",
+          title: "Low stock alert",
+          type: "low_stock",
           workspaceId
         })
       ),
@@ -442,8 +442,8 @@ export async function createLowStockNotificationsForOrderSafe({
             variantId: variant.id
           },
           storeId,
-          title: "Low stock product",
-          type: "low_stock_product",
+          title: "Low stock alert",
+          type: "low_stock",
           workspaceId
         })
       )
