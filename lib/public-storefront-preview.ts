@@ -58,9 +58,13 @@ export type PublicStorefrontPreview = {
     refundPolicy: string | null;
     slug: string;
     status: string;
+    language: string;
+    socialLinks: Record<string, string>;
+    storeEmail: string | null;
     supportEmail: string | null;
     supportPhone: string | null;
     termsOfService: string | null;
+    timezone: string;
     title: string;
     visibility: string;
     currency: string;
@@ -216,9 +220,19 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       refundPolicy: textValue(store.refundPolicy, "") || null,
       slug,
       status: textValue(store.status, "active"),
+      language: textValue(store.language, "en"),
+      socialLinks: isRecord(store.socialLinks)
+        ? Object.fromEntries(
+            Object.entries(store.socialLinks).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0
+            )
+          )
+        : {},
+      storeEmail: textValue(store.storeEmail) || textValue(store.supportEmail) || null,
       supportEmail: textValue(store.supportEmail) || null,
       supportPhone: textValue(store.supportPhone) || null,
       termsOfService: textValue(store.termsOfService, "") || null,
+      timezone: textValue(store.timezone, "UTC"),
       title,
       visibility: textValue(store.visibility, "public"),
       currency: textValue(store.currency, "USD"),
@@ -264,7 +278,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, name, description, brand_color, currency, whatsapp_number, support_email, support_phone, business_address, business_hours, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, name, description, brand_color, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -292,9 +306,13 @@ async function loadStoreModePublicPreview(slug: string) {
     pickup_enabled?: boolean | null;
     privacy_policy?: string | null;
     refund_policy?: string | null;
+    language?: string | null;
+    social_links?: unknown;
+    store_email?: string | null;
     support_email?: string | null;
     support_phone?: string | null;
     terms_of_service?: string | null;
+    timezone?: string | null;
     whatsapp_number: string | null;
   } | null;
 
@@ -393,9 +411,19 @@ async function loadStoreModePublicPreview(slug: string) {
       refundPolicy: store.refund_policy || null,
       slug: store.slug,
       status: "active",
-      supportEmail: store.support_email || null,
+      language: store.language || "en",
+      socialLinks: isRecord(store.social_links)
+        ? Object.fromEntries(
+            Object.entries(store.social_links).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0
+            )
+          )
+        : {},
+      storeEmail: store.store_email || store.support_email || null,
+      supportEmail: store.support_email || store.store_email || null,
       supportPhone: store.support_phone || null,
       termsOfService: store.terms_of_service || null,
+      timezone: store.timezone || "UTC",
       title: store.name,
       visibility: publication?.visibility ?? "public",
       whatsappNumber: store.whatsapp_number || null

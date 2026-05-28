@@ -157,6 +157,33 @@ function normalizeSupportEmail(value: FormDataEntryValue | null) {
   return { error: null, value: email };
 }
 
+function normalizeStoreCurrency(value: FormDataEntryValue | null) {
+  const currency = cleanText(value, 12).toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+}
+
+function normalizeLanguage(value: FormDataEntryValue | null) {
+  const language = cleanText(value, 20).toLowerCase();
+  return /^[a-z]{2}(-[a-z0-9]{2,8})?$/.test(language) ? language : "en";
+}
+
+function normalizeTimezone(value: FormDataEntryValue | null) {
+  const timezone = cleanText(value, 80);
+  return /^[A-Za-z0-9_+\-/]+$/.test(timezone) ? timezone : "UTC";
+}
+
+function normalizeSocialLinks(formData: FormData) {
+  return {
+    facebook: cleanUrl(formData.get("socialFacebook")) || null,
+    instagram: cleanUrl(formData.get("socialInstagram")) || null,
+    linkedin: cleanUrl(formData.get("socialLinkedin")) || null,
+    tiktok: cleanUrl(formData.get("socialTiktok")) || null,
+    website: cleanUrl(formData.get("socialWebsite")) || null,
+    x: cleanUrl(formData.get("socialX")) || null,
+    youtube: cleanUrl(formData.get("socialYoutube")) || null
+  };
+}
+
 function cleanHostname(value: FormDataEntryValue | null) {
   if (!value || typeof value !== "string") {
     return "";
@@ -1990,6 +2017,116 @@ export async function saveStorePublicationSettings(formData: FormData) {
   }
 
   redirect(`/dashboard/stores/${store.id}?publication=saved`);
+}
+
+export async function saveStoreSettingsAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/stores");
+  }
+
+  const storeId = String(formData.get("storeId") ?? "").trim();
+  const detailPath = storeId ? `/dashboard/stores/${storeId}` : "/dashboard/stores";
+
+  if (!storeId) {
+    redirectWithStoreError("/dashboard/stores", "Store not found.");
+  }
+
+  const { data: store, error: storeError } = await supabase
+    .from("stores")
+    .select("id, slug, workspace_id")
+    .eq("id", storeId)
+    .or(storeOwnerOrFilter(user.id))
+    .single();
+
+  if (storeError || !store) {
+    redirectWithStoreError(detailPath, formatStoreActionError(storeError));
+  }
+
+  try {
+    await requireDashboardPermission(supabase, user.id, "can_edit_stores", store.workspace_id);
+  } catch {
+    redirectWithStoreError(detailPath, "You do not have permission to update store settings.");
+  }
+
+  try {
+    await assertStoreMutationAllowed(supabase, user.id, store);
+  } catch (error) {
+    redirectWithStoreError(
+      detailPath,
+      error instanceof Error ? error.message : "Store locked due to current subscription limits."
+    );
+  }
+
+  const storeName = cleanText(formData.get("storeName"), 160);
+  const storeEmail = normalizeSupportEmail(formData.get("storeEmail"));
+  const supportEmail = normalizeSupportEmail(formData.get("supportEmail"));
+  const supportPhone = normalizeSupportPhone(formData.get("supportPhone"));
+  const whatsappContact = normalizeWhatsAppContact(formData.get("whatsappNumber"));
+
+  if (!storeName) {
+    redirectWithStoreError(detailPath, "Store name is required.");
+  }
+  if (storeEmail.error) {
+    redirectWithStoreError(detailPath, storeEmail.error.replace("support", "store"));
+  }
+  if (supportEmail.error) {
+    redirectWithStoreError(detailPath, supportEmail.error);
+  }
+  if (supportPhone.error) {
+    redirectWithStoreError(detailPath, supportPhone.error);
+  }
+  if (whatsappContact.error) {
+    redirectWithStoreError(detailPath, whatsappContact.error);
+  }
+
+  const { error } = await supabase
+    .from("stores")
+    .update({
+      business_address: cleanText(formData.get("businessAddress"), 1000) || null,
+      business_hours: cleanText(formData.get("businessHours"), 500) || null,
+      currency: normalizeStoreCurrency(formData.get("currency")),
+      description: cleanText(formData.get("storeDescription"), 2000) || null,
+      language: normalizeLanguage(formData.get("language")),
+      name: storeName,
+      social_links: normalizeSocialLinks(formData),
+      store_email: storeEmail.value,
+      store_name: storeName,
+      support_email: supportEmail.value,
+      support_phone: supportPhone.value,
+      timezone: normalizeTimezone(formData.get("timezone")),
+      updated_at: new Date().toISOString(),
+      whatsapp_number: whatsappContact.value
+    } as never)
+    .eq("id", store.id)
+    .eq("workspace_id" as never, store.workspace_id as never);
+
+  if (error) {
+    redirectWithStoreError(detailPath, formatStoreActionError(error));
+  }
+
+  await recordStoreAuditLogSafe({
+    action: "store_updated",
+    actorUserId: user.id,
+    metadata: {
+      source: "store_settings"
+    },
+    storeId: store.id,
+    supabase
+  });
+
+  revalidatePath(`/dashboard/stores/${store.id}`);
+  revalidatePath("/dashboard/stores");
+  if (store.slug) {
+    revalidatePath(`/store/${store.slug}`);
+    revalidatePath(`/s/${store.slug}`);
+  }
+
+  redirect(`/dashboard/stores/${store.id}?settings=saved#store-settings`);
 }
 
 export async function saveStoreDomainSettings(formData: FormData) {

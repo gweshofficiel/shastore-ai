@@ -212,12 +212,14 @@ export default async function PublicStorePage({
   const supportEmail = store.supportEmail?.trim() || null;
   const supportPhoneHref = phoneHref(store.supportPhone);
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
+  const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
   const hasContactData = Boolean(
     store.whatsappNumber ||
       supportEmail ||
       store.supportPhone ||
       store.businessAddress ||
-      store.businessHours
+      store.businessHours ||
+      socialLinks.length
   );
   const hasDeliveryData = Boolean(
     store.deliveryEnabled ||
@@ -621,6 +623,14 @@ export default async function PublicStorePage({
               />
               <ContactCard label="Business address" value={store.businessAddress} />
               <ContactCard label="Business hours" value={store.businessHours} />
+              {socialLinks.map(([label, href]) => (
+                <ContactCard
+                  href={href}
+                  key={label}
+                  label={label === "x" ? "X" : label.charAt(0).toUpperCase() + label.slice(1)}
+                  value={href}
+                />
+              ))}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">

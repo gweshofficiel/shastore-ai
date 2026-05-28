@@ -95,6 +95,7 @@ import {
   resetStoreThemeSettings,
   saveStoreDomainSettings,
   saveStorePublicationSettings,
+  saveStoreSettingsAction,
   saveStoreThemeSettings,
   updateManagedStoreCategory,
   updateManagedStoreProduct,
@@ -325,6 +326,17 @@ function textValue(record: Record<string, unknown> | undefined, key: string, fal
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function socialLinkValue(record: Record<string, unknown> | undefined, key: string) {
+  const socialLinks = record?.social_links;
+
+  if (!socialLinks || typeof socialLinks !== "object" || Array.isArray(socialLinks)) {
+    return "";
+  }
+
+  const value = (socialLinks as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : "";
+}
+
 function numberValue(record: Record<string, unknown> | undefined, key: string, fallback = "Unlimited") {
   const value = record?.[key];
   return typeof value === "number" ? value.toLocaleString() : fallback;
@@ -377,6 +389,7 @@ export default async function StoreDraftPage({
     builder?: string;
     "management-branding-save-failed"?: string;
     storefront?: string;
+    settings?: string;
     theme?: string;
     publication?: string;
     catalog?: string;
@@ -4268,9 +4281,13 @@ export default async function StoreDraftPage({
     pickup_enabled?: boolean | null;
     privacy_policy?: string | null;
     refund_policy?: string | null;
+    language?: string | null;
+    social_links?: Record<string, unknown> | null;
+    store_email?: string | null;
     support_email?: string | null;
     support_phone?: string | null;
     terms_of_service?: string | null;
+    timezone?: string | null;
   };
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
@@ -4389,6 +4406,13 @@ export default async function StoreDraftPage({
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
             Publication and SEO settings saved.
+          </p>
+        </Card>
+      ) : null}
+      {query.settings === "saved" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Store settings saved.
           </p>
         </Card>
       ) : null}
@@ -4521,6 +4545,169 @@ export default async function StoreDraftPage({
           </div>
         </Card>
       </div>
+      <Card className="p-5 lg:p-6" id="store-settings">
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Store settings
+          </p>
+          <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+            Business identity and contact details
+          </h2>
+          <p className="text-sm leading-6 text-muted">
+            These settings are scoped to this store and are used by the public storefront,
+            checkout handoff, and customer support surfaces.
+          </p>
+        </div>
+        <form action={saveStoreSettingsAction} className="mt-5 grid gap-5">
+          <input name="storeId" type="hidden" value={store.id} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              defaultValue={store.name}
+              id="settings-store-name"
+              label="Store name"
+              name="storeName"
+              required
+            />
+            <Input
+              defaultValue={storeContact.store_email ?? storeContact.support_email ?? ""}
+              id="settings-store-email"
+              label="Store email"
+              name="storeEmail"
+              placeholder="hello@example.com"
+              type="email"
+            />
+          </div>
+          <Textarea
+            defaultValue={store.description ?? ""}
+            id="settings-store-description"
+            label="Store description"
+            name="storeDescription"
+            placeholder="Describe what your store sells and why customers should buy from you."
+          />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input
+              defaultValue={store.currency ?? "USD"}
+              id="settings-currency"
+              label="Currency"
+              maxLength={3}
+              name="currency"
+              placeholder="USD"
+            />
+            <Input
+              defaultValue={storeContact.language ?? "en"}
+              id="settings-language"
+              label="Language"
+              name="language"
+              placeholder="en"
+            />
+            <Input
+              defaultValue={storeContact.timezone ?? "UTC"}
+              id="settings-timezone"
+              label="Timezone"
+              name="timezone"
+              placeholder="UTC"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input
+              defaultValue={store.whatsapp_number ?? ""}
+              id="settings-whatsapp"
+              label="WhatsApp"
+              name="whatsappNumber"
+              placeholder="+15551234567"
+            />
+            <Input
+              defaultValue={storeContact.support_email ?? ""}
+              id="settings-support-email"
+              label="Support email"
+              name="supportEmail"
+              placeholder="support@example.com"
+              type="email"
+            />
+            <Input
+              defaultValue={storeContact.support_phone ?? ""}
+              id="settings-support-phone"
+              label="Support phone"
+              name="supportPhone"
+              placeholder="+15551234567"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Textarea
+              defaultValue={storeContact.business_address ?? ""}
+              id="settings-business-address"
+              label="Store address"
+              name="businessAddress"
+              placeholder="Store pickup address, office, or service area"
+            />
+            <Textarea
+              defaultValue={storeContact.business_hours ?? ""}
+              id="settings-business-hours"
+              label="Support/contact information"
+              name="businessHours"
+              placeholder="Mon-Fri 9:00-18:00, support response time, or pickup notes"
+            />
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-black text-ink">Social links</p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Optional public links. Only http and https URLs are saved.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Input
+                defaultValue={socialLinkValue(storeContact, "instagram")}
+                id="settings-social-instagram"
+                label="Instagram"
+                name="socialInstagram"
+                placeholder="https://instagram.com/yourstore"
+              />
+              <Input
+                defaultValue={socialLinkValue(storeContact, "facebook")}
+                id="settings-social-facebook"
+                label="Facebook"
+                name="socialFacebook"
+                placeholder="https://facebook.com/yourstore"
+              />
+              <Input
+                defaultValue={socialLinkValue(storeContact, "tiktok")}
+                id="settings-social-tiktok"
+                label="TikTok"
+                name="socialTiktok"
+                placeholder="https://tiktok.com/@yourstore"
+              />
+              <Input
+                defaultValue={socialLinkValue(storeContact, "x")}
+                id="settings-social-x"
+                label="X"
+                name="socialX"
+                placeholder="https://x.com/yourstore"
+              />
+              <Input
+                defaultValue={socialLinkValue(storeContact, "youtube")}
+                id="settings-social-youtube"
+                label="YouTube"
+                name="socialYoutube"
+                placeholder="https://youtube.com/@yourstore"
+              />
+              <Input
+                defaultValue={socialLinkValue(storeContact, "website")}
+                id="settings-social-website"
+                label="Website"
+                name="socialWebsite"
+                placeholder="https://example.com"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={protectedActionsBlocked} type="submit">
+              Save store settings
+            </Button>
+            <p className="text-xs font-semibold text-muted">
+              Store status and public visibility remain managed in publishing settings below.
+            </p>
+          </div>
+        </form>
+      </Card>
       <Card className="p-5 lg:p-6">
         <div className="flex flex-col gap-2">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
