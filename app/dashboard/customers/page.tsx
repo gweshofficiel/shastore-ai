@@ -23,6 +23,7 @@ type CustomerRow = {
   status?: string | null;
   store_id: string;
   store_instance_id?: string | null;
+  tags?: string[] | null;
   total_orders?: number | null;
   total_spent?: number | string | null;
   updated_at: string;
@@ -207,8 +208,8 @@ async function getCustomersDashboardData({
     { data: draftOrderRows, error: draftOrdersError }
   ] = await Promise.all([
     supabase
-      .from("customers" as never)
-      .select("id, workspace_id, store_id, store_instance_id, name, email, phone, status, total_orders, total_spent, first_order_at, last_order_at, last_order_id, notes, created_at, updated_at")
+      .from("store_customers" as never)
+      .select("id, workspace_id, store_id, name, email, phone, status, tags, total_orders, total_spent, first_order_at, last_order_at, last_order_id, created_at, updated_at")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("last_order_at" as never, { ascending: false } as never)
@@ -239,7 +240,7 @@ async function getCustomersDashboardData({
         ? null
         : "Customers could not be loaded. Please try again.",
       schemaIssue: firstError && isMissingCustomersFoundation(firstError)
-        ? "Missing customers foundation: run the store customers migration after the order migrations."
+        ? "Missing customers foundation: run the store customers management migration after the order migrations."
         : null,
       selectedCustomer: null,
       stores
@@ -263,9 +264,19 @@ async function getCustomersDashboardData({
         return true;
       }
 
-      return [customer.name, customer.email, customer.phone, customer.status]
+      const hasMatchingOrderReference = orders.some(
+        (order) =>
+          matchesCustomer(order, customer) &&
+          (order.id.toLowerCase().includes(normalizedQuery) ||
+            order.id.slice(0, 8).toLowerCase().includes(normalizedQuery))
+      );
+
+      return (
+        hasMatchingOrderReference ||
+        [customer.name, customer.email, customer.phone, customer.status, ...(customer.tags ?? [])]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+          .some((value) => String(value).toLowerCase().includes(normalizedQuery))
+      );
     });
   const selectedCustomer =
     customers.find((customer) => customer.id === customerId) ?? customers[0] ?? null;
@@ -404,7 +415,7 @@ export default async function CustomersPage({
               id="q"
               label="Search customers"
               name="q"
-                placeholder="Search by name, email, phone, status"
+              placeholder="Search by name, email, phone, status, tag, or order reference"
             />
             <Button type="submit">Search</Button>
           </form>
@@ -442,6 +453,14 @@ export default async function CustomersPage({
                           {customer.status}
                         </span>
                       ) : null}
+                      {(customer.tags ?? []).map((tag) => (
+                        <span
+                          className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-blue-700"
+                          key={tag}
+                        >
+                          {tag}
+                        </span>
+                      ))}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:justify-end">
@@ -505,6 +524,23 @@ export default async function CustomersPage({
                         {selectedCustomer.status || "active"}
                       </p>
                     </div>
+                    {(selectedCustomer.tags ?? []).length ? (
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Tags
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(selectedCustomer.tags ?? []).map((tag) => (
+                            <span
+                              className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-blue-700"
+                              key={tag}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-2xl bg-slate-50 p-4">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
