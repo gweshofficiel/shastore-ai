@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createStoreNotificationSafe } from "@/lib/notifications/store-notifications";
 import { verifyPurchasedProductForReview } from "@/lib/product-reviews";
 import {
   assertStoreAccessInWorkspace,
@@ -118,7 +119,7 @@ export async function submitProductReview(formData: FormData) {
     reviewRedirect(slug, productId, "failed");
   }
 
-  const { error } = await admin.from("product_reviews" as never).insert({
+  const { data: reviewRow, error } = await admin.from("product_reviews" as never).insert({
     comment,
     customer_name: purchase.customerName,
     customer_phone: customerPhone,
@@ -129,7 +130,9 @@ export async function submitProductReview(formData: FormData) {
     store_id: storeId,
     title: title || null,
     workspace_id: workspaceId
-  } as never);
+  } as never)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[product-reviews] submit failed", {
@@ -141,7 +144,22 @@ export async function submitProductReview(formData: FormData) {
     reviewRedirect(slug, productId, "failed");
   }
 
+  await createStoreNotificationSafe({
+    message: `${purchase.customerName || "A customer"} submitted a product review waiting for approval.`,
+    metadata: {
+      orderId: purchase.orderId,
+      productId,
+      rating,
+      reviewId: (reviewRow as { id?: string } | null)?.id ?? null
+    },
+    storeId,
+    title: "Review submitted",
+    type: "review_submitted",
+    workspaceId
+  });
+
   revalidatePath(`/store/${slug}/product/${productId}`);
+  revalidatePath(reviewsPath);
   reviewRedirect(slug, productId, "submitted");
 }
 
@@ -282,7 +300,7 @@ export async function submitPurchasedProductReview(formData: FormData) {
     redirectBackToReviewSurface(returnTo, "already-submitted");
   }
 
-  const { error } = await admin.from("product_reviews" as never).insert({
+  const { data: reviewRow, error } = await admin.from("product_reviews" as never).insert({
     comment,
     customer_name: customerName || "Customer",
     customer_phone: customerPhone || null,
@@ -293,7 +311,9 @@ export async function submitPurchasedProductReview(formData: FormData) {
     store_id: storeId,
     title: title || null,
     workspace_id: workspaceId
-  } as never);
+  } as never)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[product-reviews] purchased submit failed", {
@@ -305,6 +325,20 @@ export async function submitPurchasedProductReview(formData: FormData) {
     });
     redirectBackToReviewSurface(returnTo, "failed");
   }
+
+  await createStoreNotificationSafe({
+    message: `${customerName || "A customer"} submitted a product review waiting for approval.`,
+    metadata: {
+      orderId,
+      productId,
+      rating,
+      reviewId: (reviewRow as { id?: string } | null)?.id ?? null
+    },
+    storeId,
+    title: "Review submitted",
+    type: "review_submitted",
+    workspaceId
+  });
 
   revalidatePath(returnTo.split("?")[0] ?? returnTo);
   revalidatePath(reviewsPath);

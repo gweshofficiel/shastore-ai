@@ -17,6 +17,11 @@ import {
   type StoreCouponRow
 } from "@/lib/store-coupons";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
+import {
+  createLowStockNotificationsForOrderSafe,
+  createOrderNotificationSafe,
+  createStoreNotificationSafe
+} from "@/lib/notifications/store-notifications";
 import type { Json } from "@/types/database";
 
 export type PublicStoreOrderState = {
@@ -672,6 +677,31 @@ async function persistStorefrontOrderDraft({
         supabase: admin,
         workspaceId
       });
+      await createOrderNotificationSafe({
+        customerName,
+        orderId: orderRow.id,
+        orderSource: "orders",
+        storeId: store.id,
+        totalAmount: total,
+        type: "new_order_created",
+        workspaceId
+      });
+      if (coupon) {
+        await createStoreNotificationSafe({
+          message: `Coupon ${coupon.code} was used on order ${orderRow.id.slice(0, 8)}.`,
+          metadata: {
+            couponCode: coupon.code,
+            couponId: coupon.id,
+            discountAmount: safeDiscountAmount,
+            orderId: orderRow.id,
+            orderSource: "orders"
+          },
+          storeId: store.id,
+          title: "Coupon used",
+          type: "coupon_used",
+          workspaceId
+        });
+      }
       return { orderId: orderRow.id, table: "orders" as const };
     }
 
@@ -807,6 +837,31 @@ async function persistStorefrontOrderDraft({
     supabase: admin,
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
   });
+  await createOrderNotificationSafe({
+    customerName,
+    orderId: storeOrderRow.id,
+    orderSource: "store_orders",
+    storeId: store.id,
+    totalAmount: total,
+    type: "new_order_created",
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+  if (coupon) {
+    await createStoreNotificationSafe({
+      message: `Coupon ${coupon.code} was used on order ${storeOrderRow.id.slice(0, 8)}.`,
+      metadata: {
+        couponCode: coupon.code,
+        couponId: coupon.id,
+        discountAmount: safeDiscountAmount,
+        orderId: storeOrderRow.id,
+        orderSource: "store_orders"
+      },
+      storeId: store.id,
+      title: "Coupon used",
+      type: "coupon_used",
+      workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+    });
+  }
 
   return { orderId: storeOrderRow.id, table: "store_orders" as const };
 }
@@ -1328,7 +1383,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const tableName = source === "orders" ? "orders" : "store_orders";
   logSupabaseDiagnostic("order_status.lookup.before", {
     orderId,
-    select: "id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note",
+    select: "id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note",
     source,
     status,
     tableName,
@@ -1336,17 +1391,20 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   });
   const { data: currentOrder, error: currentError } = await supabase
     .from(tableName as never)
-    .select("id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note")
+    .select("id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note")
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
   const currentOrderRow = currentOrder as {
     id: string;
+    customer_name?: string | null;
     internal_note?: string | null;
     order_status: string | null;
     payment_status?: string | null;
     store_id?: string | null;
     store_instance_id?: string | null;
+    total?: number | string | null;
+    total_amount?: number | string | null;
     workspace_id?: string | null;
   } | null;
 
@@ -1355,7 +1413,7 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       "order_status.lookup.failed",
       {
         orderId,
-        select: "id, store_id, store_instance_id, workspace_id, order_status, payment_status, internal_note",
+        select: "id, store_id, store_instance_id, workspace_id, customer_name, total_amount, total, order_status, payment_status, internal_note",
         source,
         status,
         tableName,
@@ -1654,6 +1712,31 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       supabase,
       workspaceId
     });
+  }
+
+  if (
+    eventStoreId &&
+    currentOrderRow.order_status !== status &&
+    (status === "confirmed" || status === "cancelled")
+  ) {
+    await createOrderNotificationSafe({
+      customerName: currentOrderRow.customer_name ?? null,
+      orderId,
+      orderSource: source,
+      storeId: eventStoreId,
+      totalAmount: parsePrice(currentOrderRow.total_amount ?? currentOrderRow.total ?? null),
+      type: status === "confirmed" ? "order_confirmed" : "order_cancelled",
+      workspaceId
+    });
+
+    if (status === "confirmed") {
+      await createLowStockNotificationsForOrderSafe({
+        orderId,
+        orderSource: source,
+        storeId: eventStoreId,
+        workspaceId
+      });
+    }
   }
 
   revalidatePath(dashboardOrdersPath);

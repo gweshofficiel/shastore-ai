@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ type NotificationRow = {
   id: string;
   message: string;
   read_at: string | null;
+  status?: string | null;
+  store_id?: string | null;
   title: string;
   type: string;
 };
@@ -24,16 +27,16 @@ function formatNotificationDate(value: string) {
   }).format(new Date(value));
 }
 
-function notificationTone(type: string, readAt: string | null) {
-  if (readAt) {
+function notificationTone(type: string, status: string | null | undefined, readAt: string | null) {
+  if (status === "read" || readAt) {
     return "border-slate-200 bg-white";
   }
 
-  if (type.includes("failed") || type.includes("restricted") || type.includes("canceled")) {
+  if (type.includes("failed") || type.includes("restricted") || type.includes("cancelled") || type.includes("canceled")) {
     return "border-red-200 bg-red-50";
   }
 
-  if (type.includes("grace")) {
+  if (type.includes("grace") || type.includes("low_stock")) {
     return "border-amber-200 bg-amber-50";
   }
 
@@ -60,18 +63,20 @@ export default async function NotificationsPage() {
     );
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const notificationScope = `user_id.eq.${user.id},workspace_id.eq.${selection.activeWorkspaceId}`;
   const [{ data, error }, { count, error: countError }] = await Promise.all([
     supabase
       .from("notifications" as never)
-      .select("id, type, title, message, read_at, created_at")
-      .eq("user_id", user.id)
+      .select("id, type, title, message, status, store_id, read_at, created_at")
+      .or(notificationScope)
       .order("created_at", { ascending: false })
       .limit(50),
     supabase
       .from("notifications" as never)
       .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .is("read_at", null)
+      .or(notificationScope)
+      .eq("status" as never, "unread" as never)
   ]);
 
   if (error) {
@@ -94,19 +99,23 @@ export default async function NotificationsPage() {
   }
 
   const notifications = (data ?? []) as NotificationRow[];
-  const unreadCount = count ?? notifications.filter((notification) => !notification.read_at).length;
+  const unreadCount =
+    count ??
+    notifications.filter(
+      (notification) => (notification.status ?? (notification.read_at ? "read" : "unread")) === "unread"
+    ).length;
 
   return (
     <div className="grid gap-6">
       <PageHeader
-        description="Billing and system notifications for your SHASTORE AI workspace."
+        description="In-app notifications for store orders, reviews, inventory, coupons, billing, and system events."
         title="Notifications"
       />
       <Card className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-black text-ink">{unreadCount} unread</p>
           <p className="mt-1 text-sm font-semibold text-muted">
-            Payment and subscription notifications appear here first. Email delivery can attach to this foundation later.
+            This center is internal for now. Email, WhatsApp, and customer notifications can attach to the same event foundation later.
           </p>
         </div>
         {unreadCount ? (
@@ -121,7 +130,7 @@ export default async function NotificationsPage() {
         {notifications.length ? (
           notifications.map((notification) => (
             <Card
-              className={`p-5 ${notificationTone(notification.type, notification.read_at)}`}
+              className={`p-5 ${notificationTone(notification.type, notification.status, notification.read_at)}`}
               key={notification.id}
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -139,7 +148,7 @@ export default async function NotificationsPage() {
                     {formatNotificationDate(notification.created_at)}
                   </p>
                 </div>
-                {!notification.read_at ? (
+                {(notification.status ?? (notification.read_at ? "read" : "unread")) === "unread" ? (
                   <form action={markNotificationRead}>
                     <input name="notificationId" type="hidden" value={notification.id} />
                     <Button type="submit" variant="secondary">
@@ -157,7 +166,7 @@ export default async function NotificationsPage() {
         ) : (
           <Card>
             <p className="text-sm font-bold text-muted">
-              No notifications yet. Billing recovery events will appear here.
+              No notifications yet. Store orders, reviews, inventory alerts, coupons, and billing events will appear here.
             </p>
           </Card>
         )}

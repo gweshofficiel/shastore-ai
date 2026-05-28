@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export async function markNotificationRead(formData: FormData) {
   const notificationId = String(formData.get("notificationId") ?? "").trim();
@@ -14,12 +15,13 @@ export async function markNotificationRead(formData: FormData) {
     return;
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const { data, error } = await supabase
     .from("notifications" as never)
-    .update({ read_at: new Date().toISOString() } as never)
+    .update({ read_at: new Date().toISOString(), status: "read" } as never)
     .eq("id", notificationId)
-    .eq("user_id", user.id)
-    .is("read_at", null)
+    .or(`user_id.eq.${user.id},workspace_id.eq.${selection.activeWorkspaceId}`)
+    .eq("status" as never, "unread" as never)
     .select("id");
 
   if (error) {
@@ -51,11 +53,12 @@ export async function markAllNotificationsRead() {
     return;
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const { data, error } = await supabase
     .from("notifications" as never)
-    .update({ read_at: new Date().toISOString() } as never)
-    .eq("user_id", user.id)
-    .is("read_at", null)
+    .update({ read_at: new Date().toISOString(), status: "read" } as never)
+    .or(`user_id.eq.${user.id},workspace_id.eq.${selection.activeWorkspaceId}`)
+    .eq("status" as never, "unread" as never)
     .select("id");
 
   if (error) {

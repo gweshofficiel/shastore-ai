@@ -11,13 +11,14 @@ import { dashboardRoutePermissions, hasPermission } from "@/lib/permissions/rbac
 
 async function getUnreadNotificationCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
+  userId: string,
+  workspaceId: string
 ) {
   const { count, error } = await supabase
     .from("notifications" as never)
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .is("read_at", null);
+    .or(`user_id.eq.${userId},workspace_id.eq.${workspaceId}`)
+    .eq("status" as never, "unread" as never);
 
   if (error) {
     console.warn("[notification-count] unread count failed", {
@@ -42,12 +43,11 @@ export async function Sidebar() {
   const {
     data: { user }
   } = await supabase.auth.getUser();
-  const [unreadNotifications, selection] = user
-    ? await Promise.all([
-        getUnreadNotificationCount(supabase, user.id),
-        getActiveWorkspaceForUser({ supabase, userId: user.id })
-      ])
-    : [0, null];
+  const selection = user ? await getActiveWorkspaceForUser({ supabase, userId: user.id }) : null;
+  const unreadNotifications =
+    user && selection
+      ? await getUnreadNotificationCount(supabase, user.id, selection.activeWorkspaceId)
+      : 0;
 
   return (
     <aside className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
