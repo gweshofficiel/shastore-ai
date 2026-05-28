@@ -20,9 +20,12 @@ type CustomerRow = {
   first_order_at: string | null;
   id: string;
   last_order_at: string | null;
+  loyalty_points?: number | null;
+  loyalty_tier?: string | null;
   name: string;
   notes: string | null;
   phone: string | null;
+  segment?: string | null;
   status: string | null;
   store_id: string;
   tags?: string[] | null;
@@ -122,6 +125,10 @@ function averageOrderValue(customer: CustomerRow, orders: OrderRow[]) {
   return orderCount ? numericValue(customer.total_spent) / orderCount : 0;
 }
 
+function formatSegment(value: string | null | undefined) {
+  return (value || "new").replace(/_/g, " ");
+}
+
 function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/[^0-9+]/g, "");
 }
@@ -186,7 +193,7 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
   const storeIds = stores.map((store) => store.id);
   const { data: customerData, error: customerError } = await supabase
     .from("store_customers" as never)
-    .select("id, workspace_id, store_id, name, email, phone, status, tags, total_orders, total_spent, first_order_at, last_order_at, last_order_id")
+    .select("id, workspace_id, store_id, name, email, phone, status, segment, loyalty_points, loyalty_tier, tags, total_orders, total_spent, first_order_at, last_order_at, last_order_id")
     .eq("id" as never, id as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
@@ -311,6 +318,14 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
               <p className="mt-1 font-semibold text-ink">{customer.status ?? "active"}</p>
             </div>
             <div>
+              <p className="font-bold text-muted">Segment</p>
+              <p className="mt-1 font-semibold capitalize text-ink">{formatSegment(customer.segment)}</p>
+            </div>
+            <div>
+              <p className="font-bold text-muted">Loyalty tier</p>
+              <p className="mt-1 font-semibold capitalize text-ink">{customer.loyalty_tier ?? "bronze"}</p>
+            </div>
+            <div>
               <p className="font-bold text-muted">First order</p>
               <p className="mt-1 font-semibold text-ink">{formatDate(customer.first_order_at)}</p>
             </div>
@@ -335,6 +350,14 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
             <div className="rounded-2xl bg-slate-50 p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Reviews</p>
               <p className="mt-1 text-2xl font-black text-ink">{reviews.length}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Points</p>
+              <p className="mt-1 text-2xl font-black text-ink">{customer.loyalty_points ?? 0}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Tier</p>
+              <p className="mt-1 text-2xl font-black capitalize text-ink">{customer.loyalty_tier ?? "bronze"}</p>
             </div>
           </div>
           {(customer.tags ?? []).length ? (

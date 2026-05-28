@@ -17,9 +17,12 @@ type CustomerRow = {
   id: string;
   last_order_at?: string | null;
   last_order_id?: string | null;
+  loyalty_points?: number | null;
+  loyalty_tier?: string | null;
   name: string;
   notes?: string | null;
   phone?: string | null;
+  segment?: string | null;
   status?: string | null;
   store_id: string;
   store_instance_id?: string | null;
@@ -95,6 +98,30 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatSegment(value: string | null | undefined) {
+  return (value || "new").replace(/_/g, " ");
+}
+
+function segmentBadgeClass(value: string | null | undefined) {
+  if (value === "vip") {
+    return "bg-purple-50 text-purple-700";
+  }
+
+  if (value === "high_spender") {
+    return "bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "at_risk") {
+    return "bg-amber-50 text-amber-700";
+  }
+
+  if (value === "returning") {
+    return "bg-blue-50 text-blue-700";
+  }
+
+  return "bg-slate-100 text-muted";
+}
+
 function customerHref(
   customer: CustomerRow,
   params: {
@@ -137,10 +164,12 @@ function matchesCustomer(order: OrderRow, customer: CustomerRow) {
 async function getCustomersDashboardData({
   customerId,
   query = "",
+  segment = "",
   storeId
 }: {
   customerId?: string;
   query?: string;
+  segment?: string;
   storeId?: string;
 }): Promise<CustomersDashboardData> {
   const supabase = await createClient();
@@ -202,16 +231,22 @@ async function getCustomersDashboardData({
     };
   }
 
+  let customerQuery = supabase
+    .from("store_customers" as never)
+    .select("id, workspace_id, store_id, name, email, phone, status, segment, loyalty_points, loyalty_tier, tags, total_orders, total_spent, first_order_at, last_order_at, last_order_id, created_at, updated_at")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, activeStore.id as never);
+
+  if (["new", "returning", "vip", "at_risk", "high_spender"].includes(segment)) {
+    customerQuery = customerQuery.eq("segment" as never, segment as never);
+  }
+
   const [
     { data: customerRows, error: customersError },
     { data: storeOrderRows, error: storeOrdersError },
     { data: draftOrderRows, error: draftOrdersError }
   ] = await Promise.all([
-    supabase
-      .from("store_customers" as never)
-      .select("id, workspace_id, store_id, name, email, phone, status, tags, total_orders, total_spent, first_order_at, last_order_at, last_order_id, created_at, updated_at")
-      .eq("workspace_id" as never, workspaceId as never)
-      .eq("store_id" as never, activeStore.id as never)
+    customerQuery
       .order("last_order_at" as never, { ascending: false } as never)
       .order("updated_at" as never, { ascending: false } as never),
     supabase
@@ -300,7 +335,7 @@ async function getCustomersDashboardData({
 export default async function CustomersPage({
   searchParams
 }: {
-  searchParams: Promise<{ customerId?: string; q?: string; storeId?: string }>;
+  searchParams: Promise<{ customerId?: string; q?: string; segment?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -340,6 +375,7 @@ export default async function CustomersPage({
     await getCustomersDashboardData({
       customerId: params.customerId,
       query: params.q,
+      segment: params.segment,
       storeId: params.storeId
     });
 
@@ -408,7 +444,7 @@ export default async function CustomersPage({
             </form>
           </div>
 
-          <form className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+          <form className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
             <input name="storeId" type="hidden" value={activeStore.id} />
             <Input
               defaultValue={params.q}
@@ -417,6 +453,21 @@ export default async function CustomersPage({
               name="q"
               placeholder="Search by name, email, phone, status, tag, or order reference"
             />
+            <label className="grid gap-2 text-sm font-semibold text-ink">
+              <span>Segment</span>
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                defaultValue={params.segment ?? ""}
+                name="segment"
+              >
+                <option value="">All segments</option>
+                <option value="new">New customer</option>
+                <option value="returning">Returning customer</option>
+                <option value="vip">VIP customer</option>
+                <option value="at_risk">At-risk customer</option>
+                <option value="high_spender">High spender</option>
+              </select>
+            </label>
             <Button type="submit">Search</Button>
           </form>
         </Card>
@@ -453,6 +504,17 @@ export default async function CustomersPage({
                           {customer.status}
                         </span>
                       ) : null}
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${segmentBadgeClass(customer.segment)}`}
+                      >
+                        {formatSegment(customer.segment)}
+                      </span>
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                        {customer.loyalty_points ?? 0} pts
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
+                        {customer.loyalty_tier ?? "bronze"}
+                      </span>
                       {(customer.tags ?? []).map((tag) => (
                         <span
                           className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-blue-700"
@@ -523,6 +585,32 @@ export default async function CustomersPage({
                       <p className="mt-1 font-black text-ink">
                         {selectedCustomer.status || "active"}
                       </p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Segment
+                      </p>
+                      <p className="mt-1 font-black capitalize text-ink">
+                        {formatSegment(selectedCustomer.segment)}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Points
+                        </p>
+                        <p className="mt-1 font-black text-ink">
+                          {selectedCustomer.loyalty_points ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Tier
+                        </p>
+                        <p className="mt-1 font-black capitalize text-ink">
+                          {selectedCustomer.loyalty_tier ?? "bronze"}
+                        </p>
+                      </div>
                     </div>
                     {(selectedCustomer.tags ?? []).length ? (
                       <div className="rounded-2xl bg-slate-50 p-4">
