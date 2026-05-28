@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
-import { calculatePublicTaxForStore, type TaxCalculation } from "@/lib/public-tax";
+import {
+  calculatePublicCheckoutFinancialsForStore,
+  type CheckoutFinancialBreakdown
+} from "@/lib/public-tax";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
@@ -417,7 +420,7 @@ async function persistStorefrontOrderDraft({
   deliveryFee,
   deliveryMethod,
   shippingMethod,
-  taxCalculation,
+  financialBreakdown,
   coupon,
   discountAmount,
   subtotal,
@@ -442,7 +445,7 @@ async function persistStorefrontOrderDraft({
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
   shippingMethod: PublicShippingMethod | null;
-  taxCalculation: TaxCalculation;
+  financialBreakdown: CheckoutFinancialBreakdown;
   coupon: StoreCouponRow | null;
   discountAmount: number;
   subtotal: number;
@@ -454,7 +457,7 @@ async function persistStorefrontOrderDraft({
   const orderNumber = generateDraftOrderNumber();
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
-  const total = taxCalculation.total;
+  const total = financialBreakdown.totalAmount;
   const couponPayload = coupon
     ? {
         coupon_code: coupon.code,
@@ -481,11 +484,15 @@ async function persistStorefrontOrderDraft({
     shipping_method_id: shippingMethod?.id ?? null,
     shipping_method_name: shippingMethod?.name ?? null,
     shipping_method_type: shippingMethod?.type ?? null,
-    tax_amount: taxCalculation.taxAmount,
-    tax_applies_to_shipping: taxCalculation.taxAppliesToShipping,
-    tax_name: taxCalculation.taxName,
-    tax_rate: taxCalculation.taxRate,
-    prices_include_tax: taxCalculation.pricesIncludeTax,
+    subtotal_amount: financialBreakdown.subtotalAmount,
+    shipping_amount: financialBreakdown.shippingAmount,
+    taxable_amount: financialBreakdown.taxableAmount,
+    tax_amount: financialBreakdown.taxAmount,
+    tax_applies_to_shipping: financialBreakdown.taxAppliesToShipping,
+    tax_name: financialBreakdown.taxName,
+    tax_rate: financialBreakdown.taxRate,
+    prices_include_tax: financialBreakdown.pricesIncludeTax,
+    total_amount: financialBreakdown.totalAmount,
     subtotal: discountedSubtotal,
     total,
     currency,
@@ -523,6 +530,10 @@ async function persistStorefrontOrderDraft({
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
+            "subtotal_amount",
+            "shipping_amount",
+            "taxable_amount",
+            "total_amount",
             "tax_amount",
             "tax_applies_to_shipping",
             "tax_name",
@@ -541,6 +552,10 @@ async function persistStorefrontOrderDraft({
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
+            "subtotal_amount",
+            "shipping_amount",
+            "taxable_amount",
+            "total_amount",
             "tax_amount",
             "tax_applies_to_shipping",
             "tax_name",
@@ -699,11 +714,15 @@ async function persistStorefrontOrderDraft({
     shipping_method_id: shippingMethod?.id ?? null,
     shipping_method_name: shippingMethod?.name ?? null,
     shipping_method_type: shippingMethod?.type ?? null,
-    tax_amount: taxCalculation.taxAmount,
-    tax_applies_to_shipping: taxCalculation.taxAppliesToShipping,
-    tax_name: taxCalculation.taxName,
-    tax_rate: taxCalculation.taxRate,
-    prices_include_tax: taxCalculation.pricesIncludeTax,
+    subtotal_amount: financialBreakdown.subtotalAmount,
+    shipping_amount: financialBreakdown.shippingAmount,
+    taxable_amount: financialBreakdown.taxableAmount,
+    tax_amount: financialBreakdown.taxAmount,
+    tax_applies_to_shipping: financialBreakdown.taxAppliesToShipping,
+    tax_name: financialBreakdown.taxName,
+    tax_rate: financialBreakdown.taxRate,
+    prices_include_tax: financialBreakdown.pricesIncludeTax,
+    total_amount: financialBreakdown.totalAmount,
     fulfillment_status: "unfulfilled",
     items: legacyItems as Json,
     subtotal: discountedSubtotal,
@@ -729,6 +748,10 @@ async function persistStorefrontOrderDraft({
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
+            "subtotal_amount",
+            "shipping_amount",
+            "taxable_amount",
+            "total_amount",
             "tax_amount",
             "tax_applies_to_shipping",
             "tax_name",
@@ -952,13 +975,13 @@ export async function createPublicStoreOrderAction(
       : shippingMethod.fee
     : 0;
   const deliveryMethod = shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
-  const taxCalculation = await calculatePublicTaxForStore({
+  const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     discountAmount,
-    shippingFee: deliveryFee,
+    shippingAmount: deliveryFee,
     storeId: store.id,
-    subtotal
+    subtotalAmount: subtotal
   });
-  const total = taxCalculation.total;
+  const total = financialBreakdown.totalAmount;
   const { data: order, error: orderError } = await admin
     .from("store_orders")
     .insert({
@@ -975,13 +998,17 @@ export async function createPublicStoreOrderAction(
       shipping_method_id: shippingMethod?.id ?? null,
       shipping_method_name: shippingMethod?.name ?? null,
       shipping_method_type: shippingMethod?.type ?? null,
-      tax_amount: taxCalculation.taxAmount,
-      tax_applies_to_shipping: taxCalculation.taxAppliesToShipping,
-      tax_name: taxCalculation.taxName,
-      tax_rate: taxCalculation.taxRate,
-      prices_include_tax: taxCalculation.pricesIncludeTax,
+      subtotal_amount: financialBreakdown.subtotalAmount,
+      shipping_amount: financialBreakdown.shippingAmount,
+      taxable_amount: financialBreakdown.taxableAmount,
+      tax_amount: financialBreakdown.taxAmount,
+      tax_applies_to_shipping: financialBreakdown.taxAppliesToShipping,
+      tax_name: financialBreakdown.taxName,
+      tax_rate: financialBreakdown.taxRate,
+      prices_include_tax: financialBreakdown.pricesIncludeTax,
+      total_amount: financialBreakdown.totalAmount,
       items: items as Json,
-      subtotal: Number(Math.max(0, subtotal - discountAmount).toFixed(2)),
+      subtotal: financialBreakdown.discountedSubtotalAmount,
       total,
       coupon_id: couponResult?.ok ? couponResult.coupon.id : null,
       coupon_code: couponResult?.ok ? couponResult.coupon.code : null,
@@ -1218,11 +1245,11 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
-  const taxCalculation = await calculatePublicTaxForStore({
+  const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
-    shippingFee: deliverySelection.deliveryFee,
+    shippingAmount: deliverySelection.deliveryFee,
     storeId: store.id,
-    subtotal
+    subtotalAmount: subtotal
   });
 
   const persisted = await persistStorefrontOrderDraft({
@@ -1238,7 +1265,7 @@ export async function createPublicStoreOrderDraftAction(
     deliveryFee: deliverySelection.deliveryFee,
     deliveryMethod: deliverySelection.deliveryMethod,
     shippingMethod,
-    taxCalculation,
+    financialBreakdown,
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     subtotal,

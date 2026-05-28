@@ -191,7 +191,7 @@ async function loadTrackedOrder({
   const { data: rawOrders } = await admin
     .from("orders" as never)
     .select(
-      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, currency, order_status, payment_status, created_at"
+      "id, store_id, store_instance_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, total_amount, currency, order_status, payment_status, created_at"
     )
     .eq("customer_phone" as never, phone as never)
     .order("created_at" as never, { ascending: false } as never)
@@ -209,6 +209,7 @@ async function loadTrackedOrder({
     store_id: string | null;
     store_instance_id: string | null;
     total: number | string;
+    total_amount?: number | string | null;
   }>;
   const order = orders.find((row) => {
     const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
@@ -239,7 +240,7 @@ async function loadTrackedOrder({
         items,
         order_status: order.order_status ?? "draft",
         payment_status: order.payment_status ?? "pending",
-        total: order.total
+        total: order.total_amount ?? order.total
       },
       reason: null,
       storeTitle: preview.store.title
@@ -248,7 +249,7 @@ async function loadTrackedOrder({
 
   const { data: rawStoreOrders } = await admin
     .from("store_orders")
-    .select("id, store_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, order_status, payment_status, created_at")
+    .select("id, store_id, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, total_amount, order_status, payment_status, created_at")
     .eq("store_id", preview.store.id)
     .eq("customer_phone", phone)
     .order("created_at", { ascending: false })
@@ -263,6 +264,7 @@ async function loadTrackedOrder({
     order_status: string | null;
     payment_status: string | null;
     total: number | string;
+    total_amount?: number | string | null;
   }>).find((row) => referenceMatches(row.id, reference));
 
   if (storeOrder) {
@@ -277,7 +279,7 @@ async function loadTrackedOrder({
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
         payment_status: storeOrder.payment_status ?? "pending",
-        total: storeOrder.total
+        total: storeOrder.total_amount ?? storeOrder.total
       },
       reason: null,
       storeTitle: preview.store.title

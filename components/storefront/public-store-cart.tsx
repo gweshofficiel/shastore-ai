@@ -7,7 +7,7 @@ import {
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
 import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
-import { calculateTax, type PublicTaxSettings } from "@/lib/tax-calculation";
+import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CartItem = {
@@ -722,13 +722,13 @@ export function CartPageClient({
     : deliveryMethod === "delivery"
       ? deliverySettings.deliveryFee ?? 0
       : 0;
-  const taxCalculation = calculateTax({
+  const financialBreakdown = calculateCheckoutFinancials({
     discountAmount,
-    shippingFee: selectedDeliveryFee,
-    subtotal: total,
+    shippingAmount: selectedDeliveryFee,
+    subtotalAmount: total,
     taxSettings
   });
-  const finalTotal = taxCalculation.total;
+  const finalTotal = financialBreakdown.totalAmount;
 
   useEffect(() => {
     setAppliedCoupon(null);
@@ -1112,10 +1112,10 @@ export function CartPageClient({
           {taxSettings?.taxEnabled ? (
             <div className="flex justify-between">
               <span>
-                {taxCalculation.taxName ?? taxSettings.taxName} ({taxCalculation.taxRate}%)
-                {taxCalculation.pricesIncludeTax ? " included" : ""}
+                {financialBreakdown.taxName ?? taxSettings.taxName} ({financialBreakdown.taxRate}%)
+                {financialBreakdown.pricesIncludeTax ? " included" : ""}
               </span>
-              <span>{formatMoney(taxCalculation.taxAmount, currency)}</span>
+              <span>{formatMoney(financialBreakdown.taxAmount, currency)}</span>
             </div>
           ) : null}
           <div className="flex justify-between text-lg font-black text-ink">

@@ -199,7 +199,7 @@ async function loadPublicOrderConfirmation({
       const { data, error } = await admin
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, total, currency, order_status, payment_status"
+          "id, store_id, store_instance_id, customer_name, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, total, total_amount, currency, order_status, payment_status"
         )
         .eq("id" as never, orderId as never)
         .maybeSingle();
@@ -220,6 +220,7 @@ async function loadPublicOrderConfirmation({
           tax_name?: string | null;
           tax_rate?: number | string | null;
           total: number | string;
+          total_amount?: number | string | null;
         };
         const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
 
@@ -260,7 +261,7 @@ async function loadPublicOrderConfirmation({
               tax_name: row.tax_name ?? null,
               tax_rate: row.tax_rate ?? 0,
               prices_include_tax: Boolean(row.prices_include_tax),
-              total: row.total
+              total: row.total_amount ?? row.total
             },
             reason: null,
             storeTitle: preview.store.title,
@@ -273,7 +274,7 @@ async function loadPublicOrderConfirmation({
     if (source === "store_orders") {
       const { data, error } = await admin
         .from("store_orders")
-        .select("id, store_id, customer_name, delivery_method, delivery_fee, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, order_status, payment_status")
+        .select("id, store_id, customer_name, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, total_amount, order_status, payment_status")
         .eq("id", orderId)
         .eq("store_id", preview.store.id)
         .maybeSingle();
@@ -292,6 +293,7 @@ async function loadPublicOrderConfirmation({
           tax_name?: string | null;
           tax_rate?: number | string | null;
           total: number | string;
+          total_amount?: number | string | null;
         };
 
         return {
@@ -310,7 +312,7 @@ async function loadPublicOrderConfirmation({
             tax_name: row.tax_name ?? null,
             tax_rate: row.tax_rate ?? 0,
             prices_include_tax: Boolean(row.prices_include_tax),
-            total: row.total
+            total: row.total_amount ?? row.total
           },
           reason: null,
           storeTitle: preview.store.title,

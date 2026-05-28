@@ -1,4 +1,10 @@
-import { calculateTax, type PublicTaxSettings, type TaxCalculation } from "@/lib/tax-calculation";
+import {
+  calculateCheckoutFinancials,
+  calculateTax,
+  type CheckoutFinancialBreakdown,
+  type PublicTaxSettings,
+  type TaxCalculation
+} from "@/lib/checkout-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type TaxSettingsRow = {
@@ -71,4 +77,23 @@ export async function calculatePublicTaxForStore({
   });
 }
 
-export type { PublicTaxSettings, TaxCalculation };
+export async function calculatePublicCheckoutFinancialsForStore({
+  discountAmount,
+  shippingAmount,
+  storeId,
+  subtotalAmount
+}: {
+  discountAmount: number;
+  shippingAmount: number;
+  storeId: string;
+  subtotalAmount: number;
+}): Promise<CheckoutFinancialBreakdown> {
+  return calculateCheckoutFinancials({
+    discountAmount,
+    shippingAmount,
+    subtotalAmount,
+    taxSettings: await getPublicTaxSettingsForStore(storeId)
+  });
+}
+
+export type { CheckoutFinancialBreakdown, PublicTaxSettings, TaxCalculation };
