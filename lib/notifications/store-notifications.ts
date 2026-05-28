@@ -80,7 +80,7 @@ async function resolveStoreNotificationTarget(
 ) {
   const { data, error } = await supabase
     .from("stores" as never)
-    .select("id, name, title, user_id, owner_user_id, workspace_id")
+    .select("id, name, user_id, owner_user_id, workspace_id")
     .eq("id" as never, storeId as never)
     .maybeSingle();
 
@@ -96,7 +96,6 @@ async function resolveStoreNotificationTarget(
     id: string;
     name?: string | null;
     owner_user_id?: string | null;
-    title?: string | null;
     user_id?: string | null;
     workspace_id?: string | null;
   } | null;
@@ -108,7 +107,7 @@ async function resolveStoreNotificationTarget(
   }
 
   return {
-    storeName: store.title ?? store.name ?? "Store",
+    storeName: store.name ?? "Store",
     userId,
     workspaceId: workspaceId ?? store.workspace_id ?? userId
   };
