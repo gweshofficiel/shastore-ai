@@ -501,7 +501,7 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
         (product.inventoryStatus === "out_of_stock" || selectedStockQuantity <= 0);
   const isAddToCartDisabled = isOutOfStock || selectedAvailability.blocked;
   const stockMessage = isOutOfStock
-    ? "غير متوفر في المخزون"
+    ? "Out of stock"
     : selectedAvailability.blocked
       ? selectedAvailability.message ?? "This product is out of stock or quantity is not available."
       : selectedAvailability.availableStock !== null &&
