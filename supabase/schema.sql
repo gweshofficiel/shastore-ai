@@ -208,6 +208,28 @@ create table store_orders (
   updated_at timestamptz not null default now()
 );
 
+create table customers (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid references stores(id) on delete cascade,
+  store_instance_id uuid references stores(id) on delete cascade,
+  workspace_id uuid,
+  name text not null,
+  phone text,
+  email text,
+  normalized_phone text,
+  normalized_email text,
+  status text not null default 'active',
+  total_orders integer not null default 0,
+  total_spent numeric(12, 2) not null default 0,
+  first_order_at timestamptz,
+  last_order_at timestamptz,
+  last_order_id uuid,
+  notes text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table published_stores (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null unique references stores(id) on delete cascade,
@@ -328,6 +350,7 @@ alter table store_products enable row level security;
 alter table store_templates enable row level security;
 alter table store_theme_settings enable row level security;
 alter table store_orders enable row level security;
+alter table customers enable row level security;
 alter table published_stores enable row level security;
 alter table templates enable row level security;
 alter table landings enable row level security;
@@ -406,6 +429,10 @@ create index store_orders_store_instance_id_idx on store_orders(store_instance_i
 create index store_orders_workspace_created_idx on store_orders(workspace_id, created_at desc);
 create index store_orders_fulfillment_status_idx on store_orders(workspace_id, fulfillment_status, created_at desc);
 create index store_orders_fulfilled_at_idx on store_orders(workspace_id, fulfilled_at desc);
+create index customers_workspace_store_idx on customers(workspace_id, store_id, updated_at desc);
+create index customers_last_order_idx on customers(workspace_id, store_id, last_order_at desc);
+create unique index customers_store_phone_unique_idx on customers(workspace_id, store_id, normalized_phone) where normalized_phone is not null;
+create unique index customers_store_email_unique_idx on customers(workspace_id, store_id, normalized_email) where normalized_email is not null;
 create index landings_user_id_idx on landings(user_id);
 create index generations_user_id_idx on generations(user_id);
 create index domains_user_id_idx on domains(user_id);

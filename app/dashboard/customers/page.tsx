@@ -4,56 +4,51 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 
 export const dynamic = "force-dynamic";
 
 const customersPath = "/dashboard/customers";
 
-type OwnedStore = {
-  access_role?: string | null;
-  id: string;
-  internal_slug?: string | null;
-  store_name?: string | null;
-};
-
 type CustomerRow = {
   created_at: string;
-  customer_reference?: string | null;
   email?: string | null;
+  first_order_at?: string | null;
   id: string;
+  last_order_at?: string | null;
+  last_order_id?: string | null;
   name: string;
   notes?: string | null;
   phone?: string | null;
-  store_instance_id: string;
+  status?: string | null;
+  store_id: string;
+  store_instance_id?: string | null;
+  total_orders?: number | null;
+  total_spent?: number | string | null;
   updated_at: string;
+  workspace_id?: string | null;
 };
 
 type OrderRow = {
   created_at: string;
-  currency: string;
   customer_email?: string | null;
-  customer_reference?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   id: string;
-  order_number: string;
   order_status: string;
   payment_status: string;
+  source: "orders" | "store_orders";
   total: number | string;
 };
 
-type CustomerSummary = CustomerRow & {
-  lastOrderAt: string | null;
-  orderCount: number;
-  totalSpent: number;
-};
-
 type CustomersDashboardData = {
-  activeStore: OwnedStore | null;
+  activeStore: UserStoreRow | null;
   customerOrders: OrderRow[];
-  customers: CustomerSummary[];
+  customers: CustomerRow[];
   error: string | null;
   schemaIssue: string | null;
-  selectedCustomer: CustomerSummary | null;
-  stores: OwnedStore[];
+  selectedCustomer: CustomerRow | null;
+  stores: UserStoreRow[];
 };
 
 function isMissingCustomersFoundation(error: { code?: string; message?: string } | null) {
@@ -61,7 +56,6 @@ function isMissingCustomersFoundation(error: { code?: string; message?: string }
   return (
     error?.code === "PGRST202" ||
     error?.code === "PGRST205" ||
-    message.includes("get_claimed_store_instances_for_current_user") ||
     message.includes("customers") ||
     message.includes("orders") ||
     message.includes("could not find")
@@ -109,7 +103,7 @@ function customerHref(
 ) {
   const search = new URLSearchParams({
     customerId: customer.id,
-    storeId: params.storeId ?? customer.store_instance_id
+    storeId: params.storeId ?? customer.store_id
   });
 
   if (params.q) {
@@ -119,14 +113,22 @@ function customerHref(
   return `${customersPath}?${search.toString()}`;
 }
 
+function customerDetailPath(customerId: string, storeId: string) {
+  return `/dashboard/customers/${customerId}?storeId=${storeId}`;
+}
+
+function normalizePhone(value: string | null | undefined) {
+  return (value ?? "").replace(/[^0-9+]/g, "");
+}
+
 function matchesCustomer(order: OrderRow, customer: CustomerRow) {
-  const customerReference = customer.customer_reference?.trim().toLowerCase();
-  const customerEmail = customer.email?.trim().toLowerCase();
-  const orderReference = order.customer_reference?.trim().toLowerCase();
-  const orderEmail = order.customer_email?.trim().toLowerCase();
+  const customerEmail = customer.email?.trim().toLowerCase() ?? "";
+  const orderEmail = order.customer_email?.trim().toLowerCase() ?? "";
+  const customerPhone = normalizePhone(customer.phone);
+  const orderPhone = normalizePhone(order.customer_phone);
 
   return Boolean(
-    (customerReference && orderReference && customerReference === orderReference) ||
+    (customerPhone && orderPhone && customerPhone === orderPhone) ||
       (customerEmail && orderEmail && customerEmail === orderEmail)
   );
 }
@@ -170,29 +172,21 @@ async function getCustomersDashboardData({
     };
   }
 
-  const { data: claimedStores, error: claimedError } = await supabase.rpc(
-    "get_claimed_store_instances_for_current_user" as never
-  );
+  const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+  const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id, workspaceId);
 
-  if (claimedError) {
+  if (storesError) {
     return {
       activeStore: null,
       customerOrders: [],
       customers: [],
-      error: isMissingCustomersFoundation(claimedError)
-        ? null
-        : "Owned stores could not be loaded. Please try again.",
-      schemaIssue: isMissingCustomersFoundation(claimedError)
-        ? "Missing ownership foundation: run the buyer activation and account claim migrations first."
-        : null,
+      error: "Stores could not be loaded. Please try again.",
+      schemaIssue: null,
       selectedCustomer: null,
       stores: []
     };
   }
 
-  const stores = ((claimedStores ?? []) as OwnedStore[]).filter(
-    (store) => !store.access_role || store.access_role === "owner" || store.access_role === "admin"
-  );
   const activeStore = stores.find((store) => store.id === storeId) ?? stores[0] ?? null;
 
   if (!activeStore) {
@@ -207,24 +201,36 @@ async function getCustomersDashboardData({
     };
   }
 
-  const [{ data: customerRows, error: customersError }, { data: orderRows, error: ordersError }] =
-    await Promise.all([
-      supabase
-        .from("customers" as never)
-        .select("id, store_instance_id, customer_reference, name, email, phone, notes, created_at, updated_at")
-        .eq("store_instance_id", activeStore.id)
-        .order("updated_at", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("orders" as never)
-        .select("id, order_number, customer_reference, customer_email, order_status, payment_status, currency, total, created_at")
-        .eq("store_instance_id", activeStore.id)
-        .order("created_at", { ascending: false })
-        .limit(150)
-    ]);
+  const [
+    { data: customerRows, error: customersError },
+    { data: storeOrderRows, error: storeOrdersError },
+    { data: draftOrderRows, error: draftOrdersError }
+  ] = await Promise.all([
+    supabase
+      .from("customers" as never)
+      .select("id, workspace_id, store_id, store_instance_id, name, email, phone, status, total_orders, total_spent, first_order_at, last_order_at, last_order_id, notes, created_at, updated_at")
+      .eq("workspace_id" as never, workspaceId as never)
+      .eq("store_id" as never, activeStore.id as never)
+      .order("last_order_at" as never, { ascending: false } as never)
+      .order("updated_at" as never, { ascending: false } as never),
+    supabase
+      .from("store_orders")
+      .select("id, customer_name, customer_phone, customer_email, order_status, payment_status, total, created_at")
+      .eq("workspace_id" as never, workspaceId as never)
+      .eq("store_id", activeStore.id)
+      .order("created_at", { ascending: false })
+      .limit(150),
+    supabase
+      .from("orders" as never)
+      .select("id, customer_name, customer_phone, customer_email, order_status, payment_status, total, created_at")
+      .eq("workspace_id" as never, workspaceId as never)
+      .or(`store_id.eq.${activeStore.id},store_instance_id.eq.${activeStore.id}` as never)
+      .order("created_at" as never, { ascending: false } as never)
+      .limit(150)
+  ]);
 
-  if (customersError || ordersError) {
-    const firstError = customersError ?? ordersError;
+  if (customersError || storeOrdersError || draftOrdersError) {
+    const firstError = customersError ?? storeOrdersError ?? draftOrdersError;
     return {
       activeStore,
       customerOrders: [],
@@ -233,14 +239,23 @@ async function getCustomersDashboardData({
         ? null
         : "Customers could not be loaded. Please try again.",
       schemaIssue: firstError && isMissingCustomersFoundation(firstError)
-        ? "Missing customers or orders foundation: run the store owner customers migration after the orders migration."
+        ? "Missing customers foundation: run the store customers migration after the order migrations."
         : null,
       selectedCustomer: null,
       stores
     };
   }
 
-  const orders = (orderRows ?? []) as unknown as OrderRow[];
+  const orders = [
+    ...((storeOrderRows ?? []) as unknown as Omit<OrderRow, "source">[]).map((order) => ({
+      ...order,
+      source: "store_orders" as const
+    })),
+    ...((draftOrderRows ?? []) as unknown as Omit<OrderRow, "source">[]).map((order) => ({
+      ...order,
+      source: "orders" as const
+    }))
+  ];
   const normalizedQuery = query.trim().toLowerCase();
   const customers = ((customerRows ?? []) as unknown as CustomerRow[])
     .filter((customer) => {
@@ -248,22 +263,9 @@ async function getCustomersDashboardData({
         return true;
       }
 
-      return [customer.name, customer.email, customer.phone, customer.customer_reference]
+      return [customer.name, customer.email, customer.phone, customer.status]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalizedQuery));
-    })
-    .map((customer) => {
-      const matchingOrders = orders.filter((order) => matchesCustomer(order, customer));
-
-      return {
-        ...customer,
-        lastOrderAt: matchingOrders[0]?.created_at ?? null,
-        orderCount: matchingOrders.length,
-        totalSpent: matchingOrders.reduce(
-          (total, order) => total + numericValue(order.total),
-          0
-        )
-      };
     });
   const selectedCustomer =
     customers.find((customer) => customer.id === customerId) ?? customers[0] ?? null;
@@ -310,7 +312,7 @@ export default async function CustomersPage({
       return (
         <div className="grid gap-6 lg:gap-8">
           <PageHeader
-            description="Customer access is assigned by workspace role."
+            description="Store-scoped customers created from real order history."
             title="Customers"
           />
           <Card className="border-amber-200 bg-amber-50 p-5">
@@ -352,11 +354,10 @@ export default async function CustomersPage({
       {!schemaIssue && stores.length === 0 ? (
         <Card className="p-8 text-center">
           <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-            No claimed stores yet
+            No stores yet
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-            Customers are scoped by store instance. Claim a store before reviewing
-            customer records.
+            Customers are scoped by workspace stores. Create a store before reviewing customer records.
           </p>
         </Card>
       ) : null}
@@ -366,13 +367,13 @@ export default async function CustomersPage({
           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Active Store
+                Active store
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-                {activeStore.store_name || activeStore.internal_slug || "Claimed store"}
+                {activeStore.name || activeStore.store_name || "Store"}
               </h2>
               <p className="mt-1 text-sm text-muted">
-                Only customers for this store instance are visible.
+                Only customers for this store are visible.
               </p>
             </div>
             <form className="flex flex-col gap-3 sm:min-w-[260px]" method="get">
@@ -385,7 +386,7 @@ export default async function CustomersPage({
                 >
                   {stores.map((store) => (
                     <option key={store.id} value={store.id}>
-                      {store.store_name || store.internal_slug || store.id}
+                      {store.name || store.store_name || store.id}
                     </option>
                   ))}
                 </select>
@@ -403,7 +404,7 @@ export default async function CustomersPage({
               id="q"
               label="Search customers"
               name="q"
-              placeholder="Search by name, email, phone, reference"
+                placeholder="Search by name, email, phone, status"
             />
             <Button type="submit">Search</Button>
           </form>
@@ -431,14 +432,14 @@ export default async function CustomersPage({
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        {customer.orderCount} orders
+                        {customer.total_orders ?? 0} orders
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                        Last order {formatDate(customer.lastOrderAt)}
+                        Last order {formatDate(customer.last_order_at ?? null)}
                       </span>
-                      {customer.customer_reference ? (
+                      {customer.status ? (
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-                          {customer.customer_reference}
+                          {customer.status}
                         </span>
                       ) : null}
                     </div>
@@ -447,7 +448,7 @@ export default async function CustomersPage({
                     <div className="text-right">
                       <p className="text-sm font-bold text-muted">Total spent</p>
                       <p className="text-xl font-black text-ink">
-                        {formatMoney(customer.totalSpent)}
+                        {formatMoney(customer.total_spent ?? 0)}
                       </p>
                     </div>
                     <ButtonLink
@@ -459,6 +460,9 @@ export default async function CustomersPage({
                     >
                       Details
                     </ButtonLink>
+                    <ButtonLink href={customerDetailPath(customer.id, activeStore.id)} variant="secondary">
+                      Open
+                    </ButtonLink>
                   </div>
                 </Card>
               ))
@@ -468,8 +472,7 @@ export default async function CustomersPage({
                   No customers yet
                 </h2>
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-                  Customer records will appear here once customer capture is connected to
-                  this foundation.
+                  Customer records will appear here after real orders create customer profiles.
                 </p>
               </Card>
             )}
@@ -496,10 +499,10 @@ export default async function CustomersPage({
                   <div className="grid gap-3 text-sm">
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                        Customer Reference
+                        Customer status
                       </p>
                       <p className="mt-1 font-black text-ink">
-                        {selectedCustomer.customer_reference || "Not set"}
+                        {selectedCustomer.status || "active"}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -508,7 +511,7 @@ export default async function CustomersPage({
                           Orders
                         </p>
                         <p className="mt-1 font-black text-ink">
-                          {selectedCustomer.orderCount}
+                          {selectedCustomer.total_orders ?? 0}
                         </p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-4">
@@ -516,7 +519,7 @@ export default async function CustomersPage({
                           Total
                         </p>
                         <p className="mt-1 font-black text-ink">
-                          {formatMoney(selectedCustomer.totalSpent)}
+                          {formatMoney(selectedCustomer.total_spent ?? 0)}
                         </p>
                       </div>
                     </div>
@@ -544,14 +547,14 @@ export default async function CustomersPage({
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
                                 <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                                  {order.order_number}
+                                  {order.id.slice(0, 8).toUpperCase()}
                                 </p>
                                 <p className="mt-2 font-black text-ink">
-                                  {formatMoney(order.total, order.currency)}
+                                  {formatMoney(order.total)}
                                 </p>
                               </div>
                               <ButtonLink
-                                href={`/dashboard/orders?storeId=${activeStore.id}&orderId=${order.id}`}
+                                href={`/dashboard/orders/${order.id}?source=${order.source}`}
                                 variant="secondary"
                               >
                                 Open
