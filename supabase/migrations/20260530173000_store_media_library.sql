@@ -21,6 +21,7 @@ create table if not exists public.store_media (
 
 alter table public.store_media
   add column if not exists workspace_id uuid,
+  add column if not exists store_instance_id uuid,
   add column if not exists store_id uuid references public.stores(id) on delete cascade,
   add column if not exists file_name text,
   add column if not exists file_url text,
@@ -32,6 +33,9 @@ alter table public.store_media
   add column if not exists created_by uuid references auth.users(id) on delete set null,
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
+
+alter table public.store_media
+  alter column store_instance_id drop not null;
 
 create unique index if not exists store_media_storage_key_unique_idx
 on public.store_media(storage_key);

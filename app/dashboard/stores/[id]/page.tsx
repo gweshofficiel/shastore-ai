@@ -406,6 +406,7 @@ export default async function StoreDraftPage({
     theme?: string;
     themeError?: string;
     media?: string;
+    mediaError?: string;
     publication?: string;
     catalog?: string;
     domain?: string;
@@ -4537,6 +4538,11 @@ export default async function StoreDraftPage({
                     ? "Use an image file up to 8MB."
                     : "Media action could not be completed."}
           </p>
+          {query.mediaError ? (
+            <p className="mt-2 text-sm font-semibold text-amber-900">
+              {query.mediaError}
+            </p>
+          ) : null}
         </Card>
       ) : null}
       {query.publication === "saved" ? (

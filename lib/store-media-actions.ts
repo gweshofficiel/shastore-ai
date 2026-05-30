@@ -27,6 +27,25 @@ function mediaRedirect(storeId: string, status: string): never {
   redirect(`/dashboard/stores/${encodeURIComponent(storeId)}?media=${encodeURIComponent(status)}#media-library`);
 }
 
+function mediaFailureRedirect(
+  storeId: string,
+  status: string,
+  error: { code?: string | null; details?: string | null; hint?: string | null; message?: string | null }
+): never {
+  const message = error.message || "Media action failed.";
+  console.error("[media-library] action failed", {
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+    message,
+    status,
+    storeId
+  });
+  redirect(
+    `/dashboard/stores/${encodeURIComponent(storeId)}?media=${encodeURIComponent(status)}&mediaError=${encodeURIComponent(message.slice(0, 280))}#media-library`
+  );
+}
+
 function safeExtension(fileName: string) {
   return fileName.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
 }
@@ -134,7 +153,7 @@ export async function uploadStoreMediaAction(formData: FormData) {
       storageKey,
       storeId
     });
-    mediaRedirect(storeId, "upload-failed");
+    mediaFailureRedirect(storeId, "upload-failed", uploadError);
   }
 
   const {
@@ -161,13 +180,7 @@ export async function uploadStoreMediaAction(formData: FormData) {
 
   if (insertError) {
     await supabase.storage.from(mediaBucket).remove([storageKey]);
-    console.error("[media-library] metadata insert failed", {
-      code: insertError.code,
-      message: insertError.message,
-      storageKey,
-      storeId
-    });
-    mediaRedirect(storeId, "save-failed");
+    mediaFailureRedirect(storeId, "save-failed", insertError);
   }
 
   await recordMediaLog({
@@ -200,7 +213,7 @@ export async function deleteStoreMediaAction(formData: FormData) {
     .maybeSingle();
 
   if (mediaError || !media) {
-    mediaRedirect(storeId, "delete-failed");
+    mediaFailureRedirect(storeId, "delete-failed", mediaError ?? { message: "Media record was not found." });
   }
 
   const mediaRecord = media as { file_url?: string | null; id: string; storage_key?: string | null };
@@ -234,13 +247,7 @@ export async function deleteStoreMediaAction(formData: FormData) {
     .eq("workspace_id" as never, workspaceId as never);
 
   if (deleteError) {
-    console.error("[media-library] metadata delete failed", {
-      code: deleteError.code,
-      mediaId,
-      message: deleteError.message,
-      storeId
-    });
-    mediaRedirect(storeId, "delete-failed");
+    mediaFailureRedirect(storeId, "delete-failed", deleteError);
   }
 
   await recordMediaLog({ action: "deleted", mediaId, storeId, workspaceId });
