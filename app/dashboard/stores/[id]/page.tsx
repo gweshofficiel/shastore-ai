@@ -75,6 +75,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeStoreThemeSettings } from "@/lib/store-theme";
 import {
+  activateStoreThemeAction,
+  publishStoreThemeAction,
+  selectStoreThemeAction
+} from "@/lib/store-theme-selection-actions";
+import {
+  getStoreThemePreset,
+  storeThemePresets
+} from "@/lib/store-theme-selection";
+import {
   addManagedStoreDomain,
   createManagedMediaFolder,
   inviteManagedStoreStaff,
@@ -4243,7 +4252,7 @@ export default async function StoreDraftPage({
     );
   }
 
-  const [{ data: categories }, { data: products }, { data: themeRow }] = await Promise.all([
+  const [{ data: categories }, { data: products }, { data: themeRow }, { data: themeRows }] = await Promise.all([
     supabase
       .from("store_categories")
       .select("id, name, description, image_url, sort_order")
@@ -4261,7 +4270,13 @@ export default async function StoreDraftPage({
       .select("settings")
       .eq("store_id", store.id)
       .eq("user_id", user.id)
-      .maybeSingle()
+      .maybeSingle(),
+    supabase
+      .from("store_themes" as never)
+      .select("id, theme_key, status, is_active, published_at, updated_at")
+      .eq("store_id" as never, store.id as never)
+      .order("is_active", { ascending: false })
+      .order("updated_at", { ascending: false })
   ]);
   const catalogProducts = (products ?? []) as unknown as Array<{
     category_id: string | null;
@@ -4276,6 +4291,22 @@ export default async function StoreDraftPage({
     track_inventory?: boolean | null;
   }>;
   const themeSettings = normalizeStoreThemeSettings(themeRow?.settings);
+  const themeSelectionRows = Array.isArray(themeRows)
+    ? (themeRows as Array<{
+        id: string;
+        is_active?: boolean | null;
+        published_at?: string | null;
+        status?: string | null;
+        theme_key?: string | null;
+        updated_at?: string | null;
+      }>)
+    : [];
+  const activeSelectionTheme =
+    themeSelectionRows.find((theme) => theme.is_active) ?? null;
+  const currentThemePreset = getStoreThemePreset(activeSelectionTheme?.theme_key);
+  const themeSelectionByKey = new Map(
+    themeSelectionRows.map((theme) => [theme.theme_key ?? "", theme])
+  );
   const { data: rawPublication } = await supabase
     .from("published_stores")
     .select("*")
@@ -4411,6 +4442,26 @@ export default async function StoreDraftPage({
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
             Store theme reset to defaults.
+          </p>
+        </Card>
+      ) : null}
+      {query.theme === "selected" || query.theme === "published" || query.theme === "activated" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            {query.theme === "selected"
+              ? "Theme selected as a draft for this store."
+              : query.theme === "published"
+                ? "Theme published and ready to activate."
+                : "Theme activated for the public storefront."}
+          </p>
+        </Card>
+      ) : null}
+      {query.theme === "save-failed" || query.theme === "not-authorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">
+            {query.theme === "not-authorized"
+              ? "You do not have permission to manage themes for this store."
+              : "Theme selection could not be saved. Confirm the theme selection migration is applied."}
           </p>
         </Card>
       ) : null}
@@ -5077,6 +5128,96 @@ export default async function StoreDraftPage({
             <input name="domainIntent" type="hidden" value="verify" />
           </form>
         ) : null}
+      </Card>
+
+      <Card className="p-5 lg:p-6" id="themes">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Themes
+            </p>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Select storefront theme
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Choose, publish, and activate one theme for this store. Theme records are scoped by
+              store and workspace, so switching this store does not affect any other storefront.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Current Theme
+            </p>
+            <p className="mt-2 text-lg font-black text-ink">{currentThemePreset.name}</p>
+            <p className="mt-1 text-sm font-bold text-muted">
+              Status: {activeSelectionTheme ? "Active" : "Default fallback"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {storeThemePresets.map((preset) => {
+            const row = themeSelectionByKey.get(preset.themeKey);
+            const isActive = row?.is_active === true;
+            const status = isActive ? "active" : row?.status ?? "draft";
+
+            return (
+              <div
+                className={`flex flex-col overflow-hidden rounded-[2rem] border bg-white shadow-sm ${
+                  isActive ? "border-emerald-300 ring-4 ring-emerald-50" : "border-slate-200"
+                }`}
+                key={preset.themeKey}
+              >
+                <div className={`h-32 bg-gradient-to-br ${preset.previewClassName}`} />
+                <div className="flex flex-1 flex-col p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-black tracking-[-0.02em] text-ink">
+                        {preset.name}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-muted">{preset.description}</p>
+                    </div>
+                    {isActive ? (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                        Active
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted">
+                      {status}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-muted">
+                      {preset.layoutKey}
+                    </span>
+                  </div>
+                  <div className="mt-auto grid gap-2 pt-5">
+                    <form action={selectStoreThemeAction}>
+                      <input name="storeId" type="hidden" value={store.id} />
+                      <input name="themeKey" type="hidden" value={preset.themeKey} />
+                      <Button disabled={protectedActionsBlocked} type="submit" variant="ghost">
+                        Select Theme
+                      </Button>
+                    </form>
+                    <form action={publishStoreThemeAction}>
+                      <input name="storeId" type="hidden" value={store.id} />
+                      <input name="themeKey" type="hidden" value={preset.themeKey} />
+                      <Button disabled={protectedActionsBlocked} type="submit" variant="secondary">
+                        Publish Theme
+                      </Button>
+                    </form>
+                    <form action={activateStoreThemeAction}>
+                      <input name="storeId" type="hidden" value={store.id} />
+                      <input name="themeKey" type="hidden" value={preset.themeKey} />
+                      <Button disabled={protectedActionsBlocked || isActive} type="submit">
+                        Activate Theme
+                      </Button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Card>
 
       <Card className="p-5 lg:p-6">
