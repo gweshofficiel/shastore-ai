@@ -7,6 +7,10 @@ import {
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
+import {
+  buildPublicProductSections,
+  isPublicCategoryTitle
+} from "@/lib/storefront/catalog-sections";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
   getCurrentStoreContext,
@@ -193,23 +197,10 @@ export default async function PublicStorePage({
 
   const { branding, products, store } = preview;
   const theme = preview.themeSettings;
-  const categorizedProductIds = new Set<string>();
-  const categorySections = preview.categories.map((category) => {
-    const categoryProducts = products.filter((product) => {
-      const matchesCategory =
-        product.categoryId === category.id ||
-        (!product.categoryId && product.categoryName === category.name);
-
-      if (matchesCategory) {
-        categorizedProductIds.add(product.id);
-      }
-
-      return matchesCategory;
-    });
-
-    return { category, products: categoryProducts };
+  const productSections = buildPublicProductSections({
+    categories: preview.categories,
+    products
   });
-  const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
   const supportEmail = store.supportEmail?.trim() || null;
   const supportPhoneHref = phoneHref(store.supportPhone);
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
@@ -229,38 +220,6 @@ export default async function PublicStorePage({
       store.freeDeliveryThreshold !== null ||
       store.deliveryNotes
   );
-  const productSections = categorySections.length
-    ? [
-        ...categorySections,
-        ...(uncategorizedProducts.length
-          ? [
-              {
-                category: {
-                  description: "Products that are not assigned to a category yet.",
-                  id: "uncategorized",
-                  imageUrl: null,
-                  name: "More products",
-                  slug: null,
-                  status: "active"
-                },
-                products: uncategorizedProducts
-              }
-            ]
-          : [])
-      ]
-    : [
-        {
-          category: {
-            description: "Products shown here are published products scoped to this store only.",
-            id: "featured",
-            imageUrl: null,
-            name: "Featured products",
-            slug: null,
-            status: "active"
-          },
-          products
-        }
-      ];
   const heroBackground = theme.bannerImageUrl
     ? `linear-gradient(135deg, ${branding.primaryColor}cc, ${branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, ${branding.secondaryColor})`;
@@ -335,7 +294,7 @@ export default async function PublicStorePage({
             </p>
           </div>
 
-          {products.length || preview.categories.length ? (
+          {products.length ? (
             <div className="grid gap-8">
               {productSections.map((section) => (
                 <div className="grid gap-5" key={section.category.id}>
@@ -357,12 +316,11 @@ export default async function PublicStorePage({
                     )}
                     <p className="text-sm leading-6 text-muted">
                       {section.category.description ||
-                        "Products assigned to this category will appear here."}
+                        "Browse products in this category."}
                     </p>
                   </div>
-                  {section.products.length ? (
-                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                      {section.products.map((product) => {
+                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                    {section.products.map((product) => {
                 const whatsappHref = whatsappProductHref(
                   store.whatsappNumber,
                   store.title,
@@ -395,7 +353,9 @@ export default async function PublicStorePage({
                             className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
                             style={{ backgroundColor: branding.primaryColor }}
                           >
-                            {product.categoryName ?? "Product"}
+                            {isPublicCategoryTitle(product.categoryName)
+                              ? product.categoryName
+                              : "Product"}
                           </span>
                         </div>
                       )}
@@ -413,7 +373,7 @@ export default async function PublicStorePage({
                       </div>
                     ) : null}
                     <div className="flex flex-1 flex-col p-5">
-                      {product.categoryName ? (
+                      {isPublicCategoryTitle(product.categoryName) ? (
                         <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                           {product.categoryName}
                         </p>
@@ -504,25 +464,15 @@ export default async function PublicStorePage({
                     </div>
                   </article>
                 );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
-                      <h4 className="text-xl font-black tracking-[-0.03em] text-ink">
-                        No products in this category yet
-                      </h4>
-                      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                        Assign products to {section.category.name} from the store dashboard.
-                      </p>
-                    </div>
-                  )}
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                Products coming soon
+                No products available yet
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
                 This store is live, but there are no active public products yet.

@@ -4,6 +4,7 @@ import { AddToCartButton, CartNavLink } from "@/components/storefront/public-sto
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -61,7 +62,7 @@ export async function generateMetadata({
 
   const category = resolveCategory(preview.categories, categorySlug);
 
-  if (!category) {
+  if (!category || !isPublicCategoryTitle(category.name)) {
     return {
       title: `Category not found | ${preview.store.title}`,
       robots: { follow: false, index: false }
@@ -114,7 +115,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
 
   const category = resolveCategory(preview.categories, categorySlug);
 
-  if (!category || category.status !== "active") {
+  if (!category || category.status !== "active" || !isPublicCategoryTitle(category.name)) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-16 text-ink sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
@@ -262,10 +263,10 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
             ) : (
               <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
                 <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                  No products in this category yet
+                  No products available yet
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                  Products assigned to this category will appear here when published.
+                  Please check back soon.
                 </p>
               </div>
             )}

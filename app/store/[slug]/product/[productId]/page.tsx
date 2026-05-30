@@ -9,6 +9,7 @@ import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
 } from "@/lib/public-storefront-preview";
+import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -318,7 +319,7 @@ export default async function PublicProductDetailPage({
                   style={{ background: heroBackground }}
                 >
                   <span className="rounded-full bg-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white backdrop-blur">
-                    {product.categoryName ?? "Product"}
+                    {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
                   </span>
                 </div>
               )}
@@ -337,7 +338,7 @@ export default async function PublicProductDetailPage({
             </div>
 
             <article className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)] sm:p-8 lg:p-10">
-              {product.categoryName ? (
+              {isPublicCategoryTitle(product.categoryName) ? (
                 <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                   {product.categoryName}
                 </p>

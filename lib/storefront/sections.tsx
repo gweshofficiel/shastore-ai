@@ -5,6 +5,10 @@ import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  buildPublicProductSections,
+  isPublicCategoryTitle
+} from "@/lib/storefront/catalog-sections";
+import {
   getVisualBuilderPayload,
   loadVisualEditorState,
   resolveBuilderSections
@@ -315,55 +319,10 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
     .filter((product) => isPublicProductStatus(product.status))
     .slice(0, config.key === "electronics-starter" ? 8 : 6);
   const theme = context.preview.themeSettings;
-  const categorizedProductIds = new Set<string>();
-  const categorySections = context.preview.categories.map((category) => {
-    const categoryProducts = products.filter((product) => {
-      const matchesCategory =
-        product.categoryId === category.id ||
-        (!product.categoryId && product.categoryName === category.name);
-
-      if (matchesCategory) {
-        categorizedProductIds.add(product.id);
-      }
-
-      return matchesCategory;
-    });
-
-    return { category, products: categoryProducts };
+  const productSections = buildPublicProductSections({
+    categories: context.preview.categories,
+    products
   });
-  const uncategorizedProducts = products.filter((product) => !categorizedProductIds.has(product.id));
-  const productSections = categorySections.length
-    ? [
-        ...categorySections,
-        ...(uncategorizedProducts.length
-          ? [
-              {
-                category: {
-                  description: "Products that are not assigned to a category yet.",
-                  id: "uncategorized",
-                  imageUrl: null,
-                  name: "More products",
-                  slug: null,
-                  status: "active"
-                },
-                products: uncategorizedProducts
-              }
-            ]
-          : [])
-      ]
-    : [
-        {
-          category: {
-            description: "Real products saved in Store Builder are shown here for this published store.",
-            id: "featured",
-            imageUrl: null,
-            name: "Featured products",
-            slug: null,
-            status: "active"
-          },
-          products
-        }
-      ];
 
   return (
     <section
@@ -404,19 +363,17 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   {section.category.name}
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  {section.category.description ||
-                    "Products assigned to this category will appear here."}
+                  {section.category.description || "Browse products in this category."}
                 </p>
               </div>
-              {section.products.length ? (
-                <div
-                  className={`grid gap-5 ${
-                    config.layout.mobileDensity === "dense"
-                      ? "grid-cols-2 lg:grid-cols-4"
-                      : "sm:grid-cols-2 lg:grid-cols-3"
-                  }`}
-                >
-                  {section.products.map((product) => {
+              <div
+                className={`grid gap-5 ${
+                  config.layout.mobileDensity === "dense"
+                    ? "grid-cols-2 lg:grid-cols-4"
+                    : "sm:grid-cols-2 lg:grid-cols-3"
+                }`}
+              >
+                {section.products.map((product) => {
             const whatsappHref = whatsappProductHref(
               context.preview.store.whatsappNumber,
               context.preview.store.title,
@@ -474,7 +431,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   </div>
                 ) : null}
                 <div className={config.layout.productCard === "spec-card" ? "p-4" : "p-5"}>
-                  {product.categoryName ? (
+                  {isPublicCategoryTitle(product.categoryName) ? (
                         <p
                           className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
                           style={{ color: context.theme.colorPalette.accent }}
@@ -576,15 +533,8 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 </div>
               </article>
             );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
-                  <h4 className="text-xl font-black tracking-[-0.03em] text-ink">
-                    No products in this category yet
-                  </h4>
-                </div>
-              )}
+                })}
+              </div>
             </div>
           ))}
         </div>
@@ -597,7 +547,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
           }`}
         >
           <h3 className="text-2xl font-black tracking-[-0.03em]">
-            Products coming soon
+            No products available yet
           </h3>
           <p className={`mx-auto mt-3 max-w-xl text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
             This published store does not have active products yet.
