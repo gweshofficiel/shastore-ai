@@ -9,6 +9,7 @@ import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
 } from "@/lib/public-storefront-preview";
+import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -259,10 +260,15 @@ export default async function PublicProductDetailPage({
   const message = reviewMessage(query.review);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-ink">
+    <main
+      className={`min-h-screen text-ink ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
+      style={{ backgroundColor: `${theme.primaryColor}08` }}
+    >
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
+          <header
+            className={`mb-5 flex flex-wrap items-center justify-between gap-4 border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur ${buttonRadiusClass(theme.buttonStyle)}`}
+          >
             <div className="flex items-center gap-3">
               {theme.logoUrl ? (
                 <img

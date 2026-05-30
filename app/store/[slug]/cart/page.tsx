@@ -5,6 +5,7 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods";
 import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -103,16 +104,31 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
     getPublicShippingMethodsForStore(preview.store.id),
     getPublicTaxSettingsForStore(preview.store.id)
   ]);
+  const theme = preview.themeSettings;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-5 text-ink sm:px-6 lg:px-8">
+    <main
+      className={`min-h-screen px-4 py-5 text-ink sm:px-6 lg:px-8 ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
+      style={{ backgroundColor: `${theme.primaryColor}08` }}
+    >
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              SHASTORE AI Store
-            </p>
-            <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
+        <header
+          className={`mb-6 flex flex-wrap items-center justify-between gap-4 border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur ${buttonRadiusClass(theme.buttonStyle)}`}
+        >
+          <div className="flex items-center gap-3">
+            {theme.logoUrl ? (
+              <img
+                alt={`${preview.store.title} logo`}
+                className="h-10 w-10 rounded-full object-cover"
+                src={theme.logoUrl}
+              />
+            ) : null}
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                SHASTORE AI Store
+              </p>
+              <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
+            </div>
           </div>
           <Link
             className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
@@ -129,6 +145,9 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
           <h1 className="mt-2 text-4xl font-black tracking-[-0.05em] text-ink">
             Review your order
           </h1>
+          <p className="mt-2 text-sm font-semibold text-muted">
+            Checkout styling follows the published theme for {preview.store.title}.
+          </p>
         </div>
 
         <CartPageClient

@@ -4,6 +4,7 @@ import { AddToCartButton, CartNavLink } from "@/components/storefront/public-sto
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -139,17 +140,35 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
       product.status === "active" &&
       (product.categoryId === category.id || (!product.categoryId && product.categoryName === category.name))
   );
+  const theme = preview.themeSettings;
+  const categoryHeroBackground = category.imageUrl
+    ? undefined
+    : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}44, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-ink">
+    <main
+      className={`min-h-screen text-ink ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
+      style={{ backgroundColor: `${theme.primaryColor}08` }}
+    >
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-full border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur">
-            <div>
+          <header
+            className={`mb-5 flex flex-wrap items-center justify-between gap-4 border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur ${buttonRadiusClass(theme.buttonStyle)}`}
+          >
+            <div className="flex items-center gap-3">
+              {theme.logoUrl ? (
+                <img
+                  alt={`${preview.store.title} logo`}
+                  className="h-10 w-10 rounded-full object-cover"
+                  src={theme.logoUrl}
+                />
+              ) : null}
+              <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                 SHASTORE AI Store
               </p>
               <p className="mt-1 text-sm font-black text-ink">{preview.store.title}</p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <CartNavLink
@@ -171,18 +190,21 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
             </div>
           </header>
 
-          <section className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)]">
+          <section
+            className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)]"
+            style={categoryHeroBackground ? { background: categoryHeroBackground } : undefined}
+          >
             {category.imageUrl ? (
               <img alt={category.name} className="max-h-80 w-full object-cover" src={category.imageUrl} />
             ) : null}
             <div className="p-8 sm:p-10">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              <p className={`text-xs font-black uppercase tracking-[0.22em] ${category.imageUrl ? "text-slate-400" : "text-white/55"}`}>
                 Category
               </p>
-              <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] text-ink sm:text-6xl">
+              <h1 className={`mt-3 text-4xl font-black tracking-[-0.05em] sm:text-6xl ${category.imageUrl ? "text-ink" : "text-white"} ${fontClass(theme.headingFont)}`}>
                 {category.name}
               </h1>
-              <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-muted">
+              <p className={`mt-4 max-w-3xl text-sm font-semibold leading-6 ${category.imageUrl ? "text-muted" : "text-white/75"}`}>
                 {category.description || "Browse products in this category."}
               </p>
             </div>

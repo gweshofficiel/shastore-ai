@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { BuyerCheckoutForm } from "@/components/commerce/buyer-checkout-form";
 import { getBuyerCheckoutSource } from "@/lib/commerce/buyer-checkout";
+import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,10 @@ export default async function BuyerCheckoutPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const [{ sourceType, slug }, query] = await Promise.all([params, searchParams]);
-  const source = await getBuyerCheckoutSource({ sourceSlug: slug, sourceType });
+  const [source, preview] = await Promise.all([
+    getBuyerCheckoutSource({ sourceSlug: slug, sourceType }),
+    sourceType === "store" ? getPublicStorefrontPreview(slug) : Promise.resolve(null)
+  ]);
 
   if (!source) {
     notFound();
@@ -29,11 +34,22 @@ export default async function BuyerCheckoutPage({
 
   const hasProducts = source.items.length > 0;
   const hasPaymentMethods = source.paymentMethods.length > 0;
+  const theme = preview?.themeSettings;
+  const primaryColor = theme?.primaryColor ?? "#0f172a";
+  const secondaryColor = theme?.secondaryColor ?? "#334155";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
+    <main
+      className={`min-h-screen px-4 py-6 text-slate-950 sm:px-6 lg:px-8 ${theme ? `${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}` : ""}`}
+      style={{ backgroundColor: `${primaryColor}08` }}
+    >
       <div className="mx-auto grid max-w-6xl gap-6">
-        <section className="overflow-hidden rounded-[2rem] bg-slate-950 p-6 text-white shadow-2xl lg:p-8">
+        <section
+          className={`overflow-hidden p-6 text-white shadow-2xl lg:p-8 ${theme ? buttonRadiusClass(theme.buttonStyle) : "rounded-[2rem]"}`}
+          style={{
+            background: `radial-gradient(circle at 18% 10%, ${secondaryColor}66, transparent 34%), linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`
+          }}
+        >
           <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">
             Buyer checkout
           </p>
@@ -46,6 +62,11 @@ export default async function BuyerCheckoutPage({
                 Orders are captured for the seller using enabled buyer payment methods only.
                 Online payment providers are reserved for future seller-owned integrations.
               </p>
+              {preview ? (
+                <p className="mt-3 text-xs font-black uppercase tracking-[0.2em] text-white/45">
+                  Theme: {preview.themeRuntime.themeKey}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-3xl bg-white/10 px-4 py-3 text-sm font-bold text-white/80">
               {source.sourceType === "store" ? "Store" : "Landing"} / {source.sourceSlug}

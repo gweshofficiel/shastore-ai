@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { resolveStorefrontThemeRuntime } from "@/lib/storefront-theme-runtime";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import type { StoreThemeSettings } from "@/types/storefront";
@@ -64,6 +65,12 @@ export type PublicStorefrontPreview = {
   templateId: string;
   themeColor: string;
   themeConfig: Record<string, unknown>;
+  themeRuntime: {
+    logEvents: string[];
+    status: string;
+    themeId: string | null;
+    themeKey: string;
+  };
   themeSettings: StoreThemeSettings;
   store: {
     businessAddress: string | null;
@@ -117,22 +124,6 @@ function numberValue(value: unknown) {
   }
 
   return null;
-}
-
-function normalizeRuntimeFont(value: unknown) {
-  if (value === "editorial" || value === "luxury" || value === "soft") {
-    return "serif";
-  }
-
-  if (value === "technical" || value === "mono") {
-    return "mono";
-  }
-
-  if (value === "display") {
-    return "display";
-  }
-
-  return "inter";
 }
 
 function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
@@ -251,6 +242,21 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
     templateId: textValue(value.templateId, "general-starter"),
     themeColor: textValue(value.themeColor, textValue(branding.primaryColor, "#0f172a")),
     themeConfig: isRecord(value.themeConfig) ? value.themeConfig : {},
+    themeRuntime: isRecord(value.themeRuntime)
+      ? {
+          logEvents: Array.isArray(value.themeRuntime.logEvents)
+            ? value.themeRuntime.logEvents.filter((item): item is string => typeof item === "string")
+            : [],
+          status: textValue(value.themeRuntime.status, "published"),
+          themeId: textValue(value.themeRuntime.themeId) || null,
+          themeKey: textValue(value.themeRuntime.themeKey, textValue(value.templateId, "general-starter"))
+        }
+      : {
+          logEvents: [],
+          status: "published",
+          themeId: null,
+          themeKey: textValue(value.templateId, "general-starter")
+        },
     themeSettings: normalizeStoreThemeSettings(value.themeSettings, defaultStoreThemeSettings),
     store: {
       businessAddress: textValue(store.businessAddress) || null,
@@ -468,43 +474,54 @@ async function loadStoreModePublicPreview(slug: string) {
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const { data: themeRow } = await client
     .from("store_theme_settings")
-    .select("settings, theme_settings, theme_color")
+    .select("settings, theme_settings, theme_color, font_style, layout_style")
     .eq("store_id", store.id)
     .maybeSingle();
   const themeRecord = (themeRow ?? {}) as {
+    font_style?: string | null;
+    layout_style?: string | null;
     settings?: unknown;
+    template_id?: string | null;
     theme_color?: string | null;
     theme_settings?: unknown;
   };
-  const storeThemeSettings = isRecord(store.theme_settings) ? store.theme_settings : {};
-  const persistedThemeSettings = isRecord(themeRecord.theme_settings) ? themeRecord.theme_settings : {};
-  const themeSettings = normalizeStoreThemeSettings(
-    {
-      ...storeThemeSettings,
-      ...persistedThemeSettings,
+  const themeRuntime = await resolveStorefrontThemeRuntime({
+    brandColor: store.brand_color,
+    client,
+    fallbackSettings: defaultStoreThemeSettings,
+    fontStyle: themeRecord.font_style ?? store.font_style,
+    layoutStyle: themeRecord.layout_style ?? store.layout_style,
+    selectedThemeKey: themeRecord.template_id ?? store.template_id,
+    storeId: store.id,
+    storeSettings: store.theme_settings,
+    themeSettingsRow: {
+      ...(isRecord(themeRecord.theme_settings) ? themeRecord.theme_settings : {}),
       ...(isRecord(themeRecord.settings) ? themeRecord.settings : {}),
-      bodyFont: normalizeRuntimeFont(store.font_style),
-      headingFont: normalizeRuntimeFont(store.font_style),
+      font_style: themeRecord.font_style,
+      layout_style: themeRecord.layout_style,
       primaryColor: themeRecord.theme_color || store.theme_color || store.brand_color
     },
-    defaultStoreThemeSettings
-  );
+    workspaceId: store.workspace_id
+  });
+  const themeSettings = themeRuntime.settings;
 
   return normalizePreview({
-    branding: {
-      primaryColor: themeSettings.primaryColor || store.brand_color || "#0f172a",
-      secondaryColor: themeSettings.secondaryColor || "#2563eb",
-      themeMode: "light"
-    },
+    branding: themeRuntime.branding,
     brandingConfig: {},
     categories: savedCategories.length ? savedCategories : fallbackCategories,
-    fontStyle: store.font_style || "inter",
-    layoutStyle: store.layout_style || "classic",
+    fontStyle: themeRuntime.fontStyle,
+    layoutStyle: themeRuntime.layoutStyle,
     products: savedProducts,
-    sectionsSchema: [],
-    templateId: store.template_id || "general-starter",
-    themeColor: themeSettings.primaryColor || store.theme_color || store.brand_color || "#0f172a",
-    themeConfig: {},
+    sectionsSchema: themeRuntime.layoutSections,
+    templateId: themeRuntime.themeKey || store.template_id || "general-starter",
+    themeColor: themeRuntime.themeColor,
+    themeConfig: themeRuntime.themeConfig,
+    themeRuntime: {
+      logEvents: themeRuntime.logEvents,
+      status: themeRuntime.status,
+      themeId: themeRuntime.themeId,
+      themeKey: themeRuntime.themeKey
+    },
     themeSettings,
     store: {
       businessAddress: store.business_address || null,
