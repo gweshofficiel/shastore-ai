@@ -354,7 +354,7 @@ function statusMessage(status: string | undefined, detail?: string) {
   }
 
   const messages: Record<string, string> = {
-    "create-failed": "Product could not be created. Check the fields and try again.",
+    "create-failed": "Unexpected database error. Check monitoring details.",
     archived: "Product archived.",
     "archive-failed": "Product could not be archived. Please try again.",
     "category-not-found": "Selected category was not found for this store.",

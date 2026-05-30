@@ -4,6 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
 
+type ProductDatabaseError = {
+  code?: string | null;
+  details?: string | null;
+  hint?: string | null;
+  message?: string | null;
+};
+
 function cleanText(value: unknown, maxLength = 1000) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : "";
 }
@@ -91,6 +98,35 @@ function validateProductBody(body: Record<string, unknown> | null) {
   }
 
   return null;
+}
+
+function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
+  switch (error?.code) {
+    case "23503":
+      return "Related category, store, or workspace record was not found.";
+    case "23505":
+      return "Duplicate product conflict.";
+    case "23502":
+      return "Required database field is missing.";
+    case "42501":
+      return "Permission denied by RLS.";
+    case "22P02":
+      return "Invalid ID format.";
+    case "PGRST116":
+      return "Store or category not found.";
+    default:
+      return "Unexpected database error. Check monitoring details.";
+  }
+}
+
+function productDatabaseErrorMetadata(error?: ProductDatabaseError | null) {
+  return {
+    code: error?.code ?? "unknown",
+    details: error?.details ?? null,
+    hint: error?.hint ?? null,
+    message: error?.message ?? null,
+    safeMessage: safeProductDatabaseErrorMessage(error)
+  };
 }
 
 function slugify(value: string) {
@@ -199,6 +235,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (categoryError) {
+      const safeMessage = safeProductDatabaseErrorMessage(categoryError);
       console.error("[products-api] category lookup failed during product create", {
         categoryId,
         code: categoryError.code,
@@ -213,10 +250,7 @@ export async function POST(request: NextRequest) {
         eventStatus: "failed",
         eventType: "product_create_failed",
         metadata: {
-          code: categoryError.code,
-          details: categoryError.details,
-          hint: categoryError.hint,
-          message: categoryError.message,
+          ...productDatabaseErrorMetadata(categoryError),
           reason: "API category lookup failed"
         },
         storeId,
@@ -225,7 +259,7 @@ export async function POST(request: NextRequest) {
         workspaceId: context.workspaceId
       });
       return NextResponse.json(
-        { error: "Product could not be created due to an unexpected database error." },
+        { error: safeMessage },
         { status: 500 }
       );
     }
@@ -269,11 +303,18 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
+    const productInsertError = error ?? {
+      code: "no_data",
+      details: null,
+      hint: null,
+      message: "Product insert did not return a created product."
+    };
+    const safeMessage = safeProductDatabaseErrorMessage(productInsertError);
     console.error("[products-api] create product failed", {
-      code: error?.code,
-      details: error?.details,
-      hint: error?.hint,
-      message: error?.message,
+      code: productInsertError.code,
+      details: productInsertError.details,
+      hint: productInsertError.hint,
+      message: productInsertError.message,
       storeId,
       workspaceId: context.workspaceId
     });
@@ -282,11 +323,8 @@ export async function POST(request: NextRequest) {
       eventStatus: "failed",
       eventType: "product_create_failed",
       metadata: {
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        message: error?.message,
-        reason: "Unexpected database error"
+        ...productDatabaseErrorMetadata(productInsertError),
+        reason: safeMessage
       },
       storeId,
       supabase: context.supabase,
@@ -294,7 +332,7 @@ export async function POST(request: NextRequest) {
       workspaceId: context.workspaceId
     });
     return NextResponse.json(
-      { error: "Product could not be created due to an unexpected database error." },
+      { error: safeMessage },
       { status: 500 }
     );
   }

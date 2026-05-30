@@ -59,6 +59,13 @@ type ProductImagePayload = {
   workspace_id: string;
 };
 
+type ProductDatabaseError = {
+  code?: string | null;
+  details?: string | null;
+  hint?: string | null;
+  message?: string | null;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 1000) {
   if (typeof value !== "string") {
     return "";
@@ -256,6 +263,35 @@ function validateProductForm(formData: FormData) {
   return null;
 }
 
+function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
+  switch (error?.code) {
+    case "23503":
+      return "Related category, store, or workspace record was not found.";
+    case "23505":
+      return "Duplicate product conflict.";
+    case "23502":
+      return "Required database field is missing.";
+    case "42501":
+      return "Permission denied by RLS.";
+    case "22P02":
+      return "Invalid ID format.";
+    case "PGRST116":
+      return "Store or category not found.";
+    default:
+      return "Unexpected database error. Check monitoring details.";
+  }
+}
+
+function productDatabaseErrorMetadata(error?: ProductDatabaseError | null) {
+  return {
+    code: error?.code ?? "unknown",
+    details: error?.details ?? null,
+    hint: error?.hint ?? null,
+    message: error?.message ?? null,
+    safeMessage: safeProductDatabaseErrorMessage(error)
+  };
+}
+
 async function recordProductCreateFailure({
   detail,
   error,
@@ -280,11 +316,9 @@ async function recordProductCreateFailure({
     eventStatus: "failed",
     eventType: "product_create_failed",
     metadata: {
+      ...productDatabaseErrorMetadata(error),
       code: error?.code ?? status,
       detail,
-      details: error?.details,
-      hint: error?.hint,
-      message: error?.message,
       reason,
       status
     },
@@ -664,6 +698,7 @@ export async function createStoreOwnerProduct(formData: FormData) {
   const categoryAccess = await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId });
 
   if (categoryAccess.error) {
+    const safeMessage = safeProductDatabaseErrorMessage(categoryAccess.error);
     console.error("[products-foundation] category lookup failed during product create", {
       categoryId: payload.category_id,
       code: categoryAccess.error.code,
@@ -673,7 +708,7 @@ export async function createStoreOwnerProduct(formData: FormData) {
       storeId
     });
     await recordProductCreateFailure({
-      detail: "Product could not be created due to an unexpected database error.",
+      detail: safeMessage,
       error: categoryAccess.error,
       reason: "Category lookup failed",
       status: "create-failed",
@@ -682,7 +717,7 @@ export async function createStoreOwnerProduct(formData: FormData) {
       userId: user.id,
       workspaceId
     });
-    productsRedirect(storeId, "create-failed", "Product could not be created due to an unexpected database error.");
+    productsRedirect(storeId, "create-failed", safeMessage);
   }
 
   if (!categoryAccess.belongs) {
@@ -717,25 +752,32 @@ export async function createStoreOwnerProduct(formData: FormData) {
     .select("id")
     .maybeSingle();
 
-  if (error) {
+  if (error || !createdProduct) {
+    const productInsertError = error ?? {
+      code: "no_data",
+      details: null,
+      hint: null,
+      message: "Product insert did not return a created product."
+    };
+    const safeMessage = safeProductDatabaseErrorMessage(productInsertError);
     console.error("[products-foundation] create product failed", {
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      message: error.message,
+      code: productInsertError.code,
+      details: productInsertError.details,
+      hint: productInsertError.hint,
+      message: productInsertError.message,
       storeId
     });
     await recordProductCreateFailure({
-      detail: "Product could not be created due to an unexpected database error.",
-      error,
-      reason: "Unexpected database error",
+      detail: safeMessage,
+      error: productInsertError,
+      reason: safeMessage,
       status: "create-failed",
       storeId,
       supabase,
       userId: user.id,
       workspaceId
     });
-    productsRedirect(storeId, "create-failed", "Product could not be created due to an unexpected database error.");
+    productsRedirect(storeId, "create-failed", safeMessage);
   }
 
   revalidatePath(productListPath);
