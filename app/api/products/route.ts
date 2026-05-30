@@ -114,6 +114,8 @@ function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
       return "Invalid ID format.";
     case "PGRST116":
       return "Store or category not found.";
+    case "PGRST204":
+      return "Product schema mismatch. Remove unsupported fields or run the latest store_products migration.";
     default:
       return "Unexpected database error. Check monitoring details.";
   }

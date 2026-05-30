@@ -277,6 +277,8 @@ function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
       return "Invalid ID format.";
     case "PGRST116":
       return "Store or category not found.";
+    case "PGRST204":
+      return "Product schema mismatch. Remove unsupported fields or run the latest store_products migration.";
     default:
       return "Unexpected database error. Check monitoring details.";
   }
@@ -651,9 +653,6 @@ function productPayload(formData: FormData, productId?: string) {
     low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
     name: title,
     price: price.toFixed(2),
-    price_label: price.toFixed(2),
-    short_description: cleanOptionalText(formData.get("shortDescription"), 500),
-    sku: cleanOptionalText(formData.get("sku"), 80),
     slug: `${slugify(title)}-${slugSuffix}`,
     status: cleanStatus(formData.get("status")),
     stock_quantity: cleanInteger(formData.get("stockQuantity")),
