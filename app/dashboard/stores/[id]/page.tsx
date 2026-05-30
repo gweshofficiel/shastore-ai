@@ -400,6 +400,7 @@ export default async function StoreDraftPage({
     storefront?: string;
     settings?: string;
     theme?: string;
+    themeError?: string;
     publication?: string;
     catalog?: string;
     domain?: string;
@@ -4461,8 +4462,17 @@ export default async function StoreDraftPage({
           <p className="text-sm font-bold text-red-700">
             {query.theme === "not-authorized"
               ? "You do not have permission to manage themes for this store."
-              : "Theme selection could not be saved. Confirm the theme selection migration is applied."}
+              : "Theme selection could not be saved."}
           </p>
+          {query.theme === "save-failed" && query.themeError ? (
+            <p className="mt-2 text-sm font-semibold text-red-800">
+              {decodeURIComponent(query.themeError)}
+            </p>
+          ) : query.theme === "save-failed" ? (
+            <p className="mt-2 text-sm font-semibold text-red-800">
+              Confirm the theme selection migrations are applied in Supabase.
+            </p>
+          ) : null}
         </Card>
       ) : null}
       {query.publication === "saved" ? (
