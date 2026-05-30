@@ -20,6 +20,7 @@ import {
   type StoreCouponRow
 } from "@/lib/store-coupons";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import {
   createLowStockNotificationsForOrderSafe,
   createOrderNotificationSafe,
@@ -715,6 +716,20 @@ async function persistStorefrontOrderDraft({
         supabase: admin,
         workspaceId
       });
+      await recordMonitoringEventSafe({
+        entityId: orderRow.id,
+        entityType: "order",
+        eventType: "order.created",
+        metadata: {
+          itemCount: items.length,
+          orderSource: "orders",
+          status: "draft",
+          totalAmount: total
+        },
+        storeId: store.id,
+        supabase: admin,
+        workspaceId
+      });
       await createOrderNotificationSafe({
         customerName,
         orderId: orderRow.id,
@@ -884,6 +899,20 @@ async function persistStorefrontOrderDraft({
     newValue: "draft",
     orderId: storeOrderRow.id,
     orderSource: "store_orders",
+    storeId: store.id,
+    supabase: admin,
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+  await recordMonitoringEventSafe({
+    entityId: storeOrderRow.id,
+    entityType: "order",
+    eventType: "order.created",
+    metadata: {
+      itemCount: items.length,
+      orderSource: "store_orders",
+      status: "draft",
+      totalAmount: total
+    },
     storeId: store.id,
     supabase: admin,
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
@@ -1197,6 +1226,20 @@ export async function createPublicStoreOrderAction(
     recipient: customerEmail,
     storeId: store.id,
     templateKey: "order_confirmation",
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+  await recordMonitoringEventSafe({
+    entityId: (order as { id: string }).id,
+    entityType: "order",
+    eventType: "order.created",
+    metadata: {
+      itemCount: items.length,
+      orderSource: "store_orders",
+      status: "pending",
+      totalAmount: total
+    },
+    storeId: store.id,
+    supabase: admin,
     workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
   });
   if (couponResult?.ok) {
@@ -1796,6 +1839,20 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
 
   if (eventStoreId && currentOrderRow.order_status !== status) {
+    await recordMonitoringEventSafe({
+      entityId: orderId,
+      entityType: "order",
+      eventType: "order.updated",
+      metadata: {
+        newStatus: status,
+        orderSource: source,
+        previousStatus: currentOrderRow.order_status
+      },
+      storeId: eventStoreId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
     await recordOrderEventSafe({
       actorUserId: user.id,
       eventType: "status_changed",

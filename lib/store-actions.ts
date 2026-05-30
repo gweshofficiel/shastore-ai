@@ -21,6 +21,7 @@ import {
 import { assertPaidAccessNotLocked } from "@/lib/billing/expiry-lockdown";
 import { canPublishStorefront } from "@/lib/billing/publish-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { getUserPrimaryWorkspaceId, requirePermission, type WorkspacePermission } from "@/lib/permissions/rbac";
 import { ensurePersonalWorkspaceOwnerMembership } from "@/lib/workspace-members";
 import { createClient } from "@/lib/supabase/server";
@@ -1679,7 +1680,7 @@ export async function saveStoreThemeSettings(formData: FormData) {
 
   const { data: store, error: storeError } = await supabase
     .from("stores")
-    .select("id, template_id")
+    .select("id, template_id, workspace_id")
     .eq("id", storeId)
     .or(storeOwnerOrFilter(user.id))
     .single();
@@ -1761,6 +1762,19 @@ export async function saveStoreThemeSettings(formData: FormData) {
     },
     storeId: store.id,
     supabase
+  });
+  await recordMonitoringEventSafe({
+    entityId: store.id,
+    entityType: "theme",
+    eventType: "theme.updated",
+    metadata: {
+      hasLogo: Boolean(settings.logoUrl),
+      source: "theme_customizer"
+    },
+    storeId: store.id,
+    supabase,
+    userId: user.id,
+    workspaceId: store.workspace_id ?? user.id
   });
 
   const { data: publication } = await supabase
@@ -2602,6 +2616,16 @@ export async function publishStoreDraft(formData: FormData) {
     },
     storeId: updatedStore.id,
     supabase
+  });
+  await recordMonitoringEventSafe({
+    entityId: updatedStore.id,
+    entityType: "store",
+    eventType: "store.published",
+    metadata: { slug: publishedSlug },
+    storeId: updatedStore.id,
+    supabase,
+    userId: user.id,
+    workspaceId
   });
   redirect(`/dashboard/stores?published=${publishedSlug}`);
 }

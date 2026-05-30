@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
@@ -242,6 +243,15 @@ export async function activateStoreThemeAction(formData: FormData) {
     action: "activate",
     storeId: context.storeId,
     themeKey: context.themeKey,
+    workspaceId: context.workspaceId
+  });
+  await recordMonitoringEventSafe({
+    entityType: "theme",
+    eventType: "theme.activated",
+    metadata: { themeKey: context.themeKey },
+    storeId: context.storeId,
+    supabase: context.supabase,
+    userId: context.userId,
     workspaceId: context.workspaceId
   });
 

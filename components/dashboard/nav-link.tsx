@@ -8,6 +8,7 @@ import {
   Globe2,
   LayoutDashboard,
   Bell,
+  Activity,
   PackageCheck,
   Palette,
   ShoppingBag,
@@ -22,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const icons = {
+  monitoring: Activity,
   analytics: BarChart3,
   billing: CreditCard,
   notifications: Bell,

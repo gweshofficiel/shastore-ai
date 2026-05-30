@@ -9,6 +9,7 @@ import {
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createStoreForUser } from "@/lib/stores/ownership";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import { getWorkspaceDataContext, assertStoreInWorkspace } from "@/lib/workspaces/data-access";
@@ -80,6 +81,16 @@ export async function createStore(formData: FormData) {
 
   console.info("[workspace-store-created] store created", {
     storeId,
+    userId: user.id,
+    workspaceId
+  });
+  await recordMonitoringEventSafe({
+    entityId: storeId,
+    entityType: "store",
+    eventType: "store.created",
+    metadata: { source: "dashboard" },
+    storeId,
+    supabase,
     userId: user.id,
     workspaceId
   });

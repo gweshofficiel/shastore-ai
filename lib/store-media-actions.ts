@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -218,6 +219,20 @@ export async function uploadStoreMediaAction(formData: FormData) {
     action: "uploaded",
     mediaId: (mediaRow as { id?: string | null } | null)?.id,
     storeId,
+    workspaceId
+  });
+  await recordMonitoringEventSafe({
+    entityId: (mediaRow as { id?: string | null } | null)?.id,
+    entityType: "media",
+    eventType: "media.uploaded",
+    metadata: {
+      fileType: file.type,
+      sizeBytes: file.size,
+      usageType: requestedUsageType
+    },
+    storeId,
+    supabase,
+    userId: user.id,
     workspaceId
   });
 

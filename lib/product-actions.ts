@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { assertUsageWithinLimits, billingEnforcementMessage } from "@/lib/billing/enforcement";
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertStoreAccessInWorkspace,
@@ -521,13 +522,17 @@ export async function createStoreOwnerProduct(formData: FormData) {
     workspaceId
   });
 
-  const { error } = await supabase.from("store_products" as never).insert({
-    ...payload,
-    owner_user_id: user.id,
-    store_id: storeId,
-    user_id: user.id,
-    workspace_id: workspaceId
-  } as never);
+  const { data: createdProduct, error } = await supabase
+    .from("store_products" as never)
+    .insert({
+      ...payload,
+      owner_user_id: user.id,
+      store_id: storeId,
+      user_id: user.id,
+      workspace_id: workspaceId
+    } as never)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[products-foundation] create product failed", {
@@ -544,11 +549,21 @@ export async function createStoreOwnerProduct(formData: FormData) {
     revalidatePath(`/store/${store.slug}`);
     revalidatePath(`/s/${store.slug}`);
   }
+  await recordMonitoringEventSafe({
+    entityId: (createdProduct as { id?: string | null } | null)?.id,
+    entityType: "product",
+    eventType: "product.created",
+    metadata: { status: payload.status },
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
   productsRedirect(storeId, "created");
 }
 
 export async function updateStoreOwnerProduct(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const productId = cleanText(formData.get("productId"), 80);
   const payload = productPayload(formData, productId);
 
@@ -586,6 +601,16 @@ export async function updateStoreOwnerProduct(formData: FormData) {
     revalidatePath(`/store/${store.slug}`);
     revalidatePath(`/s/${store.slug}`);
   }
+  await recordMonitoringEventSafe({
+    entityId: productId,
+    entityType: "product",
+    eventType: "product.updated",
+    metadata: { status: payload.status },
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
   productsRedirect(storeId, "updated");
 }
 
