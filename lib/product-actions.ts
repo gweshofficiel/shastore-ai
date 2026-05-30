@@ -3,6 +3,9 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import { assertUsageWithinLimits, billingEnforcementMessage } from "@/lib/billing/enforcement";
+import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertStoreAccessInWorkspace,
@@ -178,6 +181,37 @@ function productsRedirect(storeId: string, status?: string): never {
   }
 
   redirect(`${productListPath}?${params.toString()}`);
+}
+
+async function assertProductCreationAllowed({
+  storeId,
+  supabase,
+  userId,
+  workspaceId
+}: {
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  userId: string;
+  workspaceId: string;
+}) {
+  const access = await getUserSubscriptionAccessForClient(supabase, userId);
+
+  try {
+    assertUsageWithinLimits(access, "products");
+  } catch (error) {
+    await recordSubscriptionEnforcementLog({
+      access,
+      action: "product.create",
+      error,
+      storeId,
+      supabase,
+      workspaceId
+    });
+    productsRedirect(
+      storeId,
+      `billing-blocked:${billingEnforcementMessage(error) ?? "Your current plan cannot create another product."}`
+    );
+  }
 }
 
 async function loadProtectedProduct({
@@ -479,6 +513,13 @@ export async function createStoreOwnerProduct(formData: FormData) {
   if (!(await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId }))) {
     productsRedirect(storeId, "category-not-found");
   }
+
+  await assertProductCreationAllowed({
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
 
   const { error } = await supabase.from("store_products" as never).insert({
     ...payload,

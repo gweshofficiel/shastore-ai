@@ -39,7 +39,10 @@ const resourceLabels: Record<BillingLimitResource, string> = {
   domains: "Custom domains",
   exports: "Exports",
   landings: "Landing pages",
+  ordersMonth: "Monthly orders",
+  products: "Products",
   projects: "Projects",
+  storageMb: "Media storage",
   stores: "Stores",
   teamMembers: "Team members",
   templates: "Templates"
@@ -73,6 +76,8 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
   const overLimitResources = [
     overLimitResource("projects", access.usage.projectsUsed, access.usage.projectLimit),
     overLimitResource("stores", access.usage.storesUsed, access.usage.storeLimit),
+    overLimitResource("products", access.usage.productsUsed, access.usage.productLimit),
+    overLimitResource("ordersMonth", access.usage.ordersMonthUsed, access.usage.ordersMonthLimit),
     overLimitResource("landings", access.usage.landingsUsed, access.usage.landingLimit),
     overLimitResource("domains", access.usage.domainsUsed, access.usage.domainLimit),
     overLimitResource(
@@ -98,7 +103,10 @@ export function getSubscriptionState(access: UserSubscriptionAccess): DerivedSub
       domains: proPlan.domainLimit,
       exports: proLimits.exports,
       landings: proPlan.landingLimit,
+      ordersMonth: proLimits.ordersMonth,
+      products: proLimits.products,
       projects: proLimits.projects,
+      storageMb: proLimits.storageMb,
       stores: proPlan.storeLimit,
       teamMembers: proLimits.teamMembers,
       templates: proLimits.templates

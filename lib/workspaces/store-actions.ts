@@ -2,6 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
+import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { createStoreForUser } from "@/lib/stores/ownership";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import { getWorkspaceDataContext, assertStoreInWorkspace } from "@/lib/workspaces/data-access";
@@ -37,6 +44,30 @@ export async function createStore(formData: FormData) {
 
   if (!name) {
     redirect("/dashboard/stores?error=Store%20name%20is%20required.");
+  }
+
+  const access = await getUserSubscriptionAccessForClient(supabase, user.id);
+
+  try {
+    if (access.usage.storesUsed > 0) {
+      assertFeatureAccess(access, "multi_store");
+    }
+
+    assertUsageWithinLimits(access, "stores");
+    assertUsageWithinLimits(access, "projects");
+  } catch (error) {
+    await recordSubscriptionEnforcementLog({
+      access,
+      action: "store.create",
+      error,
+      supabase,
+      workspaceId
+    });
+    redirect(
+      `/dashboard/stores?error=${encodeURIComponent(
+        billingEnforcementMessage(error) ?? "Your current plan cannot create another store."
+      )}`
+    );
   }
 
   const store = await createStoreForUser(supabase, user.id, {

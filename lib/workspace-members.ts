@@ -3,6 +3,12 @@ import { redirect } from "next/navigation";
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import {
+  assertFeatureAccess,
+  assertUsageWithinLimits,
+  billingEnforcementMessage
+} from "@/lib/billing/enforcement";
+import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
 import { getPublicUrl } from "@/lib/deployment/config";
 import { hasPermission, requirePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
@@ -378,7 +384,35 @@ export async function inviteMember(formData: FormData) {
   const limit = access.usage.teamMemberLimit;
   const seatsUsed = await workspaceSeatCount(supabase, workspaceId);
 
+  try {
+    assertFeatureAccess(access, "team_members");
+    assertUsageWithinLimits(access, "teamMembers");
+  } catch (error) {
+    await recordSubscriptionEnforcementLog({
+      access,
+      action: "team.invite",
+      error,
+      supabase,
+      workspaceId
+    });
+    teamRedirect(
+      "error",
+      billingEnforcementMessage(error) ??
+        "Your current plan does not allow additional team members. Upgrade at /dashboard/billing."
+    );
+  }
+
   if (limit !== null && seatsUsed >= limit) {
+    const limitError = new Error(
+      "Your current plan has reached its team member limit. Upgrade at /dashboard/billing."
+    );
+    await recordSubscriptionEnforcementLog({
+      access,
+      action: "team.invite",
+      error: limitError,
+      supabase,
+      workspaceId
+    });
     console.warn("[workspace-invite] team member limit reached", {
       limit,
       seatsUsed,

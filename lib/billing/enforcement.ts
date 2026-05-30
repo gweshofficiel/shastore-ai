@@ -119,7 +119,10 @@ function limitMessage(resource: BillingLimitResource) {
     domains: "domain",
     exports: "export",
     landings: "landing page",
+    ordersMonth: "monthly order",
+    products: "product",
     projects: "project",
+    storageMb: "media storage",
     stores: "store",
     teamMembers: "team member",
     templates: "template"

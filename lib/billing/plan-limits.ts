@@ -7,7 +7,10 @@ export type PlanLimitResource =
   | "domains"
   | "exports"
   | "landings"
+  | "ordersMonth"
+  | "products"
   | "projects"
+  | "storageMb"
   | "stores"
   | "teamMembers"
   | "templates";
@@ -35,7 +38,10 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     domains: 0,
     exports: 1,
     landings: 1,
+    ordersMonth: 50,
+    products: 20,
     projects: 1,
+    storageMb: 100,
     stores: 1,
     teamMembers: 1,
     templates: 2,
@@ -56,7 +62,10 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     domains: 1,
     exports: 10,
     landings: 10,
+    ordersMonth: 500,
+    products: 100,
     projects: 10,
+    storageMb: 1_000,
     stores: 1,
     teamMembers: 3,
     templates: 6,
@@ -77,7 +86,10 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     domains: 5,
     exports: 100,
     landings: 10,
+    ordersMonth: 5_000,
+    products: 1_000,
     projects: 15,
+    storageMb: 10_000,
     stores: 5,
     teamMembers: 10,
     templates: null,
@@ -98,7 +110,10 @@ export const planLimitsConfig: Record<SubscriptionPlanId, PlanLimits> = {
     domains: null,
     exports: null,
     landings: null,
+    ordersMonth: null,
+    products: null,
     projects: null,
+    storageMb: null,
     stores: null,
     teamMembers: null,
     templates: null,
@@ -145,7 +160,10 @@ export function usageForResource(usage: PlanUsage, resource: PlanLimitResource) 
     domains: usage.domainsUsed,
     exports: usage.exportsUsed,
     landings: usage.landingsUsed,
+    ordersMonth: usage.ordersMonthUsed,
+    products: usage.productsUsed,
     projects: usage.projectsUsed,
+    storageMb: usage.storageMbUsed ?? 0,
     stores: usage.storesUsed,
     teamMembers: usage.teamMembersUsed,
     templates: usage.templatesUsed

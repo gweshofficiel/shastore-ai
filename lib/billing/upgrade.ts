@@ -63,7 +63,10 @@ function minimumPlanForResource(resource: BillingLimitResource): PaidSubscriptio
     domains: "starter",
     exports: "starter",
     landings: "starter",
+    ordersMonth: "starter",
+    products: "starter",
     projects: "starter",
+    storageMb: "starter",
     stores: "pro",
     teamMembers: "pro",
     templates: "starter"

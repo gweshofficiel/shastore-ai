@@ -34,6 +34,10 @@ export type UserSubscriptionAccess = {
     storesUsed: number;
     publishedStoresUsed: number;
     ordersUsed: number;
+    ordersMonthLimit: number | null;
+    ordersMonthUsed: number;
+    productLimit: number | null;
+    productsUsed: number;
     trafficUsed: number;
     storageMbUsed: number | null;
     domainsUsed: number;
@@ -74,7 +78,11 @@ function isSubscriptionStillActive(subscription: SubscriptionRow | null) {
     return new Date(subscription.current_period_end).getTime() > Date.now();
   }
 
-  return subscription.status === "past_due" || subscription.status === "unpaid";
+  if (subscription.status === "canceled" && subscription.current_period_end) {
+    return new Date(subscription.current_period_end).getTime() > Date.now();
+  }
+
+  return false;
 }
 
 function isMissingBillingTable(error: unknown) {
@@ -116,9 +124,9 @@ export async function getUserSubscriptionAccessForClient(
   const subscription = data as SubscriptionRow | null;
   const subscriptionIsActive = isSubscriptionStillActive(subscription);
   const status = subscription
-    ? subscriptionIsActive
-      ? (subscription.status ?? "active")
-      : "canceled"
+    ? subscriptionIsActive && subscription.status === "canceled"
+      ? "active"
+      : (subscription.status ?? "active")
     : "active";
   const plan = getBillingPlan(subscriptionIsActive ? subscription?.plan_id : "free");
   const limits = getPlanLimits(plan.id);
@@ -139,6 +147,10 @@ export async function getUserSubscriptionAccessForClient(
       storesUsed: usage.storesUsed,
       publishedStoresUsed: usage.publishedStoresUsed,
       ordersUsed: usage.ordersUsed,
+      ordersMonthLimit: limits.ordersMonth,
+      ordersMonthUsed: usage.ordersMonthUsed,
+      productLimit: limits.products,
+      productsUsed: usage.productsUsed,
       trafficUsed: usage.trafficUsed,
       storageMbUsed: usage.storageMbUsed,
       domainsUsed: usage.domainsUsed,
@@ -245,6 +257,33 @@ export function billingLimitState(
       }).allowed,
       limit: limits.projects,
       used: access.usage.projectsUsed
+    },
+    products: {
+      allowed: canUseFeature({
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: access.usage.productLimit,
+      used: access.usage.productsUsed
+    },
+    ordersMonth: {
+      allowed: canUseFeature({
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: access.usage.ordersMonthLimit,
+      used: access.usage.ordersMonthUsed
+    },
+    storageMb: {
+      allowed: canUseFeature({
+        planId: access.plan.id,
+        resource,
+        usage: access.usage
+      }).allowed,
+      limit: getPlanLimits(access.plan.id).storageMb,
+      used: access.usage.storageMbUsed ?? 0
     },
     stores: {
       allowed: canCreateStore(access),

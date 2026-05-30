@@ -6,7 +6,9 @@ export type BillingUsageMetrics = {
   domainsUsed: number;
   exportsUsed: number;
   landingsUsed: number;
+  ordersMonthUsed: number;
   ordersUsed: number;
+  productsUsed: number;
   projectsUsed: number;
   publishedStoresUsed: number;
   storageMbUsed: number | null;
@@ -85,6 +87,53 @@ async function countStoreOrders(supabase: SupabaseClient, userId: string) {
   return new Set(
     ((data ?? []) as Array<{ id?: string | null }>).map((row) => row.id).filter(Boolean)
   ).size;
+}
+
+async function countStoreOrdersSince(supabase: SupabaseClient, userId: string, since: string) {
+  const { data, error } = await supabase
+    .from("store_orders" as never)
+    .select("id, owner_user_id, user_id, created_at")
+    .or(`owner_user_id.eq.${userId},user_id.eq.${userId}`)
+    .gte("created_at" as never, since as never);
+
+  if (error) {
+    if (isMissingOptionalMetricTable(error, "store_orders")) {
+      return 0;
+    }
+
+    console.warn("[billing-usage] fallback metric used", {
+      label: "store_orders_month",
+      message: error.message,
+      table: "store_orders"
+    });
+    return 0;
+  }
+
+  return new Set(
+    ((data ?? []) as Array<{ id?: string | null }>).map((row) => row.id).filter(Boolean)
+  ).size;
+}
+
+async function countProducts(supabase: SupabaseClient, userId: string) {
+  const { count, error } = await supabase
+    .from("store_products" as never)
+    .select("id", { count: "exact", head: true })
+    .or(`owner_user_id.eq.${userId},user_id.eq.${userId}`);
+
+  if (error) {
+    if (isMissingOptionalMetricTable(error, "store_products")) {
+      return 0;
+    }
+
+    console.warn("[billing-usage] fallback metric used", {
+      label: "products",
+      message: error.message,
+      table: "store_products"
+    });
+    return 0;
+  }
+
+  return count ?? 0;
 }
 
 async function countDomains(supabase: SupabaseClient, userId: string) {
@@ -246,7 +295,10 @@ export async function getBillingUsageForUser(
     publishedStoresUsed,
     domainsUsed,
     commerceOrdersUsed,
+    commerceOrdersMonthUsed,
     storeOrdersUsed,
+    storeOrdersMonthUsed,
+    productsUsed,
     trafficUsed,
     exportsUsed,
     teamMembersUsed,
@@ -294,7 +346,22 @@ export async function getBillingUsageForUser(
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
     ),
+    countOptionalMetric(
+      "commerce_orders_month",
+      "commerce_orders",
+      supabase
+        .from("commerce_orders" as never)
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .gte("created_at" as never, new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString() as never)
+    ),
     countStoreOrders(supabase, userId),
+    countStoreOrdersSince(
+      supabase,
+      userId,
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+    ),
+    countProducts(supabase, userId),
     countTraffic(supabase, userId),
     countExports(supabase, userId),
     countOptionalMetric(
@@ -313,7 +380,9 @@ export async function getBillingUsageForUser(
     domainsUsed,
     exportsUsed,
     landingsUsed,
+    ordersMonthUsed: commerceOrdersMonthUsed + storeOrdersMonthUsed,
     ordersUsed: commerceOrdersUsed + storeOrdersUsed,
+    productsUsed,
     projectsUsed,
     publishedStoresUsed,
     storageMbUsed: null,

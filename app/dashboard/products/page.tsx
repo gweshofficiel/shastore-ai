@@ -345,6 +345,10 @@ function inventoryBadgeClass(product: ProductRow) {
 }
 
 function statusMessage(status: string | undefined) {
+  if (status?.startsWith("billing-blocked:")) {
+    return status.replace("billing-blocked:", "");
+  }
+
   const messages: Record<string, string> = {
     "create-failed": "Product could not be created. Check the fields and try again.",
     archived: "Product archived.",

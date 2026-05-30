@@ -8,6 +8,9 @@ import {
   calculatePublicCheckoutFinancialsForStore,
   type CheckoutFinancialBreakdown
 } from "@/lib/public-tax";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
+import { assertUsageWithinLimits, billingEnforcementMessage } from "@/lib/billing/enforcement";
+import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
@@ -166,6 +169,39 @@ function variantOptionsPayload(
       [variant.optionCustomName || "", variant.optionCustomValue]
     ].filter(([label, value]) => label && value)
   );
+}
+
+async function validateOrderMonthlyLimitSafe({
+  admin,
+  ownerUserId,
+  storeId,
+  workspaceId
+}: {
+  admin: ReturnType<typeof createAdminClient>;
+  ownerUserId: string;
+  storeId: string;
+  workspaceId: string;
+}) {
+  if (!admin) {
+    return null;
+  }
+
+  const access = await getUserSubscriptionAccessForClient(admin, ownerUserId);
+
+  try {
+    assertUsageWithinLimits(access, "ordersMonth");
+    return null;
+  } catch (error) {
+    await recordSubscriptionEnforcementLog({
+      access,
+      action: "order.create",
+      error,
+      storeId,
+      supabase: admin,
+      workspaceId
+    });
+    return billingEnforcementMessage(error) ?? "This store cannot accept more orders on the current plan.";
+  }
 }
 
 function resolveDeliverySelection({
@@ -960,6 +996,17 @@ export async function createPublicStoreOrderAction(
     return { error: "Store not found or unpublished.", message: null, ok: false, orderId: null };
   }
 
+  const billingLimitError = await validateOrderMonthlyLimitSafe({
+    admin,
+    ownerUserId: store.owner_user_id ?? store.user_id,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (billingLimitError) {
+    return { error: billingLimitError, message: null, ok: false, orderId: null };
+  }
+
   const inventoryCheck = await validateCheckoutInventory({
     admin,
     storeId: store.id,
@@ -1248,6 +1295,17 @@ export async function createPublicStoreOrderDraftAction(
 
   if (storeError || !store) {
     return { error: "Store not found or unpublished.", message: null, ok: false, orderId: null };
+  }
+
+  const billingLimitError = await validateOrderMonthlyLimitSafe({
+    admin,
+    ownerUserId: store.owner_user_id ?? store.user_id,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (billingLimitError) {
+    return { error: billingLimitError, message: null, ok: false, orderId: null };
   }
 
   const inventoryCheck = await validateCheckoutInventory({

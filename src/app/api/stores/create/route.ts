@@ -6,6 +6,7 @@ import {
   assertUsageWithinLimits,
   billingEnforcementMessage
 } from "@/lib/billing/enforcement";
+import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { createStore } from "../../../../server/stores/create-store";
 
@@ -60,10 +61,11 @@ export async function POST(req: Request) {
         },
       }
     );
-    const access = await getUserSubscriptionAccessForClient(
-      userSupabase,
-      authResult.data.user.id
-    );
+    const access = await getUserSubscriptionAccessForClient(userSupabase, authResult.data.user.id);
+    const selection = await getActiveWorkspaceForUser({
+      supabase: userSupabase,
+      userId: authResult.data.user.id
+    });
 
     try {
       if (access.usage.storesUsed > 0) {
@@ -73,6 +75,13 @@ export async function POST(req: Request) {
       assertUsageWithinLimits(access, "stores");
       assertUsageWithinLimits(access, "projects");
     } catch (error) {
+      await recordSubscriptionEnforcementLog({
+        access,
+        action: "store.api_create",
+        error,
+        supabase: userSupabase,
+        workspaceId: selection.activeWorkspaceId
+      });
       return NextResponse.json(
         {
           success: false,
@@ -81,11 +90,6 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
-
-    const selection = await getActiveWorkspaceForUser({
-      supabase: userSupabase,
-      userId: authResult.data.user.id
-    });
 
     const store = await createStore({
       description,
