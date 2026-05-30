@@ -12,6 +12,32 @@ function shouldResolveStorefrontHostname(request: NextRequest) {
   return request.nextUrl.pathname === "/";
 }
 
+function applySecurityHeaders(response: NextResponse) {
+  response.headers.set("X-Frame-Options", "SAMEORIGIN");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=()"
+  );
+  response.headers.set(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+      "style-src 'self' 'unsafe-inline' https:",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data: https:",
+      "connect-src 'self' https: wss:",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join("; ")
+  );
+
+  return response;
+}
+
 async function resolveHostnameStorefront(request: NextRequest) {
   if (!shouldResolveStorefrontHostname(request)) {
     return null;
@@ -59,18 +85,18 @@ async function resolveHostnameStorefront(request: NextRequest) {
     context.source === "localhost_subdomain" ? "localhost_subdomain" : "hostname"
   );
 
-  return NextResponse.rewrite(rewriteUrl, {
+  return applySecurityHeaders(NextResponse.rewrite(rewriteUrl, {
     request: {
       headers: requestHeaders
     }
-  });
+  }));
 }
 
 export async function middleware(request: NextRequest) {
   const hostnameStorefront = await resolveHostnameStorefront(request);
 
   if (hostnameStorefront) {
-    return hostnameStorefront;
+    return applySecurityHeaders(hostnameStorefront);
   }
 
   const response = await updateSession(request);
@@ -83,7 +109,7 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  return response;
+  return applySecurityHeaders(response);
 }
 
 export const config = {

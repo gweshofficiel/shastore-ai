@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processDueCustomerLifecycleEvents } from "@/lib/customer-lifecycle-emails";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { processPendingStoreEmailQueue } from "@/lib/store-email-delivery";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,21 @@ function authorized(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkRateLimit({
+    action: "email.process_pending",
+    identifier:
+      request.headers.get("authorization")?.slice(0, 32) ||
+      request.headers.get("x-forwarded-for") ||
+      "email-process",
+    limit: 20,
+    route: "/api/store-email/process",
+    windowSeconds: 60
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

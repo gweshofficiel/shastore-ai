@@ -5,6 +5,7 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
@@ -372,11 +373,25 @@ export default async function PublicOrderConfirmationPage({
 }: PublicOrderConfirmationPageProps) {
   const { orderId, slug } = await params;
   const { review, source } = await searchParams;
-  const { order, reason, storeTitle, whatsappNumber } = await loadPublicOrderConfirmation({
-    orderId,
-    slug,
-    sourceHint: source
+  const rateLimit = await checkRateLimit({
+    action: "public.order_confirmation",
+    identifier: `${slug}:${orderId}`,
+    limit: 30,
+    route: `/store/${slug}/order/[orderId]`,
+    windowSeconds: 300
   });
+  const { order, reason, storeTitle, whatsappNumber } = rateLimit.allowed
+    ? await loadPublicOrderConfirmation({
+        orderId,
+        slug,
+        sourceHint: source
+      })
+    : {
+        order: null,
+        reason: "rate-limited" as const,
+        storeTitle: null,
+        whatsappNumber: null
+      };
   const whatsappUrl = order
     ? whatsappHref(whatsappNumber, whatsAppOrderMessage({ order, storeTitle }))
     : null;
@@ -400,7 +415,9 @@ export default async function PublicOrderConfirmationPage({
             Order not found
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted">
-            {reason === "store-unavailable"
+            {reason === "rate-limited"
+              ? "Rate limit exceeded. Please wait a few minutes and try again."
+              : reason === "store-unavailable"
               ? "This storefront is temporarily unavailable."
               : reason === "not-configured"
                 ? "Order confirmation is not configured yet."

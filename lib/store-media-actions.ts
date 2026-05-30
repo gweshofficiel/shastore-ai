@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -141,6 +142,21 @@ async function recordMediaLog({
 
 export async function uploadStoreMediaAction(formData: FormData) {
   const { storeId, supabase, user, workspaceId } = await requireStoreMediaContext(formData);
+  const rateLimit = await checkRateLimit({
+    action: "media.upload",
+    identifier: `${user.id}:${storeId}`,
+    limit: 30,
+    route: "/dashboard/stores/[id]#media-library",
+    storeId,
+    userId: user.id,
+    windowSeconds: 300,
+    workspaceId
+  });
+
+  if (!rateLimit.allowed) {
+    mediaRedirect(storeId, "rate-limited");
+  }
+
   const file = formData.get("mediaFile");
   const requestedUsageType = usageType(cleanText(formData.get("usageType"), 40));
 

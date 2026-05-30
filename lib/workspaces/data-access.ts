@@ -12,6 +12,7 @@ import {
   type WorkspacePermission,
   type WorkspaceRole
 } from "@/lib/permissions/rbac";
+import { recordDeniedAccess } from "@/lib/security/audit";
 
 type WorkspaceDataContextOptions = {
   permission?: WorkspacePermission;
@@ -109,6 +110,13 @@ export async function getWorkspaceDataContext(
       userId: user.id,
       workspaceId: selection.activeWorkspaceId
     });
+    await recordDeniedAccess({
+      action: "workspace.access.denied",
+      reason: "Workspace access required",
+      route: options.redirectTo ?? "/dashboard",
+      userId: user.id,
+      workspaceId: selection.activeWorkspaceId
+    });
     redirect("/dashboard?workspace=inactive");
   }
 
@@ -116,6 +124,14 @@ export async function getWorkspaceDataContext(
     console.warn("[workspace-access-denied] permission denied for workspace data", {
       permission: options.permission,
       role,
+      userId: user.id,
+      workspaceId: selection.activeWorkspaceId
+    });
+    await recordDeniedAccess({
+      action: "workspace.permission.denied",
+      metadata: { permission: options.permission, role },
+      reason: "Access denied",
+      route: options.redirectTo ?? "/dashboard",
       userId: user.id,
       workspaceId: selection.activeWorkspaceId
     });
@@ -181,6 +197,14 @@ export async function getDashboardPageAccess({
       userId: user.id,
       workspaceId: selection.activeWorkspaceId
     });
+    await recordDeniedAccess({
+      action: "dashboard.access.denied",
+      metadata: { permission: requiredPermission, role, status },
+      reason: status !== "active" ? "Workspace access required" : "Access denied",
+      route: pathname,
+      userId: user.id,
+      workspaceId: selection.activeWorkspaceId
+    });
 
     return {
       allowed: false,
@@ -227,6 +251,11 @@ export async function requireProtectedApiAccess({
   } = await supabase.auth.getUser();
 
   if (!user) {
+    await recordDeniedAccess({
+      action: "api.auth.required",
+      reason: "Access denied",
+      route: "/api"
+    });
     return {
       context: null,
       response: NextResponse.json({ error: "Authentication required." }, { status: 401 })
@@ -237,6 +266,14 @@ export async function requireProtectedApiAccess({
   if (workspaceId && workspaceId !== selection.activeWorkspaceId) {
     console.warn("[workspace-security-block] api workspace mismatch blocked", {
       requestedWorkspaceId: workspaceId,
+      userId: user.id,
+      workspaceId: selection.activeWorkspaceId
+    });
+    await recordDeniedAccess({
+      action: "api.workspace.denied",
+      metadata: { requestedWorkspaceId: workspaceId },
+      reason: "Workspace access required",
+      route: "/api",
       userId: user.id,
       workspaceId: selection.activeWorkspaceId
     });
@@ -260,6 +297,14 @@ export async function requireProtectedApiAccess({
       permission,
       role,
       status,
+      userId: user.id,
+      workspaceId: selection.activeWorkspaceId
+    });
+    await recordDeniedAccess({
+      action: "api.permission.denied",
+      metadata: { permission, role, status },
+      reason: "Access denied",
+      route: "/api",
       userId: user.id,
       workspaceId: selection.activeWorkspaceId
     });
@@ -310,6 +355,14 @@ export async function assertStoreInWorkspace(
       userId,
       workspaceId
     });
+    await recordDeniedAccess({
+      action: "store.workspace.denied",
+      reason: "Store not found",
+      route: "/dashboard/stores",
+      storeId,
+      userId,
+      workspaceId
+    });
     return false;
   }
 
@@ -346,6 +399,15 @@ export async function assertStoreAccessInWorkspace({
       userId,
       workspaceId
     });
+    await recordDeniedAccess({
+      action: "store.permission.denied",
+      metadata: { permission, role, status },
+      reason: "Access denied",
+      route: "/dashboard/stores",
+      storeId,
+      userId,
+      workspaceId
+    });
 
     return {
       allowed: false,
@@ -365,6 +427,15 @@ export async function assertStoreAccessInWorkspace({
     console.warn("[workspace-security-block] store workspace mismatch blocked", {
       message: error?.message ?? "Store not found in active workspace",
       permission,
+      storeId,
+      userId,
+      workspaceId
+    });
+    await recordDeniedAccess({
+      action: "store.workspace.denied",
+      metadata: { permission },
+      reason: "Store not found",
+      route: "/dashboard/stores",
       storeId,
       userId,
       workspaceId

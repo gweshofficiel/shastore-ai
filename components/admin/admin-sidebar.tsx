@@ -8,6 +8,7 @@ const navItems = [
   { href: "/admin/resellers", label: "Resellers", icon: "resellers" },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: "subscriptions" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
+  { href: "/admin/security", label: "Security", icon: "security" },
   { href: "/admin/moderation", label: "Moderation", icon: "moderation" },
   { href: "/admin/settings", label: "Settings", icon: "settings" }
 ] as const;

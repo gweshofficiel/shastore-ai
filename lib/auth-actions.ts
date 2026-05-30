@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getPublicUrl } from "@/lib/deployment/config";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { getInviteTokenPreview } from "@/lib/workspace-members";
 
@@ -22,6 +23,17 @@ export async function login(formData: FormData) {
   const email = String(formData.get("email"));
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
+  const rateLimit = await checkRateLimit({
+    action: "auth.login",
+    identifier: email,
+    limit: 10,
+    route: "/login",
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(`/login?error=rate-limit&next=${encodeURIComponent(next)}`);
+  }
 
   if (next.startsWith("/invite/")) {
     console.info("[invite-auth-redirect] login requested for invite", { email });
@@ -55,6 +67,17 @@ export async function register(formData: FormData) {
   const email = String(formData.get("email"));
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
+  const rateLimit = await checkRateLimit({
+    action: "auth.register",
+    identifier: email,
+    limit: 5,
+    route: "/register",
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(`/register?error=rate-limit&next=${encodeURIComponent(next)}`);
+  }
 
   if (next.startsWith("/invite/")) {
     console.info("[invite-auth-redirect] signup requested for invite", { email });
@@ -95,6 +118,21 @@ export async function registerWithInvite(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const rateLimit = await checkRateLimit({
+    action: "auth.invite_register",
+    identifier: `${token}:${email}`,
+    limit: 5,
+    route: "/invite/[token]/signup",
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(
+      token
+        ? `/invite/${encodeURIComponent(token)}/signup?error=rate-limit`
+        : "/auth/register?error=rate-limit"
+    );
+  }
 
   console.log("[invite-signup-page] invite signup submitted", {
     email,

@@ -4,6 +4,7 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
@@ -348,9 +349,23 @@ export default async function PublicOrderTrackingPage({
   const reference = cleanText(query.reference, 80);
   const phone = cleanText(query.phone, 80);
   const hasLookup = Boolean(reference || phone);
-  const { order, reason, storeTitle } = hasLookup
-    ? await loadTrackedOrder({ phone, reference, slug })
-    : { order: null, reason: "missing-lookup" as const, storeTitle: null };
+  const rateLimit = hasLookup
+    ? await checkRateLimit({
+        action: "public.order_tracking",
+        identifier: `${slug}:${phone || "missing-phone"}:${reference || "missing-reference"}`,
+        limit: 20,
+        route: `/store/${slug}/track`,
+        windowSeconds: 300
+      })
+    : { allowed: true };
+  const { order, reason, storeTitle } =
+    hasLookup && rateLimit.allowed
+      ? await loadTrackedOrder({ phone, reference, slug })
+      : {
+          order: null,
+          reason: rateLimit.allowed ? ("missing-lookup" as const) : ("rate-limited" as const),
+          storeTitle: null
+        };
   const reviewStatuses = order
     ? await getProductReviewStatusByOrder({
         orderId: order.id,
@@ -428,7 +443,9 @@ export default async function PublicOrderTrackingPage({
             <p className="mx-auto mt-2 max-w-xl text-sm font-semibold leading-6 text-muted">
               {reason === "missing-lookup"
                 ? "Enter both your order reference and phone number."
-                : reason === "store-unavailable"
+                : reason === "rate-limited"
+                  ? "Rate limit exceeded. Please wait a few minutes and try again."
+                  : reason === "store-unavailable"
                   ? "This storefront is temporarily unavailable."
                   : "We could not find an order for this store with that reference and phone number."}
             </p>
