@@ -885,6 +885,7 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
 
 function FooterSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
   const theme = context.preview.themeSettings;
+  const pageLinks = context.preview.pages;
 
   return (
     <footer
@@ -898,7 +899,18 @@ function FooterSection({ context }: { context: StoreTenantContext; section: Stor
         <p className="text-sm font-bold">
           {theme.copyrightText || `© ${new Date().getFullYear()} ${context.settings.title}`}
         </p>
-        <p className="text-xs font-black uppercase tracking-[0.18em] opacity-75">Powered by SHASTORE AI</p>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
+          {pageLinks.map((page) => (
+            <a
+              className="transition hover:opacity-100"
+              href={`/store/${context.store_slug}/pages/${page.slug}`}
+              key={page.id}
+            >
+              {page.title}
+            </a>
+          ))}
+          <span>Powered by SHASTORE AI</span>
+        </div>
       </div>
     </footer>
   );

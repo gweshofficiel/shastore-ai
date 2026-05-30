@@ -50,6 +50,13 @@ export type PublicStorefrontCategory = {
   status: string | null;
 };
 
+export type PublicStorefrontPageLink = {
+  id: string;
+  pageType: string | null;
+  slug: string;
+  title: string;
+};
+
 export type PublicStorefrontPreview = {
   branding: {
     primaryColor: string;
@@ -60,6 +67,7 @@ export type PublicStorefrontPreview = {
   categories: PublicStorefrontCategory[];
   fontStyle: string;
   layoutStyle: string;
+  pages: PublicStorefrontPageLink[];
   products: PublicStorefrontProduct[];
   sectionsSchema: unknown[];
   templateId: string;
@@ -203,6 +211,51 @@ function normalizeCategory(value: unknown): PublicStorefrontCategory | null {
   };
 }
 
+function normalizePageLink(value: unknown): PublicStorefrontPageLink | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = textValue(value.id);
+  const slug = textValue(value.slug);
+  const title = textValue(value.title);
+
+  if (!id || !slug || !title) {
+    return null;
+  }
+
+  return {
+    id,
+    pageType: textValue(value.pageType) || textValue(value.page_type) || null,
+    slug,
+    title
+  };
+}
+
+async function getPublishedPageLinks(
+  client: ReturnType<typeof createAdminClient> extends infer AdminClient ? NonNullable<AdminClient> : never,
+  storeId: string
+) {
+  const { data, error } = await client
+    .from("store_pages" as never)
+    .select("id, title, slug, page_type")
+    .eq("store_id", storeId)
+    .eq("status", "published")
+    .order("page_type" as never, { ascending: true } as never)
+    .order("title" as never, { ascending: true } as never);
+
+  if (error) {
+    console.warn("[storefront-preview] published page links failed", {
+      code: error.code,
+      message: error.message,
+      storeId
+    });
+    return [];
+  }
+
+  return ((data ?? []) as unknown[]).map(normalizePageLink).filter((page): page is PublicStorefrontPageLink => Boolean(page));
+}
+
 function normalizePreview(value: unknown): PublicStorefrontPreview | null {
   if (!isRecord(value)) {
     return null;
@@ -235,6 +288,9 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       : [],
     fontStyle: textValue(value.fontStyle, "inter"),
     layoutStyle: textValue(value.layoutStyle, "classic"),
+    pages: Array.isArray(value.pages)
+      ? value.pages.map(normalizePageLink).filter((page): page is PublicStorefrontPageLink => Boolean(page))
+      : [],
     products: Array.isArray(value.products)
       ? value.products.map(normalizeProduct).filter((product): product is PublicStorefrontProduct => Boolean(product))
       : [],
@@ -472,6 +528,7 @@ async function loadStoreModePublicPreview(slug: string) {
     variants: variantsByProduct.get(String(product.id ?? "")) ?? []
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
+  const pages = await getPublishedPageLinks(client as never, store.id);
   const { data: themeRow } = await client
     .from("store_theme_settings")
     .select("settings, theme_settings, logo_image_url, theme_color, font_style, layout_style")
@@ -518,6 +575,7 @@ async function loadStoreModePublicPreview(slug: string) {
     categories: savedCategories.length ? savedCategories : fallbackCategories,
     fontStyle: themeRuntime.fontStyle,
     layoutStyle: themeRuntime.layoutStyle,
+    pages,
     products: savedProducts,
     sectionsSchema: themeRuntime.layoutSections,
     templateId: themeRuntime.themeKey || store.template_id || "general-starter",
@@ -588,7 +646,17 @@ export async function getPublicStorefrontPreview(slug: string) {
     return null;
   }
 
-  return normalizePreview(data);
+  const preview = normalizePreview(data);
+  const admin = createAdminClient();
+
+  if (!preview || !admin) {
+    return preview;
+  }
+
+  return {
+    ...preview,
+    pages: await getPublishedPageLinks(admin as never, preview.store.id)
+  };
 }
 
 export async function getPublicStorefrontPreviewByHostname(hostname: string) {

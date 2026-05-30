@@ -108,7 +108,7 @@ export async function PublicStorePage({ pageSlug, slug }: PublicStorePageProps) 
           {page.title}
         </h1>
         <div
-          className="prose prose-slate mt-8 max-w-none rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-semibold leading-7 text-ink"
+          className="prose prose-slate mt-8 max-w-none whitespace-pre-wrap rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-semibold leading-7 text-ink"
           dangerouslySetInnerHTML={{ __html: sanitizePageContent(page.content) }}
         />
       </article>

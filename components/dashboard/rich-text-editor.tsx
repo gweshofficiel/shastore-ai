@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const toolbarButtonClass =
   "rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-slate-400";
@@ -16,17 +16,24 @@ export function RichTextEditor({
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(defaultValue ?? "");
 
-  function syncValue() {
+  const syncValue = useCallback(function syncValue() {
     const nextValue = editorRef.current?.innerHTML ?? "";
     if (inputRef.current) {
       inputRef.current.value = nextValue;
     }
-    setValue(nextValue);
-  }
+  }, []);
 
   useEffect(() => {
+    const initialValue = defaultValue ?? "";
+
+    if (editorRef.current && editorRef.current.innerHTML !== initialValue) {
+      editorRef.current.innerHTML = initialValue;
+    }
+    if (inputRef.current) {
+      inputRef.current.value = initialValue;
+    }
+
     const form = editorRef.current?.closest("form");
 
     if (!form) {
@@ -35,7 +42,7 @@ export function RichTextEditor({
 
     form.addEventListener("submit", syncValue);
     return () => form.removeEventListener("submit", syncValue);
-  }, []);
+  }, [defaultValue, syncValue]);
 
   function run(command: string, argument?: string) {
     editorRef.current?.focus();
@@ -64,7 +71,7 @@ export function RichTextEditor({
 
   return (
     <div className="grid gap-3">
-      <input name={name} readOnly ref={inputRef} type="hidden" value={value} />
+      <input defaultValue={defaultValue ?? ""} name={name} ref={inputRef} type="hidden" />
       <div className="flex flex-wrap gap-2" aria-label="Rich text toolbar">
         <button className={toolbarButtonClass} onClick={() => run("formatBlock", "h2")} type="button">
           Heading
