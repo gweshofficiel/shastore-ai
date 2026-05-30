@@ -142,6 +142,7 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/reviews", label: "Reviews", icon: "customers", permission: "manage_products" },
   { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
   { href: "/dashboard/monitoring", label: "Monitoring", icon: "monitoring", permission: "view_analytics" },
+  { href: "/dashboard/support", label: "Support", icon: "support", permission: "can_view_notifications" },
   { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "can_manage_payments" },
   { href: "/dashboard/tax", label: "Tax", icon: "payments", permission: "can_manage_payments" },
   { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "can_manage_shipping" },

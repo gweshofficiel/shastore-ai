@@ -8,6 +8,17 @@ function getConfiguredAdminEmails() {
     .filter(Boolean);
 }
 
+export function isPlatformAdminEmail(email: string | null | undefined) {
+  const configuredAdminEmails = getConfiguredAdminEmails();
+  const normalizedEmail = email?.toLowerCase() ?? "";
+  const isConfigured = configuredAdminEmails.length > 0;
+
+  return {
+    isAdmin: isConfigured ? configuredAdminEmails.includes(normalizedEmail) : true,
+    isConfigured
+  };
+}
+
 export async function getAdminAccess() {
   const supabase = await createClient();
   const {
@@ -18,10 +29,7 @@ export async function getAdminAccess() {
     redirect("/login?next=/admin");
   }
 
-  const configuredAdminEmails = getConfiguredAdminEmails();
-  const userEmail = user.email?.toLowerCase() ?? "";
-  const isConfigured = configuredAdminEmails.length > 0;
-  const isAdmin = isConfigured ? configuredAdminEmails.includes(userEmail) : true;
+  const { isAdmin, isConfigured } = isPlatformAdminEmail(user.email);
 
   if (!isAdmin) {
     redirect("/dashboard");

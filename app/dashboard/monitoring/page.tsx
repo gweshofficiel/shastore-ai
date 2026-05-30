@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { MonitoringCopyButton } from "@/components/dashboard/monitoring-copy-button";
 import { Card } from "@/components/ui/card";
+import { isPlatformAdminEmail } from "@/lib/admin-access";
+import { createSupportTicketFromMonitoringEvent } from "@/lib/support-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
@@ -13,6 +15,8 @@ type MonitoringPageProps = {
     from?: string;
     status?: string;
     storeId?: string;
+    supportError?: string;
+    supportTicket?: string;
   }>;
 };
 
@@ -180,6 +184,41 @@ function monitoringEventDetails(event: MonitoringEventRow) {
   return { code, copyText, details, hint, message, metadataJson };
 }
 
+function friendlyEventTitle(eventType: string) {
+  if (eventType === "product_create_failed") {
+    return "Product creation needs support review";
+  }
+
+  return eventType
+    .replace(/[._-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function safeStoreOwnerReason(event: MonitoringEventRow) {
+  const metadata = sanitizeMetadataForDisplay(event.metadata ?? {}) as Record<string, unknown>;
+  const safeMessage = metadataStringValue(metadata, ["safeMessage", "detail"]);
+
+  if (safeMessage !== "Not provided") {
+    return safeMessage;
+  }
+
+  if (event.event_status === "warning") {
+    return "A warning was recorded for this store activity.";
+  }
+
+  return "A background operation failed and may need platform support review.";
+}
+
+function supportErrorMessage(value: string | undefined) {
+  const messages: Record<string, string> = {
+    "create-failed": "Support request could not be sent. Please try again.",
+    "event-not-found": "That monitoring event is no longer available.",
+    "invalid-event": "Monitoring event reference is invalid."
+  };
+
+  return value ? messages[value] ?? "Support request could not be sent." : null;
+}
+
 async function countRows(
   supabase: Awaited<ReturnType<typeof createClient>>,
   table: string,
@@ -205,6 +244,8 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
     permission: "view_analytics",
     redirectTo: "/dashboard/monitoring"
   });
+  const isSuperAdmin = isPlatformAdminEmail(user.email).isAdmin;
+  const supportError = supportErrorMessage(query.supportError);
   const storesResult = await fetchStoresForAuthUser(supabase, user.id, workspaceId);
   const stores = storesResult.stores;
   const storeId = cleanFilter(query.storeId, 80);
@@ -349,6 +390,20 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
         title="Monitoring"
       />
 
+      {query.supportTicket ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-black text-emerald-800">
+            Support request sent. Ticket #{query.supportTicket}
+          </p>
+        </Card>
+      ) : null}
+
+      {supportError ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{supportError}</p>
+        </Card>
+      ) : null}
+
       <form className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-5" method="get">
         <label className="grid gap-2 text-sm font-bold text-ink">
           <span>Workspace</span>
@@ -454,28 +509,60 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
                     </div>
 
                     {showDetails ? (
-                      <details className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                        <summary className="cursor-pointer text-sm font-black text-ink">
-                          View details
-                        </summary>
-                        <div className="mt-4 grid gap-4">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <DetailField label="Code" value={details.code} />
-                            <DetailField label="Message" value={details.message} />
-                            <DetailField label="Details" value={details.details} />
-                            <DetailField label="Hint" value={details.hint} />
+                      isSuperAdmin ? (
+                        <details className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                          <summary className="cursor-pointer text-sm font-black text-ink">
+                            View technical details
+                          </summary>
+                          <div className="mt-4 grid gap-4">
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <DetailField label="Code" value={details.code} />
+                              <DetailField label="Message" value={details.message} />
+                              <DetailField label="Details" value={details.details} />
+                              <DetailField label="Hint" value={details.hint} />
+                              <DetailField label="Route" value={metadataStringValue(event.metadata, ["route"])} />
+                              <DetailField label="Workspace" value={event.workspace_id ?? "Not provided"} />
+                              <DetailField label="Store" value={event.store_id ?? "Not provided"} />
+                              <DetailField label="User" value={event.user_id ?? "Not provided"} />
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                                Metadata
+                              </p>
+                              <MonitoringCopyButton text={details.copyText} />
+                            </div>
+                            <pre className="max-h-72 overflow-auto rounded-2xl bg-white p-4 text-xs leading-5 text-slate-700">
+                              {details.metadataJson}
+                            </pre>
                           </div>
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                              Metadata
-                            </p>
-                            <MonitoringCopyButton text={details.copyText} />
+                        </details>
+                      ) : (
+                        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+                            <div>
+                              <p className="text-sm font-black text-amber-900">
+                                {friendlyEventTitle(event.event_type)}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+                                {safeStoreOwnerReason(event)}
+                              </p>
+                              <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+                                Reference ID: {event.id}
+                              </p>
+                            </div>
+                            <form action={createSupportTicketFromMonitoringEvent}>
+                              <input name="eventId" type="hidden" value={event.id} />
+                              <input name="returnTo" type="hidden" value="/dashboard/monitoring" />
+                              <button
+                                className="h-10 rounded-full bg-amber-900 px-4 text-xs font-black uppercase tracking-[0.14em] text-white"
+                                type="submit"
+                              >
+                                Report to Support
+                              </button>
+                            </form>
                           </div>
-                          <pre className="max-h-72 overflow-auto rounded-2xl bg-white p-4 text-xs leading-5 text-slate-700">
-                            {details.metadataJson}
-                          </pre>
                         </div>
-                      </details>
+                      )
                     ) : null}
                   </div>
                 );
