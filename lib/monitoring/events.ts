@@ -55,6 +55,44 @@ function sanitizeMetadata(metadata: Record<string, unknown> = {}) {
   return safe;
 }
 
+function firstMetadataValue(metadata: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    if (metadata[key] !== undefined && metadata[key] !== null) {
+      return metadata[key];
+    }
+  }
+
+  return null;
+}
+
+function normalizeMonitoringMetadata(
+  metadata: Record<string, unknown>,
+  eventStatus: MonitoringEventStatus
+) {
+  if (eventStatus !== "failed") {
+    return metadata;
+  }
+
+  const errorCode = firstMetadataValue(metadata, ["error_code", "code"]);
+  const errorMessage = firstMetadataValue(metadata, ["error_message", "message"]);
+  const errorDetails = firstMetadataValue(metadata, ["error_details", "details"]);
+  const errorHint = firstMetadataValue(metadata, ["error_hint", "hint"]);
+
+  return {
+    ...metadata,
+    error_code: errorCode,
+    error_details: errorDetails,
+    error_hint: errorHint,
+    error_message: errorMessage,
+    raw_error: metadata.raw_error ?? {
+      code: errorCode,
+      details: errorDetails,
+      hint: errorHint,
+      message: errorMessage
+    }
+  };
+}
+
 function maybeUuid(value: string | null | undefined) {
   const text = value?.trim() || "";
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)
@@ -90,7 +128,7 @@ export async function recordMonitoringEvent({
     entity_type: entityType.slice(0, 120),
     event_status: eventStatus,
     event_type: eventType.slice(0, 160),
-    metadata: sanitizeMetadata(metadata),
+    metadata: sanitizeMetadata(normalizeMonitoringMetadata(metadata, eventStatus)),
     store_id: maybeUuid(storeId),
     user_id: maybeUuid(userId),
     workspace_id: maybeUuid(workspaceId)

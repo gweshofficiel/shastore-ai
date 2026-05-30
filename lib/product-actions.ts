@@ -283,12 +283,24 @@ function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
 }
 
 function productDatabaseErrorMetadata(error?: ProductDatabaseError | null) {
+  const safeMessage = safeProductDatabaseErrorMessage(error);
+
   return {
     code: error?.code ?? "unknown",
     details: error?.details ?? null,
+    error_code: error?.code ?? "unknown",
+    error_details: error?.details ?? null,
+    error_hint: error?.hint ?? null,
+    error_message: error?.message ?? null,
     hint: error?.hint ?? null,
     message: error?.message ?? null,
-    safeMessage: safeProductDatabaseErrorMessage(error)
+    raw_error: {
+      code: error?.code ?? null,
+      details: error?.details ?? null,
+      hint: error?.hint ?? null,
+      message: error?.message ?? null
+    },
+    safeMessage
   };
 }
 
@@ -296,6 +308,7 @@ async function recordProductCreateFailure({
   detail,
   error,
   reason,
+  route = "/dashboard/products",
   status,
   storeId,
   supabase,
@@ -305,6 +318,7 @@ async function recordProductCreateFailure({
   detail?: string | null;
   error?: { code?: string | null; details?: string | null; hint?: string | null; message?: string | null } | null;
   reason: string;
+  route?: string;
   status: string;
   storeId: string;
   supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
@@ -317,9 +331,15 @@ async function recordProductCreateFailure({
     eventType: "product_create_failed",
     metadata: {
       ...productDatabaseErrorMetadata(error),
+      action: "product.create",
       code: error?.code ?? status,
       detail,
+      error_code: error?.code ?? status,
+      error_details: error?.details ?? null,
+      error_hint: error?.hint ?? null,
+      error_message: error?.message ?? detail ?? reason,
       reason,
+      route,
       status
     },
     storeId,
@@ -359,9 +379,13 @@ async function assertProductCreationAllowed({
       eventStatus: "failed",
       eventType: "product_create_failed",
       metadata: {
+        action: "product.create",
         code: "billing-blocked",
+        error_code: "billing-blocked",
+        error_message: message,
         message,
-        reason: "Billing limit blocked product creation"
+        reason: "Billing limit blocked product creation",
+        route: "/dashboard/products"
       },
       storeId,
       supabase,

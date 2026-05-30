@@ -120,12 +120,24 @@ function safeProductDatabaseErrorMessage(error?: ProductDatabaseError | null) {
 }
 
 function productDatabaseErrorMetadata(error?: ProductDatabaseError | null) {
+  const safeMessage = safeProductDatabaseErrorMessage(error);
+
   return {
     code: error?.code ?? "unknown",
     details: error?.details ?? null,
+    error_code: error?.code ?? "unknown",
+    error_details: error?.details ?? null,
+    error_hint: error?.hint ?? null,
+    error_message: error?.message ?? null,
     hint: error?.hint ?? null,
     message: error?.message ?? null,
-    safeMessage: safeProductDatabaseErrorMessage(error)
+    raw_error: {
+      code: error?.code ?? null,
+      details: error?.details ?? null,
+      hint: error?.hint ?? null,
+      message: error?.message ?? null
+    },
+    safeMessage
   };
 }
 
@@ -211,8 +223,12 @@ export async function POST(request: NextRequest) {
       eventStatus: "failed",
       eventType: "product_create_failed",
       metadata: {
+        action: "product.create",
+        error_code: "validation_failed",
+        error_message: validationError.message,
         message: validationError.message,
-        reason: "API validation failed"
+        reason: "API validation failed",
+        route: "/api/products"
       },
       storeId,
       supabase: context.supabase,
@@ -251,6 +267,8 @@ export async function POST(request: NextRequest) {
         eventType: "product_create_failed",
         metadata: {
           ...productDatabaseErrorMetadata(categoryError),
+          action: "product.create",
+          route: "/api/products",
           reason: "API category lookup failed"
         },
         storeId,
@@ -270,8 +288,12 @@ export async function POST(request: NextRequest) {
         eventStatus: "failed",
         eventType: "product_create_failed",
         metadata: {
+          action: "product.create",
+          error_code: "category-not-found",
+          error_message: "Category not found.",
           message: "Category not found.",
-          reason: "API category validation failed"
+          reason: "API category validation failed",
+          route: "/api/products"
         },
         storeId,
         supabase: context.supabase,
@@ -324,6 +346,8 @@ export async function POST(request: NextRequest) {
       eventType: "product_create_failed",
       metadata: {
         ...productDatabaseErrorMetadata(productInsertError),
+        action: "product.create",
+        route: "/api/products",
         reason: safeMessage
       },
       storeId,

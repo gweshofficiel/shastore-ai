@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { MonitoringCopyButton } from "@/components/dashboard/monitoring-copy-button";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
@@ -121,6 +122,62 @@ function metricCard(label: string, value: number, note?: string) {
       {note ? <p className="mt-2 text-xs font-semibold text-muted">{note}</p> : null}
     </Card>
   );
+}
+
+const sensitiveMetadataKeyPattern = /api[_-]?key|credential|password|secret|service[_-]?role|token/i;
+
+function sanitizeMetadataForDisplay(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeMetadataForDisplay);
+  }
+
+  if (value && typeof value === "object") {
+    const safe: Record<string, unknown> = {};
+
+    for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+      safe[key] = sensitiveMetadataKeyPattern.test(key)
+        ? "[hidden]"
+        : sanitizeMetadataForDisplay(nestedValue);
+    }
+
+    return safe;
+  }
+
+  return value;
+}
+
+function metadataStringValue(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = metadata?.[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return "Not provided";
+}
+
+function monitoringEventDetails(event: MonitoringEventRow) {
+  const metadata = sanitizeMetadataForDisplay(event.metadata ?? {}) as Record<string, unknown>;
+  const code = metadataStringValue(metadata, ["error_code", "code"]);
+  const message = metadataStringValue(metadata, ["error_message", "message", "safeMessage"]);
+  const details = metadataStringValue(metadata, ["error_details", "details"]);
+  const hint = metadataStringValue(metadata, ["error_hint", "hint"]);
+  const metadataJson = JSON.stringify(metadata, null, 2);
+  const copyText = [
+    `Event: ${event.event_type}`,
+    `Status: ${event.event_status}`,
+    `Entity: ${event.entity_type}${event.entity_id ? ` ${event.entity_id}` : ""}`,
+    `Code: ${code}`,
+    `Message: ${message}`,
+    `Details: ${details}`,
+    `Hint: ${hint}`,
+    "Metadata:",
+    metadataJson
+  ].join("\n");
+
+  return { code, copyText, details, hint, message, metadataJson };
 }
 
 async function countRows(
@@ -375,22 +432,54 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
           </div>
           <div className="divide-y divide-slate-100">
             {events.length ? (
-              events.map((event) => (
-                <div className="grid gap-3 p-5 md:grid-cols-[1fr_auto]" key={event.id}>
-                  <div>
-                    <p className="text-sm font-black text-ink">{event.event_type}</p>
-                    <p className="mt-1 text-sm font-semibold text-muted">
-                      {event.entity_type} {event.entity_id ? `- ${event.entity_id.slice(0, 8)}` : ""}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-slate-400">
-                      {storeName(stores, event.store_id)} - {formatDate(event.created_at)}
-                    </p>
+              events.map((event) => {
+                const details = monitoringEventDetails(event);
+                const showDetails = event.event_status === "failed" || event.event_status === "warning";
+
+                return (
+                  <div className="grid gap-3 p-5" key={event.id}>
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                      <div>
+                        <p className="text-sm font-black text-ink">{event.event_type}</p>
+                        <p className="mt-1 text-sm font-semibold text-muted">
+                          {event.entity_type} {event.entity_id ? `- ${event.entity_id.slice(0, 8)}` : ""}
+                        </p>
+                        <p className="mt-1 text-xs font-bold text-slate-400">
+                          {storeName(stores, event.store_id)} - {formatDate(event.created_at)}
+                        </p>
+                      </div>
+                      <span className={`h-fit rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(event.event_status)}`}>
+                        {event.event_status}
+                      </span>
+                    </div>
+
+                    {showDetails ? (
+                      <details className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <summary className="cursor-pointer text-sm font-black text-ink">
+                          View details
+                        </summary>
+                        <div className="mt-4 grid gap-4">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <DetailField label="Code" value={details.code} />
+                            <DetailField label="Message" value={details.message} />
+                            <DetailField label="Details" value={details.details} />
+                            <DetailField label="Hint" value={details.hint} />
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                              Metadata
+                            </p>
+                            <MonitoringCopyButton text={details.copyText} />
+                          </div>
+                          <pre className="max-h-72 overflow-auto rounded-2xl bg-white p-4 text-xs leading-5 text-slate-700">
+                            {details.metadataJson}
+                          </pre>
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
-                  <span className={`h-fit rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(event.event_status)}`}>
-                    {event.event_status}
-                  </span>
-                </div>
-              ))
+                );
+              })
             ) : (
               <p className="p-5 text-sm font-semibold text-muted">
                 No monitoring events match the current filters.
@@ -483,5 +572,18 @@ function SummaryCard({ rows, title }: { rows: string[]; title: string }) {
         )}
       </div>
     </Card>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-white p-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 break-words text-sm font-semibold leading-6 text-slate-700">
+        {value}
+      </p>
+    </div>
   );
 }
