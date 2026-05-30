@@ -8,6 +8,7 @@ import {
   Flag,
   Globe2,
   LayoutDashboard,
+  LifeBuoy,
   PackageCheck,
   Palette,
   ShieldCheck,
@@ -34,6 +35,7 @@ const icons = {
   settings: Settings,
   sellers: ShoppingBag,
   stores: ShoppingBag,
+  support: LifeBuoy,
   subscriptions: CreditCard,
   templates: Palette,
   users: Users

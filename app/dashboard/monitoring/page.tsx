@@ -186,7 +186,7 @@ function monitoringEventDetails(event: MonitoringEventRow) {
 
 function friendlyEventTitle(eventType: string) {
   if (eventType === "product_create_failed") {
-    return "Product creation needs support review";
+    return "Product creation failed";
   }
 
   return eventType
@@ -195,18 +195,15 @@ function friendlyEventTitle(eventType: string) {
 }
 
 function safeStoreOwnerReason(event: MonitoringEventRow) {
-  const metadata = sanitizeMetadataForDisplay(event.metadata ?? {}) as Record<string, unknown>;
-  const safeMessage = metadataStringValue(metadata, ["safeMessage", "detail"]);
-
-  if (safeMessage !== "Not provided") {
-    return safeMessage;
-  }
-
   if (event.event_status === "warning") {
-    return "A warning was recorded for this store activity.";
+    return "We encountered a technical warning while processing this action.";
   }
 
-  return "A background operation failed and may need platform support review.";
+  return "We encountered a technical issue while processing this action.";
+}
+
+function eventReference(eventId: string) {
+  return `ERR-${eventId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 }
 
 function supportErrorMessage(value: string | undefined) {
@@ -244,7 +241,7 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
     permission: "view_analytics",
     redirectTo: "/dashboard/monitoring"
   });
-  const isSuperAdmin = isPlatformAdminEmail(user.email).isAdmin;
+  const isSuperAdmin = isPlatformAdminEmail(user.email, { allowUnconfigured: false }).isAdmin;
   const supportError = supportErrorMessage(query.supportError);
   const storesResult = await fetchStoresForAuthUser(supabase, user.id, workspaceId);
   const stores = storesResult.stores;
@@ -393,7 +390,7 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
       {query.supportTicket ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-black text-emerald-800">
-            Support request sent. Ticket #{query.supportTicket}
+            Support request sent successfully. Ticket: {query.supportTicket}
           </p>
         </Card>
       ) : null}
@@ -410,7 +407,7 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
           <input
             className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-muted"
             disabled
-            value={workspaceId}
+            value={isSuperAdmin ? workspaceId : "Current workspace"}
           />
         </label>
         <label className="grid gap-2 text-sm font-bold text-ink">
@@ -491,6 +488,38 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
                 const details = monitoringEventDetails(event);
                 const showDetails = event.event_status === "failed" || event.event_status === "warning";
 
+                if (showDetails && !isSuperAdmin) {
+                  return (
+                    <div className="grid gap-3 p-5" key={event.id}>
+                      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
+                          <div>
+                            <p className="text-lg font-black tracking-[-0.02em] text-amber-950">
+                              {friendlyEventTitle(event.event_type)}
+                            </p>
+                            <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+                              {safeStoreOwnerReason(event)}
+                            </p>
+                            <p className="mt-3 text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+                              Reference: {eventReference(event.id)}
+                            </p>
+                          </div>
+                          <form action={createSupportTicketFromMonitoringEvent}>
+                            <input name="eventId" type="hidden" value={event.id} />
+                            <input name="returnTo" type="hidden" value="/dashboard/monitoring" />
+                            <button
+                              className="h-10 rounded-full bg-amber-900 px-4 text-xs font-black uppercase tracking-[0.14em] text-white"
+                              type="submit"
+                            >
+                              Contact Support
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="grid gap-3 p-5" key={event.id}>
                     <div className="grid gap-3 md:grid-cols-[1fr_auto]">
@@ -509,7 +538,6 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
                     </div>
 
                     {showDetails ? (
-                      isSuperAdmin ? (
                         <details className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                           <summary className="cursor-pointer text-sm font-black text-ink">
                             View technical details
@@ -536,33 +564,6 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
                             </pre>
                           </div>
                         </details>
-                      ) : (
-                        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
-                          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
-                            <div>
-                              <p className="text-sm font-black text-amber-900">
-                                {friendlyEventTitle(event.event_type)}
-                              </p>
-                              <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
-                                {safeStoreOwnerReason(event)}
-                              </p>
-                              <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-amber-700">
-                                Reference ID: {event.id}
-                              </p>
-                            </div>
-                            <form action={createSupportTicketFromMonitoringEvent}>
-                              <input name="eventId" type="hidden" value={event.id} />
-                              <input name="returnTo" type="hidden" value="/dashboard/monitoring" />
-                              <button
-                                className="h-10 rounded-full bg-amber-900 px-4 text-xs font-black uppercase tracking-[0.14em] text-white"
-                                type="submit"
-                              >
-                                Report to Support
-                              </button>
-                            </form>
-                          </div>
-                        </div>
-                      )
                     ) : null}
                   </div>
                 );
@@ -576,11 +577,46 @@ export default async function MonitoringPage({ searchParams }: MonitoringPagePro
         </Card>
 
         <div className="grid gap-4">
-          <SummaryCard title="Errors" rows={errorEvents.map((event) => `${event.event_type} - ${formatDate(event.created_at)}`)} />
-          <SummaryCard title="Failed Emails" rows={failedEmails.map((email) => `${email.template_key} - ${email.error_message || email.status}`)} />
-          <SummaryCard title="Failed Jobs" rows={failedJobs.map((event) => `${event.event_type} - ${event.entity_id ?? "job"}`)} />
-          <SummaryCard title="Theme Errors" rows={themeErrors.map((log) => `${log.event}: ${log.message}`)} />
-          <SummaryCard title="Media Errors" rows={mediaErrors.map((event) => `${event.event_type} - ${formatDate(event.created_at)}`)} />
+          <SummaryCard
+            title="Errors"
+            rows={errorEvents.map((event) =>
+              isSuperAdmin
+                ? `${event.event_type} - ${formatDate(event.created_at)}`
+                : `${friendlyEventTitle(event.event_type)} - ${eventReference(event.id)}`
+            )}
+          />
+          <SummaryCard
+            title="Failed Emails"
+            rows={failedEmails.map((email) =>
+              isSuperAdmin
+                ? `${email.template_key} - ${email.error_message || email.status}`
+                : `Email delivery issue - ${formatDate(email.created_at)}`
+            )}
+          />
+          <SummaryCard
+            title="Failed Jobs"
+            rows={failedJobs.map((event) =>
+              isSuperAdmin
+                ? `${event.event_type} - ${event.entity_id ?? "job"}`
+                : `Background task issue - ${eventReference(event.id)}`
+            )}
+          />
+          <SummaryCard
+            title="Theme Errors"
+            rows={themeErrors.map((log) =>
+              isSuperAdmin
+                ? `${log.event}: ${log.message}`
+                : `Theme rendering issue - ${formatDate(log.created_at)}`
+            )}
+          />
+          <SummaryCard
+            title="Media Errors"
+            rows={mediaErrors.map((event) =>
+              isSuperAdmin
+                ? `${event.event_type} - ${formatDate(event.created_at)}`
+                : `Media processing issue - ${eventReference(event.id)}`
+            )}
+          />
         </div>
       </section>
 

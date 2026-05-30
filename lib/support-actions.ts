@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
@@ -29,7 +30,7 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 1000) {
 }
 
 function safeTicketNumber() {
-  return `SUP-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 6).toUpperCase()}`;
+  return `TKT-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 }
 
 function sanitizeSnapshotValue(value: unknown): unknown {
@@ -143,6 +144,23 @@ export async function createSupportTicketFromMonitoringEvent(formData: FormData)
     });
     redirect(`${returnTo}?supportError=create-failed`);
   }
+
+  await recordMonitoringEventSafe({
+    entityId: monitoringEvent.id,
+    entityType: "support_ticket",
+    eventType: "support_ticket_created",
+    metadata: {
+      action: "support.ticket.create",
+      priority: insertPayload.priority,
+      route: "/dashboard/monitoring",
+      sourceEventId: monitoringEvent.id,
+      ticketNumber
+    },
+    storeId: monitoringEvent.store_id,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
 
   revalidatePath(supportTicketPath);
   revalidatePath(monitoringPath);

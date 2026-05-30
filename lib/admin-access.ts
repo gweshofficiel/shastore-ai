@@ -8,13 +8,17 @@ function getConfiguredAdminEmails() {
     .filter(Boolean);
 }
 
-export function isPlatformAdminEmail(email: string | null | undefined) {
+export function isPlatformAdminEmail(
+  email: string | null | undefined,
+  options: { allowUnconfigured?: boolean } = {}
+) {
   const configuredAdminEmails = getConfiguredAdminEmails();
   const normalizedEmail = email?.toLowerCase() ?? "";
   const isConfigured = configuredAdminEmails.length > 0;
+  const allowUnconfigured = options.allowUnconfigured ?? true;
 
   return {
-    isAdmin: isConfigured ? configuredAdminEmails.includes(normalizedEmail) : true,
+    isAdmin: isConfigured ? configuredAdminEmails.includes(normalizedEmail) : allowUnconfigured,
     isConfigured
   };
 }

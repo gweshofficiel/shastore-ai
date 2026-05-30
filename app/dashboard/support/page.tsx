@@ -48,7 +48,7 @@ export default async function SupportPage() {
     permission: "can_view_notifications",
     redirectTo: "/dashboard/support"
   });
-  const isSuperAdmin = isPlatformAdminEmail(user.email).isAdmin;
+  const isSuperAdmin = isPlatformAdminEmail(user.email, { allowUnconfigured: false }).isAdmin;
   const client = isSuperAdmin ? createAdminClient() ?? supabase : supabase;
   const selectColumns = isSuperAdmin
     ? "id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, message, technical_snapshot, created_at, updated_at"
@@ -103,7 +103,9 @@ export default async function SupportPage() {
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-400">
                       Created {formatDate(ticket.created_at)}
-                      {ticket.event_id ? ` - Event ${ticket.event_id.slice(0, 8)}` : ""}
+                      {" "}-
+                      Last update {formatDate(ticket.updated_at)}
+                      {isSuperAdmin && ticket.event_id ? ` - Event ${ticket.event_id.slice(0, 8)}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
