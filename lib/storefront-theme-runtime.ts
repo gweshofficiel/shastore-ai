@@ -76,13 +76,15 @@ function themeSettingsFromRow(row: ThemeRuntimeRow | null) {
   const logo = isRecord(row.logo_config) ? row.logo_config : {};
   const typography = isRecord(row.typography) ? row.typography : {};
 
+  const logoUrl = textValue(logo.url);
+
   return {
     accentColor: colorFromPalette(row.color_palette, "accent"),
     bodyFont: typography.body,
     gradientFrom: colorFromPalette(row.color_palette, "primary"),
     gradientTo: colorFromPalette(row.color_palette, "secondary"),
     headingFont: typography.heading,
-    logoUrl: logo.url,
+    ...(logoUrl ? { logoUrl } : {}),
     primaryColor: colorFromPalette(row.color_palette, "primary"),
     secondaryColor: colorFromPalette(row.color_palette, "secondary")
   };
@@ -206,9 +208,9 @@ export async function resolveStorefrontThemeRuntime({
       ...defaultStoreThemeSettings,
       ...(isRecord(fallbackSettings) ? fallbackSettings : {}),
       ...(isRecord(storeSettings) ? storeSettings : {}),
-      ...persistedSettings,
       ...themeSettingsFromRow(row),
       ...rowSettings,
+      ...persistedSettings,
       primaryColor:
         rowSettings.primaryColor ??
         colorFromPalette(row?.color_palette, "primary") ??

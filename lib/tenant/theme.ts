@@ -98,8 +98,13 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
     layout_key: layoutKey,
     logo_config: {
       alt: context.settings.title,
-      mode: themeSettings.logoUrl || typeof logoConfig.url === "string" ? "image" : "text",
-      url: themeSettings.logoUrl || (typeof logoConfig.url === "string" ? logoConfig.url : null)
+      mode:
+        themeSettings.logoUrl || (typeof logoConfig.url === "string" && logoConfig.url.trim())
+          ? "image"
+          : "text",
+      url:
+        themeSettings.logoUrl ||
+        (typeof logoConfig.url === "string" && logoConfig.url.trim() ? logoConfig.url : null)
     },
     owner_user_id: context.owner_user_id,
     spacing:
@@ -149,8 +154,15 @@ function normalizeTheme(row: unknown, context: StoreTenantContext): StoreThemeRe
     layout_key: textValue(row.layout_key, fallback.layout_key),
     logo_config: {
       alt: typeof logo.alt === "string" ? logo.alt : fallback.logo_config.alt,
-      mode: logo.mode === "image" ? "image" : "text",
-      url: typeof logo.url === "string" && logo.url.startsWith("http") ? logo.url : null
+      mode:
+        (typeof logo.url === "string" && logo.url.trim().startsWith("http")) ||
+        fallback.logo_config.mode === "image"
+          ? "image"
+          : "text",
+      url:
+        typeof logo.url === "string" && logo.url.trim().startsWith("http")
+          ? logo.url.trim()
+          : fallback.logo_config.url
     },
     owner_user_id:
       typeof row.owner_user_id === "string" ? row.owner_user_id : fallback.owner_user_id,
@@ -175,18 +187,34 @@ export async function getStoreTheme(context: StoreTenantContext): Promise<StoreT
     return defaultTheme(context);
   }
 
-  const { data, error } = await admin
+  const baseSelect = admin
     .from("store_themes" as never)
     .select("*")
-    .eq("store_instance_id", context.store_instance_id)
-    .eq("is_active", true)
+    .eq("status" as never, "published" as never)
+    .eq("is_active" as never, true as never)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  const byStoreId = await baseSelect.eq("store_id" as never, context.store_instance_id as never).maybeSingle();
+
+  if (byStoreId.data) {
+    return normalizeTheme(byStoreId.data, context);
+  }
+
+  const byInstanceId = await admin
+    .from("store_themes" as never)
+    .select("*")
+    .eq("status" as never, "published" as never)
+    .eq("is_active" as never, true as never)
+    .eq("store_instance_id" as never, context.store_instance_id as never)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (error || !data) {
+  if (byInstanceId.error || !byInstanceId.data) {
     return defaultTheme(context);
   }
 
-  return normalizeTheme(data, context);
+  return normalizeTheme(byInstanceId.data, context);
 }
 
 export function getStoreLayout(theme: StoreThemeRecord) {

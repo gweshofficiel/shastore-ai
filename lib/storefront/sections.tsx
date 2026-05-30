@@ -612,6 +612,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
 function NavbarSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
+  const logoUrl = context.theme.logo.url || theme.logoUrl || null;
 
   return (
     <section
@@ -635,11 +636,11 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
         }`}
       >
         <Link className="flex min-w-0 items-center gap-3" href={`/store/${context.preview.store.slug}`}>
-          {context.theme.logo.url ? (
+          {logoUrl ? (
             <img
               alt={context.theme.logo.alt || context.settings.title}
               className="h-10 w-10 rounded-full object-cover"
-              src={context.theme.logo.url}
+              src={logoUrl}
             />
           ) : (
             <span

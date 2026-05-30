@@ -331,7 +331,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, workspace_id, name, description, brand_color, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, workspace_id, name, description, brand_color, logo_image_url, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -474,17 +474,23 @@ async function loadStoreModePublicPreview(slug: string) {
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const { data: themeRow } = await client
     .from("store_theme_settings")
-    .select("settings, theme_settings, theme_color, font_style, layout_style")
+    .select("settings, theme_settings, logo_image_url, theme_color, font_style, layout_style")
     .eq("store_id", store.id)
     .maybeSingle();
   const themeRecord = (themeRow ?? {}) as {
     font_style?: string | null;
     layout_style?: string | null;
+    logo_image_url?: string | null;
     settings?: unknown;
     template_id?: string | null;
     theme_color?: string | null;
     theme_settings?: unknown;
   };
+  const persistedLogoUrl =
+    textValue(themeRecord.logo_image_url) ||
+    (isRecord(themeRecord.settings) ? textValue(themeRecord.settings.logoUrl) : "") ||
+    (isRecord(themeRecord.theme_settings) ? textValue(themeRecord.theme_settings.logoUrl) : "") ||
+    textValue((store as { logo_image_url?: string | null }).logo_image_url);
   const themeRuntime = await resolveStorefrontThemeRuntime({
     brandColor: store.brand_color,
     client,
@@ -497,6 +503,7 @@ async function loadStoreModePublicPreview(slug: string) {
     themeSettingsRow: {
       ...(isRecord(themeRecord.theme_settings) ? themeRecord.theme_settings : {}),
       ...(isRecord(themeRecord.settings) ? themeRecord.settings : {}),
+      ...(persistedLogoUrl ? { logoUrl: persistedLogoUrl } : {}),
       font_style: themeRecord.font_style,
       layout_style: themeRecord.layout_style,
       primaryColor: themeRecord.theme_color || store.theme_color || store.brand_color
