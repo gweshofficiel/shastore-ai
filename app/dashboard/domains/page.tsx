@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  activateVerifiedStoreDomain,
   attachCustomDomain,
   createStoreSubdomain,
   markStoreDomainVerificationPending,
@@ -25,9 +26,11 @@ import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "
 import { createClient } from "@/lib/supabase/server";
 
 const statusMessages: Record<string, string> = {
+  "activation-failed": "Verified domain could not be activated.",
   "custom-domain-saved": "Custom domain prepared for DNS verification.",
   "delete-failed": "Domain record could not be deleted.",
   "domain-not-found": "Domain record was not found for this store.",
+  "domain-activated": "Verified domain activated for this store.",
   "domain-deleted": "Domain record deleted.",
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
@@ -35,6 +38,7 @@ const statusMessages: Record<string, string> = {
   "limit-reached": "Your current plan has reached its domain limit.",
   "missing-domain": "Choose a domain record first.",
   "missing-store": "Choose a claimed store first.",
+  "not-verified": "Domain must be verified before it can be activated.",
   "not-authorized": "You can only manage domains for stores you own or administer.",
   "primary-updated": "Primary domain updated.",
   "reserved-subdomain": "That subdomain is reserved by SHASTORE AI.",
@@ -49,6 +53,7 @@ const statusMessages: Record<string, string> = {
 const successStatuses = new Set([
   "custom-domain-saved",
   "domain-deleted",
+  "domain-activated",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -61,7 +66,8 @@ const badgeStyles: Record<string, string> = {
   pending: "bg-amber-50 text-amber-700",
   ready: "bg-emerald-50 text-emerald-700",
   revoked: "bg-red-50 text-red-700",
-  verified: "bg-emerald-50 text-emerald-700"
+  verified: "bg-emerald-50 text-emerald-700",
+  verifying: "bg-blue-50 text-blue-700"
 };
 
 function StatusBadge({ label, value }: { label: string; value: string }) {
@@ -247,12 +253,13 @@ export default async function DomainsPage({
                 {primaryDomain.hostname}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
+                <StatusBadge label="Status" value={primaryDomain.status ?? primaryDomain.verification_status} />
                 <StatusBadge label="DNS" value={primaryDomain.verification_status} />
                 <StatusBadge label="SSL" value={primaryDomain.ssl_status} />
               </div>
               <p className="mt-4 text-sm leading-6 text-muted">
-                Hostname resolver support is prepared for this domain once DNS
-                and SSL are verified in production.
+                Active custom domains resolve this host to the correct public store while
+                default SHASTORE URLs continue to work.
               </p>
             </div>
           ) : (
@@ -348,8 +355,8 @@ export default async function DomainsPage({
             Connect custom domain
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Stores custom hostnames for future DNS and SSL verification without
-            changing checkout, products, or publishing systems.
+            Adds the hostname in pending status and generates DNS records for ownership
+            verification. Activation only happens after the domain is verified.
           </p>
           <form action={attachCustomDomain} className="mt-6 grid gap-4">
             <input name="storeId" type="hidden" value={activeStoreId} />
@@ -408,10 +415,16 @@ export default async function DomainsPage({
                   ) : null}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
+                  <StatusBadge label="Status" value={domain.status ?? domain.verification_status} />
                   <StatusBadge label="Verify" value={domain.verification_status} />
                   <StatusBadge label="DNS" value={domain.dns_status} />
                   <StatusBadge label="SSL" value={domain.ssl_status} />
                 </div>
+                {domain.error_message ? (
+                  <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                    {domain.error_message}
+                  </p>
+                ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">
                   {!domain.is_primary ? (
                     <form action={setPrimaryDomain}>
@@ -419,6 +432,16 @@ export default async function DomainsPage({
                       <input name="domainId" type="hidden" value={domain.id} />
                       <Button type="submit" variant="secondary">
                         Make primary
+                      </Button>
+                    </form>
+                  ) : null}
+                  {(domain.status === "verified" || domain.verification_status === "verified") &&
+                  domain.status !== "active" ? (
+                    <form action={activateVerifiedStoreDomain}>
+                      <input name="storeId" type="hidden" value={domain.store_instance_id} />
+                      <input name="domainId" type="hidden" value={domain.id} />
+                      <Button type="submit" variant="secondary">
+                        Activate verified domain
                       </Button>
                     </form>
                   ) : null}
@@ -443,19 +466,25 @@ export default async function DomainsPage({
                   <div className="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-2">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                        CNAME target preview
+                        CNAME target
                       </p>
                       <p className="mt-2 break-all font-black text-ink">
                         {data.provisioning[domain.id].cnameTarget}
                       </p>
+                      <p className="mt-1 text-xs font-semibold text-muted">
+                        Point {domain.hostname} to this target.
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                        TXT verification placeholder
+                        TXT verification record
                       </p>
                       <p className="mt-2 break-all text-muted">
                         <span className="font-black text-ink">{data.provisioning[domain.id].recordName}</span>{" "}
                         = {data.provisioning[domain.id].recordValue}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-muted">
+                        Keep this record until the domain is verified.
                       </p>
                     </div>
                   </div>
@@ -475,14 +504,51 @@ export default async function DomainsPage({
         </div>
       </Card>
       <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Verification logs
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Recent status changes and verification attempts for the selected store.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            {data.logs.length} recent
+          </span>
+        </div>
+        <div className="mt-5 grid gap-3">
+          {data.logs.length ? (
+            data.logs.map((log) => (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={log.id}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="break-all text-sm font-black text-ink">{log.hostname}</p>
+                  <StatusBadge label="Log" value={log.status} />
+                </div>
+                <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                  {log.message ?? "Domain verification event recorded."}
+                </p>
+                <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                  {new Date(log.checked_at).toLocaleString()}
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
+              No verification logs yet. Add a custom domain or queue verification to create the first log.
+            </p>
+          )}
+        </div>
+      </Card>
+      <Card className="p-6 lg:p-8">
         <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
           Hostname routing preparation
         </h2>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           {[
             "localhost keeps using /store/[slug] safely during development.",
-            "Production subdomains resolve through verified store_domains records.",
-            "Custom domains are stored now and can be activated when DNS/SSL automation is connected."
+            "Production subdomains resolve through active store_domains records.",
+            "Custom domains resolve only after verification and activation."
           ].map((step, index) => (
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={step}>
               <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">

@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
@@ -9,7 +10,7 @@ import {
 } from "@/lib/billing/domain-access";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
-import { getDomainBase } from "@/lib/domains/hostinsh";
+import { getDefaultDnsTarget, getDomainBase } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
   isReservedSubdomain,
@@ -27,6 +28,8 @@ type ClaimedStoreRow = {
   owner_user_id?: string | null;
 };
 
+type DomainLifecycleStatus = "pending" | "verifying" | "verified" | "active" | "failed";
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -37,6 +40,46 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
 
 function domainsRedirect(storeId: string, status: string): never {
   redirect(`/dashboard/domains?storeId=${encodeURIComponent(storeId)}&domains=${encodeURIComponent(status)}`);
+}
+
+function createDomainVerificationToken() {
+  return randomUUID().replace(/-/g, "");
+}
+
+async function recordDomainVerificationLog({
+  domainId,
+  hostname,
+  message,
+  status,
+  storeId,
+  supabase,
+  userId
+}: {
+  domainId: string;
+  hostname: string;
+  message: string;
+  status: DomainLifecycleStatus;
+  storeId: string;
+  supabase: SupabaseClient;
+  userId: string;
+}) {
+  const { error } = await supabase.from("store_domain_verification_logs" as never).insert({
+    hostname,
+    message,
+    owner_user_id: userId,
+    status,
+    store_domain_id: domainId,
+    store_instance_id: storeId
+  } as never);
+
+  if (error) {
+    console.warn("[store-domains] verification log failed", {
+      code: error.code,
+      domainId,
+      message: error.message,
+      storeId
+    });
+  }
 }
 
 async function getClaimedStore(supabase: SupabaseClient, storeId: string) {
@@ -143,16 +186,22 @@ export async function createStoreSubdomain(formData: FormData) {
 
   const subdomainPayload = {
     custom_domain: null,
+    cname_target: getDefaultDnsTarget(),
     dns_status: "verified",
     domain_type: "subdomain",
+    error_message: null,
     hostname,
     is_primary: true,
+    last_checked_at: new Date().toISOString(),
     owner_user_id: userId,
     primary_domain: hostname,
     ssl_status: "active",
+    status: "active",
+    store_id: storeId,
     store_instance_id: storeId,
     subdomain,
-    verification_status: "verified"
+    verification_status: "verified",
+    verified_at: new Date().toISOString()
   };
   const { data: existingSubdomain } = await supabase
     .from("store_domains" as never)
@@ -178,6 +227,26 @@ export async function createStoreSubdomain(formData: FormData) {
       storeId
     });
     domainsRedirect(storeId, "save-failed");
+  }
+
+  const { data: savedSubdomain } = await supabase
+    .from("store_domains" as never)
+    .select("id")
+    .eq("store_instance_id", storeId)
+    .eq("hostname", hostname)
+    .maybeSingle();
+  const domainId = (savedSubdomain as { id?: string } | null)?.id;
+
+  if (domainId) {
+    await recordDomainVerificationLog({
+      domainId,
+      hostname,
+      message: "SHASTORE subdomain is managed by the platform and marked active.",
+      status: "active",
+      storeId,
+      supabase,
+      userId
+    });
   }
 
   await recordStoreAuditLogSafe({
@@ -220,27 +289,34 @@ export async function attachCustomDomain(formData: FormData) {
   }
 
   const makePrimary = cleanText(formData.get("makePrimary"), 10) === "on";
+  const verificationToken = createDomainVerificationToken();
 
   if (makePrimary) {
     await clearPrimaryDomain(supabase, storeId);
   }
 
-  const { error } = await supabase.from("store_domains" as never).upsert(
+  const { data: domain, error } = await supabase.from("store_domains" as never).upsert(
     {
+      cname_target: getDefaultDnsTarget(),
       custom_domain: hostname,
       dns_status: "pending",
       domain_type: "custom",
+      error_message: null,
       hostname,
       is_primary: makePrimary,
+      last_checked_at: null,
       owner_user_id: userId,
       primary_domain: makePrimary ? hostname : null,
       ssl_status: "pending",
+      status: "pending",
+      store_id: storeId,
       store_instance_id: storeId,
       subdomain: null,
+      verification_token: verificationToken,
       verification_status: "pending"
     } as never,
     { onConflict: "store_instance_id,hostname" }
-  );
+  ).select("id").single();
 
   if (error) {
     console.error("[store-domains] connect custom domain failed", {
@@ -251,6 +327,16 @@ export async function attachCustomDomain(formData: FormData) {
     });
     domainsRedirect(storeId, "save-failed");
   }
+
+  await recordDomainVerificationLog({
+    domainId: (domain as { id: string }).id,
+    hostname,
+    message: "Custom domain added. Add the CNAME and TXT records, then start verification.",
+    status: "pending",
+    storeId,
+    supabase,
+    userId
+  });
 
   await recordStoreAuditLogSafe({
     action: "domain_connected",
@@ -325,7 +411,7 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
 
   const { data: domain } = await supabase
     .from("store_domains" as never)
-    .select("domain_type")
+    .select("domain_type, hostname")
     .eq("id", domainId)
     .eq("store_instance_id", storeId)
     .maybeSingle();
@@ -347,8 +433,13 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
   const { error } = await supabase
     .from("store_domains" as never)
     .update({
+      error_message: process.env.HOSTINSH_API_KEY
+        ? null
+        : "DNS verification is waiting for HOSTINSH API credentials. Add the CNAME and TXT records shown in the dashboard.",
+      last_checked_at: new Date().toISOString(),
       dns_status: "pending",
       ssl_status: "pending",
+      status: "verifying",
       verification_status: "pending"
     } as never)
     .eq("id", domainId)
@@ -358,8 +449,88 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
     domainsRedirect(storeId, "verify-failed");
   }
 
+  await recordDomainVerificationLog({
+    domainId,
+    hostname: (domain as { hostname: string }).hostname,
+    message: process.env.HOSTINSH_API_KEY
+      ? "Domain verification was queued."
+      : "Verification is pending because HOSTINSH API credentials are not configured.",
+    status: "verifying",
+    storeId,
+    supabase,
+    userId
+  });
+
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "verification-pending");
+}
+
+export async function activateVerifiedStoreDomain(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const domainId = cleanText(formData.get("domainId"), 80);
+
+  if (!domainId) {
+    domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { data: domain } = await supabase
+    .from("store_domains" as never)
+    .select("id, hostname, status, verification_status, dns_status, ssl_status")
+    .eq("id", domainId)
+    .eq("store_instance_id", storeId)
+    .maybeSingle();
+
+  if (!domain) {
+    domainsRedirect(storeId, "domain-not-found");
+  }
+
+  const domainRow = domain as {
+    dns_status?: string | null;
+    hostname: string;
+    ssl_status?: string | null;
+    status?: string | null;
+    verification_status?: string | null;
+  };
+  const verified =
+    domainRow.status === "verified" ||
+    (domainRow.verification_status === "verified" && domainRow.dns_status === "verified");
+
+  if (!verified) {
+    domainsRedirect(storeId, "not-verified");
+  }
+
+  await clearPrimaryDomain(supabase, storeId);
+
+  const { error } = await supabase
+    .from("store_domains" as never)
+    .update({
+      error_message: null,
+      is_primary: true,
+      last_checked_at: new Date().toISOString(),
+      primary_domain: domainRow.hostname,
+      ssl_status: domainRow.ssl_status === "ready" ? "active" : (domainRow.ssl_status ?? "active"),
+      status: "active",
+      verified_at: new Date().toISOString()
+    } as never)
+    .eq("id", domainId)
+    .eq("store_instance_id", storeId);
+
+  if (error) {
+    domainsRedirect(storeId, "activation-failed");
+  }
+
+  await recordDomainVerificationLog({
+    domainId,
+    hostname: domainRow.hostname,
+    message: "Verified domain was activated as the primary hostname.",
+    status: "active",
+    storeId,
+    supabase,
+    userId
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-activated");
 }
 
 export async function removeDomain(formData: FormData) {

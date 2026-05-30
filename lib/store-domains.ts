@@ -27,13 +27,28 @@ export type StoreDomainRecord = {
   hostname: string;
   subdomain: string | null;
   custom_domain: string | null;
+  cname_target?: string | null;
+  error_message?: string | null;
   primary_domain: string | null;
   is_primary: boolean;
+  last_checked_at?: string | null;
+  status?: "pending" | "verifying" | "verified" | "active" | "failed" | null;
+  verification_token?: string | null;
   verification_status: "pending" | "verified" | "failed" | "revoked";
+  verified_at?: string | null;
   dns_status: "not_configured" | "pending" | "verified" | "failed";
   ssl_status: "not_configured" | "pending" | "ready" | "active" | "failed";
   created_at: string;
   updated_at: string;
+};
+
+export type StoreDomainVerificationLog = {
+  checked_at: string;
+  hostname: string;
+  id: string;
+  message: string | null;
+  status: string;
+  store_domain_id: string | null;
 };
 
 export type DomainAvailability = {
@@ -57,6 +72,7 @@ export type StoreDomainsDashboardData = {
   domains: StoreDomainRecord[];
   domainBase: string;
   error: string | null;
+  logs: StoreDomainVerificationLog[];
   provisioning: Record<string, DomainProvisioningInstruction>;
   reservedSubdomains: string[];
   ready: boolean;
@@ -155,11 +171,11 @@ async function checkSubdomainAvailability(
 function buildProvisioning(domain: StoreDomainRecord): DomainProvisioningInstruction {
   const verification = buildDnsVerification(
     domain.hostname,
-    `pending-${domain.id.replace(/-/g, "").slice(0, 16)}`
+    domain.verification_token ?? `pending-${domain.id.replace(/-/g, "").slice(0, 16)}`
   );
 
   return {
-    cnameTarget: getDefaultDnsTarget(),
+    cnameTarget: domain.cname_target ?? getDefaultDnsTarget(),
     recordName: verification.recordName,
     recordType: verification.recordType,
     recordValue: verification.recordValue
@@ -182,6 +198,7 @@ export async function getStoreDomainsDashboardData(
       domains: [],
       domainBase: getDomainBase(),
       error: null,
+      logs: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -200,6 +217,7 @@ export async function getStoreDomainsDashboardData(
       domains: [],
       domainBase: getDomainBase(),
       error: "Unable to load claimed buyer stores for domain management.",
+      logs: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -223,6 +241,7 @@ export async function getStoreDomainsDashboardData(
       domains: [],
       domainBase: getDomainBase(),
       error: null,
+      logs: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -240,6 +259,14 @@ export async function getStoreDomainsDashboardData(
   const domains = domainsResult.error
     ? []
     : ((domainsResult.data ?? []) as StoreDomainRecord[]);
+  const logsResult = domains.length
+    ? await supabase
+        .from("store_domain_verification_logs" as never)
+        .select("id, store_domain_id, hostname, status, message, checked_at")
+        .eq("store_instance_id", activeStore.id)
+        .order("checked_at", { ascending: false })
+        .limit(12)
+    : { data: [], error: null };
 
   return {
     activeStore,
@@ -250,6 +277,7 @@ export async function getStoreDomainsDashboardData(
       domainsResult.error && !isMissingStoreDomainsTable(domainsResult.error)
         ? "Unable to load domains for this store."
         : null,
+    logs: logsResult.error ? [] : ((logsResult.data ?? []) as StoreDomainVerificationLog[]),
     provisioning: Object.fromEntries(
       domains.map((domain) => [domain.id, buildProvisioning(domain)])
     ),
