@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { queueStoreEmailEventSafe } from "@/lib/store-email-queue";
+import type { Json } from "@/types/database";
 
 type LifecycleEventType = "customer_welcome" | "review_reminder" | "thank_you";
 
@@ -33,6 +34,23 @@ type LifecycleProcessResult = {
   skipped: number;
 };
 
+type LifecycleSettings = {
+  enable_customer_welcome?: boolean | null;
+  enable_review_reminder?: boolean | null;
+  enable_thank_you?: boolean | null;
+};
+
+type LifecycleEventRow = {
+  customer_name?: string | null;
+  event_type: LifecycleEventType;
+  id: string;
+  metadata?: Record<string, unknown> | null;
+  order_id: string;
+  recipient?: string | null;
+  store_id: string;
+  workspace_id: string;
+};
+
 function cleanEmail(value?: string | null) {
   const email = value?.trim().toLowerCase() ?? "";
   return email.includes("@") ? email : null;
@@ -40,6 +58,41 @@ function cleanEmail(value?: string | null) {
 
 function orderReference(orderId: string) {
   return orderId.slice(0, 8);
+}
+
+function lifecycleEnabled(settings: LifecycleSettings | null, eventType: LifecycleEventType) {
+  if (eventType === "customer_welcome") {
+    return settings?.enable_customer_welcome === true;
+  }
+
+  if (eventType === "thank_you") {
+    return settings?.enable_thank_you !== false;
+  }
+
+  return settings?.enable_review_reminder !== false;
+}
+
+async function getLifecycleSettings({
+  storeId,
+  workspaceId
+}: {
+  storeId: string;
+  workspaceId: string;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("store_email_settings" as never)
+    .select("enable_customer_welcome, enable_thank_you, enable_review_reminder")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .maybeSingle();
+
+  return (data as LifecycleSettings | null) ?? null;
 }
 
 async function resolveStoreCustomer({
@@ -88,17 +141,23 @@ async function resolveStoreCustomer({
 
 async function createLifecycleEvent({
   customerId,
+  customerName,
   eventType,
+  metadata,
   orderId,
-  processedAt,
+  orderSource,
+  recipient,
   scheduledFor,
   storeId,
   workspaceId
 }: {
   customerId?: string | null;
+  customerName?: string | null;
   eventType: LifecycleEventType;
+  metadata?: Record<string, unknown>;
   orderId: string;
-  processedAt?: string | null;
+  orderSource: string;
+  recipient?: string | null;
   scheduledFor: string;
   storeId: string;
   workspaceId: string;
@@ -113,9 +172,12 @@ async function createLifecycleEvent({
     .from("customer_lifecycle_events" as never)
     .insert({
       customer_id: customerId ?? null,
+      customer_name: customerName ?? null,
       event_type: eventType,
+      metadata: (metadata ?? {}) as Json,
       order_id: orderId,
-      processed_at: processedAt ?? null,
+      order_source: orderSource,
+      recipient: cleanEmail(recipient),
       scheduled_for: scheduledFor,
       store_id: storeId,
       workspace_id: workspaceId
@@ -139,6 +201,50 @@ async function createLifecycleEvent({
   }
 
   return (data as { id: string } | null)?.id ?? null;
+}
+
+async function markLifecycleEventProcessed(eventId: string) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return;
+  }
+
+  await admin
+    .from("customer_lifecycle_events" as never)
+    .update({ processed_at: new Date().toISOString() } as never)
+    .eq("id" as never, eventId as never)
+    .is("processed_at" as never, null);
+}
+
+async function queueLifecycleEventNow({
+  eventId,
+  eventType,
+  metadata,
+  recipient,
+  storeId,
+  workspaceId
+}: {
+  eventId: string;
+  eventType: LifecycleEventType;
+  metadata: Record<string, unknown>;
+  recipient?: string | null;
+  storeId: string;
+  workspaceId: string;
+}) {
+  const queued = await queueStoreEmailEventSafe({
+    metadata,
+    recipient,
+    storeId,
+    templateKey: eventType,
+    workspaceId
+  });
+
+  if (queued) {
+    await markLifecycleEventProcessed(eventId);
+  }
+
+  return queued;
 }
 
 async function hasExistingWelcome({
@@ -189,6 +295,13 @@ export async function createCustomerLifecycleEventsForConfirmedOrderSafe({
       workspaceId
     });
     const recipient = customer?.email ?? customerEmail ?? null;
+    const cleanRecipient = cleanEmail(recipient);
+
+    if (!cleanRecipient) {
+      return;
+    }
+
+    const settings = await getLifecycleSettings({ storeId, workspaceId });
     const resolvedCustomerName = customer?.name ?? customerName ?? "Customer";
     const now = new Date();
     const metadata = {
@@ -198,60 +311,77 @@ export async function createCustomerLifecycleEventsForConfirmedOrderSafe({
       totalAmount
     };
 
-    const thankYouEventId = await createLifecycleEvent({
-      customerId: customer?.id ?? null,
-      eventType: "thank_you",
-      orderId,
-      processedAt: now.toISOString(),
-      scheduledFor: now.toISOString(),
-      storeId,
-      workspaceId
-    });
-
-    if (thankYouEventId) {
-      await queueStoreEmailEventSafe({
+    if (lifecycleEnabled(settings, "thank_you")) {
+      const thankYouEventId = await createLifecycleEvent({
+        customerId: customer?.id ?? null,
+        customerName: resolvedCustomerName,
+        eventType: "thank_you",
         metadata,
-        recipient,
+        orderId,
+        orderSource,
+        recipient: cleanRecipient,
+        scheduledFor: now.toISOString(),
         storeId,
-        templateKey: "thank_you",
         workspaceId
       });
+
+      if (thankYouEventId) {
+        await queueLifecycleEventNow({
+          eventId: thankYouEventId,
+          eventType: "thank_you",
+          metadata,
+          recipient: cleanRecipient,
+          storeId,
+          workspaceId
+        });
+      }
     }
 
     if (
       customer &&
       (customer.total_orders ?? 0) <= 1 &&
+      lifecycleEnabled(settings, "customer_welcome") &&
       !(await hasExistingWelcome({ customerId: customer.id, storeId, workspaceId }))
     ) {
       const welcomeEventId = await createLifecycleEvent({
         customerId: customer.id,
+        customerName: resolvedCustomerName,
         eventType: "customer_welcome",
+        metadata,
         orderId,
-        processedAt: now.toISOString(),
+        orderSource,
+        recipient: cleanRecipient,
         scheduledFor: now.toISOString(),
         storeId,
         workspaceId
       });
 
       if (welcomeEventId) {
-        await queueStoreEmailEventSafe({
+        await queueLifecycleEventNow({
+          eventId: welcomeEventId,
+          eventType: "customer_welcome",
           metadata,
-          recipient,
+          recipient: cleanRecipient,
           storeId,
-          templateKey: "customer_welcome",
           workspaceId
         });
       }
     }
 
-    await createLifecycleEvent({
-      customerId: customer?.id ?? null,
-      eventType: "review_reminder",
-      orderId,
-      scheduledFor: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      storeId,
-      workspaceId
-    });
+    if (lifecycleEnabled(settings, "review_reminder")) {
+      await createLifecycleEvent({
+        customerId: customer?.id ?? null,
+        customerName: resolvedCustomerName,
+        eventType: "review_reminder",
+        metadata,
+        orderId,
+        orderSource,
+        recipient: cleanRecipient,
+        scheduledFor: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        storeId,
+        workspaceId
+      });
+    }
 
     revalidatePath("/dashboard/email");
   } catch (error) {
@@ -282,7 +412,7 @@ export async function processDueCustomerLifecycleEvents({
 
   const query = admin
     .from("customer_lifecycle_events" as never)
-    .select("id, workspace_id, store_id, customer_id, order_id, event_type, scheduled_for, store_customers(name, email)")
+    .select("id, workspace_id, store_id, order_id, event_type, recipient, customer_name, metadata")
     .eq("workspace_id" as never, workspaceId as never)
     .is("processed_at" as never, null)
     .lte("scheduled_for" as never, new Date().toISOString())
@@ -305,26 +435,39 @@ export async function processDueCustomerLifecycleEvents({
     return result;
   }
 
-  const events = (data ?? []) as unknown as Array<{
-    id: string;
-    event_type: LifecycleEventType;
-    order_id: string;
-    store_customers?: { email?: string | null; name?: string | null } | null;
-    store_id: string;
-    workspace_id: string;
-  }>;
+  const events = (data ?? []) as unknown as LifecycleEventRow[];
+  const settingsCache = new Map<string, LifecycleSettings | null>();
 
   for (const event of events) {
     result.processed += 1;
+    const recipient = cleanEmail(event.recipient);
+    const cacheKey = `${event.workspace_id}:${event.store_id}`;
+    let settings = settingsCache.get(cacheKey);
 
-    const queued = await queueStoreEmailEventSafe({
+    if (!settingsCache.has(cacheKey)) {
+      settings = await getLifecycleSettings({
+        storeId: event.store_id,
+        workspaceId: event.workspace_id
+      });
+      settingsCache.set(cacheKey, settings ?? null);
+    }
+
+    if (!recipient || !lifecycleEnabled(settings ?? null, event.event_type)) {
+      await markLifecycleEventProcessed(event.id);
+      result.skipped += 1;
+      continue;
+    }
+
+    const queued = await queueLifecycleEventNow({
+      eventId: event.id,
+      eventType: event.event_type,
       metadata: {
-        customerName: event.store_customers?.name ?? "Customer",
-        orderReference: orderReference(event.order_id)
+        ...(event.metadata ?? {}),
+        customerName: event.customer_name ?? event.metadata?.customerName ?? "Customer",
+        orderReference: event.metadata?.orderReference ?? orderReference(event.order_id)
       },
-      recipient: event.store_customers?.email ?? null,
+      recipient,
       storeId: event.store_id,
-      templateKey: event.event_type,
       workspaceId: event.workspace_id
     });
 
@@ -332,12 +475,6 @@ export async function processDueCustomerLifecycleEvents({
       result.skipped += 1;
       continue;
     }
-
-    await admin
-      .from("customer_lifecycle_events" as never)
-      .update({ processed_at: new Date().toISOString() } as never)
-      .eq("id" as never, event.id as never)
-      .is("processed_at" as never, null);
 
     result.queued += 1;
   }

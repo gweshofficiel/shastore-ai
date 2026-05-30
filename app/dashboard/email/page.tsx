@@ -51,10 +51,12 @@ type EmailDashboardData = {
 };
 
 type LifecycleEventRow = {
+  customer_name?: string | null;
   created_at: string;
   event_type: string;
   id: string;
   processed_at?: string | null;
+  recipient?: string | null;
   scheduled_for: string;
 };
 
@@ -170,7 +172,7 @@ async function getEmailDashboardData(selectedStoreId?: string): Promise<EmailDas
     ,
     supabase
       .from("customer_lifecycle_events" as never)
-      .select("id, event_type, scheduled_for, processed_at, created_at")
+      .select("id, event_type, recipient, customer_name, scheduled_for, processed_at, created_at")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("created_at" as never, { ascending: false } as never)
@@ -445,9 +447,15 @@ export default async function EmailSettingsPage({
                 lifecycleEvents.map((event) => (
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={event.id}>
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-black text-ink">
-                        {event.event_type.replace(/_/g, " ")}
-                      </p>
+                      <div>
+                        <p className="text-sm font-black text-ink">
+                          {event.event_type.replace(/_/g, " ")}
+                        </p>
+                        <p className="mt-1 text-xs font-bold text-muted">
+                          {event.customer_name ?? "Customer"}
+                          {event.recipient ? ` · ${event.recipient}` : ""}
+                        </p>
+                      </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${event.processed_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
                         {event.processed_at ? "Processed" : "Scheduled"}
                       </span>
