@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { sanitizePageContent, textFromPageContent } from "@/lib/store-pages/content";
@@ -7,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type StorePageRow = {
   content: string | null;
+  id: string;
   seo_description: string | null;
   seo_title: string | null;
   slug: string;
@@ -39,7 +41,7 @@ async function loadPublicStorePage({ pageSlug, slug }: PublicStorePageProps) {
 
   const { data } = await admin
     .from("store_pages" as never)
-    .select("title, slug, content, seo_title, seo_description")
+    .select("id, title, slug, content, seo_title, seo_description")
     .eq("store_id", preview.store.id)
     .eq("slug", pageSlug)
     .eq("status", "published")
@@ -49,24 +51,6 @@ async function loadPublicStorePage({ pageSlug, slug }: PublicStorePageProps) {
     page: (data ?? null) as unknown as StorePageRow | null,
     preview
   };
-}
-
-function StorePageUnavailable() {
-  return (
-    <main className="min-h-screen bg-slate-50 px-4 py-16 text-ink sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]">
-        <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-          Page unavailable
-        </p>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
-          This page is not available right now.
-        </h1>
-        <p className="mt-4 text-sm leading-6 text-muted">
-          It may be unpublished, archived, or the store may not be public.
-        </p>
-      </div>
-    </main>
-  );
 }
 
 export async function generatePublicStorePageMetadata({
@@ -95,7 +79,17 @@ export async function PublicStorePage({ pageSlug, slug }: PublicStorePageProps) 
   const { page, preview } = await loadPublicStorePage({ pageSlug, slug });
 
   if (!preview || !page) {
-    return <StorePageUnavailable />;
+    notFound();
+  }
+
+  const admin = createAdminClient();
+  if (admin && preview.store.workspaceId) {
+    await admin.from("page_activity_logs" as never).insert({
+      action: "page_opened",
+      page_id: page.id,
+      store_id: preview.store.id,
+      workspace_id: preview.store.workspaceId
+    } as never);
   }
 
   return (

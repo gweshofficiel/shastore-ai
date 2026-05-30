@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { sanitizePageContent } from "@/lib/store-pages/content";
 import {
   assertStoreAccessInWorkspace,
@@ -155,6 +156,44 @@ async function recordPageActivity({
   }
 }
 
+async function recordPageFailure({
+  action,
+  error,
+  pageId,
+  storeId,
+  supabase,
+  userId,
+  workspaceId
+}: {
+  action: string;
+  error: { code?: string | null; details?: string | null; hint?: string | null; message?: string | null };
+  pageId?: string | null;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  userId?: string | null;
+  workspaceId: string;
+}) {
+  await recordMonitoringEventSafe({
+    entityId: pageId,
+    entityType: "store_page",
+    eventStatus: "failed",
+    eventType: "store_page_action_failed",
+    metadata: {
+      action,
+      error_code: error.code,
+      error_details: error.details,
+      error_hint: error.hint,
+      error_message: error.message,
+      reason: "Store page action failed",
+      route: pagesPath
+    },
+    storeId,
+    supabase,
+    userId,
+    workspaceId
+  });
+}
+
 function revalidatePagePaths(store: WorkspaceStoreRow, storeId: string, slug?: string | null) {
   revalidatePath(pagesPath);
   revalidatePath(`/dashboard/stores/${storeId}`);
@@ -194,17 +233,18 @@ export async function createStoreOwnerPage(formData: FormData) {
       message: error.message,
       storeId
     });
+    await recordPageFailure({ action: "page_created", error, storeId, supabase, userId: user.id, workspaceId });
     pagesRedirect(storeId, error.code === "23505" ? "slug-exists" : "create-failed");
   }
 
   const page = data as unknown as { id: string; slug?: string | null };
-  await recordPageActivity({ action: "created", pageId: page.id, storeId, supabase, workspaceId });
+  await recordPageActivity({ action: "page_created", pageId: page.id, storeId, supabase, workspaceId });
   revalidatePagePaths(store, storeId, page.slug);
   pagesRedirect(storeId, "created");
 }
 
 export async function updateStoreOwnerPage(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const pageId = cleanText(formData.get("pageId"), 80);
   const payload = pagePayload(formData);
 
@@ -229,16 +269,17 @@ export async function updateStoreOwnerPage(formData: FormData) {
       pageId,
       storeId
     });
+    await recordPageFailure({ action: "page_saved", error, pageId, storeId, supabase, userId: user.id, workspaceId });
     pagesRedirect(storeId, error.code === "23505" ? "slug-exists" : "update-failed");
   }
 
-  await recordPageActivity({ action: "updated", pageId, storeId, supabase, workspaceId });
+  await recordPageActivity({ action: "page_saved", pageId, storeId, supabase, workspaceId });
   revalidatePagePaths(store, storeId, payload.slug);
   pagesRedirect(storeId, "updated");
 }
 
 export async function setStoreOwnerPageStatus(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const pageId = cleanText(formData.get("pageId"), 80);
   const status = pageStatus(formData.get("status"));
   const slug = cleanText(formData.get("slug"), 100);
@@ -264,16 +305,23 @@ export async function setStoreOwnerPageStatus(formData: FormData) {
       pageId,
       storeId
     });
+    await recordPageFailure({ action: status === "published" ? "page_published" : "page_status_updated", error, pageId, storeId, supabase, userId: user.id, workspaceId });
     pagesRedirect(storeId, "status-failed");
   }
 
-  await recordPageActivity({ action: status, pageId, storeId, supabase, workspaceId });
+  await recordPageActivity({
+    action: status === "published" ? "page_published" : status === "draft" ? "page_unpublished" : "page_archived",
+    pageId,
+    storeId,
+    supabase,
+    workspaceId
+  });
   revalidatePagePaths(store, storeId, slug);
   pagesRedirect(storeId, status === "published" ? "published" : status === "archived" ? "archived" : "unpublished");
 }
 
 export async function deleteStoreOwnerPage(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const pageId = cleanText(formData.get("pageId"), 80);
   const slug = cleanText(formData.get("slug"), 100);
 
@@ -295,10 +343,11 @@ export async function deleteStoreOwnerPage(formData: FormData) {
       pageId,
       storeId
     });
+    await recordPageFailure({ action: "page_deleted", error, pageId, storeId, supabase, userId: user.id, workspaceId });
     pagesRedirect(storeId, "delete-failed");
   }
 
-  await recordPageActivity({ action: "deleted", pageId: null, storeId, supabase, workspaceId });
+  await recordPageActivity({ action: "page_deleted", pageId: null, storeId, supabase, workspaceId });
   revalidatePagePaths(store, storeId, slug);
   pagesRedirect(storeId, "deleted");
 }

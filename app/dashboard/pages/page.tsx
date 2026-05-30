@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import { PageUrlCopyButton } from "@/components/dashboard/page-url-copy-button";
 import { RichTextEditor } from "@/components/dashboard/rich-text-editor";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -106,6 +107,10 @@ function pageStatusClass(status: string) {
 function publicPageHref(store: UserStoreRow, page: StorePageRow) {
   const slug = store.slug ?? "";
   return slug ? `/store/${slug}/pages/${page.slug}` : "#";
+}
+
+function previewPageHref(store: UserStoreRow, page: StorePageRow) {
+  return `/dashboard/pages/preview/${page.id}?storeId=${store.id}`;
 }
 
 async function getPagesDashboardData({
@@ -438,6 +443,28 @@ export default async function StorePagesDashboard({
                           <p className="mt-2 text-sm font-semibold text-muted">
                             /pages/{page.slug} - Updated {formatDate(page.updated_at ?? page.created_at)}
                           </p>
+                          {page.status === "published" && href !== "#" ? (
+                            <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                                Public URL
+                              </p>
+                              <p className="mt-1 break-all text-sm font-bold text-emerald-900">
+                                {href}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-emerald-700">
+                                Customers can open this URL now. Header/footer navigation will be handled later.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+                                Draft preview
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-amber-800">
+                                This page is private until published. Use Preview to check saved content.
+                              </p>
+                            </div>
+                          )}
                           <p className="mt-2 text-sm leading-6 text-muted">
                             {page.seo_description || "No SEO description yet."}
                           </p>
@@ -446,10 +473,16 @@ export default async function StorePagesDashboard({
                           <ButtonLink href={`/dashboard/pages?storeId=${activeStore.id}&edit=${page.id}`} variant="secondary">
                             Edit
                           </ButtonLink>
+                          <ButtonLink href={previewPageHref(activeStore, page)} variant="secondary">
+                            Preview
+                          </ButtonLink>
                           {page.status === "published" && href !== "#" ? (
-                            <ButtonLink href={href} variant="secondary">
-                              Preview
-                            </ButtonLink>
+                            <>
+                              <PageUrlCopyButton path={href} />
+                              <ButtonLink href={href} variant="secondary">
+                                Open Page
+                              </ButtonLink>
+                            </>
                           ) : null}
                         </div>
                       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const toolbarButtonClass =
   "rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-slate-400";
@@ -15,11 +15,27 @@ export function RichTextEditor({
   name: string;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(defaultValue ?? "");
 
   function syncValue() {
-    setValue(editorRef.current?.innerHTML ?? "");
+    const nextValue = editorRef.current?.innerHTML ?? "";
+    if (inputRef.current) {
+      inputRef.current.value = nextValue;
+    }
+    setValue(nextValue);
   }
+
+  useEffect(() => {
+    const form = editorRef.current?.closest("form");
+
+    if (!form) {
+      return;
+    }
+
+    form.addEventListener("submit", syncValue);
+    return () => form.removeEventListener("submit", syncValue);
+  }, []);
 
   function run(command: string, argument?: string) {
     editorRef.current?.focus();
@@ -30,7 +46,12 @@ export function RichTextEditor({
   function addLink() {
     const url = window.prompt("Enter link URL");
     if (url) {
-      run("createLink", url);
+      const selection = window.getSelection()?.toString();
+      if (selection) {
+        run("createLink", url);
+      } else {
+        run("insertHTML", `<a href="${url}">${url}</a>`);
+      }
     }
   }
 
@@ -43,7 +64,7 @@ export function RichTextEditor({
 
   return (
     <div className="grid gap-3">
-      <input name={name} type="hidden" value={value} />
+      <input name={name} readOnly ref={inputRef} type="hidden" value={value} />
       <div className="flex flex-wrap gap-2" aria-label="Rich text toolbar">
         <button className={toolbarButtonClass} onClick={() => run("formatBlock", "h2")} type="button">
           Heading
