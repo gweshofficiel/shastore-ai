@@ -24,6 +24,7 @@ alter table public.store_media
   add column if not exists store_instance_id uuid,
   add column if not exists store_id uuid references public.stores(id) on delete cascade,
   add column if not exists file_name text,
+  add column if not exists file_path text,
   add column if not exists file_url text,
   add column if not exists file_type text not null default 'image',
   add column if not exists mime_type text,

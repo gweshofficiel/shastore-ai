@@ -58,6 +58,20 @@ function usageType(value: string) {
   return "library";
 }
 
+function resolveMediaStoragePath(record: {
+  file_path?: string | null;
+  storage_key?: string | null;
+}) {
+  const storageKey =
+    typeof record.storage_key === "string" && record.storage_key.trim()
+      ? record.storage_key.trim()
+      : "";
+  const filePath =
+    typeof record.file_path === "string" && record.file_path.trim() ? record.file_path.trim() : "";
+
+  return storageKey || filePath || null;
+}
+
 async function requireStoreMediaContext(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -166,6 +180,7 @@ export async function uploadStoreMediaAction(formData: FormData) {
     .insert({
       created_by: user.id,
       file_name: file.name.slice(0, 240),
+      file_path: storageKey,
       file_type: "image",
       file_url: publicUrl,
       mime_type: file.type,
@@ -206,7 +221,7 @@ export async function deleteStoreMediaAction(formData: FormData) {
   const client = createAdminClient() ?? supabase;
   const { data: media, error: mediaError } = await client
     .from("store_media" as never)
-    .select("id, file_url, storage_key")
+    .select("id, file_url, file_path, storage_key")
     .eq("id" as never, mediaId as never)
     .eq("store_id" as never, storeId as never)
     .eq("workspace_id" as never, workspaceId as never)
@@ -216,7 +231,13 @@ export async function deleteStoreMediaAction(formData: FormData) {
     mediaFailureRedirect(storeId, "delete-failed", mediaError ?? { message: "Media record was not found." });
   }
 
-  const mediaRecord = media as { file_url?: string | null; id: string; storage_key?: string | null };
+  const mediaRecord = media as {
+    file_path?: string | null;
+    file_url?: string | null;
+    id: string;
+    storage_key?: string | null;
+  };
+  const storagePath = resolveMediaStoragePath(mediaRecord);
   const [{ count: productCount }, { count: themeCount }] = await Promise.all([
     client
       .from("store_products" as never)
@@ -235,8 +256,8 @@ export async function deleteStoreMediaAction(formData: FormData) {
     mediaRedirect(storeId, "in-use");
   }
 
-  if (mediaRecord.storage_key) {
-    await supabase.storage.from(mediaBucket).remove([mediaRecord.storage_key]);
+  if (storagePath) {
+    await supabase.storage.from(mediaBucket).remove([storagePath]);
   }
 
   const { error: deleteError } = await client
