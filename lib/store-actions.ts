@@ -1061,7 +1061,7 @@ function parseThemeSettings(formData: FormData): StoreThemeSettings {
     headingFont: formData.get("themeHeadingFont") ?? fromJson.headingFont,
     bodyFont: formData.get("themeBodyFont") ?? fromJson.bodyFont,
     fontScale: formData.get("themeFontScale") ?? fromJson.fontScale,
-    logoUrl: formData.get("themeLogoUrl") ?? fromJson.logoUrl,
+    logoUrl: formData.get("themeLogoMediaUrl") || formData.get("themeLogoUrl") || fromJson.logoUrl,
     navigationStyle: formData.get("themeNavigationStyle") ?? fromJson.navigationStyle,
     stickyHeader:
       formData.get("themeStickyHeader") === null
@@ -1932,6 +1932,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
   const deliveryFee = cleanMoney(formData.get("deliveryFee"));
   const freeDeliveryThreshold = cleanMoney(formData.get("freeDeliveryThreshold"));
   const deliveryNotes = cleanText(formData.get("deliveryNotes"), 1000) || null;
+  const faviconUrl = cleanUrl(formData.get("faviconMediaUrl")) || cleanUrl(formData.get("faviconUrl"));
   const now = new Date().toISOString();
 
   if (whatsappContact.error) {
@@ -1952,7 +1953,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
           cleanText(formData.get("seoDescription"), 320) ||
           cleanText(formData.get("ogTitle")) ||
           cleanText(formData.get("ogDescription"), 320) ||
-          cleanUrl(formData.get("faviconUrl")) ||
+          faviconUrl ||
           cleanUrl(formData.get("socialImageUrl"))
       );
 
@@ -1979,7 +1980,7 @@ export async function saveStorePublicationSettings(formData: FormData) {
     seo_description: cleanText(formData.get("seoDescription"), 320),
     og_title: cleanText(formData.get("ogTitle")),
     og_description: cleanText(formData.get("ogDescription"), 320),
-    favicon_url: cleanUrl(formData.get("faviconUrl")),
+    favicon_url: faviconUrl,
     social_image_url: cleanUrl(formData.get("socialImageUrl")),
     custom_domain: customDomain || null,
     subdomain: subdomain || null,

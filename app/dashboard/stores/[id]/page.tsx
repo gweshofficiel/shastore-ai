@@ -84,6 +84,10 @@ import {
   storeThemePresets
 } from "@/lib/store-theme-selection";
 import {
+  deleteStoreMediaAction,
+  uploadStoreMediaAction
+} from "@/lib/store-media-actions";
+import {
   addManagedStoreDomain,
   createManagedMediaFolder,
   inviteManagedStoreStaff,
@@ -401,6 +405,7 @@ export default async function StoreDraftPage({
     settings?: string;
     theme?: string;
     themeError?: string;
+    media?: string;
     publication?: string;
     catalog?: string;
     domain?: string;
@@ -4253,7 +4258,13 @@ export default async function StoreDraftPage({
     );
   }
 
-  const [{ data: categories }, { data: products }, { data: themeRow }, { data: themeRows }] = await Promise.all([
+  const [
+    { data: categories },
+    { data: products },
+    { data: themeRow },
+    { data: themeRows },
+    { data: mediaRows }
+  ] = await Promise.all([
     supabase
       .from("store_categories")
       .select("id, name, description, image_url, sort_order")
@@ -4277,7 +4288,13 @@ export default async function StoreDraftPage({
       .select("id, theme_key, status, is_active, published_at, updated_at")
       .eq("store_id" as never, store.id as never)
       .order("is_active", { ascending: false })
-      .order("updated_at", { ascending: false })
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("store_media" as never)
+      .select("id, file_name, file_url, file_type, mime_type, size_bytes, usage_type, created_at")
+      .eq("store_id" as never, store.id as never)
+      .eq("workspace_id" as never, workspaceId as never)
+      .order("created_at", { ascending: false })
   ]);
   const catalogProducts = (products ?? []) as unknown as Array<{
     category_id: string | null;
@@ -4307,6 +4324,26 @@ export default async function StoreDraftPage({
   const currentThemePreset = getStoreThemePreset(activeSelectionTheme?.theme_key);
   const themeSelectionByKey = new Map(
     themeSelectionRows.map((theme) => [theme.theme_key ?? "", theme])
+  );
+  const storeMedia = Array.isArray(mediaRows)
+    ? (mediaRows as Array<{
+        created_at?: string | null;
+        file_name?: string | null;
+        file_type?: string | null;
+        file_url?: string | null;
+        id: string;
+        mime_type?: string | null;
+        size_bytes?: number | string | null;
+        usage_type?: string | null;
+      }>)
+    : [];
+  const logoMedia = storeMedia.filter((asset) =>
+    ["favicon", "image", "logo", "theme"].some((usage) =>
+      String(asset.usage_type ?? asset.file_type ?? "").toLowerCase().includes(usage)
+    )
+  );
+  const faviconMedia = storeMedia.filter((asset) =>
+    String(asset.mime_type ?? "").includes("image/") || String(asset.file_type ?? "") === "image"
   );
   const { data: rawPublication } = await supabase
     .from("published_stores")
@@ -4473,6 +4510,33 @@ export default async function StoreDraftPage({
               Confirm the theme selection migrations are applied in Supabase.
             </p>
           ) : null}
+        </Card>
+      ) : null}
+      {query.media ? (
+        <Card
+          className={`p-5 ${
+            query.media === "uploaded" || query.media === "deleted"
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <p
+            className={`text-sm font-bold ${
+              query.media === "uploaded" || query.media === "deleted"
+                ? "text-emerald-700"
+                : "text-amber-800"
+            }`}
+          >
+            {query.media === "uploaded"
+              ? "Media uploaded to this store library."
+              : query.media === "deleted"
+                ? "Media deleted from this store library."
+                : query.media === "in-use"
+                  ? "This media is used by a product or theme. Confirm deletion to remove it."
+                  : query.media === "invalid-file"
+                    ? "Use an image file up to 8MB."
+                    : "Media action could not be completed."}
+          </p>
         </Card>
       ) : null}
       {query.publication === "saved" ? (
@@ -4988,13 +5052,30 @@ export default async function StoreDraftPage({
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              defaultValue={publication?.favicon_url ?? ""}
-              id="publication-favicon"
-              label="Favicon URL"
-              name="faviconUrl"
-              placeholder="https://example.com/favicon.png"
-            />
+            <div className="grid gap-3">
+              <Input
+                defaultValue={publication?.favicon_url ?? ""}
+                id="publication-favicon"
+                label="Favicon URL"
+                name="faviconUrl"
+                placeholder="https://example.com/favicon.png"
+              />
+              <label className="grid gap-2 text-sm font-semibold text-ink">
+                <span>Favicon from media library</span>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  defaultValue=""
+                  name="faviconMediaUrl"
+                >
+                  <option value="">Keep favicon URL</option>
+                  {faviconMedia.map((asset) => (
+                    <option key={asset.id} value={asset.file_url ?? ""}>
+                      {asset.file_name ?? "Media asset"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <Input
               defaultValue={publication?.social_image_url ?? ""}
               id="publication-social-image"
@@ -5021,6 +5102,118 @@ export default async function StoreDraftPage({
             ) : null}
           </div>
         </form>
+      </Card>
+
+      <Card className="p-5 lg:p-6" id="media-library">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Media Library
+            </p>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              Store media assets
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Upload logos, favicons, storefront images, and product media placeholders. Assets
+              are stored in the existing storage bucket and isolated by workspace and store.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-right">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Assets
+            </p>
+            <p className="mt-2 text-2xl font-black text-ink">{storeMedia.length}</p>
+          </div>
+        </div>
+        <form action={uploadStoreMediaAction} className="mt-6 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+          <input name="storeId" type="hidden" value={store.id} />
+          <Input
+            accept="image/gif,image/jpeg,image/png,image/svg+xml,image/webp,image/x-icon"
+            id="store-media-upload"
+            label="Upload media"
+            name="mediaFile"
+            required
+            type="file"
+          />
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Usage type</span>
+            <select
+              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              name="usageType"
+            >
+              <option value="library">Image</option>
+              <option value="logo">Logo</option>
+              <option value="favicon">Favicon</option>
+              <option value="product">Product media</option>
+            </select>
+          </label>
+          <Button disabled={protectedActionsBlocked} type="submit">
+            Upload
+          </Button>
+        </form>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {storeMedia.length ? (
+            storeMedia.map((asset) => (
+              <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={asset.id}>
+                {asset.file_url ? (
+                  <img
+                    alt={asset.file_name ?? "Store media"}
+                    className="h-44 w-full bg-slate-100 object-cover"
+                    src={asset.file_url}
+                  />
+                ) : (
+                  <div className="flex h-44 items-center justify-center bg-slate-100 text-xs font-black uppercase tracking-[0.18em] text-muted">
+                    No preview
+                  </div>
+                )}
+                <div className="grid gap-3 p-4">
+                  <div>
+                    <p className="truncate text-sm font-black text-ink">{asset.file_name}</p>
+                    <p className="mt-1 text-xs font-semibold text-muted">
+                      {asset.usage_type ?? asset.file_type ?? "image"} · {numberValue(asset, "size_bytes", "0")} bytes
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-muted">
+                      {asset.created_at ? new Date(asset.created_at).toLocaleDateString() : "No date"}
+                    </p>
+                  </div>
+                  <input
+                    className="h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs text-muted"
+                    readOnly
+                    value={asset.file_url ?? ""}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {asset.file_url ? <CopyStoreUrlButton url={asset.file_url} /> : null}
+                    <form action={deleteStoreMediaAction}>
+                      <input name="storeId" type="hidden" value={store.id} />
+                      <input name="mediaId" type="hidden" value={asset.id} />
+                      <Button disabled={protectedActionsBlocked} type="submit" variant="ghost">
+                        Delete
+                      </Button>
+                    </form>
+                    {query.media === "in-use" ? (
+                      <form action={deleteStoreMediaAction}>
+                        <input name="storeId" type="hidden" value={store.id} />
+                        <input name="mediaId" type="hidden" value={asset.id} />
+                        <input name="confirmDelete" type="hidden" value="true" />
+                        <Button disabled={protectedActionsBlocked} type="submit" variant="secondary">
+                          Confirm delete
+                        </Button>
+                      </form>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 md:col-span-2 xl:col-span-3">
+              <p className="text-sm font-black text-ink">No media uploaded yet.</p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Upload your first logo, favicon, or product image placeholder to make it available
+                in theme and publication settings.
+              </p>
+            </div>
+          )}
+        </div>
       </Card>
 
       <Card className="p-5 lg:p-6">
@@ -5302,6 +5495,21 @@ export default async function StoreDraftPage({
             name="themeLogoUrl"
             placeholder="https://example.com/logo.png"
           />
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Logo from media library</span>
+            <select
+              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue=""
+              name="themeLogoMediaUrl"
+            >
+              <option value="">Keep URL or uploaded logo</option>
+              {logoMedia.map((asset) => (
+                <option key={asset.id} value={asset.file_url ?? ""}>
+                  {asset.file_name ?? "Media asset"}
+                </option>
+              ))}
+            </select>
+          </label>
           <Input
             defaultValue={themeSettings.bannerImageUrl}
             id="saved-theme-banner-image"
