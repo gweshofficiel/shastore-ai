@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
@@ -23,6 +24,73 @@ function cleanCurrency(value: unknown) {
 
 function cleanStatus(value: unknown) {
   return value === "active" || value === "archived" ? value : "draft";
+}
+
+function isValidMoneyInput(value: unknown, optional = false) {
+  if ((value === null || value === undefined || value === "") && optional) {
+    return true;
+  }
+
+  if (value === null || value === undefined || value === "") {
+    return true;
+  }
+
+  const parsed = Number.parseFloat(String(value).replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0;
+}
+
+function isValidIntegerInput(value: unknown, optional = false) {
+  if ((value === null || value === undefined || value === "") && optional) {
+    return true;
+  }
+
+  if (value === null || value === undefined || value === "") {
+    return true;
+  }
+
+  const text = String(value).trim();
+  const parsed = Number.parseInt(text, 10);
+  return String(parsed) === text && parsed >= 0;
+}
+
+function validateProductBody(body: Record<string, unknown> | null) {
+  if (!body) {
+    return { message: "Product payload is required.", status: 400 };
+  }
+
+  const title = cleanText(body.title, 180);
+  const status = typeof body.status === "string" ? body.status.trim() : "";
+  const currency = cleanText(body.currency, 8).toUpperCase();
+
+  if (!title) {
+    return { message: "Product title is required.", status: 400 };
+  }
+
+  if (status && status !== "draft" && status !== "active" && status !== "archived") {
+    return { message: "Invalid status. Choose draft, active, or archived.", status: 400 };
+  }
+
+  if (currency && !/^[A-Z]{3}$/.test(currency)) {
+    return { message: "Invalid currency. Use a 3-letter code like USD.", status: 400 };
+  }
+
+  if (!isValidMoneyInput(body.price)) {
+    return { message: "Product price must be a valid non-negative number.", status: 400 };
+  }
+
+  if (!isValidMoneyInput(body.compareAtPrice, true)) {
+    return { message: "Compare at price must be a valid non-negative number.", status: 400 };
+  }
+
+  if (!isValidIntegerInput(body.stockQuantity, true)) {
+    return { message: "Inventory value invalid. Stock quantity must be a non-negative whole number.", status: 400 };
+  }
+
+  if (!isValidIntegerInput(body.lowStockThreshold, true)) {
+    return { message: "Inventory value invalid. Low stock threshold must be a non-negative whole number.", status: 400 };
+  }
+
+  return null;
 }
 
 function slugify(value: string) {
@@ -57,7 +125,7 @@ async function getApiContext(storeId: string, permission: "can_view_stores" | "m
   });
 
   if (!access.allowed) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    return { error: NextResponse.json({ error: "Workspace access denied." }, { status: 403 }) };
   }
 
   return { supabase, user, workspaceId: selection.activeWorkspaceId };
@@ -88,16 +156,96 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const storeId = cleanText(body?.storeId, 80);
+
+  if (!storeId) {
+    return NextResponse.json({ error: "Store not found." }, { status: 400 });
+  }
+
   const context = await getApiContext(storeId, "manage_products");
 
   if ("error" in context) {
     return context.error;
   }
 
-  const title = cleanText(body?.title, 180);
+  const validationError = validateProductBody(body);
 
-  if (!title) {
-    return NextResponse.json({ error: "Product title is required." }, { status: 400 });
+  if (validationError) {
+    await recordMonitoringEventSafe({
+      entityType: "product",
+      eventStatus: "failed",
+      eventType: "product_create_failed",
+      metadata: {
+        message: validationError.message,
+        reason: "API validation failed"
+      },
+      storeId,
+      supabase: context.supabase,
+      userId: context.user.id,
+      workspaceId: context.workspaceId
+    });
+    return NextResponse.json({ error: validationError.message }, { status: validationError.status });
+  }
+
+  const title = cleanText(body?.title, 180);
+  const categoryId = cleanText(body?.categoryId, 80);
+
+  if (categoryId) {
+    const { data: category, error: categoryError } = await context.supabase
+      .from("store_categories" as never)
+      .select("id")
+      .eq("id", categoryId)
+      .eq("store_id", storeId)
+      .eq("workspace_id" as never, context.workspaceId as never)
+      .maybeSingle();
+
+    if (categoryError) {
+      console.error("[products-api] category lookup failed during product create", {
+        categoryId,
+        code: categoryError.code,
+        details: categoryError.details,
+        hint: categoryError.hint,
+        message: categoryError.message,
+        storeId,
+        workspaceId: context.workspaceId
+      });
+      await recordMonitoringEventSafe({
+        entityType: "product",
+        eventStatus: "failed",
+        eventType: "product_create_failed",
+        metadata: {
+          code: categoryError.code,
+          details: categoryError.details,
+          hint: categoryError.hint,
+          message: categoryError.message,
+          reason: "API category lookup failed"
+        },
+        storeId,
+        supabase: context.supabase,
+        userId: context.user.id,
+        workspaceId: context.workspaceId
+      });
+      return NextResponse.json(
+        { error: "Product could not be created due to an unexpected database error." },
+        { status: 500 }
+      );
+    }
+
+    if (!category) {
+      await recordMonitoringEventSafe({
+        entityType: "product",
+        eventStatus: "failed",
+        eventType: "product_create_failed",
+        metadata: {
+          message: "Category not found.",
+          reason: "API category validation failed"
+        },
+        storeId,
+        supabase: context.supabase,
+        userId: context.user.id,
+        workspaceId: context.workspaceId
+      });
+      return NextResponse.json({ error: "Category not found." }, { status: 400 });
+    }
   }
 
   const { data, error } = await context.supabase
@@ -105,6 +253,7 @@ export async function POST(request: NextRequest) {
     .insert({
       compare_at_price: cleanOptionalMoney(body?.compareAtPrice),
       currency: cleanCurrency(body?.currency),
+      category_id: categoryId || null,
       description: cleanText(body?.description, 1000) || null,
       name: title,
       owner_user_id: context.user.id,
@@ -120,7 +269,34 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: "Product could not be created." }, { status: 500 });
+    console.error("[products-api] create product failed", {
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+      message: error?.message,
+      storeId,
+      workspaceId: context.workspaceId
+    });
+    await recordMonitoringEventSafe({
+      entityType: "product",
+      eventStatus: "failed",
+      eventType: "product_create_failed",
+      metadata: {
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        message: error?.message,
+        reason: "Unexpected database error"
+      },
+      storeId,
+      supabase: context.supabase,
+      userId: context.user.id,
+      workspaceId: context.workspaceId
+    });
+    return NextResponse.json(
+      { error: "Product could not be created due to an unexpected database error." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ productId: (data as { id: string }).id }, { status: 201 });

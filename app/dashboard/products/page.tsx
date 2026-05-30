@@ -344,9 +344,13 @@ function inventoryBadgeClass(product: ProductRow) {
   return "bg-emerald-100 text-emerald-700";
 }
 
-function statusMessage(status: string | undefined) {
+function statusMessage(status: string | undefined, detail?: string) {
   if (status?.startsWith("billing-blocked:")) {
     return status.replace("billing-blocked:", "");
+  }
+
+  if (status === "create-failed" && detail) {
+    return detail;
   }
 
   const messages: Record<string, string> = {
@@ -363,7 +367,12 @@ function statusMessage(status: string | undefined) {
     "image-save-failed": "Image uploaded, but product image data could not be saved. Please try again.",
     "image-too-large": "Product image is too large. Use an image up to 5MB.",
     "image-uploaded": "Product image uploaded.",
+    "invalid-compare-price": "Compare at price must be a valid non-negative number.",
+    "invalid-currency": "Invalid currency. Use a 3-letter code like USD.",
     "invalid-image": "Only JPG, JPEG, PNG, and WebP image files are allowed.",
+    "invalid-inventory": "Inventory value invalid. Use non-negative whole numbers.",
+    "invalid-price": "Product price must be a valid non-negative number.",
+    "invalid-status": "Invalid status. Choose draft, active, or archived.",
     "missing-image": "Choose an image before uploading.",
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
@@ -632,7 +641,7 @@ function VariantFields({ productId, variant }: { productId: string; variant?: Pr
 export default async function SellerProductsPage({
   searchParams
 }: {
-  searchParams: Promise<{ edit?: string; products?: string; storeId?: string }>;
+  searchParams: Promise<{ edit?: string; productError?: string; products?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
   const supabase = await createClient();
@@ -671,7 +680,7 @@ export default async function SellerProductsPage({
   const { activeStore, categories, error, products, schemaIssue, stores } = await getProductsDashboardData(
     query.storeId
   );
-  const message = statusMessage(query.products);
+  const message = statusMessage(query.products, query.productError);
 
   return (
     <div className="grid gap-6 lg:gap-8">

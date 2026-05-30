@@ -174,14 +174,125 @@ function slugify(value: string) {
   return slug || "product";
 }
 
-function productsRedirect(storeId: string, status?: string): never {
+function productsRedirect(storeId: string, status?: string, detail?: string): never {
   const params = new URLSearchParams({ storeId });
 
   if (status) {
     params.set("products", status);
   }
 
+  if (detail) {
+    params.set("productError", detail.slice(0, 280));
+  }
+
   redirect(`${productListPath}?${params.toString()}`);
+}
+
+function rawText(value: FormDataEntryValue | null, maxLength = 1000) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function isValidMoneyInput(value: FormDataEntryValue | null, optional = false) {
+  const text = rawText(value, 40);
+  if (!text && optional) {
+    return true;
+  }
+
+  if (!text && !optional) {
+    return true;
+  }
+
+  const parsed = Number.parseFloat(text.replace(",", "."));
+  return Number.isFinite(parsed) && parsed >= 0;
+}
+
+function isValidIntegerInput(value: FormDataEntryValue | null, optional = false) {
+  const text = rawText(value, 20);
+  if (!text && optional) {
+    return true;
+  }
+
+  if (!text && !optional) {
+    return true;
+  }
+
+  const parsed = Number.parseInt(text, 10);
+  return String(parsed) === text && parsed >= 0;
+}
+
+function validateProductForm(formData: FormData) {
+  const title = rawText(formData.get("title"), 180);
+  const status = rawText(formData.get("status"), 20);
+  const currency = rawText(formData.get("currency"), 8).toUpperCase();
+
+  if (!title) {
+    return { code: "missing-title", message: "Product title is required." };
+  }
+
+  if (status && status !== "draft" && status !== "active" && status !== "archived") {
+    return { code: "invalid-status", message: "Invalid status. Choose draft, active, or archived." };
+  }
+
+  if (currency && !/^[A-Z]{3}$/.test(currency)) {
+    return { code: "invalid-currency", message: "Invalid currency. Use a 3-letter code like USD." };
+  }
+
+  if (!isValidMoneyInput(formData.get("price"))) {
+    return { code: "invalid-price", message: "Product price must be a valid non-negative number." };
+  }
+
+  if (!isValidMoneyInput(formData.get("compareAtPrice"), true)) {
+    return { code: "invalid-compare-price", message: "Compare at price must be a valid non-negative number." };
+  }
+
+  if (!isValidIntegerInput(formData.get("stockQuantity"))) {
+    return { code: "invalid-inventory", message: "Inventory value invalid. Stock quantity must be a non-negative whole number." };
+  }
+
+  if (!isValidIntegerInput(formData.get("lowStockThreshold"), true)) {
+    return { code: "invalid-inventory", message: "Inventory value invalid. Low stock threshold must be a non-negative whole number." };
+  }
+
+  return null;
+}
+
+async function recordProductCreateFailure({
+  detail,
+  error,
+  reason,
+  status,
+  storeId,
+  supabase,
+  userId,
+  workspaceId
+}: {
+  detail?: string | null;
+  error?: { code?: string | null; details?: string | null; hint?: string | null; message?: string | null } | null;
+  reason: string;
+  status: string;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  userId: string;
+  workspaceId: string;
+}) {
+  await recordMonitoringEventSafe({
+    entityType: "product",
+    eventStatus: "failed",
+    eventType: "product_create_failed",
+    metadata: {
+      code: error?.code ?? status,
+      detail,
+      details: error?.details,
+      hint: error?.hint,
+      message: error?.message,
+      reason,
+      status
+    },
+    storeId,
+    supabase,
+    userId,
+    workspaceId
+  });
 }
 
 async function assertProductCreationAllowed({
@@ -200,6 +311,7 @@ async function assertProductCreationAllowed({
   try {
     assertUsageWithinLimits(access, "products");
   } catch (error) {
+    const message = billingEnforcementMessage(error) ?? "Your current plan cannot create another product.";
     await recordSubscriptionEnforcementLog({
       access,
       action: "product.create",
@@ -208,9 +320,23 @@ async function assertProductCreationAllowed({
       supabase,
       workspaceId
     });
+    await recordMonitoringEventSafe({
+      entityType: "product",
+      eventStatus: "failed",
+      eventType: "product_create_failed",
+      metadata: {
+        code: "billing-blocked",
+        message,
+        reason: "Billing limit blocked product creation"
+      },
+      storeId,
+      supabase,
+      userId,
+      workspaceId
+    });
     productsRedirect(
       storeId,
-      `billing-blocked:${billingEnforcementMessage(error) ?? "Your current plan cannot create another product."}`
+      `billing-blocked:${message}`
     );
   }
 }
@@ -249,10 +375,10 @@ async function categoryBelongsToStore({
   workspaceId: string;
 }) {
   if (!categoryId) {
-    return true;
+    return { belongs: true, error: null };
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("store_categories" as never)
     .select("id")
     .eq("id", categoryId)
@@ -260,7 +386,7 @@ async function categoryBelongsToStore({
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
 
-  return Boolean(data);
+  return { belongs: Boolean(data), error };
 }
 
 function normalizeGallery(value: unknown) {
@@ -505,13 +631,70 @@ function variantPayload(formData: FormData) {
 
 export async function createStoreOwnerProduct(formData: FormData) {
   const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
+  const validationError = validateProductForm(formData);
+
+  if (validationError) {
+    await recordProductCreateFailure({
+      detail: validationError.message,
+      reason: validationError.message,
+      status: validationError.code,
+      storeId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+    productsRedirect(storeId, validationError.code, validationError.message);
+  }
+
   const payload = productPayload(formData);
 
   if (!payload) {
+    await recordProductCreateFailure({
+      detail: "Product title is required.",
+      reason: "Product title is required.",
+      status: "missing-title",
+      storeId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
     productsRedirect(storeId, "missing-title");
   }
 
-  if (!(await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId }))) {
+  const categoryAccess = await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId });
+
+  if (categoryAccess.error) {
+    console.error("[products-foundation] category lookup failed during product create", {
+      categoryId: payload.category_id,
+      code: categoryAccess.error.code,
+      details: categoryAccess.error.details,
+      hint: categoryAccess.error.hint,
+      message: categoryAccess.error.message,
+      storeId
+    });
+    await recordProductCreateFailure({
+      detail: "Product could not be created due to an unexpected database error.",
+      error: categoryAccess.error,
+      reason: "Category lookup failed",
+      status: "create-failed",
+      storeId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+    productsRedirect(storeId, "create-failed", "Product could not be created due to an unexpected database error.");
+  }
+
+  if (!categoryAccess.belongs) {
+    await recordProductCreateFailure({
+      detail: "Selected category was not found for this store.",
+      reason: "Category not found",
+      status: "category-not-found",
+      storeId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
     productsRedirect(storeId, "category-not-found");
   }
 
@@ -537,10 +720,22 @@ export async function createStoreOwnerProduct(formData: FormData) {
   if (error) {
     console.error("[products-foundation] create product failed", {
       code: error.code,
+      details: error.details,
+      hint: error.hint,
       message: error.message,
       storeId
     });
-    productsRedirect(storeId, "create-failed");
+    await recordProductCreateFailure({
+      detail: "Product could not be created due to an unexpected database error.",
+      error,
+      reason: "Unexpected database error",
+      status: "create-failed",
+      storeId,
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+    productsRedirect(storeId, "create-failed", "Product could not be created due to an unexpected database error.");
   }
 
   revalidatePath(productListPath);
@@ -571,7 +766,22 @@ export async function updateStoreOwnerProduct(formData: FormData) {
     productsRedirect(storeId, "update-failed");
   }
 
-  if (!(await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId }))) {
+  const categoryAccess = await categoryBelongsToStore({ categoryId: payload.category_id, storeId, supabase, workspaceId });
+
+  if (categoryAccess.error) {
+    console.error("[products-foundation] category lookup failed during product update", {
+      categoryId: payload.category_id,
+      code: categoryAccess.error.code,
+      details: categoryAccess.error.details,
+      hint: categoryAccess.error.hint,
+      message: categoryAccess.error.message,
+      productId,
+      storeId
+    });
+    productsRedirect(storeId, "update-failed");
+  }
+
+  if (!categoryAccess.belongs) {
     productsRedirect(storeId, "category-not-found");
   }
 
