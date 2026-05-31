@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { PublicStorefrontPageLink } from "@/lib/public-storefront-preview";
+import type { PublicStoreNavigationLink } from "@/lib/storefront/navigation";
 
 type PublicStoreFooterProps = {
   copyrightText?: string;
   footerBackgroundColor: string;
   footerTextColor: string;
+  navigationLinks?: PublicStoreNavigationLink[];
   pages: PublicStorefrontPageLink[];
   storeSlug: string;
   storeTitle: string;
@@ -14,10 +16,22 @@ export function PublicStoreFooter({
   copyrightText,
   footerBackgroundColor,
   footerTextColor,
+  navigationLinks = [],
   pages,
   storeSlug,
   storeTitle
 }: PublicStoreFooterProps) {
+  const pageFallbackLinks = pages.map((page) => ({
+    href: `/store/${storeSlug}/pages/${page.slug}`,
+    id: page.id,
+    label: page.title
+  }));
+  const navigationHrefs = new Set(navigationLinks.map((link) => link.href));
+  const links = [
+    ...navigationLinks,
+    ...pageFallbackLinks.filter((link) => !navigationHrefs.has(link.href))
+  ];
+
   return (
     <footer
       className="px-4 py-8 sm:px-6 lg:px-8"
@@ -31,13 +45,13 @@ export function PublicStoreFooter({
           {copyrightText || `© ${new Date().getFullYear()} ${storeTitle}`}
         </p>
         <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
-          {pages.map((page) => (
+          {links.map((link) => (
             <Link
               className="transition hover:opacity-100"
-              href={`/store/${storeSlug}/pages/${page.slug}`}
-              key={page.id}
+              href={link.href}
+              key={link.id}
             >
-              {page.title}
+              {link.label}
             </Link>
           ))}
           <Link className="transition hover:opacity-100" href={`/store/${storeSlug}/privacy`}>

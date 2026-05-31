@@ -206,6 +206,7 @@ export default async function PublicStorePage({
   const supportPhoneHref = phoneHref(store.supportPhone);
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
   const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
+  const headerLinks = preview.navigation.header;
   const hasContactData = Boolean(
     store.whatsappNumber ||
       supportEmail ||
@@ -244,6 +245,15 @@ export default async function PublicStorePage({
                 <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
               </div>
             </div>
+            {headerLinks.length ? (
+              <nav className="hidden flex-wrap items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-muted sm:flex">
+                {headerLinks.map((link) => (
+                  <a className="transition hover:text-ink" href={link.href} key={link.id}>
+                    {link.label}
+                  </a>
+                ))}
+              </nav>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <WishlistNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
               <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
@@ -620,6 +630,7 @@ export default async function PublicStorePage({
         copyrightText={theme.copyrightText}
         footerBackgroundColor={theme.footerBackgroundColor}
         footerTextColor={theme.footerTextColor}
+        navigationLinks={preview.navigation.footer}
         pages={preview.pages}
         storeSlug={store.slug}
         storeTitle={store.title}

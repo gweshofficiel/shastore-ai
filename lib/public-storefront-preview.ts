@@ -3,6 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { resolveStorefrontThemeRuntime } from "@/lib/storefront-theme-runtime";
 import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-context";
+import {
+  buildPublicStoreNavigation,
+  getEnabledStoreNavigationRows,
+  type PublicStoreNavigation
+} from "@/lib/storefront/navigation";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import type { StoreThemeSettings } from "@/types/storefront";
 
@@ -68,6 +73,7 @@ export type PublicStorefrontPreview = {
   categories: PublicStorefrontCategory[];
   fontStyle: string;
   layoutStyle: string;
+  navigation: PublicStoreNavigation;
   pages: PublicStorefrontPageLink[];
   products: PublicStorefrontProduct[];
   sectionsSchema: unknown[];
@@ -286,6 +292,10 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       : [],
     fontStyle: textValue(value.fontStyle, "inter"),
     layoutStyle: textValue(value.layoutStyle, "classic"),
+    navigation: {
+      footer: [],
+      header: []
+    },
     pages: Array.isArray(value.pages)
       ? value.pages.map(normalizePageLink).filter((page): page is PublicStorefrontPageLink => Boolean(page))
       : [],
@@ -527,6 +537,7 @@ async function loadStoreModePublicPreview(slug: string) {
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
   const pages = await getPublishedPageLinks(client, store.id);
+  const navigationRows = await getEnabledStoreNavigationRows(client, store.id);
   const { data: themeRow } = await client
     .from("store_theme_settings")
     .select("settings, theme_settings, logo_image_url, theme_color, font_style, layout_style")
@@ -567,7 +578,7 @@ async function loadStoreModePublicPreview(slug: string) {
   });
   const themeSettings = themeRuntime.settings;
 
-  return normalizePreview({
+  const preview = normalizePreview({
     branding: themeRuntime.branding,
     brandingConfig: {},
     categories: savedCategories.length ? savedCategories : fallbackCategories,
@@ -620,6 +631,19 @@ async function loadStoreModePublicPreview(slug: string) {
       workspaceId: store.workspace_id || null
     }
   });
+
+  return preview
+    ? {
+        ...preview,
+        navigation: buildPublicStoreNavigation({
+          categories: preview.categories,
+          pages: preview.pages,
+          products: preview.products,
+          rows: navigationRows,
+          storeSlug: preview.store.slug
+        })
+      }
+    : null;
 }
 
 export async function getPublicStorefrontPreview(slug: string) {
@@ -651,10 +675,25 @@ export async function getPublicStorefrontPreview(slug: string) {
   }
 
   const readClient = createAdminClient() ?? supabase;
+  const [pages, navigationRows] = await Promise.all([
+    getPublishedPageLinks(readClient, preview.store.id),
+    getEnabledStoreNavigationRows(readClient, preview.store.id)
+  ]);
+
+  const previewWithPages = {
+    ...preview,
+    pages
+  };
 
   return {
-    ...preview,
-    pages: await getPublishedPageLinks(readClient, preview.store.id)
+    ...previewWithPages,
+    navigation: buildPublicStoreNavigation({
+      categories: previewWithPages.categories,
+      pages: previewWithPages.pages,
+      products: previewWithPages.products,
+      rows: navigationRows,
+      storeSlug: previewWithPages.store.slug
+    })
   };
 }
 

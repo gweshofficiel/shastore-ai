@@ -564,6 +564,7 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
   const logoUrl = context.theme.logo.url || theme.logoUrl || null;
+  const headerLinks = context.preview.navigation.header;
 
   return (
     <section
@@ -613,9 +614,19 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
             config.layout.navbar === "utility" ? "text-cyan-100" : "text-muted"
           }`}
         >
-          <a href="#products">Products</a>
-          <a href="#categories">Categories</a>
-          <a href="#faq">FAQ</a>
+          {headerLinks.length ? (
+            headerLinks.map((link) => (
+              <a href={link.href} key={link.id}>
+                {link.label}
+              </a>
+            ))
+          ) : (
+            <>
+              <a href="#products">Products</a>
+              <a href="#categories">Categories</a>
+              <a href="#faq">FAQ</a>
+            </>
+          )}
         </nav>
         <div className="flex flex-wrap gap-2">
           <WishlistNavLink
@@ -892,6 +903,7 @@ function FooterSection({ context }: { context: StoreTenantContext; section: Stor
       copyrightText={theme.copyrightText}
       footerBackgroundColor={theme.footerBackgroundColor}
       footerTextColor={theme.footerTextColor}
+      navigationLinks={context.preview.navigation.footer}
       pages={context.preview.pages}
       storeSlug={context.store_slug}
       storeTitle={context.settings.title}
