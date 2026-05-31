@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
-import { sanitizePageContent } from "@/lib/store-pages/content";
+import { pageContentFromForm } from "@/lib/store-pages/content";
 import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
@@ -115,7 +115,7 @@ function pagePayload(formData: FormData) {
   }
 
   return {
-    content: sanitizePageContent(cleanOptionalText(formData.get("content"), 100000)),
+    content: pageContentFromForm(formData.get("content")),
     page_type: pageType(formData.get("pageType")),
     seo_description: cleanOptionalText(formData.get("seoDescription"), 300),
     seo_title: cleanOptionalText(formData.get("seoTitle"), 180),

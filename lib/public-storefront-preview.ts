@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { resolveStorefrontThemeRuntime } from "@/lib/storefront-theme-runtime";
@@ -232,10 +233,7 @@ function normalizePageLink(value: unknown): PublicStorefrontPageLink | null {
   };
 }
 
-async function getPublishedPageLinks(
-  client: ReturnType<typeof createAdminClient> extends infer AdminClient ? NonNullable<AdminClient> : never,
-  storeId: string
-) {
+async function getPublishedPageLinks(client: SupabaseClient, storeId: string) {
   const { data, error } = await client
     .from("store_pages" as never)
     .select("id, title, slug, page_type")
@@ -528,7 +526,7 @@ async function loadStoreModePublicPreview(slug: string) {
     variants: variantsByProduct.get(String(product.id ?? "")) ?? []
   }));
   const fallbackCategories = categoriesFromStoreData(store.store_data);
-  const pages = await getPublishedPageLinks(client as never, store.id);
+  const pages = await getPublishedPageLinks(client, store.id);
   const { data: themeRow } = await client
     .from("store_theme_settings")
     .select("settings, theme_settings, logo_image_url, theme_color, font_style, layout_style")
@@ -647,15 +645,16 @@ export async function getPublicStorefrontPreview(slug: string) {
   }
 
   const preview = normalizePreview(data);
-  const admin = createAdminClient();
 
-  if (!preview || !admin) {
-    return preview;
+  if (!preview) {
+    return null;
   }
+
+  const readClient = createAdminClient() ?? supabase;
 
   return {
     ...preview,
-    pages: await getPublishedPageLinks(admin as never, preview.store.id)
+    pages: await getPublishedPageLinks(readClient, preview.store.id)
   };
 }
 

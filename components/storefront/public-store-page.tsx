@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
-import { sanitizePageContent, textFromPageContent } from "@/lib/store-pages/content";
+import { preparePageContentForRender, textFromPageContent } from "@/lib/store-pages/content";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type StorePageRow = {
   content: string | null;
@@ -28,6 +29,7 @@ async function loadPublicStorePage({ pageSlug, slug }: PublicStorePageProps) {
   }
 
   const admin = createAdminClient();
+  const readClient = admin ?? (await createClient());
   const storefrontAccess = admin
     ? await getPublicStorefrontAccess({
         storeId: preview.store.id,
@@ -35,11 +37,11 @@ async function loadPublicStorePage({ pageSlug, slug }: PublicStorePageProps) {
       })
     : { allowed: true };
 
-  if (!storefrontAccess.allowed || !admin) {
+  if (!storefrontAccess.allowed) {
     return { page: null, preview };
   }
 
-  const { data } = await admin
+  const { data } = await readClient
     .from("store_pages" as never)
     .select("id, title, slug, content, seo_title, seo_description")
     .eq("store_id", preview.store.id)
@@ -82,6 +84,8 @@ export async function PublicStorePage({ pageSlug, slug }: PublicStorePageProps) 
     notFound();
   }
 
+  const renderedContent = preparePageContentForRender(page.content);
+
   const admin = createAdminClient();
   if (admin && preview.store.workspaceId) {
     await admin.from("page_activity_logs" as never).insert({
@@ -107,10 +111,16 @@ export async function PublicStorePage({ pageSlug, slug }: PublicStorePageProps) 
         <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] text-ink">
           {page.title}
         </h1>
-        <div
-          className="prose prose-slate mt-8 max-w-none whitespace-pre-wrap rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-semibold leading-7 text-ink"
-          dangerouslySetInnerHTML={{ __html: sanitizePageContent(page.content) }}
-        />
+        {renderedContent ? (
+          <div
+            className="prose prose-slate mt-8 max-w-none whitespace-pre-wrap rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-semibold leading-7 text-ink"
+            dangerouslySetInnerHTML={{ __html: renderedContent }}
+          />
+        ) : (
+          <p className="mt-8 rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-semibold text-muted">
+            This page has no content yet.
+          </p>
+        )}
       </article>
     </main>
   );

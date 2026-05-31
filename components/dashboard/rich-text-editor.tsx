@@ -1,48 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const toolbarButtonClass =
   "rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-slate-400";
 
 export function RichTextEditor({
   defaultValue = "",
+  editorKey,
   id,
   name
 }: {
   defaultValue?: string | null;
+  editorKey?: string;
   id: string;
   name: string;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [html, setHtml] = useState(defaultValue ?? "");
 
   const syncValue = useCallback(function syncValue() {
     const nextValue = editorRef.current?.innerHTML ?? "";
     if (inputRef.current) {
       inputRef.current.value = nextValue;
     }
+    setHtml(nextValue);
   }, []);
 
   useEffect(() => {
     const initialValue = defaultValue ?? "";
+    setHtml(initialValue);
 
-    if (editorRef.current && editorRef.current.innerHTML !== initialValue) {
+    if (editorRef.current) {
       editorRef.current.innerHTML = initialValue;
     }
     if (inputRef.current) {
       inputRef.current.value = initialValue;
     }
+  }, [defaultValue, editorKey]);
 
+  useEffect(() => {
     const form = editorRef.current?.closest("form");
 
     if (!form) {
       return;
     }
 
-    form.addEventListener("submit", syncValue);
-    return () => form.removeEventListener("submit", syncValue);
-  }, [defaultValue, syncValue]);
+    const handleSubmit = () => {
+      syncValue();
+    };
+
+    form.addEventListener("submit", handleSubmit, true);
+    return () => form.removeEventListener("submit", handleSubmit, true);
+  }, [syncValue, editorKey]);
 
   function run(command: string, argument?: string) {
     editorRef.current?.focus();
@@ -71,7 +82,7 @@ export function RichTextEditor({
 
   return (
     <div className="grid gap-3">
-      <input defaultValue={defaultValue ?? ""} name={name} ref={inputRef} type="hidden" />
+      <input name={name} ref={inputRef} type="hidden" value={html} readOnly />
       <div className="flex flex-wrap gap-2" aria-label="Rich text toolbar">
         <button className={toolbarButtonClass} onClick={() => run("formatBlock", "h2")} type="button">
           Heading
@@ -99,10 +110,10 @@ export function RichTextEditor({
         aria-label="Page content"
         className="min-h-64 rounded-3xl border border-slate-200 bg-white p-5 text-sm leading-7 text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
         contentEditable
-        dangerouslySetInnerHTML={{ __html: defaultValue ?? "" }}
         id={id}
         onBlur={syncValue}
         onInput={syncValue}
+        ref={editorRef}
         suppressContentEditableWarning
       />
       <p className="text-xs font-semibold text-muted">

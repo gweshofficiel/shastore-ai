@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
-import { sanitizePageContent } from "@/lib/store-pages/content";
+import { preparePageContentForRender } from "@/lib/store-pages/content";
 import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
@@ -89,6 +89,7 @@ export default async function DashboardPagePreview({ params, searchParams }: Pag
   }
 
   const previewPage = page as unknown as StorePagePreviewRow;
+  const renderedContent = preparePageContentForRender(previewPage.content);
   await supabase.from("page_activity_logs" as never).insert({
     action: "page_previewed",
     page_id: previewPage.id,
@@ -117,10 +118,14 @@ export default async function DashboardPagePreview({ params, searchParams }: Pag
           {previewPage.title}
         </h1>
         <Card className="mt-8 p-5">
-          <div
-            className="prose prose-slate max-w-none text-sm font-semibold leading-7 text-ink"
-            dangerouslySetInnerHTML={{ __html: sanitizePageContent(previewPage.content) }}
-          />
+          {renderedContent ? (
+            <div
+              className="prose prose-slate max-w-none text-sm font-semibold leading-7 text-ink"
+              dangerouslySetInnerHTML={{ __html: renderedContent }}
+            />
+          ) : (
+            <p className="text-sm font-semibold text-muted">This page has no content yet.</p>
+          )}
         </Card>
       </article>
     </main>

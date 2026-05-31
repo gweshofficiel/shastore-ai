@@ -258,6 +258,7 @@ function PageFields({ page }: { page?: StorePageRow }) {
       </div>
       <RichTextEditor
         defaultValue={page?.content ?? ""}
+        editorKey={page?.id ?? "new"}
         id={page ? `page-${page.id}-content` : "page-new-content"}
         name="content"
       />
