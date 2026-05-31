@@ -130,17 +130,22 @@ function statusBadgeClass(status: string | null | undefined) {
 }
 
 function fulfillmentStatusLabel(status: string | null | undefined) {
-  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+  return (status?.trim() || "pending").replaceAll("_", " ");
 }
 
 function fulfillmentBadgeClass(status: string | null | undefined) {
-  const normalized = status && status !== "pending" ? status : "unfulfilled";
+  const normalized = status?.trim() || "pending";
 
   if (normalized === "fulfilled") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (normalized === "preparing" || normalized === "ready_for_pickup" || normalized === "out_for_delivery") {
+  if (
+    normalized === "processing" ||
+    normalized === "preparing" ||
+    normalized === "ready_for_pickup" ||
+    normalized === "out_for_delivery"
+  ) {
     return "bg-blue-100 text-blue-700";
   }
 
@@ -389,7 +394,7 @@ async function getStoreModeOrders(status: string) {
     id: order.id,
     internal_note: order.internal_note,
     items: draftItemsToOrderItems(draftItemsByOrderId.get(order.id) ?? []) as Json,
-    fulfillment_status: order.fulfillment_status ?? "unfulfilled",
+    fulfillment_status: order.fulfillment_status ?? "pending",
     order_status: order.order_status,
     payment_method: order.payment_method ?? "manual",
     payment_status: order.payment_status ?? "pending",

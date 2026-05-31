@@ -97,8 +97,7 @@ export function OrderFulfillmentActions({
   returnTo,
   source
 }: OrderFulfillmentActionsProps) {
-  const normalizedStatus =
-    currentStatus && currentStatus !== "pending" ? currentStatus : "unfulfilled";
+  const normalizedStatus = currentStatus?.trim() || "pending";
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
   const displayedStatus = optimisticStatus ?? normalizedStatus;
 

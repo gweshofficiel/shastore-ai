@@ -113,17 +113,22 @@ function statusBadgeClass(status: string | null | undefined) {
 }
 
 function fulfillmentStatusLabel(status: string | null | undefined) {
-  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+  return (status?.trim() || "pending").replaceAll("_", " ");
 }
 
 function fulfillmentBadgeClass(status: string | null | undefined) {
-  const normalized = status && status !== "pending" ? status : "unfulfilled";
+  const normalized = status?.trim() || "pending";
 
   if (normalized === "fulfilled") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (normalized === "preparing" || normalized === "ready_for_pickup" || normalized === "out_for_delivery") {
+  if (
+    normalized === "processing" ||
+    normalized === "preparing" ||
+    normalized === "ready_for_pickup" ||
+    normalized === "out_for_delivery"
+  ) {
     return "bg-blue-100 text-blue-700";
   }
 
@@ -331,7 +336,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
             events,
-            fulfillment_status: row.fulfillment_status ?? "unfulfilled",
+            fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: row.fulfillment_notes ?? null,
             fulfilled_at: row.fulfilled_at ?? null,
             id: row.id,
@@ -445,7 +450,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
             events,
-            fulfillment_status: row.fulfillment_status ?? "unfulfilled",
+            fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: null,
             fulfilled_at: null,
             id: row.id,
@@ -713,7 +718,7 @@ export default async function OrderDetailPage({
               />
               <OrderFulfillmentActions
                 action={updateStoreOrderFulfillmentStatusAction}
-                currentStatus={order.fulfillment_status ?? "unfulfilled"}
+                currentStatus={order.fulfillment_status ?? "pending"}
                 deliveryMethod={order.delivery_method}
                 fulfillmentNotes={order.fulfillment_notes}
                 orderId={order.id}
