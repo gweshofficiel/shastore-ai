@@ -110,6 +110,24 @@ function methodByName(methods: StorePaymentMethodRow[], method: StorePaymentMeth
   return methods.find((item) => item.method === method);
 }
 
+function isPaymentsErrorStatus(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  return (
+    value.endsWith("-failed") ||
+    value.endsWith("-missing-env") ||
+    value === "stripe-connect-platform-not-enabled" ||
+    value === "not-authorized" ||
+    value === "missing-store" ||
+    value === "manual-config-empty" ||
+    value === "manual-config-missing-encryption" ||
+    value === "paypal-connect-config-missing" ||
+    value === "stripe-not-connected"
+  );
+}
+
 function statusMessage(value: string | undefined) {
   const messages: Record<string, string> = {
     "missing-store": "Choose a store before managing payment methods.",
@@ -147,6 +165,26 @@ function missingEnvMessage(value: string | undefined) {
   }
 
   return `Missing environment variable: ${value}`;
+}
+
+const connectButtonClassName =
+  "inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full bg-ink px-5 text-sm font-bold text-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+function StripeConnectForm({
+  isReconnect,
+  storeId
+}: {
+  isReconnect: boolean;
+  storeId: string;
+}) {
+  return (
+    <form action="/api/store-payments/stripe/connect" method="POST">
+      <input name="storeId" type="hidden" value={storeId} />
+      <button className={connectButtonClassName} type="submit">
+        {isReconnect ? "Reconnect Stripe" : "Connect Stripe"}
+      </button>
+    </form>
+  );
 }
 
 function providerStatusLabel(connection: StorePaymentProviderConnection | null) {
@@ -214,15 +252,24 @@ function ProviderConnectionCard({
         )}
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
-        <form action={connectPath} method="post">
+        {provider === "stripe" ? (
+          <StripeConnectForm
+            isReconnect={connection?.connection_status === "connected"}
+            storeId={storeId}
+          />
+        ) : (
+          <form action={connectPath} method="POST">
+            <input name="storeId" type="hidden" value={storeId} />
+            <Button type="submit">{connection?.connection_status === "connected" ? `Reconnect ${title}` : `Connect ${title}`}</Button>
+          </form>
+        )}
+        <form action={refreshPath} method="POST">
           <input name="storeId" type="hidden" value={storeId} />
-          <Button type="submit">{connection?.connection_status === "connected" ? `Reconnect ${title}` : `Connect ${title}`}</Button>
+          <Button type="submit" variant="secondary">
+            Refresh Status
+          </Button>
         </form>
-        <form action={refreshPath} method="post">
-          <input name="storeId" type="hidden" value={storeId} />
-          <Button type="submit" variant="secondary">Refresh Status</Button>
-        </form>
-        <form action={disconnectPath} method="post">
+        <form action={disconnectPath} method="POST">
           <input name="storeId" type="hidden" value={storeId} />
           <Button disabled={!connection || connection.connection_status === "disconnected"} type="submit" variant="ghost">
             Disconnect
@@ -373,6 +420,7 @@ export default async function PaymentsPage({
   const params = await searchParams;
   const { activeStore, error, methods, providerConnections, stores } = await getPaymentsData(params.storeId);
   const message = statusMessage(params.payments);
+  const isErrorMessage = isPaymentsErrorStatus(params.payments);
   const missingMessage = missingEnvMessage(params.missing);
   const stripeConnection = providerConnectionByName(providerConnections, "stripe");
   const paypalConnection = providerConnectionByName(providerConnections, "paypal");
@@ -385,8 +433,14 @@ export default async function PaymentsPage({
         title="Payments"
       />
       {message ? (
-        <Card className="border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-bold text-emerald-700">{message}</p>
+        <Card
+          className={
+            isErrorMessage
+              ? "border-red-200 bg-red-50 p-5"
+              : "border-emerald-200 bg-emerald-50 p-5"
+          }
+        >
+          <p className={`text-sm font-bold ${isErrorMessage ? "text-red-700" : "text-emerald-700"}`}>{message}</p>
         </Card>
       ) : null}
       {params.error || error ? (
