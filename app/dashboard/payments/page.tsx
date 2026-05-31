@@ -123,6 +123,7 @@ function statusMessage(value: string | undefined) {
     "stripe-connected": "Stripe account connected.",
     "stripe-connect-failed": "Stripe Connect could not be started. Confirm store payment Stripe Connect env vars are configured.",
     "stripe-connect-missing-env": "Stripe Connect could not start because required env vars are missing.",
+    "stripe-connect-platform-not-enabled": "Stripe Connect is not fully enabled for this platform Stripe account. Open Stripe Dashboard → Connect and complete platform onboarding for the same account/key used in STORE_PAYMENTS_STRIPE_SECRET_KEY.",
     "stripe-disconnected": "Stripe account disconnected.",
     "stripe-disconnect-failed": "Stripe account could not be disconnected.",
     "stripe-not-connected": "Stripe is not connected for this store.",

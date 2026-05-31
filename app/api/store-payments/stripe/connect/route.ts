@@ -37,6 +37,12 @@ function stripeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isStripeConnectPlatformNotEnabledError(error: unknown) {
+  const message = stripeErrorMessage(error).toLowerCase();
+
+  return message.includes("signed up for connect");
+}
+
 async function loadExistingStripeAccountId(supabase: SupabaseClient, storeId: string) {
   const { data } = await supabase
     .from("store_payment_provider_connections" as never)
@@ -137,12 +143,15 @@ export async function POST(request: NextRequest) {
     return redirectToDashboardWithMissingEnv(request, storeId, "stripe-connect-missing-env", missingEnv);
   }
 
+  let stripeAccountId: string | null = null;
+
   try {
     const stripe = getStorePaymentsStripe();
     const existingAccountId = await loadExistingStripeAccountId(context.supabase, storeId);
     let account: Stripe.Account;
 
     if (existingAccountId) {
+      stripeAccountId = existingAccountId;
       try {
         account = await stripe.accounts.retrieve(existingAccountId);
       } catch (retrieveError) {
@@ -164,6 +173,7 @@ export async function POST(request: NextRequest) {
           },
           type: "express"
         });
+        stripeAccountId = account.id;
       }
     } else {
       account = await stripe.accounts.create({
@@ -179,6 +189,7 @@ export async function POST(request: NextRequest) {
         },
         type: "express"
       });
+      stripeAccountId = account.id;
     }
 
     await persistStripeConnectPending(context.supabase, {
@@ -203,6 +214,9 @@ export async function POST(request: NextRequest) {
     return redirectToStripeOnboarding(accountLink.url);
   } catch (error) {
     const errorMessage = stripeErrorMessage(error);
+    const status = isStripeConnectPlatformNotEnabledError(error)
+      ? "stripe-connect-platform-not-enabled"
+      : "stripe-connect-failed";
 
     console.error("[store-payments][stripe] connect failed", {
       message: errorMessage,
@@ -214,13 +228,14 @@ export async function POST(request: NextRequest) {
       eventStatus: "failed",
       eventType: "stripe_connect_failed",
       metadata: {
-        error_message: errorMessage
+        error_message: errorMessage,
+        stripe_account_id: stripeAccountId
       },
       storeId,
       supabase: context.supabase,
       userId: context.user.id,
       workspaceId: context.workspaceId
     });
-    return redirectToDashboard(request, storeId, "stripe-connect-failed");
+    return redirectToDashboard(request, storeId, status);
   }
 }
