@@ -18,6 +18,7 @@ export default async function CheckoutSuccessPage({
   const checkoutHref =
     params.type && params.source ? `/checkout/${params.type}/${params.source}` : "/";
   const isWhatsApp = params.method === "whatsapp" && params.whatsapp;
+  const isOnlinePlaceholder = params.method === "paypal" || params.method === "youcan_pay";
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-950 sm:px-6 lg:px-8">
@@ -44,6 +45,10 @@ export default async function CheckoutSuccessPage({
             </p>
             <WhatsAppOrderLauncher url={params.whatsapp ?? ""} />
           </div>
+        ) : isOnlinePlaceholder ? (
+          <p className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+            Online payment integration foundation selected. No online payment was processed; the seller will confirm payment instructions manually.
+          </p>
         ) : (
           <p className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
             Cash on Delivery selected. The seller will confirm delivery and payment details.

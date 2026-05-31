@@ -3,13 +3,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { saveCommercePaymentSettings } from "@/lib/commerce/actions";
+import { saveStorePaymentMethods } from "@/lib/store-payment-method-actions";
 import {
-  commerceMigrationMessage,
-  getCommercePaymentSettings
-} from "@/lib/commerce/data";
+  defaultPaymentDisplayName,
+  getStorePaymentMethods,
+  storePaymentMethodOptions,
+  type StorePaymentMethod,
+  type StorePaymentMethodRow
+} from "@/lib/store-payment-methods";
 import { createClient } from "@/lib/supabase/server";
-import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
+import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -43,205 +48,196 @@ function Toggle({
   );
 }
 
-export default async function PaymentsPage({
-  searchParams
-}: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
-}) {
-  const params = await searchParams;
+type PaymentsData = {
+  activeStore: UserStoreRow | null;
+  error: string | null;
+  methods: StorePaymentMethodRow[];
+  stores: UserStoreRow[];
+};
+
+async function getPaymentsData(selectedStoreId?: string): Promise<PaymentsData> {
   const supabase = await createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (user) {
-    const workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
-    const role = await getUserWorkspaceRole(supabase, workspaceId, user.id);
-
-    if (!hasPermission(role, "can_manage_payments")) {
-      console.warn("[permission-denied] payments page denied", {
-        permission: "can_manage_payments",
-        role,
-        userId: user.id,
-        workspaceId
-      });
-
-      return (
-        <div className="grid gap-6 lg:gap-8">
-          <PageHeader
-            description="Payment settings are limited to order managers."
-            title="Payments"
-          />
-          <Card className="border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm font-bold text-amber-800">
-              You do not have permission to manage payments.
-            </p>
-          </Card>
-        </div>
-      );
-    }
+  if (!user) {
+    return { activeStore: null, error: "Sign in to manage store payments.", methods: [], stores: [] };
   }
 
-  const settings = await getCommercePaymentSettings();
-  const current = settings.items;
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const role = await getUserWorkspaceRole(supabase, selection.activeWorkspaceId, user.id);
+
+  if (!hasPermission(role, "can_manage_payments")) {
+    return { activeStore: null, error: "You do not have permission to manage payments.", methods: [], stores: [] };
+  }
+
+  const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id, selection.activeWorkspaceId);
+
+  if (storesError) {
+    return { activeStore: null, error: "Stores could not be loaded. Please try again.", methods: [], stores: [] };
+  }
+
+  const activeStore = stores.find((store) => store.id === selectedStoreId) ?? stores[0] ?? null;
+
+  if (!activeStore) {
+    return { activeStore: null, error: null, methods: [], stores };
+  }
+
+  const methods = await getStorePaymentMethods(supabase, activeStore.id);
+
+  return { activeStore, error: null, methods, stores };
+}
+
+function methodConfigValue(method: StorePaymentMethodRow | undefined, key: string) {
+  const value = method?.config[key];
+  return typeof value === "string" ? value : "";
+}
+
+function methodByName(methods: StorePaymentMethodRow[], method: StorePaymentMethod) {
+  return methods.find((item) => item.method === method);
+}
+
+function statusMessage(value: string | undefined) {
+  const messages: Record<string, string> = {
+    "missing-store": "Choose a store before managing payment methods.",
+    "not-authorized": "You do not have permission to manage that store.",
+    saved: "Store payment methods saved.",
+    "save-failed": "Store payment methods could not be saved. Confirm the migration has been applied."
+  };
+
+  return value ? messages[value] : null;
+}
+
+export default async function PaymentsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ error?: string; payments?: string; storeId?: string }>;
+}) {
+  const params = await searchParams;
+  const { activeStore, error, methods, stores } = await getPaymentsData(params.storeId);
+  const message = statusMessage(params.payments);
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
-        description="Configure seller-owned buyer payment methods. These settings are separate from SHASTORE AI platform billing."
+        description="Configure store-owned customer payment methods. These settings are separate from SHASTORE AI platform billing."
         title="Payments"
       />
-      {!settings.ready ? (
-        <Card className="border-blue-200 bg-blue-50 p-5">
-          <p className="text-sm font-bold text-blue-800">
-            {commerceMigrationMessage()}
-          </p>
-        </Card>
-      ) : null}
-      {params.saved ? (
+      {message ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-sm font-bold text-emerald-700">
-            Payment settings saved.
-          </p>
+          <p className="text-sm font-bold text-emerald-700">{message}</p>
         </Card>
       ) : null}
-      {params.error ? (
+      {params.error || error ? (
         <Card className="border-red-200 bg-red-50 p-5">
-          <p className="text-sm font-bold text-red-700">{params.error}</p>
+          <p className="text-sm font-bold text-red-700">{params.error || error}</p>
         </Card>
       ) : null}
-      <form action={saveCommercePaymentSettings} className="grid gap-6">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="p-6 lg:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Manual payments
-            </p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Offline buyer payments
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Let buyers place orders that the seller collects manually outside SHASTORE AI.
-            </p>
-            <div className="mt-5 grid gap-3">
-              <Toggle
-                checked={current?.cod_enabled ?? true}
-                description="Allow customers to submit orders and pay when delivered."
-                label="Cash on Delivery"
-                name="codEnabled"
-              />
-            </div>
-          </Card>
-
-          <Card className="p-6 lg:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              WhatsApp orders
-            </p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Seller WhatsApp routing
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Store a default seller WhatsApp number for future checkout integrations.
-            </p>
-            <div className="mt-5 grid gap-4">
-              <Toggle
-                checked={current?.whatsapp_orders_enabled ?? true}
-                description="Route order intent through WhatsApp CTAs and messages."
-                label="WhatsApp Orders"
-                name="whatsappOrdersEnabled"
-              />
-              <Input
-                defaultValue={current?.default_whatsapp_number ?? ""}
-                id="defaultWhatsappNumber"
-                label="Default WhatsApp number"
-                name="defaultWhatsappNumber"
-                placeholder="+1 555 000 0000"
-              />
-            </div>
-          </Card>
-        </div>
-
-        <Card className="p-6 lg:p-8">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Online payments coming soon
-          </p>
-          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-            Seller connection placeholders
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            These toggles prepare each seller account for future buyer checkout. No real
-            payment credentials or secret keys are stored here.
-          </p>
-          <div className="mt-5 grid gap-3 lg:grid-cols-3">
-            <Toggle
-              checked={current?.stripe_seller_enabled ?? false}
-              description="Placeholder for a future seller-owned Stripe connection."
-              label="Stripe seller connection"
-              name="stripeSellerEnabled"
-            />
-            <Toggle
-              checked={current?.paypal_seller_enabled ?? false}
-              description="Placeholder for a future seller-owned PayPal merchant connection."
-              label="PayPal seller connection"
-              name="paypalSellerEnabled"
-            />
-            <Toggle
-              checked={current?.crypto_enabled ?? false}
-              description="Placeholder for future seller-managed crypto payment instructions."
-              label="Crypto payments"
-              name="cryptoEnabled"
-            />
-          </div>
-          <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-800">
-            Buyer checkout is not implemented for these online methods yet. Platform
-            billing Stripe credentials are never used for seller payments.
-          </div>
+      {stores.length ? (
+        <Card className="grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-end">
+          <form className="grid gap-2" method="get">
+            <label className="text-sm font-semibold text-ink" htmlFor="storeId">
+              Active store
+            </label>
+            <select
+              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm"
+              defaultValue={activeStore?.id}
+              id="storeId"
+              name="storeId"
+            >
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.store_name || store.name || store.slug || store.id}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="secondary">Switch store</Button>
+          </form>
         </Card>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
-          <Card className="p-6 lg:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Payment instructions
+      ) : null}
+      {activeStore ? (
+        <form action={saveStorePaymentMethods} className="grid gap-6">
+          <input name="storeId" type="hidden" value={activeStore.id} />
+          <div className="grid gap-6 lg:grid-cols-2">
+            {storePaymentMethodOptions.map((option) => {
+              const current = methodByName(methods, option.method);
+              return (
+                <Card className="p-6 lg:p-8" key={option.method}>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                    {option.method.replace("_", " ")}
+                  </p>
+                  <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+                    {option.title}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-muted">{option.description}</p>
+                  <div className="mt-5 grid gap-4">
+                    <Toggle
+                      checked={current?.is_enabled ?? false}
+                      description="Show this method in public checkout for this store."
+                      label="Enabled"
+                      name={`${option.method}Enabled`}
+                    />
+                    <Input
+                      defaultValue={current?.display_name ?? defaultPaymentDisplayName(option.method)}
+                      id={`${option.method}-display-name`}
+                      label="Display name"
+                      name={`${option.method}DisplayName`}
+                    />
+                    <Textarea
+                      defaultValue={current?.instructions ?? ""}
+                      id={`${option.method}-instructions`}
+                      label="Instructions"
+                      name={`${option.method}Instructions`}
+                      placeholder="Buyer-facing payment instructions."
+                    />
+                    {option.method === "paypal" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Input
+                          defaultValue={methodConfigValue(current, "merchant_email")}
+                          id="paypal-merchant-email"
+                          label="PayPal merchant email"
+                          name="paypalMerchantEmail"
+                        />
+                        <Input
+                          defaultValue={methodConfigValue(current, "client_id")}
+                          id="paypal-client-id"
+                          label="PayPal client ID"
+                          name="paypalClientId"
+                        />
+                      </div>
+                    ) : null}
+                    {option.method === "youcan_pay" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Input
+                          defaultValue={methodConfigValue(current, "store_id")}
+                          id="youcan-store-id"
+                          label="YouCan store ID"
+                          name="youcanStoreId"
+                        />
+                        <Input
+                          defaultValue={methodConfigValue(current, "public_key")}
+                          id="youcan-public-key"
+                          label="YouCan public key"
+                          name="youcanPublicKey"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold leading-6 text-amber-900">
+              PayPal and YouCan Pay are configuration placeholders only. No online payment is processed in this phase, and platform billing Stripe credentials are never used for store customer payments.
             </p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Buyer-facing notes
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Save seller-specific instructions for manual payments or future checkout displays.
-            </p>
-            <div className="mt-5">
-              <Textarea
-                defaultValue={current?.payment_instructions ?? ""}
-                id="paymentInstructions"
-                label="Payment instructions"
-                name="paymentInstructions"
-                placeholder="Example: We confirm WhatsApp orders before delivery. Cash is collected by the courier."
-              />
-            </div>
           </Card>
-
-          <Card className="p-6 lg:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Separation guardrail
-            </p>
-            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Client payments only
-            </h2>
-            <div className="mt-5 grid gap-3 text-sm leading-6 text-muted">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
-                These settings belong to the authenticated seller account and are ready for
-                future checkout integration.
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-muted">
-                No platform billing subscriptions, admin billing, or platform Stripe checkout
-                code is used by this page.
-              </div>
-            </div>
-          </Card>
-        </div>
-        <div>
-          <Button type="submit">Save payment settings</Button>
-        </div>
-      </form>
+          <div>
+            <Button type="submit">Save store payment methods</Button>
+          </div>
+        </form>
+      ) : null}
     </div>
   );
 }

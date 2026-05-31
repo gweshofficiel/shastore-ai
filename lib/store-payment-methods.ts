@@ -1,0 +1,132 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export type StorePaymentMethod = "cod" | "paypal" | "whatsapp" | "youcan_pay";
+
+export type StorePaymentMethodRow = {
+  config: Record<string, unknown>;
+  display_name: string | null;
+  id: string;
+  instructions: string | null;
+  is_enabled: boolean;
+  method: StorePaymentMethod;
+  store_id: string;
+  workspace_id: string;
+};
+
+export type PublicStorePaymentMethod = {
+  displayName: string;
+  instructions: string | null;
+  method: StorePaymentMethod;
+};
+
+export const storePaymentMethodOptions: Array<{
+  defaultDisplayName: string;
+  description: string;
+  method: StorePaymentMethod;
+  title: string;
+}> = [
+  {
+    defaultDisplayName: "Cash on Delivery",
+    description: "Let customers place orders and pay when the seller delivers.",
+    method: "cod",
+    title: "Cash on Delivery"
+  },
+  {
+    defaultDisplayName: "WhatsApp Orders",
+    description: "Create the order and open WhatsApp with a prepared message.",
+    method: "whatsapp",
+    title: "WhatsApp Orders"
+  },
+  {
+    defaultDisplayName: "PayPal",
+    description: "Foundation placeholder for future seller-owned PayPal checkout.",
+    method: "paypal",
+    title: "PayPal"
+  },
+  {
+    defaultDisplayName: "YouCan Pay",
+    description: "Foundation placeholder for future seller-owned YouCan Pay checkout.",
+    method: "youcan_pay",
+    title: "YouCan Pay"
+  }
+];
+
+const defaultLabels = new Map(
+  storePaymentMethodOptions.map((option) => [option.method, option.defaultDisplayName])
+);
+
+function isPaymentMethod(value: unknown): value is StorePaymentMethod {
+  return value === "cod" || value === "paypal" || value === "whatsapp" || value === "youcan_pay";
+}
+
+function normalizeConfig(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function normalizePaymentRow(value: unknown): StorePaymentMethodRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const method = row.method;
+
+  if (
+    typeof row.id !== "string" ||
+    typeof row.store_id !== "string" ||
+    typeof row.workspace_id !== "string" ||
+    !isPaymentMethod(method)
+  ) {
+    return null;
+  }
+
+  return {
+    config: normalizeConfig(row.config),
+    display_name: typeof row.display_name === "string" ? row.display_name : null,
+    id: row.id,
+    instructions: typeof row.instructions === "string" ? row.instructions : null,
+    is_enabled: row.is_enabled === true,
+    method,
+    store_id: row.store_id,
+    workspace_id: row.workspace_id
+  };
+}
+
+export async function getStorePaymentMethods(client: SupabaseClient, storeId: string) {
+  const { data, error } = await client
+    .from("store_payment_methods" as never)
+    .select("id, workspace_id, store_id, method, is_enabled, display_name, instructions, config")
+    .eq("store_id", storeId)
+    .order("method" as never, { ascending: true } as never);
+
+  if (error) {
+    console.warn("[store-payments] store payment methods failed", {
+      code: error.code,
+      message: error.message,
+      storeId
+    });
+    return [];
+  }
+
+  return ((data ?? []) as unknown[])
+    .map(normalizePaymentRow)
+    .filter((row): row is StorePaymentMethodRow => Boolean(row));
+}
+
+export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient, storeId: string) {
+  const methods = await getStorePaymentMethods(client, storeId);
+
+  return methods
+    .filter((method) => method.is_enabled)
+    .map((method): PublicStorePaymentMethod => ({
+      displayName: method.display_name || defaultLabels.get(method.method) || method.method,
+      instructions: method.instructions || null,
+      method: method.method
+    }));
+}
+
+export function defaultPaymentDisplayName(method: StorePaymentMethod) {
+  return defaultLabels.get(method) || method;
+}

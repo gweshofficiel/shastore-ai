@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getEnabledPublicStorePaymentMethods, type PublicStorePaymentMethod } from "@/lib/store-payment-methods";
 import {
   buildWhatsAppOrderUrl,
   calculateCheckoutTotal,
@@ -18,6 +19,7 @@ export type BuyerCheckoutPaymentSettings = {
 };
 
 export type BuyerCheckoutSource = CheckoutSource & {
+  paymentMethodDetails: PublicStorePaymentMethod[];
   sellerId: string;
   paymentSettings: BuyerCheckoutPaymentSettings;
 };
@@ -92,12 +94,21 @@ function enabledPaymentMethods(settings: BuyerCheckoutPaymentSettings, whatsappN
   return methods;
 }
 
+function fallbackStorePaymentMethods(settings: BuyerCheckoutPaymentSettings, whatsappNumber: string | null): PublicStorePaymentMethod[] {
+  return enabledPaymentMethods(settings, whatsappNumber).map((method) => ({
+    displayName: getPaymentMethodLabel(method),
+    instructions: null,
+    method: method === "whatsapp" ? "whatsapp" : "cod"
+  }));
+}
+
 export function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     cod: "Cash on Delivery",
     paypal: "PayPal",
     stripe: "Stripe",
-    whatsapp: "Order via WhatsApp"
+    whatsapp: "Order via WhatsApp",
+    youcan_pay: "YouCan Pay"
   };
 
   return labels[method];
@@ -150,6 +161,10 @@ export async function getBuyerCheckoutSource({
     }
 
     const whatsappNumber = settings.defaultWhatsappNumber ?? store.whatsapp_number;
+    const configuredPaymentMethods = await getEnabledPublicStorePaymentMethods(supabase, store.id);
+    const paymentMethodDetails = configuredPaymentMethods.length
+      ? configuredPaymentMethods
+      : fallbackStorePaymentMethods(settings, whatsappNumber);
     const items: CheckoutItem[] = (products ?? []).map((product) => ({
       id: product.id,
       imageUrl: product.image_url,
@@ -160,7 +175,8 @@ export async function getBuyerCheckoutSource({
     return {
       currency: store.currency || "USD",
       items,
-      paymentMethods: enabledPaymentMethods(settings, whatsappNumber),
+      paymentMethodDetails,
+      paymentMethods: paymentMethodDetails.map((method) => method.method),
       paymentSettings: settings,
       sellerId: store.user_id,
       sourceId: store.id,
@@ -198,6 +214,7 @@ export async function getBuyerCheckoutSource({
   return {
     currency: "USD",
     items,
+    paymentMethodDetails: fallbackStorePaymentMethods(settings, whatsappNumber),
     paymentMethods: enabledPaymentMethods(settings, whatsappNumber),
     paymentSettings: settings,
     sellerId: landing.user_id,

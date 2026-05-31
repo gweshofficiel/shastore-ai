@@ -22,7 +22,27 @@ function SubmitButton() {
 }
 
 function getPaymentMethodLabel(method: CommercePaymentMethod) {
-  return method === "cod" ? "Cash on Delivery" : "Order via WhatsApp";
+  const labels: Record<CommercePaymentMethod, string> = {
+    cod: "Cash on Delivery",
+    paypal: "PayPal",
+    stripe: "Stripe",
+    whatsapp: "Order via WhatsApp",
+    youcan_pay: "YouCan Pay"
+  };
+
+  return labels[method];
+}
+
+function getPaymentMethodDescription(method: CommercePaymentMethod) {
+  if (method === "cod") {
+    return "Pay the seller when your order is delivered.";
+  }
+
+  if (method === "whatsapp") {
+    return "Save the order and open WhatsApp with a prepared message.";
+  }
+
+  return "Integration foundation only. The seller will confirm payment instructions after order submission.";
 }
 
 export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
@@ -37,6 +57,7 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
   );
   const checkoutItems = selectedItem ? [{ ...selectedItem, quantity }] : [];
   const total = calculateCheckoutTotal(checkoutItems);
+  const paymentDetails = source.paymentMethodDetails.find((method) => method.method === paymentMethod);
 
   return (
     <form action={createBuyerCheckoutOrder} className="grid gap-6">
@@ -124,16 +145,14 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
                   type="button"
                 >
                   <span className="block text-sm font-black">
-                    {getPaymentMethodLabel(method)}
+                    {source.paymentMethodDetails.find((item) => item.method === method)?.displayName || getPaymentMethodLabel(method)}
                   </span>
                   <span
                     className={`mt-1 block text-xs font-semibold ${
                       paymentMethod === method ? "text-white/70" : "text-slate-500"
                     }`}
                   >
-                    {method === "cod"
-                      ? "Pay the seller when your order is delivered."
-                      : "Save the order and open WhatsApp with a prepared message."}
+                    {source.paymentMethodDetails.find((item) => item.method === method)?.instructions || getPaymentMethodDescription(method)}
                   </span>
                 </button>
               ))}
@@ -198,6 +217,11 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
           {source.paymentSettings.paymentInstructions ? (
             <div className="mt-4 rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
               {source.paymentSettings.paymentInstructions}
+            </div>
+          ) : null}
+          {paymentDetails && (paymentMethod === "paypal" || paymentMethod === "youcan_pay") ? (
+            <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+              Online payment processing is not active yet. This order will be created as pending and the seller will confirm payment manually.
             </div>
           ) : null}
           <div className="mt-5">

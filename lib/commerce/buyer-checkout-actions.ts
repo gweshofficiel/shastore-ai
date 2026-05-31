@@ -23,7 +23,7 @@ function parseQuantity(value: FormDataEntryValue | null) {
 }
 
 function parsePaymentMethod(value: string): CommercePaymentMethod | null {
-  return value === "cod" || value === "whatsapp" ? value : null;
+  return value === "cod" || value === "whatsapp" || value === "paypal" || value === "youcan_pay" ? value : null;
 }
 
 function checkoutPath(sourceType: string, sourceSlug: string, error?: string) {
