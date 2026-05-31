@@ -24,6 +24,7 @@ export const dynamic = "force-dynamic";
 const productListPath = "/dashboard/products";
 
 type ProductRow = {
+  canonical_url?: string | null;
   category_id?: string | null;
   compare_at_price?: number | string | null;
   created_at: string;
@@ -35,7 +36,14 @@ type ProductRow = {
   inventory_status?: string | null;
   low_stock_threshold?: number | null;
   name?: string | null;
+  noindex?: boolean | null;
+  og_description?: string | null;
+  og_image_url?: string | null;
+  og_title?: string | null;
   price?: number | string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  seo_title?: string | null;
   sku?: string | null;
   slug?: string | null;
   status?: string | null;
@@ -166,7 +174,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   const { data: products, error: productsError } = await supabase
     .from("store_products" as never)
     .select(
-      "id, workspace_id, store_id, category_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, created_at, updated_at"
+      "id, workspace_id, store_id, category_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at, updated_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
@@ -533,6 +541,82 @@ function ProductFields({
             step="1"
             type="number"
           />
+        </div>
+      </div>
+      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+        <div>
+          <p className="text-sm font-black text-ink">SEO</p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            Optional search and social metadata. Empty fields fall back to product title and description.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={product?.seo_title ?? ""}
+            id={product ? `seo-title-${product.id}` : "seo-title-new"}
+            label="SEO title"
+            maxLength={180}
+            name="seoTitle"
+            placeholder={product ? productTitle(product) : "Product search title"}
+          />
+          <Input
+            defaultValue={product?.seo_keywords ?? ""}
+            id={product ? `seo-keywords-${product.id}` : "seo-keywords-new"}
+            label="SEO keywords"
+            maxLength={500}
+            name="seoKeywords"
+            placeholder="keyword, product, store"
+          />
+        </div>
+        <Textarea
+          defaultValue={product?.seo_description ?? ""}
+          id={product ? `seo-description-${product.id}` : "seo-description-new"}
+          label="SEO description"
+          maxLength={320}
+          name="seoDescription"
+          placeholder="Search result description."
+          rows={3}
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={product?.og_title ?? ""}
+            id={product ? `og-title-${product.id}` : "og-title-new"}
+            label="OpenGraph title"
+            maxLength={180}
+            name="ogTitle"
+            placeholder="Social preview title"
+          />
+          <Textarea
+            defaultValue={product?.og_description ?? ""}
+            id={product ? `og-description-${product.id}` : "og-description-new"}
+            label="OpenGraph description"
+            maxLength={320}
+            name="ogDescription"
+            placeholder="Social preview description."
+            rows={3}
+          />
+        </div>
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <Input
+            defaultValue={product?.og_image_url ?? ""}
+            id={product ? `og-image-url-${product.id}` : "og-image-url-new"}
+            label="OpenGraph image URL"
+            maxLength={1000}
+            name="ogImageUrl"
+            placeholder="https://..."
+          />
+          <Input
+            defaultValue={product?.canonical_url ?? ""}
+            id={product ? `canonical-url-${product.id}` : "canonical-url-new"}
+            label="Canonical URL"
+            maxLength={500}
+            name="canonicalUrl"
+            placeholder="https://example.com/product"
+          />
+          <label className="flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm">
+            <input defaultChecked={product?.noindex === true} name="noindex" type="checkbox" />
+            Noindex
+          </label>
         </div>
       </div>
     </>

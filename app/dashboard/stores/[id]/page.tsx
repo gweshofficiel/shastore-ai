@@ -158,8 +158,12 @@ type PublicationRow = {
   published_at?: string | null;
   seo_title?: string | null;
   seo_description?: string | null;
+  seo_keywords?: string | null;
   og_title?: string | null;
   og_description?: string | null;
+  og_image_url?: string | null;
+  canonical_url?: string | null;
+  noindex?: boolean | null;
   favicon_url?: string | null;
   social_image_url?: string | null;
   custom_domain?: string | null;
@@ -5042,6 +5046,22 @@ export default async function StoreDraftPage({
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              defaultValue={publication?.seo_keywords ?? ""}
+              id="publication-seo-keywords"
+              label="SEO keywords"
+              name="seoKeywords"
+              placeholder="store, products, brand"
+            />
+            <Input
+              defaultValue={publication?.canonical_url ?? ""}
+              id="publication-canonical-url"
+              label="Canonical URL"
+              name="canonicalUrl"
+              placeholder="https://example.com"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
             <Textarea
               defaultValue={publication?.seo_description ?? ""}
               id="publication-seo-description"
@@ -5056,6 +5076,19 @@ export default async function StoreDraftPage({
               name="ogDescription"
               placeholder={store.description || "Social preview description"}
             />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Input
+              defaultValue={publication?.og_image_url ?? ""}
+              id="publication-og-image-url"
+              label="OpenGraph image URL"
+              name="ogImageUrl"
+              placeholder="https://example.com/social-image.png"
+            />
+            <label className="flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm">
+              <input defaultChecked={publication?.noindex === true} name="noindex" type="checkbox" />
+              Noindex
+            </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-3">

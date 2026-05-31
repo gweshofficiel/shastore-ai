@@ -14,10 +14,18 @@ import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 export const dynamic = "force-dynamic";
 
 type CategoryRow = {
+  canonical_url?: string | null;
   description?: string | null;
   id: string;
   image_url?: string | null;
   name: string;
+  noindex?: boolean | null;
+  og_description?: string | null;
+  og_image_url?: string | null;
+  og_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  seo_title?: string | null;
   slug: string;
   sort_order?: number | null;
   status?: string | null;
@@ -96,7 +104,7 @@ async function getCategoriesDashboardData(
 
   const { data: categories, error: categoriesError } = await supabase
     .from("store_categories" as never)
-    .select("id, workspace_id, store_id, name, slug, description, image_url, status, sort_order")
+    .select("id, workspace_id, store_id, name, slug, description, image_url, status, sort_order, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex")
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
     .order("sort_order", { ascending: true })
@@ -183,6 +191,82 @@ function CategoryFields({ category }: { category?: CategoryRow }) {
             <option value="inactive">Inactive</option>
           </select>
         </label>
+      </div>
+      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+        <div>
+          <p className="text-sm font-black text-ink">SEO</p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            Optional search and social metadata. Empty fields fall back to category name and description.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={category?.seo_title ?? ""}
+            id={category ? `category-${category.id}-seo-title` : "category-new-seo-title"}
+            label="SEO title"
+            maxLength={180}
+            name="seoTitle"
+            placeholder={category?.name ?? "Category search title"}
+          />
+          <Input
+            defaultValue={category?.seo_keywords ?? ""}
+            id={category ? `category-${category.id}-seo-keywords` : "category-new-seo-keywords"}
+            label="SEO keywords"
+            maxLength={500}
+            name="seoKeywords"
+            placeholder="keyword, category, collection"
+          />
+        </div>
+        <Textarea
+          defaultValue={category?.seo_description ?? ""}
+          id={category ? `category-${category.id}-seo-description` : "category-new-seo-description"}
+          label="SEO description"
+          maxLength={320}
+          name="seoDescription"
+          placeholder="Search result description."
+          rows={3}
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={category?.og_title ?? ""}
+            id={category ? `category-${category.id}-og-title` : "category-new-og-title"}
+            label="OpenGraph title"
+            maxLength={180}
+            name="ogTitle"
+            placeholder="Social preview title"
+          />
+          <Textarea
+            defaultValue={category?.og_description ?? ""}
+            id={category ? `category-${category.id}-og-description` : "category-new-og-description"}
+            label="OpenGraph description"
+            maxLength={320}
+            name="ogDescription"
+            placeholder="Social preview description."
+            rows={3}
+          />
+        </div>
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <Input
+            defaultValue={category?.og_image_url ?? ""}
+            id={category ? `category-${category.id}-og-image-url` : "category-new-og-image-url"}
+            label="OpenGraph image URL"
+            maxLength={1000}
+            name="ogImageUrl"
+            placeholder="https://..."
+          />
+          <Input
+            defaultValue={category?.canonical_url ?? ""}
+            id={category ? `category-${category.id}-canonical-url` : "category-new-canonical-url"}
+            label="Canonical URL"
+            maxLength={500}
+            name="canonicalUrl"
+            placeholder="https://example.com/category"
+          />
+          <label className="flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm">
+            <input defaultChecked={category?.noindex === true} name="noindex" type="checkbox" />
+            Noindex
+          </label>
+        </div>
       </div>
     </>
   );

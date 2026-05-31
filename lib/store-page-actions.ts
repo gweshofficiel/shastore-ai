@@ -116,8 +116,14 @@ function pagePayload(formData: FormData) {
 
   return {
     content: pageContentFromForm(formData.get("content")),
+    canonical_url: cleanOptionalText(formData.get("canonicalUrl"), 500),
+    noindex: formData.get("noindex") === "on",
+    og_description: cleanOptionalText(formData.get("ogDescription"), 320),
+    og_image_url: cleanOptionalText(formData.get("ogImageUrl"), 1000),
+    og_title: cleanOptionalText(formData.get("ogTitle"), 180),
     page_type: pageType(formData.get("pageType")),
     seo_description: cleanOptionalText(formData.get("seoDescription"), 300),
+    seo_keywords: cleanOptionalText(formData.get("seoKeywords"), 500),
     seo_title: cleanOptionalText(formData.get("seoTitle"), 180),
     slug: slugify(slug || title),
     status: pageStatus(formData.get("status")),

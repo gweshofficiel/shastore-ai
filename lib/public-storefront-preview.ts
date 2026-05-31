@@ -26,6 +26,7 @@ export type PublicStorefrontVariant = {
 };
 
 export type PublicStorefrontProduct = {
+  canonicalUrl: string | null;
   categoryId: string | null;
   categoryName: string | null;
   compareAtPrice: number | string | null;
@@ -36,8 +37,15 @@ export type PublicStorefrontProduct = {
   imageUrl: string | null;
   inventoryStatus: string | null;
   lowStockThreshold: number | null;
+  noindex: boolean;
+  ogDescription: string | null;
+  ogImageUrl: string | null;
+  ogTitle: string | null;
   price: number | string | null;
   priceLabel: string | null;
+  seoDescription: string | null;
+  seoKeywords: string | null;
+  seoTitle: string | null;
   sku: string | null;
   slug: string | null;
   status: string | null;
@@ -48,10 +56,18 @@ export type PublicStorefrontProduct = {
 };
 
 export type PublicStorefrontCategory = {
+  canonicalUrl: string | null;
   description: string | null;
   id: string;
   imageUrl: string | null;
   name: string;
+  noindex: boolean;
+  ogDescription: string | null;
+  ogImageUrl: string | null;
+  ogTitle: string | null;
+  seoDescription: string | null;
+  seoKeywords: string | null;
+  seoTitle: string | null;
   slug: string | null;
   status: string | null;
 };
@@ -96,6 +112,11 @@ export type PublicStorefrontPreview = {
     description: string | null;
     freeDeliveryThreshold: number | null;
     id: string;
+    canonicalUrl: string | null;
+    noindex: boolean;
+    ogDescription: string | null;
+    ogImageUrl: string | null;
+    ogTitle: string | null;
     pickupEnabled: boolean;
     privacyPolicy: string | null;
     refundPolicy: string | null;
@@ -106,6 +127,9 @@ export type PublicStorefrontPreview = {
     storeEmail: string | null;
     supportEmail: string | null;
     supportPhone: string | null;
+    seoDescription: string | null;
+    seoKeywords: string | null;
+    seoTitle: string | null;
     termsOfService: string | null;
     timezone: string;
     title: string;
@@ -154,6 +178,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   }
 
   return {
+    canonicalUrl: textValue(value.canonicalUrl) || textValue(value.canonical_url) || null,
     categoryId: textValue(value.categoryId) || null,
     categoryName: textValue(value.categoryName) || null,
     compareAtPrice:
@@ -167,8 +192,15 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     imageUrl: textValue(value.imageUrl) || null,
     inventoryStatus: textValue(value.inventoryStatus) || null,
     lowStockThreshold: typeof value.lowStockThreshold === "number" ? value.lowStockThreshold : null,
+    noindex: value.noindex === true,
+    ogDescription: textValue(value.ogDescription) || textValue(value.og_description) || null,
+    ogImageUrl: textValue(value.ogImageUrl) || textValue(value.og_image_url) || null,
+    ogTitle: textValue(value.ogTitle) || textValue(value.og_title) || null,
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
     priceLabel: textValue(value.priceLabel) || null,
+    seoDescription: textValue(value.seoDescription) || textValue(value.seo_description) || null,
+    seoKeywords: textValue(value.seoKeywords) || textValue(value.seo_keywords) || null,
+    seoTitle: textValue(value.seoTitle) || textValue(value.seo_title) || null,
     sku: textValue(value.sku) || null,
     slug: textValue(value.slug) || null,
     status: textValue(value.status) || null,
@@ -209,10 +241,18 @@ function normalizeCategory(value: unknown): PublicStorefrontCategory | null {
   }
 
   return {
+    canonicalUrl: textValue(value.canonicalUrl) || textValue(value.canonical_url) || null,
     description: textValue(value.description) || null,
     id,
     imageUrl: textValue(value.imageUrl) || null,
     name,
+    noindex: value.noindex === true,
+    ogDescription: textValue(value.ogDescription) || textValue(value.og_description) || null,
+    ogImageUrl: textValue(value.ogImageUrl) || textValue(value.og_image_url) || null,
+    ogTitle: textValue(value.ogTitle) || textValue(value.og_title) || null,
+    seoDescription: textValue(value.seoDescription) || textValue(value.seo_description) || null,
+    seoKeywords: textValue(value.seoKeywords) || textValue(value.seo_keywords) || null,
+    seoTitle: textValue(value.seoTitle) || textValue(value.seo_title) || null,
     slug: textValue(value.slug) || null,
     status: textValue(value.status, "active")
   };
@@ -258,6 +298,31 @@ export async function getPublishedPageLinks(client: SupabaseClient, storeId: str
   }
 
   return ((data ?? []) as unknown[]).map(normalizePageLink).filter((page): page is PublicStorefrontPageLink => Boolean(page));
+}
+
+async function getPublishedStoreSeo(client: SupabaseClient, storeId: string) {
+  const { data, error } = await client
+    .from("published_stores" as never)
+    .select("seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, social_image_url, canonical_url, noindex")
+    .eq("store_id", storeId)
+    .eq("status", "published")
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as {
+    canonical_url?: string | null;
+    noindex?: boolean | null;
+    og_description?: string | null;
+    og_image_url?: string | null;
+    og_title?: string | null;
+    seo_description?: string | null;
+    seo_keywords?: string | null;
+    seo_title?: string | null;
+    social_image_url?: string | null;
+  } | null;
 }
 
 function normalizePreview(value: unknown): PublicStorefrontPreview | null {
@@ -331,6 +396,11 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       description: textValue(store.description) || null,
       freeDeliveryThreshold: numberValue(store.freeDeliveryThreshold),
       id,
+      canonicalUrl: textValue(store.canonicalUrl) || textValue(store.canonical_url) || null,
+      noindex: store.noindex === true,
+      ogDescription: textValue(store.ogDescription) || textValue(store.og_description) || null,
+      ogImageUrl: textValue(store.ogImageUrl) || textValue(store.og_image_url) || textValue(store.socialImageUrl) || null,
+      ogTitle: textValue(store.ogTitle) || textValue(store.og_title) || null,
       pickupEnabled: booleanValue(store.pickupEnabled),
       privacyPolicy: textValue(store.privacyPolicy, "") || null,
       refundPolicy: textValue(store.refundPolicy, "") || null,
@@ -347,6 +417,9 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       storeEmail: textValue(store.storeEmail) || textValue(store.supportEmail) || null,
       supportEmail: textValue(store.supportEmail) || null,
       supportPhone: textValue(store.supportPhone) || null,
+      seoDescription: textValue(store.seoDescription) || textValue(store.seo_description) || null,
+      seoKeywords: textValue(store.seoKeywords) || textValue(store.seo_keywords) || null,
+      seoTitle: textValue(store.seoTitle) || textValue(store.seo_title) || null,
       termsOfService: textValue(store.termsOfService, "") || null,
       timezone: textValue(store.timezone, "UTC"),
       title,
@@ -376,7 +449,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const client = createAdminClient() ?? (await createClient());
   const { data: rawPublication } = await client
     .from("published_stores")
-    .select("store_id, status, visibility, slug")
+    .select("store_id, status, visibility, slug, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, social_image_url, canonical_url, noindex")
     .eq("slug", normalizedSlug)
     .eq("status", "published")
     .eq("visibility", "public")
@@ -386,6 +459,15 @@ async function loadStoreModePublicPreview(slug: string) {
     status: string;
     store_id: string;
     visibility: string;
+    seo_title?: string | null;
+    seo_description?: string | null;
+    seo_keywords?: string | null;
+    og_title?: string | null;
+    og_description?: string | null;
+    og_image_url?: string | null;
+    social_image_url?: string | null;
+    canonical_url?: string | null;
+    noindex?: boolean | null;
   } | null;
 
   if (!publication) {
@@ -440,7 +522,7 @@ async function loadStoreModePublicPreview(slug: string) {
 
   const { data: products } = await client
     .from("store_products" as never)
-    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status")
+    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex")
     .eq("store_id", store.id)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
@@ -458,7 +540,7 @@ async function loadStoreModePublicPreview(slug: string) {
     : { data: [] };
   const { data: categories } = await client
     .from("store_categories" as never)
-    .select("id, name, slug, description, image_url, status")
+    .select("id, name, slug, description, image_url, status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex")
     .eq("store_id" as never, store.id as never)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
@@ -467,6 +549,14 @@ async function loadStoreModePublicPreview(slug: string) {
     id: String(category.id ?? ""),
     imageUrl: textValue(category.image_url) || null,
     name: textValue(category.name, "Category"),
+    canonicalUrl: textValue(category.canonical_url) || null,
+    noindex: category.noindex === true,
+    ogDescription: textValue(category.og_description) || null,
+    ogImageUrl: textValue(category.og_image_url) || null,
+    ogTitle: textValue(category.og_title) || null,
+    seoDescription: textValue(category.seo_description) || null,
+    seoKeywords: textValue(category.seo_keywords) || null,
+    seoTitle: textValue(category.seo_title) || null,
     slug: textValue(category.slug) || null,
     status: textValue(category.status, "active")
   }));
@@ -512,6 +602,14 @@ async function loadStoreModePublicPreview(slug: string) {
     id: String(product.id ?? ""),
     inventoryStatus: textValue(product.inventory_status) || null,
     lowStockThreshold: typeof product.low_stock_threshold === "number" ? product.low_stock_threshold : null,
+    canonicalUrl: textValue(product.canonical_url) || null,
+    noindex: product.noindex === true,
+    ogDescription: textValue(product.og_description) || null,
+    ogImageUrl: textValue(product.og_image_url) || null,
+    ogTitle: textValue(product.og_title) || null,
+    seoDescription: textValue(product.seo_description) || null,
+    seoKeywords: textValue(product.seo_keywords) || null,
+    seoTitle: textValue(product.seo_title) || null,
     title: textValue(product.title, textValue(product.name, "Untitled product")),
     description: textValue(product.description) || null,
     imageUrl: textValue(product.image_url) || null,
@@ -607,6 +705,11 @@ async function loadStoreModePublicPreview(slug: string) {
       description: store.description,
       freeDeliveryThreshold: numberValue(store.free_delivery_threshold),
       id: store.id,
+      canonicalUrl: publication?.canonical_url || null,
+      noindex: publication?.noindex === true,
+      ogDescription: publication?.og_description || null,
+      ogImageUrl: publication?.og_image_url || publication?.social_image_url || null,
+      ogTitle: publication?.og_title || null,
       pickupEnabled: Boolean(store.pickup_enabled),
       privacyPolicy: store.privacy_policy || null,
       refundPolicy: store.refund_policy || null,
@@ -623,6 +726,9 @@ async function loadStoreModePublicPreview(slug: string) {
       storeEmail: store.store_email || store.support_email || null,
       supportEmail: store.support_email || store.store_email || null,
       supportPhone: store.support_phone || null,
+      seoDescription: publication?.seo_description || null,
+      seoKeywords: publication?.seo_keywords || null,
+      seoTitle: publication?.seo_title || null,
       termsOfService: store.terms_of_service || null,
       timezone: store.timezone || "UTC",
       title: store.name,
@@ -675,14 +781,28 @@ export async function getPublicStorefrontPreview(slug: string) {
   }
 
   const readClient = createAdminClient() ?? supabase;
-  const [pages, navigationRows] = await Promise.all([
+  const [pages, navigationRows, storeSeo] = await Promise.all([
     getPublishedPageLinks(readClient, preview.store.id),
-    getEnabledStoreNavigationRows(readClient, preview.store.id)
+    getEnabledStoreNavigationRows(readClient, preview.store.id),
+    getPublishedStoreSeo(readClient, preview.store.id)
   ]);
 
   const previewWithPages = {
     ...preview,
-    pages
+    pages,
+    store: storeSeo
+      ? {
+          ...preview.store,
+          canonicalUrl: storeSeo.canonical_url || preview.store.canonicalUrl,
+          noindex: storeSeo.noindex === true,
+          ogDescription: storeSeo.og_description || preview.store.ogDescription,
+          ogImageUrl: storeSeo.og_image_url || storeSeo.social_image_url || preview.store.ogImageUrl,
+          ogTitle: storeSeo.og_title || preview.store.ogTitle,
+          seoDescription: storeSeo.seo_description || preview.store.seoDescription,
+          seoKeywords: storeSeo.seo_keywords || preview.store.seoKeywords,
+          seoTitle: storeSeo.seo_title || preview.store.seoTitle
+        }
+      : preview.store
   };
 
   return {

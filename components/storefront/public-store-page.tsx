@@ -8,9 +8,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 type StorePageRow = {
+  canonical_url: string | null;
   content: string | null;
   id: string;
+  noindex: boolean | null;
+  og_description: string | null;
+  og_image_url: string | null;
+  og_title: string | null;
   seo_description: string | null;
+  seo_keywords: string | null;
   seo_title: string | null;
   slug: string;
   title: string;
@@ -43,7 +49,7 @@ async function loadPublicStorePage({ pageSlug, slug }: PublicStorePageProps) {
 
   const { data } = await readClient
     .from("store_pages" as never)
-    .select("id, title, slug, content, seo_title, seo_description")
+    .select("id, title, slug, content, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex")
     .eq("store_id", preview.store.id)
     .eq("slug", pageSlug)
     .eq("status", "published")
@@ -69,11 +75,27 @@ export async function generatePublicStorePageMetadata({
   }
 
   const description = page.seo_description || textFromPageContent(page.content).slice(0, 160);
+  const title = page.seo_title || page.title;
+  const ogTitle = page.og_title || title;
+  const ogDescription = page.og_description || description || undefined;
 
   return {
     description: description || undefined,
-    title: `${page.seo_title || page.title} | ${preview.store.title}`,
-    robots: { follow: true, index: true }
+    keywords: page.seo_keywords || undefined,
+    alternates: page.canonical_url ? { canonical: page.canonical_url } : undefined,
+    title: `${title} | ${preview.store.title}`,
+    openGraph: {
+      description: ogDescription,
+      images: page.og_image_url ? [{ url: page.og_image_url }] : undefined,
+      title: ogTitle,
+      type: "website"
+    },
+    twitter: {
+      card: page.og_image_url ? "summary_large_image" : "summary",
+      description: ogDescription,
+      title: ogTitle
+    },
+    robots: { follow: !page.noindex, index: !page.noindex }
   };
 }
 

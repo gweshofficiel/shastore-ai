@@ -644,6 +644,7 @@ function productPayload(formData: FormData, productId?: string) {
 
   return {
     category_id: categoryId || null,
+    canonical_url: cleanOptionalText(formData.get("canonicalUrl"), 500),
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
     currency: cleanCurrency(formData.get("currency")),
     description: cleanOptionalText(formData.get("description"), 1000),
@@ -652,7 +653,14 @@ function productPayload(formData: FormData, productId?: string) {
       : "in_stock",
     low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
     name: title,
+    noindex: formData.get("noindex") === "on",
+    og_description: cleanOptionalText(formData.get("ogDescription"), 320),
+    og_image_url: cleanOptionalText(formData.get("ogImageUrl"), 1000),
+    og_title: cleanOptionalText(formData.get("ogTitle"), 180),
     price: price.toFixed(2),
+    seo_description: cleanOptionalText(formData.get("seoDescription"), 320),
+    seo_keywords: cleanOptionalText(formData.get("seoKeywords"), 500),
+    seo_title: cleanOptionalText(formData.get("seoTitle"), 180),
     slug: `${slugify(title)}-${slugSuffix}`,
     status: cleanStatus(formData.get("status")),
     stock_quantity: cleanInteger(formData.get("stockQuantity")),

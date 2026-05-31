@@ -18,11 +18,17 @@ import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 export const dynamic = "force-dynamic";
 
 type StorePageRow = {
+  canonical_url?: string | null;
   content?: string | null;
   created_at: string;
   id: string;
+  noindex?: boolean | null;
+  og_description?: string | null;
+  og_image_url?: string | null;
+  og_title?: string | null;
   page_type: string;
   seo_description?: string | null;
+  seo_keywords?: string | null;
   seo_title?: string | null;
   slug: string;
   status: string;
@@ -165,7 +171,7 @@ async function getPagesDashboardData({
 
   let pagesQuery = supabase
     .from("store_pages" as never)
-    .select("id, workspace_id, store_id, title, slug, content, page_type, status, seo_title, seo_description, created_at, updated_at")
+    .select("id, workspace_id, store_id, title, slug, content, page_type, status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at, updated_at")
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
     .order("updated_at" as never, { ascending: false } as never)
@@ -280,6 +286,57 @@ function PageFields({ page }: { page?: StorePageRow }) {
           placeholder="Short search description for this page."
           rows={3}
         />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input
+          defaultValue={page?.seo_keywords ?? ""}
+          id={page ? `page-${page.id}-seo-keywords` : "page-new-seo-keywords"}
+          label="SEO keywords"
+          maxLength={500}
+          name="seoKeywords"
+          placeholder="about, brand, store"
+        />
+        <Input
+          defaultValue={page?.canonical_url ?? ""}
+          id={page ? `page-${page.id}-canonical-url` : "page-new-canonical-url"}
+          label="Canonical URL"
+          maxLength={500}
+          name="canonicalUrl"
+          placeholder="https://example.com/about-us"
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input
+          defaultValue={page?.og_title ?? ""}
+          id={page ? `page-${page.id}-og-title` : "page-new-og-title"}
+          label="OpenGraph title"
+          maxLength={180}
+          name="ogTitle"
+          placeholder="Social preview title"
+        />
+        <Textarea
+          defaultValue={page?.og_description ?? ""}
+          id={page ? `page-${page.id}-og-description` : "page-new-og-description"}
+          label="OpenGraph description"
+          maxLength={320}
+          name="ogDescription"
+          placeholder="Social preview description."
+          rows={3}
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+        <Input
+          defaultValue={page?.og_image_url ?? ""}
+          id={page ? `page-${page.id}-og-image-url` : "page-new-og-image-url"}
+          label="OpenGraph image URL"
+          maxLength={1000}
+          name="ogImageUrl"
+          placeholder="https://..."
+        />
+        <label className="flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm">
+          <input defaultChecked={page?.noindex === true} name="noindex" type="checkbox" />
+          Noindex
+        </label>
       </div>
     </>
   );

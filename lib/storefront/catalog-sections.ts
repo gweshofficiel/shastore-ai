@@ -19,6 +19,20 @@ export type PublicProductSection = {
   products: PublicStorefrontProduct[];
 };
 
+function fallbackCategory(value: Pick<PublicStorefrontCategory, "description" | "id" | "imageUrl" | "name" | "slug" | "status">): PublicStorefrontCategory {
+  return {
+    ...value,
+    canonicalUrl: null,
+    noindex: false,
+    ogDescription: null,
+    ogImageUrl: null,
+    ogTitle: null,
+    seoDescription: null,
+    seoKeywords: null,
+    seoTitle: null
+  };
+}
+
 export function buildPublicProductSections({
   categories,
   products
@@ -53,14 +67,14 @@ export function buildPublicProductSections({
       ...(uncategorizedProducts.length
         ? [
             {
-              category: {
+              category: fallbackCategory({
                 description: "Additional products from this store.",
                 id: "uncategorized",
                 imageUrl: null,
                 name: "More products",
                 slug: null,
                 status: "active"
-              },
+              }),
               products: uncategorizedProducts
             }
           ]
@@ -71,14 +85,14 @@ export function buildPublicProductSections({
   return products.length
     ? [
         {
-          category: {
+          category: fallbackCategory({
             description: "Products available from this store.",
             id: "featured",
             imageUrl: null,
             name: "Featured products",
             slug: null,
             status: "active"
-          },
+          }),
           products
         }
       ]

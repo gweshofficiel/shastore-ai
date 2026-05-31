@@ -69,11 +69,32 @@ export async function generateMetadata({
     };
   }
 
+  const title = category.seoTitle || category.name;
+  const description =
+    category.seoDescription ||
+    category.description ||
+    `Shop ${category.name} products from ${preview.store.title}, powered by SHASTORE AI.`;
+  const ogTitle = category.ogTitle || title;
+  const ogDescription = category.ogDescription || description;
+  const ogImage = category.ogImageUrl || category.imageUrl;
+
   return {
-    title: `${category.name} | ${preview.store.title}`,
-    description:
-      category.description ||
-      `Shop ${category.name} products from ${preview.store.title}, powered by SHASTORE AI.`
+    alternates: category.canonicalUrl ? { canonical: category.canonicalUrl } : undefined,
+    title: `${title} | ${preview.store.title}`,
+    keywords: category.seoKeywords || undefined,
+    description,
+    openGraph: {
+      description: ogDescription,
+      images: ogImage ? [{ url: ogImage }] : undefined,
+      title: ogTitle,
+      type: "website"
+    },
+    twitter: {
+      card: ogImage ? "summary_large_image" : "summary",
+      description: ogDescription,
+      title: ogTitle
+    },
+    robots: { follow: !category.noindex, index: !category.noindex }
   };
 }
 

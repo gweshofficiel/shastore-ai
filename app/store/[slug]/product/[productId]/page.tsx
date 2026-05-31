@@ -145,22 +145,32 @@ export async function generateMetadata({
     };
   }
 
+  const title = product.seoTitle || product.title;
+  const description =
+    product.seoDescription ||
+    product.description ||
+    `Order ${product.title} from ${preview.store.title}, powered by SHASTORE AI.`;
+  const ogTitle = product.ogTitle || title;
+  const ogDescription = product.ogDescription || description;
+  const ogImage = product.ogImageUrl || product.imageUrl;
+
   return {
-    title: `${product.title} | ${preview.store.title}`,
-    description:
-      product.description ||
-      `Order ${product.title} from ${preview.store.title}, powered by SHASTORE AI.`,
+    alternates: product.canonicalUrl ? { canonical: product.canonicalUrl } : undefined,
+    title: `${title} | ${preview.store.title}`,
+    keywords: product.seoKeywords || undefined,
+    description,
     openGraph: {
-      title: `${product.title} | ${preview.store.title}`,
-      description: product.description ?? preview.store.description ?? undefined,
-      images: product.imageUrl ? [{ url: product.imageUrl }] : undefined,
+      title: ogTitle,
+      description: ogDescription,
+      images: ogImage ? [{ url: ogImage }] : undefined,
       type: "website"
     },
     twitter: {
-      card: product.imageUrl ? "summary_large_image" : "summary",
-      title: `${product.title} | ${preview.store.title}`,
-      description: product.description ?? preview.store.description ?? undefined
-    }
+      card: ogImage ? "summary_large_image" : "summary",
+      title: ogTitle,
+      description: ogDescription
+    },
+    robots: { follow: !product.noindex, index: !product.noindex }
   };
 }
 

@@ -110,9 +110,17 @@ function categoryPayload(formData: FormData) {
   }
 
   return {
+    canonical_url: cleanOptionalText(formData.get("canonicalUrl"), 500),
     description: cleanOptionalText(formData.get("description"), 1000),
     image_url: cleanOptionalText(formData.get("imageUrl"), 1000),
     name,
+    noindex: formData.get("noindex") === "on",
+    og_description: cleanOptionalText(formData.get("ogDescription"), 320),
+    og_image_url: cleanOptionalText(formData.get("ogImageUrl"), 1000),
+    og_title: cleanOptionalText(formData.get("ogTitle"), 180),
+    seo_description: cleanOptionalText(formData.get("seoDescription"), 320),
+    seo_keywords: cleanOptionalText(formData.get("seoKeywords"), 500),
+    seo_title: cleanOptionalText(formData.get("seoTitle"), 180),
     slug: slugify(slug || name),
     sort_order: cleanInteger(formData.get("sortOrder")),
     status: categoryStatus(formData.get("status"))

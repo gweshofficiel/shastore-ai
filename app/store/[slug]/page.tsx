@@ -148,26 +148,32 @@ export async function generateMetadata({
     }
   }
 
-  const title = preview.store.title;
+  const title = preview.store.seoTitle || preview.store.title;
   const description =
+    preview.store.seoDescription ||
     preview.store.description ||
     `Preview ${preview.store.title}, powered by SHASTORE AI.`;
+  const ogTitle = preview.store.ogTitle || title;
+  const ogDescription = preview.store.ogDescription || description;
 
   return {
+    alternates: preview.store.canonicalUrl ? { canonical: preview.store.canonicalUrl } : undefined,
     title,
+    keywords: preview.store.seoKeywords || undefined,
     description,
     openGraph: {
-      title,
-      description,
+      title: ogTitle,
+      description: ogDescription,
+      images: preview.store.ogImageUrl ? [{ url: preview.store.ogImageUrl }] : undefined,
       siteName: preview.store.title,
       type: "website"
     },
     twitter: {
-      card: "summary",
-      title,
-      description
+      card: preview.store.ogImageUrl ? "summary_large_image" : "summary",
+      title: ogTitle,
+      description: ogDescription
     },
-    robots: { index: true, follow: true }
+    robots: { index: !preview.store.noindex, follow: !preview.store.noindex }
   };
 }
 

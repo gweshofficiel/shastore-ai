@@ -1965,8 +1965,12 @@ export async function saveStorePublicationSettings(formData: FormData) {
       const hasSeoFields = Boolean(
         cleanText(formData.get("seoTitle")) ||
           cleanText(formData.get("seoDescription"), 320) ||
+          cleanText(formData.get("seoKeywords"), 500) ||
           cleanText(formData.get("ogTitle")) ||
           cleanText(formData.get("ogDescription"), 320) ||
+          cleanUrl(formData.get("ogImageUrl")) ||
+          cleanUrl(formData.get("canonicalUrl")) ||
+          formData.get("noindex") === "on" ||
           faviconUrl ||
           cleanUrl(formData.get("socialImageUrl"))
       );
@@ -1992,8 +1996,12 @@ export async function saveStorePublicationSettings(formData: FormData) {
     visibility,
     seo_title: cleanText(formData.get("seoTitle")),
     seo_description: cleanText(formData.get("seoDescription"), 320),
+    seo_keywords: cleanText(formData.get("seoKeywords"), 500),
     og_title: cleanText(formData.get("ogTitle")),
     og_description: cleanText(formData.get("ogDescription"), 320),
+    og_image_url: cleanUrl(formData.get("ogImageUrl")),
+    canonical_url: cleanUrl(formData.get("canonicalUrl")),
+    noindex: formData.get("noindex") === "on",
     favicon_url: faviconUrl,
     social_image_url: cleanUrl(formData.get("socialImageUrl")),
     custom_domain: customDomain || null,
@@ -2052,6 +2060,14 @@ export async function saveStorePublicationSettings(formData: FormData) {
       pickup_enabled: pickupEnabled,
       privacy_policy: privacyPolicy,
       refund_policy: refundPolicy,
+      seo_title: publicationPayload.seo_title || null,
+      seo_description: publicationPayload.seo_description || null,
+      seo_keywords: publicationPayload.seo_keywords || null,
+      og_title: publicationPayload.og_title || null,
+      og_description: publicationPayload.og_description || null,
+      og_image_url: publicationPayload.og_image_url || null,
+      canonical_url: publicationPayload.canonical_url || null,
+      noindex: publicationPayload.noindex,
       support_email: supportEmail.value,
       support_phone: supportPhone.value,
       terms_of_service: termsOfService,
