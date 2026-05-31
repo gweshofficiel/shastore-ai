@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("merchantId")?.trim() ||
     request.nextUrl.searchParams.get("merchant_id")?.trim() ||
     request.nextUrl.searchParams.get("merchantIdInPayPal")?.trim() ||
+    request.nextUrl.searchParams.get("merchantIdInPaypal")?.trim() ||
+    request.nextUrl.searchParams.get("payer_id")?.trim() ||
+    request.nextUrl.searchParams.get("merchant_id_in_paypal")?.trim() ||
     "";
   const permissionsGranted = request.nextUrl.searchParams.get("permissionsGranted")?.trim() ?? null;
   const consentStatus = request.nextUrl.searchParams.get("consentStatus")?.trim() ?? null;
@@ -22,6 +25,7 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("productIntentID")?.trim() ||
     request.nextUrl.searchParams.get("productIntentId")?.trim() ||
     null;
+  const callbackQueryParams = Object.fromEntries(request.nextUrl.searchParams.entries());
 
   if (!storeId) {
     return NextResponse.redirect(dashboardUrl(request, "", "missing-store"));
@@ -47,11 +51,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(dashboardUrl(request, storeId, "not-authorized"));
   }
 
+  const now = new Date().toISOString();
+
   if (!merchantId) {
+    await context.supabase.from("store_payment_provider_connections" as never).upsert({
+      connection_mode: "connect",
+      connection_status: "pending",
+      metadata: {
+        callback_missing_merchant_id: true,
+        callback_query_params: callbackQueryParams,
+        callback_received_at: now
+      },
+      paypal_status: "pending",
+      provider: "paypal",
+      store_id: storeId,
+      updated_at: now,
+      workspace_id: context.workspaceId
+    } as never, { onConflict: "store_id,provider" } as never);
+
     return NextResponse.redirect(dashboardUrl(request, storeId, "paypal-pending"));
   }
 
-  const now = new Date().toISOString();
   let integration: Awaited<ReturnType<typeof getPayPalMerchantIntegration>> | null = null;
 
   try {
