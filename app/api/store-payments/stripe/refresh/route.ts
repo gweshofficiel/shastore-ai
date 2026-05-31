@@ -85,6 +85,20 @@ export async function POST(request: NextRequest) {
   try {
     const stripe = getStorePaymentsStripe();
     const account = await stripe.accounts.retrieve(current.stripe_account_id);
+    console.log(
+      "[STRIPE RAW ACCOUNT]",
+      JSON.stringify(
+        {
+          charges_enabled: account.charges_enabled,
+          payouts_enabled: account.payouts_enabled,
+          details_submitted: account.details_submitted,
+          capabilities: account.capabilities,
+          requirements: account.requirements
+        },
+        null,
+        2
+      )
+    );
     const status = stripeConnectionStatus(account);
     const now = new Date().toISOString();
 
