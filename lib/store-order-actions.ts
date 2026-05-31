@@ -60,25 +60,16 @@ const storeOrderStatuses = new Set([
   "cancelled"
 ]);
 const fulfillmentStatuses = new Set([
-  "unfulfilled",
-  "preparing",
-  "ready_for_pickup",
-  "out_for_delivery",
-  "fulfilled"
+  "pending",
+  "processing"
 ]);
 type FulfillmentStatus =
-  | "unfulfilled"
-  | "preparing"
-  | "ready_for_pickup"
-  | "out_for_delivery"
-  | "fulfilled";
+  | "pending"
+  | "processing";
 type StoreOrderStatusSource = "orders" | "store_orders";
 
 const fulfillmentTimestampColumns: Partial<Record<FulfillmentStatus, string>> = {
-  fulfilled: "fulfilled_at",
-  out_for_delivery: "out_for_delivery_at",
-  preparing: "preparing_at",
-  ready_for_pickup: "ready_for_pickup_at"
+  processing: "preparing_at"
 };
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
@@ -2567,10 +2558,7 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   }
 
   const deliveryMethod = currentOrderRow.delivery_method;
-  const currentFulfillmentStatus =
-    currentOrderRow.fulfillment_status && currentOrderRow.fulfillment_status !== "pending"
-      ? currentOrderRow.fulfillment_status
-      : "unfulfilled";
+  const currentFulfillmentStatus = currentOrderRow.fulfillment_status?.trim() || "pending";
 
   logSupabaseDiagnostic("order_fulfillment.lookup.succeeded", {
     currentFulfillmentStatus,
@@ -2589,53 +2577,6 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
       fulfillmentStatus,
       orderId,
       orderStatus: currentOrderRow.order_status,
-      source,
-      tableName,
-      workspaceId
-    });
-    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
-  }
-
-  if (currentFulfillmentStatus === "fulfilled") {
-    logSupabaseDiagnostic("order_fulfillment.validation.blocked_locked_fulfilled", {
-      fulfillmentStatus,
-      orderId,
-      source,
-      tableName,
-      workspaceId
-    });
-    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
-  }
-
-  if (currentOrderRow.order_status === "draft" && fulfillmentStatus === "fulfilled") {
-    logSupabaseDiagnostic("order_fulfillment.validation.blocked_draft_fulfilled", {
-      fulfillmentStatus,
-      orderId,
-      orderStatus: currentOrderRow.order_status,
-      source,
-      tableName,
-      workspaceId
-    });
-    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
-  }
-
-  if (fulfillmentStatus === "ready_for_pickup" && deliveryMethod !== "pickup") {
-    logSupabaseDiagnostic("order_fulfillment.validation.blocked_pickup_method", {
-      deliveryMethod,
-      fulfillmentStatus,
-      orderId,
-      source,
-      tableName,
-      workspaceId
-    });
-    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
-  }
-
-  if (fulfillmentStatus === "out_for_delivery" && deliveryMethod !== "delivery") {
-    logSupabaseDiagnostic("order_fulfillment.validation.blocked_delivery_method", {
-      deliveryMethod,
-      fulfillmentStatus,
-      orderId,
       source,
       tableName,
       workspaceId
@@ -2754,17 +2695,17 @@ function withFulfillmentStatus(formData: FormData, fulfillmentStatus: Fulfillmen
 }
 
 export async function markPreparing(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "preparing"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
 }
 
 export async function markReadyForPickup(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "ready_for_pickup"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
 }
 
 export async function markOutForDelivery(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "out_for_delivery"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
 }
 
 export async function markFulfilled(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "fulfilled"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
 }

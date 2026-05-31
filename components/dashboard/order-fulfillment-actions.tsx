@@ -18,11 +18,8 @@ type OrderFulfillmentActionsProps = {
 };
 
 const statuses = [
-  { label: "Unfulfilled", value: "unfulfilled" },
-  { label: "Preparing", value: "preparing" },
-  { label: "Ready for pickup", value: "ready_for_pickup" },
-  { label: "Out for delivery", value: "out_for_delivery" },
-  { label: "Fulfilled", value: "fulfilled" }
+  { label: "Unfulfilled", value: "pending" },
+  { label: "Processing", value: "processing" }
 ];
 
 function isStatusAllowed({
@@ -36,23 +33,11 @@ function isStatusAllowed({
   orderStatus: string;
   status: string;
 }) {
-  if (orderStatus === "cancelled" || orderStatus === "canceled" || currentStatus === "fulfilled") {
+  if (orderStatus === "cancelled" || orderStatus === "canceled") {
     return false;
   }
 
-  if (orderStatus === "draft" && status === "fulfilled") {
-    return false;
-  }
-
-  if (status === "ready_for_pickup") {
-    return deliveryMethod === "pickup";
-  }
-
-  if (status === "out_for_delivery") {
-    return deliveryMethod === "delivery";
-  }
-
-  return true;
+  return status === "pending" || status === "processing";
 }
 
 function FulfillmentButton({
@@ -150,8 +135,7 @@ export function OrderFulfillmentActions({
         ))}
       </div>
       <p className="text-xs font-semibold leading-5 text-muted">
-        Cancelled and fulfilled orders are locked. Pickup orders can be marked ready for pickup.
-        Delivery orders can be marked out for delivery.
+        Cancelled orders are locked. Use processing when fulfillment has started.
       </p>
     </form>
   );
