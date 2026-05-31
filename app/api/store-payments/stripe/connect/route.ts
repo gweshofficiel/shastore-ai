@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type Stripe from "stripe";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import {
   getStorePaymentsStripe,
@@ -23,16 +25,54 @@ function redirectToDashboardWithMissingEnv(
   return NextResponse.redirect(url);
 }
 
-function stripeConnectionStatus(account: { charges_enabled?: boolean; payouts_enabled?: boolean; details_submitted?: boolean }) {
-  if (account.charges_enabled) {
-    return "connected";
+function redirectToStripeOnboarding(url: string) {
+  return NextResponse.redirect(url, { status: 303 });
+}
+
+function stripeErrorMessage(error: unknown) {
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
   }
 
-  if (account.details_submitted && !account.charges_enabled) {
-    return "restricted";
-  }
+  return error instanceof Error ? error.message : String(error);
+}
 
-  return "pending";
+async function loadExistingStripeAccountId(supabase: SupabaseClient, storeId: string) {
+  const { data } = await supabase
+    .from("store_payment_provider_connections" as never)
+    .select("stripe_account_id")
+    .eq("store_id" as never, storeId as never)
+    .eq("provider" as never, "stripe" as never)
+    .maybeSingle();
+
+  const row = data as { stripe_account_id?: string | null } | null;
+  const accountId = row?.stripe_account_id?.trim() ?? "";
+
+  return accountId || null;
+}
+
+async function persistStripeConnectPending(
+  supabase: SupabaseClient,
+  input: {
+    account: Stripe.Account;
+    now: string;
+    storeId: string;
+    workspaceId: string;
+  }
+) {
+  await supabase.from("store_payment_provider_connections" as never).upsert({
+    charges_enabled: input.account.charges_enabled ?? false,
+    connection_mode: "connect",
+    connection_status: "pending",
+    disconnected_at: null,
+    onboarding_completed_at: input.account.details_submitted ? input.now : null,
+    payouts_enabled: input.account.payouts_enabled ?? false,
+    provider: "stripe",
+    store_id: input.storeId,
+    stripe_account_id: input.account.id,
+    updated_at: input.now,
+    workspace_id: input.workspaceId
+  } as never, { onConflict: "store_id,provider" } as never);
 }
 
 export async function POST(request: NextRequest) {
@@ -99,31 +139,54 @@ export async function POST(request: NextRequest) {
 
   try {
     const stripe = getStorePaymentsStripe();
-    const account = await stripe.accounts.create({
-      business_type: "individual",
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true }
-      },
-      metadata: {
-        purpose: "store_customer_payments",
-        store_id: storeId,
-        workspace_id: context.workspaceId
-      },
-      type: "express"
+    const existingAccountId = await loadExistingStripeAccountId(context.supabase, storeId);
+    let account: Stripe.Account;
+
+    if (existingAccountId) {
+      try {
+        account = await stripe.accounts.retrieve(existingAccountId);
+      } catch (retrieveError) {
+        console.warn("[store-payments][stripe] stored account missing in Stripe, creating new", {
+          existingAccountId,
+          message: stripeErrorMessage(retrieveError),
+          storeId
+        });
+        account = await stripe.accounts.create({
+          business_type: "individual",
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true }
+          },
+          metadata: {
+            purpose: "store_customer_payments",
+            store_id: storeId,
+            workspace_id: context.workspaceId
+          },
+          type: "express"
+        });
+      }
+    } else {
+      account = await stripe.accounts.create({
+        business_type: "individual",
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true }
+        },
+        metadata: {
+          purpose: "store_customer_payments",
+          store_id: storeId,
+          workspace_id: context.workspaceId
+        },
+        type: "express"
+      });
+    }
+
+    await persistStripeConnectPending(context.supabase, {
+      account,
+      now,
+      storeId,
+      workspaceId: context.workspaceId
     });
-    await context.supabase.from("store_payment_provider_connections" as never).upsert({
-      charges_enabled: account.charges_enabled,
-      connection_status: stripeConnectionStatus(account),
-      disconnected_at: null,
-      onboarding_completed_at: account.details_submitted ? new Date().toISOString() : null,
-      payouts_enabled: account.payouts_enabled,
-      provider: "stripe",
-      store_id: storeId,
-      stripe_account_id: account.id,
-      updated_at: now,
-      workspace_id: context.workspaceId
-    } as never, { onConflict: "store_id,provider" } as never);
 
     const origin = request.nextUrl.origin;
     const accountLink = await stripe.accountLinks.create({
@@ -133,10 +196,16 @@ export async function POST(request: NextRequest) {
       type: "account_onboarding"
     });
 
-    return NextResponse.redirect(accountLink.url);
+    if (!accountLink.url) {
+      throw new Error("Stripe account link URL was not returned.");
+    }
+
+    return redirectToStripeOnboarding(accountLink.url);
   } catch (error) {
+    const errorMessage = stripeErrorMessage(error);
+
     console.error("[store-payments][stripe] connect failed", {
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage,
       storeId
     });
     await recordMonitoringEventSafe({
@@ -145,7 +214,7 @@ export async function POST(request: NextRequest) {
       eventStatus: "failed",
       eventType: "stripe_connect_failed",
       metadata: {
-        error_message: error instanceof Error ? error.message : String(error)
+        error_message: errorMessage
       },
       storeId,
       supabase: context.supabase,
