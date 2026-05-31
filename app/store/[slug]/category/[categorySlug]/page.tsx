@@ -238,6 +238,8 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                 {products.map((product) => {
                   const currency = product.currency || preview.store.currency;
 
+                  const detailsHref = `/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`;
+
                   return (
                     <article
                       className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm"
@@ -267,7 +269,10 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                       </div>
                       <AddToCartButton
                         currency={currency}
+                        detailsHref={detailsHref}
                         product={product}
+                        showBuyNow
+                        showViewDetails
                         slug={preview.store.slug}
                         storeId={preview.store.id}
                       />

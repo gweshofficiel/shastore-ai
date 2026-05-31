@@ -46,17 +46,6 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }).format(numericPrice);
 }
 
-function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
-  const number = whatsappNumber?.replace(/\D/g, "");
-
-  if (!number) {
-    return null;
-  }
-
-  const text = encodeURIComponent(`Hi, I want to order ${productTitle} from ${storeTitle}.`);
-  return `https://wa.me/${number}?text=${text}`;
-}
-
 function productGalleryUrls(gallery: unknown[]) {
   return gallery
     .map((item) => {
@@ -253,11 +242,6 @@ export default async function PublicProductDetailPage({
     );
   }
 
-  const whatsappHref = whatsappProductHref(
-    preview.store.whatsappNumber,
-    preview.store.title,
-    product.title
-  );
   const theme = preview.themeSettings;
   const heroBackground = theme.bannerImageUrl
     ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
@@ -384,7 +368,10 @@ export default async function PublicProductDetailPage({
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
                 <AddToCartButton
                   currency={currency}
+                  detailsHref={`/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`}
                   product={product}
+                  showBuyNow
+                  showViewDetails
                   slug={preview.store.slug}
                   storeId={preview.store.id}
                 />
@@ -394,41 +381,6 @@ export default async function PublicProductDetailPage({
                   slug={preview.store.slug}
                   storeId={preview.store.id}
                 />
-                {whatsappHref ? (
-                  <a
-                    className="inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-black text-white transition"
-                    href={whatsappHref}
-                    rel="noreferrer"
-                    style={{ backgroundColor: theme.accentColor }}
-                    target="_blank"
-                  >
-                    Order on WhatsApp
-                  </a>
-                ) : (
-                  <button
-                    className="h-12 rounded-full bg-slate-100 px-5 text-sm font-black text-slate-400"
-                    disabled
-                    type="button"
-                  >
-                    WhatsApp unavailable
-                  </button>
-                )}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    className="h-12 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
-                    disabled
-                    type="button"
-                  >
-                    Pay by Card · Coming soon
-                  </button>
-                  <button
-                    className="h-12 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
-                    disabled
-                    type="button"
-                  >
-                    PayPal · Coming soon
-                  </button>
-                </div>
               </div>
             </article>
           </div>

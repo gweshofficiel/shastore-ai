@@ -61,17 +61,6 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }).format(numericPrice);
 }
 
-function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
-  const number = whatsappNumber?.replace(/\D/g, "");
-
-  if (!number) {
-    return null;
-  }
-
-  const text = encodeURIComponent(`Hi, I want to order ${productTitle} from ${storeTitle}.`);
-  return `https://wa.me/${number}?text=${text}`;
-}
-
 function whatsappStoreHref(whatsappNumber: string | null, storeTitle: string) {
   const number = whatsappNumber?.replace(/\D/g, "");
 
@@ -338,14 +327,10 @@ export default async function PublicStorePage({
                   </div>
                   <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     {section.products.map((product) => {
-                const whatsappHref = whatsappProductHref(
-                  store.whatsappNumber,
-                  store.title,
-                  product.title
-                );
                 const galleryUrls = productGalleryUrls(product.gallery);
                 const primaryImage = product.imageUrl || galleryUrls[0] || null;
                 const currency = product.currency || store.currency;
+                const detailsHref = publicProductHref(store.slug, product);
 
                 return (
                   <article
@@ -426,7 +411,10 @@ export default async function PublicStorePage({
                       <div className="mt-5 grid gap-2">
                         <AddToCartButton
                           currency={currency}
+                          detailsHref={detailsHref}
                           product={product}
+                          showBuyNow
+                          showViewDetails
                           slug={store.slug}
                           storeId={store.id}
                         />
@@ -436,47 +424,6 @@ export default async function PublicStorePage({
                           slug={store.slug}
                           storeId={store.id}
                         />
-                        <Link
-                          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
-                          href={publicProductHref(store.slug, product)}
-                        >
-                          View product details
-                        </Link>
-                        {whatsappHref ? (
-                          <a
-                            className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-black text-white transition"
-                            href={whatsappHref}
-                            rel="noreferrer"
-                            style={{ backgroundColor: theme.accentColor }}
-                            target="_blank"
-                          >
-                            Order on WhatsApp
-                          </a>
-                        ) : (
-                          <button
-                            className="h-11 rounded-full bg-slate-100 px-4 text-sm font-black text-slate-400"
-                            disabled
-                            type="button"
-                          >
-                            WhatsApp unavailable
-                          </button>
-                        )}
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <button
-                            className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
-                            disabled
-                            type="button"
-                          >
-                            Pay by Card · Coming soon
-                          </button>
-                          <button
-                            className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
-                            disabled
-                            type="button"
-                          >
-                            PayPal · Coming soon
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </article>

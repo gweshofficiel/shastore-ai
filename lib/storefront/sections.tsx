@@ -178,17 +178,6 @@ function publicProductHref(
   return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
 }
 
-function whatsappProductHref(whatsappNumber: string | null, storeTitle: string, productTitle: string) {
-  const number = whatsappNumber?.replace(/\D/g, "");
-
-  if (!number) {
-    return null;
-  }
-
-  const text = encodeURIComponent(`Hi, I want to order ${productTitle} from ${storeTitle}.`);
-  return `https://wa.me/${number}?text=${text}`;
-}
-
 function normalizeSection(value: unknown, context: StoreTenantContext): StoreSection | null {
   if (!isRecord(value)) {
     return null;
@@ -319,7 +308,6 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
   const products = context.preview.products
     .filter((product) => isPublicProductStatus(product.status))
     .slice(0, config.key === "electronics-starter" ? 8 : 6);
-  const theme = context.preview.themeSettings;
   const productSections = buildPublicProductSections({
     categories: context.preview.categories,
     products
@@ -375,14 +363,10 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 }`}
               >
                 {section.products.map((product) => {
-            const whatsappHref = whatsappProductHref(
-              context.preview.store.whatsappNumber,
-              context.preview.store.title,
-              product.title
-            );
             const galleryImages = productGalleryUrls(product.gallery);
             const primaryImage = productPrimaryImage(product);
             const currency = product.currency || context.preview.store.currency;
+            const detailsHref = publicProductHref(context.preview.store.slug, product);
 
             return (
               <article
@@ -475,7 +459,10 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   <div className="mt-5 grid gap-2">
                     <AddToCartButton
                       currency={currency}
+                      detailsHref={detailsHref}
                       product={product}
+                      showBuyNow
+                      showViewDetails
                       slug={context.preview.store.slug}
                       storeId={context.preview.store.id}
                     />
@@ -485,51 +472,6 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                       slug={context.preview.store.slug}
                       storeId={context.preview.store.id}
                     />
-                    <Link
-                      className={`inline-flex h-11 items-center justify-center px-4 text-sm font-black transition ${cardRadiusClass(context)} ${
-                        config.key === "electronics-starter"
-                          ? "border border-cyan-400/20 bg-slate-950 text-cyan-100 hover:border-cyan-300"
-                          : "border border-slate-200 bg-white text-ink hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                      href={publicProductHref(context.preview.store.slug, product)}
-                    >
-                      View product details
-                    </Link>
-                    {whatsappHref ? (
-                      <a
-                        className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-black text-white transition"
-                        href={whatsappHref}
-                        rel="noreferrer"
-                        style={{ backgroundColor: theme.accentColor }}
-                        target="_blank"
-                      >
-                        Order on WhatsApp
-                      </a>
-                    ) : (
-                      <button
-                        className="h-11 rounded-full bg-slate-100 px-4 text-sm font-black text-slate-400"
-                        disabled
-                        type="button"
-                      >
-                        WhatsApp unavailable
-                      </button>
-                    )}
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <button
-                        className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
-                        disabled
-                        type="button"
-                      >
-                        Pay by Card
-                      </button>
-                      <button
-                        className="h-11 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-400"
-                        disabled
-                        type="button"
-                      >
-                        PayPal
-                      </button>
-                    </div>
                   </div>
                 </div>
               </article>

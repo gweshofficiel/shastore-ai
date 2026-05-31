@@ -33,7 +33,10 @@ type CartItem = {
 
 type AddToCartButtonProps = {
   currency: string;
+  detailsHref?: string;
   product: PublicStorefrontProduct;
+  showBuyNow?: boolean;
+  showViewDetails?: boolean;
   slug: string;
   storeId: string;
 };
@@ -491,7 +494,15 @@ function useStoreCart(scope: CartScope) {
   return { items, persistItems, syncFromStorage };
 }
 
-export function AddToCartButton({ currency, product, slug, storeId }: AddToCartButtonProps) {
+export function AddToCartButton({
+  currency,
+  detailsHref,
+  product,
+  showBuyNow = false,
+  showViewDetails = false,
+  slug,
+  storeId
+}: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants[0]?.id ?? "");
   const selectedVariant =
@@ -536,9 +547,9 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
         ? "Last available item."
         : null;
 
-  function handleAddToCart() {
+  function addSelectedProductToCart() {
     if (isAddToCartDisabled) {
-      return;
+      return false;
     }
 
     const current = readStoreCart(scope);
@@ -562,8 +573,24 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
       : [...current, toCartItem(product, storeId, currency, selectedVariant)];
 
     writeStoreCart(scope, next);
+    return true;
+  }
+
+  function handleAddToCart() {
+    if (!addSelectedProductToCart()) {
+      return;
+    }
+
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
+  }
+
+  function handleBuyNow() {
+    if (!addSelectedProductToCart()) {
+      return;
+    }
+
+    window.location.assign(`/store/${slug}/cart`);
   }
 
   return (
@@ -596,6 +623,31 @@ export function AddToCartButton({ currency, product, slug, storeId }: AddToCartB
         >
           {stockMessage}
         </p>
+      ) : null}
+      {showViewDetails && detailsHref ? (
+        <Link
+          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+          href={detailsHref}
+        >
+          View product details
+        </Link>
+      ) : null}
+      {showBuyNow ? (
+        <button
+          className={`inline-flex h-11 items-center justify-center rounded-full border px-4 text-sm font-black transition ${
+            isAddToCartDisabled
+              ? "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-50"
+              : "border-transparent text-white hover:opacity-90"
+          }`}
+          disabled={isAddToCartDisabled}
+          onClick={handleBuyNow}
+          style={{
+            backgroundColor: isAddToCartDisabled ? undefined : "var(--store-primary, #0f172a)"
+          }}
+          type="button"
+        >
+          Buy Now
+        </button>
       ) : null}
       <button
         className={`inline-flex h-11 items-center justify-center border px-4 text-sm font-black transition ${
