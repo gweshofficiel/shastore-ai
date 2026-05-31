@@ -26,6 +26,8 @@ import {
 } from "@/lib/store-coupons";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
+import { getAppBaseUrl } from "@/lib/deployment/config";
+import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import {
   createLowStockNotificationsForOrderSafe,
   createOrderNotificationSafe,
@@ -160,6 +162,54 @@ function parsePublicStorePaymentMethod(value: FormDataEntryValue | null): Public
 
 function internalStorePaymentMethod(method: PublicStorePaymentMethodKey): StorePaymentMethod {
   return method === "card" ? "stripe" : method;
+}
+
+function stripeAmount(value: number) {
+  return Math.max(0, Math.round(value * 100));
+}
+
+function stripeMetadataValue(value: string | number | null | undefined, maxLength = 500) {
+  return String(value ?? "").slice(0, maxLength);
+}
+
+function stripeSuccessMetadata(input: {
+  couponCode: string;
+  customerAddress: string;
+  customerEmail: string;
+  customerName: string;
+  customerNotes: string;
+  customerPhone: string;
+  deliveryFee: number;
+  deliveryMethod: DeliveryMethod;
+  orderReference: string;
+  shippingMethod: PublicShippingMethod | null;
+  slug: string;
+  store: {
+    id: string;
+    owner_user_id: string | null;
+    user_id: string;
+    workspace_id: string | null;
+  };
+}) {
+  return {
+    coupon_code: stripeMetadataValue(input.couponCode, 80),
+    customer_address: stripeMetadataValue(input.customerAddress),
+    customer_email: stripeMetadataValue(input.customerEmail, 180),
+    customer_name: stripeMetadataValue(input.customerName, 160),
+    customer_notes: stripeMetadataValue(input.customerNotes),
+    customer_phone: stripeMetadataValue(input.customerPhone, 80),
+    delivery_fee: stripeMetadataValue(input.deliveryFee),
+    delivery_method: stripeMetadataValue(input.deliveryMethod, 40),
+    order_reference: input.orderReference,
+    owner_user_id: stripeMetadataValue(input.store.owner_user_id ?? input.store.user_id, 80),
+    shipping_method_id: stripeMetadataValue(input.shippingMethod?.id, 80),
+    shipping_method_name: stripeMetadataValue(input.shippingMethod?.name, 160),
+    shipping_method_type: stripeMetadataValue(input.shippingMethod?.type, 80),
+    slug: stripeMetadataValue(input.slug, 120),
+    store_id: input.store.id,
+    user_id: input.store.user_id,
+    workspace_id: stripeMetadataValue(input.store.workspace_id ?? input.store.owner_user_id ?? input.store.user_id, 80)
+  };
 }
 
 function variantOptionsPayload(
@@ -464,6 +514,12 @@ type DraftLineItem = {
   variant_name?: string | null;
   variant_options?: Json;
   variant_sku?: string | null;
+};
+
+type StoreStripeConnectionRow = {
+  charges_enabled?: boolean | null;
+  connection_status?: string | null;
+  stripe_account_id?: string | null;
 };
 
 async function persistStorefrontOrderDraft({
@@ -977,6 +1033,194 @@ async function persistStorefrontOrderDraft({
   }
 
   return { orderId: storeOrderRow.id, table: "store_orders" as const };
+}
+
+async function redirectToStoreCardCheckout({
+  admin,
+  couponCode,
+  customerAddress,
+  customerEmail,
+  customerName,
+  customerNotes,
+  customerPhone,
+  currency,
+  deliveryFee,
+  deliveryMethod,
+  financialBreakdown,
+  items,
+  shippingMethod,
+  slug,
+  store
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  couponCode: string;
+  customerAddress: string;
+  customerEmail: string;
+  customerName: string;
+  customerNotes: string;
+  customerPhone: string;
+  currency: string;
+  deliveryFee: number;
+  deliveryMethod: DeliveryMethod;
+  financialBreakdown: CheckoutFinancialBreakdown;
+  items: DraftLineItem[];
+  shippingMethod: PublicShippingMethod | null;
+  slug: string;
+  store: {
+    currency: string | null;
+    id: string;
+    owner_user_id: string | null;
+    slug: string | null;
+    status: string;
+    user_id: string;
+    workspace_id: string | null;
+  };
+}) {
+  const { data, error } = await admin
+    .from("store_payment_provider_connections" as never)
+    .select("stripe_account_id, connection_status, charges_enabled")
+    .eq("store_id" as never, store.id as never)
+    .eq("provider" as never, "stripe" as never)
+    .maybeSingle();
+  const connection = data as StoreStripeConnectionRow | null;
+  const stripeAccountId = connection?.stripe_account_id?.trim();
+
+  if (error || !stripeAccountId) {
+    return "Card payment is not configured for this store yet.";
+  }
+
+  if (connection?.connection_status === "restricted" || connection?.charges_enabled === false) {
+    return "This store's card payment account is restricted. The store owner must complete card payment onboarding.";
+  }
+
+  if (financialBreakdown.totalAmount <= 0) {
+    return "Card payment requires a positive order total.";
+  }
+
+  let sessionUrl: string | null = null;
+
+  try {
+    const stripe = getStorePaymentsStripe();
+    const orderReference = crypto.randomUUID();
+    const appUrl = getAppBaseUrl();
+    const lineItems = items.map((item) => ({
+      price_data: {
+        currency: currency.toLowerCase(),
+        product_data: {
+          images: item.product_image ? [item.product_image] : undefined,
+          metadata: {
+            kind: "product",
+            product_id: item.product_id,
+            variant_id: item.variant_id ?? ""
+          },
+          name: item.product_title
+        },
+        unit_amount: stripeAmount(item.price)
+      },
+      quantity: item.quantity
+    }));
+
+    if (financialBreakdown.shippingAmount > 0) {
+      lineItems.push({
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            images: undefined,
+            metadata: { kind: "shipping", product_id: "", variant_id: "" },
+            name: "Shipping"
+          },
+          unit_amount: stripeAmount(financialBreakdown.shippingAmount)
+        },
+        quantity: 1
+      });
+    }
+
+    if (!financialBreakdown.pricesIncludeTax && financialBreakdown.taxAmount > 0) {
+      lineItems.push({
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            images: undefined,
+            metadata: { kind: "tax", product_id: "", variant_id: "" },
+            name: financialBreakdown.taxName ?? "Tax"
+          },
+          unit_amount: stripeAmount(financialBreakdown.taxAmount)
+        },
+        quantity: 1
+      });
+    }
+
+    const discounts = financialBreakdown.discountAmount > 0
+      ? [
+          {
+            coupon: (
+              await stripe.coupons.create({
+                amount_off: stripeAmount(financialBreakdown.discountAmount),
+                currency: currency.toLowerCase(),
+                duration: "once",
+                name: couponCode || "Store discount"
+              }, { stripeAccount: stripeAccountId })
+            ).id
+          }
+        ]
+      : undefined;
+    const session = await stripe.checkout.sessions.create({
+      cancel_url: `${appUrl}/store/${encodeURIComponent(slug)}/cart?checkout=card-cancelled`,
+      customer_email: customerEmail || undefined,
+      discounts,
+      line_items: lineItems,
+      metadata: {
+        ...stripeSuccessMetadata({
+          couponCode,
+          customerAddress,
+          customerEmail,
+          customerName,
+          customerNotes,
+          customerPhone,
+          deliveryFee,
+          deliveryMethod,
+          orderReference,
+          shippingMethod,
+          slug,
+          store
+        }),
+        payment_method: "card",
+        subtotal_amount: stripeMetadataValue(financialBreakdown.subtotalAmount),
+        tax_amount: stripeMetadataValue(financialBreakdown.taxAmount),
+        total_amount: stripeMetadataValue(financialBreakdown.totalAmount)
+      },
+      mode: "payment",
+      payment_method_types: ["card"],
+      success_url: `${appUrl}/api/store-payments/stripe/checkout/success?session_id={CHECKOUT_SESSION_ID}&account=${encodeURIComponent(stripeAccountId)}`,
+      client_reference_id: orderReference
+    }, { stripeAccount: stripeAccountId });
+
+    if (!session.url) {
+      return "Stripe checkout session failed. Please try again.";
+    }
+
+    sessionUrl = session.url;
+  } catch (error) {
+    console.error("[store-payments][stripe] checkout session failed", {
+      message: error instanceof Error ? error.message : String(error),
+      storeId: store.id
+    });
+    await recordMonitoringEventSafe({
+      entityId: store.id,
+      entityType: "store_payment_provider",
+      eventStatus: "failed",
+      eventType: "stripe_checkout_session_failed",
+      metadata: {
+        error_message: error instanceof Error ? error.message : String(error)
+      },
+      storeId: store.id,
+      supabase: admin,
+      workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+    });
+    return "Stripe checkout session failed. Please try again.";
+  }
+
+  redirect(sessionUrl);
 }
 
 export async function createPublicStoreOrderAction(
@@ -1512,6 +1756,33 @@ export async function createPublicStoreOrderDraftAction(
     storeId: store.id,
     subtotalAmount: subtotal
   });
+
+  if (selectedPaymentMethod.method === "card") {
+    const cardCheckoutError = await redirectToStoreCardCheckout({
+      admin,
+      couponCode,
+      customerAddress,
+      customerEmail,
+      customerName,
+      customerNotes,
+      customerPhone,
+      currency,
+      deliveryFee: deliverySelection.deliveryFee,
+      deliveryMethod: deliverySelection.deliveryMethod,
+      financialBreakdown,
+      items,
+      shippingMethod,
+      slug,
+      store
+    });
+
+    return {
+      error: cardCheckoutError,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
 
   const persisted = await persistStorefrontOrderDraft({
     admin,
