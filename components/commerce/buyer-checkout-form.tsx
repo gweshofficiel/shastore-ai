@@ -25,7 +25,7 @@ function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     cod: "Cash on Delivery",
     paypal: "PayPal",
-    stripe: "Stripe",
+    stripe: "Credit / Debit Card",
     whatsapp: "Order via WhatsApp",
     youcan_pay: "YouCan Pay"
   };
@@ -40,6 +40,10 @@ function getPaymentMethodDescription(method: CommercePaymentMethod) {
 
   if (method === "whatsapp") {
     return "Save the order and open WhatsApp with a prepared message.";
+  }
+
+  if (method === "stripe") {
+    return "Pay by credit or debit card with this store's connected Stripe account.";
   }
 
   return "Integration foundation only. The seller will confirm payment instructions after order submission.";
@@ -219,7 +223,7 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
               {source.paymentSettings.paymentInstructions}
             </div>
           ) : null}
-          {paymentDetails && (paymentMethod === "paypal" || paymentMethod === "youcan_pay") ? (
+          {paymentDetails && (paymentMethod === "paypal" || paymentMethod === "stripe" || paymentMethod === "youcan_pay") ? (
             <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
               Online payment processing is not active yet. This order will be created as pending and the seller will confirm payment manually.
             </div>

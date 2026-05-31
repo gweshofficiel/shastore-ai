@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  getStorePaymentProviderConnections,
+  isPayPalReady,
+  isStripeReady,
+  providerConnectionByName
+} from "@/lib/store-payment-provider-connections";
 
-export type StorePaymentMethod = "cod" | "paypal" | "whatsapp" | "youcan_pay";
+export type StorePaymentMethod = "cod" | "paypal" | "stripe" | "whatsapp" | "youcan_pay";
+type ConfigurableStorePaymentMethod = Exclude<StorePaymentMethod, "stripe">;
 
 export type StorePaymentMethodRow = {
   config: Record<string, unknown>;
@@ -8,7 +15,7 @@ export type StorePaymentMethodRow = {
   id: string;
   instructions: string | null;
   is_enabled: boolean;
-  method: StorePaymentMethod;
+  method: ConfigurableStorePaymentMethod;
   store_id: string;
   workspace_id: string;
 };
@@ -22,7 +29,7 @@ export type PublicStorePaymentMethod = {
 export const storePaymentMethodOptions: Array<{
   defaultDisplayName: string;
   description: string;
-  method: StorePaymentMethod;
+  method: ConfigurableStorePaymentMethod;
   title: string;
 }> = [
   {
@@ -51,11 +58,18 @@ export const storePaymentMethodOptions: Array<{
   }
 ];
 
-const defaultLabels = new Map(
-  storePaymentMethodOptions.map((option) => [option.method, option.defaultDisplayName])
-);
+const defaultLabels = new Map<StorePaymentMethod, string>([
+  ...storePaymentMethodOptions.map(
+    (option) => [option.method, option.defaultDisplayName] as [StorePaymentMethod, string]
+  ),
+  ["stripe", "Credit / Debit Card"]
+]);
 
 function isPaymentMethod(value: unknown): value is StorePaymentMethod {
+  return value === "cod" || value === "paypal" || value === "stripe" || value === "whatsapp" || value === "youcan_pay";
+}
+
+function isConfigurablePaymentMethod(value: unknown): value is ConfigurableStorePaymentMethod {
   return value === "cod" || value === "paypal" || value === "whatsapp" || value === "youcan_pay";
 }
 
@@ -77,7 +91,7 @@ function normalizePaymentRow(value: unknown): StorePaymentMethodRow | null {
     typeof row.id !== "string" ||
     typeof row.store_id !== "string" ||
     typeof row.workspace_id !== "string" ||
-    !isPaymentMethod(method)
+    !isConfigurablePaymentMethod(method)
   ) {
     return null;
   }
@@ -116,12 +130,15 @@ export async function getStorePaymentMethods(client: SupabaseClient, storeId: st
 }
 
 export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient, storeId: string) {
-  const { data, error } = await client
-    .from("store_payment_methods" as never)
-    .select("method, display_name, instructions")
-    .eq("store_id", storeId)
-    .eq("is_enabled", true)
-    .order("method" as never, { ascending: true } as never);
+  const [{ data, error }, providerConnections] = await Promise.all([
+    client
+      .from("store_payment_methods" as never)
+      .select("method, display_name, instructions")
+      .eq("store_id", storeId)
+      .eq("is_enabled", true)
+      .order("method" as never, { ascending: true } as never),
+    getStorePaymentProviderConnections(client, storeId)
+  ]);
 
   if (error) {
     console.warn("[store-payments] enabled public methods failed", {
@@ -132,7 +149,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     return [];
   }
 
-  return ((data ?? []) as unknown[])
+  const configuredMethods = ((data ?? []) as unknown[])
     .map((value): PublicStorePaymentMethod | null => {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
         return null;
@@ -154,7 +171,30 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
         method
       };
     })
-    .filter((method): method is PublicStorePaymentMethod => Boolean(method));
+    .filter((method): method is PublicStorePaymentMethod => Boolean(method))
+    .filter((method) => method.method !== "paypal");
+
+  const stripeConnection = providerConnectionByName(providerConnections, "stripe");
+  const paypalConnection = providerConnectionByName(providerConnections, "paypal");
+  const providerMethods: PublicStorePaymentMethod[] = [];
+
+  if (isStripeReady(stripeConnection)) {
+    providerMethods.push({
+      displayName: "Credit / Debit Card",
+      instructions: "Pay securely by card. Payment processing will use this store's connected Stripe account.",
+      method: "stripe"
+    });
+  }
+
+  if (isPayPalReady(paypalConnection)) {
+    providerMethods.push({
+      displayName: "PayPal",
+      instructions: "Pay with this store's connected PayPal merchant account.",
+      method: "paypal"
+    });
+  }
+
+  return [...providerMethods, ...configuredMethods];
 }
 
 export function defaultPaymentDisplayName(method: StorePaymentMethod) {

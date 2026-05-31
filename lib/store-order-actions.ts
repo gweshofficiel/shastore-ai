@@ -152,7 +152,7 @@ function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
 }
 
 function parseStorePaymentMethod(value: FormDataEntryValue | null): StorePaymentMethod | null {
-  return value === "cod" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
+  return value === "cod" || value === "stripe" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
     ? value
     : null;
 }

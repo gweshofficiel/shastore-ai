@@ -3,6 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getStorePaymentProviderConnections,
+  providerConnectionByName,
+  type StorePaymentProviderConnection
+} from "@/lib/store-payment-provider-connections";
 import { saveStorePaymentMethods } from "@/lib/store-payment-method-actions";
 import {
   defaultPaymentDisplayName,
@@ -52,6 +57,7 @@ type PaymentsData = {
   activeStore: UserStoreRow | null;
   error: string | null;
   methods: StorePaymentMethodRow[];
+  providerConnections: StorePaymentProviderConnection[];
   stores: UserStoreRow[];
 };
 
@@ -62,31 +68,34 @@ async function getPaymentsData(selectedStoreId?: string): Promise<PaymentsData> 
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { activeStore: null, error: "Sign in to manage store payments.", methods: [], stores: [] };
+    return { activeStore: null, error: "Sign in to manage store payments.", methods: [], providerConnections: [], stores: [] };
   }
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const role = await getUserWorkspaceRole(supabase, selection.activeWorkspaceId, user.id);
 
   if (!hasPermission(role, "can_manage_payments")) {
-    return { activeStore: null, error: "You do not have permission to manage payments.", methods: [], stores: [] };
+    return { activeStore: null, error: "You do not have permission to manage payments.", methods: [], providerConnections: [], stores: [] };
   }
 
   const { stores, error: storesError } = await fetchStoresForAuthUser(supabase, user.id, selection.activeWorkspaceId);
 
   if (storesError) {
-    return { activeStore: null, error: "Stores could not be loaded. Please try again.", methods: [], stores: [] };
+    return { activeStore: null, error: "Stores could not be loaded. Please try again.", methods: [], providerConnections: [], stores: [] };
   }
 
   const activeStore = stores.find((store) => store.id === selectedStoreId) ?? stores[0] ?? null;
 
   if (!activeStore) {
-    return { activeStore: null, error: null, methods: [], stores };
+    return { activeStore: null, error: null, methods: [], providerConnections: [], stores };
   }
 
-  const methods = await getStorePaymentMethods(supabase, activeStore.id);
+  const [methods, providerConnections] = await Promise.all([
+    getStorePaymentMethods(supabase, activeStore.id),
+    getStorePaymentProviderConnections(supabase, activeStore.id)
+  ]);
 
-  return { activeStore, error: null, methods, stores };
+  return { activeStore, error: null, methods, providerConnections, stores };
 }
 
 function methodConfigValue(method: StorePaymentMethodRow | undefined, key: string) {
@@ -103,10 +112,106 @@ function statusMessage(value: string | undefined) {
     "missing-store": "Choose a store before managing payment methods.",
     "not-authorized": "You do not have permission to manage that store.",
     saved: "Store payment methods saved.",
-    "save-failed": "Store payment methods could not be saved. Confirm the migration has been applied."
+    "save-failed": "Store payment methods could not be saved. Confirm the migration has been applied.",
+    "stripe-connected": "Stripe account connected.",
+    "stripe-connect-failed": "Stripe Connect could not be started. Confirm store payment Stripe Connect env vars are configured.",
+    "stripe-disconnected": "Stripe account disconnected.",
+    "stripe-disconnect-failed": "Stripe account could not be disconnected.",
+    "stripe-not-connected": "Stripe is not connected for this store.",
+    "stripe-pending": "Stripe onboarding is pending.",
+    "stripe-refresh-failed": "Stripe status could not be refreshed.",
+    "stripe-refresh-required": "Stripe onboarding needs to be restarted.",
+    "stripe-restricted": "Stripe account is restricted. Complete Stripe requirements.",
+    "paypal-connected": "PayPal account connected.",
+    "paypal-connect-config-missing": "PayPal partner onboarding URL is not configured.",
+    "paypal-disconnected": "PayPal account disconnected.",
+    "paypal-disconnect-failed": "PayPal account could not be disconnected.",
+    "paypal-pending": "PayPal onboarding is pending."
   };
 
   return value ? messages[value] : null;
+}
+
+function providerStatusLabel(connection: StorePaymentProviderConnection | null) {
+  if (!connection || connection.connection_status === "disconnected") {
+    return "Not Connected";
+  }
+
+  if (connection.connection_status === "connected") {
+    return "Connected";
+  }
+
+  if (connection.connection_status === "restricted") {
+    return "Restricted";
+  }
+
+  return "Pending";
+}
+
+function ProviderConnectionCard({
+  connection,
+  provider,
+  storeId
+}: {
+  connection: StorePaymentProviderConnection | null;
+  provider: "paypal" | "stripe";
+  storeId: string;
+}) {
+  const title = provider === "stripe" ? "Stripe" : "PayPal";
+  const description =
+    provider === "stripe"
+      ? "Connect a seller-owned Stripe account through Stripe Connect onboarding. Platform subscription billing is not used here."
+      : "Connect a seller-owned PayPal merchant account through partner onboarding. No manual secret keys are exposed.";
+  const connectPath = `/api/store-payments/${provider}/connect`;
+  const refreshPath = `/api/store-payments/${provider}/refresh`;
+  const disconnectPath = `/api/store-payments/${provider}/disconnect`;
+
+  return (
+    <Card className="p-6 lg:p-8">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+        Provider connection
+      </p>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">{title}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+          {providerStatusLabel(connection)}
+        </span>
+      </div>
+      <div className="mt-5 grid gap-2 text-sm font-semibold text-muted">
+        {provider === "stripe" ? (
+          <>
+            <p>Charges enabled: {connection?.charges_enabled ? "Yes" : "No"}</p>
+            <p>Payouts enabled: {connection?.payouts_enabled ? "Yes" : "No"}</p>
+            <p>Stripe account: {connection?.stripe_account_id ? "Stored securely" : "Not stored"}</p>
+          </>
+        ) : (
+          <>
+            <p>PayPal status: {connection?.paypal_status ?? "not_connected"}</p>
+            <p>PayPal merchant: {connection?.paypal_merchant_id ? "Stored securely" : "Not stored"}</p>
+          </>
+        )}
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <form action={connectPath} method="post">
+          <input name="storeId" type="hidden" value={storeId} />
+          <Button type="submit">{connection?.connection_status === "connected" ? `Reconnect ${title}` : `Connect ${title}`}</Button>
+        </form>
+        <form action={refreshPath} method="post">
+          <input name="storeId" type="hidden" value={storeId} />
+          <Button type="submit" variant="secondary">Refresh Status</Button>
+        </form>
+        <form action={disconnectPath} method="post">
+          <input name="storeId" type="hidden" value={storeId} />
+          <Button disabled={!connection || connection.connection_status === "disconnected"} type="submit" variant="ghost">
+            Disconnect
+          </Button>
+        </form>
+      </div>
+    </Card>
+  );
 }
 
 export default async function PaymentsPage({
@@ -115,8 +220,10 @@ export default async function PaymentsPage({
   searchParams: Promise<{ error?: string; payments?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
-  const { activeStore, error, methods, stores } = await getPaymentsData(params.storeId);
+  const { activeStore, error, methods, providerConnections, stores } = await getPaymentsData(params.storeId);
   const message = statusMessage(params.payments);
+  const stripeConnection = providerConnectionByName(providerConnections, "stripe");
+  const paypalConnection = providerConnectionByName(providerConnections, "paypal");
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -155,6 +262,20 @@ export default async function PaymentsPage({
             <Button type="submit" variant="secondary">Switch store</Button>
           </form>
         </Card>
+      ) : null}
+      {activeStore ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ProviderConnectionCard
+            connection={stripeConnection}
+            provider="stripe"
+            storeId={activeStore.id}
+          />
+          <ProviderConnectionCard
+            connection={paypalConnection}
+            provider="paypal"
+            storeId={activeStore.id}
+          />
+        </div>
       ) : null}
       {activeStore ? (
         <form action={saveStorePaymentMethods} className="grid gap-6">

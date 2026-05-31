@@ -284,6 +284,10 @@ function paymentMethodDescription(method: StorePaymentMethod) {
     return "Create the order and continue through WhatsApp.";
   }
 
+  if (method === "stripe") {
+    return "Pay by credit or debit card with this store's connected Stripe account.";
+  }
+
   return "Foundation method only. No online payment is processed yet.";
 }
 

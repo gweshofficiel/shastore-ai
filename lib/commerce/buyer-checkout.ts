@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getEnabledPublicStorePaymentMethods, type PublicStorePaymentMethod } from "@/lib/store-payment-methods";
 import {
   buildWhatsAppOrderUrl,
@@ -106,7 +107,7 @@ export function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     cod: "Cash on Delivery",
     paypal: "PayPal",
-    stripe: "Stripe",
+    stripe: "Credit / Debit Card",
     whatsapp: "Order via WhatsApp",
     youcan_pay: "YouCan Pay"
   };
@@ -161,7 +162,7 @@ export async function getBuyerCheckoutSource({
     }
 
     const whatsappNumber = settings.defaultWhatsappNumber ?? store.whatsapp_number;
-    const configuredPaymentMethods = await getEnabledPublicStorePaymentMethods(supabase, store.id);
+    const configuredPaymentMethods = await getEnabledPublicStorePaymentMethods(createAdminClient() ?? supabase, store.id);
     const paymentMethodDetails = configuredPaymentMethods.length
       ? configuredPaymentMethods
       : fallbackStorePaymentMethods(settings, whatsappNumber);
