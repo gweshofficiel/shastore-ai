@@ -49,11 +49,8 @@ using (
   is_enabled = true
   and exists (
     select 1
-    from public.stores stores
-    left join public.published_stores published
-      on published.store_id = stores.id
-    where stores.id = store_payment_methods.store_id
-      and stores.status = 'published'
+    from public.published_stores published
+    where published.store_id = store_payment_methods.store_id
       and coalesce(published.status, 'published') = 'published'
       and coalesce(published.visibility, 'public') = 'public'
   )

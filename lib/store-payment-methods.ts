@@ -116,15 +116,45 @@ export async function getStorePaymentMethods(client: SupabaseClient, storeId: st
 }
 
 export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient, storeId: string) {
-  const methods = await getStorePaymentMethods(client, storeId);
+  const { data, error } = await client
+    .from("store_payment_methods" as never)
+    .select("method, display_name, instructions")
+    .eq("store_id", storeId)
+    .eq("is_enabled", true)
+    .order("method" as never, { ascending: true } as never);
 
-  return methods
-    .filter((method) => method.is_enabled)
-    .map((method): PublicStorePaymentMethod => ({
-      displayName: method.display_name || defaultLabels.get(method.method) || method.method,
-      instructions: method.instructions || null,
-      method: method.method
-    }));
+  if (error) {
+    console.warn("[store-payments] enabled public methods failed", {
+      code: error.code,
+      message: error.message,
+      storeId
+    });
+    return [];
+  }
+
+  return ((data ?? []) as unknown[])
+    .map((value): PublicStorePaymentMethod | null => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
+      }
+
+      const row = value as Record<string, unknown>;
+      const method = row.method;
+
+      if (!isPaymentMethod(method)) {
+        return null;
+      }
+
+      return {
+        displayName:
+          typeof row.display_name === "string" && row.display_name.trim()
+            ? row.display_name
+            : defaultLabels.get(method) || method,
+        instructions: typeof row.instructions === "string" ? row.instructions : null,
+        method
+      };
+    })
+    .filter((method): method is PublicStorePaymentMethod => Boolean(method));
 }
 
 export function defaultPaymentDisplayName(method: StorePaymentMethod) {

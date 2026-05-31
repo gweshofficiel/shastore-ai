@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { storePaymentMethodOptions, type StorePaymentMethod } from "@/lib/store-payment-methods";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
+import {
+  getStorePaymentMethods,
+  storePaymentMethodOptions,
+  type StorePaymentMethod
+} from "@/lib/store-payment-methods";
 import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
@@ -56,6 +61,7 @@ async function requireWorkspaceStore(formData: FormData) {
     store: access.store as WorkspaceStoreRow,
     storeId,
     supabase,
+    userId: user.id,
     workspaceId
   };
 }
@@ -90,7 +96,11 @@ function revalidatePaymentPaths(store: WorkspaceStoreRow, storeId: string) {
 }
 
 export async function saveStorePaymentMethods(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, userId, workspaceId } = await requireWorkspaceStore(formData);
+  const previousMethods = await getStorePaymentMethods(supabase, storeId);
+  const previousEnabled = new Map(
+    previousMethods.map((method) => [method.method, method.is_enabled])
+  );
   const rows = storePaymentMethodOptions.map((option) => ({
     config: safeConfigForMethod(formData, option.method),
     display_name: cleanOptionalText(formData.get(`${option.method}DisplayName`), 120),
@@ -114,6 +124,29 @@ export async function saveStorePaymentMethods(formData: FormData) {
     });
     paymentsRedirect(storeId, "save-failed");
   }
+
+  await Promise.all(
+    rows
+      .filter((row) => {
+        const previous = previousEnabled.get(row.method);
+        return previous === undefined ? row.is_enabled : previous !== row.is_enabled;
+      })
+      .map((row) =>
+        recordMonitoringEventSafe({
+          entityId: storeId,
+          entityType: "store_payment_method",
+          eventType: "payment_method_updated",
+          metadata: {
+            is_enabled: row.is_enabled,
+            method: row.method
+          },
+          storeId,
+          supabase,
+          userId,
+          workspaceId
+        })
+      )
+  );
 
   revalidatePaymentPaths(store, storeId);
   paymentsRedirect(storeId, "saved");

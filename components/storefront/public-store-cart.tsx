@@ -9,6 +9,7 @@ import {
 import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
+import type { PublicStorePaymentMethod, StorePaymentMethod } from "@/lib/store-payment-methods";
 
 type CartItem = {
   categoryName: string | null;
@@ -46,6 +47,7 @@ type CartPageClientProps = {
     freeDeliveryThreshold: number | null;
     pickupEnabled: boolean;
   };
+  paymentMethods?: PublicStorePaymentMethod[];
   products: PublicStorefrontProduct[];
   shippingMethods?: PublicShippingMethod[];
   slug: string;
@@ -268,6 +270,18 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
   }
 
   return formatMoney(numeric, currency);
+}
+
+function paymentMethodDescription(method: StorePaymentMethod) {
+  if (method === "cod") {
+    return "Pay the seller when your order is delivered.";
+  }
+
+  if (method === "whatsapp") {
+    return "Create the order and continue through WhatsApp.";
+  }
+
+  return "Foundation method only. No online payment is processed yet.";
 }
 
 function variantOptions(variant: PublicStorefrontProduct["variants"][number] | null) {
@@ -659,6 +673,7 @@ export function ClearStoreCartOnOrderSuccess({
 export function CartPageClient({
   currency,
   deliverySettings,
+  paymentMethods = [],
   products,
   shippingMethods = [],
   slug,
@@ -691,6 +706,9 @@ export function CartPageClient({
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponPending, setCouponPending] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<StorePaymentMethod | "">(
+    paymentMethods[0]?.method ?? ""
+  );
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products]
@@ -734,6 +752,17 @@ export function CartPageClient({
     setAppliedCoupon(null);
     setCouponMessage(null);
   }, [total]);
+
+  useEffect(() => {
+    if (!paymentMethods.length) {
+      setPaymentMethod("");
+      return;
+    }
+
+    if (!paymentMethods.some((method) => method.method === paymentMethod)) {
+      setPaymentMethod(paymentMethods[0].method);
+    }
+  }, [paymentMethod, paymentMethods]);
 
   useEffect(() => {
     if (!shippingMethods.length || shippingMethods.some((method) => method.id === shippingMethodId)) {
@@ -1129,13 +1158,15 @@ export function CartPageClient({
               Fix unavailable cart items before checkout.
             </div>
           ) : null}
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-            Checkout is not enabled yet. This cart is ready for the next checkout phase.
-          </div>
+          {!paymentMethods.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+              This store has not enabled any checkout payment methods yet.
+            </div>
+          ) : null}
           {!checkoutStarted ? (
             <button
               className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-              disabled={hasUnavailableItems}
+              disabled={hasUnavailableItems || !paymentMethods.length}
               onClick={() => {
                 setCheckoutStarted(true);
               }}
@@ -1153,6 +1184,7 @@ export function CartPageClient({
           <input name="slug" type="hidden" value={slug} />
           <input name="storeId" type="hidden" value={storeId} />
           <input name="deliveryMethod" type="hidden" value={deliveryMethod} />
+          <input name="paymentMethod" type="hidden" value={paymentMethod} />
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
           <input
@@ -1209,6 +1241,32 @@ export function CartPageClient({
               placeholder="Delivery notes, preferred time, or special requests"
             />
           </label>
+          <div className="grid gap-2">
+            <p className="text-sm font-semibold text-ink">Payment method *</p>
+            <div className="grid gap-2">
+              {paymentMethods.map((method) => (
+                <button
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    paymentMethod === method.method
+                      ? "border-ink bg-ink text-white"
+                      : "border-slate-200 bg-white text-ink hover:border-slate-300"
+                  }`}
+                  key={method.method}
+                  onClick={() => setPaymentMethod(method.method)}
+                  type="button"
+                >
+                  <span className="block text-sm font-black">{method.displayName}</span>
+                  <span
+                    className={`mt-1 block text-xs font-semibold ${
+                      paymentMethod === method.method ? "text-white/70" : "text-muted"
+                    }`}
+                  >
+                    {method.instructions || paymentMethodDescription(method.method)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
           {draftState.error ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
               {draftState.error}
@@ -1216,12 +1274,12 @@ export function CartPageClient({
           ) : null}
           {draftState.message ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
-              {draftState.message} Payment and order submission remain disabled.
+              {draftState.message}
             </div>
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={hasUnavailableItems || isDraftPending || draftState.ok}
+            disabled={hasUnavailableItems || isDraftPending || draftState.ok || !paymentMethod}
             type="submit"
           >
             {isDraftPending
@@ -1232,29 +1290,11 @@ export function CartPageClient({
           </button>
           </form>
         ) : null}
-        <div className="mt-6 grid gap-3">
-          <button
-            className="h-12 rounded-full bg-slate-100 px-5 text-sm font-black text-slate-400"
-            disabled
-            type="button"
-          >
-            WhatsApp checkout · Coming soon
-          </button>
-          <button
-            className="h-12 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
-            disabled
-            type="button"
-          >
-            Pay by Card · Coming soon
-          </button>
-          <button
-            className="h-12 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
-            disabled
-            type="button"
-          >
-            PayPal · Coming soon
-          </button>
-        </div>
+        {paymentMethods.some((method) => method.method === "paypal" || method.method === "youcan_pay") ? (
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-900">
+            PayPal and YouCan Pay are selectable foundation methods only. No online payment is processed yet.
+          </div>
+        ) : null}
       </aside>
     </div>
   );

@@ -15,6 +15,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import {
+  getEnabledPublicStorePaymentMethods,
+  type StorePaymentMethod
+} from "@/lib/store-payment-methods";
+import {
   incrementCouponUsage,
   validateStoreCoupon,
   type StoreCouponRow
@@ -145,6 +149,12 @@ function parseCartItems(value: FormDataEntryValue | null): CartSubmitItem[] {
 
 function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
   return value === "delivery" || value === "pickup" ? value : "none";
+}
+
+function parseStorePaymentMethod(value: FormDataEntryValue | null): StorePaymentMethod | null {
+  return value === "cod" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
+    ? value
+    : null;
 }
 
 function variantOptionsPayload(
@@ -465,6 +475,7 @@ async function persistStorefrontOrderDraft({
   deliveryMethod,
   shippingMethod,
   financialBreakdown,
+  paymentMethod,
   coupon,
   discountAmount,
   subtotal,
@@ -490,6 +501,7 @@ async function persistStorefrontOrderDraft({
   deliveryMethod: DeliveryMethod;
   shippingMethod: PublicShippingMethod | null;
   financialBreakdown: CheckoutFinancialBreakdown;
+  paymentMethod: StorePaymentMethod;
   coupon: StoreCouponRow | null;
   discountAmount: number;
   subtotal: number;
@@ -541,6 +553,7 @@ async function persistStorefrontOrderDraft({
     total,
     currency,
     order_status: "draft",
+    payment_method: paymentMethod,
     payment_status: "pending",
     fulfillment_status: "unfulfilled"
   };
@@ -553,7 +566,7 @@ async function persistStorefrontOrderDraft({
     owner_user_id: store.owner_user_id ?? store.user_id,
     workspace_id: workspaceId,
     customer_address: customerAddress || null,
-    payment_method: "manual",
+    payment_method: paymentMethod,
     source: "public_storefront"
   };
 
@@ -706,6 +719,7 @@ async function persistStorefrontOrderDraft({
           deliveryFee,
           deliveryMethod,
           itemCount: items.length,
+          paymentMethod,
           subtotal,
           total
         },
@@ -723,6 +737,7 @@ async function persistStorefrontOrderDraft({
         metadata: {
           itemCount: items.length,
           orderSource: "orders",
+          paymentMethod,
           status: "draft",
           totalAmount: total
         },
@@ -1282,6 +1297,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
+  const requestedPaymentMethod = parseStorePaymentMethod(formData.get("paymentMethod"));
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
@@ -1300,6 +1316,10 @@ export async function createPublicStoreOrderDraftAction(
 
   if (!requestedItems.length) {
     return { error: "Your cart is empty.", message: null, ok: false, orderId: null };
+  }
+
+  if (!requestedPaymentMethod) {
+    return { error: "Choose a payment method before submitting your order.", message: null, ok: false, orderId: null };
   }
 
   const admin = createAdminClient();
@@ -1338,6 +1358,17 @@ export async function createPublicStoreOrderDraftAction(
 
   if (storeError || !store) {
     return { error: "Store not found or unpublished.", message: null, ok: false, orderId: null };
+  }
+
+  const enabledPaymentMethods = await getEnabledPublicStorePaymentMethods(admin, store.id);
+
+  if (!enabledPaymentMethods.some((method) => method.method === requestedPaymentMethod)) {
+    return {
+      error: "Selected payment method is no longer available.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
   }
 
   const billingLimitError = await validateOrderMonthlyLimitSafe({
@@ -1489,6 +1520,7 @@ export async function createPublicStoreOrderDraftAction(
     deliveryMethod: deliverySelection.deliveryMethod,
     shippingMethod,
     financialBreakdown,
+    paymentMethod: requestedPaymentMethod,
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     subtotal,
@@ -1633,7 +1665,6 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   const now = new Date().toISOString();
   const updatePayload: Record<string, string | null> = {
     order_status: status,
-    payment_method: "manual",
     payment_status: "pending",
     updated_at: now
   };

@@ -5,6 +5,7 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods";
 import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { getEnabledPublicStorePaymentMethods } from "@/lib/store-payment-methods";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -100,9 +101,10 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
     );
   }
 
-  const [shippingMethods, taxSettings] = await Promise.all([
+  const [shippingMethods, taxSettings, paymentMethods] = await Promise.all([
     getPublicShippingMethodsForStore(preview.store.id),
-    getPublicTaxSettingsForStore(preview.store.id)
+    getPublicTaxSettingsForStore(preview.store.id),
+    admin ? getEnabledPublicStorePaymentMethods(admin, preview.store.id) : Promise.resolve([])
   ]);
   const theme = preview.themeSettings;
 
@@ -160,6 +162,7 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
             pickupEnabled: preview.store.pickupEnabled
           }}
           products={preview.products}
+          paymentMethods={paymentMethods}
           shippingMethods={shippingMethods}
           slug={preview.store.slug}
           storeId={preview.store.id}
