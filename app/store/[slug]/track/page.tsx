@@ -92,36 +92,47 @@ function reviewMessage(status: string | undefined) {
   return status ? messages[status] : null;
 }
 
-function fulfillmentStatusLabel(status: string | null | undefined) {
-  return (status && status !== "pending" ? status : "unfulfilled").replaceAll("_", " ");
+function normalizedFulfillmentStatus(status: string | null | undefined) {
+  const normalized = status?.trim() || "pending";
+
+  if (normalized === "unfulfilled") {
+    return "pending";
+  }
+
+  if (normalized === "preparing" || normalized === "ready_for_pickup" || normalized === "out_for_delivery") {
+    return "processing";
+  }
+
+  return normalized;
 }
 
-function fulfillmentSteps(deliveryMethod: string | null | undefined) {
-  const middle =
-    deliveryMethod === "pickup"
-      ? [{ label: "Ready for pickup", value: "ready_for_pickup" }]
-      : deliveryMethod === "delivery"
-        ? [{ label: "Out for delivery", value: "out_for_delivery" }]
-        : [];
+function fulfillmentStatusLabel(status: string | null | undefined) {
+  const normalized = normalizedFulfillmentStatus(status);
 
+  if (normalized === "pending") {
+    return "Unfulfilled";
+  }
+
+  return normalized.replaceAll("_", " ");
+}
+
+function fulfillmentSteps() {
   return [
-    { label: "Order received", value: "unfulfilled" },
-    { label: "Preparing", value: "preparing" },
-    ...middle,
-    { label: "Fulfilled", value: "fulfilled" }
+    { label: "Order received", value: "pending" },
+    { label: "Processing", value: "processing" }
   ];
 }
 
-function fulfillmentStepIndex(status: string | null | undefined, deliveryMethod: string | null | undefined) {
-  const normalized = status && status !== "pending" ? status : "unfulfilled";
-  const steps = fulfillmentSteps(deliveryMethod);
+function fulfillmentStepIndex(status: string | null | undefined) {
+  const normalized = normalizedFulfillmentStatus(status);
+  const steps = fulfillmentSteps();
   const index = steps.findIndex((step) => step.value === normalized);
 
   if (index >= 0) {
     return index;
   }
 
-  return normalized === "out_for_delivery" || normalized === "ready_for_pickup" ? steps.length - 2 : 0;
+  return 0;
 }
 
 function referenceMatches(orderId: string, reference: string) {
@@ -265,7 +276,7 @@ async function loadTrackedOrder({
         customer_phone: order.customer_phone,
         delivery_fee: order.delivery_fee ?? 0,
         delivery_method: order.delivery_method ?? null,
-        fulfillment_status: order.fulfillment_status ?? "unfulfilled",
+        fulfillment_status: order.fulfillment_status ?? "pending",
         id: order.id,
         items,
         order_status: order.order_status ?? "draft",
@@ -311,7 +322,7 @@ async function loadTrackedOrder({
         customer_phone: storeOrder.customer_phone ?? phone,
         delivery_fee: storeOrder.delivery_fee ?? 0,
         delivery_method: storeOrder.delivery_method ?? null,
-        fulfillment_status: storeOrder.fulfillment_status ?? "unfulfilled",
+        fulfillment_status: storeOrder.fulfillment_status ?? "pending",
         id: storeOrder.id,
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
@@ -531,8 +542,8 @@ export default async function PublicOrderTrackingPage({
                   Fulfillment progress
                 </p>
                 <div className="mt-4 grid gap-3">
-                  {fulfillmentSteps(order.delivery_method).map((step, index) => {
-                    const activeIndex = fulfillmentStepIndex(order.fulfillment_status, order.delivery_method);
+                  {fulfillmentSteps().map((step, index) => {
+                    const activeIndex = fulfillmentStepIndex(order.fulfillment_status);
                     const isComplete = index <= activeIndex;
 
                     return (
