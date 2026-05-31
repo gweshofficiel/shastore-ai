@@ -1,11 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
+import {
+  getStorePaymentsStripe,
+  missingStorePaymentsStripeEnvNames
+} from "@/lib/store-payment-provider-runtime";
 import { assertStoreAccessInWorkspace, requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 
 function redirectToDashboard(request: NextRequest, storeId: string, status: string) {
   return NextResponse.redirect(
     new URL(`/dashboard/payments?storeId=${encodeURIComponent(storeId)}&payments=${encodeURIComponent(status)}`, request.url)
   );
+}
+
+function redirectToDashboardWithMissingEnv(
+  request: NextRequest,
+  storeId: string,
+  status: string,
+  missingEnv: string[]
+) {
+  const url = new URL(`/dashboard/payments?storeId=${encodeURIComponent(storeId)}&payments=${encodeURIComponent(status)}`, request.url);
+  url.searchParams.set("missing", missingEnv.join(","));
+  return NextResponse.redirect(url);
 }
 
 function stripeConnectionStatus(account: { charges_enabled?: boolean; payouts_enabled?: boolean; details_submitted?: boolean }) {
@@ -48,6 +63,40 @@ export async function POST(request: NextRequest) {
     return redirectToDashboard(request, storeId, "not-authorized");
   }
 
+  const missingEnv = missingStorePaymentsStripeEnvNames();
+  const now = new Date().toISOString();
+
+  await context.supabase.from("store_payment_provider_connections" as never).upsert({
+    connection_mode: "connect",
+    connection_status: "pending",
+    provider: "stripe",
+    store_id: storeId,
+    updated_at: now,
+    workspace_id: context.workspaceId
+  } as never, { onConflict: "store_id,provider" } as never);
+
+  if (missingEnv.length) {
+    console.warn("[store-payments][stripe] connect missing env", {
+      missingEnv,
+      storeId
+    });
+    await recordMonitoringEventSafe({
+      entityId: storeId,
+      entityType: "store_payment_provider",
+      eventStatus: "failed",
+      eventType: "stripe_connect_failed",
+      metadata: {
+        error_message: "Missing Stripe Connect configuration.",
+        missing_env: missingEnv
+      },
+      storeId,
+      supabase: context.supabase,
+      userId: context.user.id,
+      workspaceId: context.workspaceId
+    });
+    return redirectToDashboardWithMissingEnv(request, storeId, "stripe-connect-missing-env", missingEnv);
+  }
+
   try {
     const stripe = getStorePaymentsStripe();
     const account = await stripe.accounts.create({
@@ -72,7 +121,7 @@ export async function POST(request: NextRequest) {
       provider: "stripe",
       store_id: storeId,
       stripe_account_id: account.id,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
       workspace_id: context.workspaceId
     } as never, { onConflict: "store_id,provider" } as never);
 
@@ -89,6 +138,19 @@ export async function POST(request: NextRequest) {
     console.error("[store-payments][stripe] connect failed", {
       message: error instanceof Error ? error.message : String(error),
       storeId
+    });
+    await recordMonitoringEventSafe({
+      entityId: storeId,
+      entityType: "store_payment_provider",
+      eventStatus: "failed",
+      eventType: "stripe_connect_failed",
+      metadata: {
+        error_message: error instanceof Error ? error.message : String(error)
+      },
+      storeId,
+      supabase: context.supabase,
+      userId: context.user.id,
+      workspaceId: context.workspaceId
     });
     return redirectToDashboard(request, storeId, "stripe-connect-failed");
   }

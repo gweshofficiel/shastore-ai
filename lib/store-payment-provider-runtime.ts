@@ -4,6 +4,12 @@ export function getStorePaymentsStripeSecretKey() {
   return process.env.STORE_PAYMENTS_STRIPE_SECRET_KEY ?? process.env.STRIPE_CONNECT_SECRET_KEY ?? null;
 }
 
+export function missingStorePaymentsStripeEnvNames() {
+  return getStorePaymentsStripeSecretKey()
+    ? []
+    : ["STORE_PAYMENTS_STRIPE_SECRET_KEY", "STRIPE_CONNECT_SECRET_KEY"];
+}
+
 export function getStorePaymentsStripe() {
   const secretKey = getStorePaymentsStripeSecretKey();
 

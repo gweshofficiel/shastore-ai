@@ -96,6 +96,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    await recordMonitoringEventSafe({
+      entityId: storeId,
+      entityType: "store_payment_provider",
+      eventType: "payment_provider_status_refreshed",
+      metadata: {
+        provider: "stripe",
+        status
+      },
+      storeId,
+      supabase: context.supabase,
+      userId: context.user.id,
+      workspaceId: context.workspaceId
+    });
+
     return redirectToDashboard(request, storeId, `stripe-${status}`);
   } catch (error) {
     console.error("[store-payments][stripe] refresh failed", {

@@ -8,7 +8,10 @@ import {
   providerConnectionByName,
   type StorePaymentProviderConnection
 } from "@/lib/store-payment-provider-connections";
-import { saveStorePaymentMethods } from "@/lib/store-payment-method-actions";
+import {
+  saveManualPaymentProviderConfigs,
+  saveStorePaymentMethods
+} from "@/lib/store-payment-method-actions";
 import {
   defaultPaymentDisplayName,
   getStorePaymentMethods,
@@ -113,8 +116,13 @@ function statusMessage(value: string | undefined) {
     "not-authorized": "You do not have permission to manage that store.",
     saved: "Store payment methods saved.",
     "save-failed": "Store payment methods could not be saved. Confirm the migration has been applied.",
+    "manual-config-empty": "Enter at least one provider config value before saving.",
+    "manual-config-failed": "Manual provider config could not be saved.",
+    "manual-config-missing-encryption": "Manual provider secrets cannot be saved until the encryption key env var is configured.",
+    "manual-config-saved": "Manual provider configuration saved.",
     "stripe-connected": "Stripe account connected.",
     "stripe-connect-failed": "Stripe Connect could not be started. Confirm store payment Stripe Connect env vars are configured.",
+    "stripe-connect-missing-env": "Stripe Connect could not start because required env vars are missing.",
     "stripe-disconnected": "Stripe account disconnected.",
     "stripe-disconnect-failed": "Stripe account could not be disconnected.",
     "stripe-not-connected": "Stripe is not connected for this store.",
@@ -130,6 +138,14 @@ function statusMessage(value: string | undefined) {
   };
 
   return value ? messages[value] : null;
+}
+
+function missingEnvMessage(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return `Missing environment variable: ${value}`;
 }
 
 function providerStatusLabel(connection: StorePaymentProviderConnection | null) {
@@ -186,11 +202,13 @@ function ProviderConnectionCard({
             <p>Charges enabled: {connection?.charges_enabled ? "Yes" : "No"}</p>
             <p>Payouts enabled: {connection?.payouts_enabled ? "Yes" : "No"}</p>
             <p>Stripe account: {connection?.stripe_account_id ? "Stored securely" : "Not stored"}</p>
+            <p>Manual status: {connection?.config_status ?? "not_configured"}</p>
           </>
         ) : (
           <>
             <p>PayPal status: {connection?.paypal_status ?? "not_connected"}</p>
             <p>PayPal merchant: {connection?.paypal_merchant_id ? "Stored securely" : "Not stored"}</p>
+            <p>Manual status: {connection?.config_status ?? "not_configured"}</p>
           </>
         )}
       </div>
@@ -214,16 +232,150 @@ function ProviderConnectionCard({
   );
 }
 
+function ManualProviderConfigForm({
+  paypalConnection,
+  stripeConnection,
+  storeId,
+  youcanConnection
+}: {
+  paypalConnection: StorePaymentProviderConnection | null;
+  stripeConnection: StorePaymentProviderConnection | null;
+  storeId: string;
+  youcanConnection: StorePaymentProviderConnection | null;
+}) {
+  return (
+    <form action={saveManualPaymentProviderConfigs} className="grid gap-6">
+      <input name="storeId" type="hidden" value={storeId} />
+      <Card className="border-amber-200 bg-amber-50 p-5">
+        <p className="text-sm font-bold leading-6 text-amber-900">
+          Advanced manual API configuration stores secret values server-side only. Leave secret fields blank to keep existing encrypted secrets. These credentials are never platform billing credentials.
+        </p>
+      </Card>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="p-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Advanced
+          </p>
+          <h3 className="mt-3 text-xl font-black text-ink">Manual Stripe API</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Recommended path is Stripe Connect. Use manual keys only for controlled testing.
+          </p>
+          <div className="mt-5 grid gap-4">
+            <Input
+              defaultValue={stripeConnection?.publishable_key ?? ""}
+              id="stripeManualPublishableKey"
+              label="Publishable key"
+              name="stripeManualPublishableKey"
+              placeholder="pk_test_..."
+            />
+            <Input
+              id="stripeManualSecretKey"
+              label={stripeConnection?.config_status === "configured" ? "Secret key (stored, leave blank to keep)" : "Secret key"}
+              name="stripeManualSecretKey"
+              placeholder="sk_test_..."
+              type="password"
+            />
+            <Input
+              id="stripeManualWebhookSecret"
+              label="Webhook secret optional"
+              name="stripeManualWebhookSecret"
+              placeholder="whsec_..."
+              type="password"
+            />
+          </div>
+        </Card>
+        <Card className="p-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Sandbox / Live
+          </p>
+          <h3 className="mt-3 text-xl font-black text-ink">Manual PayPal API</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Use this when partner onboarding is not available yet.
+          </p>
+          <div className="mt-5 grid gap-4">
+            <Input
+              defaultValue={paypalConnection?.publishable_key ?? ""}
+              id="paypalManualClientId"
+              label="Client ID"
+              name="paypalManualClientId"
+            />
+            <Input
+              id="paypalManualClientSecret"
+              label={paypalConnection?.config_status === "configured" ? "Client secret (stored, leave blank to keep)" : "Client secret"}
+              name="paypalManualClientSecret"
+              type="password"
+            />
+            <Input
+              defaultValue={paypalConnection?.paypal_merchant_id ?? ""}
+              id="paypalManualMerchantId"
+              label="Merchant ID optional"
+              name="paypalManualMerchantId"
+            />
+            <label className="grid gap-2 text-sm font-semibold text-ink">
+              Environment
+              <select className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" defaultValue={paypalConnection?.environment === "live" ? "live" : "sandbox"} name="paypalEnvironment">
+                <option value="sandbox">Sandbox</option>
+                <option value="live">Live</option>
+              </select>
+            </label>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Test / Live
+          </p>
+          <h3 className="mt-3 text-xl font-black text-ink">YouCan Pay API</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Configure YouCan Pay API keys for checkout readiness. Enable the YouCan Pay method below too.
+          </p>
+          <div className="mt-5 grid gap-4">
+            <Input
+              defaultValue={youcanConnection?.public_key ?? ""}
+              id="youcanManualPublicKey"
+              label="Public key"
+              name="youcanManualPublicKey"
+            />
+            <Input
+              id="youcanManualPrivateKey"
+              label={youcanConnection?.config_status === "configured" ? "Private key (stored, leave blank to keep)" : "Private key"}
+              name="youcanManualPrivateKey"
+              type="password"
+            />
+            <Input
+              defaultValue={youcanConnection?.account_reference ?? ""}
+              id="youcanManualAccountId"
+              label="Store ID / account ID"
+              name="youcanManualAccountId"
+            />
+            <label className="grid gap-2 text-sm font-semibold text-ink">
+              Environment
+              <select className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" defaultValue={youcanConnection?.environment === "live" ? "live" : "test"} name="youcanEnvironment">
+                <option value="test">Test</option>
+                <option value="live">Live</option>
+              </select>
+            </label>
+          </div>
+        </Card>
+      </div>
+      <div>
+        <Button type="submit">Save advanced provider config</Button>
+      </div>
+    </form>
+  );
+}
+
 export default async function PaymentsPage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string; payments?: string; storeId?: string }>;
+  searchParams: Promise<{ error?: string; missing?: string; payments?: string; storeId?: string }>;
 }) {
   const params = await searchParams;
   const { activeStore, error, methods, providerConnections, stores } = await getPaymentsData(params.storeId);
   const message = statusMessage(params.payments);
+  const missingMessage = missingEnvMessage(params.missing);
   const stripeConnection = providerConnectionByName(providerConnections, "stripe");
   const paypalConnection = providerConnectionByName(providerConnections, "paypal");
+  const youcanConnection = providerConnectionByName(providerConnections, "youcan_pay");
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -239,6 +391,11 @@ export default async function PaymentsPage({
       {params.error || error ? (
         <Card className="border-red-200 bg-red-50 p-5">
           <p className="text-sm font-bold text-red-700">{params.error || error}</p>
+        </Card>
+      ) : null}
+      {missingMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">{missingMessage}</p>
         </Card>
       ) : null}
       {stores.length ? (
@@ -276,6 +433,14 @@ export default async function PaymentsPage({
             storeId={activeStore.id}
           />
         </div>
+      ) : null}
+      {activeStore ? (
+        <ManualProviderConfigForm
+          paypalConnection={paypalConnection}
+          stripeConnection={stripeConnection}
+          storeId={activeStore.id}
+          youcanConnection={youcanConnection}
+        />
       ) : null}
       {activeStore ? (
         <form action={saveStorePaymentMethods} className="grid gap-6">

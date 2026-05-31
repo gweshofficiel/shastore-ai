@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { assertStoreAccessInWorkspace, requireProtectedApiAccess } from "@/lib/workspaces/data-access";
 
 function redirectToDashboard(request: NextRequest, storeId: string, status: string) {
@@ -53,6 +54,20 @@ export async function POST(request: NextRequest) {
     } as never)
     .eq("store_id" as never, storeId as never)
     .eq("provider" as never, "paypal" as never);
+
+  await recordMonitoringEventSafe({
+    entityId: storeId,
+    entityType: "store_payment_provider",
+    eventType: "payment_provider_status_refreshed",
+    metadata: {
+      provider: "paypal",
+      status: connected ? "connected" : "pending"
+    },
+    storeId,
+    supabase: context.supabase,
+    userId: context.user.id,
+    workspaceId: context.workspaceId
+  });
 
   return redirectToDashboard(request, storeId, connected ? "paypal-connected" : "paypal-pending");
 }

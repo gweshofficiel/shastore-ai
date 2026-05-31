@@ -3,6 +3,7 @@ import {
   getStorePaymentProviderConnections,
   isPayPalReady,
   isStripeReady,
+  isYouCanPayReady,
   providerConnectionByName
 } from "@/lib/store-payment-provider-connections";
 
@@ -149,6 +150,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     return [];
   }
 
+  const enabledMethodNames = new Set<StorePaymentMethod>();
   const configuredMethods = ((data ?? []) as unknown[])
     .map((value): PublicStorePaymentMethod | null => {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -172,10 +174,14 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
       };
     })
     .filter((method): method is PublicStorePaymentMethod => Boolean(method))
-    .filter((method) => method.method !== "paypal");
+    .filter((method) => {
+      enabledMethodNames.add(method.method);
+      return method.method !== "paypal" && method.method !== "youcan_pay";
+    });
 
   const stripeConnection = providerConnectionByName(providerConnections, "stripe");
   const paypalConnection = providerConnectionByName(providerConnections, "paypal");
+  const youCanConnection = providerConnectionByName(providerConnections, "youcan_pay");
   const providerMethods: PublicStorePaymentMethod[] = [];
 
   if (isStripeReady(stripeConnection)) {
@@ -191,6 +197,14 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
       displayName: "PayPal",
       instructions: "Pay with this store's connected PayPal merchant account.",
       method: "paypal"
+    });
+  }
+
+  if (enabledMethodNames.has("youcan_pay") && isYouCanPayReady(youCanConnection)) {
+    providerMethods.push({
+      displayName: "YouCan Pay",
+      instructions: "Pay with this store's configured YouCan Pay account.",
+      method: "youcan_pay"
     });
   }
 
