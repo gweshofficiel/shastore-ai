@@ -291,6 +291,10 @@ function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
     return "Pay securely with Visa or Mastercard.";
   }
 
+  if (method === "paypal") {
+    return "Pay securely with this store's connected PayPal account.";
+  }
+
   return "Foundation method only. No online payment is processed yet.";
 }
 
@@ -1361,9 +1365,9 @@ export function CartPageClient({
           </button>
           </form>
         ) : null}
-        {paymentMethods.some((method) => method.method === "paypal" || method.method === "youcan_pay") ? (
+        {paymentMethods.some((method) => method.method === "youcan_pay") ? (
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-900">
-            PayPal and YouCan Pay are selectable foundation methods only. No online payment is processed yet.
+            YouCan Pay is a selectable foundation method only. No online payment is processed yet.
           </div>
         ) : null}
       </aside>

@@ -27,7 +27,7 @@ import {
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { getAppBaseUrl } from "@/lib/deployment/config";
-import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
+import { createPayPalCheckoutOrder, getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import {
   createLowStockNotificationsForOrderSafe,
   createOrderNotificationSafe,
@@ -520,6 +520,12 @@ type StoreStripeConnectionRow = {
   charges_enabled?: boolean | null;
   connection_status?: string | null;
   stripe_account_id?: string | null;
+};
+
+type StorePayPalConnectionRow = {
+  connection_status?: string | null;
+  paypal_merchant_id?: string | null;
+  paypal_status?: string | null;
 };
 
 async function persistStorefrontOrderDraft({
@@ -1223,6 +1229,153 @@ async function redirectToStoreCardCheckout({
   redirect(sessionUrl);
 }
 
+async function redirectToStorePayPalCheckout({
+  admin,
+  coupon,
+  customerAddress,
+  customerEmail,
+  customerName,
+  customerNotes,
+  customerPhone,
+  currency,
+  deliveryFee,
+  deliveryMethod,
+  discountAmount,
+  financialBreakdown,
+  items,
+  shippingMethod,
+  slug,
+  store,
+  subtotal
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  coupon: StoreCouponRow | null;
+  customerAddress: string;
+  customerEmail: string;
+  customerName: string;
+  customerNotes: string;
+  customerPhone: string;
+  currency: string;
+  deliveryFee: number;
+  deliveryMethod: DeliveryMethod;
+  discountAmount: number;
+  financialBreakdown: CheckoutFinancialBreakdown;
+  items: DraftLineItem[];
+  shippingMethod: PublicShippingMethod | null;
+  slug: string;
+  store: {
+    currency: string | null;
+    id: string;
+    owner_user_id: string | null;
+    slug: string | null;
+    status: string;
+    user_id: string;
+    workspace_id: string | null;
+  };
+  subtotal: number;
+}) {
+  const { data, error } = await admin
+    .from("store_payment_provider_connections" as never)
+    .select("paypal_merchant_id, connection_status, paypal_status")
+    .eq("store_id" as never, store.id as never)
+    .eq("provider" as never, "paypal" as never)
+    .maybeSingle();
+  const connection = data as StorePayPalConnectionRow | null;
+  const merchantId = connection?.paypal_merchant_id?.trim();
+
+  if (error || !merchantId || connection?.connection_status !== "connected") {
+    return "PayPal is not connected for this store yet.";
+  }
+
+  if (connection.paypal_status === "restricted") {
+    return "This store's PayPal account is restricted. The store owner must complete PayPal onboarding.";
+  }
+
+  if (financialBreakdown.totalAmount <= 0) {
+    return "PayPal payment requires a positive order total.";
+  }
+
+  const persisted = await persistStorefrontOrderDraft({
+    admin,
+    coupon,
+    currency,
+    customerAddress,
+    customerEmail,
+    customerName,
+    customerNotes,
+    customerPhone,
+    deliveryFee,
+    deliveryMethod,
+    discountAmount,
+    financialBreakdown,
+    items,
+    paymentMethod: "paypal",
+    shippingMethod,
+    slug,
+    store,
+    subtotal
+  });
+
+  if (!persisted) {
+    return "Order draft could not be prepared before PayPal checkout. Please try again.";
+  }
+
+  let approvalUrl: string | null = null;
+
+  try {
+    const appUrl = getAppBaseUrl();
+    const paypalOrder = await createPayPalCheckoutOrder({
+      cancelUrl: `${appUrl}/store/${encodeURIComponent(slug)}/cart?checkout=paypal-cancelled&orderId=${encodeURIComponent(persisted.orderId)}&source=${persisted.table}`,
+      currency,
+      merchantId,
+      orderId: persisted.orderId,
+      returnUrl: `${appUrl}/api/store-payments/paypal/checkout/return?orderId=${encodeURIComponent(persisted.orderId)}&source=${persisted.table}&slug=${encodeURIComponent(slug)}`,
+      total: financialBreakdown.totalAmount
+    });
+
+    approvalUrl = paypalOrder.approvalUrl;
+
+    if (!approvalUrl) {
+      return "PayPal approval link could not be created. Please try again.";
+    }
+
+    await recordMonitoringEventSafe({
+      entityId: persisted.orderId,
+      entityType: "order",
+      eventType: "paypal_checkout_order_created",
+      metadata: {
+        merchant_id: merchantId,
+        paypal_order_id: paypalOrder.id,
+        paypal_status: paypalOrder.status,
+        totalAmount: financialBreakdown.totalAmount
+      },
+      storeId: store.id,
+      supabase: admin,
+      workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+    });
+  } catch (error) {
+    console.error("[store-payments][paypal] checkout order failed", {
+      message: error instanceof Error ? error.message : String(error),
+      storeId: store.id
+    });
+    await recordMonitoringEventSafe({
+      entityId: store.id,
+      entityType: "store_payment_provider",
+      eventStatus: "failed",
+      eventType: "paypal_checkout_order_failed",
+      metadata: {
+        error_message: error instanceof Error ? error.message : String(error)
+      },
+      storeId: store.id,
+      supabase: admin,
+      workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+    });
+    return "PayPal checkout could not be started. Please try again.";
+  }
+
+  redirect(approvalUrl);
+}
+
 export async function createPublicStoreOrderAction(
   _prev: PublicStoreOrderState | null,
   formData: FormData
@@ -1778,6 +1931,35 @@ export async function createPublicStoreOrderDraftAction(
 
     return {
       error: cardCheckoutError,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  if (selectedPaymentMethod.method === "paypal") {
+    const paypalCheckoutError = await redirectToStorePayPalCheckout({
+      admin,
+      coupon: couponResult?.ok ? couponResult.coupon : null,
+      customerAddress,
+      customerEmail,
+      customerName,
+      customerNotes,
+      customerPhone,
+      currency,
+      deliveryFee: deliverySelection.deliveryFee,
+      deliveryMethod: deliverySelection.deliveryMethod,
+      discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
+      financialBreakdown,
+      items,
+      shippingMethod,
+      slug,
+      store,
+      subtotal
+    });
+
+    return {
+      error: paypalCheckoutError,
       message: null,
       ok: false,
       orderId: null

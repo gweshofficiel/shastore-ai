@@ -49,7 +49,7 @@ export const storePaymentMethodOptions: Array<{
   },
   {
     defaultDisplayName: "PayPal",
-    description: "Foundation placeholder for future seller-owned PayPal checkout.",
+    description: "Let customers pay through the store's connected PayPal merchant account.",
     method: "paypal",
     title: "PayPal"
   },

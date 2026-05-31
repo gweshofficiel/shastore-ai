@@ -123,7 +123,10 @@ function isPaymentsErrorStatus(value: string | undefined) {
     value === "missing-store" ||
     value === "manual-config-empty" ||
     value === "manual-config-missing-encryption" ||
+    value === "paypal-connect-missing-env" ||
     value === "paypal-connect-config-missing" ||
+    value === "paypal-refresh-missing-env" ||
+    value === "paypal-restricted" ||
     value === "stripe-not-connected"
   );
 }
@@ -150,10 +153,15 @@ function statusMessage(value: string | undefined) {
     "stripe-refresh-required": "Stripe onboarding needs to be restarted.",
     "stripe-restricted": "Stripe account is restricted. Complete Stripe requirements.",
     "paypal-connected": "PayPal account connected.",
+    "paypal-connect-failed": "PayPal onboarding could not be started. Confirm PayPal partner API env vars and account access.",
     "paypal-connect-config-missing": "PayPal partner onboarding URL is not configured.",
+    "paypal-connect-missing-env": "PayPal onboarding could not start because required PayPal partner API env vars are missing.",
     "paypal-disconnected": "PayPal account disconnected.",
     "paypal-disconnect-failed": "PayPal account could not be disconnected.",
-    "paypal-pending": "PayPal onboarding is pending."
+    "paypal-pending": "PayPal onboarding is pending.",
+    "paypal-refresh-failed": "PayPal status could not be refreshed.",
+    "paypal-refresh-missing-env": "PayPal status could not be refreshed because required PayPal partner API env vars are missing.",
+    "paypal-restricted": "PayPal account is restricted. Complete PayPal merchant requirements."
   };
 
   return value ? messages[value] : null;
@@ -559,7 +567,7 @@ export default async function PaymentsPage({
           </div>
           <Card className="border-amber-200 bg-amber-50 p-5">
             <p className="text-sm font-bold leading-6 text-amber-900">
-              PayPal and YouCan Pay are configuration placeholders only. No online payment is processed in this phase, and platform billing Stripe credentials are never used for store customer payments.
+              YouCan Pay is a configuration placeholder only. PayPal uses the connected store merchant account, and platform billing Stripe credentials are never used for store customer payments.
             </p>
           </Card>
           <div>
