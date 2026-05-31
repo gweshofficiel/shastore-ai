@@ -12,6 +12,25 @@ function shouldResolveStorefrontHostname(request: NextRequest) {
   return request.nextUrl.pathname === "/";
 }
 
+function getFormActionDirective() {
+  const sources = new Set<string>(["'self'", "https://shastore-ai.vercel.app", "https://*.vercel.app"]);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (appUrl) {
+    try {
+      const origin = new URL(appUrl.includes("://") ? appUrl : `https://${appUrl}`).origin;
+
+      if (origin.startsWith("https://")) {
+        sources.add(origin);
+      }
+    } catch {
+      // Ignore invalid NEXT_PUBLIC_APP_URL values.
+    }
+  }
+
+  return `form-action ${Array.from(sources).join(" ")}`;
+}
+
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -31,7 +50,7 @@ function applySecurityHeaders(response: NextResponse) {
       "connect-src 'self' https: wss:",
       "frame-ancestors 'self'",
       "base-uri 'self'",
-      "form-action 'self'"
+      getFormActionDirective()
     ].join("; ")
   );
 
