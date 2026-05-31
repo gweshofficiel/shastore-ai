@@ -474,7 +474,7 @@ async function recordOrderEventSafe({
 async function resolveStoreInstanceId(
   admin: NonNullable<ReturnType<typeof createAdminClient>>,
   store: { id: string; slug: string | null }
-) {
+): Promise<string | null> {
   const { data: instanceById, error: instanceByIdError } = await admin
     .from("store_instances" as never)
     .select("id")
@@ -487,19 +487,24 @@ async function resolveStoreInstanceId(
   }
 
   if (store.slug) {
-    const { data: instanceBySlug, error: instanceBySlugError } = await admin
-      .from("store_instances" as never)
-      .select("id")
-      .eq("internal_slug", store.slug)
-      .maybeSingle();
-    const instanceBySlugRow = instanceBySlug as { id: string } | null;
+    const normalizedSlug = store.slug.trim().toLowerCase();
+    const slugCandidates = Array.from(new Set([store.slug.trim(), normalizedSlug].filter(Boolean)));
 
-    if (!instanceBySlugError && instanceBySlugRow?.id) {
-      return instanceBySlugRow.id;
+    for (const slug of slugCandidates) {
+      const { data: instanceBySlug, error: instanceBySlugError } = await admin
+        .from("store_instances" as never)
+        .select("id")
+        .eq("internal_slug", slug)
+        .maybeSingle();
+      const instanceBySlugRow = instanceBySlug as { id: string } | null;
+
+      if (!instanceBySlugError && instanceBySlugRow?.id) {
+        return instanceBySlugRow.id;
+      }
     }
   }
 
-  return store.id;
+  return null;
 }
 
 type DraftLineItem = {
@@ -575,7 +580,8 @@ async function persistStorefrontOrderDraft({
   slug: string;
 }) {
   const workspaceId = store.workspace_id;
-  const storeInstanceId = await resolveStoreInstanceId(admin, store);
+  const resolvedStoreInstanceId = await resolveStoreInstanceId(admin, store);
+  const orderStoreInstanceId = resolvedStoreInstanceId ?? store.id;
   const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
   const orderNumber = generateDraftOrderNumber();
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
@@ -596,7 +602,7 @@ async function persistStorefrontOrderDraft({
       };
 
   const legacyOrderPayload: Record<string, unknown> = {
-    store_instance_id: storeInstanceId,
+    store_instance_id: orderStoreInstanceId,
     order_number: orderNumber,
     customer_name: customerName,
     customer_phone: customerPhone,
@@ -721,7 +727,7 @@ async function persistStorefrontOrderDraft({
   if (orderRow) {
     const legacyItemRows = items.map((item) => ({
       order_id: orderRow.id,
-      store_instance_id: storeInstanceId,
+      ...(resolvedStoreInstanceId ? { store_instance_id: resolvedStoreInstanceId } : {}),
       product_title: item.product_title,
       quantity: item.quantity,
       unit_price: item.price,
@@ -745,7 +751,7 @@ async function persistStorefrontOrderDraft({
       currency: item.currency,
       unit_price: item.price,
       total_price: item.subtotal,
-      store_instance_id: storeInstanceId
+      ...(resolvedStoreInstanceId ? { store_instance_id: resolvedStoreInstanceId } : {})
     }));
 
     let itemsInserted = false;
