@@ -11,6 +11,7 @@ import {
   buildPublicProductSections,
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
+import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
   getCurrentStoreContext,
@@ -615,31 +616,14 @@ export default async function PublicStorePage({
           )}
         </div>
       </section>
-      <footer
-        className="px-4 py-8 sm:px-6 lg:px-8"
-        style={{
-          backgroundColor: theme.footerBackgroundColor,
-          color: theme.footerTextColor
-        }}
-      >
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
-          <p className="text-sm font-bold">
-            {theme.copyrightText || `© ${new Date().getFullYear()} ${store.title}`}
-          </p>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
-            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/privacy`}>
-              Privacy
-            </Link>
-            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/terms`}>
-              Terms
-            </Link>
-            <Link className="transition hover:opacity-100" href={`/store/${store.slug}/refund`}>
-              Refund
-            </Link>
-            <span>Powered by SHASTORE AI</span>
-          </div>
-        </div>
-      </footer>
+      <PublicStoreFooter
+        copyrightText={theme.copyrightText}
+        footerBackgroundColor={theme.footerBackgroundColor}
+        footerTextColor={theme.footerTextColor}
+        pages={preview.pages}
+        storeSlug={store.slug}
+        storeTitle={store.title}
+      />
     </main>
   );
 }

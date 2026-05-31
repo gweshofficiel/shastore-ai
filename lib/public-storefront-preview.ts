@@ -233,13 +233,13 @@ function normalizePageLink(value: unknown): PublicStorefrontPageLink | null {
   };
 }
 
-async function getPublishedPageLinks(client: SupabaseClient, storeId: string) {
+export async function getPublishedPageLinks(client: SupabaseClient, storeId: string) {
   const { data, error } = await client
     .from("store_pages" as never)
-    .select("id, title, slug, page_type")
+    .select("id, title, slug, page_type, created_at")
     .eq("store_id", storeId)
     .eq("status", "published")
-    .order("page_type" as never, { ascending: true } as never)
+    .order("created_at" as never, { ascending: true } as never)
     .order("title" as never, { ascending: true } as never);
 
   if (error) {

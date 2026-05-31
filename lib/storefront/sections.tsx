@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -885,34 +886,16 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
 
 function FooterSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
   const theme = context.preview.themeSettings;
-  const pageLinks = context.preview.pages;
 
   return (
-    <footer
-      className="px-4 py-8 sm:px-6 lg:px-8"
-      style={{
-        backgroundColor: theme.footerBackgroundColor,
-        color: theme.footerTextColor
-      }}
-    >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
-        <p className="text-sm font-bold">
-          {theme.copyrightText || `© ${new Date().getFullYear()} ${context.settings.title}`}
-        </p>
-        <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
-          {pageLinks.map((page) => (
-            <a
-              className="transition hover:opacity-100"
-              href={`/store/${context.store_slug}/pages/${page.slug}`}
-              key={page.id}
-            >
-              {page.title}
-            </a>
-          ))}
-          <span>Powered by SHASTORE AI</span>
-        </div>
-      </div>
-    </footer>
+    <PublicStoreFooter
+      copyrightText={theme.copyrightText}
+      footerBackgroundColor={theme.footerBackgroundColor}
+      footerTextColor={theme.footerTextColor}
+      pages={context.preview.pages}
+      storeSlug={context.store_slug}
+      storeTitle={context.settings.title}
+    />
   );
 }
 
