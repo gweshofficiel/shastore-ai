@@ -9,6 +9,7 @@ import {
 
 export type StorePaymentMethod = "cod" | "paypal" | "stripe" | "whatsapp" | "youcan_pay";
 type ConfigurableStorePaymentMethod = Exclude<StorePaymentMethod, "stripe">;
+export type PublicStorePaymentMethodKey = ConfigurableStorePaymentMethod | "card";
 
 export type StorePaymentMethodRow = {
   config: Record<string, unknown>;
@@ -24,7 +25,8 @@ export type StorePaymentMethodRow = {
 export type PublicStorePaymentMethod = {
   displayName: string;
   instructions: string | null;
-  method: StorePaymentMethod;
+  method: PublicStorePaymentMethodKey;
+  provider_internal?: StorePaymentMethod;
 };
 
 export const storePaymentMethodOptions: Array<{
@@ -150,7 +152,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     return [];
   }
 
-  const enabledMethodNames = new Set<StorePaymentMethod>();
+  const enabledMethodNames = new Set<ConfigurableStorePaymentMethod>();
   const configuredMethods = ((data ?? []) as unknown[])
     .map((value): PublicStorePaymentMethod | null => {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -160,7 +162,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
       const row = value as Record<string, unknown>;
       const method = row.method;
 
-      if (!isPaymentMethod(method)) {
+      if (!isConfigurablePaymentMethod(method)) {
         return null;
       }
 
@@ -175,7 +177,9 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     })
     .filter((method): method is PublicStorePaymentMethod => Boolean(method))
     .filter((method) => {
-      enabledMethodNames.add(method.method);
+      if (method.method !== "card") {
+        enabledMethodNames.add(method.method);
+      }
       return method.method !== "paypal" && method.method !== "youcan_pay";
     });
 
@@ -187,8 +191,9 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
   if (isStripeReady(stripeConnection)) {
     providerMethods.push({
       displayName: "Credit / Debit Card",
-      instructions: "Pay securely by card. Payment processing will use this store's connected Stripe account.",
-      method: "stripe"
+      instructions: "Pay securely with Visa or Mastercard.",
+      method: "card",
+      provider_internal: "stripe"
     });
   }
 
@@ -208,7 +213,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     });
   }
 
-  return [...providerMethods, ...configuredMethods];
+  return [...configuredMethods, ...providerMethods];
 }
 
 export function defaultPaymentDisplayName(method: StorePaymentMethod) {

@@ -103,6 +103,14 @@ function fallbackStorePaymentMethods(settings: BuyerCheckoutPaymentSettings, wha
   }));
 }
 
+function internalPaymentMethod(method: PublicStorePaymentMethod): CommercePaymentMethod {
+  if (method.provider_internal) {
+    return method.provider_internal;
+  }
+
+  return method.method === "card" ? "stripe" : method.method;
+}
+
 export function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     cod: "Cash on Delivery",
@@ -177,7 +185,7 @@ export async function getBuyerCheckoutSource({
       currency: store.currency || "USD",
       items,
       paymentMethodDetails,
-      paymentMethods: paymentMethodDetails.map((method) => method.method),
+      paymentMethods: paymentMethodDetails.map(internalPaymentMethod),
       paymentSettings: settings,
       sellerId: store.user_id,
       sourceId: store.id,

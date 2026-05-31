@@ -43,7 +43,7 @@ function getPaymentMethodDescription(method: CommercePaymentMethod) {
   }
 
   if (method === "stripe") {
-    return "Pay by credit or debit card with this store's connected Stripe account.";
+    return "Pay securely with Visa or Mastercard.";
   }
 
   return "Integration foundation only. The seller will confirm payment instructions after order submission.";
@@ -61,7 +61,9 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
   );
   const checkoutItems = selectedItem ? [{ ...selectedItem, quantity }] : [];
   const total = calculateCheckoutTotal(checkoutItems);
-  const paymentDetails = source.paymentMethodDetails.find((method) => method.method === paymentMethod);
+  const paymentDetails = source.paymentMethodDetails.find(
+    (method) => method.method === paymentMethod || method.provider_internal === paymentMethod
+  );
 
   return (
     <form action={createBuyerCheckoutOrder} className="grid gap-6">
@@ -149,20 +151,20 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
                   type="button"
                 >
                   <span className="block text-sm font-black">
-                    {source.paymentMethodDetails.find((item) => item.method === method)?.displayName || getPaymentMethodLabel(method)}
+                    {source.paymentMethodDetails.find((item) => item.method === method || item.provider_internal === method)?.displayName || getPaymentMethodLabel(method)}
                   </span>
                   <span
                     className={`mt-1 block text-xs font-semibold ${
                       paymentMethod === method ? "text-white/70" : "text-slate-500"
                     }`}
                   >
-                    {source.paymentMethodDetails.find((item) => item.method === method)?.instructions || getPaymentMethodDescription(method)}
+                    {source.paymentMethodDetails.find((item) => item.method === method || item.provider_internal === method)?.instructions || getPaymentMethodDescription(method)}
                   </span>
                 </button>
               ))}
             </div>
             <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-              Stripe seller accounts, PayPal seller accounts, crypto checkout, and digital
+              Online card payments, PayPal seller accounts, crypto checkout, and digital
               delivery can plug into this checkout flow later. No online payment SDK is
               loaded today.
             </div>

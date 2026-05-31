@@ -9,7 +9,10 @@ import {
 import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
-import type { PublicStorePaymentMethod, StorePaymentMethod } from "@/lib/store-payment-methods";
+import type {
+  PublicStorePaymentMethod,
+  PublicStorePaymentMethodKey
+} from "@/lib/store-payment-methods";
 
 type CartItem = {
   categoryName: string | null;
@@ -275,7 +278,7 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
   return formatMoney(numeric, currency);
 }
 
-function paymentMethodDescription(method: StorePaymentMethod) {
+function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
   if (method === "cod") {
     return "Pay the seller when your order is delivered.";
   }
@@ -284,8 +287,8 @@ function paymentMethodDescription(method: StorePaymentMethod) {
     return "Create the order and continue through WhatsApp.";
   }
 
-  if (method === "stripe") {
-    return "Pay by credit or debit card with this store's connected Stripe account.";
+  if (method === "card") {
+    return "Pay securely with Visa or Mastercard.";
   }
 
   return "Foundation method only. No online payment is processed yet.";
@@ -762,7 +765,7 @@ export function CartPageClient({
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponPending, setCouponPending] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<StorePaymentMethod | "">(
+  const [paymentMethod, setPaymentMethod] = useState<PublicStorePaymentMethodKey | "">(
     paymentMethods[0]?.method ?? ""
   );
   const productsById = useMemo(
@@ -1319,6 +1322,18 @@ export function CartPageClient({
                   >
                     {method.instructions || paymentMethodDescription(method.method)}
                   </span>
+                  {method.method === "card" ? (
+                    <span
+                      className={`mt-3 flex flex-wrap gap-2 text-[0.65rem] font-black uppercase tracking-[0.14em] ${
+                        paymentMethod === method.method ? "text-white/80" : "text-slate-500"
+                      }`}
+                    >
+                      <span>Visa</span>
+                      <span>Mastercard</span>
+                      <span>Credit card</span>
+                      <span>Debit card</span>
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>

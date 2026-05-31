@@ -130,7 +130,7 @@ export function providerConnectionByName(
 
 export function isStripeReady(connection: StorePaymentProviderConnection | null) {
   return (
-    (connection?.connection_status === "connected" && connection.charges_enabled) ||
+    (connection?.connection_mode === "connect" && Boolean(connection.stripe_account_id)) ||
     (connection?.connection_mode === "manual" &&
       connection.config_status === "configured" &&
       Boolean(connection.publishable_key))

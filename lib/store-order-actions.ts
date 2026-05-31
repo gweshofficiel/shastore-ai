@@ -16,6 +16,7 @@ import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/li
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import {
   getEnabledPublicStorePaymentMethods,
+  type PublicStorePaymentMethodKey,
   type StorePaymentMethod
 } from "@/lib/store-payment-methods";
 import {
@@ -151,10 +152,14 @@ function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
   return value === "delivery" || value === "pickup" ? value : "none";
 }
 
-function parseStorePaymentMethod(value: FormDataEntryValue | null): StorePaymentMethod | null {
-  return value === "cod" || value === "stripe" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
+function parsePublicStorePaymentMethod(value: FormDataEntryValue | null): PublicStorePaymentMethodKey | null {
+  return value === "card" || value === "cod" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
     ? value
     : null;
+}
+
+function internalStorePaymentMethod(method: PublicStorePaymentMethodKey): StorePaymentMethod {
+  return method === "card" ? "stripe" : method;
 }
 
 function variantOptionsPayload(
@@ -1297,7 +1302,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
-  const requestedPaymentMethod = parseStorePaymentMethod(formData.get("paymentMethod"));
+  const requestedPaymentMethod = parsePublicStorePaymentMethod(formData.get("paymentMethod"));
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
@@ -1362,7 +1367,9 @@ export async function createPublicStoreOrderDraftAction(
 
   const enabledPaymentMethods = await getEnabledPublicStorePaymentMethods(admin, store.id);
 
-  if (!enabledPaymentMethods.some((method) => method.method === requestedPaymentMethod)) {
+  const selectedPaymentMethod = enabledPaymentMethods.find((method) => method.method === requestedPaymentMethod);
+
+  if (!selectedPaymentMethod) {
     return {
       error: "Selected payment method is no longer available.",
       message: null,
@@ -1520,7 +1527,7 @@ export async function createPublicStoreOrderDraftAction(
     deliveryMethod: deliverySelection.deliveryMethod,
     shippingMethod,
     financialBreakdown,
-    paymentMethod: requestedPaymentMethod,
+    paymentMethod: selectedPaymentMethod.provider_internal ?? internalStorePaymentMethod(selectedPaymentMethod.method),
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     subtotal,
