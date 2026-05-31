@@ -339,16 +339,6 @@ function redirectWithStoreError(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
 }
 
-function redirectWithDatabaseError(detail?: string): never {
-  const params = new URLSearchParams({ error: "REAL_DATABASE_ERROR" });
-
-  if (detail) {
-    params.set("detail", detail.slice(0, 500));
-  }
-
-  redirect(`/dashboard/stores/new?${params.toString()}`);
-}
-
 function isStorePlanGatingEnabled() {
   return process.env.STORE_PLAN_GATING_ENABLED !== "false";
 }
@@ -1192,12 +1182,6 @@ async function saveThemeSettings(
   // Theme settings are optional when the table exists but template FK or seeds are missing.
   if (formatted?.code === "23503") {
     return;
-  }
-}
-
-function validateDraftPayload(storeName: string, redirectPath: string) {
-  if (!storeName) {
-    redirectWithStoreError(redirectPath, "Store name is required.");
   }
 }
 

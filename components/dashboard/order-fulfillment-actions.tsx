@@ -23,13 +23,9 @@ const statuses = [
 ];
 
 function isStatusAllowed({
-  currentStatus,
-  deliveryMethod,
   orderStatus,
   status
 }: {
-  currentStatus: string;
-  deliveryMethod?: string | null;
   orderStatus: string;
   status: string;
 }) {
@@ -42,13 +38,11 @@ function isStatusAllowed({
 
 function FulfillmentButton({
   currentStatus,
-  deliveryMethod,
   label,
   orderStatus,
   value
 }: {
   currentStatus: string;
-  deliveryMethod?: string | null;
   label: string;
   orderStatus: string;
   value: string;
@@ -57,7 +51,7 @@ function FulfillmentButton({
   const disabled =
     pending ||
     currentStatus === value ||
-    !isStatusAllowed({ currentStatus, deliveryMethod, orderStatus, status: value });
+    !isStatusAllowed({ orderStatus, status: value });
 
   return (
     <button
@@ -75,7 +69,6 @@ function FulfillmentButton({
 export function OrderFulfillmentActions({
   action,
   currentStatus,
-  deliveryMethod,
   fulfillmentNotes,
   orderId,
   orderStatus,
@@ -126,7 +119,6 @@ export function OrderFulfillmentActions({
         {statuses.map((status) => (
           <FulfillmentButton
             currentStatus={normalizedStatus}
-            deliveryMethod={deliveryMethod}
             key={status.value}
             label={status.label}
             orderStatus={orderStatus}

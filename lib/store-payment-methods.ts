@@ -68,10 +68,6 @@ const defaultLabels = new Map<StorePaymentMethod, string>([
   ["stripe", "Credit / Debit Card"]
 ]);
 
-function isPaymentMethod(value: unknown): value is StorePaymentMethod {
-  return value === "cod" || value === "paypal" || value === "stripe" || value === "whatsapp" || value === "youcan_pay";
-}
-
 function isConfigurablePaymentMethod(value: unknown): value is ConfigurableStorePaymentMethod {
   return value === "cod" || value === "paypal" || value === "whatsapp" || value === "youcan_pay";
 }

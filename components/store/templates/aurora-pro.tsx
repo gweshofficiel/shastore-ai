@@ -365,7 +365,7 @@ export function AuroraProTemplate({ store }: StoreTemplateProps) {
             {testimonials.map(([quote, name, role]) => (
               <article className="rounded-[2rem] border border-stone-200 bg-[#fbf8f0] p-6" key={name}>
                 <p className="text-sm font-black tracking-[0.16em] text-[#c6a15b]">5.0 rating</p>
-                <p className="mt-5 text-xl font-black leading-8 tracking-[-0.03em]">"{quote}"</p>
+                <p className="mt-5 text-xl font-black leading-8 tracking-[-0.03em]">{`"${quote}"`}</p>
                 <p className="mt-6 text-sm font-black">{name}</p>
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-400">{role}</p>
               </article>
