@@ -622,7 +622,7 @@ async function persistStorefrontOrderDraft({
     order_status: "draft",
     payment_method: paymentMethod,
     payment_status: "pending",
-    fulfillment_status: "unfulfilled"
+    fulfillment_status: "pending"
   };
 
   const extendedOrderPayload: Record<string, unknown> = {
@@ -901,7 +901,7 @@ async function persistStorefrontOrderDraft({
     tax_rate: financialBreakdown.taxRate,
     prices_include_tax: financialBreakdown.pricesIncludeTax,
     total_amount: financialBreakdown.totalAmount,
-    fulfillment_status: "unfulfilled",
+    fulfillment_status: "pending",
     items: legacyItems as Json,
     subtotal: discountedSubtotal,
     total,
