@@ -89,6 +89,7 @@ async function resolvePersistedTemplateId(
   supabase: SupabaseClient,
   requestedTemplateId: string
 ) {
+  const library = await getTemplateLibrary();
   const template = await getProductionStoreTemplate(requestedTemplateId || "general-starter");
   const candidates = Array.from(
     new Set([requestedTemplateId, template.id, template.slug, template.template_slug].filter(Boolean))
@@ -107,6 +108,17 @@ async function resolvePersistedTemplateId(
         template: await getProductionStoreTemplate((data as { id: string }).id)
       };
     }
+  }
+
+  const codeTemplate = library.templates.find(
+    (candidate) => candidates.includes(candidate.id) || candidates.includes(candidate.slug)
+  );
+
+  if (codeTemplate) {
+    return {
+      persistedTemplateId: codeTemplate.id,
+      template: codeTemplate
+    };
   }
 
   const { data: fallbackRow } = await supabase

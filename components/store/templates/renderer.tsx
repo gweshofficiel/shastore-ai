@@ -57,6 +57,10 @@ const templateLoaders: Record<string, () => Promise<StoreTemplateComponent>> = {
   "scandinavian-light": () =>
     import("@/components/store/templates/scandinavian-light").then(
       (module) => module.ScandinavianLightTemplate
+    ),
+  "aurora-pro": () =>
+    import("@/components/store/templates/aurora-pro").then(
+      (module) => module.AuroraProTemplate
     )
 };
 

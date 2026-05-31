@@ -8,7 +8,8 @@ export const storeTemplates = [
   "Fashion Editorial",
   "TikTok Product",
   "Modern Gradient",
-  "Scandinavian Light"
+  "Scandinavian Light",
+  "Aurora Pro"
 ] as const;
 
 export type StoreTemplateName = (typeof storeTemplates)[number];
@@ -30,6 +31,7 @@ export const storeTemplateDescriptions: Record<string, string> = {
   "tiktok-product": "Fast social-commerce layout for viral products.",
   "modern-gradient": "Cinematic gradient commerce with glassmorphism sections.",
   "scandinavian-light": "Minimal airy catalog with calm product presentation.",
+  "aurora-pro": "Premium Shopify-grade luxury ecommerce theme with dark hero, gold accents, and polished commercial sections.",
   "minimal-luxury": "Legacy alias for Luxury Dark.",
   "fashion-modern": "Legacy alias for Fashion Editorial.",
   "electronics-dark": "Legacy alias for Gadget Neon.",

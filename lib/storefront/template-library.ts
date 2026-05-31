@@ -48,6 +48,7 @@ const fallbackCategories: TemplateCategoryRecord[] = [
   { category_key: "perfume", description: "Fragrance notes, gifting, and collections.", name: "Perfume", sort_order: 40 },
   { category_key: "restaurant", description: "Menus, specials, and reservations.", name: "Restaurant", sort_order: 50 },
   { category_key: "jewelry", description: "Fine jewelry, collections, and gifting.", name: "Jewelry", sort_order: 60 },
+  { category_key: "premium", description: "Luxury storefronts with editorial merchandising.", name: "Premium", sort_order: 65 },
   { category_key: "general", description: "Flexible storefront layouts for any store.", name: "General", sort_order: 70 }
 ];
 
@@ -114,6 +115,124 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
     }
   };
 });
+
+const auroraProTemplate: StoreTemplateRecord = {
+  ai_customization_config: {
+    recommendedPrompts: [
+      "Adapt Aurora Pro for a luxury ecommerce niche",
+      "Rewrite premium hero and product copy",
+      "Tune gold accent palette for the brand"
+    ]
+  },
+  branding_config: {
+    accentColor: "#c6a15b",
+    primaryColor: "#0b0906",
+    secondaryColor: "#f7f3ea",
+    tone: "luxury"
+  },
+  category: "premium",
+  category_key: "premium",
+  default_theme_settings: {
+    aiTemplateReady: true,
+    announcementText: "Premium launch offer",
+    buttonStyle: "pill",
+    colorPresets: ["black", "gold", "ivory"],
+    ctaStyle: "filled",
+    fontScale: "comfortable",
+    fontStyle: "modern",
+    footerStyle: "bold",
+    heroBackground: "glass",
+    layoutStyle: "premium",
+    multilingualReady: true,
+    navigationStyle: "split",
+    stickyHeader: true,
+    themeColor: "#c6a15b"
+  },
+  description: "A premium Shopify-grade luxury ecommerce template with a dark hero, gold accents, editorial product cards, trust sections, testimonials, newsletter, and professional footer.",
+  id: "aurora-pro",
+  is_active: true,
+  layout_schema: normalizeBuilderPageSchema({
+    sections: [
+      {
+        enabled: true,
+        id: "aurora-pro-hero",
+        order: 10,
+        props: {
+          eyebrow: "Luxury collection 2026",
+          heading: "Premium commerce for curated collections",
+          subheading: "A luxury dark hero with gold accents, polished merchandising, and responsive ecommerce sections."
+        },
+        responsive: {},
+        type: "hero"
+      },
+      {
+        enabled: true,
+        id: "aurora-pro-categories",
+        order: 20,
+        props: {
+          heading: "Shop by category"
+        },
+        responsive: {},
+        type: "categories"
+      },
+      {
+        enabled: true,
+        id: "aurora-pro-products",
+        order: 30,
+        props: {
+          heading: "Best sellers"
+        },
+        responsive: {},
+        type: "products"
+      },
+      {
+        enabled: true,
+        id: "aurora-pro-trust",
+        order: 40,
+        props: {
+          heading: "Premium service promise"
+        },
+        responsive: {},
+        type: "trust"
+      },
+      {
+        enabled: true,
+        id: "aurora-pro-newsletter",
+        order: 50,
+        props: {
+          heading: "Join the private Aurora list"
+        },
+        responsive: {},
+        type: "newsletter"
+      }
+    ],
+    version: 1
+  }),
+  name: "Aurora Pro",
+  niche_category: "premium",
+  preview_image: "https://images.unsplash.com/photo-1491933382434-500287f9b54b?auto=format&fit=crop&w=1400&q=85",
+  preview_config: {
+    devices: ["desktop", "tablet", "mobile"],
+    highlights: ["Luxury dark hero", "Gold CTA buttons", "Premium product cards", "Trust and testimonials"]
+  },
+  preview_gradient: "linear-gradient(135deg,#080705,#c6a15b 48%,#f7f3ea)",
+  preview_summary: "Shopify-grade luxury commerce with a dark cinematic hero, gold accents, clean product sections, trust blocks, testimonials, newsletter, and polished footer.",
+  responsive_preview_config: {
+    desktop: "Luxury hero, category cards, best sellers, promos, trust, testimonials, newsletter, footer",
+    mobile: "Stacked premium hero and compact commercial product cards",
+    tablet: "Balanced two-column luxury commerce layout"
+  },
+  sections_schema: [],
+  slug: "aurora-pro",
+  template_slug: "aurora-pro",
+  template_type: "store",
+  theme_config: {
+    border_radius: "2.5rem",
+    layout_key: "premium",
+    spacing: "spacious",
+    theme_key: "aurora-pro"
+  }
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -264,11 +383,22 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
   const templates = Array.isArray(templateData)
     ? templateData.map(normalizeTemplate).filter((template): template is StoreTemplateRecord => Boolean(template))
     : [];
+  const baseCategories = categories.length ? categories : fallbackCategories;
+  const libraryCategories = baseCategories.some((category) => category.category_key === "premium")
+    ? baseCategories
+    : [
+        ...baseCategories,
+        { category_key: "premium", description: "Luxury storefronts with editorial merchandising.", name: "Premium", sort_order: 65 }
+      ].sort((left, right) => left.sort_order - right.sort_order);
+  const baseTemplates = templates.length ? templates : fallbackTemplates;
+  const libraryTemplates = baseTemplates.some((template) => template.id === auroraProTemplate.id)
+    ? baseTemplates
+    : [...baseTemplates, auroraProTemplate];
 
   return {
-    categories: categories.length ? categories : fallbackCategories,
-    ready: Boolean(!categoryError && !templateError && templates.length),
-    templates: templates.length ? templates : fallbackTemplates
+    categories: libraryCategories,
+    ready: Boolean(!categoryError && !templateError && libraryTemplates.length),
+    templates: libraryTemplates
   };
 }
 
