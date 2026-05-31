@@ -81,10 +81,7 @@ async function persistStripeConnectPending(
   } as never, { onConflict: "store_id,provider" } as never);
 }
 
-export async function POST(request: NextRequest) {
-  const formData = await request.formData();
-  const storeId = String(formData.get("storeId") ?? "").trim();
-
+async function connectStripeAccount(request: NextRequest, storeId: string) {
   if (!storeId) {
     return redirectToDashboard(request, "", "missing-store");
   }
@@ -238,4 +235,17 @@ export async function POST(request: NextRequest) {
     });
     return redirectToDashboard(request, storeId, status);
   }
+}
+
+export async function GET(request: NextRequest) {
+  const storeId = request.nextUrl.searchParams.get("storeId")?.trim() ?? "";
+
+  return connectStripeAccount(request, storeId);
+}
+
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  const storeId = String(formData.get("storeId") ?? "").trim();
+
+  return connectStripeAccount(request, storeId);
 }

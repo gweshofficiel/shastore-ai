@@ -170,20 +170,11 @@ function missingEnvMessage(value: string | undefined) {
 const connectButtonClassName =
   "inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full bg-ink px-5 text-sm font-bold text-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
-function StripeConnectForm({
-  isReconnect,
-  storeId
-}: {
-  isReconnect: boolean;
-  storeId: string;
-}) {
+function StripeConnectLink({ storeId }: { storeId: string }) {
   return (
-    <form action="/api/store-payments/stripe/connect" method="POST">
-      <input name="storeId" type="hidden" value={storeId} />
-      <button className={connectButtonClassName} type="submit">
-        {isReconnect ? "Reconnect Stripe" : "Connect Stripe"}
-      </button>
-    </form>
+    <a className={connectButtonClassName} href={`/api/store-payments/stripe/connect?storeId=${storeId}`}>
+      Connect Stripe
+    </a>
   );
 }
 
@@ -253,10 +244,7 @@ function ProviderConnectionCard({
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
         {provider === "stripe" ? (
-          <StripeConnectForm
-            isReconnect={connection?.connection_status === "connected"}
-            storeId={storeId}
-          />
+          <StripeConnectLink storeId={storeId} />
         ) : (
           <form action={connectPath} method="POST">
             <input name="storeId" type="hidden" value={storeId} />
