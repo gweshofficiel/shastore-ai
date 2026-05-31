@@ -9,16 +9,37 @@ function redirectToDashboard(request: NextRequest, storeId: string, status: stri
   );
 }
 
-function stripeConnectionStatus(account: { charges_enabled?: boolean; details_submitted?: boolean }) {
-  if (account.charges_enabled) {
+function stripeConnectionStatus(account: {
+  charges_enabled?: boolean;
+  payouts_enabled?: boolean;
+  requirements?: {
+    currently_due?: string[] | null;
+  } | null;
+}) {
+  if (account.charges_enabled && account.payouts_enabled) {
     return "connected";
   }
 
-  if (account.details_submitted) {
+  if ((account.requirements?.currently_due ?? []).length > 0) {
     return "restricted";
   }
 
   return "pending";
+}
+
+function stripeAccountMetadata(account: {
+  capabilities?: unknown;
+  details_submitted?: boolean;
+  requirements?: {
+    disabled_reason?: string | null;
+  } | null;
+}) {
+  return {
+    capabilities: account.capabilities ?? null,
+    details_submitted: account.details_submitted ?? false,
+    disabled_reason: account.requirements?.disabled_reason ?? null,
+    requirements: account.requirements ?? null
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -73,6 +94,7 @@ export async function POST(request: NextRequest) {
         charges_enabled: account.charges_enabled,
         connected_at: status === "connected" ? now : null,
         connection_status: status,
+        metadata: stripeAccountMetadata(account),
         onboarding_completed_at: account.details_submitted ? now : null,
         payouts_enabled: account.payouts_enabled,
         updated_at: now
@@ -102,6 +124,7 @@ export async function POST(request: NextRequest) {
       eventType: "payment_provider_status_refreshed",
       metadata: {
         provider: "stripe",
+          requirements_currently_due: account.requirements?.currently_due ?? [],
         status
       },
       storeId,
