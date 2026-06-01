@@ -544,9 +544,13 @@ function NavbarSection({
   const headerLinks = context.preview.navigation.header;
   const blogHref = `/store/${context.preview.store.slug}/blog`;
   const faqHref = `/store/${context.preview.store.slug}/faq`;
+  const contactHref = `/store/${context.preview.store.slug}/contact`;
   const headerHasBlogLink = headerLinks.some((link) => link.href === blogHref);
   const headerHasFaqLink = headerLinks.some(
     (link) => link.href === faqHref || link.href === "#faq" || link.label.toLowerCase() === "faq"
+  );
+  const headerHasContactLink = headerLinks.some(
+    (link) => link.href === contactHref || link.href === "#contact" || link.label.toLowerCase() === "contact"
   );
 
   return (
@@ -610,12 +614,16 @@ function NavbarSection({
               {hasPublishedFaqs && !headerHasFaqLink ? (
                 <Link href={faqHref}>FAQ</Link>
               ) : null}
+              {!headerHasContactLink ? (
+                <Link href={contactHref}>Contact</Link>
+              ) : null}
             </>
           ) : (
             <>
               <a href="#products">Products</a>
               <a href="#categories">Categories</a>
               <a href="#faq">FAQ</a>
+              <Link href={contactHref}>Contact</Link>
               {hasPublishedBlogArticles ? (
                 <Link href={blogHref}>Blog</Link>
               ) : null}
@@ -631,6 +639,12 @@ function NavbarSection({
               FAQ
             </Link>
           ) : null}
+          <Link
+            className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+            href={contactHref}
+          >
+            Contact
+          </Link>
           {hasPublishedBlogArticles ? (
             <Link
               className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"

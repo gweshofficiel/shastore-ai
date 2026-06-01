@@ -380,6 +380,10 @@ export default async function PublicStorePage({
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
   const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
   const headerLinks = preview.navigation.header;
+  const contactHref = `/store/${store.slug}/contact`;
+  const headerHasContactLink = headerLinks.some(
+    (link) => link.href === contactHref || link.href === "#contact" || link.label.toLowerCase() === "contact"
+  );
   const hasContactData = Boolean(
     store.whatsappNumber ||
       supportEmail ||
@@ -534,9 +538,20 @@ export default async function PublicStorePage({
                     {link.label}
                   </a>
                 ))}
+                {!headerHasContactLink ? (
+                  <Link className="transition hover:text-ink" href={contactHref}>
+                    Contact
+                  </Link>
+                ) : null}
               </nav>
             ) : null}
             <div className="flex flex-wrap gap-2">
+              <Link
+                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                href={contactHref}
+              >
+                Contact
+              </Link>
               {hasPublishedFaqs ? (
                 <Link
                   className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
