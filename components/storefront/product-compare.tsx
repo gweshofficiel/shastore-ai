@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
+import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CompareScope = {
@@ -164,7 +165,7 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
 
 function availabilityLabel(product: PublicStorefrontProduct) {
   if (!product.trackInventory) {
-    return "Available";
+    return product.variants.length ? "See options" : "Inventory not tracked";
   }
 
   const stock = typeof product.stockQuantity === "number"
@@ -319,6 +320,7 @@ export function ComparePageClient({
                   {product.description || "No description has been added for this product yet."}
                 </p>
                 <ProductSalesProof compact product={product} />
+                <ProductStockUrgency className="mt-3" compact product={product} />
               </div>
               <dl className="grid gap-3 text-sm">
                 <div className="rounded-2xl bg-slate-50 p-3">

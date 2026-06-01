@@ -4,6 +4,7 @@ import { CompareButton, CompareNavLink } from "@/components/storefront/product-c
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
+import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -285,6 +286,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                           {formatProductPrice(product.price, product.priceLabel, currency)}
                         </p>
                         <ProductSalesProof compact product={product} />
+                        <ProductStockUrgency className="mt-3" compact product={product} />
                       </div>
                       <ProductQuickView
                         currency={currency}

@@ -6,6 +6,7 @@ import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
+import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
@@ -180,6 +181,7 @@ export function RecentlyViewedProducts({
                     {formatProductPrice(product.price, product.priceLabel, productCurrency)}
                   </p>
                   <ProductSalesProof compact product={product} />
+                  <ProductStockUrgency className="mt-3" compact product={product} />
                 </div>
                 <ProductQuickView
                   currency={productCurrency}
