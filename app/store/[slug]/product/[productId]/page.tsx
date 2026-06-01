@@ -280,6 +280,12 @@ export default async function PublicProductDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link
+                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                href={`/store/${preview.store.slug}/account`}
+              >
+                Account
+              </Link>
               <CartNavLink
                 currency={preview.store.currency}
                 slug={preview.store.slug}
