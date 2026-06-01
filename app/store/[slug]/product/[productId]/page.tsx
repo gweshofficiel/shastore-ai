@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BackInStockRequest } from "@/components/storefront/back-in-stock-request";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
@@ -444,6 +445,11 @@ export default async function PublicProductDetailPage({
               </p>
               <ProductSalesProof product={product} />
               <ProductStockUrgency className="mt-5" product={product} />
+              <BackInStockRequest
+                product={product}
+                slug={preview.store.slug}
+                storeId={preview.store.id}
+              />
 
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
                 <AddToCartButton
