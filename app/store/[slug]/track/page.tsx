@@ -281,6 +281,7 @@ async function loadTrackedOrder({
         items,
         order_status: order.order_status ?? "draft",
         payment_status: order.payment_status ?? "pending",
+        source: "orders" as const,
         store_id: preview.store.id,
         total: order.total_amount ?? order.total,
         workspace_id: order.workspace_id ?? preview.store.workspaceId ?? null
@@ -327,6 +328,7 @@ async function loadTrackedOrder({
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
         payment_status: storeOrder.payment_status ?? "pending",
+        source: "store_orders" as const,
         store_id: preview.store.id,
         total: storeOrder.total_amount ?? storeOrder.total,
         workspace_id: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
@@ -577,6 +579,12 @@ export default async function PublicOrderTrackingPage({
                 <p>Delivery method: {deliveryMethodLabel(order.delivery_method)}</p>
                 <p>Delivery fee: {formatMoney(order.delivery_fee ?? 0, order.currency)}</p>
               </div>
+              <Link
+                className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-ink px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                href={`/store/${slug}/receipt/${order.id}?phone=${encodeURIComponent(phone)}&source=${encodeURIComponent(order.source)}`}
+              >
+                View receipt
+              </Link>
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
                 Payments are disabled. This page only shows public tracking status.
               </div>

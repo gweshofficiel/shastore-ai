@@ -592,9 +592,17 @@ export default async function OrderDetailPage({
           description={`Order ${orderReference(order.id)} from ${store?.name ?? "this store"}.`}
           title="Order details"
         />
-        <ButtonLink href="/dashboard/orders" variant="secondary">
-          Back to orders
-        </ButtonLink>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink
+            href={`/store/${store?.slug ?? order.store_id}/receipt/${order.id}?phone=${encodeURIComponent(order.customer_phone)}&source=${encodeURIComponent(order.source)}`}
+            variant="secondary"
+          >
+            Invoice / Receipt
+          </ButtonLink>
+          <ButtonLink href="/dashboard/orders" variant="secondary">
+            Back to orders
+          </ButtonLink>
+        </div>
       </div>
 
       {message ? (

@@ -490,6 +490,14 @@ export default async function PublicOrderConfirmationPage({
             >
               Track this order
             </Link>
+            {order.customer_phone ? (
+              <Link
+                className="inline-flex h-11 items-center justify-center rounded-full bg-slate-100 px-5 text-sm font-black text-muted transition hover:bg-slate-200"
+                href={`/store/${slug}/receipt/${order.id}?phone=${encodeURIComponent(order.customer_phone)}&source=${encodeURIComponent(order.source)}`}
+              >
+                View receipt
+              </Link>
+            ) : null}
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -595,6 +603,14 @@ export default async function PublicOrderConfirmationPage({
                 </p>
               ) : null}
             </div>
+            {order.customer_phone ? (
+              <Link
+                className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-ink px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                href={`/store/${slug}/receipt/${order.id}?phone=${encodeURIComponent(order.customer_phone)}&source=${encodeURIComponent(order.source)}`}
+              >
+                View receipt
+              </Link>
+            ) : null}
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
               Payments are disabled. The seller will confirm this order manually.
             </div>
