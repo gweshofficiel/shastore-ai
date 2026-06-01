@@ -74,6 +74,19 @@ type AppliedCoupon = {
   discountAmount: number;
 };
 
+type SavedCheckoutAddress = {
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  country: string;
+  full_name: string | null;
+  id: string;
+  is_default: boolean;
+  notes: string | null;
+  phone: string | null;
+  postal_code: string | null;
+};
+
 type CartUpdatedDetail = {
   slug: string;
   storeId: string;
@@ -255,6 +268,22 @@ function parsePrice(value: number | string | null) {
 
   const parsed = Number(value.replace(/[^0-9.-]+/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function formatSavedAddress(address: SavedCheckoutAddress) {
+  return [
+    address.full_name,
+    address.phone,
+    address.address_line1,
+    address.address_line2,
+    [address.city, address.country, address.postal_code].filter(Boolean).join(", ")
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function formatMoney(value: number, currency: string) {
@@ -772,6 +801,14 @@ export function CartPageClient({
   const [paymentMethod, setPaymentMethod] = useState<PublicStorePaymentMethodKey | "">(
     paymentMethods[0]?.method ?? ""
   );
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerNotes, setCustomerNotes] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<SavedCheckoutAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [addressMessage, setAddressMessage] = useState<string | null>(null);
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products]
@@ -836,6 +873,75 @@ export function CartPageClient({
     setShippingMethodId(nextMethod.id);
     setDeliveryMethod(nextMethod.type === "local_pickup" ? "pickup" : "delivery");
   }, [shippingMethodId, shippingMethods]);
+
+  useEffect(() => {
+    const normalizedPhone = normalizePhone(customerPhone);
+
+    if (!checkoutStarted || normalizedPhone.length < 4) {
+      setSavedAddresses([]);
+      setSelectedAddressId("");
+      setAddressMessage(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      const params = new URLSearchParams({
+        phone: customerPhone,
+        slug,
+        storeId
+      });
+
+      try {
+        const response = await fetch(`/api/store-addresses?${params.toString()}`, {
+          cache: "no-store"
+        });
+        const payload = await response.json().catch(() => null);
+        const addresses = Array.isArray(payload?.addresses)
+          ? (payload.addresses as SavedCheckoutAddress[])
+          : [];
+
+        if (cancelled) {
+          return;
+        }
+
+        setSavedAddresses(addresses);
+        setAddressMessage(addresses.length ? null : "No saved addresses found for this phone.");
+      } catch {
+        if (!cancelled) {
+          setSavedAddresses([]);
+          setAddressMessage("Saved addresses could not be loaded.");
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [checkoutStarted, customerPhone, slug, storeId]);
+
+  function applySavedAddress(addressId: string) {
+    setSelectedAddressId(addressId);
+
+    if (!addressId) {
+      return;
+    }
+
+    const address = savedAddresses.find((candidate) => candidate.id === addressId);
+
+    if (!address) {
+      return;
+    }
+
+    setCustomerName(address.full_name ?? customerName);
+    setCustomerPhone(address.phone ?? customerPhone);
+    setCustomerAddress(formatSavedAddress(address));
+
+    if (address.notes && !customerNotes) {
+      setCustomerNotes(address.notes);
+    }
+  }
 
   function updateQuantity(itemId: string, quantity: number) {
     if (quantity < 1) {
@@ -1266,8 +1372,10 @@ export function CartPageClient({
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               name="customerName"
+              onChange={(event) => setCustomerName(event.target.value)}
               placeholder="Full name"
               required
+              value={customerName}
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
@@ -1275,8 +1383,10 @@ export function CartPageClient({
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               name="customerPhone"
+              onChange={(event) => setCustomerPhone(event.target.value)}
               placeholder="+15551234567"
               required
+              value={customerPhone}
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
@@ -1284,16 +1394,46 @@ export function CartPageClient({
             <input
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               name="customerEmail"
+              onChange={(event) => setCustomerEmail(event.target.value)}
               placeholder="customer@example.com"
               type="email"
+              value={customerEmail}
             />
           </label>
+          {savedAddresses.length ? (
+            <label className="grid gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-ink">
+              <span>Use a saved address</span>
+              <select
+                className="h-11 rounded-2xl border border-emerald-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                onChange={(event) => applySavedAddress(event.target.value)}
+                value={selectedAddressId}
+              >
+                <option value="">Enter address manually</option>
+                {savedAddresses.map((address) => (
+                  <option key={address.id} value={address.id}>
+                    {address.is_default ? "Default - " : ""}
+                    {address.address_line1}
+                    {address.city ? `, ${address.city}` : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-semibold leading-5 text-emerald-800">
+                Selecting an address fills the same checkout fields below. You can still edit them before placing the order.
+              </span>
+            </label>
+          ) : addressMessage ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-muted">
+              {addressMessage}
+            </div>
+          ) : null}
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Address optional</span>
             <textarea
               className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               name="customerAddress"
+              onChange={(event) => setCustomerAddress(event.target.value)}
               placeholder="Delivery address"
+              value={customerAddress}
             />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-ink">
@@ -1301,7 +1441,9 @@ export function CartPageClient({
             <textarea
               className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
               name="customerNotes"
+              onChange={(event) => setCustomerNotes(event.target.value)}
               placeholder="Delivery notes, preferred time, or special requests"
+              value={customerNotes}
             />
           </label>
           <div className="grid gap-2">
