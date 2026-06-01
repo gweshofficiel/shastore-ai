@@ -11,6 +11,7 @@ import { AddToCartButton, CartNavLink } from "@/components/storefront/public-sto
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { getPublicUrl } from "@/lib/deployment/config";
 import { submitProductQuestion } from "@/lib/product-question-actions";
 import { getApprovedProductQuestions } from "@/lib/product-questions";
 import { submitProductReview } from "@/lib/product-review-actions";
@@ -55,6 +56,102 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
     currency: currency || "USD",
     style: "currency"
   }).format(numericPrice);
+}
+
+function productPagePath(storeSlug: string, product: PublicStorefrontProduct) {
+  return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
+}
+
+function productCanonicalUrl(storeSlug: string, product: PublicStorefrontProduct) {
+  return product.canonicalUrl || getPublicUrl(productPagePath(storeSlug, product));
+}
+
+function absolutePublicUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  return getPublicUrl(value);
+}
+
+function numericProductPrice(price: number | string | null) {
+  const numericPrice = typeof price === "number" ? price : Number(price ?? NaN);
+  return Number.isFinite(numericPrice) && numericPrice >= 0 ? numericPrice : null;
+}
+
+function productAvailability(product: PublicStorefrontProduct) {
+  if (product.inventoryStatus === "out_of_stock") {
+    return "https://schema.org/OutOfStock";
+  }
+
+  if (product.inventoryStatus === "in_stock" || product.inventoryStatus === "low_stock") {
+    return "https://schema.org/InStock";
+  }
+
+  if (product.variants.length) {
+    const activeVariants = product.variants.filter((variant) => variant.status === "active");
+    const hasAvailableVariant = activeVariants.some((variant) => (variant.stockQuantity ?? 0) > 0);
+
+    return hasAvailableVariant ? "https://schema.org/InStock" : "https://schema.org/OutOfStock";
+  }
+
+  if (product.trackInventory) {
+    return (product.stockQuantity ?? 0) > 0
+      ? "https://schema.org/InStock"
+      : "https://schema.org/OutOfStock";
+  }
+
+  return null;
+}
+
+function productJsonLd({
+  currency,
+  product,
+  storeTitle,
+  url
+}: {
+  currency: string;
+  product: PublicStorefrontProduct;
+  storeTitle: string;
+  url: string;
+}) {
+  const image = absolutePublicUrl(product.ogImageUrl || product.imageUrl);
+  const price = numericProductPrice(product.price);
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    brand: {
+      "@type": "Brand",
+      name: storeTitle
+    },
+    description: product.seoDescription || product.description || `Product from ${storeTitle}`,
+    image: image ? [image] : undefined,
+    name: product.title,
+    sku: product.sku || undefined,
+    url
+  };
+
+  if (price !== null) {
+    const availability = productAvailability(product);
+
+    jsonLd.offers = {
+      "@type": "Offer",
+      availability: availability ?? undefined,
+      price: String(price),
+      priceCurrency: currency,
+      url
+    };
+  }
+
+  return jsonLd;
+}
+
+function safeJsonLd(value: Record<string, unknown>) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function productGalleryUrls(gallery: unknown[]) {
@@ -221,10 +318,11 @@ export async function generateMetadata({
     `Order ${product.title} from ${preview.store.title}, powered by SHASTORE AI.`;
   const ogTitle = product.ogTitle || title;
   const ogDescription = product.ogDescription || description;
-  const ogImage = product.ogImageUrl || product.imageUrl;
+  const ogImage = absolutePublicUrl(product.ogImageUrl || product.imageUrl);
+  const canonicalUrl = productCanonicalUrl(preview.store.slug, product);
 
   return {
-    alternates: product.canonicalUrl ? { canonical: product.canonicalUrl } : undefined,
+    alternates: { canonical: canonicalUrl },
     title: `${title} | ${preview.store.title}`,
     keywords: product.seoKeywords || undefined,
     description,
@@ -232,12 +330,15 @@ export async function generateMetadata({
       title: ogTitle,
       description: ogDescription,
       images: ogImage ? [{ url: ogImage }] : undefined,
+      url: canonicalUrl,
+      siteName: preview.store.title,
       type: "website"
     },
     twitter: {
       card: ogImage ? "summary_large_image" : "summary",
       title: ogTitle,
-      description: ogDescription
+      description: ogDescription,
+      images: ogImage ? [ogImage] : undefined
     },
     robots: { follow: !product.noindex, index: !product.noindex }
   };
@@ -328,6 +429,13 @@ export default async function PublicProductDetailPage({
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
   const galleryUrls = productGalleryUrls(product.gallery);
   const currency = product.currency || preview.store.currency;
+  const canonicalUrl = productCanonicalUrl(preview.store.slug, product);
+  const structuredProductData = productJsonLd({
+    currency,
+    product,
+    storeTitle: preview.store.title,
+    url: canonicalUrl
+  });
   const relatedProducts = resolveRelatedProducts(preview.products, product);
   const { reviews, summary } = await getApprovedProductReviews({
     productId: product.id,
@@ -345,6 +453,10 @@ export default async function PublicProductDetailPage({
       className={`min-h-screen text-ink ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
       style={{ backgroundColor: `${theme.primaryColor}08` }}
     >
+      <script
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(structuredProductData) }}
+        type="application/ld+json"
+      />
       <section className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <header
