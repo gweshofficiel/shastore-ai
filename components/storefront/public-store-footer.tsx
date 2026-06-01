@@ -1,11 +1,19 @@
 import Link from "next/link";
 import type { PublicStorefrontPageLink } from "@/lib/public-storefront-preview";
 import type { PublicStoreNavigationLink } from "@/lib/storefront/navigation";
+import {
+  buildManagedFooterLinks,
+  defaultStoreFooterLinkSettings,
+  type StoreFooterLinkSettings
+} from "@/lib/store-footer-links";
 
 type PublicStoreFooterProps = {
   copyrightText?: string;
   footerBackgroundColor: string;
+  footerLinkSettings?: StoreFooterLinkSettings;
   footerTextColor: string;
+  hasPublishedBlogArticles?: boolean;
+  hasPublishedFaqs?: boolean;
   navigationLinks?: PublicStoreNavigationLink[];
   pages: PublicStorefrontPageLink[];
   storeSlug: string;
@@ -15,22 +23,46 @@ type PublicStoreFooterProps = {
 export function PublicStoreFooter({
   copyrightText,
   footerBackgroundColor,
+  footerLinkSettings = defaultStoreFooterLinkSettings,
   footerTextColor,
+  hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false,
   navigationLinks = [],
   pages,
   storeSlug,
   storeTitle
 }: PublicStoreFooterProps) {
-  const pageFallbackLinks = pages.map((page) => ({
-    href: `/store/${storeSlug}/pages/${page.slug}`,
-    id: page.id,
-    label: page.title
-  }));
-  const navigationHrefs = new Set(navigationLinks.map((link) => link.href));
+  const managedLinks = buildManagedFooterLinks({
+    hasPublishedBlogArticles,
+    hasPublishedFaqs,
+    pages,
+    settings: footerLinkSettings,
+    storeSlug
+  });
+  const managedHrefs = new Set(managedLinks.map((link) => link.href.toLowerCase()));
+  const managedLabels = new Set(managedLinks.map((link) => link.label.toLowerCase()));
   const links = [
+    ...managedLinks,
     ...navigationLinks,
-    ...pageFallbackLinks.filter((link) => !navigationHrefs.has(link.href))
-  ];
+    ...pages.map((page) => ({
+      href: `/store/${storeSlug}/pages/${page.slug}`,
+      id: page.id,
+      label: page.title
+    }))
+  ].filter((link, index, allLinks) => {
+    const hrefKey = link.href.toLowerCase();
+    const labelKey = link.label.toLowerCase();
+
+    if (index < managedLinks.length) {
+      return true;
+    }
+
+    if (managedHrefs.has(hrefKey) || managedLabels.has(labelKey)) {
+      return false;
+    }
+
+    return allLinks.findIndex((item) => item.href.toLowerCase() === hrefKey || item.label.toLowerCase() === labelKey) === index;
+  });
 
   return (
     <footer
@@ -54,15 +86,6 @@ export function PublicStoreFooter({
               {link.label}
             </Link>
           ))}
-          <Link className="transition hover:opacity-100" href={`/store/${storeSlug}/privacy`}>
-            Privacy
-          </Link>
-          <Link className="transition hover:opacity-100" href={`/store/${storeSlug}/terms`}>
-            Terms
-          </Link>
-          <Link className="transition hover:opacity-100" href={`/store/${storeSlug}/refund`}>
-            Refund
-          </Link>
           <span>Powered by SHASTORE AI</span>
         </div>
       </div>

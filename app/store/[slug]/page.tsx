@@ -20,6 +20,7 @@ import { loadPublishedStoreBlogArticlesForStore } from "@/lib/store-blog-public"
 import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
+import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
 import {
   getCurrentStoreContext,
   resolveTenantStore
@@ -392,6 +393,7 @@ export default async function PublicStorePage({
   const hasPublishedBlogArticles = publishedArticles.length > 0;
   const publishedFaqs = await loadPublishedStoreFaqsForStore(preview.store.id, 8);
   const hasPublishedFaqs = publishedFaqs.length > 0;
+  const footerLinkSettings = await loadStoreFooterLinkSettings(preview.store.id);
   const filteredPreview = {
     ...preview,
     products: discovery.products
@@ -834,6 +836,7 @@ export default async function PublicStorePage({
       <DynamicSectionLoader
         context={filteredContext}
         fallback={fallbackStorefront}
+        footerLinkSettings={footerLinkSettings}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
         publishedFaqs={publishedFaqs}
@@ -999,7 +1002,10 @@ export default async function PublicStorePage({
       <PublicStoreFooter
         copyrightText={theme.copyrightText}
         footerBackgroundColor={theme.footerBackgroundColor}
+        footerLinkSettings={footerLinkSettings}
         footerTextColor={theme.footerTextColor}
+        hasPublishedBlogArticles={hasPublishedBlogArticles}
+        hasPublishedFaqs={hasPublishedFaqs}
         navigationLinks={preview.navigation.footer}
         pages={preview.pages}
         storeSlug={store.slug}

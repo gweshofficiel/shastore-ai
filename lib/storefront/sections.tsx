@@ -22,6 +22,10 @@ import {
 import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
 import type { PublicStoreFaq } from "@/lib/store-faq-public";
+import {
+  defaultStoreFooterLinkSettings,
+  type StoreFooterLinkSettings
+} from "@/lib/store-footer-links";
 
 export type StoreSectionType =
   | "hero"
@@ -527,6 +531,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
 
 type SectionRenderProps = {
   context: StoreTenantContext;
+  footerLinkSettings?: StoreFooterLinkSettings;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -923,14 +928,22 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
   );
 }
 
-function FooterSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+function FooterSection({
+  context,
+  footerLinkSettings = defaultStoreFooterLinkSettings,
+  hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false
+}: SectionRenderProps) {
   const theme = context.preview.themeSettings;
 
   return (
     <PublicStoreFooter
       copyrightText={theme.copyrightText}
       footerBackgroundColor={theme.footerBackgroundColor}
+      footerLinkSettings={footerLinkSettings}
       footerTextColor={theme.footerTextColor}
+      hasPublishedBlogArticles={hasPublishedBlogArticles}
+      hasPublishedFaqs={hasPublishedFaqs}
       navigationLinks={context.preview.navigation.footer}
       pages={context.preview.pages}
       storeSlug={context.store_slug}
@@ -999,12 +1012,14 @@ const sectionRegistry: Record<
 
 export function SectionRenderer({
   context,
+  footerLinkSettings = defaultStoreFooterLinkSettings,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
   publishedFaqs = [],
   section
 }: {
   context: StoreTenantContext;
+  footerLinkSettings?: StoreFooterLinkSettings;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -1019,6 +1034,7 @@ export function SectionRenderer({
   return (
     <Renderer
       context={context}
+      footerLinkSettings={footerLinkSettings}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}
       publishedFaqs={publishedFaqs}
@@ -1030,12 +1046,14 @@ export function SectionRenderer({
 export async function DynamicSectionLoader({
   context,
   fallback,
+  footerLinkSettings = defaultStoreFooterLinkSettings,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
   publishedFaqs = []
 }: {
   context: StoreTenantContext;
   fallback: ReactNode;
+  footerLinkSettings?: StoreFooterLinkSettings;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -1066,6 +1084,7 @@ export async function DynamicSectionLoader({
       {layout.sections.map((section) => (
         <SectionRenderer
           context={context}
+          footerLinkSettings={footerLinkSettings}
           hasPublishedBlogArticles={hasPublishedBlogArticles}
           hasPublishedFaqs={hasPublishedFaqs}
           key={section.id}
