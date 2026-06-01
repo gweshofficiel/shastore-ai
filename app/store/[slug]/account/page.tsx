@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CustomerAddressBook } from "@/components/storefront/customer-address-book";
 import { CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistPageClient } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -210,7 +211,7 @@ export async function generateMetadata({
 
   return {
     title: `Account | ${preview.store.title}`,
-    description: `View recent orders and wishlist products from ${preview.store.title}.`,
+    description: `View recent orders, saved addresses, and wishlist products from ${preview.store.title}.`,
     robots: { follow: false, index: false }
   };
 }
@@ -283,9 +284,9 @@ export default async function CustomerAccountPage({
         <section className="mb-6 grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1fr_420px]">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Customer account</p>
-            <h1 className="mt-2 text-4xl font-black tracking-[-0.05em] text-ink">Orders and wishlist</h1>
+            <h1 className="mt-2 text-4xl font-black tracking-[-0.05em] text-ink">Orders, addresses, and wishlist</h1>
             <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">
-              Enter the phone number used at checkout to view recent orders for this store. Wishlist products are scoped to this store and browser session.
+              Enter the phone number used at checkout to view recent orders and manage delivery addresses for this store. Wishlist products are scoped to this store and browser session.
             </p>
           </div>
           <form className="grid gap-3" method="get">
@@ -359,6 +360,22 @@ export default async function CustomerAccountPage({
               storeId={preview.store.id}
             />
           </aside>
+        </section>
+
+        <section className="mt-6 grid gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Address book</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">Delivery addresses</h2>
+          </div>
+          {phone ? (
+            <CustomerAddressBook
+              customerPhone={phone}
+              slug={preview.store.slug}
+              storeId={preview.store.id}
+            />
+          ) : (
+            <EmptyCard title="Enter your phone number" text="Use the account lookup above before adding saved delivery addresses." />
+          )}
         </section>
       </div>
     </main>
