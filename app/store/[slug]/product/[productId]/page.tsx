@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ProductBadges } from "@/components/storefront/product-badges";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -366,7 +367,8 @@ export default async function PublicProductDetailPage({
           </header>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
-            <div className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)]">
+            <div className="relative overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)]">
+              <ProductBadges className="absolute left-5 top-5 z-10" product={product} />
               {product.imageUrl ? (
                 <img
                   alt={product.title}
@@ -398,6 +400,7 @@ export default async function PublicProductDetailPage({
             </div>
 
             <article className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)] sm:p-8 lg:p-10">
+              <ProductBadges className="mb-4" product={product} />
               {isPublicCategoryTitle(product.categoryName) ? (
                 <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                   {product.categoryName}
@@ -479,7 +482,8 @@ export default async function PublicProductDetailPage({
                       className="group overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
                       key={relatedProduct.id}
                     >
-                      <Link href={relatedHref}>
+                      <Link className="relative block" href={relatedHref}>
+                        <ProductBadges className="absolute left-3 top-3 z-10" product={relatedProduct} />
                         {relatedProduct.imageUrl ? (
                           <img
                             alt={relatedProduct.title}

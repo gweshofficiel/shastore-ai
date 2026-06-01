@@ -4,6 +4,7 @@ import {
   StorefrontTenantContextScript,
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
+import { ProductBadges } from "@/components/storefront/product-badges";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
@@ -619,7 +620,8 @@ export default async function PublicStorePage({
                     className="group flex flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
                     key={product.id}
                   >
-                    <Link href={publicProductHref(store.slug, product)}>
+                    <Link className="relative block" href={publicProductHref(store.slug, product)}>
+                      <ProductBadges className="absolute left-4 top-4 z-10" product={product} />
                       {primaryImage ? (
                         <img
                           alt={product.title}

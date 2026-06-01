@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ProductBadges } from "@/components/storefront/product-badges";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
@@ -144,7 +145,8 @@ export function RecentlyViewedProducts({
               className="group overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
               key={product.id}
             >
-              <Link href={productHref}>
+              <Link className="relative block" href={productHref}>
+                <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
                 {product.imageUrl ? (
                   <img
                     alt={product.title}

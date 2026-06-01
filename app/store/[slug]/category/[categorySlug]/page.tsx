@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ProductBadges } from "@/components/storefront/product-badges";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -251,15 +252,18 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                       className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm"
                       key={product.id}
                     >
-                      {product.imageUrl ? (
-                        <img
-                          alt={product.title}
-                          className="aspect-square w-full rounded-[1.5rem] object-cover"
-                          src={product.imageUrl}
-                        />
-                      ) : (
-                        <div className="aspect-square rounded-[1.5rem] bg-slate-100" />
-                      )}
+                      <Link className="relative block" href={detailsHref}>
+                        <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
+                        {product.imageUrl ? (
+                          <img
+                            alt={product.title}
+                            className="aspect-square w-full rounded-[1.5rem] object-cover"
+                            src={product.imageUrl}
+                          />
+                        ) : (
+                          <div className="aspect-square rounded-[1.5rem] bg-slate-100" />
+                        )}
+                      </Link>
                       <div>
                         <Link href={`/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`}>
                           <h2 className="text-xl font-black tracking-[-0.03em] text-ink transition hover:text-slate-600">

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { ProductBadges } from "@/components/storefront/product-badges";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -382,8 +383,10 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                 key={product.id}
               >
                 <Link
+                  className="relative block"
                   href={publicProductHref(context.preview.store.slug, product)}
                 >
+                  <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
                   {primaryImage ? (
                     <img
                       alt={product.title}
