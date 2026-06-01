@@ -5,6 +5,7 @@ import {
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
@@ -693,6 +694,13 @@ export default async function PublicStorePage({
                         ) : null}
                       </div>
                       <div className="mt-5 grid gap-2">
+                        <ProductQuickView
+                          currency={currency}
+                          detailsHref={detailsHref}
+                          product={product}
+                          slug={store.slug}
+                          storeId={store.id}
+                        />
                         <AddToCartButton
                           currency={currency}
                           detailsHref={detailsHref}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -519,6 +520,13 @@ export default async function PublicProductDetailPage({
                             {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency)}
                           </p>
                         </div>
+                        <ProductQuickView
+                          currency={relatedCurrency}
+                          detailsHref={relatedHref}
+                          product={relatedProduct}
+                          slug={preview.store.slug}
+                          storeId={preview.store.id}
+                        />
                         <AddToCartButton
                           currency={relatedCurrency}
                           detailsHref={relatedHref}

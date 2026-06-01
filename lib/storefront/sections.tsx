@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -460,6 +461,13 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                     </span>
                   </div>
                   <div className="mt-5 grid gap-2">
+                    <ProductQuickView
+                      currency={currency}
+                      detailsHref={detailsHref}
+                      product={product}
+                      slug={context.preview.store.slug}
+                      storeId={context.preview.store.id}
+                    />
                     <AddToCartButton
                       currency={currency}
                       detailsHref={detailsHref}

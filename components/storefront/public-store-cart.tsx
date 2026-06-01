@@ -495,6 +495,86 @@ function cartItemAvailability(
   return isProductBlocked(product, item.quantity);
 }
 
+export function addProductToStoreCart({
+  currency,
+  product,
+  quantity = 1,
+  slug,
+  storeId,
+  variantId = null
+}: {
+  currency: string;
+  product: PublicStorefrontProduct;
+  quantity?: number;
+  slug: string;
+  storeId: string;
+  variantId?: string | null;
+}) {
+  const scope = { currency, slug, storeId };
+  const selectedVariant = variantId
+    ? product.variants.find((variant) => variant.id === variantId) ?? null
+    : product.variants[0] ?? null;
+
+  if (product.variants.length && !selectedVariant) {
+    return { message: "Choose an available option.", ok: false };
+  }
+
+  const requestedQuantity = Math.max(1, Math.floor(quantity));
+  const current = readStoreCart(scope);
+  const lineId = cartLineId(product.id, selectedVariant?.id);
+  const existing = current.find(
+    (item) =>
+      item.id === lineId ||
+      (item.productId === product.id && item.variantId === (selectedVariant?.id ?? null))
+  );
+  const currentQuantity = existing?.quantity ?? 0;
+  const availability = selectedVariant
+    ? isVariantBlocked(selectedVariant, currentQuantity + requestedQuantity)
+    : product.variants.length
+      ? {
+          blocked: true as const,
+          message: "Choose an available option.",
+          availableStock: 0
+        }
+      : isProductBlocked(product, currentQuantity + requestedQuantity);
+
+  if (availability.blocked) {
+    return {
+      message: availability.message ?? "This product is out of stock or quantity is not available.",
+      ok: false
+    };
+  }
+
+  const availableStock = selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
+  const next = existing
+    ? current.map((item) =>
+        item.id === lineId ||
+        (item.productId === product.id && item.variantId === selectedVariant?.id)
+          ? {
+              ...item,
+              quantity: Math.min(
+                item.quantity + requestedQuantity,
+                selectedVariant || product.trackInventory
+                  ? availableStock
+                  : item.quantity + requestedQuantity
+              )
+            }
+          : item
+      )
+    : [
+        ...current,
+        {
+          ...toCartItem(product, storeId, currency, selectedVariant),
+          quantity: selectedVariant || product.trackInventory
+            ? Math.min(requestedQuantity, availableStock)
+            : requestedQuantity
+        }
+      ];
+
+  writeStoreCart(scope, next);
+  return { message: "Added to cart.", ok: true };
+}
+
 function defaultDeliveryMethod(
   deliverySettings: CartPageClientProps["deliverySettings"],
   shippingMethods: PublicShippingMethod[] = []
@@ -610,32 +690,13 @@ export function AddToCartButton({
         : null;
 
   function addSelectedProductToCart() {
-    if (isAddToCartDisabled) {
-      return false;
-    }
-
-    const current = readStoreCart(scope);
-    const lineId = cartLineId(product.id, selectedVariant?.id);
-    const availableStock = selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
-    const existing = current.find(
-      (item) => item.id === lineId || (item.productId === product.id && item.variantId === selectedVariant?.id)
-    );
-    const next = existing
-      ? current.map((item) =>
-          item.id === lineId || (item.productId === product.id && item.variantId === selectedVariant?.id)
-            ? {
-                ...item,
-                quantity: Math.min(
-                  item.quantity + 1,
-                  selectedVariant || product.trackInventory ? availableStock : item.quantity + 1
-                )
-              }
-            : item
-        )
-      : [...current, toCartItem(product, storeId, currency, selectedVariant)];
-
-    writeStoreCart(scope, next);
-    return true;
+    return addProductToStoreCart({
+      currency,
+      product,
+      slug,
+      storeId,
+      variantId: selectedVariant?.id ?? null
+    }).ok;
   }
 
   function handleAddToCart() {

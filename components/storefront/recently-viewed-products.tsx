@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
@@ -177,6 +178,13 @@ export function RecentlyViewedProducts({
                     {formatProductPrice(product.price, product.priceLabel, productCurrency)}
                   </p>
                 </div>
+                <ProductQuickView
+                  currency={productCurrency}
+                  detailsHref={productHref}
+                  product={product}
+                  slug={slug}
+                  storeId={storeId}
+                />
                 <AddToCartButton
                   currency={productCurrency}
                   detailsHref={productHref}
