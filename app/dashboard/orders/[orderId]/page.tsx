@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import {
   updateStoreOrderFulfillmentStatusAction,
+  updateStoreOrderShippingTrackingAction,
   updateStoreOrderStatusAction
 } from "@/lib/store-order-actions";
 import { createClient } from "@/lib/supabase/server";
@@ -164,6 +165,12 @@ function timelineValueLabel(value: string | null) {
   return value ? fulfillmentStatusLabel(value) : "empty";
 }
 
+function canEditShippingTracking(status: string | null | undefined) {
+  const normalized = status?.trim() || "pending";
+
+  return normalized === "shipped" || normalized === "out_for_delivery" || normalized === "delivered";
+}
+
 function statusMessage(value: string | undefined) {
   const messages: Record<string, { className: string; text: string }> = {
     "invalid-status": {
@@ -173,6 +180,10 @@ function statusMessage(value: string | undefined) {
     "invalid-fulfillment": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "That fulfillment status is not allowed for this order delivery method."
+    },
+    "invalid-shipping": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Shipping tracking can only be saved after the order is shipped, out for delivery, or delivered."
     },
     "invalid-transition": {
       className: "border-red-200 bg-red-50 text-red-700",
@@ -201,6 +212,14 @@ function statusMessage(value: string | undefined) {
     "fulfillment-updated": {
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
       text: "Fulfillment status updated."
+    },
+    "shipping-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Shipping tracking could not be saved. Please try again."
+    },
+    "shipping-updated": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Shipping tracking saved."
     },
     "status-updated": {
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -294,7 +313,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, out_for_delivery_at, fulfilled_at, items, subtotal, subtotal_amount, total, total_amount, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, shipped_at, out_for_delivery_at, delivered_at, fulfilled_at, carrier_name, tracking_number, tracking_url, delivery_notes, proof_of_delivery, items, subtotal, subtotal_amount, total, total_amount, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -314,9 +333,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_phone: string;
         delivery_fee?: number | string | null;
         delivery_method?: string | null;
+        delivered_at?: string | null;
+        delivery_notes?: string | null;
         fulfillment_status?: string | null;
         fulfillment_notes?: string | null;
         fulfilled_at?: string | null;
+        carrier_name?: string | null;
         id: string;
         internal_note?: string | null;
         items: Json;
@@ -327,12 +349,16 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         preparing_at?: string | null;
         ready_for_pickup_at?: string | null;
         prices_include_tax?: boolean | null;
+        proof_of_delivery?: string | null;
+        shipped_at?: string | null;
         store_id: string;
         subtotal: number | string;
         subtotal_amount?: number | string | null;
         tax_amount?: number | string | null;
         tax_name?: string | null;
         tax_rate?: number | string | null;
+        tracking_number?: string | null;
+        tracking_url?: string | null;
         total: number | string;
         total_amount?: number | string | null;
       } | null;
@@ -351,6 +377,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           stores,
           order: {
             cancelled_at: row.cancelled_at ?? null,
+            carrier_name: row.carrier_name ?? null,
             confirmed_at: row.confirmed_at ?? null,
             created_at: row.created_at,
             currency: "USD",
@@ -360,6 +387,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            delivered_at: row.delivered_at ?? null,
+            delivery_notes: row.delivery_notes ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: row.fulfillment_notes ?? null,
@@ -373,7 +402,9 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             payment_method: row.payment_method ?? "manual",
             payment_status: row.payment_status ?? "pending",
             preparing_at: row.preparing_at ?? null,
+            proof_of_delivery: row.proof_of_delivery ?? null,
             ready_for_pickup_at: row.ready_for_pickup_at ?? null,
+            shipped_at: row.shipped_at ?? null,
             source: "store_orders" as const,
             store_id: row.store_id,
             subtotal: row.subtotal_amount ?? row.subtotal,
@@ -381,7 +412,9 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             tax_name: row.tax_name ?? null,
             tax_rate: row.tax_rate ?? 0,
             prices_include_tax: Boolean(row.prices_include_tax),
-            total: row.total_amount ?? row.total
+            total: row.total_amount ?? row.total,
+            tracking_number: row.tracking_number ?? null,
+            tracking_url: row.tracking_url ?? null
           }
         };
       }
@@ -391,7 +424,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, notes, subtotal, subtotal_amount, total, total_amount, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, proof_of_delivery, notes, subtotal, subtotal_amount, total, total_amount, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id" as never, orderId as never)
         .eq("workspace_id" as never, workspaceId as never)
@@ -412,7 +445,10 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_phone: string;
         delivery_fee?: number | string | null;
         delivery_method?: string | null;
+        delivered_at?: string | null;
+        delivery_notes?: string | null;
         fulfillment_status?: string | null;
+        carrier_name?: string | null;
         id: string;
         internal_note: string | null;
         notes: string | null;
@@ -422,11 +458,15 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         store_id: string | null;
         store_instance_id: string | null;
         prices_include_tax?: boolean | null;
+        proof_of_delivery?: string | null;
+        shipped_at?: string | null;
         subtotal: number | string;
         subtotal_amount?: number | string | null;
         tax_amount?: number | string | null;
         tax_name?: string | null;
         tax_rate?: number | string | null;
+        tracking_number?: string | null;
+        tracking_url?: string | null;
         total: number | string;
         total_amount?: number | string | null;
       } | null;
@@ -465,6 +505,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           stores,
           order: {
             cancelled_at: row.cancelled_at,
+            carrier_name: row.carrier_name ?? null,
             confirmed_at: row.confirmed_at,
             created_at: row.created_at,
             currency: row.currency ?? "USD",
@@ -474,6 +515,8 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
             delivery_method: row.delivery_method ?? null,
+            delivered_at: row.delivered_at ?? null,
+            delivery_notes: row.delivery_notes ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: null,
@@ -487,7 +530,9 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             payment_method: row.payment_method ?? "manual",
             payment_status: row.payment_status ?? "pending",
             preparing_at: null,
+            proof_of_delivery: row.proof_of_delivery ?? null,
             ready_for_pickup_at: null,
+            shipped_at: row.shipped_at ?? null,
             source: "orders" as const,
             store_id: storeId,
             subtotal: row.subtotal_amount ?? row.subtotal,
@@ -495,7 +540,9 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             tax_name: row.tax_name ?? null,
             tax_rate: row.tax_rate ?? 0,
             prices_include_tax: Boolean(row.prices_include_tax),
-            total: row.total_amount ?? row.total
+            total: row.total_amount ?? row.total,
+            tracking_number: row.tracking_number ?? null,
+            tracking_url: row.tracking_url ?? null
           }
         };
       }
@@ -586,9 +633,29 @@ export default async function OrderDetailPage({
             <Info label="Cancelled" value={formatDate(order.cancelled_at)} />
             <Info label="Preparing" value={formatDate(order.preparing_at)} />
             <Info label="Ready for pickup" value={formatDate(order.ready_for_pickup_at)} />
+            <Info label="Shipped" value={formatDate(order.shipped_at)} />
             <Info label="Out for delivery" value={formatDate(order.out_for_delivery_at)} />
-            <Info label="Fulfilled" value={formatDate(order.fulfilled_at)} />
+            <Info label="Delivered" value={formatDate(order.delivered_at ?? order.fulfilled_at)} />
           </div>
+
+          {canEditShippingTracking(order.fulfillment_status) ? (
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Shipping tracking
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Info label="Carrier" value={order.carrier_name || "Not provided"} />
+                <Info label="Tracking number" value={order.tracking_number || "Not provided"} />
+                <Info label="Tracking URL" value={order.tracking_url || "Not provided"} />
+                <Info label="Delivery proof" value={order.proof_of_delivery || "Not provided"} />
+              </div>
+              {order.delivery_notes ? (
+                <p className="mt-4 text-sm font-semibold leading-6 text-muted">
+                  {order.delivery_notes}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {order.notes ? (
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
@@ -751,6 +818,18 @@ export default async function OrderDetailPage({
                 returnTo={returnTo}
                 source={order.source}
               />
+              <ShippingTrackingForm
+                action={updateStoreOrderShippingTrackingAction}
+                carrierName={order.carrier_name}
+                deliveryNotes={order.delivery_notes}
+                disabled={!canEditShippingTracking(order.fulfillment_status)}
+                orderId={order.id}
+                proofOfDelivery={order.proof_of_delivery}
+                returnTo={returnTo}
+                source={order.source}
+                trackingNumber={order.tracking_number}
+                trackingUrl={order.tracking_url}
+              />
             </>
           ) : (
             <Card className="p-5">
@@ -762,6 +841,107 @@ export default async function OrderDetailPage({
         </aside>
       </div>
     </div>
+  );
+}
+
+function ShippingTrackingForm({
+  action,
+  carrierName,
+  deliveryNotes,
+  disabled,
+  orderId,
+  proofOfDelivery,
+  returnTo,
+  source,
+  trackingNumber,
+  trackingUrl
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  carrierName?: string | null;
+  deliveryNotes?: string | null;
+  disabled: boolean;
+  orderId: string;
+  proofOfDelivery?: string | null;
+  returnTo: string;
+  source: OrderSource;
+  trackingNumber?: string | null;
+  trackingUrl?: string | null;
+}) {
+  return (
+    <form action={action} className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-3 text-left">
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="source" type="hidden" value={source} />
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        Shipping tracking
+      </p>
+      <p className="text-sm font-bold text-muted">
+        Add carrier, tracking, notes, and proof after shipping starts.
+      </p>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Carrier name</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={carrierName ?? ""}
+          disabled={disabled}
+          name="carrierName"
+          placeholder="DHL, FedEx, Aramex, local courier"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Tracking number</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={trackingNumber ?? ""}
+          disabled={disabled}
+          name="trackingNumber"
+          placeholder="Tracking reference"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Tracking URL</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={trackingUrl ?? ""}
+          disabled={disabled}
+          name="trackingUrl"
+          placeholder="https://carrier.example/track/..."
+          type="url"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Delivery notes</span>
+        <textarea
+          className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={deliveryNotes ?? ""}
+          disabled={disabled}
+          name="deliveryNotes"
+          placeholder="Courier handoff, delivery window, customer instructions"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Proof of delivery</span>
+        <textarea
+          className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={proofOfDelivery ?? ""}
+          disabled={disabled}
+          name="proofOfDelivery"
+          placeholder="Recipient name, signature note, drop-off confirmation"
+        />
+      </label>
+      <button
+        className="h-11 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        type="submit"
+      >
+        Save tracking
+      </button>
+      {disabled ? (
+        <p className="text-xs font-semibold leading-5 text-muted">
+          Tracking opens after fulfillment reaches Shipped, Out for Delivery, or Delivered.
+        </p>
+      ) : null}
+    </form>
   );
 }
 

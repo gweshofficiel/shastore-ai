@@ -136,6 +136,28 @@ function isFulfillmentTransitionAllowed(current: FulfillmentStatus, next: Fulfil
   return current === next || nextFulfillmentStatus[current] === next || isExceptionalFulfillmentTransition(current, next);
 }
 
+function canEditShippingTracking(status: string | null | undefined) {
+  const fulfillmentStatus = normalizeFulfillmentStatus(status);
+
+  return fulfillmentStatus === "shipped" || fulfillmentStatus === "out_for_delivery" || fulfillmentStatus === "delivered";
+}
+
+function cleanOptionalUrl(value: FormDataEntryValue | null) {
+  const url = cleanText(value, 500);
+
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
     return "";
@@ -460,6 +482,7 @@ async function recordOrderEventSafe({
     | "order_created"
     | "status_changed"
     | "fulfillment_changed"
+    | "shipping_tracking_updated"
     | "payment_status_changed"
     | "seller_note_updated";
   message: string;
@@ -2514,6 +2537,184 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
   orderStatusReturnRedirect(returnTo, "status-updated", orderId);
 }
 
+export async function updateStoreOrderShippingTrackingAction(formData: FormData) {
+  const orderId = cleanText(formData.get("orderId"), 80);
+  const source = cleanText(formData.get("source"), 40) as StoreOrderStatusSource;
+  const returnTo = safeOrderReturnPath(formData.get("returnTo"));
+  const carrierName = cleanText(formData.get("carrierName"), 120);
+  const trackingNumber = cleanText(formData.get("trackingNumber"), 160);
+  const rawTrackingUrl = cleanText(formData.get("trackingUrl"), 500);
+  const trackingUrl = cleanOptionalUrl(formData.get("trackingUrl"));
+  const deliveryNotes = cleanText(formData.get("deliveryNotes"), 1000);
+  const proofOfDelivery = cleanText(formData.get("proofOfDelivery"), 1000);
+
+  if (!orderId) {
+    orderStatusReturnRedirect(returnTo, "missing-order");
+  }
+
+  if (source !== "orders" && source !== "store_orders") {
+    orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
+  }
+
+  if (rawTrackingUrl && !trackingUrl) {
+    orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  }
+
+  let workspaceId: string | null = null;
+
+  try {
+    workspaceId = await getUserPrimaryWorkspaceId(supabase, user.id);
+    await requirePermission({
+      permission: "manage_orders",
+      supabase,
+      userId: user.id,
+      workspaceId
+    });
+  } catch {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  const tableName = source === "orders" ? "orders" : "store_orders";
+  const { data: currentOrder, error: currentError } = await supabase
+    .from(tableName as never)
+    .select(
+      "id, store_id, store_instance_id, workspace_id, fulfillment_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, proof_of_delivery"
+    )
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+  const currentOrderRow = currentOrder as {
+    carrier_name?: string | null;
+    delivered_at?: string | null;
+    delivery_notes?: string | null;
+    fulfillment_status?: string | null;
+    id: string;
+    proof_of_delivery?: string | null;
+    shipped_at?: string | null;
+    store_id?: string | null;
+    store_instance_id?: string | null;
+    tracking_number?: string | null;
+    tracking_url?: string | null;
+    workspace_id?: string | null;
+  } | null;
+
+  if (currentError) {
+    logSupabaseDiagnostic(
+      "order_shipping_tracking.lookup.failed",
+      {
+        orderId,
+        source,
+        tableName,
+        workspaceId
+      },
+      currentError
+    );
+    orderStatusReturnRedirect(returnTo, "shipping-failed", orderId);
+  }
+
+  if (!currentOrderRow) {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  if (!canEditShippingTracking(currentOrderRow.fulfillment_status)) {
+    orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
+  }
+
+  const normalizedTracking = {
+    carrier_name: carrierName || null,
+    delivery_notes: deliveryNotes || null,
+    proof_of_delivery: proofOfDelivery || null,
+    tracking_number: trackingNumber || null,
+    tracking_url: trackingUrl || null
+  };
+  const changedFields = Object.entries(normalizedTracking)
+    .filter(([key, value]) => (currentOrderRow[key as keyof typeof currentOrderRow] ?? null) !== value)
+    .map(([key]) => key);
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, string | null> = {
+    ...normalizedTracking,
+    updated_at: now
+  };
+  const fulfillmentStatus = normalizeFulfillmentStatus(currentOrderRow.fulfillment_status);
+
+  if ((fulfillmentStatus === "shipped" || fulfillmentStatus === "out_for_delivery" || fulfillmentStatus === "delivered") && !currentOrderRow.shipped_at) {
+    updatePayload.shipped_at = now;
+    changedFields.push("shipped_at");
+  }
+
+  if (fulfillmentStatus === "delivered" && !currentOrderRow.delivered_at) {
+    updatePayload.delivered_at = now;
+    changedFields.push("delivered_at");
+  }
+
+  const { data, error } = await supabase
+    .from(tableName as never)
+    .update(updatePayload as never)
+    .eq("id" as never, orderId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    logSupabaseDiagnostic(
+      "order_shipping_tracking.update.failed",
+      {
+        changedFields,
+        orderId,
+        source,
+        tableName,
+        workspaceId
+      },
+      error
+    );
+    orderStatusReturnRedirect(returnTo, "shipping-failed", orderId);
+  }
+
+  if (!data) {
+    orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
+  }
+
+  const eventStoreId = currentOrderRow.store_id ?? currentOrderRow.store_instance_id;
+
+  if (eventStoreId && changedFields.length) {
+    await recordOrderEventSafe({
+      actorUserId: user.id,
+      eventType: "shipping_tracking_updated",
+      message: "Shipping tracking information updated.",
+      metadata: {
+        changedFields,
+        hasCarrierName: Boolean(carrierName),
+        hasDeliveryNotes: Boolean(deliveryNotes),
+        hasProofOfDelivery: Boolean(proofOfDelivery),
+        hasTrackingNumber: Boolean(trackingNumber),
+        hasTrackingUrl: Boolean(trackingUrl)
+      },
+      newValue: trackingNumber || trackingUrl || carrierName || "shipping_tracking_updated",
+      orderId,
+      orderSource: source,
+      previousValue: currentOrderRow.tracking_number ?? currentOrderRow.tracking_url ?? currentOrderRow.carrier_name ?? null,
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
+  }
+
+  revalidatePath(dashboardOrdersPath);
+  revalidatePath(returnTo);
+  revalidatePath("/dashboard");
+  orderStatusReturnRedirect(returnTo, "shipping-updated", orderId);
+}
+
 export async function updateStoreOrderFulfillmentStatusAction(formData: FormData) {
   const orderId = cleanText(formData.get("orderId"), 80);
   const fulfillmentStatus = cleanText(formData.get("fulfillmentStatus"), 60) as FulfillmentStatus;
@@ -2673,11 +2874,15 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   };
   const timestampColumns = fulfillmentTimestampColumns[fulfillmentStatus] ?? [];
 
-  if (source === "store_orders") {
-    for (const timestampColumn of timestampColumns) {
-      updatePayload[timestampColumn] = now;
+  for (const timestampColumn of timestampColumns) {
+    if (source === "orders" && timestampColumn === "fulfilled_at") {
+      continue;
     }
 
+    updatePayload[timestampColumn] = now;
+  }
+
+  if (source === "store_orders") {
     if (fulfillmentNotes) {
       updatePayload.fulfillment_notes = fulfillmentNotes;
     }
