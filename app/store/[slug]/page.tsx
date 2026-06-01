@@ -88,6 +88,38 @@ function phoneHref(phone: string | null) {
   return number ? `tel:${number}` : null;
 }
 
+type StorefrontNavLink = {
+  href: string;
+  label: string;
+};
+
+function navKey(link: StorefrontNavLink) {
+  return `${link.href.trim().toLowerCase()}|${link.label.trim().toLowerCase()}`;
+}
+
+function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
+  const seenHrefs = new Set<string>();
+  const seenLabels = new Set<string>();
+  const unique: StorefrontNavLink[] = [];
+
+  for (const link of links) {
+    const href = link.href.trim();
+    const label = link.label.trim();
+    const hrefKey = href.toLowerCase();
+    const labelKey = label.toLowerCase();
+
+    if (!href || !label || seenHrefs.has(hrefKey) || seenLabels.has(labelKey)) {
+      continue;
+    }
+
+    seenHrefs.add(hrefKey);
+    seenLabels.add(labelKey);
+    unique.push({ href, label });
+  }
+
+  return unique;
+}
+
 function productGalleryUrls(gallery: unknown[]) {
   return gallery
     .map((item) => {
@@ -381,9 +413,17 @@ export default async function PublicStorePage({
   const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
   const headerLinks = preview.navigation.header;
   const contactHref = `/store/${store.slug}/contact`;
-  const headerHasContactLink = headerLinks.some(
-    (link) => link.href === contactHref || link.href === "#contact" || link.label.toLowerCase() === "contact"
-  );
+  const primaryLinks = uniqueStorefrontNavLinks([
+    ...(headerLinks.length
+      ? headerLinks.map((link) => ({ href: link.href, label: link.label }))
+      : [
+          { href: "#products", label: "Products" },
+          { href: "#categories", label: "Categories" }
+        ]),
+    ...(hasPublishedFaqs ? [{ href: `/store/${store.slug}/faq`, label: "FAQ" }] : []),
+    { href: contactHref, label: "Contact" },
+    ...(hasPublishedBlogArticles ? [{ href: `/store/${store.slug}/blog`, label: "Blog" }] : [])
+  ]);
   const hasContactData = Boolean(
     store.whatsappNumber ||
       supportEmail ||
@@ -531,43 +571,14 @@ export default async function PublicStorePage({
                 <p className="mt-1 text-sm font-black text-ink">{store.title}</p>
               </div>
             </div>
-            {headerLinks.length ? (
-              <nav className="hidden flex-wrap items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-muted sm:flex">
-                {headerLinks.map((link) => (
-                  <a className="transition hover:text-ink" href={link.href} key={link.id}>
-                    {link.label}
-                  </a>
-                ))}
-                {!headerHasContactLink ? (
-                  <Link className="transition hover:text-ink" href={contactHref}>
-                    Contact
-                  </Link>
-                ) : null}
-              </nav>
-            ) : null}
+            <nav className="hidden flex-wrap items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-muted sm:flex">
+              {primaryLinks.map((link) => (
+                <Link className="transition hover:text-ink" href={link.href} key={navKey(link)}>
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
             <div className="flex flex-wrap gap-2">
-              <Link
-                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                href={contactHref}
-              >
-                Contact
-              </Link>
-              {hasPublishedFaqs ? (
-                <Link
-                  className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                  href={`/store/${store.slug}/faq`}
-                >
-                  FAQ
-                </Link>
-              ) : null}
-              {hasPublishedBlogArticles ? (
-                <Link
-                  className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                  href={`/store/${store.slug}/blog`}
-                >
-                  Blog
-                </Link>
-              ) : null}
               <Link
                 className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
                 href={`/store/${store.slug}/account`}

@@ -533,6 +533,38 @@ type SectionRenderProps = {
   section: StoreSection;
 };
 
+type StorefrontNavLink = {
+  href: string;
+  label: string;
+};
+
+function navKey(link: StorefrontNavLink) {
+  return `${link.href.trim().toLowerCase()}|${link.label.trim().toLowerCase()}`;
+}
+
+function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
+  const seenHrefs = new Set<string>();
+  const seenLabels = new Set<string>();
+  const unique: StorefrontNavLink[] = [];
+
+  for (const link of links) {
+    const href = link.href.trim();
+    const label = link.label.trim();
+    const hrefKey = href.toLowerCase();
+    const labelKey = label.toLowerCase();
+
+    if (!href || !label || seenHrefs.has(hrefKey) || seenLabels.has(labelKey)) {
+      continue;
+    }
+
+    seenHrefs.add(hrefKey);
+    seenLabels.add(labelKey);
+    unique.push({ href, label });
+  }
+
+  return unique;
+}
+
 function NavbarSection({
   context,
   hasPublishedBlogArticles = false,
@@ -545,13 +577,17 @@ function NavbarSection({
   const blogHref = `/store/${context.preview.store.slug}/blog`;
   const faqHref = `/store/${context.preview.store.slug}/faq`;
   const contactHref = `/store/${context.preview.store.slug}/contact`;
-  const headerHasBlogLink = headerLinks.some((link) => link.href === blogHref);
-  const headerHasFaqLink = headerLinks.some(
-    (link) => link.href === faqHref || link.href === "#faq" || link.label.toLowerCase() === "faq"
-  );
-  const headerHasContactLink = headerLinks.some(
-    (link) => link.href === contactHref || link.href === "#contact" || link.label.toLowerCase() === "contact"
-  );
+  const primaryLinks = uniqueStorefrontNavLinks([
+    ...(headerLinks.length
+      ? headerLinks.map((link) => ({ href: link.href, label: link.label }))
+      : [
+          { href: "#products", label: "Products" },
+          { href: "#categories", label: "Categories" }
+        ]),
+    ...(hasPublishedFaqs ? [{ href: faqHref, label: "FAQ" }] : []),
+    { href: contactHref, label: "Contact" },
+    ...(hasPublishedBlogArticles ? [{ href: blogHref, label: "Blog" }] : [])
+  ]);
 
   return (
     <section
@@ -601,58 +637,13 @@ function NavbarSection({
             config.layout.navbar === "utility" ? "text-cyan-100" : "text-muted"
           }`}
         >
-          {headerLinks.length ? (
-            <>
-              {headerLinks.map((link) => (
-                <a href={link.href} key={link.id}>
-                  {link.label}
-                </a>
-              ))}
-              {hasPublishedBlogArticles && !headerHasBlogLink ? (
-                <Link href={blogHref}>Blog</Link>
-              ) : null}
-              {hasPublishedFaqs && !headerHasFaqLink ? (
-                <Link href={faqHref}>FAQ</Link>
-              ) : null}
-              {!headerHasContactLink ? (
-                <Link href={contactHref}>Contact</Link>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <a href="#products">Products</a>
-              <a href="#categories">Categories</a>
-              <a href="#faq">FAQ</a>
-              <Link href={contactHref}>Contact</Link>
-              {hasPublishedBlogArticles ? (
-                <Link href={blogHref}>Blog</Link>
-              ) : null}
-            </>
-          )}
+          {primaryLinks.map((link) => (
+            <Link href={link.href} key={navKey(link)}>
+              {link.label}
+            </Link>
+          ))}
         </nav>
         <div className="flex flex-wrap gap-2">
-          {hasPublishedFaqs ? (
-            <Link
-              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-              href={faqHref}
-            >
-              FAQ
-            </Link>
-          ) : null}
-          <Link
-            className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-            href={contactHref}
-          >
-            Contact
-          </Link>
-          {hasPublishedBlogArticles ? (
-            <Link
-              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-              href={blogHref}
-            >
-              Blog
-            </Link>
-          ) : null}
           <Link
             className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
             href={`/store/${context.preview.store.slug}/account`}
