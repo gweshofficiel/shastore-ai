@@ -17,6 +17,7 @@ import {
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
 import { loadPublishedStoreBlogArticlesForStore } from "@/lib/store-blog-public";
+import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import {
@@ -357,6 +358,8 @@ export default async function PublicStorePage({
   });
   const publishedArticles = await loadPublishedStoreBlogArticlesForStore(preview.store.id, 3);
   const hasPublishedBlogArticles = publishedArticles.length > 0;
+  const publishedFaqs = await loadPublishedStoreFaqsForStore(preview.store.id, 8);
+  const hasPublishedFaqs = publishedFaqs.length > 0;
   const filteredPreview = {
     ...preview,
     products: discovery.products
@@ -534,6 +537,14 @@ export default async function PublicStorePage({
               </nav>
             ) : null}
             <div className="flex flex-wrap gap-2">
+              {hasPublishedFaqs ? (
+                <Link
+                  className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                  href={`/store/${store.slug}/faq`}
+                >
+                  FAQ
+                </Link>
+              ) : null}
               {hasPublishedBlogArticles ? (
                 <Link
                   className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
@@ -798,6 +809,8 @@ export default async function PublicStorePage({
         context={filteredContext}
         fallback={fallbackStorefront}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
+        hasPublishedFaqs={hasPublishedFaqs}
+        publishedFaqs={publishedFaqs}
       />
       {hasPublishedBlogArticles ? (
         <section className="px-4 py-12 sm:px-6 lg:px-8">

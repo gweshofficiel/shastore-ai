@@ -21,6 +21,7 @@ import {
 } from "@/lib/storefront/builder";
 import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
+import type { PublicStoreFaq } from "@/lib/store-faq-public";
 
 export type StoreSectionType =
   | "hero"
@@ -527,19 +528,26 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
 type SectionRenderProps = {
   context: StoreTenantContext;
   hasPublishedBlogArticles?: boolean;
+  hasPublishedFaqs?: boolean;
+  publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
 };
 
 function NavbarSection({
   context,
-  hasPublishedBlogArticles = false
+  hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false
 }: SectionRenderProps) {
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
   const logoUrl = context.theme.logo.url || theme.logoUrl || null;
   const headerLinks = context.preview.navigation.header;
   const blogHref = `/store/${context.preview.store.slug}/blog`;
+  const faqHref = `/store/${context.preview.store.slug}/faq`;
   const headerHasBlogLink = headerLinks.some((link) => link.href === blogHref);
+  const headerHasFaqLink = headerLinks.some(
+    (link) => link.href === faqHref || link.href === "#faq" || link.label.toLowerCase() === "faq"
+  );
 
   return (
     <section
@@ -599,6 +607,9 @@ function NavbarSection({
               {hasPublishedBlogArticles && !headerHasBlogLink ? (
                 <Link href={blogHref}>Blog</Link>
               ) : null}
+              {hasPublishedFaqs && !headerHasFaqLink ? (
+                <Link href={faqHref}>FAQ</Link>
+              ) : null}
             </>
           ) : (
             <>
@@ -612,6 +623,14 @@ function NavbarSection({
           )}
         </nav>
         <div className="flex flex-wrap gap-2">
+          {hasPublishedFaqs ? (
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={faqHref}
+            >
+              FAQ
+            </Link>
+          ) : null}
           {hasPublishedBlogArticles ? (
             <Link
               className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
@@ -827,10 +846,17 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
   );
 }
 
-function FaqSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps) {
   const config = templateConfig(context);
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 5) : [];
-  const faqs = items.length
+  const managedFaqs = publishedFaqs.slice(0, 8).map((faq) => ({
+    answer: faq.answer,
+    id: faq.id,
+    question: faq.question
+  }));
+  const faqs = managedFaqs.length
+    ? managedFaqs
+    : items.length
     ? items
     : [
         { answer: "Orders can be submitted through the store cart or WhatsApp when available.", question: "How do I order?" },
@@ -849,7 +875,7 @@ function FaqSection({ context, section }: { context: StoreTenantContext; section
           {faqs.map((item, index) => (
             <details
               className={`border bg-white p-5 ${config.key === "electronics-starter" ? "rounded-xl border-cyan-400/20 bg-slate-900" : "rounded-[1.5rem] border-slate-200"}`}
-              key={index}
+              key={typeof item.id === "string" ? item.id : index}
             >
               <summary className={`cursor-pointer text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
                 {textValue(item.question, "Question")}
@@ -969,10 +995,14 @@ const sectionRegistry: Record<
 export function SectionRenderer({
   context,
   hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false,
+  publishedFaqs = [],
   section
 }: {
   context: StoreTenantContext;
   hasPublishedBlogArticles?: boolean;
+  hasPublishedFaqs?: boolean;
+  publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
 }) {
   const Renderer = sectionRegistry[section.section_type] ?? MissingSectionRenderer;
@@ -981,17 +1011,29 @@ export function SectionRenderer({
     return <div aria-hidden="true" className="h-8 sm:h-12" />;
   }
 
-  return <Renderer context={context} hasPublishedBlogArticles={hasPublishedBlogArticles} section={section} />;
+  return (
+    <Renderer
+      context={context}
+      hasPublishedBlogArticles={hasPublishedBlogArticles}
+      hasPublishedFaqs={hasPublishedFaqs}
+      publishedFaqs={publishedFaqs}
+      section={section}
+    />
+  );
 }
 
 export async function DynamicSectionLoader({
   context,
   fallback,
-  hasPublishedBlogArticles = false
+  hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false,
+  publishedFaqs = []
 }: {
   context: StoreTenantContext;
   fallback: ReactNode;
   hasPublishedBlogArticles?: boolean;
+  hasPublishedFaqs?: boolean;
+  publishedFaqs?: PublicStoreFaq[];
 }) {
   const layout = await resolveSectionLayout(context);
   const previewScript = (
@@ -1020,7 +1062,9 @@ export async function DynamicSectionLoader({
         <SectionRenderer
           context={context}
           hasPublishedBlogArticles={hasPublishedBlogArticles}
+          hasPublishedFaqs={hasPublishedFaqs}
           key={section.id}
+          publishedFaqs={publishedFaqs}
           section={section}
         />
       ))}
