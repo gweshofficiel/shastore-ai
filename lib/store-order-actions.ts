@@ -27,6 +27,7 @@ import {
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { getAppBaseUrl } from "@/lib/deployment/config";
+import { markAbandonedCartRecoveredSafe } from "@/lib/abandoned-cart-recovery";
 import { createPayPalCheckoutOrder, getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import {
   createLowStockNotificationsForOrderSafe,
@@ -705,6 +706,7 @@ type StorePayPalConnectionRow = {
 
 async function persistStorefrontOrderDraft({
   admin,
+  cartSessionId,
   store,
   customerName,
   customerPhone,
@@ -724,6 +726,7 @@ async function persistStorefrontOrderDraft({
   slug
 }: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  cartSessionId?: string | null;
   store: {
     currency: string | null;
     id: string;
@@ -1017,6 +1020,12 @@ async function persistStorefrontOrderDraft({
         templateKey: "order_confirmation",
         workspaceId
       });
+      await markAbandonedCartRecoveredSafe({
+        orderId: orderRow.id,
+        sessionId: cartSessionId,
+        storeId: store.id,
+        workspaceId
+      });
       if (coupon) {
         await createStoreNotificationSafe({
           message: `Coupon ${coupon.code} was used on order ${orderRow.id.slice(0, 8)}.`,
@@ -1209,6 +1218,12 @@ async function persistStorefrontOrderDraft({
     recipient: customerEmail,
     storeId: store.id,
     templateKey: "order_confirmation",
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+  await markAbandonedCartRecoveredSafe({
+    orderId: storeOrderRow.id,
+    sessionId: cartSessionId,
+    storeId: store.id,
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
   });
   if (coupon) {
@@ -1421,6 +1436,7 @@ async function redirectToStoreCardCheckout({
 
 async function redirectToStorePayPalCheckout({
   admin,
+  cartSessionId,
   coupon,
   customerAddress,
   customerEmail,
@@ -1439,6 +1455,7 @@ async function redirectToStorePayPalCheckout({
   subtotal
 }: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  cartSessionId?: string | null;
   coupon: StoreCouponRow | null;
   customerAddress: string;
   customerEmail: string;
@@ -1487,6 +1504,7 @@ async function redirectToStorePayPalCheckout({
 
   const persisted = await persistStorefrontOrderDraft({
     admin,
+    cartSessionId,
     coupon,
     currency,
     customerAddress,
@@ -1575,6 +1593,7 @@ export async function createPublicStoreOrderAction(
   const customerPhone = cleanText(formData.get("customerPhone"), 80);
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
+  const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
@@ -1842,6 +1861,12 @@ export async function createPublicStoreOrderAction(
     templateKey: "order_confirmation",
     workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
   });
+  await markAbandonedCartRecoveredSafe({
+    orderId: (order as { id: string }).id,
+    sessionId: cartSessionId,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
   await recordMonitoringEventSafe({
     entityId: (order as { id: string }).id,
     entityType: "order",
@@ -1894,6 +1919,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
+  const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
   const requestedPaymentMethod = parsePublicStorePaymentMethod(formData.get("paymentMethod"));
@@ -2137,6 +2163,7 @@ export async function createPublicStoreOrderDraftAction(
   if (selectedPaymentMethod.method === "paypal") {
     const paypalCheckoutError = await redirectToStorePayPalCheckout({
       admin,
+    cartSessionId,
       coupon: couponResult?.ok ? couponResult.coupon : null,
       customerAddress,
       customerEmail,
@@ -2165,6 +2192,7 @@ export async function createPublicStoreOrderDraftAction(
 
   const persisted = await persistStorefrontOrderDraft({
     admin,
+    cartSessionId,
     store,
     customerName,
     customerPhone,

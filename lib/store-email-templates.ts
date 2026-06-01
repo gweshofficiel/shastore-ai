@@ -1,4 +1,5 @@
 export type StoreEmailTemplateKey =
+  | "abandoned_cart_recovery"
   | "customer_welcome"
   | "low_stock_alert"
   | "order_confirmation"
@@ -78,12 +79,30 @@ export function getStoreEmailTemplate(
     : null;
   const fulfillmentStatus = textValue(metadata.fulfillmentStatus);
   const receiptUrl = textValue(metadata.receiptUrl);
+  const cartRecoveryUrl = textValue(metadata.cartRecoveryUrl);
+  const estimatedTotal = currencyMoneyValue(metadata.estimatedTotal, metadata.currency);
   const productName = textValue(metadata.productName, "A product");
   const stockQuantity = textValue(metadata.stockQuantity, "low stock");
   const orderUrl = textValue(metadata.orderUrl);
   let content: { htmlDetails?: string; subject: string; text: string };
 
-  if (templateKey === "order_status_update") {
+  if (templateKey === "abandoned_cart_recovery") {
+    const lines = [
+      `Hello ${customerName}, you left items in your cart at ${storeName}.`,
+      optionalLine("Products", productsSummary),
+      optionalLine("Estimated total", estimatedTotal),
+      cartRecoveryUrl ? `Recover your cart: ${cartRecoveryUrl}` : null
+    ].filter(Boolean);
+
+    content = {
+      subject: `Complete your cart at ${storeName}`,
+      text: lines.join("\n"),
+      htmlDetails: [
+        htmlLine("Products", productsSummary),
+        htmlLine("Estimated total", estimatedTotal)
+      ].join("")
+    };
+  } else if (templateKey === "order_status_update") {
     content = {
       subject: `Order ${orderReference} status updated`,
       text: `Hello ${customerName}, your order ${orderReference} at ${storeName} is now ${orderStatus}.`
@@ -144,7 +163,7 @@ export function getStoreEmailTemplate(
 
   const safeText = escapeHtml(content.text);
   const safeStoreName = escapeHtml(storeName);
-  const safeOrderUrl = escapeHtml(receiptUrl || orderUrl);
+  const safeOrderUrl = escapeHtml(cartRecoveryUrl || receiptUrl || orderUrl);
 
   return {
     ...content,

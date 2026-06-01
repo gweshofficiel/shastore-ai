@@ -17,6 +17,7 @@ type StoreEmailInput = {
 };
 
 type StoreEmailSettings = {
+  enable_abandoned_cart_recovery?: boolean | null;
   enable_customer_welcome?: boolean | null;
   enable_low_stock_alert?: boolean | null;
   enable_order_confirmation?: boolean | null;
@@ -29,6 +30,7 @@ type StoreEmailSettings = {
 };
 
 const settingByTemplate: Record<StoreEmailTemplateKey, keyof StoreEmailSettings> = {
+  abandoned_cart_recovery: "enable_abandoned_cart_recovery",
   customer_welcome: "enable_customer_welcome",
   low_stock_alert: "enable_low_stock_alert",
   order_confirmation: "enable_order_confirmation",
@@ -85,11 +87,15 @@ async function emailEventAlreadyQueued({
   templateKey: StoreEmailTemplateKey;
   workspaceId: string;
 }) {
-  const orderId = typeof metadata.orderId === "string" ? metadata.orderId.trim() : "";
+  const dedupeId =
+    (typeof metadata.orderId === "string" ? metadata.orderId.trim() : "") ||
+    (typeof metadata.cartId === "string" ? metadata.cartId.trim() : "");
 
-  if (!orderId) {
+  if (!dedupeId) {
     return false;
   }
+
+  const dedupeMetadata = metadata.orderId ? { orderId: dedupeId } : { cartId: dedupeId };
 
   const admin = createAdminClient();
 
@@ -104,13 +110,13 @@ async function emailEventAlreadyQueued({
     .eq("store_id" as never, storeId as never)
     .eq("recipient" as never, recipient as never)
     .eq("template_key" as never, templateKey as never)
-    .contains("metadata" as never, { orderId } as never)
+    .contains("metadata" as never, dedupeMetadata as never)
     .limit(1);
 
   if (error) {
     console.warn("[store-email] duplicate lookup skipped", {
       message: error.message,
-      orderId,
+      dedupeId,
       storeId,
       templateKey,
       workspaceId
@@ -172,7 +178,7 @@ export async function queueStoreEmailEventSafe({
 
     const { data: settingsRow } = await admin
       .from("store_email_settings" as never)
-      .select("sender_name, reply_to_email, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_review_reminder, enable_low_stock_alert, enable_customer_welcome, enable_thank_you")
+      .select("sender_name, reply_to_email, enable_abandoned_cart_recovery, enable_order_confirmation, enable_order_status_update, enable_review_request, enable_review_reminder, enable_low_stock_alert, enable_customer_welcome, enable_thank_you")
       .eq("workspace_id" as never, resolvedWorkspaceId as never)
       .eq("store_id" as never, storeId as never)
       .maybeSingle();

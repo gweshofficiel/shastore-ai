@@ -33,6 +33,7 @@ type ProcessQueueResult = {
 };
 
 const supportedTemplates = new Set<string>([
+  "abandoned_cart_recovery",
   "customer_welcome",
   "order_confirmation",
   "order_status_update",

@@ -93,6 +93,7 @@ type CartUpdatedDetail = {
 };
 
 const CART_UPDATED_EVENT = "shastore-cart-updated";
+const CART_RECOVERY_SESSION_KEY = "shastore_cart_recovery_session";
 const initialOrderDraftState: PublicStoreOrderState = {
   error: null,
   message: null,
@@ -108,6 +109,26 @@ export function cartStorageKey(storeId: string) {
 /** Legacy slug-only key — cleared on every write to prevent stale rehydration. */
 function legacyCartStorageKey(slug: string) {
   return `shastore_cart_${slug}`;
+}
+
+function cartRecoverySessionId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const existing = window.localStorage.getItem(CART_RECOVERY_SESSION_KEY);
+
+  if (existing && /^[a-zA-Z0-9_-]{16,160}$/.test(existing)) {
+    return existing;
+  }
+
+  const generated =
+    typeof window.crypto?.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : `cart_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  window.localStorage.setItem(CART_RECOVERY_SESSION_KEY, generated);
+  return generated;
 }
 
 function parseCartItems(value: string | null, storeId: string, currency: string): CartItem[] {
@@ -757,6 +778,7 @@ export function ClearStoreCartOnOrderSuccess({
     }
 
     clearStoreCart(scope);
+    window.localStorage.removeItem(CART_RECOVERY_SESSION_KEY);
   }, [orderId, scope]);
 
   return null;
@@ -809,6 +831,7 @@ export function CartPageClient({
   const [savedAddresses, setSavedAddresses] = useState<SavedCheckoutAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [addressMessage, setAddressMessage] = useState<string | null>(null);
+  const [cartSessionId, setCartSessionId] = useState("");
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products]
@@ -847,6 +870,10 @@ export function CartPageClient({
     taxSettings
   });
   const finalTotal = financialBreakdown.totalAmount;
+
+  useEffect(() => {
+    setCartSessionId(cartRecoverySessionId());
+  }, []);
 
   useEffect(() => {
     setAppliedCoupon(null);
@@ -920,6 +947,40 @@ export function CartPageClient({
       window.clearTimeout(timeoutId);
     };
   }, [checkoutStarted, customerPhone, slug, storeId]);
+
+  useEffect(() => {
+    if (!cartSessionId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void fetch("/api/store-cart-recovery", {
+        body: JSON.stringify({
+          currency,
+          customerEmail,
+          customerPhone,
+          estimatedTotal: finalTotal,
+          items: items.map((item) => ({
+            id: item.id,
+            price: item.price,
+            productId: item.productId,
+            quantity: item.quantity,
+            title: item.title,
+            variantName: item.variantName ?? null
+          })),
+          sessionId: cartSessionId,
+          slug,
+          storeId
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      }).catch(() => undefined);
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [cartSessionId, currency, customerEmail, customerPhone, finalTotal, items, slug, storeId]);
 
   function applySavedAddress(addressId: string) {
     setSelectedAddressId(addressId);
@@ -1356,6 +1417,7 @@ export function CartPageClient({
           <input name="paymentMethod" type="hidden" value={paymentMethod} />
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
+          <input name="cartSessionId" type="hidden" value={cartSessionId} />
           <input
             name="items"
             type="hidden"
