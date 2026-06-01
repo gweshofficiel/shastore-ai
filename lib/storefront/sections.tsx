@@ -524,11 +524,22 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
   );
 }
 
-function NavbarSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+type SectionRenderProps = {
+  context: StoreTenantContext;
+  hasPublishedBlogArticles?: boolean;
+  section: StoreSection;
+};
+
+function NavbarSection({
+  context,
+  hasPublishedBlogArticles = false
+}: SectionRenderProps) {
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
   const logoUrl = context.theme.logo.url || theme.logoUrl || null;
   const headerLinks = context.preview.navigation.header;
+  const blogHref = `/store/${context.preview.store.slug}/blog`;
+  const headerHasBlogLink = headerLinks.some((link) => link.href === blogHref);
 
   return (
     <section
@@ -579,20 +590,36 @@ function NavbarSection({ context }: { context: StoreTenantContext; section: Stor
           }`}
         >
           {headerLinks.length ? (
-            headerLinks.map((link) => (
-              <a href={link.href} key={link.id}>
-                {link.label}
-              </a>
-            ))
+            <>
+              {headerLinks.map((link) => (
+                <a href={link.href} key={link.id}>
+                  {link.label}
+                </a>
+              ))}
+              {hasPublishedBlogArticles && !headerHasBlogLink ? (
+                <Link href={blogHref}>Blog</Link>
+              ) : null}
+            </>
           ) : (
             <>
               <a href="#products">Products</a>
               <a href="#categories">Categories</a>
               <a href="#faq">FAQ</a>
+              {hasPublishedBlogArticles ? (
+                <Link href={blogHref}>Blog</Link>
+              ) : null}
             </>
           )}
         </nav>
         <div className="flex flex-wrap gap-2">
+          {hasPublishedBlogArticles ? (
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={blogHref}
+            >
+              Blog
+            </Link>
+          ) : null}
           <Link
             className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
             href={`/store/${context.preview.store.slug}/account`}
@@ -920,7 +947,7 @@ function MissingSectionRenderer({ section }: { context: StoreTenantContext; sect
 
 const sectionRegistry: Record<
   string,
-  (props: { context: StoreTenantContext; section: StoreSection }) => ReactNode
+  (props: SectionRenderProps) => ReactNode
 > = {
   CTA: CtaSection,
   FAQ: FaqSection,
@@ -941,9 +968,11 @@ const sectionRegistry: Record<
 
 export function SectionRenderer({
   context,
+  hasPublishedBlogArticles = false,
   section
 }: {
   context: StoreTenantContext;
+  hasPublishedBlogArticles?: boolean;
   section: StoreSection;
 }) {
   const Renderer = sectionRegistry[section.section_type] ?? MissingSectionRenderer;
@@ -952,15 +981,17 @@ export function SectionRenderer({
     return <div aria-hidden="true" className="h-8 sm:h-12" />;
   }
 
-  return <Renderer context={context} section={section} />;
+  return <Renderer context={context} hasPublishedBlogArticles={hasPublishedBlogArticles} section={section} />;
 }
 
 export async function DynamicSectionLoader({
   context,
-  fallback
+  fallback,
+  hasPublishedBlogArticles = false
 }: {
   context: StoreTenantContext;
   fallback: ReactNode;
+  hasPublishedBlogArticles?: boolean;
 }) {
   const layout = await resolveSectionLayout(context);
   const previewScript = (
@@ -986,7 +1017,12 @@ export async function DynamicSectionLoader({
     <>
       {previewScript}
       {layout.sections.map((section) => (
-        <SectionRenderer context={context} key={section.id} section={section} />
+        <SectionRenderer
+          context={context}
+          hasPublishedBlogArticles={hasPublishedBlogArticles}
+          key={section.id}
+          section={section}
+        />
       ))}
     </>
   );

@@ -52,6 +52,23 @@ export function absoluteBlogImageUrl(value: string | null) {
   return getPublicUrl(value);
 }
 
+export async function loadPublishedStoreBlogArticlesForStore(storeId: string, limit = 20) {
+  const admin = createAdminClient();
+  const readClient = admin ?? (await createClient());
+  const { data } = await readClient
+    .from("store_blog_articles" as never)
+    .select("id, title, slug, excerpt, content, cover_image_url, published_at")
+    .eq("store_id" as never, storeId as never)
+    .eq("status" as never, "published" as never)
+    .order("published_at" as never, { ascending: false } as never)
+    .order("created_at" as never, { ascending: false } as never)
+    .limit(limit);
+
+  return ((data ?? []) as unknown[])
+    .map(normalizeArticle)
+    .filter((article): article is PublicStoreBlogArticle => Boolean(article));
+}
+
 export async function loadPublicStoreBlog(slug: string) {
   const preview = await getPublicStorefrontPreview(slug);
 
@@ -60,7 +77,6 @@ export async function loadPublicStoreBlog(slug: string) {
   }
 
   const admin = createAdminClient();
-  const readClient = admin ?? (await createClient());
   const storefrontAccess = admin
     ? await getPublicStorefrontAccess({
         storeId: preview.store.id,
@@ -72,16 +88,8 @@ export async function loadPublicStoreBlog(slug: string) {
     return { articles: [], preview };
   }
 
-  const { data } = await readClient
-    .from("store_blog_articles" as never)
-    .select("id, title, slug, excerpt, content, cover_image_url, published_at")
-    .eq("store_id" as never, preview.store.id as never)
-    .eq("status" as never, "published" as never)
-    .order("published_at" as never, { ascending: false } as never)
-    .order("created_at" as never, { ascending: false } as never);
-
   return {
-    articles: ((data ?? []) as unknown[]).map(normalizeArticle).filter((article): article is PublicStoreBlogArticle => Boolean(article)),
+    articles: await loadPublishedStoreBlogArticlesForStore(preview.store.id),
     preview
   };
 }
