@@ -19,6 +19,10 @@ import {
 } from "@/lib/tenant/context";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type {
+  PublicStorefrontCategory,
+  PublicStorefrontProduct
+} from "@/lib/public-storefront-preview";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +109,152 @@ function publicProductHref(
   return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
 }
 
+type DiscoverySearchParams = {
+  availability?: string;
+  category?: string;
+  collection?: string;
+  maxPrice?: string;
+  minPrice?: string;
+  q?: string;
+  sort?: string;
+};
+
+function cleanQueryValue(value: string | undefined, maxLength = 120) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function numericFilterValue(value: string | undefined) {
+  const parsed = Number(cleanQueryValue(value, 30));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function productPriceValue(product: PublicStorefrontProduct) {
+  if (typeof product.price === "number") {
+    return Number.isFinite(product.price) ? product.price : null;
+  }
+
+  if (typeof product.price === "string" && product.price.trim()) {
+    const parsed = Number(product.price);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function productSearchText(product: PublicStorefrontProduct) {
+  return [
+    product.title,
+    product.description,
+    product.sku,
+    ...product.variants.flatMap((variant) => [variant.name, variant.sku])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesCategoryOrCollection(
+  product: PublicStorefrontProduct,
+  categories: PublicStorefrontCategory[],
+  filterValue: string
+) {
+  if (!filterValue) {
+    return true;
+  }
+
+  const category = categories.find(
+    (item) => item.id === filterValue || item.slug === filterValue || item.name.toLowerCase() === filterValue.toLowerCase()
+  );
+  const categoryName = category?.name ?? filterValue;
+
+  return product.categoryId === category?.id || product.categoryName === categoryName;
+}
+
+function isProductInStock(product: PublicStorefrontProduct) {
+  if (!product.trackInventory) {
+    return true;
+  }
+
+  if (typeof product.stockQuantity === "number") {
+    return product.stockQuantity > 0;
+  }
+
+  return product.variants.some((variant) => typeof variant.stockQuantity === "number" && variant.stockQuantity > 0);
+}
+
+function sortDiscoveryProducts(products: PublicStorefrontProduct[], sort: string) {
+  return [...products].sort((left, right) => {
+    if (sort === "price-asc" || sort === "price-desc") {
+      const leftPrice = productPriceValue(left) ?? Number.MAX_SAFE_INTEGER;
+      const rightPrice = productPriceValue(right) ?? Number.MAX_SAFE_INTEGER;
+      return sort === "price-asc" ? leftPrice - rightPrice : rightPrice - leftPrice;
+    }
+
+    if (sort === "name-asc") {
+      return left.title.localeCompare(right.title);
+    }
+
+    const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+    return rightTime - leftTime;
+  });
+}
+
+function resolveProductDiscovery({
+  categories,
+  products,
+  searchParams
+}: {
+  categories: PublicStorefrontCategory[];
+  products: PublicStorefrontProduct[];
+  searchParams: DiscoverySearchParams;
+}) {
+  const query = cleanQueryValue(searchParams.q, 120).toLowerCase();
+  const categoryFilter = cleanQueryValue(searchParams.category, 100);
+  const collectionFilter = cleanQueryValue(searchParams.collection, 100);
+  const categoryOrCollection = categoryFilter || collectionFilter;
+  const minPrice = numericFilterValue(searchParams.minPrice);
+  const maxPrice = numericFilterValue(searchParams.maxPrice);
+  const availability = cleanQueryValue(searchParams.availability, 30);
+  const sort = cleanQueryValue(searchParams.sort, 30) || "newest";
+  const filtered = products.filter((product) => {
+    const price = productPriceValue(product);
+
+    if (query && !productSearchText(product).includes(query)) {
+      return false;
+    }
+
+    if (!matchesCategoryOrCollection(product, categories, categoryOrCollection)) {
+      return false;
+    }
+
+    if (minPrice !== null && (price === null || price < minPrice)) {
+      return false;
+    }
+
+    if (maxPrice !== null && (price === null || price > maxPrice)) {
+      return false;
+    }
+
+    if (availability === "in_stock" && !isProductInStock(product)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return {
+    active: Boolean(query || categoryOrCollection || minPrice !== null || maxPrice !== null || availability || sort !== "newest"),
+    availability,
+    categoryOrCollection,
+    maxPrice,
+    minPrice,
+    products: sortDiscoveryProducts(filtered, sort),
+    query,
+    sort
+  };
+}
+
 export async function generateMetadata({
   params
 }: {
@@ -167,11 +317,14 @@ export async function generateMetadata({
 }
 
 export default async function PublicStorePage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<DiscoverySearchParams>;
 }) {
   const { slug } = await params;
+  const query = await searchParams;
   const context = await getCurrentStoreContext(slug);
   const preview = context?.preview;
 
@@ -191,10 +344,24 @@ export default async function PublicStorePage({
     return <StoreUnavailablePage />;
   }
 
-  const { branding, products, store } = preview;
+  const discovery = resolveProductDiscovery({
+    categories: preview.categories,
+    products: preview.products,
+    searchParams: query
+  });
+  const filteredPreview = {
+    ...preview,
+    products: discovery.products
+  };
+  const filteredContext = {
+    ...context,
+    preview: filteredPreview
+  };
+  const { branding, store } = filteredPreview;
+  const products = discovery.products;
   const theme = preview.themeSettings;
   const productSections = buildPublicProductSections({
-    categories: preview.categories,
+    categories: filteredPreview.categories,
     products
   });
   const supportEmail = store.supportEmail?.trim() || null;
@@ -220,6 +387,115 @@ export default async function PublicStorePage({
   const heroBackground = theme.bannerImageUrl
     ? `linear-gradient(135deg, ${branding.primaryColor}cc, ${branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${branding.primaryColor}, ${branding.secondaryColor})`;
+  const discoveryControls = (
+    <section className="px-4 py-8 sm:px-6 lg:px-8">
+      <form className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm" method="get">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Product discovery
+            </p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+              Search and filter products
+            </h2>
+          </div>
+          {discovery.active ? (
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={`/store/${store.slug}`}
+            >
+              Clear filters
+            </Link>
+          ) : null}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+          <label className="grid gap-2 text-sm font-semibold text-ink lg:col-span-2">
+            <span>Search</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={cleanQueryValue(query.q, 120)}
+              name="q"
+              placeholder="Name, description, or SKU"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Category / collection</span>
+            <select
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={discovery.categoryOrCollection}
+              name="category"
+            >
+              <option value="">All products</option>
+              {filteredPreview.categories.map((category) => (
+                <option key={category.id} value={category.slug || category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Availability</span>
+            <select
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={discovery.availability}
+              name="availability"
+            >
+              <option value="">Any availability</option>
+              <option value="in_stock">In stock</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Min price</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={discovery.minPrice ?? ""}
+              min="0"
+              name="minPrice"
+              placeholder="0"
+              step="0.01"
+              type="number"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Max price</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={discovery.maxPrice ?? ""}
+              min="0"
+              name="maxPrice"
+              placeholder="500"
+              step="0.01"
+              type="number"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-ink">
+            <span>Sort</span>
+            <select
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+              defaultValue={discovery.sort}
+              name="sort"
+            >
+              <option value="newest">Newest</option>
+              <option value="price-asc">Price low to high</option>
+              <option value="price-desc">Price high to low</option>
+              <option value="name-asc">Name A-Z</option>
+            </select>
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-bold text-muted">
+            Showing {products.length} of {preview.products.length} store-scoped products.
+          </p>
+          <button
+            className="h-11 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+            type="submit"
+          >
+            Apply filters
+          </button>
+        </div>
+      </form>
+    </section>
+  );
   const fallbackStorefront = (
     <>
       <section className="px-4 py-5 sm:px-6 lg:px-8">
@@ -436,10 +712,12 @@ export default async function PublicStorePage({
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                No products available yet
+                {preview.products.length ? "No products found." : "No products available yet"}
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                This store is live, but there are no active public products yet.
+                {preview.products.length
+                  ? "Try adjusting the search, filters, or price range."
+                  : "This store is live, but there are no active public products yet."}
               </p>
             </div>
           )}
@@ -464,7 +742,20 @@ export default async function PublicStorePage({
         slug={store.slug}
         templateId={preview.templateId}
       />
-      <DynamicSectionLoader context={context} fallback={fallbackStorefront} />
+      {discoveryControls}
+      {discovery.active && preview.products.length > 0 && products.length === 0 ? (
+        <section className="px-4 pb-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
+            <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
+              No products found.
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
+              Try adjusting the search, filters, or price range.
+            </p>
+          </div>
+        </section>
+      ) : null}
+      <DynamicSectionLoader context={filteredContext} fallback={fallbackStorefront} />
       <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>

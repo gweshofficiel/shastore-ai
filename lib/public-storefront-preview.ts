@@ -30,6 +30,7 @@ export type PublicStorefrontProduct = {
   categoryId: string | null;
   categoryName: string | null;
   compareAtPrice: number | string | null;
+  createdAt: string | null;
   currency: string | null;
   description: string | null;
   gallery: unknown[];
@@ -185,6 +186,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
       typeof value.compareAtPrice === "number" || typeof value.compareAtPrice === "string"
         ? value.compareAtPrice
         : null,
+    createdAt: textValue(value.createdAt) || textValue(value.created_at) || null,
     currency: textValue(value.currency) || null,
     description: textValue(value.description) || null,
     gallery: Array.isArray(value.gallery) ? value.gallery : [],
@@ -522,7 +524,7 @@ async function loadStoreModePublicPreview(slug: string) {
 
   const { data: products } = await client
     .from("store_products" as never)
-    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex")
+    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at")
     .eq("store_id", store.id)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
@@ -597,6 +599,7 @@ async function loadStoreModePublicPreview(slug: string) {
     categoryName:
       typeof product.category_id === "string" ? categoriesById.get(product.category_id) ?? null : null,
     compareAtPrice: product.compare_at_price,
+    createdAt: textValue(product.created_at) || null,
     currency: textValue(product.currency) || null,
     gallery: Array.isArray(product.gallery) ? product.gallery : [],
     id: String(product.id ?? ""),
