@@ -161,7 +161,7 @@ function questionMessage(status: string | undefined) {
     failed: "Question could not be submitted. Please try again.",
     invalid: "Add a clear product question with at least 10 characters.",
     "not-configured": "Product questions are not configured yet.",
-    submitted: "Question submitted for seller review."
+    submitted: "Your question was submitted and is awaiting seller approval."
   };
 
   return status ? messages[status] : null;
@@ -496,6 +496,108 @@ export default async function PublicProductDetailPage({
             </article>
           </div>
 
+          <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Product Q&A
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+              Questions about this product?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Ask the seller about sizing, materials, compatibility, delivery, or anything else about this product.
+              Approved answered questions appear below.
+            </p>
+            {qaMessage ? (
+              <div className={`mt-4 rounded-2xl border p-3 text-sm font-bold ${
+                query.question === "submitted"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}>
+                {qaMessage}
+              </div>
+            ) : null}
+            <form action={submitProductQuestion} className="mt-5 grid gap-3">
+              <input name="slug" type="hidden" value={preview.store.slug} />
+              <input name="storeId" type="hidden" value={preview.store.id} />
+              <input name="workspaceId" type="hidden" value={preview.store.workspaceId ?? ""} />
+              <input name="productId" type="hidden" value={product.id} />
+              <input
+                aria-hidden="true"
+                className="hidden"
+                name="website"
+                tabIndex={-1}
+                type="text"
+              />
+              <label className="grid gap-2 text-sm font-semibold text-ink">
+                <span>Question *</span>
+                <textarea
+                  className="min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  maxLength={2000}
+                  minLength={10}
+                  name="questionText"
+                  placeholder="What would you like to know about this product?"
+                  required
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Name</span>
+                  <input
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    maxLength={120}
+                    name="customerName"
+                    placeholder="Optional"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Email</span>
+                  <input
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    maxLength={180}
+                    name="customerEmail"
+                    placeholder="Optional"
+                    type="email"
+                  />
+                </label>
+              </div>
+              <button
+                className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
+                type="submit"
+              >
+                Submit question
+              </button>
+            </form>
+
+            <div className="mt-8 border-t border-slate-100 pt-6">
+              <h3 className="text-2xl font-black tracking-[-0.04em] text-ink">
+                {questions.length
+                  ? `${questions.length} answered ${questions.length === 1 ? "question" : "questions"}`
+                  : "No answered questions yet"}
+              </h3>
+              <div className="mt-5 grid gap-4">
+                {questions.length ? (
+                  questions.map((question) => (
+                    <article className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={question.id}>
+                      <p className="text-sm font-black text-ink">
+                        Q: {question.questionText}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-muted">
+                        A: {question.answerText}
+                      </p>
+                      <p className="mt-3 text-xs font-bold text-slate-400">
+                        Asked by {question.customerName}
+                      </p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
+                    Seller-approved answers will appear here after moderation.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
           {relatedProducts.length ? (
             <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-end justify-between gap-4">
@@ -599,110 +701,6 @@ export default async function PublicProductDetailPage({
             slug={preview.store.slug}
             storeId={preview.store.id}
           />
-
-          <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Product Questions
-              </p>
-              <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-                {questions.length
-                  ? `${questions.length} answered ${questions.length === 1 ? "question" : "questions"}`
-                  : "No answered questions yet"}
-              </h2>
-              <div className="mt-5 grid gap-4">
-                {questions.length ? (
-                  questions.map((question) => (
-                    <article className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={question.id}>
-                      <p className="text-sm font-black text-ink">
-                        Q: {question.questionText}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-muted">
-                        A: {question.answerText}
-                      </p>
-                      <p className="mt-3 text-xs font-bold text-slate-400">
-                        Asked by {question.customerName}
-                      </p>
-                    </article>
-                  ))
-                ) : (
-                  <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
-                    Seller-approved answers will appear here after moderation.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Ask a Question
-              </p>
-              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-                Need product details?
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                Questions are reviewed by the seller before appearing publicly.
-              </p>
-              {qaMessage ? (
-                <div className={`mt-4 rounded-2xl border p-3 text-sm font-bold ${
-                  query.question === "submitted"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-800"
-                }`}>
-                  {qaMessage}
-                </div>
-              ) : null}
-              <form action={submitProductQuestion} className="mt-5 grid gap-3">
-                <input name="slug" type="hidden" value={preview.store.slug} />
-                <input name="storeId" type="hidden" value={preview.store.id} />
-                <input name="workspaceId" type="hidden" value={preview.store.workspaceId ?? ""} />
-                <input name="productId" type="hidden" value={product.id} />
-                <input
-                  aria-hidden="true"
-                  className="hidden"
-                  name="website"
-                  tabIndex={-1}
-                  type="text"
-                />
-                <label className="grid gap-2 text-sm font-semibold text-ink">
-                  <span>Name</span>
-                  <input
-                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                    maxLength={120}
-                    name="customerName"
-                    placeholder="Optional"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-semibold text-ink">
-                  <span>Email</span>
-                  <input
-                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                    maxLength={180}
-                    name="customerEmail"
-                    placeholder="Optional"
-                    type="email"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-semibold text-ink">
-                  <span>Question *</span>
-                  <textarea
-                    className="min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
-                    maxLength={2000}
-                    minLength={10}
-                    name="questionText"
-                    placeholder="Ask about sizing, materials, compatibility, delivery, or anything else about this product."
-                    required
-                  />
-                </label>
-                <button
-                  className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
-                  type="submit"
-                >
-                  Submit question
-                </button>
-              </form>
-            </div>
-          </section>
 
           <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
