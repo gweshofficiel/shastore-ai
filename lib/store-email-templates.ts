@@ -41,6 +41,23 @@ function moneyValue(value: unknown) {
   return null;
 }
 
+function currencyMoneyValue(value: unknown, currency: unknown) {
+  const amount = moneyValue(value);
+  const code = textValue(currency, "USD");
+
+  return amount ? `${code} ${amount}` : null;
+}
+
+function optionalLine(label: string, value: string | null) {
+  return value ? `${label}: ${value}` : null;
+}
+
+function htmlLine(label: string, value: string | null) {
+  return value
+    ? `<p style="margin:4px 0;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
+    : "";
+}
+
 export function getStoreEmailTemplate(
   templateKey: StoreEmailTemplateKey,
   metadata: StoreEmailTemplateMetadata = {}
@@ -50,10 +67,21 @@ export function getStoreEmailTemplate(
   const customerName = textValue(metadata.customerName, "Customer");
   const orderStatus = textValue(metadata.orderStatus, "updated");
   const total = moneyValue(metadata.totalAmount);
+  const currencyTotal = currencyMoneyValue(metadata.totalAmount, metadata.currency);
+  const orderDate = textValue(metadata.orderDate);
+  const productsSummary = textValue(metadata.productsSummary);
+  const subtotal = currencyMoneyValue(metadata.subtotalAmount, metadata.currency);
+  const shipping = currencyMoneyValue(metadata.shippingAmount, metadata.currency);
+  const discountAmount = moneyValue(metadata.discountAmount);
+  const discount = discountAmount && Number(discountAmount) > 0
+    ? currencyMoneyValue(metadata.discountAmount, metadata.currency)
+    : null;
+  const fulfillmentStatus = textValue(metadata.fulfillmentStatus);
+  const receiptUrl = textValue(metadata.receiptUrl);
   const productName = textValue(metadata.productName, "A product");
   const stockQuantity = textValue(metadata.stockQuantity, "low stock");
   const orderUrl = textValue(metadata.orderUrl);
-  let content: { subject: string; text: string };
+  let content: { htmlDetails?: string; subject: string; text: string };
 
   if (templateKey === "order_status_update") {
     content = {
@@ -86,18 +114,40 @@ export function getStoreEmailTemplate(
       text: `Hello ${customerName}, thank you for your order ${orderReference}. We are preparing it now.`
     };
   } else {
+    const receiptLink = receiptUrl || orderUrl;
+    const lines = [
+      `Hello ${customerName}, your order ${orderReference} at ${storeName} has been received.`,
+      optionalLine("Order date", orderDate),
+      optionalLine("Products", productsSummary),
+      optionalLine("Subtotal", subtotal),
+      optionalLine("Shipping", shipping),
+      optionalLine("Discount", discount),
+      optionalLine("Grand total", currencyTotal ?? total),
+      optionalLine("Fulfillment", fulfillmentStatus),
+      receiptLink ? `Receipt: ${receiptLink}` : null
+    ].filter(Boolean);
+
     content = {
       subject: `Order ${orderReference} received`,
-      text: `Hello ${customerName}, your order ${orderReference} at ${storeName} has been received${total ? ` with total ${total}` : ""}.`
+      text: lines.join("\n"),
+      htmlDetails: [
+        htmlLine("Order date", orderDate),
+        htmlLine("Products", productsSummary),
+        htmlLine("Subtotal", subtotal),
+        htmlLine("Shipping", shipping),
+        htmlLine("Discount", discount),
+        htmlLine("Grand total", currencyTotal ?? total),
+        htmlLine("Fulfillment", fulfillmentStatus)
+      ].join("")
     };
   }
 
   const safeText = escapeHtml(content.text);
   const safeStoreName = escapeHtml(storeName);
-  const safeOrderUrl = escapeHtml(orderUrl);
+  const safeOrderUrl = escapeHtml(receiptUrl || orderUrl);
 
   return {
     ...content,
-    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;"><p>${safeText}</p>${orderUrl ? `<p><a href="${safeOrderUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">View order</a></p>` : ""}<p style="color:#64748b;">Thank you,<br />${safeStoreName}</p></div>`
+    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;"><p>${safeText.replace(/\n/g, "<br />")}</p>${content.htmlDetails ? `<div style="margin:18px 0;padding:16px;border:1px solid #e2e8f0;border-radius:16px;background:#f8fafc;">${content.htmlDetails}</div>` : ""}${safeOrderUrl ? `<p><a href="${safeOrderUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">View receipt</a></p>` : ""}<p style="color:#64748b;">Thank you,<br />${safeStoreName}</p></div>`
   };
 }

@@ -72,6 +72,55 @@ function enabledForTemplate(settings: StoreEmailSettings | null, templateKey: St
   return value !== false;
 }
 
+async function emailEventAlreadyQueued({
+  metadata,
+  recipient,
+  storeId,
+  templateKey,
+  workspaceId
+}: {
+  metadata: StoreEmailMetadata;
+  recipient: string;
+  storeId: string;
+  templateKey: StoreEmailTemplateKey;
+  workspaceId: string;
+}) {
+  const orderId = typeof metadata.orderId === "string" ? metadata.orderId.trim() : "";
+
+  if (!orderId) {
+    return false;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return false;
+  }
+
+  const { data, error } = await admin
+    .from("email_event_logs" as never)
+    .select("id")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .eq("recipient" as never, recipient as never)
+    .eq("template_key" as never, templateKey as never)
+    .contains("metadata" as never, { orderId } as never)
+    .limit(1);
+
+  if (error) {
+    console.warn("[store-email] duplicate lookup skipped", {
+      message: error.message,
+      orderId,
+      storeId,
+      templateKey,
+      workspaceId
+    });
+    return false;
+  }
+
+  return Boolean((data ?? []).length);
+}
+
 export async function queueStoreEmailEventSafe({
   metadata = {},
   recipient,
@@ -139,6 +188,19 @@ export async function queueStoreEmailEventSafe({
       senderName: settings?.sender_name ?? null,
       storeName: metadata.storeName ?? store.name ?? "Store"
     });
+
+    if (
+      await emailEventAlreadyQueued({
+        metadata: safeMetadata,
+        recipient: email,
+        storeId,
+        templateKey,
+        workspaceId: resolvedWorkspaceId
+      })
+    ) {
+      return false;
+    }
+
     const template = getStoreEmailTemplate(templateKey, safeMetadata);
     const { error } = await admin.from("email_event_logs" as never).insert({
       metadata: safeMetadata as Json,

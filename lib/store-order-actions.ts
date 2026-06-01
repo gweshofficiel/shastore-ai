@@ -599,6 +599,98 @@ type DraftLineItem = {
   variant_sku?: string | null;
 };
 
+type ReceiptEmailLineItem = {
+  product_title?: string;
+  quantity: number;
+  title?: string;
+};
+
+function productSummaryForReceiptEmail(items: ReceiptEmailLineItem[]) {
+  if (!items.length) {
+    return "Products snapshot unavailable";
+  }
+
+  return items
+    .slice(0, 8)
+    .map((item) => `${item.product_title ?? item.title ?? "Product"} x${item.quantity}`)
+    .join(", ");
+}
+
+function receiptUrl({
+  orderId,
+  orderSource,
+  phone,
+  slug
+}: {
+  orderId: string;
+  orderSource: "orders" | "store_orders";
+  phone: string;
+  slug: string;
+}) {
+  const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+  const params = new URLSearchParams({
+    phone,
+    source: orderSource
+  });
+
+  return `${baseUrl}/store/${slug}/receipt/${orderId}?${params.toString()}`;
+}
+
+function orderConfirmationEmailMetadata({
+  currency,
+  customerName,
+  customerPhone,
+  discountAmount,
+  fulfillmentStatus = "pending",
+  items,
+  orderId,
+  orderSource,
+  paymentMethod,
+  shippingAmount,
+  slug,
+  subtotalAmount,
+  totalAmount
+}: {
+  currency: string;
+  customerName: string;
+  customerPhone: string;
+  discountAmount: number;
+  fulfillmentStatus?: string;
+  items: ReceiptEmailLineItem[];
+  orderId: string;
+  orderSource: "orders" | "store_orders";
+  paymentMethod: string;
+  shippingAmount: number;
+  slug: string;
+  subtotalAmount: number;
+  totalAmount: number;
+}) {
+  const url = receiptUrl({
+    orderId,
+    orderSource,
+    phone: customerPhone,
+    slug
+  });
+
+  return {
+    currency,
+    customerName,
+    discountAmount,
+    fulfillmentStatus,
+    orderDate: new Date().toISOString().slice(0, 10),
+    orderId,
+    orderReference: orderId.slice(0, 8).toUpperCase(),
+    orderSource,
+    orderUrl: url,
+    paymentMethod,
+    productsSummary: productSummaryForReceiptEmail(items),
+    receiptUrl: url,
+    shippingAmount,
+    subtotalAmount,
+    totalAmount
+  };
+}
+
 type StoreStripeConnectionRow = {
   charges_enabled?: boolean | null;
   connection_status?: string | null;
@@ -906,13 +998,20 @@ async function persistStorefrontOrderDraft({
         workspaceId
       });
       await queueStoreEmailEventSafe({
-        metadata: {
+        metadata: orderConfirmationEmailMetadata({
+          currency,
           customerName,
-          orderReference: orderRow.id.slice(0, 8),
+          customerPhone,
+          discountAmount: safeDiscountAmount,
+          items,
+          orderId: orderRow.id,
           orderSource: "orders",
-          storeName: slug,
+          paymentMethod,
+          shippingAmount: financialBreakdown.shippingAmount,
+          slug,
+          subtotalAmount: financialBreakdown.subtotalAmount,
           totalAmount: total
-        },
+        }),
         recipient: customerEmail,
         storeId: store.id,
         templateKey: "order_confirmation",
@@ -1093,13 +1192,20 @@ async function persistStorefrontOrderDraft({
     workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
   });
   await queueStoreEmailEventSafe({
-    metadata: {
+    metadata: orderConfirmationEmailMetadata({
+      currency,
       customerName,
-      orderReference: storeOrderRow.id.slice(0, 8),
+      customerPhone,
+      discountAmount: safeDiscountAmount,
+      items,
+      orderId: storeOrderRow.id,
       orderSource: "store_orders",
-      storeName: slug,
+      paymentMethod: "manual",
+      shippingAmount: financialBreakdown.shippingAmount,
+      slug,
+      subtotalAmount: financialBreakdown.subtotalAmount,
       totalAmount: total
-    },
+    }),
     recipient: customerEmail,
     storeId: store.id,
     templateKey: "order_confirmation",
@@ -1717,13 +1823,20 @@ export async function createPublicStoreOrderAction(
     workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
   });
   await queueStoreEmailEventSafe({
-    metadata: {
+    metadata: orderConfirmationEmailMetadata({
+      currency: preview.store.currency ?? "USD",
       customerName,
-      orderReference: (order as { id: string }).id.slice(0, 8),
+      customerPhone,
+      discountAmount,
+      items,
+      orderId: (order as { id: string }).id,
       orderSource: "store_orders",
-      storeName: slug,
+      paymentMethod: "whatsapp",
+      shippingAmount: financialBreakdown.shippingAmount,
+      slug,
+      subtotalAmount: financialBreakdown.subtotalAmount,
       totalAmount: total
-    },
+    }),
     recipient: customerEmail,
     storeId: store.id,
     templateKey: "order_confirmation",
