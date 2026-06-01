@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type CompareScope = {
@@ -317,6 +318,7 @@ export function ComparePageClient({
                 <p className="mt-2 text-sm leading-6 text-muted">
                   {product.description || "No description has been added for this product yet."}
                 </p>
+                <ProductSalesProof compact product={product} />
               </div>
               <dl className="grid gap-3 text-sm">
                 <div className="rounded-2xl bg-slate-50 p-3">

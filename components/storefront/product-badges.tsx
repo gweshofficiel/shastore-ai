@@ -84,7 +84,7 @@ function isLowStock(product: PublicStorefrontProduct) {
 
 function isBestSeller(product: PublicStorefrontProduct) {
   const status = product.inventoryStatus?.toLowerCase().replace(/[\s-]+/g, "_");
-  return status === "best_seller" || status === "bestseller";
+  return status === "best_seller" || status === "bestseller" || product.salesCount >= 10;
 }
 
 export function resolveProductBadges(product: PublicStorefrontProduct) {

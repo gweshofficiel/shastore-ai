@@ -7,6 +7,7 @@ import {
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
@@ -675,6 +676,7 @@ export default async function PublicStorePage({
                       <p className="mt-3 min-h-12 text-sm leading-6 text-muted">
                         {product.description || "No description has been added for this product yet."}
                       </p>
+                      <ProductSalesProof compact product={product} />
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
                         <div className="flex flex-wrap items-end gap-2">
                           <p className="text-lg font-black text-ink">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -283,6 +284,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                         <p className="mt-3 text-lg font-black text-ink">
                           {formatProductPrice(product.price, product.priceLabel, currency)}
                         </p>
+                        <ProductSalesProof compact product={product} />
                       </div>
                       <ProductQuickView
                         currency={currency}

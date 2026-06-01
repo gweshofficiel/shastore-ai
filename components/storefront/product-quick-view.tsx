@@ -7,6 +7,7 @@ import {
   CartNavLink
 } from "@/components/storefront/public-store-cart";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type ProductQuickViewProps = {
@@ -202,6 +203,7 @@ export function ProductQuickView({
                 <p className="text-sm font-semibold leading-6 text-muted">
                   {shortDescription(product)}
                 </p>
+                <ProductSalesProof compact product={product} />
                 <div className={`rounded-2xl border px-4 py-3 text-sm font-black ${
                   availability.isSoldOut
                     ? "border-red-200 bg-red-50 text-red-700"

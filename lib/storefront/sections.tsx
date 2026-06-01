@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -444,6 +445,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                   <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "No description has been added for this product yet."}
                   </p>
+                  <ProductSalesProof compact product={product} />
                   <div
                     className={`mt-5 flex flex-wrap items-end gap-2 border-t pt-5 ${
                       config.key === "electronics-starter" ? "border-cyan-400/10 text-cyan-100" : "border-slate-100 text-ink"

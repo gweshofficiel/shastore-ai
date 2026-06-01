@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
@@ -178,6 +179,7 @@ export function RecentlyViewedProducts({
                   <p className="mt-2 text-sm font-black text-ink">
                     {formatProductPrice(product.price, product.priceLabel, productCurrency)}
                   </p>
+                  <ProductSalesProof compact product={product} />
                 </div>
                 <ProductQuickView
                   currency={productCurrency}

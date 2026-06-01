@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -440,6 +441,7 @@ export default async function PublicProductDetailPage({
               <p className="mt-6 text-base leading-8 text-muted">
                 {product.description || "No description has been added for this product yet."}
               </p>
+              <ProductSalesProof product={product} />
 
               <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
                 <AddToCartButton
@@ -531,6 +533,7 @@ export default async function PublicProductDetailPage({
                           <p className="mt-2 text-sm font-black text-ink">
                             {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency)}
                           </p>
+                          <ProductSalesProof compact product={relatedProduct} />
                         </div>
                         <ProductQuickView
                           currency={relatedCurrency}

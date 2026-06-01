@@ -50,6 +50,8 @@ export type PublicStorefrontProduct = {
   sku: string | null;
   slug: string | null;
   status: string | null;
+  recentlyPurchasedAt: string | null;
+  salesCount: number;
   title: string;
   stockQuantity: number | null;
   trackInventory: boolean;
@@ -166,6 +168,127 @@ function numberValue(value: unknown) {
   return null;
 }
 
+function salesQuantity(value: unknown) {
+  const quantity = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(quantity) ? Math.max(0, Math.floor(quantity)) : 0;
+}
+
+function isValidSalesOrder(order: { order_status?: string | null; payment_status?: string | null }) {
+  const orderStatus = String(order.order_status ?? "").toLowerCase();
+  const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+
+  return (
+    ["paid", "captured", "succeeded", "completed"].includes(paymentStatus) ||
+    ["confirmed", "processing", "completed", "fulfilled", "shipped", "delivered"].includes(orderStatus)
+  );
+}
+
+function recordProductSale(
+  summaries: Map<string, { recentlyPurchasedAt: string | null; salesCount: number }>,
+  input: {
+    productId: string | null;
+    purchasedAt: string | null;
+    quantity: number;
+  }
+) {
+  if (!input.productId || input.quantity <= 0) {
+    return;
+  }
+
+  const current = summaries.get(input.productId) ?? {
+    recentlyPurchasedAt: null,
+    salesCount: 0
+  };
+  const currentTime = current.recentlyPurchasedAt ? new Date(current.recentlyPurchasedAt).getTime() : 0;
+  const nextTime = input.purchasedAt ? new Date(input.purchasedAt).getTime() : 0;
+
+  summaries.set(input.productId, {
+    recentlyPurchasedAt: nextTime > currentTime ? input.purchasedAt : current.recentlyPurchasedAt,
+    salesCount: current.salesCount + input.quantity
+  });
+}
+
+async function loadProductSalesSummaries(
+  client: SupabaseClient,
+  storeId: string,
+  productIds: string[]
+) {
+  const summaries = new Map<string, { recentlyPurchasedAt: string | null; salesCount: number }>();
+
+  if (!productIds.length) {
+    return summaries;
+  }
+
+  const { data: rawOrders } = await client
+    .from("orders" as never)
+    .select("id, created_at, order_status, payment_status")
+    .eq("store_id" as never, storeId as never)
+    .order("created_at" as never, { ascending: false })
+    .limit(500);
+  const validOrders = ((rawOrders ?? []) as unknown as Array<{
+    created_at: string | null;
+    id: string;
+    order_status?: string | null;
+    payment_status?: string | null;
+  }>).filter(isValidSalesOrder);
+  const validOrderIds = validOrders.map((order) => order.id);
+  const orderDateById = new Map(validOrders.map((order) => [order.id, order.created_at]));
+
+  if (validOrderIds.length) {
+    const { data: rawItems } = await client
+      .from("order_items" as never)
+      .select("order_id, product_id, quantity")
+      .in("order_id" as never, validOrderIds as never)
+      .in("product_id" as never, productIds as never);
+
+    for (const item of (rawItems ?? []) as unknown as Array<{
+      order_id: string | null;
+      product_id: string | null;
+      quantity: number | string | null;
+    }>) {
+      recordProductSale(summaries, {
+        productId: item.product_id,
+        purchasedAt: item.order_id ? orderDateById.get(item.order_id) ?? null : null,
+        quantity: salesQuantity(item.quantity)
+      });
+    }
+  }
+
+  const { data: rawStoreOrders } = await client
+    .from("store_orders" as never)
+    .select("created_at, items, order_status, payment_status")
+    .eq("store_id" as never, storeId as never)
+    .order("created_at" as never, { ascending: false })
+    .limit(500);
+
+  for (const order of ((rawStoreOrders ?? []) as unknown as Array<{
+    created_at: string | null;
+    items: unknown;
+    order_status?: string | null;
+    payment_status?: string | null;
+  }>).filter(isValidSalesOrder)) {
+    if (!Array.isArray(order.items)) {
+      continue;
+    }
+
+    for (const item of order.items.filter(isRecord)) {
+      const productId = textValue(item.product_id) || textValue(item.productId) || textValue(item.id) || null;
+
+      if (!productId || !productIds.includes(productId)) {
+        continue;
+      }
+
+      recordProductSale(summaries, {
+        productId,
+        purchasedAt: order.created_at,
+        quantity: salesQuantity(item.quantity)
+      });
+    }
+  }
+
+  return summaries;
+}
+
 function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   if (!isRecord(value)) {
     return null;
@@ -206,6 +329,8 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     sku: textValue(value.sku) || null,
     slug: textValue(value.slug) || null,
     status: textValue(value.status) || null,
+    recentlyPurchasedAt: textValue(value.recentlyPurchasedAt) || textValue(value.recently_purchased_at) || null,
+    salesCount: salesQuantity(value.salesCount ?? value.sales_count),
     title,
     stockQuantity: typeof value.stockQuantity === "number" ? value.stockQuantity : null,
     trackInventory: value.trackInventory === true,
@@ -594,6 +719,7 @@ async function loadStoreModePublicPreview(slug: string) {
     });
     variantsByProduct.set(productId, savedVariants);
   }
+  const salesSummaryByProduct = await loadProductSalesSummaries(client, store.id, productIds);
   const savedProducts = ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
     categoryId: typeof product.category_id === "string" ? product.category_id : null,
     categoryName:
@@ -621,6 +747,8 @@ async function loadStoreModePublicPreview(slug: string) {
     sku: null,
     slug: textValue(product.slug) || null,
     status: textValue(product.status, "active"),
+    recentlyPurchasedAt: salesSummaryByProduct.get(String(product.id ?? ""))?.recentlyPurchasedAt ?? null,
+    salesCount: salesSummaryByProduct.get(String(product.id ?? ""))?.salesCount ?? 0,
     stockQuantity: (() => {
       if (typeof product.stock_quantity === "number" && Number.isFinite(product.stock_quantity)) {
         return product.stock_quantity;
