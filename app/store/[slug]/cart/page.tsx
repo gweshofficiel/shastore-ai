@@ -15,6 +15,9 @@ type StoreCartPageProps = {
   params: Promise<{
     slug: string;
   }>;
+  searchParams: Promise<{
+    coupon?: string;
+  }>;
 };
 
 export async function generateMetadata({
@@ -52,8 +55,9 @@ export async function generateMetadata({
   };
 }
 
-export default async function StoreCartPage({ params }: StoreCartPageProps) {
+export default async function StoreCartPage({ params, searchParams }: StoreCartPageProps) {
   const { slug } = await params;
+  const query = await searchParams;
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
@@ -161,6 +165,7 @@ export default async function StoreCartPage({ params }: StoreCartPageProps) {
             freeDeliveryThreshold: preview.store.freeDeliveryThreshold,
             pickupEnabled: preview.store.pickupEnabled
           }}
+          initialCouponCode={query.coupon}
           products={preview.products}
           paymentMethods={paymentMethods}
           shippingMethods={shippingMethods}

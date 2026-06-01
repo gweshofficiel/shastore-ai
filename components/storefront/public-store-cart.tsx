@@ -53,6 +53,7 @@ type CartPageClientProps = {
     freeDeliveryThreshold: number | null;
     pickupEnabled: boolean;
   };
+  initialCouponCode?: string;
   paymentMethods?: PublicStorePaymentMethod[];
   products: PublicStorefrontProduct[];
   shippingMethods?: PublicShippingMethod[];
@@ -787,6 +788,7 @@ export function ClearStoreCartOnOrderSuccess({
 export function CartPageClient({
   currency,
   deliverySettings,
+  initialCouponCode = "",
   paymentMethods = [],
   products,
   shippingMethods = [],
@@ -818,8 +820,10 @@ export function CartPageClient({
   const [shippingMethodId, setShippingMethodId] = useState(shippingMethods[0]?.id ?? "");
   const [couponCode, setCouponCode] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [couponMessageType, setCouponMessageType] = useState<"error" | "success" | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponPending, setCouponPending] = useState(false);
+  const [autoCouponAttempted, setAutoCouponAttempted] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PublicStorePaymentMethodKey | "">(
     paymentMethods[0]?.method ?? ""
   );
@@ -869,6 +873,7 @@ export function CartPageClient({
     subtotalAmount: total,
     taxSettings
   });
+  const discountedSubtotal = financialBreakdown.discountedSubtotalAmount;
   const finalTotal = financialBreakdown.totalAmount;
 
   useEffect(() => {
@@ -878,7 +883,20 @@ export function CartPageClient({
   useEffect(() => {
     setAppliedCoupon(null);
     setCouponMessage(null);
+    setCouponMessageType(null);
   }, [total]);
+
+  useEffect(() => {
+    const initialCode = initialCouponCode.trim();
+
+    if (!initialCode || autoCouponAttempted || total <= 0) {
+      return;
+    }
+
+    setAutoCouponAttempted(true);
+    setCouponCode(initialCode);
+    void applyCoupon(initialCode);
+  }, [autoCouponAttempted, initialCouponCode, total]);
 
   useEffect(() => {
     if (!paymentMethods.length) {
@@ -1040,11 +1058,12 @@ export function CartPageClient({
     );
   }
 
-  async function applyCoupon() {
-    const code = couponCode.trim();
+  async function applyCoupon(nextCode = couponCode) {
+    const code = nextCode.trim();
 
     if (!code) {
       setCouponMessage("Enter a coupon code.");
+      setCouponMessageType("error");
       setAppliedCoupon(null);
       return;
     }
@@ -1067,6 +1086,7 @@ export function CartPageClient({
       if (!response.ok || !data.code || typeof data.discountAmount !== "number") {
         setAppliedCoupon(null);
         setCouponMessage(data.error ?? "Coupon could not be applied.");
+        setCouponMessageType("error");
         return;
       }
 
@@ -1075,13 +1095,22 @@ export function CartPageClient({
         discountAmount: data.discountAmount
       });
       setCouponCode(data.code);
-      setCouponMessage(`${data.code} applied.`);
+      setCouponMessage(`${data.code} applied. You saved ${formatMoney(data.discountAmount, currency)}.`);
+      setCouponMessageType("success");
     } catch {
       setAppliedCoupon(null);
       setCouponMessage("Coupon could not be applied.");
+      setCouponMessageType("error");
     } finally {
       setCouponPending(false);
     }
+  }
+
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponMessage("Coupon removed.");
+    setCouponMessageType(null);
   }
 
   if (!items.length) {
@@ -1219,13 +1248,24 @@ export function CartPageClient({
         </div>
         <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 text-sm font-bold text-muted">
           <div className="flex justify-between">
-            <span>Subtotal</span>
+            <span>Original subtotal</span>
             <span>{formatMoney(total, currency)}</span>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-              Coupon
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Coupon
+              </p>
+              {appliedCoupon ? (
+                <button
+                  className="text-xs font-black uppercase tracking-[0.14em] text-red-600"
+                  onClick={removeCoupon}
+                  type="button"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
             <div className="mt-3 flex gap-2">
               <input
                 className="h-11 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
@@ -1233,6 +1273,7 @@ export function CartPageClient({
                   setCouponCode(event.target.value);
                   setAppliedCoupon(null);
                   setCouponMessage(null);
+                  setCouponMessageType(null);
                 }}
                 placeholder="WELCOME10"
                 value={couponCode}
@@ -1240,14 +1281,22 @@ export function CartPageClient({
               <button
                 className="h-11 rounded-full bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-300"
                 disabled={couponPending}
-                onClick={applyCoupon}
+                onClick={() => void applyCoupon()}
                 type="button"
               >
                 {couponPending ? "Checking..." : "Apply"}
               </button>
             </div>
             {couponMessage ? (
-              <p className="mt-2 text-xs font-bold text-muted">{couponMessage}</p>
+              <p className={`mt-2 rounded-xl px-3 py-2 text-xs font-bold ${
+                couponMessageType === "success"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : couponMessageType === "error"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-white text-muted"
+              }`}>
+                {couponMessage}
+              </p>
             ) : null}
             {appliedCoupon ? (
               <div className="mt-3 flex justify-between text-emerald-700">
@@ -1256,6 +1305,12 @@ export function CartPageClient({
               </div>
             ) : null}
           </div>
+          {discountAmount > 0 ? (
+            <div className="flex justify-between text-emerald-700">
+              <span>Subtotal after discount</span>
+              <span>{formatMoney(discountedSubtotal, currency)}</span>
+            </div>
+          ) : null}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Delivery summary
@@ -1378,7 +1433,7 @@ export function CartPageClient({
             </div>
           ) : null}
           <div className="flex justify-between text-lg font-black text-ink">
-            <span>Total</span>
+            <span>Final total</span>
             <span>{formatMoney(finalTotal, currency)}</span>
           </div>
         </div>
@@ -1429,6 +1484,70 @@ export function CartPageClient({
               }))
             )}
           />
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Checkout coupon
+              </p>
+              {appliedCoupon ? (
+                <button
+                  className="text-xs font-black uppercase tracking-[0.14em] text-red-600"
+                  onClick={removeCoupon}
+                  type="button"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                className="h-11 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                onChange={(event) => {
+                  setCouponCode(event.target.value);
+                  setAppliedCoupon(null);
+                  setCouponMessage(null);
+                  setCouponMessageType(null);
+                }}
+                placeholder="Coupon code"
+                value={couponCode}
+              />
+              <button
+                className="h-11 rounded-full bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-300"
+                disabled={couponPending}
+                onClick={() => void applyCoupon()}
+                type="button"
+              >
+                {couponPending ? "Checking..." : "Apply"}
+              </button>
+            </div>
+            {couponMessage ? (
+              <p className={`mt-2 rounded-xl px-3 py-2 text-xs font-bold ${
+                couponMessageType === "success"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : couponMessageType === "error"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-white text-muted"
+              }`}>
+                {couponMessage}
+              </p>
+            ) : null}
+            {discountAmount > 0 ? (
+              <div className="mt-3 grid gap-1 text-xs font-bold text-muted">
+                <div className="flex justify-between">
+                  <span>Original subtotal</span>
+                  <span>{formatMoney(total, currency)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-700">
+                  <span>Discount</span>
+                  <span>-{formatMoney(discountAmount, currency)}</span>
+                </div>
+                <div className="flex justify-between text-ink">
+                  <span>Final total</span>
+                  <span>{formatMoney(finalTotal, currency)}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <label className="grid gap-2 text-sm font-semibold text-ink">
             <span>Customer full name *</span>
             <input
