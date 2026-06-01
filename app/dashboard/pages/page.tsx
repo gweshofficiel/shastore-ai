@@ -55,12 +55,6 @@ type PagesDashboardData = {
 
 const pageTypeOptions = [
   { label: "About Us", value: "about" },
-  { label: "Contact Us", value: "contact" },
-  { label: "FAQ", value: "faq" },
-  { label: "Terms & Conditions", value: "terms" },
-  { label: "Privacy Policy", value: "privacy" },
-  { label: "Shipping Policy", value: "shipping" },
-  { label: "Returns Policy", value: "returns" },
   { label: "Custom Page", value: "custom" }
 ];
 
@@ -174,6 +168,7 @@ async function getPagesDashboardData({
     .select("id, workspace_id, store_id, title, slug, content, page_type, status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at, updated_at")
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
+    .in("page_type" as never, ["about", "custom"] as never)
     .order("updated_at" as never, { ascending: false } as never)
     .order("created_at" as never, { ascending: false } as never);
 
