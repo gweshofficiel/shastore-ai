@@ -5,6 +5,7 @@ import { CompareButton, CompareNavLink } from "@/components/storefront/product-c
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
+import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
@@ -464,6 +465,7 @@ export default async function PublicProductDetailPage({
               </p>
               <ProductSalesProof product={product} />
               <ProductStockUrgency className="mt-5" product={product} />
+              <ProductShareButtons productTitle={product.title} />
               <BackInStockRequest
                 product={product}
                 slug={preview.store.slug}
