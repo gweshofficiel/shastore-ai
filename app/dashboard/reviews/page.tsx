@@ -32,6 +32,13 @@ type ReviewsDashboardData = {
   activeStore: UserStoreRow | null;
   error: string | null;
   products: ProductRow[];
+  reviewStats: {
+    approvedCount: number;
+    averageRating: number;
+    pendingCount: number;
+    rejectedCount: number;
+    totalCount: number;
+  };
   reviews: ReviewRow[];
   stores: UserStoreRow[];
 };
@@ -61,6 +68,21 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function summarizeReviews(reviews: ReviewRow[]) {
+  const approvedReviews = reviews.filter((review) => review.status === "approved");
+  const averageRating = approvedReviews.length
+    ? Number((approvedReviews.reduce((sum, review) => sum + review.rating, 0) / approvedReviews.length).toFixed(1))
+    : 0;
+
+  return {
+    approvedCount: approvedReviews.length,
+    averageRating,
+    pendingCount: reviews.filter((review) => review.status === "pending").length,
+    rejectedCount: reviews.filter((review) => review.status === "rejected").length,
+    totalCount: reviews.length
+  };
+}
+
 async function getReviewsDashboardData(selectedStoreId?: string): Promise<ReviewsDashboardData> {
   const supabase = await createClient();
   const {
@@ -73,6 +95,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
       activeStore: null,
       error: "Sign in to moderate reviews.",
       products: [],
+      reviewStats: summarizeReviews([]),
       reviews: [],
       stores: []
     };
@@ -91,6 +114,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
       activeStore: null,
       error: "Stores could not be loaded. Please try again.",
       products: [],
+      reviewStats: summarizeReviews([]),
       reviews: [],
       stores: []
     };
@@ -104,6 +128,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
       activeStore: null,
       error: null,
       products: [],
+      reviewStats: summarizeReviews([]),
       reviews: [],
       stores
     };
@@ -128,6 +153,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
       activeStore,
       error: "Reviews could not be loaded. Confirm the reviews migration has been applied.",
       products: [],
+      reviewStats: summarizeReviews([]),
       reviews: [],
       stores
     };
@@ -137,6 +163,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
     activeStore,
     error: null,
     products: (productsResult.data ?? []) as unknown as ProductRow[],
+    reviewStats: summarizeReviews((reviewsResult.data ?? []) as unknown as ReviewRow[]),
     reviews: (reviewsResult.data ?? []) as unknown as ReviewRow[],
     stores
   };
@@ -148,7 +175,7 @@ export default async function ReviewsPage({
   searchParams: Promise<{ reviews?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, error, products, reviews, stores } = await getReviewsDashboardData(query.storeId);
+  const { activeStore, error, products, reviewStats, reviews, stores } = await getReviewsDashboardData(query.storeId);
   const message = statusMessage(query.reviews);
   const productsById = new Map(products.map((product) => [product.id, product.title || product.name || product.id]));
 
@@ -216,6 +243,14 @@ export default async function ReviewsPage({
               </Button>
             </form>
           </Card>
+
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <ReviewStatCard label="Store average rating" value={reviewStats.averageRating ? `${reviewStats.averageRating}/5` : "No ratings"} />
+            <ReviewStatCard label="Total reviews" value={String(reviewStats.totalCount)} />
+            <ReviewStatCard label="Pending" value={String(reviewStats.pendingCount)} />
+            <ReviewStatCard label="Approved" value={String(reviewStats.approvedCount)} />
+            <ReviewStatCard label="Rejected" value={String(reviewStats.rejectedCount)} />
+          </section>
 
           <section className="grid gap-4">
             <div>
@@ -298,5 +333,14 @@ export default async function ReviewsPage({
         </>
       ) : null}
     </div>
+  );
+}
+
+function ReviewStatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className="p-5">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">{value}</p>
+    </Card>
   );
 }
