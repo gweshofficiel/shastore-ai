@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
@@ -206,6 +207,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                 slug={preview.store.slug}
                 storeId={preview.store.id}
               />
+              <CompareNavLink
+                currency={preview.store.currency}
+                slug={preview.store.slug}
+                storeId={preview.store.id}
+              />
               <WishlistNavLink
                 currency={preview.store.currency}
                 slug={preview.store.slug}
@@ -281,6 +287,12 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                       <ProductQuickView
                         currency={currency}
                         detailsHref={detailsHref}
+                        product={product}
+                        slug={preview.store.slug}
+                        storeId={preview.store.id}
+                      />
+                      <CompareButton
+                        currency={currency}
                         product={product}
                         slug={preview.store.slug}
                         storeId={preview.store.id}

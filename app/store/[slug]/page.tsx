@@ -4,6 +4,7 @@ import {
   StorefrontTenantContextScript,
   StorefrontThemeTokens
 } from "@/lib/storefront/context";
+import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
@@ -534,6 +535,7 @@ export default async function PublicStorePage({
               >
                 Account
               </Link>
+              <CompareNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
               <WishlistNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
               <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
             </div>
@@ -697,6 +699,12 @@ export default async function PublicStorePage({
                         <ProductQuickView
                           currency={currency}
                           detailsHref={detailsHref}
+                          product={product}
+                          slug={store.slug}
+                          storeId={store.id}
+                        />
+                        <CompareButton
+                          currency={currency}
                           product={product}
                           slug={store.slug}
                           storeId={store.id}

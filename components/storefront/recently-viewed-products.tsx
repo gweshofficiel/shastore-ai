@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
@@ -181,6 +182,12 @@ export function RecentlyViewedProducts({
                 <ProductQuickView
                   currency={productCurrency}
                   detailsHref={productHref}
+                  product={product}
+                  slug={slug}
+                  storeId={storeId}
+                />
+                <CompareButton
+                  currency={productCurrency}
                   product={product}
                   slug={slug}
                   storeId={storeId}

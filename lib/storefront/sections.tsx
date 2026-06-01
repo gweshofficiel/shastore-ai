@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
@@ -464,6 +465,12 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
                     <ProductQuickView
                       currency={currency}
                       detailsHref={detailsHref}
+                      product={product}
+                      slug={context.preview.store.slug}
+                      storeId={context.preview.store.id}
+                    />
+                    <CompareButton
+                      currency={currency}
                       product={product}
                       slug={context.preview.store.slug}
                       storeId={context.preview.store.id}
