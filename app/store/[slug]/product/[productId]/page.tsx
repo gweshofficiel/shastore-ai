@@ -67,6 +67,64 @@ function productGalleryUrls(gallery: unknown[]) {
     .filter((url): url is string => Boolean(url));
 }
 
+function comparableProductPrice(product: PublicStorefrontProduct) {
+  const price = typeof product.price === "number" ? product.price : Number(product.price ?? 0);
+  return Number.isFinite(price) ? Math.max(0, price) : 0;
+}
+
+function relatedProductScore(currentProduct: PublicStorefrontProduct, candidate: PublicStorefrontProduct) {
+  const currentPrice = comparableProductPrice(currentProduct);
+  const candidatePrice = comparableProductPrice(candidate);
+  let score = 0;
+
+  if (candidate.categoryId && candidate.categoryId === currentProduct.categoryId) {
+    score += 80;
+  } else if (
+    candidate.categoryName &&
+    currentProduct.categoryName &&
+    candidate.categoryName.toLowerCase() === currentProduct.categoryName.toLowerCase()
+  ) {
+    score += 60;
+  }
+
+  if (currentPrice > 0 && candidatePrice > 0) {
+    const priceDistance = Math.abs(currentPrice - candidatePrice) / currentPrice;
+
+    if (priceDistance <= 0.2) {
+      score += 30;
+    } else if (priceDistance <= 0.5) {
+      score += 15;
+    }
+  }
+
+  if (candidate.createdAt) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function resolveRelatedProducts(
+  products: PublicStorefrontProduct[],
+  currentProduct: PublicStorefrontProduct
+) {
+  return products
+    .filter((candidate) => candidate.id !== currentProduct.id && candidate.status === "active")
+    .map((candidate) => ({
+      product: candidate,
+      score: relatedProductScore(currentProduct, candidate)
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return comparableProductPrice(right.product) - comparableProductPrice(left.product);
+    })
+    .slice(0, 4)
+    .map((candidate) => candidate.product);
+}
+
 function resolvePublicProduct(
   products: PublicStorefrontProduct[],
   productPathSegment: string
@@ -248,6 +306,7 @@ export default async function PublicProductDetailPage({
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
   const galleryUrls = productGalleryUrls(product.gallery);
   const currency = product.currency || preview.store.currency;
+  const relatedProducts = resolveRelatedProducts(preview.products, product);
   const { reviews, summary } = await getApprovedProductReviews({
     productId: product.id,
     storeId: preview.store.id
@@ -390,6 +449,86 @@ export default async function PublicProductDetailPage({
               </div>
             </article>
           </div>
+
+          {relatedProducts.length ? (
+            <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                    Related Products
+                  </p>
+                  <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+                    You may also like
+                  </h2>
+                </div>
+                <Link
+                  className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                  href={`/store/${preview.store.slug}`}
+                >
+                  View all products
+                </Link>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {relatedProducts.map((relatedProduct) => {
+                  const relatedHref = `/store/${preview.store.slug}/product/${encodeURIComponent(relatedProduct.slug || relatedProduct.id)}`;
+                  const relatedCurrency = relatedProduct.currency || preview.store.currency;
+
+                  return (
+                    <article
+                      className="group overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+                      key={relatedProduct.id}
+                    >
+                      <Link href={relatedHref}>
+                        {relatedProduct.imageUrl ? (
+                          <img
+                            alt={relatedProduct.title}
+                            className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
+                            src={relatedProduct.imageUrl}
+                          />
+                        ) : (
+                          <div
+                            className="flex aspect-square items-end p-5 text-white"
+                            style={{ background: heroBackground }}
+                          >
+                            <span className="rounded-full bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white backdrop-blur">
+                              {isPublicCategoryTitle(relatedProduct.categoryName)
+                                ? relatedProduct.categoryName
+                                : "Product"}
+                            </span>
+                          </div>
+                        )}
+                      </Link>
+                      <div className="grid gap-3 p-4">
+                        {isPublicCategoryTitle(relatedProduct.categoryName) ? (
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                            {relatedProduct.categoryName}
+                          </p>
+                        ) : null}
+                        <div>
+                          <Link href={relatedHref}>
+                            <h3 className="line-clamp-2 text-lg font-black tracking-[-0.03em] text-ink">
+                              {relatedProduct.title}
+                            </h3>
+                          </Link>
+                          <p className="mt-2 text-sm font-black text-ink">
+                            {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency)}
+                          </p>
+                        </div>
+                        <AddToCartButton
+                          currency={relatedCurrency}
+                          detailsHref={relatedHref}
+                          product={relatedProduct}
+                          showViewDetails
+                          slug={preview.store.slug}
+                          storeId={preview.store.id}
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
