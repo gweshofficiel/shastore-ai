@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
+import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitProductReview } from "@/lib/product-review-actions";
@@ -529,6 +530,14 @@ export default async function PublicProductDetailPage({
               </div>
             </section>
           ) : null}
+
+          <RecentlyViewedProducts
+            currentProductId={product.id}
+            currency={preview.store.currency}
+            products={preview.products}
+            slug={preview.store.slug}
+            storeId={preview.store.id}
+          />
 
           <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
