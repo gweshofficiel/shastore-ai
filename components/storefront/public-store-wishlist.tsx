@@ -17,6 +17,7 @@ type WishlistUpdatedDetail = {
 };
 
 const WISHLIST_UPDATED_EVENT = "shastore-wishlist-updated";
+const WISHLIST_SESSION_KEY = "shastore_wishlist_session";
 
 function wishlistStorageKey(storeId: string) {
   return `shastore_wishlist_${storeId}`;
@@ -63,6 +64,58 @@ function parseWishlistProductIds(value: string | null) {
   } catch {
     return [];
   }
+}
+
+function wishlistSessionId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const existing = window.localStorage.getItem(WISHLIST_SESSION_KEY);
+
+  if (existing) {
+    return existing;
+  }
+
+  const generated =
+    typeof window.crypto?.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 18)}`;
+  window.localStorage.setItem(WISHLIST_SESSION_KEY, generated);
+  return generated;
+}
+
+async function fetchPersistedWishlist(scope: WishlistScope, sessionId: string) {
+  const params = new URLSearchParams({
+    sessionId,
+    slug: scope.slug,
+    storeId: scope.storeId
+  });
+  const response = await fetch(`/api/store-wishlist?${params.toString()}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = await response.json().catch(() => null);
+  return parseWishlistProductIds(JSON.stringify(payload?.productIds ?? []));
+}
+
+async function persistWishlist(scope: WishlistScope, sessionId: string, productIds: string[]) {
+  await fetch("/api/store-wishlist", {
+    body: JSON.stringify({
+      productIds,
+      sessionId,
+      slug: scope.slug,
+      storeId: scope.storeId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  }).catch(() => null);
 }
 
 function dispatchWishlistUpdated(scope: WishlistScope) {
@@ -121,13 +174,26 @@ function isWishlistEventForScope(event: Event, storeId: string) {
 
 function useStoreWishlist(scope: WishlistScope) {
   const [productIds, setProductIds] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState("");
 
   const syncFromStorage = useCallback(() => {
     setProductIds(readStoreWishlist(scope));
   }, [scope]);
 
   useEffect(() => {
-    syncFromStorage();
+    const nextSessionId = wishlistSessionId();
+    setSessionId(nextSessionId);
+    const localProductIds = readStoreWishlist(scope);
+    setProductIds(localProductIds);
+
+    fetchPersistedWishlist(scope, nextSessionId)
+      .then((persistedProductIds) => {
+        const merged = Array.from(new Set([...localProductIds, ...persistedProductIds]));
+        writeStoreWishlist(scope, merged);
+        setProductIds(merged);
+        return persistWishlist(scope, nextSessionId, merged);
+      })
+      .catch(() => null);
 
     function handleWishlistChange(event: Event) {
       if (!isWishlistEventForScope(event, scope.storeId)) {
@@ -149,9 +215,14 @@ function useStoreWishlist(scope: WishlistScope) {
   const persistProductIds = useCallback(
     (next: string[]) => {
       writeStoreWishlist(scope, next);
-      setProductIds(readStoreWishlist(scope));
+      const storedProductIds = readStoreWishlist(scope);
+      setProductIds(storedProductIds);
+
+      if (sessionId) {
+        void persistWishlist(scope, sessionId, storedProductIds);
+      }
     },
-    [scope]
+    [scope, sessionId]
   );
 
   return { persistProductIds, productIds };
