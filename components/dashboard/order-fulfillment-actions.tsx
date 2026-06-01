@@ -17,45 +17,127 @@ type OrderFulfillmentActionsProps = {
   source: OrderSource;
 };
 
-const statuses = [
-  { label: "Unfulfilled", value: "pending" },
-  { label: "Processing", value: "processing" }
-];
+type FulfillmentStatus =
+  | "pending"
+  | "processing"
+  | "preparing"
+  | "ready_for_pickup"
+  | "shipped"
+  | "out_for_delivery"
+  | "delivered"
+  | "cancelled"
+  | "returned"
+  | "refunded";
+
+const fulfillmentLabels: Record<FulfillmentStatus, string> = {
+  cancelled: "Cancelled",
+  delivered: "Delivered",
+  out_for_delivery: "Out for Delivery",
+  pending: "Pending",
+  preparing: "Preparing",
+  processing: "Processing",
+  ready_for_pickup: "Ready for Pickup",
+  refunded: "Refunded",
+  returned: "Returned",
+  shipped: "Shipped"
+};
+
+const nextActions: Partial<Record<FulfillmentStatus, { label: string; value: FulfillmentStatus }>> = {
+  out_for_delivery: { label: "Mark Delivered", value: "delivered" },
+  pending: { label: "Start Processing", value: "processing" },
+  preparing: { label: "Ready For Pickup", value: "ready_for_pickup" },
+  processing: { label: "Mark Preparing", value: "preparing" },
+  ready_for_pickup: { label: "Mark Shipped", value: "shipped" },
+  shipped: { label: "Out For Delivery", value: "out_for_delivery" }
+};
+
+function normalizeFulfillmentStatus(status: string | null | undefined): FulfillmentStatus {
+  const normalized = status?.trim() || "pending";
+
+  if (normalized === "unfulfilled") {
+    return "pending";
+  }
+
+  if (normalized === "fulfilled") {
+    return "delivered";
+  }
+
+  return normalized in fulfillmentLabels ? (normalized as FulfillmentStatus) : "pending";
+}
+
+function fulfillmentStatusLabel(status: FulfillmentStatus) {
+  return fulfillmentLabels[status];
+}
+
+function getFulfillmentActions(status: FulfillmentStatus) {
+  const actions: Array<{ label: string; value: FulfillmentStatus; variant?: "danger" }> = [];
+  const nextAction = nextActions[status];
+
+  if (nextAction) {
+    actions.push(nextAction);
+  }
+
+  if (status !== "cancelled" && status !== "delivered" && status !== "returned" && status !== "refunded") {
+    actions.push({ label: "Cancel", value: "cancelled", variant: "danger" });
+  }
+
+  if (status === "delivered") {
+    actions.push({ label: "Mark Returned", value: "returned" });
+    actions.push({ label: "Mark Refunded", value: "refunded" });
+  }
+
+  if (status === "cancelled" || status === "returned") {
+    actions.push({ label: "Mark Refunded", value: "refunded" });
+  }
+
+  return actions;
+}
 
 function isStatusAllowed({
   orderStatus,
   status
 }: {
   orderStatus: string;
-  status: string;
+  status: FulfillmentStatus;
 }) {
-  if (orderStatus === "cancelled" || orderStatus === "canceled") {
+  if (
+    (orderStatus === "cancelled" || orderStatus === "canceled") &&
+    status !== "cancelled" &&
+    status !== "returned" &&
+    status !== "refunded"
+  ) {
     return false;
   }
 
-  return status === "pending" || status === "processing";
+  return true;
 }
 
 function FulfillmentButton({
   currentStatus,
   label,
   orderStatus,
+  variant,
   value
 }: {
-  currentStatus: string;
+  currentStatus: FulfillmentStatus;
   label: string;
   orderStatus: string;
-  value: string;
+  variant?: "danger";
+  value: FulfillmentStatus;
 }) {
   const { pending } = useFormStatus();
   const disabled =
     pending ||
     currentStatus === value ||
     !isStatusAllowed({ orderStatus, status: value });
+  const className =
+    variant === "danger"
+      ? "h-10 rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+      : "h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-ink transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <button
-      className="h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-ink transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      className={className}
       disabled={disabled}
       name="fulfillmentStatus"
       type="submit"
@@ -75,9 +157,10 @@ export function OrderFulfillmentActions({
   returnTo,
   source
 }: OrderFulfillmentActionsProps) {
-  const normalizedStatus = currentStatus?.trim() || "pending";
-  const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+  const normalizedStatus = normalizeFulfillmentStatus(currentStatus);
+  const [optimisticStatus, setOptimisticStatus] = useState<FulfillmentStatus | null>(null);
   const displayedStatus = optimisticStatus ?? normalizedStatus;
+  const actions = getFulfillmentActions(displayedStatus);
 
   return (
     <form
@@ -88,7 +171,7 @@ export function OrderFulfillmentActions({
         const nextStatus = submitter?.value;
 
         if (nextStatus) {
-          setOptimisticStatus(nextStatus);
+          setOptimisticStatus(normalizeFulfillmentStatus(nextStatus));
         }
       }}
     >
@@ -99,7 +182,7 @@ export function OrderFulfillmentActions({
         Fulfillment actions
       </p>
       <p className="text-sm font-bold text-muted">
-        Current fulfillment: {displayedStatus.replaceAll("_", " ")}
+        Current fulfillment: {fulfillmentStatusLabel(displayedStatus)}
       </p>
       <label className="grid gap-2 text-sm font-semibold text-ink">
         <span>Fulfillment notes optional</span>
@@ -112,22 +195,23 @@ export function OrderFulfillmentActions({
       </label>
       {optimisticStatus ? (
         <p className="text-xs font-bold text-blue-700">
-          Updating fulfillment to {displayedStatus.replaceAll("_", " ")}...
+          Updating fulfillment to {fulfillmentStatusLabel(displayedStatus)}...
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        {statuses.map((status) => (
+        {actions.map((status) => (
           <FulfillmentButton
             currentStatus={normalizedStatus}
             key={status.value}
             label={status.label}
             orderStatus={orderStatus}
+            variant={status.variant}
             value={status.value}
           />
         ))}
       </div>
       <p className="text-xs font-semibold leading-5 text-muted">
-        Cancelled orders are locked. Use processing when fulfillment has started.
+        Move fulfillment forward one step at a time. Use cancel, return, or refund only for exceptions.
       </p>
     </form>
   );

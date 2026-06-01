@@ -113,20 +113,41 @@ function statusBadgeClass(status: string | null | undefined) {
 }
 
 function fulfillmentStatusLabel(status: string | null | undefined) {
-  return (status?.trim() || "pending").replaceAll("_", " ");
+  const labels: Record<string, string> = {
+    cancelled: "Cancelled",
+    delivered: "Delivered",
+    fulfilled: "Delivered",
+    out_for_delivery: "Out for Delivery",
+    pending: "Pending",
+    preparing: "Preparing",
+    processing: "Processing",
+    ready_for_pickup: "Ready for Pickup",
+    refunded: "Refunded",
+    returned: "Returned",
+    shipped: "Shipped",
+    unfulfilled: "Pending"
+  };
+  const normalized = status?.trim() || "pending";
+
+  return labels[normalized] ?? normalized.replaceAll("_", " ");
 }
 
 function fulfillmentBadgeClass(status: string | null | undefined) {
   const normalized = status?.trim() || "pending";
 
-  if (normalized === "fulfilled") {
+  if (normalized === "delivered" || normalized === "fulfilled") {
     return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (normalized === "cancelled" || normalized === "refunded" || normalized === "returned") {
+    return "bg-red-100 text-red-700";
   }
 
   if (
     normalized === "processing" ||
     normalized === "preparing" ||
     normalized === "ready_for_pickup" ||
+    normalized === "shipped" ||
     normalized === "out_for_delivery"
   ) {
     return "bg-blue-100 text-blue-700";
@@ -137,6 +158,10 @@ function fulfillmentBadgeClass(status: string | null | undefined) {
 
 function eventTypeLabel(type: string) {
   return type.replaceAll("_", " ");
+}
+
+function timelineValueLabel(value: string | null) {
+  return value ? fulfillmentStatusLabel(value) : "empty";
 }
 
 function statusMessage(value: string | undefined) {
@@ -618,7 +643,7 @@ export default async function OrderDetailPage({
                     </p>
                     {event.previous_value || event.new_value ? (
                       <p className="mt-2 text-xs font-bold text-slate-500">
-                        {event.previous_value ?? "empty"} → {event.new_value ?? "empty"}
+                        {timelineValueLabel(event.previous_value)} → {timelineValueLabel(event.new_value)}
                       </p>
                     ) : null}
                   </div>

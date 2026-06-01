@@ -61,16 +61,80 @@ const storeOrderStatuses = new Set([
 ]);
 const fulfillmentStatuses = new Set([
   "pending",
-  "processing"
+  "processing",
+  "preparing",
+  "ready_for_pickup",
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
+  "returned",
+  "refunded"
 ]);
 type FulfillmentStatus =
   | "pending"
-  | "processing";
+  | "processing"
+  | "preparing"
+  | "ready_for_pickup"
+  | "shipped"
+  | "out_for_delivery"
+  | "delivered"
+  | "cancelled"
+  | "returned"
+  | "refunded";
 type StoreOrderStatusSource = "orders" | "store_orders";
 
-const fulfillmentTimestampColumns: Partial<Record<FulfillmentStatus, string>> = {
-  processing: "preparing_at"
+const fulfillmentTimestampColumns: Partial<Record<FulfillmentStatus, string[]>> = {
+  delivered: ["delivered_at", "fulfilled_at"],
+  out_for_delivery: ["out_for_delivery_at"],
+  preparing: ["preparing_at"],
+  processing: ["preparing_at"],
+  ready_for_pickup: ["ready_for_pickup_at"],
+  shipped: ["shipped_at"]
 };
+
+const nextFulfillmentStatus: Partial<Record<FulfillmentStatus, FulfillmentStatus>> = {
+  out_for_delivery: "delivered",
+  pending: "processing",
+  preparing: "ready_for_pickup",
+  processing: "preparing",
+  ready_for_pickup: "shipped",
+  shipped: "out_for_delivery"
+};
+
+function normalizeFulfillmentStatus(status: string | null | undefined): FulfillmentStatus {
+  const normalized = status?.trim() || "pending";
+
+  if (normalized === "unfulfilled") {
+    return "pending";
+  }
+
+  if (normalized === "fulfilled") {
+    return "delivered";
+  }
+
+  return fulfillmentStatuses.has(normalized) ? (normalized as FulfillmentStatus) : "pending";
+}
+
+function isExceptionalFulfillmentTransition(current: FulfillmentStatus, next: FulfillmentStatus) {
+  if (next === "cancelled") {
+    return current !== "cancelled" && current !== "returned" && current !== "refunded" && current !== "delivered";
+  }
+
+  if (next === "returned") {
+    return current === "delivered";
+  }
+
+  if (next === "refunded") {
+    return current === "cancelled" || current === "delivered" || current === "returned";
+  }
+
+  return false;
+}
+
+function isFulfillmentTransitionAllowed(current: FulfillmentStatus, next: FulfillmentStatus) {
+  return current === next || nextFulfillmentStatus[current] === next || isExceptionalFulfillmentTransition(current, next);
+}
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
@@ -2558,7 +2622,7 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
   }
 
   const deliveryMethod = currentOrderRow.delivery_method;
-  const currentFulfillmentStatus = currentOrderRow.fulfillment_status?.trim() || "pending";
+  const currentFulfillmentStatus = normalizeFulfillmentStatus(currentOrderRow.fulfillment_status);
 
   logSupabaseDiagnostic("order_fulfillment.lookup.succeeded", {
     currentFulfillmentStatus,
@@ -2572,8 +2636,26 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
     workspaceId: currentOrderRow.workspace_id ?? workspaceId
   });
 
-  if (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") {
+  if (
+    (currentOrderRow.order_status === "cancelled" || currentOrderRow.order_status === "canceled") &&
+    fulfillmentStatus !== "cancelled" &&
+    fulfillmentStatus !== "returned" &&
+    fulfillmentStatus !== "refunded"
+  ) {
     logSupabaseDiagnostic("order_fulfillment.validation.blocked_cancelled", {
+      fulfillmentStatus,
+      orderId,
+      orderStatus: currentOrderRow.order_status,
+      source,
+      tableName,
+      workspaceId
+    });
+    orderStatusReturnRedirect(returnTo, "invalid-fulfillment", orderId);
+  }
+
+  if (!isFulfillmentTransitionAllowed(currentFulfillmentStatus, fulfillmentStatus)) {
+    logSupabaseDiagnostic("order_fulfillment.validation.blocked_invalid_transition", {
+      currentFulfillmentStatus,
       fulfillmentStatus,
       orderId,
       orderStatus: currentOrderRow.order_status,
@@ -2589,10 +2671,10 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
     fulfillment_status: fulfillmentStatus,
     updated_at: now
   };
-  const timestampColumn = fulfillmentTimestampColumns[fulfillmentStatus];
+  const timestampColumns = fulfillmentTimestampColumns[fulfillmentStatus] ?? [];
 
   if (source === "store_orders") {
-    if (timestampColumn) {
+    for (const timestampColumn of timestampColumns) {
       updatePayload[timestampColumn] = now;
     }
 
@@ -2671,7 +2753,7 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
       message: `Fulfillment status changed from ${currentFulfillmentStatus} to ${fulfillmentStatus}.`,
       metadata: {
         hasFulfillmentNotes: Boolean(fulfillmentNotes),
-        timestampColumn: timestampColumn ?? null
+        timestampColumns
       },
       newValue: fulfillmentStatus,
       orderId,
@@ -2695,17 +2777,17 @@ function withFulfillmentStatus(formData: FormData, fulfillmentStatus: Fulfillmen
 }
 
 export async function markPreparing(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "preparing"));
 }
 
 export async function markReadyForPickup(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "ready_for_pickup"));
 }
 
 export async function markOutForDelivery(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "out_for_delivery"));
 }
 
 export async function markFulfilled(formData: FormData) {
-  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "processing"));
+  return updateStoreOrderFulfillmentStatusAction(withFulfillmentStatus(formData, "delivered"));
 }
