@@ -532,6 +532,7 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
 type SectionRenderProps = {
   context: StoreTenantContext;
   footerLinkSettings?: StoreFooterLinkSettings;
+  hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -572,6 +573,7 @@ function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
 
 function NavbarSection({
   context,
+  hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false
 }: SectionRenderProps) {
@@ -579,6 +581,7 @@ function NavbarSection({
   const config = templateConfig(context);
   const logoUrl = context.theme.logo.url || theme.logoUrl || null;
   const headerLinks = context.preview.navigation.header;
+  const aboutHref = `/store/${context.preview.store.slug}/about`;
   const blogHref = `/store/${context.preview.store.slug}/blog`;
   const faqHref = `/store/${context.preview.store.slug}/faq`;
   const contactHref = `/store/${context.preview.store.slug}/contact`;
@@ -589,6 +592,7 @@ function NavbarSection({
           { href: "#products", label: "Products" },
           { href: "#categories", label: "Categories" }
         ]),
+    ...(hasPublishedAbout ? [{ href: aboutHref, label: "About" }] : []),
     ...(hasPublishedFaqs ? [{ href: faqHref, label: "FAQ" }] : []),
     { href: contactHref, label: "Contact" },
     ...(hasPublishedBlogArticles ? [{ href: blogHref, label: "Blog" }] : [])
@@ -931,6 +935,7 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
 function FooterSection({
   context,
   footerLinkSettings = defaultStoreFooterLinkSettings,
+  hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false
 }: SectionRenderProps) {
@@ -1013,6 +1018,7 @@ const sectionRegistry: Record<
 export function SectionRenderer({
   context,
   footerLinkSettings = defaultStoreFooterLinkSettings,
+  hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
   publishedFaqs = [],
@@ -1020,6 +1026,7 @@ export function SectionRenderer({
 }: {
   context: StoreTenantContext;
   footerLinkSettings?: StoreFooterLinkSettings;
+  hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -1035,6 +1042,7 @@ export function SectionRenderer({
     <Renderer
       context={context}
       footerLinkSettings={footerLinkSettings}
+      hasPublishedAbout={hasPublishedAbout}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}
       publishedFaqs={publishedFaqs}
@@ -1047,6 +1055,7 @@ export async function DynamicSectionLoader({
   context,
   fallback,
   footerLinkSettings = defaultStoreFooterLinkSettings,
+  hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
   publishedFaqs = []
@@ -1054,6 +1063,7 @@ export async function DynamicSectionLoader({
   context: StoreTenantContext;
   fallback: ReactNode;
   footerLinkSettings?: StoreFooterLinkSettings;
+  hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
   publishedFaqs?: PublicStoreFaq[];
@@ -1085,6 +1095,7 @@ export async function DynamicSectionLoader({
         <SectionRenderer
           context={context}
           footerLinkSettings={footerLinkSettings}
+          hasPublishedAbout={hasPublishedAbout}
           hasPublishedBlogArticles={hasPublishedBlogArticles}
           hasPublishedFaqs={hasPublishedFaqs}
           key={section.id}

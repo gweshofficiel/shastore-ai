@@ -16,6 +16,7 @@ import {
   buildPublicProductSections,
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
+import { loadPublishedStoreAboutForStore } from "@/lib/store-about-public";
 import { loadPublishedStoreBlogArticlesForStore } from "@/lib/store-blog-public";
 import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
@@ -393,6 +394,8 @@ export default async function PublicStorePage({
   const hasPublishedBlogArticles = publishedArticles.length > 0;
   const publishedFaqs = await loadPublishedStoreFaqsForStore(preview.store.id, 8);
   const hasPublishedFaqs = publishedFaqs.length > 0;
+  const publishedAbout = await loadPublishedStoreAboutForStore(preview.store.id);
+  const hasPublishedAbout = Boolean(publishedAbout);
   const footerLinkSettings = await loadStoreFooterLinkSettings(preview.store.id);
   const filteredPreview = {
     ...preview,
@@ -422,6 +425,7 @@ export default async function PublicStorePage({
           { href: "#products", label: "Products" },
           { href: "#categories", label: "Categories" }
         ]),
+    ...(hasPublishedAbout ? [{ href: `/store/${store.slug}/about`, label: "About" }] : []),
     ...(hasPublishedFaqs ? [{ href: `/store/${store.slug}/faq`, label: "FAQ" }] : []),
     { href: contactHref, label: "Contact" },
     ...(hasPublishedBlogArticles ? [{ href: `/store/${store.slug}/blog`, label: "Blog" }] : [])
@@ -837,6 +841,7 @@ export default async function PublicStorePage({
         context={filteredContext}
         fallback={fallbackStorefront}
         footerLinkSettings={footerLinkSettings}
+        hasPublishedAbout={hasPublishedAbout}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
         publishedFaqs={publishedFaqs}

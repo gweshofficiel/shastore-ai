@@ -137,6 +137,7 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/stores", label: "Stores", icon: "stores", permission: "can_view_stores" },
   { href: "/dashboard/navigation", label: "Navigation", icon: "navigation", permission: "can_edit_stores" },
   { href: "/dashboard/pages", label: "Pages", icon: "pages", permission: "can_edit_stores" },
+  { href: "/dashboard/about", label: "About Us", icon: "pages", permission: "can_edit_stores" },
   { href: "/dashboard/legal-pages", label: "Legal Pages", icon: "pages", permission: "can_edit_stores" },
   { href: "/dashboard/footer-links", label: "Footer Links", icon: "pages", permission: "can_edit_stores" },
   { href: "/dashboard/contact", label: "Contact", icon: "pages", permission: "can_edit_stores" },
