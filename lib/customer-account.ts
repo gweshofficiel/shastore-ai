@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { loadCustomerDownloads } from "@/lib/customer-downloads";
+import { loadCustomerLoyalty } from "@/lib/customer-loyalty";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -35,6 +36,7 @@ export type CustomerAccountProfile = {
 export type CustomerAccountPortal = {
   downloads: Awaited<ReturnType<typeof loadCustomerDownloads>>;
   licenseCount: number;
+  loyalty: Awaited<ReturnType<typeof loadCustomerLoyalty>>;
   orders: CustomerAccountOrderSummary[];
   profile: CustomerAccountProfile | null;
 };
@@ -314,12 +316,13 @@ export async function loadCustomerAccountPortal({
     return {
       downloads: [],
       licenseCount: 0,
+      loyalty: { history: [], points: 0 },
       orders: [],
       profile: null
     };
   }
 
-  const [orders, downloads, profile] = await Promise.all([
+  const [orders, downloads, loyalty, profile] = await Promise.all([
     loadCustomerOrders({
       admin,
       phone,
@@ -328,6 +331,12 @@ export async function loadCustomerAccountPortal({
       storeId: preview.store.id
     }),
     loadCustomerDownloads({ phone, slug: preview.store.slug }),
+    loadCustomerLoyalty({
+      phone,
+      storeId: preview.store.id,
+      supabase: admin,
+      workspaceId: preview.store.workspaceId
+    }),
     loadCustomerProfile({
       admin,
       phone,
@@ -339,6 +348,7 @@ export async function loadCustomerAccountPortal({
   return {
     downloads,
     licenseCount: downloads.filter((download) => Boolean(download.licenseKey)).length,
+    loyalty,
     orders,
     profile
   };

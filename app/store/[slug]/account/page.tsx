@@ -106,6 +106,7 @@ export default async function CustomerAccountPage({
   const portal = phone ? await loadCustomerAccountPortal({ phone, slug: preview.store.slug }) : null;
   const orders = portal?.orders ?? [];
   const downloads = portal?.downloads ?? [];
+  const loyalty = portal?.loyalty ?? { history: [], points: 0 };
   const profile = portal?.profile;
   const message = profileMessage(query.profile);
 
@@ -133,7 +134,7 @@ export default async function CustomerAccountPage({
             <SummaryCard label="Orders" value={orders.length} />
             <SummaryCard label="Downloads" value={downloads.length} />
             <SummaryCard label="Licenses" value={portal?.licenseCount ?? 0} />
-            <SummaryCard label="Wishlist" value="Device" />
+            <SummaryCard label="Points" value={loyalty.points} />
           </div>
         </div>
         <AccountLookupForm phone={phone} />
@@ -243,7 +244,8 @@ export default async function CustomerAccountPage({
                 <div className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
                   <p>Total orders: {profile?.totalOrders ?? orders.length}</p>
                   <p>Total spent: {formatAccountMoney(profile?.totalSpent ?? 0, preview.store.currency)}</p>
-                  <p>Loyalty: {profile?.loyaltyTier ?? "Not assigned"}</p>
+                  <p>Loyalty tier: {profile?.loyaltyTier ?? "Not assigned"}</p>
+                  <p>Points balance: {loyalty.points}</p>
                 </div>
                 <button className="h-11 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800" type="submit">
                   Save profile
@@ -251,6 +253,45 @@ export default async function CustomerAccountPage({
               </form>
             ) : (
               <EmptyAccountCard title="Lookup required" text="Enter your checkout phone number to edit account profile details." />
+            )}
+          </CardSection>
+
+          <CardSection eyebrow="Loyalty" title="Rewards points">
+            {phone ? (
+              <div className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-2xl bg-emerald-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Current balance</p>
+                  <p className="mt-2 text-3xl font-black text-ink">{loyalty.points} pts</p>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-emerald-800">
+                    Earn 1 point per 1 {preview.store.currency} from paid or completed orders. Redemption is not enabled yet.
+                  </p>
+                </div>
+                {loyalty.history.length ? (
+                  <div className="grid gap-2">
+                    {loyalty.history.slice(0, 5).map((entry) => (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3" key={`${entry.orderSource}-${entry.orderId}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                              Order {entry.orderReference}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-muted">{formatAccountDate(entry.createdAt)}</p>
+                          </div>
+                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                            +{entry.points}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm font-semibold leading-6 text-muted">
+                    Completed order points will appear here.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <EmptyAccountCard title="Lookup required" text="Enter your checkout phone number to view loyalty points." />
             )}
           </CardSection>
 
