@@ -85,6 +85,10 @@ function cleanStatus(value: FormDataEntryValue | null) {
   return status === "active" || status === "archived" ? status : "draft";
 }
 
+function cleanProductType(value: FormDataEntryValue | null) {
+  return cleanText(value, 20) === "digital" ? "digital" : "physical";
+}
+
 function cleanMoney(value: FormDataEntryValue | null) {
   const text = cleanText(value, 40).replace(",", ".");
   const parsed = Number.parseFloat(text);
@@ -123,6 +127,16 @@ function cleanOptionalInteger(value: FormDataEntryValue | null) {
   }
 
   return cleanInteger(text);
+}
+
+function cleanOptionalFileSize(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 30);
+  if (!text) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(text, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function cleanCurrency(value: FormDataEntryValue | null) {
@@ -638,6 +652,11 @@ function productPayload(formData: FormData, productId?: string) {
   const price = cleanMoney(formData.get("price"));
   const slugSuffix = productId ? productId.slice(0, 8) : randomUUID().slice(0, 8);
   const categoryId = cleanText(formData.get("categoryId"), 80);
+  const productType = cleanProductType(formData.get("productType"));
+  const digitalFilePath = productType === "digital"
+    ? cleanOptionalText(formData.get("digitalFilePath"), 1200)
+    : null;
+  const trackInventory = productType === "physical" && formData.get("trackInventory") === "on";
 
   if (!title) {
     return null;
@@ -649,7 +668,13 @@ function productPayload(formData: FormData, productId?: string) {
     compare_at_price: cleanOptionalMoney(formData.get("compareAtPrice")),
     currency: cleanCurrency(formData.get("currency")),
     description: cleanOptionalText(formData.get("description"), 1000),
-    inventory_status: formData.get("trackInventory") === "on" && cleanInteger(formData.get("stockQuantity")) <= 0
+    digital_delivery_enabled: productType === "digital" && Boolean(digitalFilePath),
+    digital_file_bucket: productType === "digital" ? cleanOptionalText(formData.get("digitalFileBucket"), 120) : null,
+    digital_file_name: productType === "digital" ? cleanOptionalText(formData.get("digitalFileName"), 240) : null,
+    digital_file_path: digitalFilePath,
+    digital_file_size: productType === "digital" ? cleanOptionalFileSize(formData.get("digitalFileSize")) : null,
+    digital_file_type: productType === "digital" ? cleanOptionalText(formData.get("digitalFileType"), 160) : null,
+    inventory_status: trackInventory && cleanInteger(formData.get("stockQuantity")) <= 0
       ? "out_of_stock"
       : "in_stock",
     low_stock_threshold: cleanOptionalInteger(formData.get("lowStockThreshold")),
@@ -659,14 +684,16 @@ function productPayload(formData: FormData, productId?: string) {
     og_image_url: cleanOptionalText(formData.get("ogImageUrl"), 1000),
     og_title: cleanOptionalText(formData.get("ogTitle"), 180),
     price: price.toFixed(2),
+    product_type: productType,
+    requires_shipping: productType === "physical",
     seo_description: cleanOptionalText(formData.get("seoDescription"), 320),
     seo_keywords: cleanOptionalText(formData.get("seoKeywords"), 500),
     seo_title: cleanOptionalText(formData.get("seoTitle"), 180),
     slug: `${slugify(title)}-${slugSuffix}`,
     status: cleanStatus(formData.get("status")),
-    stock_quantity: cleanInteger(formData.get("stockQuantity")),
+    stock_quantity: productType === "digital" ? 0 : cleanInteger(formData.get("stockQuantity")),
     title,
-    track_inventory: formData.get("trackInventory") === "on"
+    track_inventory: trackInventory
   };
 }
 

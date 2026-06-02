@@ -30,6 +30,12 @@ type ProductRow = {
   created_at: string;
   currency?: string | null;
   description?: string | null;
+  digital_delivery_enabled?: boolean | null;
+  digital_file_bucket?: string | null;
+  digital_file_name?: string | null;
+  digital_file_path?: string | null;
+  digital_file_size?: number | string | null;
+  digital_file_type?: string | null;
   gallery?: unknown;
   id: string;
   image_url?: string | null;
@@ -41,6 +47,8 @@ type ProductRow = {
   og_image_url?: string | null;
   og_title?: string | null;
   price?: number | string | null;
+  product_type?: string | null;
+  requires_shipping?: boolean | null;
   seo_description?: string | null;
   seo_keywords?: string | null;
   seo_title?: string | null;
@@ -174,7 +182,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
   const { data: products, error: productsError } = await supabase
     .from("store_products" as never)
     .select(
-      "id, workspace_id, store_id, category_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at, updated_at"
+      "id, workspace_id, store_id, category_id, title, name, slug, description, status, price, compare_at_price, currency, image_url, gallery, product_type, requires_shipping, digital_file_name, digital_file_path, digital_file_bucket, digital_file_size, digital_file_type, digital_delivery_enabled, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at, updated_at"
     )
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id", activeStore.id)
@@ -326,6 +334,10 @@ function statusBadgeClass(status: string | null | undefined) {
 }
 
 function inventoryLabel(product: ProductRow) {
+  if (product.product_type === "digital") {
+    return "No shipping";
+  }
+
   if (!product.track_inventory) {
     return "Not tracked";
   }
@@ -334,6 +346,10 @@ function inventoryLabel(product: ProductRow) {
 }
 
 function inventoryBadgeClass(product: ProductRow) {
+  if (product.product_type === "digital") {
+    return "bg-violet-100 text-violet-700";
+  }
+
   if (!product.track_inventory) {
     return "bg-slate-100 text-slate-600";
   }
@@ -435,6 +451,15 @@ function SelectField({
   );
 }
 
+function digitalFileSizeValue(value: ProductRow["digital_file_size"]) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? String(parsed) : "";
+}
+
 function ProductFields({
   categories,
   product
@@ -505,6 +530,70 @@ function ProductFields({
           ))}
         </select>
       </FieldLabel>
+      <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+        <div>
+          <p className="text-sm font-black text-ink">Product type</p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            Digital products are prepared for secure download delivery and do not require shipping.
+          </p>
+        </div>
+        <FieldLabel label="Type">
+          <select
+            className="h-12 min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+            defaultValue={product?.product_type === "digital" ? "digital" : "physical"}
+            name="productType"
+          >
+            <option value="physical">Physical</option>
+            <option value="digital">Digital</option>
+          </select>
+        </FieldLabel>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={product?.digital_file_name ?? ""}
+            id={product ? `digital-file-name-${product.id}` : "digital-file-name-new"}
+            label="Digital file name"
+            maxLength={240}
+            name="digitalFileName"
+            placeholder="starter-guide.pdf"
+          />
+          <Input
+            defaultValue={product?.digital_file_type ?? ""}
+            id={product ? `digital-file-type-${product.id}` : "digital-file-type-new"}
+            label="File type"
+            maxLength={160}
+            name="digitalFileType"
+            placeholder="application/pdf"
+          />
+        </div>
+        <Input
+          defaultValue={product?.digital_file_path ?? ""}
+          id={product ? `digital-file-path-${product.id}` : "digital-file-path-new"}
+          label="Private file URL/path"
+          maxLength={1200}
+          name="digitalFilePath"
+          placeholder="r2://bucket/store/product/file.pdf or private storage path"
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            defaultValue={product?.digital_file_bucket ?? ""}
+            id={product ? `digital-file-bucket-${product.id}` : "digital-file-bucket-new"}
+            label="Storage bucket"
+            maxLength={120}
+            name="digitalFileBucket"
+            placeholder="Optional, for R2/storage mapping"
+          />
+          <Input
+            defaultValue={digitalFileSizeValue(product?.digital_file_size)}
+            id={product ? `digital-file-size-${product.id}` : "digital-file-size-new"}
+            label="File size in bytes"
+            min="0"
+            name="digitalFileSize"
+            placeholder="Optional"
+            step="1"
+            type="number"
+          />
+        </div>
+      </div>
       <SelectField defaultValue={productStatus(product ?? ({} as ProductRow))} name="status" />
       <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
         <label className="flex items-start gap-3 text-sm font-semibold text-ink">
@@ -949,6 +1038,9 @@ export default async function SellerProductsPage({
                             >
                               {inventoryLabel(product)}
                             </span>
+                            <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-violet-700">
+                              {product.product_type === "digital" ? "Digital" : "Physical"}
+                            </span>
                             {product.category_id ? (
                               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-blue-700">
                                 {categories.find((category) => category.id === product.category_id)?.name ?? "Category"}
@@ -987,10 +1079,14 @@ export default async function SellerProductsPage({
                             </div>
                             <div className="rounded-2xl bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                Inventory
+                                Delivery
                               </p>
                               <p className="mt-1 font-black text-ink">
-                                {inventoryLabel(product)}
+                                {product.product_type === "digital"
+                                  ? product.digital_delivery_enabled
+                                    ? "Download pending"
+                                    : "No file attached"
+                                  : inventoryLabel(product)}
                               </p>
                             </div>
                           </div>

@@ -589,11 +589,15 @@ async function resolveStoreInstanceId(
 
 type DraftLineItem = {
   currency: string;
+  digital_delivery_enabled?: boolean;
+  digital_file_name?: string | null;
   product_id: string;
   product_image: string | null;
   product_title: string;
+  product_type?: "physical" | "digital";
   quantity: number;
   price: number;
+  requires_shipping?: boolean;
   subtotal: number;
   variant_id?: string | null;
   variant_name?: string | null;
@@ -606,6 +610,23 @@ type ReceiptEmailLineItem = {
   quantity: number;
   title?: string;
 };
+
+function digitalDeliveryStatusForItem(item: DraftLineItem) {
+  return item.product_type === "digital" && item.digital_delivery_enabled ? "pending" : "none";
+}
+
+function digitalOrderSummary(items: DraftLineItem[]) {
+  const digitalItems = items.filter((item) => item.product_type === "digital");
+  const physicalItems = items.filter((item) => item.product_type !== "digital" && item.requires_shipping !== false);
+
+  return {
+    deliveryType: digitalItems.length && physicalItems.length ? "mixed" : digitalItems.length ? "digital" : "physical",
+    digitalCount: digitalItems.length,
+    hasDigitalItems: digitalItems.length > 0,
+    hasPhysicalShippingItems: physicalItems.length > 0,
+    status: digitalItems.length > 0 ? "pending" : "none"
+  };
+}
 
 function productSummaryForReceiptEmail(items: ReceiptEmailLineItem[]) {
   if (!items.length) {
@@ -761,6 +782,7 @@ async function persistStorefrontOrderDraft({
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
   const total = financialBreakdown.totalAmount;
+  const digitalSummary = digitalOrderSummary(items);
   const couponPayload = coupon
     ? {
         coupon_code: coupon.code,
@@ -802,7 +824,14 @@ async function persistStorefrontOrderDraft({
     order_status: "draft",
     payment_method: paymentMethod,
     payment_status: "pending",
-    fulfillment_status: "pending"
+    fulfillment_status: "pending",
+    delivery_type: digitalSummary.deliveryType,
+    has_digital_items: digitalSummary.hasDigitalItems,
+    digital_delivery_status: digitalSummary.status,
+    digital_delivery_metadata: {
+      digitalItemCount: digitalSummary.digitalCount,
+      source: "public_storefront"
+    }
   };
 
   const extendedOrderPayload: Record<string, unknown> = {
@@ -830,7 +859,11 @@ async function persistStorefrontOrderDraft({
           ![
             "delivery_fee",
             "delivery_method",
+            "delivery_type",
+            "digital_delivery_metadata",
+            "digital_delivery_status",
             "fulfillment_status",
+            "has_digital_items",
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
@@ -852,7 +885,11 @@ async function persistStorefrontOrderDraft({
           ![
             "delivery_fee",
             "delivery_method",
+            "delivery_type",
+            "digital_delivery_metadata",
+            "digital_delivery_status",
             "fulfillment_status",
+            "has_digital_items",
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
@@ -917,6 +954,9 @@ async function persistStorefrontOrderDraft({
       variant_name: item.variant_name ?? null,
       variant_sku: item.variant_sku ?? null,
       variant_options: item.variant_options ?? {},
+      product_type: item.product_type ?? "physical",
+      digital_delivery_status: digitalDeliveryStatusForItem(item),
+      digital_file_name: item.product_type === "digital" ? item.digital_file_name ?? null : null,
       product_title: item.product_title,
       product_image: item.product_image,
       quantity: item.quantity,
@@ -1062,10 +1102,14 @@ async function persistStorefrontOrderDraft({
 
   const legacyItems = items.map((item) => ({
     categoryName: null,
+    digitalDeliveryStatus: digitalDeliveryStatusForItem(item),
+    digitalFileName: item.product_type === "digital" ? item.digital_file_name ?? null : null,
     id: item.product_id,
     imageUrl: item.product_image,
     price: item.price,
     priceLabel: null,
+    productType: item.product_type ?? "physical",
+    requiresShipping: item.requires_shipping !== false,
     quantity: item.quantity,
     title: item.product_title,
     total: item.subtotal
@@ -1095,6 +1139,13 @@ async function persistStorefrontOrderDraft({
     prices_include_tax: financialBreakdown.pricesIncludeTax,
     total_amount: financialBreakdown.totalAmount,
     fulfillment_status: "pending",
+    delivery_type: digitalSummary.deliveryType,
+    has_digital_items: digitalSummary.hasDigitalItems,
+    digital_delivery_status: digitalSummary.status,
+    digital_delivery_metadata: {
+      digitalItemCount: digitalSummary.digitalCount,
+      source: "public_storefront"
+    },
     items: legacyItems as Json,
     subtotal: discountedSubtotal,
     total,
@@ -1115,7 +1166,11 @@ async function persistStorefrontOrderDraft({
           ![
             "delivery_fee",
             "delivery_method",
+            "delivery_type",
+            "digital_delivery_metadata",
+            "digital_delivery_status",
             "fulfillment_status",
+            "has_digital_items",
             "shipping_method_id",
             "shipping_method_name",
             "shipping_method_type",
@@ -1695,10 +1750,14 @@ export async function createPublicStoreOrderAction(
 
       return {
         categoryName: product.categoryName,
+        digitalDeliveryEnabled: product.digitalDeliveryEnabled,
+        digitalFileName: product.digitalFileName,
         id: product.id,
         imageUrl: product.imageUrl,
         price: unitPrice,
         priceLabel: product.priceLabel,
+        productType: product.productType,
+        requiresShipping: product.requiresShipping,
         quantity: item.quantity,
         title: product.title,
         total: lineTotal,
@@ -1720,6 +1779,25 @@ export async function createPublicStoreOrderAction(
   }
 
   const subtotal = Number(items.reduce((sum, item) => sum + item.total, 0).toFixed(2));
+  const digitalSummary = digitalOrderSummary(
+    items.map((item) => ({
+      currency: preview.store.currency ?? "USD",
+      digital_delivery_enabled: item.digitalDeliveryEnabled,
+      digital_file_name: item.digitalFileName,
+      product_id: item.id,
+      product_image: item.imageUrl,
+      product_title: item.title,
+      product_type: item.productType,
+      quantity: item.quantity,
+      price: item.price,
+      requires_shipping: item.requiresShipping,
+      subtotal: item.total,
+      variant_id: item.variant_id,
+      variant_name: item.variant_name,
+      variant_options: item.variant_options,
+      variant_sku: item.variant_sku
+    }))
+  );
   const couponResult = couponCode
     ? await validateStoreCoupon(admin, {
         code: couponCode,
@@ -1739,14 +1817,14 @@ export async function createPublicStoreOrderAction(
   }
 
   const discountAmount = couponResult?.ok ? couponResult.discountAmount : 0;
-  const shippingMethod = requestedShippingMethodId
+  const shippingMethod = requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems
     ? await getPublicShippingMethodForStore({
         methodId: requestedShippingMethodId,
         storeId: store.id
       })
     : null;
 
-  if (requestedShippingMethodId && !shippingMethod) {
+  if (requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems && !shippingMethod) {
     return {
       error: "Selected shipping method is no longer available.",
       message: null,
@@ -1755,12 +1833,13 @@ export async function createPublicStoreOrderAction(
     };
   }
 
-  const deliveryFee = shippingMethod
+  const deliveryFee = digitalSummary.hasPhysicalShippingItems && shippingMethod
     ? shippingMethod.freeShippingThreshold != null && subtotal >= shippingMethod.freeShippingThreshold
       ? 0
       : shippingMethod.fee
     : 0;
-  const deliveryMethod = shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
+  const deliveryMethod =
+    digitalSummary.hasPhysicalShippingItems && shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     discountAmount,
     shippingAmount: deliveryFee,
@@ -1781,6 +1860,13 @@ export async function createPublicStoreOrderAction(
       customer_address: customerAddress || null,
       delivery_fee: deliveryFee,
       delivery_method: deliveryMethod,
+      delivery_type: digitalSummary.deliveryType,
+      has_digital_items: digitalSummary.hasDigitalItems,
+      digital_delivery_status: digitalSummary.status,
+      digital_delivery_metadata: {
+        digitalItemCount: digitalSummary.digitalCount,
+        source: "public_storefront"
+      },
       shipping_method_id: shippingMethod?.id ?? null,
       shipping_method_name: shippingMethod?.name ?? null,
       shipping_method_type: shippingMethod?.type ?? null,
@@ -2043,11 +2129,15 @@ export async function createPublicStoreOrderDraftAction(
 
       return {
         currency: product.currency || store.currency || preview.store.currency || "USD",
+        digital_delivery_enabled: product.digitalDeliveryEnabled,
+        digital_file_name: product.digitalFileName,
         product_id: product.id,
         product_image: product.imageUrl,
         product_title: product.title,
+        product_type: product.productType,
         quantity,
         price: unitPrice,
+        requires_shipping: product.requiresShipping,
         subtotal,
         variant_id: variant?.id ?? null,
         variant_name: variant?.name ?? null,
@@ -2068,14 +2158,15 @@ export async function createPublicStoreOrderDraftAction(
 
   const currency = items[0]?.currency || store.currency || preview.store.currency || "USD";
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
-  const shippingMethod = requestedShippingMethodId
+  const digitalSummary = digitalOrderSummary(items);
+  const shippingMethod = requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems
     ? await getPublicShippingMethodForStore({
         methodId: requestedShippingMethodId,
         storeId: store.id
       })
     : null;
 
-  if (requestedShippingMethodId && !shippingMethod) {
+  if (requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems && !shippingMethod) {
     return {
       error: "Selected shipping method is no longer available.",
       message: null,
@@ -2093,12 +2184,18 @@ export async function createPublicStoreOrderDraftAction(
         deliveryMethod: deliveryMethodForShippingMethod(shippingMethod),
         error: null
       }
-    : resolveDeliverySelection({
+    : digitalSummary.hasPhysicalShippingItems
+      ? resolveDeliverySelection({
         requestedMethod: requestedDeliveryMethod,
         storeDeliveryEnabled: preview.store.deliveryEnabled,
         storeDeliveryFee: preview.store.deliveryFee,
         storePickupEnabled: preview.store.pickupEnabled
-      });
+      })
+      : {
+          deliveryFee: 0,
+          deliveryMethod: "none" as const,
+          error: null
+        };
 
   if (deliverySelection.error) {
     return {

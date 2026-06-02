@@ -33,6 +33,8 @@ export type PublicStorefrontProduct = {
   createdAt: string | null;
   currency: string | null;
   description: string | null;
+  digitalDeliveryEnabled: boolean;
+  digitalFileName: string | null;
   gallery: unknown[];
   id: string;
   imageUrl: string | null;
@@ -44,6 +46,8 @@ export type PublicStorefrontProduct = {
   ogTitle: string | null;
   price: number | string | null;
   priceLabel: string | null;
+  productType: "physical" | "digital";
+  requiresShipping: boolean;
   seoDescription: string | null;
   seoKeywords: string | null;
   seoTitle: string | null;
@@ -312,6 +316,8 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     createdAt: textValue(value.createdAt) || textValue(value.created_at) || null,
     currency: textValue(value.currency) || null,
     description: textValue(value.description) || null,
+    digitalDeliveryEnabled: false,
+    digitalFileName: null,
     gallery: Array.isArray(value.gallery) ? value.gallery : [],
     id,
     imageUrl: textValue(value.imageUrl) || null,
@@ -323,6 +329,8 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     ogTitle: textValue(value.ogTitle) || textValue(value.og_title) || null,
     price: typeof value.price === "number" || typeof value.price === "string" ? value.price : null,
     priceLabel: textValue(value.priceLabel) || null,
+    productType: "physical",
+    requiresShipping: true,
     seoDescription: textValue(value.seoDescription) || textValue(value.seo_description) || null,
     seoKeywords: textValue(value.seoKeywords) || textValue(value.seo_keywords) || null,
     seoTitle: textValue(value.seoTitle) || textValue(value.seo_title) || null,
@@ -649,7 +657,7 @@ async function loadStoreModePublicPreview(slug: string) {
 
   const { data: products } = await client
     .from("store_products" as never)
-    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at")
+    .select("id, title, name, slug, description, price, compare_at_price, currency, image_url, gallery, category_id, status, product_type, requires_shipping, digital_file_name, digital_delivery_enabled, stock_quantity, track_inventory, low_stock_threshold, inventory_status, seo_title, seo_description, seo_keywords, og_title, og_description, og_image_url, canonical_url, noindex, created_at")
     .eq("store_id", store.id)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
@@ -727,6 +735,8 @@ async function loadStoreModePublicPreview(slug: string) {
     compareAtPrice: product.compare_at_price,
     createdAt: textValue(product.created_at) || null,
     currency: textValue(product.currency) || null,
+    digitalDeliveryEnabled: product.digital_delivery_enabled === true,
+    digitalFileName: textValue(product.digital_file_name) || null,
     gallery: Array.isArray(product.gallery) ? product.gallery : [],
     id: String(product.id ?? ""),
     inventoryStatus: textValue(product.inventory_status) || null,
@@ -744,6 +754,8 @@ async function loadStoreModePublicPreview(slug: string) {
     imageUrl: textValue(product.image_url) || null,
     price: typeof product.price === "number" || typeof product.price === "string" ? product.price : null,
     priceLabel: typeof product.price === "string" ? product.price : null,
+    productType: textValue(product.product_type) === "digital" ? "digital" : "physical",
+    requiresShipping: textValue(product.product_type) === "digital" ? false : product.requires_shipping !== false,
     sku: null,
     slug: textValue(product.slug) || null,
     status: textValue(product.status, "active"),
