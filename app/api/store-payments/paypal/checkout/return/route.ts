@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { capturePayPalCheckoutOrder } from "@/lib/store-payment-provider-runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
 
 type OrderSource = "orders" | "store_orders";
 
@@ -63,16 +64,17 @@ export async function GET(request: NextRequest) {
     }
 
     const paid = captureStatus(capture) === "COMPLETED";
-    const { data: orderRow, error: orderError } = await admin
+    const orderUpdate = admin
       .from(source as never)
       .update({
         order_status: paid ? "confirmed" : "pending",
         payment_status: paid ? "paid" : "pending_confirmation",
         updated_at: new Date().toISOString()
       } as never)
-      .eq("id" as never, requestedOrderId as never)
-      .select("id, store_id, workspace_id, user_id, owner_user_id, total")
-      .single();
+      .eq("id" as never, requestedOrderId as never);
+    const { data: orderRow, error: orderError } = source === "store_orders"
+      ? await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, items, total").single()
+      : await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, total").single();
 
     if (orderError || !orderRow) {
       throw new Error(orderError?.message ?? "PayPal paid order could not be updated.");
@@ -80,12 +82,34 @@ export async function GET(request: NextRequest) {
 
     const order = orderRow as {
       id: string;
+      customer_email?: string | null;
+      items?: unknown;
       owner_user_id?: string | null;
       store_id?: string | null;
       total?: number | null;
       user_id?: string | null;
       workspace_id?: string | null;
     };
+
+    if (paid && order.store_id) {
+      const orderItems =
+        source === "orders"
+          ? await admin
+              .from("order_items" as never)
+              .select("product_id")
+              .eq("order_id" as never, requestedOrderId as never)
+          : { data: Array.isArray(order.items) ? order.items : [] };
+
+      await assignLicenseKeysForOrder({
+        customerEmail: order.customer_email ?? null,
+        items: (orderItems.data ?? []) as Array<{ product_id?: string | null; productId?: string | null }>,
+        orderId: requestedOrderId,
+        orderSource: source,
+        storeId: order.store_id,
+        supabase: admin,
+        workspaceId: order.workspace_id ?? order.owner_user_id ?? order.user_id ?? null
+      });
+    }
 
     await recordMonitoringEventSafe({
       entityId: requestedOrderId,

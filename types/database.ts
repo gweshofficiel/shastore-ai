@@ -17,6 +17,7 @@ export type DomainStatus = "pending" | "verified" | "failed";
 export type StoreDomainStatus = "pending" | "verifying" | "connected" | "failed";
 export type PublicationStatus = "draft" | "published" | "unpublished";
 export type ProjectType = "landing" | "store";
+export type StoreProductLicenseKeyStatus = "available" | "assigned" | "revoked";
 export type CommerceCustomerSourceType = "landing" | "store" | "manual";
 export type CommerceSourceType = "landing" | "store";
 export type CommerceOrderStatus =
@@ -351,6 +352,40 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["store_products"]["Insert"]>;
+        Relationships: [];
+      };
+      store_product_license_keys: {
+        Row: {
+          id: string;
+          workspace_id: string | null;
+          store_id: string;
+          product_id: string;
+          key_value: string;
+          status: StoreProductLicenseKeyStatus;
+          assigned_order_id: string | null;
+          assigned_order_source: "orders" | "store_orders" | null;
+          assigned_customer_email: string | null;
+          assigned_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id?: string | null;
+          store_id: string;
+          product_id: string;
+          key_value: string;
+          status?: StoreProductLicenseKeyStatus;
+          assigned_order_id?: string | null;
+          assigned_order_source?: "orders" | "store_orders" | null;
+          assigned_customer_email?: string | null;
+          assigned_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["store_product_license_keys"]["Insert"]
+        >;
         Relationships: [];
       };
       store_orders: {
@@ -963,13 +998,27 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      assign_store_product_license_key: {
+        Args: {
+          candidate_customer_email: string;
+          candidate_order_id: string;
+          candidate_order_source: string;
+          candidate_product_id: string;
+        };
+        Returns: Array<{
+          id: string;
+          key_value: string;
+        }>;
+      };
+    };
     Enums: {
       landing_page_status: LandingPageStatus;
       subscription_status: SubscriptionStatus;
       domain_status: DomainStatus;
       publication_status: PublicationStatus;
       project_type: ProjectType;
+      store_product_license_key_status: StoreProductLicenseKeyStatus;
       commerce_customer_source_type: CommerceCustomerSourceType;
       commerce_source_type: CommerceSourceType;
       commerce_order_status: CommerceOrderStatus;

@@ -164,7 +164,7 @@ export default async function CustomerDownloadsPage({
 
         <section className="grid gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Digital products</p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Digital products / Licenses</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
               {phone ? `${downloads.length} ${downloads.length === 1 ? "download" : "downloads"}` : "Lookup required"}
             </h2>
@@ -203,8 +203,15 @@ export default async function CustomerDownloadsPage({
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <StatusPill label={`Download: ${statusLabel(download.downloadStatus)}`} />
+                    {download.licenseKey ? <StatusPill label="License assigned" /> : null}
                     <StatusPill label="Secure link" />
                   </div>
+                  {download.licenseKey ? (
+                    <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">License key</p>
+                      <p className="mt-2 break-all font-mono text-sm font-black text-ink">{download.licenseKey}</p>
+                    </div>
+                  ) : null}
                 </article>
               );
             })

@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAssignedLicenseKeysForOrder } from "@/lib/digital-license-keys";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 
 export type CustomerDownloadRow = {
   downloadStatus: string;
   fileName: string;
+  licenseAssignedAt: string | null;
+  licenseKey: string | null;
   orderId: string;
   orderNumber: string;
   orderSource: "orders" | "store_orders";
@@ -28,6 +31,7 @@ type DigitalProductRow = {
 
 type StoreOrderRow = {
   created_at: string;
+  customer_email?: string | null;
   customer_phone: string | null;
   digital_delivery_status?: string | null;
   has_digital_items?: boolean | null;
@@ -40,6 +44,7 @@ type StoreOrderRow = {
 
 type DraftOrderRow = {
   created_at: string;
+  customer_email?: string | null;
   customer_phone: string | null;
   digital_delivery_status?: string | null;
   has_digital_items?: boolean | null;
@@ -132,12 +137,12 @@ export async function loadCustomerDownloads({
   const [ordersResult, storeOrdersResult] = await Promise.all([
     admin
       .from("orders" as never)
-      .select("id, store_id, store_instance_id, customer_phone, created_at, order_status, payment_status, has_digital_items, digital_delivery_status")
+      .select("id, store_id, store_instance_id, customer_email, customer_phone, created_at, order_status, payment_status, has_digital_items, digital_delivery_status")
       .order("created_at" as never, { ascending: false } as never)
       .limit(100),
     admin
       .from("store_orders" as never)
-      .select("id, store_id, customer_phone, created_at, order_status, payment_status, items, has_digital_items, digital_delivery_status")
+      .select("id, store_id, customer_email, customer_phone, created_at, order_status, payment_status, items, has_digital_items, digital_delivery_status")
       .eq("store_id" as never, preview.store.id as never)
       .order("created_at" as never, { ascending: false } as never)
       .limit(100)
@@ -170,7 +175,18 @@ export async function loadCustomerDownloads({
   const downloads: CustomerDownloadRow[] = [];
 
   for (const order of draftOrders) {
-    for (const item of (orderItemRows.data ?? []) as unknown as Array<{ digital_delivery_status?: string | null; digital_file_name?: string | null; order_id?: string | null; product_id?: string | null }>) {
+    const itemsForOrder = ((orderItemRows.data ?? []) as unknown as Array<{ digital_delivery_status?: string | null; digital_file_name?: string | null; order_id?: string | null; product_id?: string | null }>)
+      .filter((item) => item.order_id === order.id && item.product_id);
+    const licensesByProduct = await getAssignedLicenseKeysForOrder({
+      customerEmail: order.customer_email ?? null,
+      orderId: order.id,
+      orderSource: "orders",
+      productIds: itemsForOrder.map((item) => item.product_id as string),
+      storeId: preview.store.id,
+      supabase: admin
+    });
+
+    for (const item of itemsForOrder) {
       if (item.order_id !== order.id || !item.product_id) {
         continue;
       }
@@ -180,9 +196,12 @@ export async function loadCustomerDownloads({
         continue;
       }
 
+      const license = licensesByProduct.get(item.product_id);
       downloads.push({
         downloadStatus: item.digital_delivery_status ?? order.digital_delivery_status ?? "pending",
         fileName: item.digital_file_name ?? product.digital_file_name ?? "Digital file",
+        licenseAssignedAt: license?.assignedAt ?? null,
+        licenseKey: license?.keyValue ?? null,
         orderId: order.id,
         orderNumber: orderReference(order.id),
         orderSource: "orders",
@@ -194,16 +213,33 @@ export async function loadCustomerDownloads({
   }
 
   for (const order of storeOrders) {
-    for (const item of jsonItems(order.items)) {
+    const itemsForOrder = jsonItems(order.items);
+    const licensesByProduct = await getAssignedLicenseKeysForOrder({
+      customerEmail: order.customer_email ?? null,
+      orderId: order.id,
+      orderSource: "store_orders",
+      productIds: itemsForOrder.map(productIdFromItem).filter(Boolean) as string[],
+      storeId: preview.store.id,
+      supabase: admin
+    });
+
+    for (const item of itemsForOrder) {
       const productId = productIdFromItem(item);
-      const product = productId ? productsById.get(productId) : null;
+      if (!productId) {
+        continue;
+      }
+
+      const product = productsById.get(productId);
       if (!product) {
         continue;
       }
 
+      const license = licensesByProduct.get(productId);
       downloads.push({
         downloadStatus: typeof item.digitalDeliveryStatus === "string" ? item.digitalDeliveryStatus : order.digital_delivery_status ?? "pending",
         fileName: (typeof item.digitalFileName === "string" && item.digitalFileName) || product.digital_file_name || "Digital file",
+        licenseAssignedAt: license?.assignedAt ?? null,
+        licenseKey: license?.keyValue ?? null,
         orderId: order.id,
         orderNumber: orderReference(order.id),
         orderSource: "store_orders",

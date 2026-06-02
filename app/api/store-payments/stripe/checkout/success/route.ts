@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
 import type { Json } from "@/types/database";
 
 function dashboardErrorUrl(request: NextRequest, status: string) {
@@ -46,6 +47,23 @@ function productFromLineItem(item: Stripe.LineItem) {
     total: subtotal,
     variant_id: metadata.variant_id || null
   };
+}
+
+async function digitalProductsById(admin: NonNullable<ReturnType<typeof createAdminClient>>, storeId: string, productIds: string[]) {
+  if (!productIds.length) {
+    return new Map<string, { digital_file_name?: string | null; id: string; product_type?: string | null }>();
+  }
+
+  const { data } = await admin
+    .from("store_products" as never)
+    .select("id, product_type, digital_file_name")
+    .eq("store_id" as never, storeId as never)
+    .in("id" as never, Array.from(new Set(productIds)) as never);
+
+  return new Map(
+    ((data ?? []) as unknown as Array<{ digital_file_name?: string | null; id: string; product_type?: string | null }>)
+      .map((product) => [product.id, product])
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -100,6 +118,22 @@ export async function GET(request: NextRequest) {
       throw new Error("Stripe checkout session did not include product line items.");
     }
 
+    const productsById = await digitalProductsById(admin, storeId, items.map((item) => item.id));
+    const enrichedItems = items.map((item) => {
+      const product = productsById.get(item.id);
+      const isDigital = product?.product_type === "digital";
+
+      return {
+        ...item,
+        digitalDeliveryStatus: isDigital ? "pending" : "none",
+        digitalFileName: isDigital ? product?.digital_file_name ?? null : null,
+        productType: isDigital ? "digital" : "physical",
+        requiresShipping: !isDigital
+      };
+    });
+    const digitalItemCount = enrichedItems.filter((item) => item.productType === "digital").length;
+    const physicalItemCount = enrichedItems.length - digitalItemCount;
+    const deliveryType = digitalItemCount && physicalItemCount ? "mixed" : digitalItemCount ? "digital" : "physical";
     const total = moneyFromCents(session.amount_total);
     const subtotalAmount = numberMetadata(metadata, "subtotal_amount") || moneyFromCents(session.amount_subtotal);
     const shippingAmount = numberMetadata(metadata, "delivery_fee");
@@ -116,9 +150,16 @@ export async function GET(request: NextRequest) {
         delivery_fee: shippingAmount,
         delivery_method: cleanMetadata(metadata, "delivery_method") || "none",
         discount_amount: Math.max(0, subtotalAmount + shippingAmount + taxAmount - total),
+        delivery_type: deliveryType,
+        digital_delivery_metadata: {
+          digitalItemCount,
+          source: "stripe_checkout"
+        },
+        digital_delivery_status: digitalItemCount ? "pending" : "none",
         fulfillment_status: "unfulfilled",
+        has_digital_items: digitalItemCount > 0,
         id: orderReference,
-        items: items as Json,
+        items: enrichedItems as Json,
         order_status: nowStatus === "paid" ? "confirmed" : "pending",
         owner_user_id: cleanMetadata(metadata, "owner_user_id") || null,
         payment_method: "card",
@@ -142,6 +183,16 @@ export async function GET(request: NextRequest) {
     if (error || !inserted) {
       throw new Error(error?.message ?? "Stripe paid order could not be saved.");
     }
+
+    await assignLicenseKeysForOrder({
+      customerEmail: session.customer_details?.email ?? (cleanMetadata(metadata, "customer_email") || null),
+      items: enrichedItems.map((item) => ({ product_id: item.id })),
+      orderId: orderReference,
+      orderSource: "store_orders",
+      storeId,
+      supabase: admin,
+      workspaceId: cleanMetadata(metadata, "workspace_id") || null
+    });
 
     await recordMonitoringEventSafe({
       entityId: orderReference,

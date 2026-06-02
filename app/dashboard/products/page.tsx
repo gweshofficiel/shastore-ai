@@ -14,6 +14,7 @@ import {
   updateStoreOwnerProduct,
   updateStoreOwnerProductVariant
 } from "@/lib/product-actions";
+import { getLicenseKeyStatsByProduct, importDigitalProductLicenseKeys, type LicenseKeyStats } from "@/lib/digital-license-keys";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
@@ -88,6 +89,7 @@ type ProductVariantRow = {
 
 type ProductWithImages = ProductRow & {
   images: ProductImageRow[];
+  licenseStats: LicenseKeyStats;
   variants: ProductVariantRow[];
 };
 
@@ -245,6 +247,12 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     existing.push(variant);
     variantsByProduct.set(variant.product_id, existing);
   }
+  const licenseStatsByProduct = await getLicenseKeyStatsByProduct({
+    productIds,
+    storeId: activeStore.id,
+    supabase,
+    workspaceId
+  });
 
   return {
     activeStore,
@@ -253,6 +261,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     products: ((products ?? []) as unknown as ProductRow[]).map((product) => ({
       ...product,
       images: imagesByProduct.get(product.id) ?? [],
+      licenseStats: licenseStatsByProduct.get(product.id) ?? { assigned: 0, available: 0, revoked: 0, total: 0 },
       variants: variantsByProduct.get(product.id) ?? []
     })),
     schemaIssue: null,
@@ -397,7 +406,12 @@ function statusMessage(status: string | undefined, detail?: string) {
     "invalid-inventory": "Inventory value invalid. Use non-negative whole numbers.",
     "invalid-price": "Product price must be a valid non-negative number.",
     "invalid-status": "Invalid status. Choose draft, active, or archived.",
+    "digital-required": "License keys can only be imported for digital products.",
+    "import-failed": "License keys could not be imported. Apply the license key migration and try again.",
+    "keys-imported": "License keys imported.",
     "missing-image": "Choose an image before uploading.",
+    "missing-keys": "Paste at least one license key to import.",
+    "missing-product": "Choose a product before importing license keys.",
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
     "not-authorized": "You do not have permission to manage that store.",
@@ -811,10 +825,19 @@ function VariantFields({ productId, variant }: { productId: string; variant?: Pr
   );
 }
 
+function LicenseStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-violet-100 bg-white p-3">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">{label}</p>
+      <p className="mt-1 text-xl font-black text-ink">{value}</p>
+    </div>
+  );
+}
+
 export default async function SellerProductsPage({
   searchParams
 }: {
-  searchParams: Promise<{ edit?: string; productError?: string; products?: string; storeId?: string }>;
+  searchParams: Promise<{ edit?: string; licenses?: string; productError?: string; products?: string; storeId?: string }>;
 }) {
   const query = await searchParams;
   const supabase = await createClient();
@@ -853,7 +876,7 @@ export default async function SellerProductsPage({
   const { activeStore, categories, error, products, schemaIssue, stores } = await getProductsDashboardData(
     query.storeId
   );
-  const message = statusMessage(query.products, query.productError);
+  const message = statusMessage(query.products ?? query.licenses, query.productError);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -1090,6 +1113,41 @@ export default async function SellerProductsPage({
                               </p>
                             </div>
                           </div>
+                          {product.product_type === "digital" ? (
+                            <div className="mt-4 grid gap-4 rounded-3xl border border-violet-100 bg-violet-50/60 p-4">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-500">
+                                  License key inventory
+                                </p>
+                                <p className="mt-1 text-sm leading-6 text-violet-700">
+                                  Add one license key per line or comma separated. Keys stay store-scoped and are assigned only after a paid order.
+                                </p>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-4">
+                                <LicenseStat label="Total" value={product.licenseStats.total} />
+                                <LicenseStat label="Available" value={product.licenseStats.available} />
+                                <LicenseStat label="Assigned" value={product.licenseStats.assigned} />
+                                <LicenseStat label="Revoked" value={product.licenseStats.revoked} />
+                              </div>
+                              <form action={importDigitalProductLicenseKeys} className="grid gap-3">
+                                <input name="storeId" type="hidden" value={activeStore.id} />
+                                <input name="productId" type="hidden" value={product.id} />
+                                <Textarea
+                                  id={`license-keys-${product.id}`}
+                                  label="Import license keys"
+                                  maxLength={20000}
+                                  name="licenseKeys"
+                                  placeholder={"KEY-001-ABC\nKEY-002-DEF"}
+                                  rows={4}
+                                />
+                                <div className="flex justify-end">
+                                  <Button type="submit" variant="secondary">
+                                    Import keys
+                                  </Button>
+                                </div>
+                              </form>
+                            </div>
+                          ) : null}
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-3 lg:justify-end">
