@@ -36,15 +36,31 @@ function statusBadgeClass(status: string) {
     return "bg-emerald-100 text-emerald-700";
   }
 
+  if (status === "invited") {
+    return "bg-blue-100 text-blue-700";
+  }
+
   if (status === "suspended") {
     return "bg-amber-100 text-amber-800";
   }
 
-  if (status === "banned") {
+  if (status === "removed") {
     return "bg-red-100 text-red-700";
   }
 
   return "bg-slate-100 text-slate-700";
+}
+
+function displayMemberStatus(status: string) {
+  if (status === "pending") {
+    return "invited";
+  }
+
+  if (status === "banned") {
+    return "suspended";
+  }
+
+  return status;
 }
 
 function MemberStatusSection({
@@ -94,9 +110,9 @@ function MemberStatusSection({
                     {formatRole(member.role)}
                   </span>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusBadgeClass(member.status)}`}
+                    className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusBadgeClass(displayMemberStatus(member.status))}`}
                   >
-                    {member.status}
+                    {displayMemberStatus(member.status)}
                   </span>
                 </div>
               </div>
@@ -126,7 +142,7 @@ function MemberStatusSection({
                         Change role
                       </Button>
                     </form>
-                    {member.status === "active" ? (
+                    {displayMemberStatus(member.status) === "active" ? (
                       <form action={changeMemberStatus}>
                         <input name="workspaceId" type="hidden" value={workspaceId} />
                         <input name="memberId" type="hidden" value={member.id} />
@@ -145,21 +161,23 @@ function MemberStatusSection({
                         <input name="memberId" type="hidden" value={member.id} />
                         <input name="status" type="hidden" value="active" />
                         <Button type="submit" variant="secondary">
-                          Restore
+                          Reactivate
                         </Button>
                       </form>
                     )}
-                    <form action={removeMember}>
-                      <input name="workspaceId" type="hidden" value={workspaceId} />
-                      <input name="memberId" type="hidden" value={member.id} />
-                      <ConfirmSubmitButton
-                        confirmMessage="Remove this member from the workspace?"
-                        type="submit"
-                        variant="secondary"
-                      >
-                        Remove
-                      </ConfirmSubmitButton>
-                    </form>
+                    {displayMemberStatus(member.status) !== "removed" ? (
+                      <form action={removeMember}>
+                        <input name="workspaceId" type="hidden" value={workspaceId} />
+                        <input name="memberId" type="hidden" value={member.id} />
+                        <ConfirmSubmitButton
+                          confirmMessage="Remove this member from the workspace?"
+                          type="submit"
+                          variant="secondary"
+                        >
+                          Remove
+                        </ConfirmSubmitButton>
+                      </form>
+                    ) : null}
                   </>
                 ) : null}
                 <Button disabled type="button" variant="ghost">
@@ -265,8 +283,8 @@ export default async function TeamPage({
         />
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-bold text-amber-800">
-            You do not have permission to view team members, pending invites, suspended members,
-            or banned members.
+            You do not have permission to view team members, invited staff, suspended members,
+            or removed members.
           </p>
         </Card>
       </div>
@@ -280,13 +298,19 @@ export default async function TeamPage({
   );
   const memberEmails = await resolveMemberEmails(members);
   const limit = access.usage.teamMemberLimit;
-  const seatsUsed = members.length + invites.length;
+  const pendingInvites = invites.filter((invite) => invite.status === "pending");
+  const removedInvites = invites.filter((invite) => invite.status === "revoked");
+  const seatsUsed =
+    members.filter((member) => displayMemberStatus(member.status) !== "removed").length +
+    pendingInvites.length;
   const seatsLabel = limit === null ? `${seatsUsed} / Unlimited` : `${seatsUsed} / ${limit}`;
   const seatsAtLimit = limit !== null && seatsUsed >= limit;
   const activeMembers = members.filter((member) => member.status === "active");
-  const pendingMembers = members.filter((member) => member.status === "pending");
-  const suspendedMembers = members.filter((member) => member.status === "suspended");
-  const bannedMembers = members.filter((member) => member.status === "banned");
+  const invitedMembers = members.filter((member) => member.status === "pending");
+  const suspendedMembers = members.filter(
+    (member) => member.status === "suspended" || member.status === "banned"
+  );
+  const removedMembers = members.filter((member) => member.status === "removed");
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -473,8 +497,8 @@ export default async function TeamPage({
         description="Accepted accounts waiting for activation"
         managementAllowed={management.allowed}
         memberEmails={memberEmails}
-        members={pendingMembers}
-        title="Pending members"
+        members={invitedMembers}
+        title="Invited members"
         workspaceId={workspaceId}
       />
 
@@ -485,17 +509,17 @@ export default async function TeamPage({
               Pending invites
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              Email invite foundation
+              Invited staff
             </h2>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-            {invites.length} pending
+            {pendingInvites.length} invited
           </span>
         </div>
 
-        {invites.length ? (
+        {pendingInvites.length ? (
           <div className="mt-5 grid gap-3">
-            {invites.map((invite) => (
+            {pendingInvites.map((invite) => (
               <div
                 className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4"
                 key={invite.id}
@@ -503,7 +527,7 @@ export default async function TeamPage({
                 <div>
                   <p className="font-black text-ink">{invite.email}</p>
                   <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                    Pending {formatRole(invite.role)}
+                    Invited {formatRole(invite.role)}
                   </p>
                   {invite.expires_at ? (
                     <p className="mt-1 text-xs font-semibold text-muted">
@@ -553,13 +577,46 @@ export default async function TeamPage({
       />
 
       <MemberStatusSection
-        description="Members blocked for policy or security reasons"
+        description="Members safely removed from workspace access"
         managementAllowed={management.allowed}
         memberEmails={memberEmails}
-        members={bannedMembers}
-        title="Banned members"
+        members={removedMembers}
+        title="Removed members"
         workspaceId={workspaceId}
       />
+
+      {removedInvites.length ? (
+        <Card className="p-6 lg:p-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Removed invites
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                Revoked staff invitations
+              </h2>
+            </div>
+            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-red-700">
+              {removedInvites.length} removed
+            </span>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {removedInvites.map((invite) => (
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                key={invite.id}
+              >
+                <div>
+                  <p className="font-black text-ink">{invite.email}</p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                    Removed {formatRole(invite.role)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="border-dashed border-slate-300 bg-slate-50 p-6 lg:p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">

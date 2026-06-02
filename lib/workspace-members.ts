@@ -29,7 +29,7 @@ export type WorkspaceMember = {
   workspace_id: string;
 };
 
-export type WorkspaceMemberStatus = "active" | "pending" | "suspended" | "banned";
+export type WorkspaceMemberStatus = "active" | "pending" | "suspended" | "banned" | "removed";
 
 export type WorkspaceInvite = {
   accepted_at?: string | null;
@@ -48,7 +48,8 @@ const manageableStatuses = new Set<WorkspaceMemberStatus>([
   "active",
   "pending",
   "suspended",
-  "banned"
+  "banned",
+  "removed"
 ]);
 
 function normalizeEmail(value: FormDataEntryValue | string | null) {
@@ -177,17 +178,20 @@ export async function canManageWorkspace(
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("role")
+    .select("role, status")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .maybeSingle();
 
   const role = (data as { role?: WorkspaceRole | null } | null)?.role ?? null;
-  const allowed = hasPermission(role, "manage_team");
+  const status =
+    (data as { status?: WorkspaceMemberStatus | null } | null)?.status ?? "active";
+  const allowed = status === "active" && hasPermission(role, "manage_team");
 
   console.info("[workspace-access] manage workspace checked", {
     allowed,
     role,
+    status,
     userId,
     workspaceId
   });
@@ -238,7 +242,7 @@ export async function getWorkspaceMembers(
     .from("workspace_invitations" as never)
     .select("id, workspace_id, email, role, invited_by, status, expires_at, accepted_at, created_at")
     .eq("workspace_id", workspaceId)
-    .eq("status", "pending")
+    .in("status" as never, ["pending", "revoked"] as never)
     .order("created_at", { ascending: false });
   const members = (membersResult.data ?? []) as Array<WorkspaceMember & { status?: WorkspaceMemberStatus | null }>;
   const membersError = membersResult.error;
@@ -349,7 +353,8 @@ async function workspaceSeatCount(supabase: SupabaseClient, workspaceId: string)
     supabase
       .from("workspace_members" as never)
       .select("id", { count: "exact", head: true })
-      .eq("workspace_id", workspaceId),
+      .eq("workspace_id", workspaceId)
+      .neq("status" as never, "removed" as never),
     supabase
       .from("workspace_invitations" as never)
       .select("id", { count: "exact", head: true })
@@ -545,7 +550,7 @@ export async function removeMember(formData: FormData) {
 
     const { error } = await client
       .from("workspace_members" as never)
-      .delete()
+      .update({ status: "removed" } as never)
       .eq("id", memberId)
       .eq("workspace_id", workspaceId)
       .neq("role", "owner");
@@ -559,7 +564,7 @@ export async function removeMember(formData: FormData) {
       teamWorkspaceRedirect("error", workspaceId, "Member could not be removed.");
     }
 
-    console.info("[team-member-remove] member removed", {
+    console.info("[team-member-remove] member marked removed", {
       memberId,
       targetRole: target.role,
       targetUserId: target.user_id,
@@ -1051,7 +1056,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
 
   const { data: existingMember } = await admin
     .from("workspace_members" as never)
-    .select("id")
+    .select("id, status")
     .eq("workspace_id", invite.workspace_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -1062,6 +1067,17 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
       userId,
       workspaceId: invite.workspace_id
     });
+
+    const member = existingMember as { id: string; status?: WorkspaceMemberStatus | null };
+
+    if (member.status !== "active") {
+      await admin
+        .from("workspace_members" as never)
+        .update({ role: invite.role, status: "active" } as never)
+        .eq("id", member.id)
+        .eq("workspace_id", invite.workspace_id)
+        .neq("role", "owner");
+    }
 
     if (invite.status === "accepted") {
       console.log("[invite-accept] invitation already accepted; idempotent success", {

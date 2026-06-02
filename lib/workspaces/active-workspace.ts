@@ -13,6 +13,7 @@ export type UserWorkspaceMembership = {
   invitedBy: string | null;
   isPersonal: boolean;
   role: WorkspaceRole;
+  status: string;
   workspaceId: string;
 };
 
@@ -66,7 +67,7 @@ export async function getUserWorkspaceMemberships(
 ): Promise<UserWorkspaceMembership[]> {
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("workspace_id, role, invited_by, created_at")
+    .select("workspace_id, role, status, invited_by, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -81,6 +82,7 @@ export async function getUserWorkspaceMemberships(
     created_at?: string | null;
     invited_by?: string | null;
     role?: string | null;
+    status?: string | null;
     workspace_id?: string | null;
   }>)
     .filter((membership) => membership.workspace_id && isWorkspaceRole(membership.role))
@@ -89,6 +91,7 @@ export async function getUserWorkspaceMemberships(
       invitedBy: membership.invited_by ?? null,
       isPersonal: membership.workspace_id === userId,
       role: membership.role as WorkspaceRole,
+      status: membership.status ?? "active",
       workspaceId: membership.workspace_id as string
     }));
 
@@ -98,6 +101,7 @@ export async function getUserWorkspaceMemberships(
       invitedBy: null,
       isPersonal: true,
       role: "owner",
+      status: "active",
       workspaceId: userId
     });
   }
@@ -196,9 +200,10 @@ export async function getActiveWorkspaceForUser({
     (membership) => !membership.isPersonal && membership.role === "owner"
   );
   const preliminaryStaffLocked = hasInvitedNonOwnerMembership && !hasNonPersonalOwnerMembership;
+  const activeMemberships = memberships.filter((membership) => membership.status === "active");
   const allowedMemberships = preliminaryStaffLocked
-    ? memberships.filter((membership) => !membership.isPersonal)
-    : memberships;
+    ? activeMemberships.filter((membership) => !membership.isPersonal)
+    : activeMemberships;
 
   const byWorkspaceId = new Map(
     allowedMemberships.map((membership) => [membership.workspaceId, membership])
@@ -208,8 +213,8 @@ export async function getActiveWorkspaceForUser({
   const selected = requested ?? cookieSelected ?? allowedMemberships[0] ?? memberships[0];
   let staffIdentity = await resolveInviteCreatedStaffIdentity(userId, memberships, selected);
   const visibleWorkspaces = staffIdentity.isStaffLocked
-    ? memberships.filter((membership) => !membership.isPersonal)
-    : memberships;
+    ? activeMemberships.filter((membership) => !membership.isPersonal)
+    : activeMemberships;
   const selectedIsAllowed = visibleWorkspaces.some(
     (membership) => membership.workspaceId === selected.workspaceId
   );
