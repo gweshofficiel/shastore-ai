@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GoogleAnalyticsPurchase, GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { MetaPixelPurchase, MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { ClearStoreCartOnOrderSuccess } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -442,6 +443,20 @@ export default async function PublicOrderConfirmationPage({
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-ink sm:px-6 lg:px-8">
+      <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
+      <GoogleAnalyticsPurchase
+        currency={order.currency}
+        enabled={seoSettings.googleAnalyticsEnabled}
+        items={order.items.map((item) => ({
+          item_id: item.id,
+          item_name: item.title,
+          price: item.price,
+          quantity: item.quantity
+        }))}
+        measurementId={seoSettings.googleAnalyticsMeasurementId}
+        orderId={order.id}
+        value={numericValue(order.total)}
+      />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <MetaPixelPurchase
         contentIds={order.items.map((item) => item.id).filter((id): id is string => Boolean(id))}

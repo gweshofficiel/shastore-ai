@@ -10,6 +10,8 @@ export type StoreSeoSettings = {
   defaultMetaDescription: string;
   defaultMetaTitle: string;
   defaultOgImageUrl: string;
+  googleAnalyticsEnabled: boolean;
+  googleAnalyticsMeasurementId: string;
   googleConnectedPropertyUrl: string;
   googleVerificationMetaCode: string;
   googleVerificationStatus: GoogleVerificationStatus;
@@ -25,6 +27,8 @@ export const defaultStoreSeoSettings: StoreSeoSettings = {
   defaultMetaDescription: "",
   defaultMetaTitle: "",
   defaultOgImageUrl: "",
+  googleAnalyticsEnabled: false,
+  googleAnalyticsMeasurementId: "",
   googleConnectedPropertyUrl: "",
   googleVerificationMetaCode: "",
   googleVerificationStatus: "not_started",
@@ -73,6 +77,11 @@ export function cleanMetaPixelId(value: unknown) {
   return cleanSeoText(value, 40).replace(/[^0-9]/g, "").slice(0, 32);
 }
 
+export function cleanGoogleAnalyticsMeasurementId(value: unknown) {
+  const text = cleanSeoText(value, 40).toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  return /^G-[A-Z0-9]{4,32}$/.test(text) ? text : "";
+}
+
 export function normalizeGoogleVerificationStatus(value: unknown): GoogleVerificationStatus {
   return googleVerificationStatuses.has(value as GoogleVerificationStatus)
     ? value as GoogleVerificationStatus
@@ -95,6 +104,8 @@ export function normalizeStoreSeoSettings(value: unknown): StoreSeoSettings {
     defaultMetaDescription: cleanSeoText(input.defaultMetaDescription),
     defaultMetaTitle: cleanSeoText(input.defaultMetaTitle, 180),
     defaultOgImageUrl: cleanSeoUrl(input.defaultOgImageUrl),
+    googleAnalyticsEnabled: input.googleAnalyticsEnabled === true,
+    googleAnalyticsMeasurementId: cleanGoogleAnalyticsMeasurementId(input.googleAnalyticsMeasurementId),
     googleConnectedPropertyUrl: cleanSeoUrl(input.googleConnectedPropertyUrl),
     googleVerificationMetaCode: cleanGoogleVerificationMetaCode(input.googleVerificationMetaCode),
     googleVerificationStatus: normalizeGoogleVerificationStatus(input.googleVerificationStatus),

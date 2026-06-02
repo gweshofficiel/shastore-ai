@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getUserPrimaryWorkspaceId, hasPermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import {
+  cleanGoogleAnalyticsMeasurementId,
   cleanGoogleVerificationMetaCode,
   cleanMetaPixelId,
   cleanSeoText,
@@ -24,6 +25,7 @@ import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 const seoPath = "/dashboard/seo";
 const facebookPixelPath = "/dashboard/seo/facebook-pixel";
+const googleAnalyticsPath = "/dashboard/seo/google-analytics";
 const redirectsPath = "/dashboard/seo/redirects";
 const searchConsolePath = "/dashboard/seo/search-console";
 const fallbackRules = new Set<SeoFallbackRule>(["existing_data", "store_defaults", "title_with_store"]);
@@ -56,6 +58,16 @@ function facebookPixelWith(status: string, storeId?: string): never {
   }
 
   redirect(`${facebookPixelPath}?${params.toString()}`);
+}
+
+function googleAnalyticsWith(status: string, storeId?: string): never {
+  const params = new URLSearchParams({ analyticsStatus: status });
+
+  if (storeId) {
+    params.set("storeId", storeId);
+  }
+
+  redirect(`${googleAnalyticsPath}?${params.toString()}`);
 }
 
 function searchConsoleWith(status: string, storeId?: string): never {
@@ -436,4 +448,41 @@ export async function saveFacebookPixelSettingsAction(formData: FormData) {
   revalidatePath(seoPath);
   revalidatePath(`/store/${store.slug}`);
   facebookPixelWith("saved", storeId);
+}
+
+export async function saveGoogleAnalyticsSettingsAction(formData: FormData) {
+  const storeId = cleanId(formData.get("storeId"));
+
+  if (!storeId) {
+    googleAnalyticsWith("invalid");
+  }
+
+  const { store, supabase, workspaceId } = await requireSeoStoreAccess(storeId);
+  const existingSettings = await loadStoreSeoSettings(supabase, storeId);
+  const googleAnalyticsMeasurementId = cleanGoogleAnalyticsMeasurementId(formData.get("googleAnalyticsMeasurementId"));
+  const googleAnalyticsEnabled = formData.get("googleAnalyticsEnabled") === "on";
+
+  if (googleAnalyticsEnabled && !googleAnalyticsMeasurementId) {
+    googleAnalyticsWith("missing-id", storeId);
+  }
+
+  const settings = normalizeStoreSeoSettings({
+    ...existingSettings,
+    googleAnalyticsEnabled,
+    googleAnalyticsMeasurementId
+  });
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({ seo_settings: settings } as never)
+    .eq("id" as never, storeId as never)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    googleAnalyticsWith("save-failed", storeId);
+  }
+
+  revalidatePath(googleAnalyticsPath);
+  revalidatePath(seoPath);
+  revalidatePath(`/store/${store.slug}`);
+  googleAnalyticsWith("saved", storeId);
 }

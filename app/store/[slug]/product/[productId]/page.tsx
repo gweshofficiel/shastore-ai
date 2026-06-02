@@ -7,6 +7,7 @@ import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { GoogleAnalyticsScript, GoogleAnalyticsViewItem } from "@/components/storefront/google-analytics";
 import { MetaPixelScript, MetaPixelViewContent } from "@/components/storefront/meta-pixel";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
@@ -466,6 +467,15 @@ export default async function PublicProductDetailPage({
       className={`min-h-screen text-ink ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
       style={{ backgroundColor: `${theme.primaryColor}08` }}
     >
+      <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
+      <GoogleAnalyticsViewItem
+        currency={currency}
+        enabled={seoSettings.googleAnalyticsEnabled}
+        itemId={product.id}
+        itemName={product.title}
+        measurementId={seoSettings.googleAnalyticsMeasurementId}
+        value={numericProductPrice(product.price)}
+      />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <MetaPixelViewContent
         contentId={product.id}

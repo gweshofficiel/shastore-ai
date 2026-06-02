@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { CartPageClient, type CartItem } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -249,6 +250,7 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
       className={`min-h-screen px-4 py-5 text-ink sm:px-6 lg:px-8 ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
       style={{ backgroundColor: `${theme.primaryColor}08` }}
     >
+      <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <div className="mx-auto max-w-7xl">
         <header

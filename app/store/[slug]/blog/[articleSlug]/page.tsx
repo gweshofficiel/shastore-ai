@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import {
   absoluteBlogImageUrl,
@@ -110,6 +111,7 @@ export default async function StoreBlogArticlePage({
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-12 text-ink sm:px-6 lg:px-8">
+      <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <article className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]">
         {article.coverImageUrl ? (

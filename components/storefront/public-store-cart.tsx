@@ -6,6 +6,7 @@ import {
   createPublicStoreOrderDraftAction,
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
+import { trackGoogleAnalyticsEvent } from "@/components/storefront/google-analytics";
 import { trackMetaPixelEvent } from "@/components/storefront/meta-pixel";
 import { matchPublicShippingRate, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
@@ -847,6 +848,17 @@ export function AddToCartButton({
       quantity: 1,
       variantId: selectedVariant?.id ?? null
     }));
+    trackGoogleAnalyticsEvent("add_to_cart", {
+      currency,
+      items: [{
+        item_id: product.id,
+        item_name: product.title,
+        price: parsePrice(product.price),
+        quantity: 1,
+        variant: selectedVariant?.id ?? null
+      }],
+      value: parsePrice(product.price)
+    });
     window.setTimeout(() => setAdded(false), 1800);
   }
 
@@ -861,6 +873,17 @@ export function AddToCartButton({
       quantity: 1,
       variantId: selectedVariant?.id ?? null
     }));
+    trackGoogleAnalyticsEvent("add_to_cart", {
+      currency,
+      items: [{
+        item_id: product.id,
+        item_name: product.title,
+        price: parsePrice(product.price),
+        quantity: 1,
+        variant: selectedVariant?.id ?? null
+      }],
+      value: parsePrice(product.price)
+    });
     window.location.assign(`/store/${slug}/cart`);
   }
 
@@ -2063,6 +2086,17 @@ export function CartPageClient({
                   content_type: "product",
                   currency,
                   num_items: cartItemCount(items),
+                  value: payableTotal
+                });
+                trackGoogleAnalyticsEvent("begin_checkout", {
+                  currency,
+                  items: items.map((item) => ({
+                    item_id: item.productId,
+                    item_name: item.title,
+                    price: parsePrice(item.price),
+                    quantity: item.quantity,
+                    variant: item.variantId ?? null
+                  })),
                   value: payableTotal
                 });
                 setCheckoutStarted(true);

@@ -18,6 +18,7 @@ import {
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StoreMarketingMessages } from "@/components/storefront/store-marketing-messages";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
+import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import {
   buildPublicProductSections,
@@ -848,6 +849,7 @@ export default async function PublicStorePage({
     >
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
+      <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
