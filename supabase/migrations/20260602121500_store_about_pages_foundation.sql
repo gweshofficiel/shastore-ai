@@ -61,3 +61,7 @@ using (
       and coalesce(published.visibility, 'public') = 'public'
   )
 );
+
+grant select, insert, update, delete on public.store_about_pages to authenticated;
+grant select on public.store_about_pages to anon;
+grant all on public.store_about_pages to service_role;
