@@ -14,6 +14,7 @@ type CartItemSnapshot = {
   productId?: string;
   quantity?: number;
   title?: string;
+  variantId?: string | null;
   variantName?: string | null;
 };
 
@@ -91,6 +92,7 @@ export function sanitizeCartItems(value: unknown) {
         productId,
         quantity,
         title,
+        variantId: cleanText(record.variantId, 80) || null,
         variantName: cleanText(record.variantName, 120) || null
       };
     })
@@ -122,6 +124,17 @@ export async function markDueAbandonedCartsSafe({
     .is("abandoned_at" as never, null)
     .lt("last_activity_at" as never, cutoff as never)
     .gt("items_count" as never, 0 as never);
+
+  const expiryCutoff = new Date(Date.now() - 14 * 24 * 60 * 60_000).toISOString();
+
+  await admin
+    .from("store_abandoned_carts" as never)
+    .update({ recovery_status: "expired" } as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .in("recovery_status" as never, ["pending", "email_sent"] as never)
+    .lt("last_activity_at" as never, expiryCutoff as never)
+    .is("recovered_at" as never, null);
 }
 
 export async function markAbandonedCartRecoveredSafe({
@@ -217,7 +230,11 @@ export async function sendAbandonedCartRecoveryEmailAction(formData: FormData) {
     redirect(`${returnTo}?carts=missing-email`);
   }
 
-  if (cart.recovery_status === "email_sent" || cart.recovery_status === "recovered") {
+  if (
+    cart.recovery_status === "email_sent" ||
+    cart.recovery_status === "recovered" ||
+    cart.recovery_status === "expired"
+  ) {
     redirect(`${returnTo}?carts=duplicate`);
   }
 

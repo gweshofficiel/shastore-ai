@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CartPageClient } from "@/components/storefront/public-store-cart";
+import { CartPageClient, type CartItem } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods";
 import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
-import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { getPublicStorefrontPreview, type PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { getEnabledPublicStorePaymentMethods } from "@/lib/store-payment-methods";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,125 @@ type StoreCartPageProps = {
   }>;
   searchParams: Promise<{
     coupon?: string;
+    recovery?: string;
   }>;
 };
+
+type RecoveryCartSnapshot = {
+  items: Json;
+  session_id: string;
+};
+
+function cleanText(value: string | undefined, maxLength = 160) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function numericValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/[^0-9.-]+/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function stockQuantity(value: number | string | null | undefined) {
+  return Math.max(0, Math.floor(numericValue(value)));
+}
+
+async function loadRecoveryCartSnapshot({
+  cartId,
+  storeId,
+  workspaceId
+}: {
+  cartId: string;
+  storeId: string;
+  workspaceId: string | null;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin || !cartId || !workspaceId) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("store_abandoned_carts" as never)
+    .select("session_id, items")
+    .eq("id" as never, cartId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .in("recovery_status" as never, ["pending", "email_sent"] as never)
+    .gt("items_count" as never, 0 as never)
+    .maybeSingle();
+
+  return data as RecoveryCartSnapshot | null;
+}
+
+function recoveryItemsFromSnapshot({
+  currency,
+  products,
+  snapshot,
+  storeId
+}: {
+  currency: string;
+  products: PublicStorefrontProduct[];
+  snapshot: RecoveryCartSnapshot | null;
+  storeId: string;
+}): CartItem[] {
+  if (!snapshot || !Array.isArray(snapshot.items)) {
+    return [];
+  }
+
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
+  const recoveredItems: CartItem[] = [];
+
+  for (const item of snapshot.items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const record = item as Record<string, Json | undefined>;
+    const productId = typeof record.productId === "string" ? record.productId : "";
+    const product = productsById.get(productId);
+
+    if (!product) {
+      continue;
+    }
+
+    const variantId = typeof record.variantId === "string" ? record.variantId : null;
+    const variant = variantId
+      ? product.variants.find((candidate) => candidate.id === variantId) ?? null
+      : null;
+    const quantity = Math.max(1, Math.floor(numericValue(record.quantity) || 1));
+
+    recoveredItems.push({
+      categoryName: product.categoryName,
+      currency: product.currency || currency,
+      id: `${product.id}:${variant?.id ?? "default"}`,
+      image: product.imageUrl,
+      inventoryStatus: product.inventoryStatus,
+      price: variant?.priceOverride ?? product.price,
+      priceLabel: product.priceLabel,
+      productId: product.id,
+      quantity,
+      stockQuantity: variant ? stockQuantity(variant.stockQuantity) : product.stockQuantity,
+      storeId,
+      title: product.title,
+      trackInventory: product.trackInventory,
+      variantId: variant?.id ?? null,
+      variantName: variant?.name ?? (typeof record.variantName === "string" ? record.variantName : null),
+      variantOptions: {},
+      variantSku: variant?.sku ?? null
+    });
+  }
+
+  return recoveredItems;
+}
 
 export async function generateMetadata({
   params
@@ -110,6 +228,17 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
     getPublicTaxSettingsForStore(preview.store.id),
     admin ? getEnabledPublicStorePaymentMethods(admin, preview.store.id) : Promise.resolve([])
   ]);
+  const recoverySnapshot = await loadRecoveryCartSnapshot({
+    cartId: cleanText(query.recovery, 80),
+    storeId: preview.store.id,
+    workspaceId: preview.store.workspaceId
+  });
+  const initialRecoveryItems = recoveryItemsFromSnapshot({
+    currency: preview.store.currency,
+    products: preview.products,
+    snapshot: recoverySnapshot,
+    storeId: preview.store.id
+  });
   const theme = preview.themeSettings;
 
   return (
@@ -166,6 +295,8 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
             pickupEnabled: preview.store.pickupEnabled
           }}
           initialCouponCode={query.coupon}
+          initialRecoveryItems={initialRecoveryItems}
+          initialRecoverySessionId={recoverySnapshot?.session_id ?? null}
           products={preview.products}
           paymentMethods={paymentMethods}
           shippingMethods={shippingMethods}

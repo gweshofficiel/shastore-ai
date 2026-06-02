@@ -14,7 +14,7 @@ import type {
   PublicStorePaymentMethodKey
 } from "@/lib/store-payment-methods";
 
-type CartItem = {
+export type CartItem = {
   categoryName: string | null;
   currency: string;
   id: string;
@@ -54,6 +54,8 @@ type CartPageClientProps = {
     pickupEnabled: boolean;
   };
   initialCouponCode?: string;
+  initialRecoveryItems?: CartItem[];
+  initialRecoverySessionId?: string | null;
   paymentMethods?: PublicStorePaymentMethod[];
   products: PublicStorefrontProduct[];
   shippingMethods?: PublicShippingMethod[];
@@ -875,6 +877,8 @@ export function CartPageClient({
   currency,
   deliverySettings,
   initialCouponCode = "",
+  initialRecoveryItems = [],
+  initialRecoverySessionId = null,
   paymentMethods = [],
   products,
   shippingMethods = [],
@@ -922,6 +926,7 @@ export function CartPageClient({
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [addressMessage, setAddressMessage] = useState<string | null>(null);
   const [cartSessionId, setCartSessionId] = useState("");
+  const [recoveryRestored, setRecoveryRestored] = useState(false);
   const [reservationPending, setReservationPending] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const customerAddressRef = useRef("");
@@ -974,8 +979,23 @@ export function CartPageClient({
   const finalTotal = financialBreakdown.totalAmount;
 
   useEffect(() => {
+    if (initialRecoverySessionId && /^[a-zA-Z0-9_-]{16,160}$/.test(initialRecoverySessionId)) {
+      window.localStorage.setItem(CART_RECOVERY_SESSION_KEY, initialRecoverySessionId);
+      setCartSessionId(initialRecoverySessionId);
+      return;
+    }
+
     setCartSessionId(cartRecoverySessionId());
-  }, []);
+  }, [initialRecoverySessionId]);
+
+  useEffect(() => {
+    if (recoveryRestored || !initialRecoveryItems.length) {
+      return;
+    }
+
+    persistItems(initialRecoveryItems);
+    setRecoveryRestored(true);
+  }, [initialRecoveryItems, persistItems, recoveryRestored]);
 
   useEffect(() => {
     customerAddressRef.current = customerAddress;
@@ -1145,6 +1165,7 @@ export function CartPageClient({
             productId: item.productId,
             quantity: item.quantity,
             title: item.title,
+            variantId: item.variantId ?? null,
             variantName: item.variantName ?? null
           })),
           sessionId: cartSessionId,

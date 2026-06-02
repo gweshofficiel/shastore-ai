@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       .update({ recovery_status: "expired", updated_at: new Date().toISOString() } as never)
       .eq("store_id" as never, store.id as never)
       .eq("session_id" as never, sessionId as never)
-      .eq("recovery_status" as never, "pending" as never);
+      .in("recovery_status" as never, ["pending", "email_sent"] as never);
 
     return NextResponse.json({ ok: true, tracked: false });
   }
@@ -96,24 +96,48 @@ export async function POST(request: Request) {
         items.reduce((sum, item) => sum + numericValue(item.price) * item.quantity, 0)
     ).toFixed(2)
   );
+  const { data: existingCart } = await admin
+    .from("store_abandoned_carts" as never)
+    .select("id, recovery_status")
+    .eq("store_id" as never, store.id as never)
+    .eq("session_id" as never, sessionId as never)
+    .maybeSingle();
+  const existing = existingCart as { recovery_status?: unknown } | null;
+  const existingStatus =
+    typeof existing?.recovery_status === "string" ? existing.recovery_status : null;
+  const canResetRecovery = existingStatus === "recovered" || existingStatus === "expired" || !existingStatus;
+  const cartPayload: Record<string, unknown> = {
+    currency: cleanText(body?.currency, 12).toUpperCase() || "USD",
+    customer_email: cleanEmail(body?.customerEmail),
+    customer_phone: cleanText(body?.customerPhone, 80) || null,
+    estimated_total: estimatedTotal,
+    items,
+    items_count: items.reduce((sum, item) => sum + item.quantity, 0),
+    last_activity_at: now,
+    metadata: {
+      source: "public_storefront_cart",
+      updated_from: "cart_snapshot"
+    },
+    session_id: sessionId,
+    store_id: store.id,
+    workspace_id: store.workspace_id
+  };
+
+  if (canResetRecovery) {
+    Object.assign(cartPayload, {
+      abandoned_at: null,
+      recovered_at: null,
+      recovered_order_id: null,
+      recovery_email_sent_at: null,
+      recovery_status: "pending"
+    });
+  } else if (existingStatus) {
+    cartPayload.recovery_status = existingStatus;
+  }
+
   const { error } = await admin
     .from("store_abandoned_carts" as never)
-    .upsert({
-      currency: cleanText(body?.currency, 12).toUpperCase() || "USD",
-      customer_email: cleanEmail(body?.customerEmail),
-      customer_phone: cleanText(body?.customerPhone, 80) || null,
-      estimated_total: estimatedTotal,
-      items,
-      items_count: items.reduce((sum, item) => sum + item.quantity, 0),
-      last_activity_at: now,
-      metadata: {
-        source: "public_storefront_cart",
-        updated_from: "cart_snapshot"
-      },
-      session_id: sessionId,
-      store_id: store.id,
-      workspace_id: store.workspace_id
-    } as never, { onConflict: "store_id,session_id" } as never);
+    .upsert(cartPayload as never, { onConflict: "store_id,session_id" } as never);
 
   if (error) {
     return NextResponse.json({ error: "Cart recovery snapshot could not be saved." }, { status: 500 });
