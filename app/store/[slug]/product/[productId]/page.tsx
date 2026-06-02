@@ -12,6 +12,7 @@ import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicUrl } from "@/lib/deployment/config";
+import { getProductRecommendations } from "@/lib/product-recommendations";
 import { submitProductQuestion } from "@/lib/product-question-actions";
 import { getApprovedProductQuestions } from "@/lib/product-questions";
 import { submitProductReview } from "@/lib/product-review-actions";
@@ -174,64 +175,6 @@ function productGalleryUrls(gallery: unknown[]) {
       return null;
     })
     .filter((url): url is string => Boolean(url));
-}
-
-function comparableProductPrice(product: PublicStorefrontProduct) {
-  const price = typeof product.price === "number" ? product.price : Number(product.price ?? 0);
-  return Number.isFinite(price) ? Math.max(0, price) : 0;
-}
-
-function relatedProductScore(currentProduct: PublicStorefrontProduct, candidate: PublicStorefrontProduct) {
-  const currentPrice = comparableProductPrice(currentProduct);
-  const candidatePrice = comparableProductPrice(candidate);
-  let score = 0;
-
-  if (candidate.categoryId && candidate.categoryId === currentProduct.categoryId) {
-    score += 80;
-  } else if (
-    candidate.categoryName &&
-    currentProduct.categoryName &&
-    candidate.categoryName.toLowerCase() === currentProduct.categoryName.toLowerCase()
-  ) {
-    score += 60;
-  }
-
-  if (currentPrice > 0 && candidatePrice > 0) {
-    const priceDistance = Math.abs(currentPrice - candidatePrice) / currentPrice;
-
-    if (priceDistance <= 0.2) {
-      score += 30;
-    } else if (priceDistance <= 0.5) {
-      score += 15;
-    }
-  }
-
-  if (candidate.createdAt) {
-    score += 1;
-  }
-
-  return score;
-}
-
-function resolveRelatedProducts(
-  products: PublicStorefrontProduct[],
-  currentProduct: PublicStorefrontProduct
-) {
-  return products
-    .filter((candidate) => candidate.id !== currentProduct.id && candidate.status === "active")
-    .map((candidate) => ({
-      product: candidate,
-      score: relatedProductScore(currentProduct, candidate)
-    }))
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      return comparableProductPrice(right.product) - comparableProductPrice(left.product);
-    })
-    .slice(0, 4)
-    .map((candidate) => candidate.product);
 }
 
 function resolvePublicProduct(
@@ -462,7 +405,13 @@ export default async function PublicProductDetailPage({
     storeTitle: preview.store.title,
     url: canonicalUrl
   });
-  const relatedProducts = resolveRelatedProducts(preview.products, product);
+  const relatedProducts = (await getProductRecommendations({
+    context: "related",
+    limit: 4,
+    products: preview.products,
+    sourceProductId: product.id,
+    storeId: preview.store.id
+  })).map((recommendation) => recommendation.product);
   const reviewFilter = (query.reviewFilter === "highest" ||
     query.reviewFilter === "lowest" ||
     query.reviewFilter === "verified")

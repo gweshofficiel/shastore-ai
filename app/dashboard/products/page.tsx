@@ -14,6 +14,7 @@ import {
   updateStoreOwnerProduct,
   updateStoreOwnerProductVariant
 } from "@/lib/product-actions";
+import { saveManualProductRecommendations } from "@/lib/product-recommendation-actions";
 import { getLicenseKeyStatsByProduct, importDigitalProductLicenseKeys, type LicenseKeyStats } from "@/lib/digital-license-keys";
 import { createClient } from "@/lib/supabase/server";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
@@ -90,6 +91,7 @@ type ProductVariantRow = {
 type ProductWithImages = ProductRow & {
   images: ProductImageRow[];
   licenseStats: LicenseKeyStats;
+  recommendationIds: string[];
   variants: ProductVariantRow[];
 };
 
@@ -253,6 +255,31 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
     supabase,
     workspaceId
   });
+  const { data: recommendationLinks } = productIds.length
+    ? await supabase
+        .from("product_recommendation_links" as never)
+        .select("source_product_id, recommended_product_id")
+        .eq("workspace_id" as never, workspaceId as never)
+        .eq("store_id" as never, activeStore.id as never)
+        .eq("recommendation_context" as never, "related" as never)
+        .eq("status" as never, "active" as never)
+        .in("source_product_id" as never, productIds as never)
+    : { data: [] };
+  const recommendationsByProduct = new Map<string, string[]>();
+
+  for (const link of (recommendationLinks ?? []) as unknown as Array<{
+    recommended_product_id: string | null;
+    source_product_id: string | null;
+  }>) {
+    if (!link.source_product_id || !link.recommended_product_id) {
+      continue;
+    }
+
+    recommendationsByProduct.set(link.source_product_id, [
+      ...(recommendationsByProduct.get(link.source_product_id) ?? []),
+      link.recommended_product_id
+    ]);
+  }
 
   return {
     activeStore,
@@ -262,6 +289,7 @@ async function getProductsDashboardData(selectedStoreId?: string): Promise<Produ
       ...product,
       images: imagesByProduct.get(product.id) ?? [],
       licenseStats: licenseStatsByProduct.get(product.id) ?? { assigned: 0, available: 0, revoked: 0, total: 0 },
+      recommendationIds: recommendationsByProduct.get(product.id) ?? [],
       variants: variantsByProduct.get(product.id) ?? []
     })),
     schemaIssue: null,
@@ -415,6 +443,8 @@ function statusMessage(status: string | undefined, detail?: string) {
     "missing-store": "Choose a claimed store before managing products.",
     "missing-title": "Product title is required.",
     "not-authorized": "You do not have permission to manage that store.",
+    "recommendations-failed": "Product recommendations could not be saved. Apply the recommendations migration and try again.",
+    "recommendations-saved": "Manual related products saved.",
     published: "Product published and visible on the public storefront.",
     unpublished: "Product moved back to draft and hidden from the public storefront.",
     "update-failed": "Product could not be updated. Check the fields and try again.",
@@ -1220,6 +1250,44 @@ export default async function SellerProductsPage({
                           </div>
                         </form>
                       </div>
+
+                      <form action={saveManualProductRecommendations} className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                        <input name="storeId" type="hidden" value={activeStore.id} />
+                        <input name="productId" type="hidden" value={product.id} />
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                            Manual related products
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-muted">
+                            These manual links are used first by the shared recommendation engine. If none are selected, the engine falls back to same-category products.
+                          </p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {products
+                            .filter((candidate) => candidate.id !== product.id && productStatus(candidate) === "active")
+                            .slice(0, 24)
+                            .map((candidate) => (
+                              <label
+                                className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-bold text-muted"
+                                key={candidate.id}
+                              >
+                                <input
+                                  className="mt-1"
+                                  defaultChecked={product.recommendationIds.includes(candidate.id)}
+                                  name="recommendedProductIds"
+                                  type="checkbox"
+                                  value={candidate.id}
+                                />
+                                <span>{productTitle(candidate)}</span>
+                              </label>
+                            ))}
+                        </div>
+                        <div className="flex justify-end">
+                          <Button type="submit" variant="secondary">
+                            Save related products
+                          </Button>
+                        </div>
+                      </form>
 
                       <div className="grid gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-2">
                         <div className="grid gap-3">

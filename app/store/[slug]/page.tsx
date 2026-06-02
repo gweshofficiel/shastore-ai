@@ -32,6 +32,7 @@ import {
   resolveTenantStore
 } from "@/lib/tenant/context";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { getProductRecommendations } from "@/lib/product-recommendations";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   PublicStorefrontCategory,
@@ -421,6 +422,12 @@ export default async function PublicStorePage({
     categories: filteredPreview.categories,
     products
   });
+  const recommendedProducts = (await getProductRecommendations({
+    context: "storefront",
+    limit: 4,
+    products: preview.products,
+    storeId: store.id
+  })).map((recommendation) => recommendation.product);
   const supportEmail = store.supportEmail?.trim() || null;
   const supportPhoneHref = phoneHref(store.supportPhone);
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
@@ -863,6 +870,95 @@ export default async function PublicStorePage({
         publishedArticles={publishedArticles}
         publishedFaqs={publishedFaqs}
       />
+      {recommendedProducts.length ? (
+        <section className="px-4 py-12 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  Recommended Products
+                </p>
+                <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+                  Recommended for this store
+                </h2>
+              </div>
+              <p className="max-w-xl text-sm font-semibold leading-6 text-muted">
+                Powered by the shared recommendation engine using manual picks, category matches, purchase signals, and top sellers.
+              </p>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {recommendedProducts.map((product) => {
+                const galleryUrls = productGalleryUrls(product.gallery);
+                const primaryImage = product.imageUrl || galleryUrls[0] || null;
+                const currency = product.currency || store.currency;
+                const detailsHref = publicProductHref(store.slug, product);
+
+                return (
+                  <article
+                    className="group overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] transition hover:-translate-y-1 hover:border-slate-300"
+                    key={product.id}
+                  >
+                    <Link className="relative block" href={detailsHref}>
+                      <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
+                      {primaryImage ? (
+                        <img
+                          alt={product.title}
+                          className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
+                          src={primaryImage}
+                        />
+                      ) : (
+                        <div
+                          className="flex aspect-square items-end p-5"
+                          style={{
+                            background: `linear-gradient(135deg, ${branding.primaryColor}16, ${branding.secondaryColor}24)`
+                          }}
+                        >
+                          <span
+                            className="rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-sm"
+                            style={{ backgroundColor: branding.primaryColor }}
+                          >
+                            {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
+                          </span>
+                        </div>
+                      )}
+                    </Link>
+                    <div className="grid gap-3 p-4">
+                      {isPublicCategoryTitle(product.categoryName) ? (
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                          {product.categoryName}
+                        </p>
+                      ) : null}
+                      <Link href={detailsHref}>
+                        <h3 className="line-clamp-2 text-lg font-black tracking-[-0.03em] text-ink">
+                          {product.title}
+                        </h3>
+                      </Link>
+                      <p className="text-sm font-black text-ink">
+                        {formatProductPrice(product.price, product.priceLabel, currency)}
+                      </p>
+                      <ProductQuickView
+                        currency={currency}
+                        detailsHref={detailsHref}
+                        product={product}
+                        slug={store.slug}
+                        storeId={store.id}
+                      />
+                      <AddToCartButton
+                        currency={currency}
+                        detailsHref={detailsHref}
+                        product={product}
+                        showViewDetails
+                        slug={store.slug}
+                        storeId={store.id}
+                      />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      ) : null}
       <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>
