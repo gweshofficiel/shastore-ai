@@ -123,7 +123,7 @@ function normalizeSection(row: StoreHomepageSectionRow): StoreHomepageSection | 
   );
 
   return {
-    enabled: row.enabled ?? true,
+    enabled: row.enabled === true,
     id: row.id,
     sectionType: row.section_type,
     settings: isRecord(row.settings) ? row.settings : {},
@@ -143,6 +143,20 @@ export function normalizeStoreHomepageSections(rows: unknown[]): StoreHomepageSe
       .map((row) => normalizeSection(row as StoreHomepageSectionRow))
       .filter((section): section is StoreHomepageSection => Boolean(section))
   );
+}
+
+export function getEnabledStoreHomepageSections(sections: StoreHomepageSection[]) {
+  return sortSections(sections.filter((section) => section.enabled));
+}
+
+export type StoreHomepageLayoutConfig = {
+  configured: boolean;
+  sections: StoreHomepageSection[];
+};
+
+function isMissingHomepageSectionsTable(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return error?.code === "PGRST205" || message.includes("store_homepage_sections");
 }
 
 async function resolveStoreWorkspaceId(supabase: SupabaseClient, storeId: string) {
@@ -233,4 +247,53 @@ export async function loadOrCreateStoreHomepageSections({
     supabase: readClient,
     workspaceId: resolvedWorkspaceId
   });
+}
+
+/** Public storefront: always read via service role so saved enabled/sort_order are authoritative. */
+export async function loadStoreHomepageLayoutForStorefront(
+  storeId: string,
+  workspaceId?: string | null
+): Promise<StoreHomepageLayoutConfig> {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return { configured: false, sections: [] };
+  }
+
+  const { data, error } = await admin
+    .from("store_homepage_sections" as never)
+    .select("id, section_type, title, subtitle, enabled, sort_order, settings")
+    .eq("store_id" as never, storeId as never)
+    .order("sort_order" as never, { ascending: true } as never)
+    .order("created_at" as never, { ascending: true } as never);
+
+  if (error) {
+    return {
+      configured: !isMissingHomepageSectionsTable(error),
+      sections: []
+    };
+  }
+
+  const sections = normalizeStoreHomepageSections((data ?? []) as unknown[]);
+
+  if (sections.length) {
+    return { configured: true, sections };
+  }
+
+  const resolvedWorkspaceId = workspaceId ?? (await resolveStoreWorkspaceId(admin, storeId));
+
+  if (!resolvedWorkspaceId) {
+    return { configured: false, sections: [] };
+  }
+
+  const seeded = await insertDefaultSections({
+    storeId,
+    supabase: admin,
+    workspaceId: resolvedWorkspaceId
+  });
+
+  return {
+    configured: seeded.length > 0,
+    sections: seeded
+  };
 }

@@ -25,6 +25,7 @@ import type { PublicStoreFaq } from "@/lib/store-faq-public";
 import type { PublicStoreAboutPage } from "@/lib/store-about-public";
 import type { PublicStoreBlogArticle } from "@/lib/store-blog-public";
 import type {
+  StoreHomepageLayoutConfig,
   StoreHomepageSection,
   StoreHomepageSectionType
 } from "@/lib/store-homepage-sections";
@@ -311,7 +312,7 @@ function resolveHomepageManagedSections(
     store_instance_id: context.store_instance_id
   };
   const sections = homepageSections
-    .filter((section) => section.enabled)
+    .filter((section) => section.enabled === true)
     .sort((left, right) => left.sortOrder - right.sortOrder)
     .map<StoreSection>((section) => ({
       config: {
@@ -1348,7 +1349,7 @@ export async function DynamicSectionLoader({
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
-  homepageSections,
+  homepageLayout,
   publishedAbout = null,
   publishedArticles = [],
   publishedFaqs = []
@@ -1359,16 +1360,16 @@ export async function DynamicSectionLoader({
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
-  homepageSections?: StoreHomepageSection[];
+  homepageLayout?: StoreHomepageLayoutConfig;
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
 }) {
-  const layout = homepageSections
+  const layout = homepageLayout?.configured
     ? {
         builderPreview: {},
         key: `${context.theme.layout_key}:homepage`,
-        sections: resolveHomepageManagedSections(context, homepageSections)
+        sections: resolveHomepageManagedSections(context, homepageLayout.sections)
       }
     : await resolveSectionLayout(context);
   const previewScript = (
@@ -1385,7 +1386,7 @@ export async function DynamicSectionLoader({
     return (
       <>
         {previewScript}
-        {fallback}
+        {homepageLayout?.configured ? null : fallback}
       </>
     );
   }

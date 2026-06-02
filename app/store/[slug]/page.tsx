@@ -19,7 +19,7 @@ import {
 import { loadPublishedStoreAboutForStore } from "@/lib/store-about-public";
 import { loadPublishedStoreBlogArticlesForStore } from "@/lib/store-blog-public";
 import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
-import { loadOrCreateStoreHomepageSections } from "@/lib/store-homepage-sections";
+import { loadStoreHomepageLayoutForStorefront } from "@/lib/store-homepage-sections";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
@@ -397,10 +397,10 @@ export default async function PublicStorePage({
   const hasPublishedFaqs = publishedFaqs.length > 0;
   const publishedAbout = await loadPublishedStoreAboutForStore(preview.store.id);
   const hasPublishedAbout = Boolean(publishedAbout);
-  const homepageSections = await loadOrCreateStoreHomepageSections({
-    storeId: preview.store.id,
-    workspaceId: preview.store.workspaceId
-  });
+  const homepageLayout = await loadStoreHomepageLayoutForStorefront(
+    preview.store.id,
+    preview.store.workspaceId
+  );
   const footerLinkSettings = await loadStoreFooterLinkSettings(preview.store.id);
   const filteredPreview = {
     ...preview,
@@ -849,7 +849,7 @@ export default async function PublicStorePage({
         hasPublishedAbout={hasPublishedAbout}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
-        homepageSections={homepageSections.length ? homepageSections : undefined}
+        homepageLayout={homepageLayout}
         publishedAbout={publishedAbout}
         publishedArticles={publishedArticles}
         publishedFaqs={publishedFaqs}
