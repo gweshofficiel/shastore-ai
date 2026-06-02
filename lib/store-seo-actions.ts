@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getUserPrimaryWorkspaceId, hasPermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import {
   cleanGoogleVerificationMetaCode,
+  cleanMetaPixelId,
   cleanSeoText,
   cleanSeoUrl,
   defaultStoreSeoSettings,
@@ -22,6 +23,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 const seoPath = "/dashboard/seo";
+const facebookPixelPath = "/dashboard/seo/facebook-pixel";
 const redirectsPath = "/dashboard/seo/redirects";
 const searchConsolePath = "/dashboard/seo/search-console";
 const fallbackRules = new Set<SeoFallbackRule>(["existing_data", "store_defaults", "title_with_store"]);
@@ -44,6 +46,16 @@ function redirectManagerWith(status: string, storeId?: string): never {
   }
 
   redirect(`${redirectsPath}?${params.toString()}`);
+}
+
+function facebookPixelWith(status: string, storeId?: string): never {
+  const params = new URLSearchParams({ pixelStatus: status });
+
+  if (storeId) {
+    params.set("storeId", storeId);
+  }
+
+  redirect(`${facebookPixelPath}?${params.toString()}`);
 }
 
 function searchConsoleWith(status: string, storeId?: string): never {
@@ -387,4 +399,41 @@ export async function saveSearchConsoleSettingsAction(formData: FormData) {
   revalidatePath(seoPath);
   revalidatePath(`/store/${store.slug}`);
   searchConsoleWith("saved", storeId);
+}
+
+export async function saveFacebookPixelSettingsAction(formData: FormData) {
+  const storeId = cleanId(formData.get("storeId"));
+
+  if (!storeId) {
+    facebookPixelWith("invalid");
+  }
+
+  const { store, supabase, workspaceId } = await requireSeoStoreAccess(storeId);
+  const existingSettings = await loadStoreSeoSettings(supabase, storeId);
+  const metaPixelId = cleanMetaPixelId(formData.get("metaPixelId"));
+  const metaPixelEnabled = formData.get("metaPixelEnabled") === "on";
+
+  if (metaPixelEnabled && !metaPixelId) {
+    facebookPixelWith("missing-id", storeId);
+  }
+
+  const settings = normalizeStoreSeoSettings({
+    ...existingSettings,
+    metaPixelEnabled,
+    metaPixelId
+  });
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({ seo_settings: settings } as never)
+    .eq("id" as never, storeId as never)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    facebookPixelWith("save-failed", storeId);
+  }
+
+  revalidatePath(facebookPixelPath);
+  revalidatePath(seoPath);
+  revalidatePath(`/store/${store.slug}`);
+  facebookPixelWith("saved", storeId);
 }

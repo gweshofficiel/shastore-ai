@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import {
   absoluteBlogImageUrl,
   loadPublicStoreBlogArticle
@@ -101,10 +102,15 @@ export default async function StoreBlogArticlePage({
     notFound();
   }
 
+  const admin = createAdminClient();
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
   const publishedDate = formatDate(article.publishedAt);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-12 text-ink sm:px-6 lg:px-8">
+      <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <article className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)]">
         {article.coverImageUrl ? (
           <img

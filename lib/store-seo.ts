@@ -15,6 +15,8 @@ export type StoreSeoSettings = {
   googleVerificationStatus: GoogleVerificationStatus;
   homepageSeoDescription: string;
   homepageSeoTitle: string;
+  metaPixelEnabled: boolean;
+  metaPixelId: string;
   productFallbackRule: SeoFallbackRule;
 };
 
@@ -28,6 +30,8 @@ export const defaultStoreSeoSettings: StoreSeoSettings = {
   googleVerificationStatus: "not_started",
   homepageSeoDescription: "",
   homepageSeoTitle: "",
+  metaPixelEnabled: false,
+  metaPixelId: "",
   productFallbackRule: "existing_data"
 };
 
@@ -65,6 +69,10 @@ export function cleanGoogleVerificationMetaCode(value: unknown) {
     .slice(0, 500);
 }
 
+export function cleanMetaPixelId(value: unknown) {
+  return cleanSeoText(value, 40).replace(/[^0-9]/g, "").slice(0, 32);
+}
+
 export function normalizeGoogleVerificationStatus(value: unknown): GoogleVerificationStatus {
   return googleVerificationStatuses.has(value as GoogleVerificationStatus)
     ? value as GoogleVerificationStatus
@@ -92,6 +100,8 @@ export function normalizeStoreSeoSettings(value: unknown): StoreSeoSettings {
     googleVerificationStatus: normalizeGoogleVerificationStatus(input.googleVerificationStatus),
     homepageSeoDescription: cleanSeoText(input.homepageSeoDescription),
     homepageSeoTitle: cleanSeoText(input.homepageSeoTitle, 180),
+    metaPixelEnabled: input.metaPixelEnabled === true,
+    metaPixelId: cleanMetaPixelId(input.metaPixelId),
     productFallbackRule
   };
 }

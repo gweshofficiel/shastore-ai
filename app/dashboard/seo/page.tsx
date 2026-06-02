@@ -240,9 +240,15 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">SEO tools</p>
-            <p className="mt-1 text-sm font-semibold text-muted">Manage URL redirects and Google Search Console verification separately from sitemap and robots.</p>
+            <p className="mt-1 text-sm font-semibold text-muted">Manage redirects, Search Console, and Meta Pixel separately from sitemap and robots.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-muted"
+              href={`/dashboard/seo/facebook-pixel${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}
+            >
+              Facebook Pixel
+            </Link>
             <Link
               className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-muted"
               href={`/dashboard/seo/search-console${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}

@@ -6,6 +6,7 @@ import {
   createPublicStoreOrderDraftAction,
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
+import { trackMetaPixelEvent } from "@/components/storefront/meta-pixel";
 import { matchPublicShippingRate, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
@@ -429,6 +430,27 @@ function formatMoney(value: number, currency: string) {
   }).format(value);
 }
 
+function metaPixelProductPayload({
+  currency,
+  product,
+  quantity,
+  variantId
+}: {
+  currency: string;
+  product: PublicStorefrontProduct;
+  quantity: number;
+  variantId?: string | null;
+}) {
+  return {
+    content_ids: [product.id],
+    content_name: product.title,
+    content_type: "product",
+    currency: product.currency || currency,
+    value: parsePrice(product.price) * quantity,
+    variant_id: variantId ?? undefined
+  };
+}
+
 function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: string) {
   if (item.priceLabel) {
     return item.priceLabel;
@@ -819,6 +841,12 @@ export function AddToCartButton({
     }
 
     setAdded(true);
+    trackMetaPixelEvent("AddToCart", metaPixelProductPayload({
+      currency,
+      product,
+      quantity: 1,
+      variantId: selectedVariant?.id ?? null
+    }));
     window.setTimeout(() => setAdded(false), 1800);
   }
 
@@ -827,6 +855,12 @@ export function AddToCartButton({
       return;
     }
 
+    trackMetaPixelEvent("AddToCart", metaPixelProductPayload({
+      currency,
+      product,
+      quantity: 1,
+      variantId: selectedVariant?.id ?? null
+    }));
     window.location.assign(`/store/${slug}/cart`);
   }
 
@@ -2024,6 +2058,13 @@ export function CartPageClient({
               className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               disabled={hasUnavailableItems || !paymentMethods.length}
               onClick={() => {
+                trackMetaPixelEvent("InitiateCheckout", {
+                  content_ids: items.map((item) => item.productId),
+                  content_type: "product",
+                  currency,
+                  num_items: cartItemCount(items),
+                  value: payableTotal
+                });
                 setCheckoutStarted(true);
               }}
               type="button"

@@ -18,6 +18,7 @@ import {
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StoreMarketingMessages } from "@/components/storefront/store-marketing-messages";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
+import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import {
   buildPublicProductSections,
   isPublicCategoryTitle
@@ -412,6 +413,9 @@ export default async function PublicStorePage({
         workspaceId: preview.store.workspaceId
       })
     : [];
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
   const filteredPreview = {
     ...preview,
     products: discovery.products
@@ -844,6 +848,7 @@ export default async function PublicStorePage({
     >
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
+      <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
       <StorefrontHydration

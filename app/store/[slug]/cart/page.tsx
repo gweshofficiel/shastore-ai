@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { CartPageClient, type CartItem } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods";
 import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
 import { getPublicStorefrontPreview, type PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { getEnabledPublicStorePaymentMethods } from "@/lib/store-payment-methods";
+import { defaultStoreSeoSettings, loadStoreSeoSettings } from "@/lib/store-seo";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -223,10 +225,11 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
     );
   }
 
-  const [shippingMethods, taxSettings, paymentMethods] = await Promise.all([
+  const [shippingMethods, taxSettings, paymentMethods, seoSettings] = await Promise.all([
     getPublicShippingMethodsForStore(preview.store.id),
     getPublicTaxSettingsForStore(preview.store.id),
-    admin ? getEnabledPublicStorePaymentMethods(admin, preview.store.id) : Promise.resolve([])
+    admin ? getEnabledPublicStorePaymentMethods(admin, preview.store.id) : Promise.resolve([]),
+    admin ? loadStoreSeoSettings(admin, preview.store.id) : Promise.resolve(defaultStoreSeoSettings)
   ]);
   const recoverySnapshot = await loadRecoveryCartSnapshot({
     cartId: cleanText(query.recovery, 80),
@@ -246,6 +249,7 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
       className={`min-h-screen px-4 py-5 text-ink sm:px-6 lg:px-8 ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
       style={{ backgroundColor: `${theme.primaryColor}08` }}
     >
+      <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <div className="mx-auto max-w-7xl">
         <header
           className={`mb-6 flex flex-wrap items-center justify-between gap-4 border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur ${buttonRadiusClass(theme.buttonStyle)}`}

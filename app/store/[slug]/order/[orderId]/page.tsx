@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { MetaPixelPurchase, MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { ClearStoreCartOnOrderSuccess } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { defaultStoreSeoSettings, loadStoreSeoSettings } from "@/lib/store-seo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
@@ -403,6 +405,10 @@ export default async function PublicOrderConfirmationPage({
     : new Map<string, string>();
   const reviewStatusMessage = reviewMessage(review);
   const returnTo = `/store/${slug}/order/${orderId}${source ? `?source=${encodeURIComponent(source)}` : ""}`;
+  const admin = createAdminClient();
+  const seoSettings = order && admin
+    ? await loadStoreSeoSettings(admin, order.store_id)
+    : defaultStoreSeoSettings;
 
   if (!order) {
     return (
@@ -436,6 +442,15 @@ export default async function PublicOrderConfirmationPage({
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-ink sm:px-6 lg:px-8">
+      <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <MetaPixelPurchase
+        contentIds={order.items.map((item) => item.id).filter((id): id is string => Boolean(id))}
+        currency={order.currency}
+        enabled={seoSettings.metaPixelEnabled}
+        orderId={order.id}
+        pixelId={seoSettings.metaPixelId}
+        value={numericValue(order.total)}
+      />
       <ClearStoreCartOnOrderSuccess
         currency={order.currency}
         orderId={order.id}

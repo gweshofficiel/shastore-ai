@@ -7,6 +7,7 @@ import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { MetaPixelScript, MetaPixelViewContent } from "@/components/storefront/meta-pixel";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
@@ -415,6 +416,9 @@ export default async function PublicProductDetailPage({
   }
 
   const theme = preview.themeSettings;
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
   const heroBackground = theme.bannerImageUrl
     ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
@@ -462,6 +466,15 @@ export default async function PublicProductDetailPage({
       className={`min-h-screen text-ink ${fontClass(theme.bodyFont)} ${fontScaleClass(theme.fontScale)}`}
       style={{ backgroundColor: `${theme.primaryColor}08` }}
     >
+      <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <MetaPixelViewContent
+        contentId={product.id}
+        contentName={product.title}
+        currency={currency}
+        enabled={seoSettings.metaPixelEnabled}
+        pixelId={seoSettings.metaPixelId}
+        value={numericProductPrice(product.price)}
+      />
       <script
         dangerouslySetInnerHTML={{ __html: safeJsonLd(structuredProductData) }}
         type="application/ld+json"
