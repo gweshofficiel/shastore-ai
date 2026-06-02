@@ -6,6 +6,7 @@ import { moderateProductReview } from "@/lib/product-review-actions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
+import type { Json } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -13,13 +14,19 @@ type ReviewRow = {
   comment: string;
   created_at: string;
   customer_name: string;
+  featured?: boolean | null;
   id: string;
   moderation_note?: string | null;
+  order_id?: string | null;
   product_id: string;
   rating: number;
+  review_images?: Json | null;
+  seller_replied_at?: string | null;
+  seller_reply?: string | null;
   status: string;
   store_id: string;
   title?: string | null;
+  verified_purchase?: boolean | null;
 };
 
 type ProductRow = {
@@ -46,11 +53,13 @@ type ReviewsDashboardData = {
 function statusMessage(status: string | undefined) {
   const messages: Record<string, string> = {
     approved: "Review approved.",
+    featured: "Featured review setting saved.",
     "missing-review": "Review could not be found.",
     "moderation-failed": "Review moderation could not be saved.",
     "not-authorized": "You do not have permission to moderate reviews for that store.",
     pending: "Review moved back to pending.",
-    rejected: "Review rejected."
+    rejected: "Review rejected.",
+    replied: "Seller reply saved."
   };
 
   return status ? messages[status] : null;
@@ -81,6 +90,17 @@ function summarizeReviews(reviews: ReviewRow[]) {
     rejectedCount: reviews.filter((review) => review.status === "rejected").length,
     totalCount: reviews.length
   };
+}
+
+function reviewImages(value: Json | null | undefined) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.startsWith("http://") || item.startsWith("https://"))
+    .slice(0, 6);
 }
 
 async function getReviewsDashboardData(selectedStoreId?: string): Promise<ReviewsDashboardData> {
@@ -137,7 +157,7 @@ async function getReviewsDashboardData(selectedStoreId?: string): Promise<Review
   const [reviewsResult, productsResult] = await Promise.all([
     supabase
       .from("product_reviews" as never)
-      .select("id, store_id, product_id, customer_name, rating, title, comment, status, moderation_note, created_at")
+      .select("id, store_id, product_id, order_id, customer_name, rating, title, comment, status, moderation_note, created_at, verified_purchase, seller_reply, seller_replied_at, featured, review_images")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("created_at", { ascending: false }),
@@ -290,6 +310,16 @@ export default async function ReviewsPage({
                       }`}>
                         {review.status}
                       </span>
+                      {review.verified_purchase || review.order_id ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                          Verified purchase
+                        </span>
+                      ) : null}
+                      {review.featured ? (
+                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-purple-700">
+                          Featured
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-1 text-sm font-bold text-amber-600">
                       {ratingStars(review.rating)} · {review.rating}/5
@@ -300,6 +330,23 @@ export default async function ReviewsPage({
                   </div>
                 </div>
                 <p className="text-sm leading-6 text-muted">{review.comment}</p>
+                {reviewImages(review.review_images).length ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {reviewImages(review.review_images).map((url) => (
+                      <img
+                        alt="Customer review image"
+                        className="aspect-square rounded-2xl border border-slate-100 object-cover"
+                        key={url}
+                        src={url}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {review.seller_reply ? (
+                  <p className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold leading-6 text-emerald-900">
+                    Seller reply: {review.seller_reply}
+                  </p>
+                ) : null}
                 {review.moderation_note ? (
                   <p className="rounded-2xl border border-slate-100 bg-slate-50 p-3 text-sm font-semibold text-muted">
                     Moderation note: {review.moderation_note}
@@ -315,6 +362,22 @@ export default async function ReviewsPage({
                     name="moderationNote"
                     rows={2}
                   />
+                  <Textarea
+                    defaultValue={review.seller_reply ?? ""}
+                    id={`review-${review.id}-reply`}
+                    label="Seller reply"
+                    name="sellerReply"
+                    rows={3}
+                  />
+                  <label className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-muted">
+                    <input
+                      className="mt-1"
+                      defaultChecked={review.featured === true}
+                      name="featured"
+                      type="checkbox"
+                    />
+                    <span>Mark as featured when approving this review.</span>
+                  </label>
                   <div className="flex flex-wrap justify-end gap-2">
                     <Button name="status" type="submit" value="pending" variant="secondary">
                       Mark pending

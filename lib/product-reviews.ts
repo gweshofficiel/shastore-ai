@@ -5,28 +5,91 @@ export type PublicProductReview = {
   comment: string;
   createdAt: string;
   customerName: string;
+  featured: boolean;
   id: string;
+  images: string[];
   rating: number;
+  sellerRepliedAt: string | null;
+  sellerReply: string | null;
   title: string | null;
+  verifiedPurchase: boolean;
 };
 
 export type ProductReviewSummary = {
   averageRating: number;
+  ratingBreakdown: Record<1 | 2 | 3 | 4 | 5, number>;
   reviewCount: number;
+  verifiedCount: number;
 };
 
 type ProductReviewRow = {
   comment: string;
   created_at: string;
   customer_name: string;
+  featured?: boolean | null;
   id: string;
+  order_id?: string | null;
   rating: number;
+  review_images?: Json | null;
+  seller_replied_at?: string | null;
+  seller_reply?: string | null;
   title?: string | null;
+  verified_purchase?: boolean | null;
 };
+
+export type ProductReviewFilter = "newest" | "highest" | "lowest" | "verified";
 
 function numberValue(value: unknown) {
   const amount = typeof value === "number" ? value : Number(value ?? 0);
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function imageUrls(value: Json | null | undefined) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.startsWith("http://") || item.startsWith("https://"))
+    .slice(0, 6);
+}
+
+function normalizeFilter(value: string | null | undefined): ProductReviewFilter {
+  return value === "highest" || value === "lowest" || value === "verified" ? value : "newest";
+}
+
+function emptyReviewSummary(): ProductReviewSummary {
+  return {
+    averageRating: 0,
+    ratingBreakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    reviewCount: 0,
+    verifiedCount: 0
+  };
+}
+
+function summarizeReviewRows(rows: ProductReviewRow[]): ProductReviewSummary {
+  const ratings = rows.map((review) => ({
+    rating: Math.min(5, Math.max(1, Math.round(numberValue(review.rating)))),
+    verifiedPurchase: review.verified_purchase === true || Boolean(review.order_id)
+  }));
+  const ratingBreakdown = ratings.reduce<Record<1 | 2 | 3 | 4 | 5, number>>(
+    (counts, review) => {
+      counts[review.rating as 1 | 2 | 3 | 4 | 5] += 1;
+      return counts;
+    },
+    { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  );
+  const reviewCount = ratings.length;
+
+  return {
+    averageRating: reviewCount
+      ? Number((ratings.reduce((sum, review) => sum + review.rating, 0) / reviewCount).toFixed(1))
+      : 0,
+    ratingBreakdown,
+    reviewCount,
+    verifiedCount: ratings.filter((review) => review.verifiedPurchase).length
+  };
 }
 
 function parseStoreOrderItems(value: Json): Array<{ productId: string | null }> {
@@ -49,6 +112,62 @@ function parseStoreOrderItems(value: Json): Array<{ productId: string | null }> 
 }
 
 export async function getApprovedProductReviews({
+  filter = "newest",
+  productId,
+  storeId
+}: {
+  filter?: ProductReviewFilter | string;
+  productId: string;
+  storeId: string;
+}) {
+  const admin = createAdminClient();
+  const normalizedFilter = normalizeFilter(filter);
+
+  if (!admin) {
+    return { filter: normalizedFilter, reviews: [], summary: emptyReviewSummary() };
+  }
+
+  let query = admin
+    .from("product_reviews" as never)
+    .select("id, customer_name, rating, title, comment, created_at, order_id, verified_purchase, seller_reply, seller_replied_at, featured, review_images")
+    .eq("store_id" as never, storeId as never)
+    .eq("product_id" as never, productId as never)
+    .eq("status" as never, "approved" as never);
+
+  if (normalizedFilter === "verified") {
+    query = query.eq("verified_purchase" as never, true as never);
+  }
+
+  if (normalizedFilter === "highest") {
+    query = query.order("rating" as never, { ascending: false } as never);
+  } else if (normalizedFilter === "lowest") {
+    query = query.order("rating" as never, { ascending: true } as never);
+  }
+
+  const { data } = await query.order("created_at", { ascending: false });
+  const reviewRows = (data ?? []) as unknown as ProductReviewRow[];
+  const reviews = reviewRows.map((review) => ({
+    comment: review.comment,
+    createdAt: review.created_at,
+    customerName: review.customer_name,
+    featured: review.featured === true,
+    id: review.id,
+    images: imageUrls(review.review_images),
+    rating: Math.min(5, Math.max(1, Math.round(numberValue(review.rating)))),
+    sellerRepliedAt: review.seller_replied_at ?? null,
+    sellerReply: review.seller_reply ?? null,
+    title: review.title ?? null,
+    verifiedPurchase: review.verified_purchase === true || Boolean(review.order_id)
+  }));
+
+  return {
+    filter: normalizedFilter,
+    reviews,
+    summary: summarizeReviewRows(reviewRows)
+  };
+}
+
+export async function getProductReviewSummary({
   productId,
   storeId
 }: {
@@ -58,36 +177,17 @@ export async function getApprovedProductReviews({
   const admin = createAdminClient();
 
   if (!admin) {
-    return { reviews: [], summary: { averageRating: 0, reviewCount: 0 } };
+    return emptyReviewSummary();
   }
 
   const { data } = await admin
     .from("product_reviews" as never)
-    .select("id, customer_name, rating, title, comment, created_at")
+    .select("rating, order_id, verified_purchase")
     .eq("store_id" as never, storeId as never)
     .eq("product_id" as never, productId as never)
-    .eq("status" as never, "approved" as never)
-    .order("created_at", { ascending: false });
-  const reviews = ((data ?? []) as unknown as ProductReviewRow[]).map((review) => ({
-    comment: review.comment,
-    createdAt: review.created_at,
-    customerName: review.customer_name,
-    id: review.id,
-    rating: Math.min(5, Math.max(1, Math.round(numberValue(review.rating)))),
-    title: review.title ?? null
-  }));
-  const reviewCount = reviews.length;
-  const averageRating = reviewCount
-    ? Number((reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount).toFixed(1))
-    : 0;
+    .eq("status" as never, "approved" as never);
 
-  return {
-    reviews,
-    summary: {
-      averageRating,
-      reviewCount
-    }
-  };
+  return summarizeReviewRows((data ?? []) as unknown as ProductReviewRow[]);
 }
 
 export async function verifyPurchasedProductForReview({

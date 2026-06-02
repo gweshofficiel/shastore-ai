@@ -15,7 +15,7 @@ import { getPublicUrl } from "@/lib/deployment/config";
 import { submitProductQuestion } from "@/lib/product-question-actions";
 import { getApprovedProductQuestions } from "@/lib/product-questions";
 import { submitProductReview } from "@/lib/product-review-actions";
-import { getApprovedProductReviews } from "@/lib/product-reviews";
+import { getApprovedProductReviews, getProductReviewSummary, type ProductReviewFilter } from "@/lib/product-reviews";
 import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
@@ -34,6 +34,7 @@ type ProductDetailPageProps = {
   searchParams: Promise<{
     question?: string;
     review?: string;
+    reviewFilter?: string;
   }>;
 };
 
@@ -273,6 +274,31 @@ function ratingStars(rating: number) {
   return `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
 }
 
+function reviewFilterLabel(filter: ProductReviewFilter) {
+  const labels: Record<ProductReviewFilter, string> = {
+    highest: "Highest rating",
+    lowest: "Lowest rating",
+    newest: "Newest",
+    verified: "Verified only"
+  };
+
+  return labels[filter];
+}
+
+function reviewFilterHref({
+  filter,
+  product,
+  slug
+}: {
+  filter: ProductReviewFilter;
+  product: PublicStorefrontProduct;
+  slug: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("reviewFilter", filter);
+  return `${productPagePath(slug, product)}?${params.toString()}#reviews`;
+}
+
 export async function generateMetadata({
   params
 }: ProductDetailPageProps): Promise<Metadata> {
@@ -437,10 +463,22 @@ export default async function PublicProductDetailPage({
     url: canonicalUrl
   });
   const relatedProducts = resolveRelatedProducts(preview.products, product);
-  const { reviews, summary } = await getApprovedProductReviews({
-    productId: product.id,
-    storeId: preview.store.id
-  });
+  const reviewFilter = (query.reviewFilter === "highest" ||
+    query.reviewFilter === "lowest" ||
+    query.reviewFilter === "verified")
+    ? query.reviewFilter
+    : "newest";
+  const [{ reviews, filter }, summary] = await Promise.all([
+    getApprovedProductReviews({
+      filter: reviewFilter,
+      productId: product.id,
+      storeId: preview.store.id
+    }),
+    getProductReviewSummary({
+      productId: product.id,
+      storeId: preview.store.id
+    })
+  ]);
   const questions = await getApprovedProductQuestions({
     productId: product.id,
     storeId: preview.store.id
@@ -816,7 +854,7 @@ export default async function PublicProductDetailPage({
             storeId={preview.store.id}
           />
 
-          <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" id="reviews">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                 Customer Reviews
@@ -826,13 +864,64 @@ export default async function PublicProductDetailPage({
                   ? `${summary.averageRating.toFixed(1)} average rating`
                   : "No approved reviews yet"}
               </h2>
+              {summary.reviewCount ? (
+                <div className="mt-4 grid gap-3 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                  {[5, 4, 3, 2, 1].map((rating) => {
+                    const count = summary.ratingBreakdown[rating as 1 | 2 | 3 | 4 | 5];
+                    const percent = summary.reviewCount ? Math.round((count / summary.reviewCount) * 100) : 0;
+
+                    return (
+                      <div className="grid grid-cols-[56px_minmax(0,1fr)_48px] items-center gap-3 text-xs font-black text-muted" key={rating}>
+                        <span>{rating} star</span>
+                        <span className="h-2 overflow-hidden rounded-full bg-slate-200">
+                          <span
+                            className="block h-full rounded-full bg-amber-400"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </span>
+                        <span className="text-right">{count}</span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs font-bold text-muted">
+                    {summary.verifiedCount} verified {summary.verifiedCount === 1 ? "purchase" : "purchases"}
+                  </p>
+                </div>
+              ) : null}
+              <div className="mt-5 flex flex-wrap gap-2">
+                {(["newest", "highest", "lowest", "verified"] as ProductReviewFilter[]).map((candidate) => (
+                  <Link
+                    className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                      filter === candidate
+                        ? "bg-ink text-white"
+                        : "bg-slate-100 text-muted hover:bg-slate-200"
+                    }`}
+                    href={reviewFilterHref({ filter: candidate, product, slug: preview.store.slug })}
+                    key={candidate}
+                  >
+                    {reviewFilterLabel(candidate)}
+                  </Link>
+                ))}
+              </div>
               <div className="mt-5 grid gap-4">
                 {reviews.length ? (
                   reviews.map((review) => (
                     <article className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={review.id}>
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-black text-amber-500">{ratingStars(review.rating)}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-black text-amber-500">{ratingStars(review.rating)}</p>
+                            {review.verifiedPurchase ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                                Verified purchase
+                              </span>
+                            ) : null}
+                            {review.featured ? (
+                              <span className="rounded-full bg-purple-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-purple-700">
+                                Featured
+                              </span>
+                            ) : null}
+                          </div>
                           <h3 className="mt-1 text-lg font-black text-ink">
                             {review.title || "Customer review"}
                           </h3>
@@ -842,11 +931,31 @@ export default async function PublicProductDetailPage({
                         </div>
                       </div>
                       <p className="mt-3 text-sm leading-6 text-muted">{review.comment}</p>
+                      {review.images.length ? (
+                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {review.images.map((url) => (
+                            <img
+                              alt="Customer review image"
+                              className="aspect-square rounded-2xl border border-slate-100 object-cover"
+                              key={url}
+                              src={url}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                      {review.sellerReply ? (
+                        <div className="mt-4 rounded-2xl border border-white bg-white p-4 text-sm leading-6 text-muted">
+                          <p className="font-black text-ink">Seller reply</p>
+                          <p className="mt-1">{review.sellerReply}</p>
+                        </div>
+                      ) : null}
                     </article>
                   ))
                 ) : (
                   <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
-                    Approved reviews will appear here after moderation.
+                    {filter === "verified"
+                      ? "No verified approved reviews yet."
+                      : "Approved reviews will appear here after moderation."}
                   </p>
                 )}
               </div>
@@ -925,6 +1034,15 @@ export default async function PublicProductDetailPage({
                     name="comment"
                     placeholder="Share your experience."
                     required
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-ink">
+                  <span>Image URLs</span>
+                  <textarea
+                    className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                    maxLength={3000}
+                    name="reviewImages"
+                    placeholder="Optional: paste public image URLs, one per line."
                   />
                 </label>
                 <button

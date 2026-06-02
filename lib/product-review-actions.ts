@@ -54,6 +54,18 @@ function reviewStatus(value: FormDataEntryValue | null) {
   return status === "approved" || status === "rejected" ? status : "pending";
 }
 
+function formBoolean(value: FormDataEntryValue | null) {
+  return value === "on" || value === "true";
+}
+
+function reviewImageUrls(value: FormDataEntryValue | null) {
+  return cleanText(value, 3000)
+    .split(/\r?\n|,/)
+    .map((url) => url.trim())
+    .filter((url) => url.startsWith("http://") || url.startsWith("https://"))
+    .slice(0, 6);
+}
+
 function storeOrderIncludesProduct(value: unknown, productId: string) {
   if (!Array.isArray(value)) {
     return false;
@@ -79,6 +91,7 @@ export async function submitProductReview(formData: FormData) {
   const title = cleanText(formData.get("title"), 140);
   const comment = cleanText(formData.get("comment"), 2000);
   const rating = parseRating(formData.get("rating"));
+  const reviewImages = reviewImageUrls(formData.get("reviewImages"));
 
   if (!slug || !productId || !storeId) {
     redirect("/store");
@@ -126,9 +139,11 @@ export async function submitProductReview(formData: FormData) {
     order_id: purchase.orderId,
     product_id: productId,
     rating,
+    review_images: reviewImages,
     status: "pending",
     store_id: storeId,
     title: title || null,
+    verified_purchase: true,
     workspace_id: workspaceId
   } as never)
     .select("id")
@@ -168,6 +183,8 @@ export async function moderateProductReview(formData: FormData) {
   const storeId = cleanText(formData.get("storeId"), 80);
   const status = reviewStatus(formData.get("status"));
   const moderationNote = cleanText(formData.get("moderationNote"), 1000);
+  const sellerReply = cleanText(formData.get("sellerReply"), 2000);
+  const featured = formBoolean(formData.get("featured"));
 
   if (!reviewId || !storeId) {
     redirect(`${reviewsPath}?reviews=missing-review`);
@@ -189,14 +206,36 @@ export async function moderateProductReview(formData: FormData) {
     dashboardRedirect(storeId, "not-authorized");
   }
 
+  const { data: currentReview } = await supabase
+    .from("product_reviews" as never)
+    .select("seller_reply")
+    .eq("id" as never, reviewId as never)
+    .eq("store_id" as never, storeId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+  const previousReply = (currentReview as { seller_reply?: string | null } | null)?.seller_reply ?? null;
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, boolean | string | null> = {
+    featured: status === "approved" ? featured : false,
+    moderation_note: moderationNote || null,
+    seller_reply: sellerReply || null,
+    status,
+    updated_at: now
+  };
+
+  if (sellerReply && sellerReply !== previousReply) {
+    updatePayload.seller_replied_at = now;
+  } else if (!sellerReply) {
+    updatePayload.seller_replied_at = null;
+  }
+
+  if (status !== "pending") {
+    updatePayload.moderated_at = now;
+  }
+
   const { error } = await supabase
     .from("product_reviews" as never)
-    .update({
-      moderation_note: moderationNote || null,
-      moderated_at: new Date().toISOString(),
-      status,
-      updated_at: new Date().toISOString()
-    } as never)
+    .update(updatePayload as never)
     .eq("id" as never, reviewId as never)
     .eq("store_id" as never, storeId as never)
     .eq("workspace_id" as never, workspaceId as never);
@@ -226,6 +265,7 @@ export async function submitPurchasedProductReview(formData: FormData) {
   const title = cleanText(formData.get("title"), 140);
   const comment = cleanText(formData.get("comment"), 2000);
   const rating = parseRating(formData.get("rating"));
+  const reviewImages = reviewImageUrls(formData.get("reviewImages"));
 
   if (!orderId || !productId || !storeId || rating < 1 || rating > 5 || !comment) {
     redirectBackToReviewSurface(returnTo, "invalid");
@@ -307,9 +347,11 @@ export async function submitPurchasedProductReview(formData: FormData) {
     order_id: orderId,
     product_id: productId,
     rating,
+    review_images: reviewImages,
     status: "pending",
     store_id: storeId,
     title: title || null,
+    verified_purchase: true,
     workspace_id: workspaceId
   } as never)
     .select("id")
