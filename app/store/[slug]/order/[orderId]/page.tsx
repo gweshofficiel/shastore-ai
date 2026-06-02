@@ -300,7 +300,7 @@ async function loadPublicOrderConfirmation({
     if (source === "store_orders") {
       const { data, error } = await admin
         .from("store_orders")
-        .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, total_amount, order_status, payment_status")
+        .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, items, total, total_amount, currency, order_status, payment_status")
         .eq("id", orderId)
         .eq("store_id", preview.store.id)
         .maybeSingle();
@@ -309,6 +309,7 @@ async function loadPublicOrderConfirmation({
         const row = data as unknown as {
           customer_name: string;
           customer_phone?: string | null;
+          currency?: string | null;
           delivery_fee?: number | string | null;
           delivery_method?: string | null;
           id: string;
@@ -326,7 +327,7 @@ async function loadPublicOrderConfirmation({
 
         return {
           order: {
-            currency: preview.store.currency ?? "USD",
+            currency: row.currency ?? preview.store.currency ?? "USD",
             customer_name: row.customer_name,
             customer_phone: row.customer_phone ?? null,
             delivery_fee: row.delivery_fee ?? 0,

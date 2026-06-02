@@ -45,6 +45,7 @@ import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 import { getAppBaseUrl } from "@/lib/deployment/config";
+import { exchangeRateForCurrency, selectedCurrencyFromValue, type StoreCurrencySettings } from "@/lib/store-currencies";
 import { markAbandonedCartRecoveredSafe } from "@/lib/abandoned-cart-recovery";
 import { createPayPalCheckoutOrder, getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import {
@@ -793,6 +794,7 @@ async function persistStorefrontOrderDraft({
   customerNotes,
   items,
   currency,
+  currencySettings,
   deliveryFee,
   deliveryMethod,
   shippingMethod,
@@ -826,6 +828,7 @@ async function persistStorefrontOrderDraft({
   customerNotes: string;
   items: DraftLineItem[];
   currency: string;
+  currencySettings: StoreCurrencySettings;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
   shippingMethod: PublicShippingMethod | null;
@@ -854,6 +857,9 @@ async function persistStorefrontOrderDraft({
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
   const total = financialBreakdown.totalAmount;
   const digitalSummary = digitalOrderSummary(items);
+  const selectedCurrency = selectedCurrencyFromValue(currency, currencySettings);
+  const baseCurrency = currencySettings.defaultCurrency;
+  const exchangeRate = exchangeRateForCurrency(currencySettings, selectedCurrency);
   const couponPayload = coupon
     ? {
         coupon_code: coupon.code,
@@ -902,7 +908,10 @@ async function persistStorefrontOrderDraft({
     total_amount: financialBreakdown.totalAmount,
     subtotal: discountedSubtotal,
     total,
-    currency,
+    currency: selectedCurrency,
+    base_currency: baseCurrency,
+    exchange_rate: exchangeRate,
+    currency_settings_snapshot: currencySettings,
     order_status: "draft",
     payment_method: paymentMethod,
     payment_status: "pending",
@@ -1051,6 +1060,8 @@ async function persistStorefrontOrderDraft({
       price: item.price,
       subtotal: item.subtotal,
       currency: item.currency,
+      base_currency: baseCurrency,
+      exchange_rate: exchangeRate,
       unit_price: item.price,
       total_price: item.subtotal,
       ...(resolvedStoreInstanceId ? { store_instance_id: resolvedStoreInstanceId } : {})
@@ -1305,6 +1316,10 @@ async function persistStorefrontOrderDraft({
     referral_code: safeReferralCode || null,
     subtotal: discountedSubtotal,
     total,
+    currency: selectedCurrency,
+    base_currency: baseCurrency,
+    exchange_rate: exchangeRate,
+    currency_settings_snapshot: currencySettings,
     ...couponPayload,
     ...campaignPayload,
     payment_method: "manual",
@@ -1535,6 +1550,7 @@ async function redirectToStoreCardCheckout({
   customerNotes,
   customerPhone,
   currency,
+  currencySettings,
   deliveryFee,
   deliveryMethod,
   financialBreakdown,
@@ -1555,6 +1571,7 @@ async function redirectToStoreCardCheckout({
   customerNotes: string;
   customerPhone: string;
   currency: string;
+  currencySettings: StoreCurrencySettings;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
   financialBreakdown: CheckoutFinancialBreakdown;
@@ -1739,6 +1756,7 @@ async function redirectToStorePayPalCheckout({
   customerNotes,
   customerPhone,
   currency,
+  currencySettings,
   deliveryFee,
   deliveryMethod,
   discountAmount,
@@ -1763,6 +1781,7 @@ async function redirectToStorePayPalCheckout({
   customerNotes: string;
   customerPhone: string;
   currency: string;
+  currencySettings: StoreCurrencySettings;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
   discountAmount: number;
@@ -1811,6 +1830,7 @@ async function redirectToStorePayPalCheckout({
     coupon,
     discountCampaign,
     currency,
+    currencySettings,
     customerAddress,
     customerEmail,
     customerName,
@@ -1990,6 +2010,8 @@ export async function createPublicStoreOrderAction(
     };
   }
 
+  const currencySettings = preview.store.currencySettings;
+  const currency = selectedCurrencyFromValue(formData.get("currency"), currencySettings);
   const productsById = new Map(preview.products.map((product) => [product.id, product]));
   const items = requestedItems
     .map((item) => {
@@ -2523,6 +2545,8 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
+  const currencySettings = preview.store.currencySettings;
+  const currency = selectedCurrencyFromValue(formData.get("currency"), currencySettings);
   const productsById = new Map(preview.products.map((product) => [product.id, product]));
   const items = requestedItems
     .map((item) => {
@@ -2541,7 +2565,7 @@ export async function createPublicStoreOrderDraftAction(
 
       return {
         category_id: product.categoryId,
-        currency: product.currency || store.currency || preview.store.currency || "USD",
+        currency,
         digital_delivery_enabled: product.digitalDeliveryEnabled,
         digital_file_name: product.digitalFileName,
         product_id: product.id,
@@ -2569,7 +2593,6 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
-  const currency = items[0]?.currency || store.currency || preview.store.currency || "USD";
   const subtotal = Number(items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
   const digitalSummary = digitalOrderSummary(items);
   const shippingMethod = requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems
@@ -2698,6 +2721,7 @@ export async function createPublicStoreOrderDraftAction(
       customerNotes,
       customerPhone,
       currency,
+      currencySettings,
       deliveryFee: finalDeliveryFee,
       deliveryMethod: deliverySelection.deliveryMethod,
       financialBreakdown,
@@ -2731,6 +2755,7 @@ export async function createPublicStoreOrderDraftAction(
       customerNotes,
       customerPhone,
       currency,
+      currencySettings,
       deliveryFee: finalDeliveryFee,
       deliveryMethod: deliverySelection.deliveryMethod,
       discountAmount: appliedSubtotalDiscount,
@@ -2764,6 +2789,7 @@ export async function createPublicStoreOrderDraftAction(
     customerNotes,
     items,
     currency,
+    currencySettings,
     deliveryFee: finalDeliveryFee,
     deliveryMethod: deliverySelection.deliveryMethod,
     shippingMethod,

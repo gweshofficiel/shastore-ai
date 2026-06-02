@@ -8,6 +8,7 @@ import {
   getEnabledStoreNavigationRows,
   type PublicStoreNavigation
 } from "@/lib/storefront/navigation";
+import { normalizeStoreCurrencySettings, type StoreCurrencySettings } from "@/lib/store-currencies";
 import { normalizeStoreLanguageSettings, type StoreLanguageSettings } from "@/lib/store-languages";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import type { StoreThemeSettings } from "@/types/storefront";
@@ -144,6 +145,7 @@ export type PublicStorefrontPreview = {
     title: string;
     visibility: string;
     currency: string;
+    currencySettings: StoreCurrencySettings;
     whatsappNumber: string | null;
     workspaceId: string | null;
   };
@@ -563,6 +565,7 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       title,
       visibility: textValue(store.visibility, "public"),
       currency: textValue(store.currency, "USD"),
+      currencySettings: normalizeStoreCurrencySettings(store.currencySettings, textValue(store.currency, "USD")),
       whatsappNumber: textValue(store.whatsappNumber) || null,
       workspaceId: textValue(store.workspaceId) || null
     }
@@ -615,7 +618,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, workspace_id, name, description, brand_color, logo_image_url, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, language_settings, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, workspace_id, name, description, brand_color, logo_image_url, currency, currency_settings, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, language_settings, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -623,6 +626,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const store = rawStore as {
     brand_color: string;
     currency: string;
+    currency_settings?: unknown;
     description: string | null;
     id: string;
     workspace_id?: string | null;
@@ -882,6 +886,7 @@ async function loadStoreModePublicPreview(slug: string) {
       title: store.name,
       visibility: publication?.visibility ?? "public",
       whatsappNumber: store.whatsapp_number || null,
+      currencySettings: normalizeStoreCurrencySettings(store.currency_settings, store.currency),
       workspaceId: store.workspace_id || null
     }
   });

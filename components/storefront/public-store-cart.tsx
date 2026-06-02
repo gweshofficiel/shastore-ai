@@ -10,6 +10,12 @@ import { trackGoogleAnalyticsEvent } from "@/components/storefront/google-analyt
 import { trackMetaPixelEvent } from "@/components/storefront/meta-pixel";
 import { matchPublicShippingRate, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
+import {
+  convertCurrencyAmount,
+  formatCurrencyAmount,
+  normalizeStoreCurrencyCode,
+  type StoreCurrencySettings
+} from "@/lib/store-currencies";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import type {
   PublicStorePaymentMethod,
@@ -48,6 +54,7 @@ type AddToCartButtonProps = {
 
 type CartPageClientProps = {
   currency: string;
+  currencySettings: StoreCurrencySettings;
   deliverySettings: {
     deliveryEnabled: boolean;
     deliveryFee: number | null;
@@ -424,11 +431,10 @@ function hasPhysicalShippingItems(items: CartItem[], productsById: Map<string, P
   });
 }
 
-function formatMoney(value: number, currency: string) {
-  return new Intl.NumberFormat("en", {
-    currency: currency || "USD",
-    style: "currency"
-  }).format(value);
+function formatMoney(value: number, currency: string, settings?: StoreCurrencySettings) {
+  const code = normalizeStoreCurrencyCode(currency, settings?.defaultCurrency ?? "USD");
+  const amount = settings ? convertCurrencyAmount(value, settings, code) : value;
+  return formatCurrencyAmount(amount, code);
 }
 
 function metaPixelProductPayload({
@@ -452,8 +458,10 @@ function metaPixelProductPayload({
   };
 }
 
-function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: string) {
-  if (item.priceLabel) {
+function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: string, settings?: StoreCurrencySettings) {
+  const code = normalizeStoreCurrencyCode(currency, settings?.defaultCurrency ?? "USD");
+
+  if (item.priceLabel && (!settings || code === settings.defaultCurrency)) {
     return item.priceLabel;
   }
 
@@ -463,7 +471,7 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
     return "Price coming soon";
   }
 
-  return formatMoney(numeric, currency);
+  return formatMoney(numeric, code, settings);
 }
 
 function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
@@ -1019,6 +1027,7 @@ export function ClearStoreCartOnOrderSuccess({
 
 export function CartPageClient({
   currency,
+  currencySettings,
   deliverySettings,
   initialCouponCode = "",
   initialRecoveryItems = [],
@@ -1571,7 +1580,7 @@ export function CartPageClient({
         discountAmount: data.discountAmount
       });
       setCouponCode(data.code);
-      setCouponMessage(`${data.code} applied. You saved ${formatMoney(data.discountAmount, currency)}.`);
+      setCouponMessage(`${data.code} applied. You saved ${formatMoney(data.discountAmount, currency, currencySettings)}.`);
       setCouponMessageType("success");
     } catch {
       setAppliedCoupon(null);
@@ -1635,7 +1644,7 @@ export function CartPageClient({
         maskedCode: data.maskedCode
       });
       setGiftCardCode(code);
-      setGiftCardMessage(`${data.maskedCode} applied. Gift card covers ${formatMoney(data.appliedAmount, currency)}.`);
+      setGiftCardMessage(`${data.maskedCode} applied. Gift card covers ${formatMoney(data.appliedAmount, currency, currencySettings)}.`);
       setGiftCardMessageType("success");
     } catch {
       setAppliedGiftCard(null);
@@ -1710,11 +1719,11 @@ export function CartPageClient({
                     </p>
                   ) : null}
                   <p className="mt-1 text-sm font-bold text-muted">
-                    {displayPrice(item, item.currency || currency)}
+                    {displayPrice(item, currency, currencySettings)}
                   </p>
                 </div>
                 <p className="text-lg font-black text-ink">
-                  {formatMoney(parsePrice(item.price) * item.quantity, item.currency || currency)}
+                  {formatMoney(parsePrice(item.price) * item.quantity, currency, currencySettings)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1777,11 +1786,11 @@ export function CartPageClient({
                   </p>
                 ) : null}
                 <p className="mt-1 font-bold text-muted">
-                  {item.quantity} x {displayPrice(item, item.currency || currency)}
+                  {item.quantity} x {displayPrice(item, currency, currencySettings)}
                 </p>
               </div>
               <p className="font-black text-ink">
-                {formatMoney(parsePrice(item.price) * item.quantity, item.currency || currency)}
+                {formatMoney(parsePrice(item.price) * item.quantity, currency, currencySettings)}
               </p>
             </div>
           ))}
@@ -1789,7 +1798,7 @@ export function CartPageClient({
         <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 text-sm font-bold text-muted">
           <div className="flex justify-between">
             <span>Original subtotal</span>
-            <span>{formatMoney(total, currency)}</span>
+            <span>{formatMoney(total, currency, currencySettings)}</span>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1841,13 +1850,13 @@ export function CartPageClient({
             {appliedCoupon ? (
               <div className="mt-3 flex justify-between text-emerald-700">
                 <span>Discount ({appliedCoupon.code})</span>
-                <span>-{formatMoney(discountAmount, currency)}</span>
+                <span>-{formatMoney(discountAmount, currency, currencySettings)}</span>
               </div>
             ) : null}
             {!appliedCoupon && appliedCampaign ? (
               <div className="mt-3 flex justify-between text-emerald-700">
                 <span>{appliedCampaign.name} ({appliedCampaign.discountLabel})</span>
-                <span>-{formatMoney(displayDiscountAmount, currency)}</span>
+                <span>-{formatMoney(displayDiscountAmount, currency, currencySettings)}</span>
               </div>
             ) : null}
           </div>
@@ -1856,8 +1865,8 @@ export function CartPageClient({
               <span>{campaignShippingDiscount > 0 ? "Total discount" : "Subtotal after discount"}</span>
               <span>
                 {campaignShippingDiscount > 0
-                  ? `-${formatMoney(displayDiscountAmount, currency)}`
-                  : formatMoney(discountedSubtotal, currency)}
+                  ? `-${formatMoney(displayDiscountAmount, currency, currencySettings)}`
+                  : formatMoney(discountedSubtotal, currency, currencySettings)}
               </span>
             </div>
           ) : null}
@@ -1911,7 +1920,7 @@ export function CartPageClient({
             {appliedGiftCard ? (
               <div className="mt-3 flex justify-between text-emerald-700">
                 <span>Gift card ({appliedGiftCard.maskedCode})</span>
-                <span>-{formatMoney(giftCardAmount, currency)}</span>
+                <span>-{formatMoney(giftCardAmount, currency, currencySettings)}</span>
               </div>
             ) : null}
           </div>
@@ -1948,7 +1957,7 @@ export function CartPageClient({
                       ) : null}
                       <span className="block">{method.name}</span>
                       <span className={`mt-1 block text-xs ${shippingMethodId === method.id ? "text-white/70" : "text-muted"}`}>
-                        {method.type.replace(/_/g, " ")} · {formatMoney(method.fee, currency)}
+                        {method.type.replace(/_/g, " ")} · {formatMoney(method.fee, currency, currencySettings)}
                         {method.estimatedMinDays || method.estimatedMaxDays
                           ? ` · ${method.estimatedMinDays ?? method.estimatedMaxDays}-${method.estimatedMaxDays ?? method.estimatedMinDays} days`
                           : ""}
@@ -2014,12 +2023,12 @@ export function CartPageClient({
               </div>
               <div className="flex justify-between">
                 <span>Selected fee</span>
-                <span>{formatMoney(financialBreakdown.shippingAmount, currency)}</span>
+                <span>{formatMoney(financialBreakdown.shippingAmount, currency, currencySettings)}</span>
               </div>
               {deliverySettings.freeDeliveryThreshold !== null ? (
                 <div className="flex justify-between">
                   <span>Free delivery from</span>
-                  <span>{formatMoney(deliverySettings.freeDeliveryThreshold, currency)}</span>
+                  <span>{formatMoney(deliverySettings.freeDeliveryThreshold, currency, currencySettings)}</span>
                 </div>
               ) : null}
             </div>
@@ -2057,12 +2066,12 @@ export function CartPageClient({
                 {financialBreakdown.taxName ?? taxSettings.taxName} ({financialBreakdown.taxRate}%)
                 {financialBreakdown.pricesIncludeTax ? " included" : ""}
               </span>
-              <span>{formatMoney(financialBreakdown.taxAmount, currency)}</span>
+              <span>{formatMoney(financialBreakdown.taxAmount, currency, currencySettings)}</span>
             </div>
           ) : null}
           <div className="flex justify-between text-lg font-black text-ink">
             <span>{giftCardAmount > 0 ? "Amount due" : "Final total"}</span>
-            <span>{formatMoney(payableTotal, currency)}</span>
+            <span>{formatMoney(payableTotal, currency, currencySettings)}</span>
           </div>
         </div>
         <div className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
@@ -2114,6 +2123,7 @@ export function CartPageClient({
           >
           <input name="slug" type="hidden" value={slug} />
           <input name="storeId" type="hidden" value={storeId} />
+          <input name="currency" type="hidden" value={currency} />
           <input name="deliveryMethod" type="hidden" value={deliveryMethod} />
           <input name="paymentMethod" type="hidden" value={paymentMethod} />
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
@@ -2189,15 +2199,15 @@ export function CartPageClient({
               <div className="mt-3 grid gap-1 text-xs font-bold text-muted">
                 <div className="flex justify-between">
                   <span>Original subtotal</span>
-                  <span>{formatMoney(total, currency)}</span>
+                  <span>{formatMoney(total, currency, currencySettings)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-700">
                   <span>Discount</span>
-                  <span>-{formatMoney(displayDiscountAmount, currency)}</span>
+                  <span>-{formatMoney(displayDiscountAmount, currency, currencySettings)}</span>
                 </div>
                 <div className="flex justify-between text-ink">
                   <span>Total before gift card</span>
-                  <span>{formatMoney(finalTotal, currency)}</span>
+                  <span>{formatMoney(finalTotal, currency, currencySettings)}</span>
                 </div>
               </div>
             ) : null}
@@ -2205,11 +2215,11 @@ export function CartPageClient({
               <div className="mt-3 grid gap-1 text-xs font-bold text-muted">
                 <div className="flex justify-between text-emerald-700">
                   <span>Gift card ({appliedGiftCard.maskedCode})</span>
-                  <span>-{formatMoney(giftCardAmount, currency)}</span>
+                  <span>-{formatMoney(giftCardAmount, currency, currencySettings)}</span>
                 </div>
                 <div className="flex justify-between text-ink">
                   <span>Amount due</span>
-                  <span>{formatMoney(payableTotal, currency)}</span>
+                  <span>{formatMoney(payableTotal, currency, currencySettings)}</span>
                 </div>
               </div>
             ) : null}

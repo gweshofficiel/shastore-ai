@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
@@ -9,6 +10,7 @@ import { getPublicShippingMethodsForStore } from "@/lib/public-shipping-methods"
 import { getPublicTaxSettingsForStore } from "@/lib/public-tax";
 import { getPublicStorefrontPreview, type PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { getEnabledPublicStorePaymentMethods } from "@/lib/store-payment-methods";
+import { selectedCurrencyFromValue } from "@/lib/store-currencies";
 import { defaultStoreSeoSettings, loadStoreSeoSettings } from "@/lib/store-seo";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,6 +24,7 @@ type StoreCartPageProps = {
   }>;
   searchParams: Promise<{
     coupon?: string;
+    currency?: string;
     recovery?: string;
   }>;
 };
@@ -238,8 +241,9 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
     storeId: preview.store.id,
     workspaceId: preview.store.workspaceId
   });
+  const selectedCurrency = selectedCurrencyFromValue(query.currency, preview.store.currencySettings);
   const initialRecoveryItems = recoveryItemsFromSnapshot({
-    currency: preview.store.currency,
+    currency: selectedCurrency,
     products: preview.products,
     snapshot: recoverySnapshot,
     storeId: preview.store.id
@@ -255,6 +259,9 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <div className="fixed right-4 top-4 z-50">
         <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
+      <div className="fixed right-4 top-16 z-50">
+        <StorefrontCurrencySwitcher settings={preview.store.currencySettings} />
       </div>
       <div className="mx-auto max-w-7xl">
         <header
@@ -296,7 +303,8 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
         </div>
 
         <CartPageClient
-          currency={preview.store.currency}
+          currency={selectedCurrency}
+          currencySettings={preview.store.currencySettings}
           deliverySettings={{
             deliveryEnabled: preview.store.deliveryEnabled,
             deliveryFee: preview.store.deliveryFee,

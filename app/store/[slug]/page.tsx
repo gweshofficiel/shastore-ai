@@ -18,6 +18,7 @@ import {
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StoreMarketingMessages } from "@/components/storefront/store-marketing-messages";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
+import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
@@ -43,6 +44,12 @@ import {
 } from "@/lib/tenant/context";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getProductRecommendations } from "@/lib/product-recommendations";
+import {
+  convertCurrencyAmount,
+  selectedCurrencyFromValue,
+  type StoreCurrencyCode,
+  type StoreCurrencySettings
+} from "@/lib/store-currencies";
 import { defaultStoreSeoSettings, homepageSeoMetadata, loadStoreSeoSettings } from "@/lib/store-seo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
@@ -70,8 +77,13 @@ function StoreUnavailablePage() {
   );
 }
 
-function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
-  if (priceLabel) {
+function formatProductPrice(
+  price: number | string | null,
+  priceLabel: string | null,
+  currency: StoreCurrencyCode,
+  settings: StoreCurrencySettings
+) {
+  if (priceLabel && currency === settings.defaultCurrency) {
     return priceLabel;
   }
 
@@ -86,9 +98,9 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }
 
   return new Intl.NumberFormat("en", {
-    currency: currency || "USD",
+    currency,
     style: "currency"
-  }).format(numericPrice);
+  }).format(convertCurrencyAmount(numericPrice, settings, currency));
 }
 
 function whatsappStoreHref(whatsappNumber: string | null, storeTitle: string) {
@@ -174,6 +186,7 @@ type DiscoverySearchParams = {
   maxPrice?: string;
   minPrice?: string;
   q?: string;
+  currency?: string;
   sort?: string;
 };
 
@@ -429,6 +442,7 @@ export default async function PublicStorePage({
   const { branding, store } = filteredPreview;
   const products = discovery.products;
   const theme = preview.themeSettings;
+  const selectedCurrency = selectedCurrencyFromValue(query.currency, store.currencySettings);
   const productSections = buildPublicProductSections({
     categories: filteredPreview.categories,
     products
@@ -702,7 +716,7 @@ export default async function PublicStorePage({
                     {section.products.map((product) => {
                 const galleryUrls = productGalleryUrls(product.gallery);
                 const primaryImage = product.imageUrl || galleryUrls[0] || null;
-                const currency = product.currency || store.currency;
+                const currency = selectedCurrency;
                 const detailsHref = publicProductHref(store.slug, product);
 
                 return (
@@ -767,11 +781,11 @@ export default async function PublicStorePage({
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
                         <div className="flex flex-wrap items-end gap-2">
                           <p className="text-lg font-black text-ink">
-                            {formatProductPrice(product.price, product.priceLabel, currency)}
+                            {formatProductPrice(product.price, product.priceLabel, currency, store.currencySettings)}
                           </p>
                           {product.compareAtPrice ? (
                             <p className="text-sm font-bold text-slate-400 line-through">
-                              {formatProductPrice(product.compareAtPrice, null, currency)}
+                              {formatProductPrice(product.compareAtPrice, null, currency, store.currencySettings)}
                             </p>
                           ) : null}
                           <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -855,6 +869,9 @@ export default async function PublicStorePage({
       <div className="fixed right-4 top-4 z-50">
         <StorefrontLanguageSwitcher settings={store.languageSettings} />
       </div>
+      <div className="fixed right-4 top-16 z-50">
+        <StorefrontCurrencySwitcher settings={store.currencySettings} />
+      </div>
       <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
       <StorefrontHydration
@@ -909,7 +926,7 @@ export default async function PublicStorePage({
               {recommendedProducts.map((product) => {
                 const galleryUrls = productGalleryUrls(product.gallery);
                 const primaryImage = product.imageUrl || galleryUrls[0] || null;
-                const currency = product.currency || store.currency;
+                const currency = selectedCurrency;
                 const detailsHref = publicProductHref(store.slug, product);
 
                 return (
@@ -953,7 +970,7 @@ export default async function PublicStorePage({
                         </h3>
                       </Link>
                       <p className="text-sm font-black text-ink">
-                        {formatProductPrice(product.price, product.priceLabel, currency)}
+                        {formatProductPrice(product.price, product.priceLabel, currency, store.currencySettings)}
                       </p>
                       <ProductQuickView
                         currency={currency}
@@ -1005,7 +1022,7 @@ export default async function PublicStorePage({
                 label="Delivery fee"
                 value={
                   store.deliveryFee !== null
-                    ? formatProductPrice(store.deliveryFee, null, store.currency)
+                    ? formatProductPrice(store.deliveryFee, null, selectedCurrency, store.currencySettings)
                     : "Not configured yet"
                 }
               />
@@ -1013,7 +1030,7 @@ export default async function PublicStorePage({
                 label="Free delivery threshold"
                 value={
                   store.freeDeliveryThreshold !== null
-                    ? formatProductPrice(store.freeDeliveryThreshold, null, store.currency)
+                    ? formatProductPrice(store.freeDeliveryThreshold, null, selectedCurrency, store.currencySettings)
                     : "Not configured yet"
                 }
               />

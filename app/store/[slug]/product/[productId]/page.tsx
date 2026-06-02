@@ -7,6 +7,7 @@ import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { GoogleAnalyticsScript, GoogleAnalyticsViewItem } from "@/components/storefront/google-analytics";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript, MetaPixelViewContent } from "@/components/storefront/meta-pixel";
@@ -20,6 +21,12 @@ import { submitProductQuestion } from "@/lib/product-question-actions";
 import { getApprovedProductQuestions } from "@/lib/product-questions";
 import { submitProductReview } from "@/lib/product-review-actions";
 import { getApprovedProductReviews, getProductReviewSummary, type ProductReviewFilter } from "@/lib/product-reviews";
+import {
+  convertCurrencyAmount,
+  selectedCurrencyFromValue,
+  type StoreCurrencyCode,
+  type StoreCurrencySettings
+} from "@/lib/store-currencies";
 import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
@@ -46,11 +53,17 @@ type ProductDetailPageProps = {
     question?: string;
     review?: string;
     reviewFilter?: string;
+    currency?: string;
   }>;
 };
 
-function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
-  if (priceLabel) {
+function formatProductPrice(
+  price: number | string | null,
+  priceLabel: string | null,
+  currency: StoreCurrencyCode,
+  settings: StoreCurrencySettings
+) {
+  if (priceLabel && currency === settings.defaultCurrency) {
     return priceLabel;
   }
 
@@ -65,9 +78,9 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }
 
   return new Intl.NumberFormat("en", {
-    currency: currency || "USD",
+    currency,
     style: "currency"
-  }).format(numericPrice);
+  }).format(convertCurrencyAmount(numericPrice, settings, currency));
 }
 
 function productPagePath(storeSlug: string, product: PublicStorefrontProduct) {
@@ -425,7 +438,7 @@ export default async function PublicProductDetailPage({
     ? `linear-gradient(135deg, ${preview.branding.primaryColor}cc, ${preview.branding.secondaryColor}99), url("${theme.bannerImageUrl}") center/cover`
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}55, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
   const galleryUrls = productGalleryUrls(product.gallery);
-  const currency = product.currency || preview.store.currency;
+  const currency = selectedCurrencyFromValue(query.currency, preview.store.currencySettings);
   const canonicalUrl = productCanonicalUrl(preview.store.slug, product);
   const structuredProductData = productJsonLd({
     currency,
@@ -480,6 +493,9 @@ export default async function PublicProductDetailPage({
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
       <div className="fixed right-4 top-4 z-50">
         <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
+      <div className="fixed right-4 top-16 z-50">
+        <StorefrontCurrencySwitcher settings={preview.store.currencySettings} />
       </div>
       <MetaPixelViewContent
         contentId={product.id}
@@ -589,11 +605,11 @@ export default async function PublicProductDetailPage({
               </h1>
               <div className="mt-5 flex flex-wrap items-end gap-3">
                 <p className="text-2xl font-black text-ink">
-                  {formatProductPrice(product.price, product.priceLabel, currency)}
+                  {formatProductPrice(product.price, product.priceLabel, currency, preview.store.currencySettings)}
                 </p>
                 {product.compareAtPrice ? (
                   <p className="text-base font-bold text-slate-400 line-through">
-                    {formatProductPrice(product.compareAtPrice, null, currency)}
+                    {formatProductPrice(product.compareAtPrice, null, currency, preview.store.currencySettings)}
                   </p>
                 ) : null}
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
@@ -769,7 +785,7 @@ export default async function PublicProductDetailPage({
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {relatedProducts.map((relatedProduct) => {
                   const relatedHref = `/store/${preview.store.slug}/product/${encodeURIComponent(relatedProduct.slug || relatedProduct.id)}`;
-                  const relatedCurrency = relatedProduct.currency || preview.store.currency;
+                  const relatedCurrency = currency;
 
                   return (
                     <article
@@ -810,7 +826,7 @@ export default async function PublicProductDetailPage({
                             </h3>
                           </Link>
                           <p className="mt-2 text-sm font-black text-ink">
-                            {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency)}
+                            {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency, preview.store.currencySettings)}
                           </p>
                           <ProductSalesProof compact product={relatedProduct} />
                           <ProductStockUrgency className="mt-3" compact product={relatedProduct} />
