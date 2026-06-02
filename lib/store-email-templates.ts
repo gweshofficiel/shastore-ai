@@ -1,6 +1,7 @@
 export type StoreEmailTemplateKey =
   | "abandoned_cart_recovery"
   | "customer_welcome"
+  | "email_campaign"
   | "low_stock_alert"
   | "order_confirmation"
   | "order_status_update"
@@ -81,6 +82,8 @@ export function getStoreEmailTemplate(
   const receiptUrl = textValue(metadata.receiptUrl);
   const cartRecoveryUrl = textValue(metadata.cartRecoveryUrl);
   const estimatedTotal = currencyMoneyValue(metadata.estimatedTotal, metadata.currency);
+  const campaignContent = textValue(metadata.campaignContent);
+  const campaignSubject = textValue(metadata.campaignSubject);
   const productName = textValue(metadata.productName, "A product");
   const stockQuantity = textValue(metadata.stockQuantity, "low stock");
   const orderUrl = textValue(metadata.orderUrl);
@@ -101,6 +104,11 @@ export function getStoreEmailTemplate(
         htmlLine("Products", productsSummary),
         htmlLine("Estimated total", estimatedTotal)
       ].join("")
+    };
+  } else if (templateKey === "email_campaign") {
+    content = {
+      subject: campaignSubject || `Update from ${storeName}`,
+      text: campaignContent || `Hello ${customerName}, ${storeName} has a new update for you.`
     };
   } else if (templateKey === "order_status_update") {
     content = {

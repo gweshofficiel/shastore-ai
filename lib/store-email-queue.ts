@@ -29,7 +29,7 @@ type StoreEmailSettings = {
   sender_name?: string | null;
 };
 
-const settingByTemplate: Record<StoreEmailTemplateKey, keyof StoreEmailSettings> = {
+const settingByTemplate: Partial<Record<StoreEmailTemplateKey, keyof StoreEmailSettings>> = {
   abandoned_cart_recovery: "enable_abandoned_cart_recovery",
   customer_welcome: "enable_customer_welcome",
   low_stock_alert: "enable_low_stock_alert",
@@ -66,11 +66,17 @@ function sanitizeMetadata(metadata: StoreEmailMetadata = {}) {
 }
 
 function enabledForTemplate(settings: StoreEmailSettings | null, templateKey: StoreEmailTemplateKey) {
+  const settingKey = settingByTemplate[templateKey];
+
+  if (!settingKey) {
+    return true;
+  }
+
   if (!settings) {
     return templateKey !== "customer_welcome";
   }
 
-  const value = settings[settingByTemplate[templateKey]];
+  const value = settings[settingKey];
   return value !== false;
 }
 

@@ -247,6 +247,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/projects", label: "Projects", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
   { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", permission: "can_view_notifications" },
   { href: "/dashboard/email", label: "Email", icon: "notifications", permission: "can_view_notifications" },
+  { href: "/dashboard/email-campaigns", label: "Email Campaigns", icon: "notifications", permission: "can_view_notifications" },
   { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "settings.edit", showInSidebar: false },
   { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "settings.view" }
 ] as const;
