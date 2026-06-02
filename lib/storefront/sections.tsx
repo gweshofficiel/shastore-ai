@@ -29,6 +29,7 @@ import type {
   StoreHomepageSection,
   StoreHomepageSectionType
 } from "@/lib/store-homepage-sections";
+import type { StorefrontResolvedNavigation } from "@/lib/storefront/navigation";
 import {
   defaultStoreFooterLinkSettings,
   type StoreFooterLinkSettings
@@ -604,6 +605,7 @@ type SectionRenderProps = {
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  headerNavigation?: StorefrontResolvedNavigation;
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
@@ -646,7 +648,8 @@ function NavbarSection({
   context,
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
-  hasPublishedFaqs = false
+  hasPublishedFaqs = false,
+  headerNavigation
 }: SectionRenderProps) {
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
@@ -656,18 +659,20 @@ function NavbarSection({
   const blogHref = `/store/${context.preview.store.slug}/blog`;
   const faqHref = `/store/${context.preview.store.slug}/faq`;
   const contactHref = `/store/${context.preview.store.slug}/contact`;
-  const primaryLinks = uniqueStorefrontNavLinks([
-    ...(headerLinks.length
-      ? headerLinks.map((link) => ({ href: link.href, label: link.label }))
-      : [
-          { href: "#products", label: "Products" },
-          { href: "#categories", label: "Categories" }
-        ]),
-    ...(hasPublishedAbout ? [{ href: aboutHref, label: "About" }] : []),
-    ...(hasPublishedFaqs ? [{ href: faqHref, label: "FAQ" }] : []),
-    { href: contactHref, label: "Contact" },
-    ...(hasPublishedBlogArticles ? [{ href: blogHref, label: "Blog" }] : [])
-  ]);
+  const primaryLinks = headerNavigation
+    ? uniqueStorefrontNavLinks(headerNavigation.links)
+    : uniqueStorefrontNavLinks([
+        ...(headerLinks.length
+          ? headerLinks.map((link) => ({ href: link.href, label: link.label }))
+          : [
+              { href: "#products", label: "Products" },
+              { href: "#categories", label: "Categories" }
+            ]),
+        ...(hasPublishedAbout ? [{ href: aboutHref, label: "About" }] : []),
+        ...(hasPublishedFaqs ? [{ href: faqHref, label: "FAQ" }] : []),
+        { href: contactHref, label: "Contact" },
+        ...(hasPublishedBlogArticles ? [{ href: blogHref, label: "Blog" }] : [])
+      ]);
 
   return (
     <section
@@ -724,22 +729,28 @@ function NavbarSection({
           ))}
         </nav>
         <div className="flex flex-wrap gap-2">
-          <Link
-            className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-            href={`/store/${context.preview.store.slug}/account`}
-          >
-            Account
-          </Link>
-          <WishlistNavLink
-            currency={context.preview.store.currency}
-            slug={context.preview.store.slug}
-            storeId={context.preview.store.id}
-          />
-          <CartNavLink
-            currency={context.preview.store.currency}
-            slug={context.preview.store.slug}
-            storeId={context.preview.store.id}
-          />
+          {headerNavigation?.accountEnabled ?? true ? (
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={`/store/${context.preview.store.slug}/account`}
+            >
+              Account
+            </Link>
+          ) : null}
+          {headerNavigation?.wishlistEnabled ?? true ? (
+            <WishlistNavLink
+              currency={context.preview.store.currency}
+              slug={context.preview.store.slug}
+              storeId={context.preview.store.id}
+            />
+          ) : null}
+          {headerNavigation?.cartEnabled ?? true ? (
+            <CartNavLink
+              currency={context.preview.store.currency}
+              slug={context.preview.store.slug}
+              storeId={context.preview.store.id}
+            />
+          ) : null}
         </div>
       </div>
     </section>
@@ -1306,6 +1317,7 @@ export function SectionRenderer({
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
+  headerNavigation,
   publishedAbout = null,
   publishedArticles = [],
   publishedFaqs = [],
@@ -1316,6 +1328,7 @@ export function SectionRenderer({
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  headerNavigation?: StorefrontResolvedNavigation;
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
@@ -1334,6 +1347,7 @@ export function SectionRenderer({
       hasPublishedAbout={hasPublishedAbout}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}
+      headerNavigation={headerNavigation}
       publishedAbout={publishedAbout}
       publishedArticles={publishedArticles}
       publishedFaqs={publishedFaqs}
@@ -1349,6 +1363,7 @@ export async function DynamicSectionLoader({
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
+  headerNavigation,
   homepageLayout,
   publishedAbout = null,
   publishedArticles = [],
@@ -1360,6 +1375,7 @@ export async function DynamicSectionLoader({
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  headerNavigation?: StorefrontResolvedNavigation;
   homepageLayout?: StoreHomepageLayoutConfig;
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
@@ -1401,6 +1417,7 @@ export async function DynamicSectionLoader({
           hasPublishedAbout={hasPublishedAbout}
           hasPublishedBlogArticles={hasPublishedBlogArticles}
           hasPublishedFaqs={hasPublishedFaqs}
+          headerNavigation={headerNavigation}
           key={section.id}
           publishedAbout={publishedAbout}
           publishedArticles={publishedArticles}

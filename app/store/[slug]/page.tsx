@@ -24,6 +24,10 @@ import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
 import {
+  getStoreNavigationRows,
+  resolveStorefrontHeaderNavigation
+} from "@/lib/storefront/navigation";
+import {
   getCurrentStoreContext,
   resolveTenantStore
 } from "@/lib/tenant/context";
@@ -423,18 +427,16 @@ export default async function PublicStorePage({
   const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
   const headerLinks = preview.navigation.header;
   const contactHref = `/store/${store.slug}/contact`;
-  const primaryLinks = uniqueStorefrontNavLinks([
-    ...(headerLinks.length
-      ? headerLinks.map((link) => ({ href: link.href, label: link.label }))
-      : [
-          { href: "#products", label: "Products" },
-          { href: "#categories", label: "Categories" }
-        ]),
-    ...(hasPublishedAbout ? [{ href: `/store/${store.slug}/about`, label: "About" }] : []),
-    ...(hasPublishedFaqs ? [{ href: `/store/${store.slug}/faq`, label: "FAQ" }] : []),
-    { href: contactHref, label: "Contact" },
-    ...(hasPublishedBlogArticles ? [{ href: `/store/${store.slug}/blog`, label: "Blog" }] : [])
-  ]);
+  const navigationRows = admin ? await getStoreNavigationRows(admin, store.id) : [];
+  const headerNavigation = resolveStorefrontHeaderNavigation({
+    customLinks: headerLinks,
+    hasPublishedAbout,
+    hasPublishedBlogArticles,
+    hasPublishedFaqs,
+    rows: navigationRows,
+    storeSlug: store.slug
+  });
+  const primaryLinks = uniqueStorefrontNavLinks(headerNavigation.links);
   const hasContactData = Boolean(
     store.whatsappNumber ||
       supportEmail ||
@@ -590,15 +592,21 @@ export default async function PublicStorePage({
               ))}
             </nav>
             <div className="flex flex-wrap gap-2">
-              <Link
-                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                href={`/store/${store.slug}/account`}
-              >
-                Account
-              </Link>
+              {headerNavigation.accountEnabled ? (
+                <Link
+                  className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+                  href={`/store/${store.slug}/account`}
+                >
+                  Account
+                </Link>
+              ) : null}
               <CompareNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
-              <WishlistNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
-              <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+              {headerNavigation.wishlistEnabled ? (
+                <WishlistNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+              ) : null}
+              {headerNavigation.cartEnabled ? (
+                <CartNavLink currency={store.currency} slug={store.slug} storeId={store.id} />
+              ) : null}
             </div>
           </header>
 
@@ -849,6 +857,7 @@ export default async function PublicStorePage({
         hasPublishedAbout={hasPublishedAbout}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
+        headerNavigation={headerNavigation}
         homepageLayout={homepageLayout}
         publishedAbout={publishedAbout}
         publishedArticles={publishedArticles}

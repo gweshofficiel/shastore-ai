@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  standardNavigationHref,
+  storefrontStandardNavigationOptions,
+  type StorefrontStandardNavigationKey
+} from "@/lib/storefront/navigation";
+import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
@@ -112,6 +117,23 @@ function navigationPayload(formData: FormData) {
   };
 }
 
+function standardEnabled(formData: FormData, key: StorefrontStandardNavigationKey) {
+  return formData.get(`standard.${key}.enabled`) === "on";
+}
+
+function standardSortOrder(formData: FormData, key: StorefrontStandardNavigationKey, fallback: number) {
+  const parsed = Number.parseInt(
+    cleanText(formData.get(`standard.${key}.sortOrder`), 8) || String(fallback),
+    10
+  );
+
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function standardLabel(formData: FormData, key: StorefrontStandardNavigationKey, fallback: string) {
+  return cleanText(formData.get(`standard.${key}.label`), 120) || fallback;
+}
+
 function revalidateNavigationPaths(store: WorkspaceStoreRow, storeId: string) {
   revalidatePath(navigationPath);
   revalidatePath(`/dashboard/stores/${storeId}`);
@@ -147,6 +169,62 @@ export async function createStoreNavigationLink(formData: FormData) {
 
   revalidateNavigationPaths(store, storeId);
   navigationRedirect(storeId, "created");
+}
+
+export async function saveStandardStoreNavigationLinks(formData: FormData) {
+  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const storeSlug = cleanText(formData.get("storeSlug"), 160) || store.slug || "";
+
+  if (!storeSlug) {
+    navigationRedirect(storeId, "update-failed");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("store_navigation_links" as never)
+    .select("id, custom_url")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .eq("location" as never, "header" as never)
+    .eq("link_type" as never, "custom" as never);
+
+  if (loadError) {
+    navigationRedirect(storeId, "update-failed");
+  }
+
+  const existingRows = ((data ?? []) as Array<{ custom_url?: string | null; id: string }>);
+
+  for (const option of storefrontStandardNavigationOptions) {
+    const href = standardNavigationHref(option.key, storeSlug);
+    const existing = existingRows.find((row) => row.custom_url === href);
+    const payload = {
+      custom_url: href,
+      is_enabled: standardEnabled(formData, option.key),
+      label: standardLabel(formData, option.key, option.label),
+      link_type: "custom",
+      location: "header",
+      sort_order: standardSortOrder(formData, option.key, option.defaultSortOrder),
+      updated_at: new Date().toISOString()
+    };
+    const result = existing
+      ? await supabase
+          .from("store_navigation_links" as never)
+          .update(payload as never)
+          .eq("id" as never, existing.id as never)
+          .eq("workspace_id" as never, workspaceId as never)
+          .eq("store_id" as never, storeId as never)
+      : await supabase.from("store_navigation_links" as never).insert({
+          ...payload,
+          store_id: storeId,
+          workspace_id: workspaceId
+        } as never);
+
+    if (result.error) {
+      navigationRedirect(storeId, "update-failed");
+    }
+  }
+
+  revalidateNavigationPaths(store, storeId);
+  navigationRedirect(storeId, "updated");
 }
 
 export async function updateStoreNavigationLink(formData: FormData) {

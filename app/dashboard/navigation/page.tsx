@@ -5,9 +5,15 @@ import { Input } from "@/components/ui/input";
 import {
   createStoreNavigationLink,
   deleteStoreNavigationLink,
+  saveStandardStoreNavigationLinks,
   setStoreNavigationLinkEnabled,
   updateStoreNavigationLink
 } from "@/lib/store-navigation-actions";
+import {
+  standardNavigationHref,
+  storefrontStandardNavigationOptions,
+  type StorefrontStandardNavigationKey
+} from "@/lib/storefront/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -304,6 +310,120 @@ function linkTargetLabel(link: NavigationLinkRow, options: { categories: OptionR
   return "Not configured";
 }
 
+function standardKeyFromLink(
+  link: NavigationLinkRow,
+  storeSlug: string | null
+): StorefrontStandardNavigationKey | null {
+  if (link.location !== "header" || link.link_type !== "custom" || !storeSlug) {
+    return null;
+  }
+
+  const href = link.custom_url?.trim().toLowerCase();
+
+  if (!href) {
+    return null;
+  }
+
+  const match = storefrontStandardNavigationOptions.find(
+    (option) => standardNavigationHref(option.key, storeSlug).toLowerCase() === href
+  );
+
+  return match?.key ?? null;
+}
+
+function standardLinkState({
+  key,
+  links,
+  storeSlug
+}: {
+  key: StorefrontStandardNavigationKey;
+  links: NavigationLinkRow[];
+  storeSlug: string | null;
+}) {
+  const option = storefrontStandardNavigationOptions.find((item) => item.key === key);
+  const existing = links.find((link) => standardKeyFromLink(link, storeSlug) === key);
+
+  return {
+    enabled: existing?.is_enabled ?? option?.defaultEnabled ?? true,
+    label: existing?.label ?? option?.label ?? key,
+    sortOrder: existing?.sort_order ?? option?.defaultSortOrder ?? 0
+  };
+}
+
+function StandardNavigationSection({
+  links,
+  store
+}: {
+  links: NavigationLinkRow[];
+  store: UserStoreRow;
+}) {
+  const storeSlug = store.slug ?? null;
+
+  return (
+    <Card className="grid gap-5 p-6">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+          Storefront navigation
+        </p>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+          Standard links
+        </h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+          Control the public header links and action links. Blog, FAQ, and About still hide safely when no published content exists.
+        </p>
+      </div>
+      {!storeSlug ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+          Add a store slug before managing standard storefront navigation links.
+        </div>
+      ) : (
+        <form action={saveStandardStoreNavigationLinks} className="grid gap-4">
+          <input name="storeId" type="hidden" value={store.id} />
+          <input name="storeSlug" type="hidden" value={storeSlug} />
+          <div className="grid gap-3">
+            {storefrontStandardNavigationOptions.map((option) => {
+              const state = standardLinkState({ key: option.key, links, storeSlug });
+
+              return (
+                <div
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_8rem_8rem] md:items-end"
+                  key={option.key}
+                >
+                  <Input
+                    defaultValue={state.label}
+                    id={`standard-${option.key}-label`}
+                    label={option.label}
+                    maxLength={120}
+                    name={`standard.${option.key}.label`}
+                  />
+                  <Input
+                    defaultValue={String(state.sortOrder)}
+                    id={`standard-${option.key}-sort-order`}
+                    label="Sort order"
+                    name={`standard.${option.key}.sortOrder`}
+                    type="number"
+                  />
+                  <label className="flex h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm">
+                    <input
+                      defaultChecked={state.enabled}
+                      name={`standard.${option.key}.enabled`}
+                      type="checkbox"
+                    />
+                    Enabled
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit">Save standard navigation</Button>
+          </div>
+        </form>
+      )}
+    </Card>
+  );
+}
+
 function NavigationSection({
   categories,
   links,
@@ -457,6 +577,8 @@ export default async function StoreNavigationDashboard({
               </div>
             </form>
           </Card>
+
+          <StandardNavigationSection links={links} store={activeStore} />
 
           <div className="grid gap-5 xl:grid-cols-2">
             <NavigationSection

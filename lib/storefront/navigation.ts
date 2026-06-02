@@ -30,10 +30,53 @@ export type PublicStoreNavigationLink = {
   sortOrder: number;
 };
 
+export type StorefrontStandardNavigationKey =
+  | "products"
+  | "categories"
+  | "about"
+  | "blog"
+  | "faq"
+  | "contact"
+  | "account"
+  | "wishlist"
+  | "cart";
+
+export type StorefrontStandardNavigationItem = {
+  enabled: boolean;
+  href: string;
+  key: StorefrontStandardNavigationKey;
+  label: string;
+  sortOrder: number;
+};
+
+export type StorefrontResolvedNavigation = {
+  accountEnabled: boolean;
+  cartEnabled: boolean;
+  links: StorefrontStandardNavigationItem[];
+  wishlistEnabled: boolean;
+};
+
 export type PublicStoreNavigation = {
   footer: PublicStoreNavigationLink[];
   header: PublicStoreNavigationLink[];
 };
+
+export const storefrontStandardNavigationOptions: Array<{
+  defaultEnabled: boolean;
+  defaultSortOrder: number;
+  key: StorefrontStandardNavigationKey;
+  label: string;
+}> = [
+  { defaultEnabled: true, defaultSortOrder: 10, key: "products", label: "Products" },
+  { defaultEnabled: true, defaultSortOrder: 20, key: "categories", label: "Categories" },
+  { defaultEnabled: true, defaultSortOrder: 30, key: "about", label: "About Us" },
+  { defaultEnabled: true, defaultSortOrder: 40, key: "blog", label: "Blog" },
+  { defaultEnabled: true, defaultSortOrder: 50, key: "faq", label: "FAQ" },
+  { defaultEnabled: true, defaultSortOrder: 60, key: "contact", label: "Contact" },
+  { defaultEnabled: true, defaultSortOrder: 70, key: "account", label: "Account" },
+  { defaultEnabled: true, defaultSortOrder: 80, key: "wishlist", label: "Wishlist" },
+  { defaultEnabled: true, defaultSortOrder: 90, key: "cart", label: "Cart" }
+];
 
 function textValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -84,6 +127,28 @@ export async function getEnabledStoreNavigationRows(client: SupabaseClient, stor
 
   if (error) {
     console.warn("[storefront-navigation] navigation links failed", {
+      code: error.code,
+      message: error.message,
+      storeId
+    });
+    return [];
+  }
+
+  return ((data ?? []) as unknown[])
+    .map(normalizeNavigationRow)
+    .filter((row): row is StoreNavigationRow => Boolean(row));
+}
+
+export async function getStoreNavigationRows(client: SupabaseClient, storeId: string) {
+  const { data, error } = await client
+    .from("store_navigation_links" as never)
+    .select("id, label, location, link_type, page_id, category_id, product_id, custom_url, sort_order, is_enabled")
+    .eq("store_id", storeId)
+    .order("sort_order" as never, { ascending: true } as never)
+    .order("created_at" as never, { ascending: true } as never);
+
+  if (error) {
+    console.warn("[storefront-navigation] all navigation links failed", {
       code: error.code,
       message: error.message,
       storeId
@@ -188,4 +253,162 @@ export function buildPublicStoreNavigation({
   }
 
   return navigation;
+}
+
+export function standardNavigationHref(
+  key: StorefrontStandardNavigationKey,
+  storeSlug: string
+) {
+  const hrefs: Record<StorefrontStandardNavigationKey, string> = {
+    about: `/store/${storeSlug}/about`,
+    account: `/store/${storeSlug}/account`,
+    blog: `/store/${storeSlug}/blog`,
+    cart: `/store/${storeSlug}/cart`,
+    categories: "#categories",
+    contact: `/store/${storeSlug}/contact`,
+    faq: `/store/${storeSlug}/faq`,
+    products: "#products",
+    wishlist: `/store/${storeSlug}/wishlist`
+  };
+
+  return hrefs[key];
+}
+
+function standardNavigationKeyFromHref(
+  href: string | null,
+  storeSlug: string
+): StorefrontStandardNavigationKey | null {
+  if (!href) {
+    return null;
+  }
+
+  const normalizedHref = href.trim().toLowerCase();
+
+  for (const option of storefrontStandardNavigationOptions) {
+    if (standardNavigationHref(option.key, storeSlug).toLowerCase() === normalizedHref) {
+      return option.key;
+    }
+  }
+
+  return null;
+}
+
+function visibleStandardNavigationKey({
+  hasPublishedAbout,
+  hasPublishedBlogArticles,
+  hasPublishedFaqs,
+  key
+}: {
+  hasPublishedAbout: boolean;
+  hasPublishedBlogArticles: boolean;
+  hasPublishedFaqs: boolean;
+  key: StorefrontStandardNavigationKey;
+}) {
+  if (key === "about") {
+    return hasPublishedAbout;
+  }
+
+  if (key === "blog") {
+    return hasPublishedBlogArticles;
+  }
+
+  if (key === "faq") {
+    return hasPublishedFaqs;
+  }
+
+  return true;
+}
+
+function uniqueResolvedLinks(links: StorefrontStandardNavigationItem[]) {
+  const seenHrefs = new Set<string>();
+  const seenLabels = new Set<string>();
+  const unique: StorefrontStandardNavigationItem[] = [];
+
+  for (const link of links) {
+    const hrefKey = link.href.trim().toLowerCase();
+    const labelKey = link.label.trim().toLowerCase();
+
+    if (!hrefKey || !labelKey || seenHrefs.has(hrefKey) || seenLabels.has(labelKey)) {
+      continue;
+    }
+
+    seenHrefs.add(hrefKey);
+    seenLabels.add(labelKey);
+    unique.push(link);
+  }
+
+  return unique;
+}
+
+export function resolveStorefrontHeaderNavigation({
+  customLinks,
+  hasPublishedAbout,
+  hasPublishedBlogArticles,
+  hasPublishedFaqs,
+  rows,
+  storeSlug
+}: {
+  customLinks: PublicStoreNavigationLink[];
+  hasPublishedAbout: boolean;
+  hasPublishedBlogArticles: boolean;
+  hasPublishedFaqs: boolean;
+  rows: StoreNavigationRow[];
+  storeSlug: string;
+}): StorefrontResolvedNavigation {
+  const headerRows = rows.filter((row) => row.location === "header");
+  const configuredStandard = new Map<StorefrontStandardNavigationKey, StoreNavigationRow>();
+
+  for (const row of headerRows) {
+    const key =
+      row.link_type === "custom"
+        ? standardNavigationKeyFromHref(row.custom_url, storeSlug)
+        : null;
+
+    if (key && !configuredStandard.has(key)) {
+      configuredStandard.set(key, row);
+    }
+  }
+
+  const standardLinks = storefrontStandardNavigationOptions
+    .map<StorefrontStandardNavigationItem>((option) => {
+      const row = configuredStandard.get(option.key);
+
+      return {
+        enabled: row ? row.is_enabled === true : option.defaultEnabled,
+        href: standardNavigationHref(option.key, storeSlug),
+        key: option.key,
+        label: row?.label || option.label,
+        sortOrder: row?.sort_order ?? option.defaultSortOrder
+      };
+    })
+    .filter((link) => link.enabled)
+    .filter((link) =>
+      visibleStandardNavigationKey({
+        hasPublishedAbout,
+        hasPublishedBlogArticles,
+        hasPublishedFaqs,
+        key: link.key
+      })
+    );
+  const customHeaderLinks = customLinks
+    .filter((link) => !standardNavigationKeyFromHref(link.href, storeSlug))
+    .map<StorefrontStandardNavigationItem>((link) => ({
+      enabled: true,
+      href: link.href,
+      key: "products",
+      label: link.label,
+      sortOrder: link.sortOrder
+    }));
+  const links = uniqueResolvedLinks([...standardLinks, ...customHeaderLinks]).sort(
+    (left, right) => left.sortOrder - right.sortOrder
+  );
+
+  return {
+    accountEnabled: standardLinks.some((link) => link.key === "account"),
+    cartEnabled: standardLinks.some((link) => link.key === "cart"),
+    links: links.filter(
+      (link) => link.key !== "account" && link.key !== "wishlist" && link.key !== "cart"
+    ),
+    wishlistEnabled: standardLinks.some((link) => link.key === "wishlist")
+  };
 }
