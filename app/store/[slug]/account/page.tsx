@@ -6,6 +6,7 @@ import {
   EmptyAccountCard,
   StatusPill
 } from "@/components/storefront/customer-account-shell";
+import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistPageClient } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import {
@@ -316,6 +317,16 @@ export default async function CustomerAccountPage({
           </CardSection>
         </aside>
       </section>
+
+      <RecentlyViewedProducts
+        currency={preview.store.currency}
+        displayLimit={4}
+        products={preview.products}
+        slug={preview.store.slug}
+        storeId={preview.store.id}
+        title="Recently viewed products"
+        trackCurrentProduct={false}
+      />
     </CustomerAccountShell>
   );
 }

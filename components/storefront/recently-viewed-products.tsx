@@ -12,11 +12,14 @@ import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
 
 type RecentlyViewedProductsProps = {
-  currentProductId: string;
+  currentProductId?: string | null;
   currency: string;
+  displayLimit?: number;
   products: PublicStorefrontProduct[];
   slug: string;
   storeId: string;
+  title?: string;
+  trackCurrentProduct?: boolean;
 };
 
 const RECENTLY_VIEWED_LIMIT = 8;
@@ -87,11 +90,14 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
 }
 
 export function RecentlyViewedProducts({
-  currentProductId,
+  currentProductId = null,
   currency,
+  displayLimit = RECENTLY_VIEWED_DISPLAY_LIMIT,
   products,
   slug,
-  storeId
+  storeId,
+  title = "Pick up where you left off",
+  trackCurrentProduct = true
 }: RecentlyViewedProductsProps) {
   const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
   const productById = useMemo(
@@ -102,20 +108,27 @@ export function RecentlyViewedProducts({
   useEffect(() => {
     const key = recentlyViewedStorageKey(storeId);
     const existingProductIds = parseRecentlyViewedProductIds(window.localStorage.getItem(key));
+    const cleanCurrentProductId = currentProductId?.trim() ?? "";
+
+    if (!trackCurrentProduct || !cleanCurrentProductId || !productById.has(cleanCurrentProductId)) {
+      setRecentProductIds(existingProductIds.slice(0, RECENTLY_VIEWED_LIMIT));
+      return;
+    }
+
     const nextProductIds = [
-      currentProductId,
-      ...existingProductIds.filter((productId) => productId !== currentProductId)
+      cleanCurrentProductId,
+      ...existingProductIds.filter((productId) => productId !== cleanCurrentProductId)
     ].slice(0, RECENTLY_VIEWED_LIMIT);
 
     setRecentProductIds(existingProductIds);
     window.localStorage.setItem(key, JSON.stringify(nextProductIds));
-  }, [currentProductId, storeId]);
+  }, [currentProductId, productById, storeId, trackCurrentProduct]);
 
   const recentProducts = recentProductIds
     .filter((productId) => productId !== currentProductId)
     .map((productId) => productById.get(productId) ?? null)
     .filter((product): product is PublicStorefrontProduct => Boolean(product && product.status === "active"))
-    .slice(0, RECENTLY_VIEWED_DISPLAY_LIMIT);
+    .slice(0, Math.max(1, Math.min(displayLimit, RECENTLY_VIEWED_LIMIT)));
 
   if (!recentProducts.length) {
     return null;
@@ -129,7 +142,7 @@ export function RecentlyViewedProducts({
             Recently Viewed
           </p>
           <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-            Pick up where you left off
+            {title}
           </h2>
         </div>
         <Link
