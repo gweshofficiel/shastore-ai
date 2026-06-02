@@ -922,6 +922,8 @@ export function CartPageClient({
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [addressMessage, setAddressMessage] = useState<string | null>(null);
   const [cartSessionId, setCartSessionId] = useState("");
+  const [reservationPending, setReservationPending] = useState(false);
+  const [reservationError, setReservationError] = useState<string | null>(null);
   const customerAddressRef = useRef("");
   const customerNameRef = useRef("");
   const customerNotesRef = useRef("");
@@ -1158,6 +1160,55 @@ export function CartPageClient({
 
     return () => window.clearTimeout(timeoutId);
   }, [cartSessionId, currency, customerEmail, customerPhone, finalTotal, items, slug, storeId]);
+
+  useEffect(() => {
+    if (!checkoutStarted || !cartSessionId || !items.length) {
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      setReservationPending(true);
+      setReservationError(null);
+
+      void fetch("/api/store-inventory-reservations", {
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            variantId: item.variantId ?? null
+          })),
+          sessionId: cartSessionId,
+          slug,
+          storeId
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
+      })
+        .then(async (response) => {
+          const data = (await response.json().catch(() => ({}))) as { error?: string };
+
+          if (!cancelled && !response.ok) {
+            setReservationError(data.error ?? "Stock could not be reserved for this cart.");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setReservationError("Stock could not be reserved for this cart.");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setReservationPending(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [cartSessionId, checkoutStarted, items, slug, storeId]);
 
   function applySavedAddress(addressId: string) {
     setSelectedAddressId(addressId);
@@ -1877,6 +1928,11 @@ export function CartPageClient({
               {draftState.error}
             </div>
           ) : null}
+          {reservationError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              {reservationError}
+            </div>
+          ) : null}
           {draftState.message ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
               {draftState.message}
@@ -1884,11 +1940,21 @@ export function CartPageClient({
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={hasUnavailableItems || isDraftPending || draftState.ok || !paymentMethod || shippingUnavailable}
+            disabled={
+              hasUnavailableItems ||
+              isDraftPending ||
+              draftState.ok ||
+              !paymentMethod ||
+              shippingUnavailable ||
+              reservationPending ||
+              Boolean(reservationError)
+            }
             type="submit"
           >
             {isDraftPending
               ? "Preparing draft..."
+              : reservationPending
+                ? "Reserving stock..."
               : draftState.ok
                 ? "Draft prepared"
                 : "Prepare order draft"}

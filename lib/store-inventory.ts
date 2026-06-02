@@ -70,10 +70,12 @@ export function aggregateCheckoutCartItems(items: CheckoutCartItem[]) {
 
 export async function validateCheckoutInventory({
   admin,
+  excludedReservationSessionId = null,
   storeId,
   requestedItems
 }: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  excludedReservationSessionId?: string | null;
   storeId: string;
   requestedItems: CheckoutCartItem[];
 }) {
@@ -159,6 +161,44 @@ export async function validateCheckoutInventory({
   const variantsById = new Map(
     ((selectedVariants ?? []) as InventoryVariantRow[]).map((variant) => [variant.id, variant])
   );
+  const { data: activeReservations, error: reservationsError } = await admin
+    .from("inventory_reservations" as never)
+    .select("product_id, variant_id, session_id, quantity")
+    .eq("store_id" as never, storeId as never)
+    .eq("status" as never, "active" as never)
+    .gt("expires_at" as never, new Date().toISOString() as never)
+    .in("product_id" as never, productIds as never);
+
+  if (reservationsError) {
+    console.error("[store-inventory] checkout reservations lookup failed", {
+      code: reservationsError.code,
+      message: reservationsError.message,
+      productIds,
+      storeId
+    });
+    return { ok: false as const, error: INVENTORY_CHECKOUT_ERROR };
+  }
+
+  const reservedByStockKey = new Map<string, number>();
+  for (const reservation of (activeReservations ?? []) as Array<{
+    product_id: string | null;
+    quantity: number | string | null;
+    session_id: string | null;
+    variant_id: string | null;
+  }>) {
+    if (!reservation.product_id || reservation.session_id === excludedReservationSessionId) {
+      continue;
+    }
+
+    const key = `${reservation.product_id}::${reservation.variant_id ?? ""}`;
+    reservedByStockKey.set(
+      key,
+      (reservedByStockKey.get(key) ?? 0) + parseStockQuantity(reservation.quantity)
+    );
+  }
+
+  const reservedQuantity = (productId: string, variantId?: string | null) =>
+    reservedByStockKey.get(`${productId}::${variantId ?? ""}`) ?? 0;
 
   for (const item of items) {
     const product = productsById.get(item.id);
@@ -172,7 +212,8 @@ export async function validateCheckoutInventory({
 
     if (item.variantId) {
       const variant = variantsById.get(item.variantId);
-      const availableStock = parseStockQuantity(variant?.stock_quantity);
+      const availableStock =
+        parseStockQuantity(variant?.stock_quantity) - reservedQuantity(item.id, item.variantId);
 
       if (
         !variant ||
@@ -196,7 +237,7 @@ export async function validateCheckoutInventory({
       continue;
     }
 
-    const availableStock = parseStockQuantity(product.stock_quantity);
+    const availableStock = parseStockQuantity(product.stock_quantity) - reservedQuantity(item.id, null);
 
     if (
       product.inventory_status === "out_of_stock" ||

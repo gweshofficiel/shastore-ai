@@ -28,6 +28,7 @@ import {
   validateStoreCoupon,
   type StoreCouponRow
 } from "@/lib/store-coupons";
+import { reserveCheckoutInventory } from "@/lib/inventory-reservations";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
@@ -997,6 +998,24 @@ async function persistStorefrontOrderDraft({
     }
 
     if (itemsInserted) {
+      const reservation = await reserveCheckoutInventory({
+        admin,
+        orderLink: { orderId: orderRow.id, orderSource: "orders" },
+        requestedItems: items.map((item) => ({
+          id: item.product_id,
+          quantity: item.quantity,
+          variantId: item.variant_id
+        })),
+        sessionId: cartSessionId ?? "",
+        storeId: store.id,
+        workspaceId
+      });
+
+      if (!reservation.ok) {
+        await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
+        return null;
+      }
+
       if (coupon && !(await incrementCouponUsage(admin, coupon))) {
         await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
         return null;
@@ -1211,6 +1230,24 @@ async function persistStorefrontOrderDraft({
       { legacyItems, slug, storeId: store.id, storeOrderPayload, subtotal },
       storeOrderError
     );
+    return null;
+  }
+
+  const reservation = await reserveCheckoutInventory({
+    admin,
+    orderLink: { orderId: storeOrderRow.id, orderSource: "store_orders" },
+    requestedItems: items.map((item) => ({
+      id: item.product_id,
+      quantity: item.quantity,
+      variantId: item.variant_id
+    })),
+    sessionId: cartSessionId ?? "",
+    storeId: store.id,
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (!reservation.ok) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, storeOrderRow.id as never);
     return null;
   }
 
@@ -1724,6 +1761,7 @@ export async function createPublicStoreOrderAction(
 
   const inventoryCheck = await validateCheckoutInventory({
     admin,
+    excludedReservationSessionId: cartSessionId,
     storeId: store.id,
     requestedItems
   });
@@ -1938,6 +1976,25 @@ export async function createPublicStoreOrderAction(
     };
   }
 
+  const reservation = await reserveCheckoutInventory({
+    admin,
+    orderLink: { orderId: (order as { id: string }).id, orderSource: "store_orders" },
+    requestedItems,
+    sessionId: cartSessionId,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (!reservation.ok) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, (order as { id: string }).id as never);
+    return {
+      error: "This product is out of stock or quantity is not available.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
   if (couponResult?.ok && !(await incrementCouponUsage(admin, couponResult.coupon))) {
     await admin.from("store_orders" as never).delete().eq("id" as never, (order as { id: string }).id as never);
     return {
@@ -2127,6 +2184,7 @@ export async function createPublicStoreOrderDraftAction(
 
   const inventoryCheck = await validateCheckoutInventory({
     admin,
+    excludedReservationSessionId: cartSessionId,
     storeId: store.id,
     requestedItems
   });
