@@ -458,7 +458,6 @@ export default async function PublicStorePage({
   const contactWhatsappHref = whatsappStoreHref(store.whatsappNumber, store.title);
   const socialLinks = Object.entries(store.socialLinks).filter(([, href]) => href);
   const headerLinks = preview.navigation.header;
-  const contactHref = `/store/${store.slug}/contact`;
   const navigationRows = admin ? await getStoreNavigationRows(admin, store.id) : [];
   const headerNavigation = resolveStorefrontHeaderNavigation({
     customLinks: headerLinks,

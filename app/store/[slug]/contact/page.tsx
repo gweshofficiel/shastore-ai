@@ -43,7 +43,7 @@ export async function generateMetadata({
   params
 }: StoreContactPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { contactMessage, preview } = await loadPublicStoreContact(slug);
+  const { preview } = await loadPublicStoreContact(slug);
 
   if (!preview) {
     return {
