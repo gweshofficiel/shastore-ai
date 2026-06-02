@@ -12,14 +12,22 @@ import {
 } from "@/lib/workspaces/active-workspace";
 import {
   canManageWorkspace,
+  canViewWorkspaceTeam,
   changeMemberRole,
   changeMemberStatus,
   getWorkspaceMembers,
   inviteMember,
   removeMember,
   resendInvite,
+  saveMemberPermissions,
   type WorkspaceMember
 } from "@/lib/workspace-members";
+import {
+  permissionActions,
+  permissionGroups,
+  resolveRolePermissionState,
+  type GranularPermission
+} from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +69,79 @@ function displayMemberStatus(status: string) {
   }
 
   return status;
+}
+
+function formatPermissionLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function MemberPermissionForm({
+  member,
+  workspaceId
+}: {
+  member: WorkspaceMember;
+  workspaceId: string;
+}) {
+  const permissionState = resolveRolePermissionState(member.role, member.permission_overrides);
+
+  return (
+    <form action={saveMemberPermissions} className="mt-4 w-full rounded-3xl bg-white p-4">
+      <input name="workspaceId" type="hidden" value={workspaceId} />
+      <input name="memberId" type="hidden" value={member.id} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Role permissions
+          </p>
+          <p className="mt-1 text-sm font-semibold text-muted">
+            Permissions cannot exceed the selected role defaults.
+          </p>
+        </div>
+        <Button type="submit" variant="secondary">
+          Save permissions
+        </Button>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {permissionGroups.map((group) => {
+          const availablePermissions = permissionActions
+            .map((action) => `${group}.${action}` as GranularPermission)
+            .filter((permission) => resolveRolePermissionState(member.role)[permission]);
+
+          if (!availablePermissions.length) {
+            return null;
+          }
+
+          return (
+            <fieldset className="rounded-2xl border border-slate-200 p-3" key={group}>
+              <legend className="px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                {formatPermissionLabel(group)}
+              </legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {availablePermissions.map((permission) => {
+                  const action = permission.split(".")[1] ?? permission;
+
+                  return (
+                    <label
+                      className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700"
+                      key={permission}
+                    >
+                      <input
+                        className="h-4 w-4 rounded border-slate-300"
+                        defaultChecked={permissionState[permission]}
+                        name={permission}
+                        type="checkbox"
+                      />
+                      {action}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          );
+        })}
+      </div>
+    </form>
+  );
 }
 
 function MemberStatusSection({
@@ -178,6 +259,9 @@ function MemberStatusSection({
                         </ConfirmSubmitButton>
                       </form>
                     ) : null}
+                    {displayMemberStatus(member.status) !== "removed" ? (
+                      <MemberPermissionForm member={member} workspaceId={workspaceId} />
+                    ) : null}
                   </>
                 ) : null}
                 <Button disabled type="button" variant="ghost">
@@ -262,15 +346,16 @@ export default async function TeamPage({
     workspaceId
   });
 
-  const [access, management] = await Promise.all([
+  const [access, teamView, management] = await Promise.all([
     getUserSubscriptionAccessForClient(billingClient, workspaceId),
+    canViewWorkspaceTeam(supabase, workspaceId, user.id),
     canManageWorkspace(supabase, workspaceId, user.id)
   ]);
 
-  if (!management.allowed) {
+  if (!teamView.allowed) {
     console.warn("[permission-denied] team page denied", {
-      permission: "manage_team",
-      role: management.role,
+      permission: "team.view",
+      role: teamView.role,
       userId: user.id,
       workspaceId
     });
@@ -402,6 +487,8 @@ export default async function TeamPage({
                       ? "Team member role updated."
                       : query.team === "member-status-updated"
                         ? "Team member status updated."
+                        : query.team === "member-permissions-updated"
+                          ? "Team member permissions updated."
                   : query.team === "invite-accepted"
                     ? "Invitation accepted. Welcome to the workspace."
                   : "Team updated."}

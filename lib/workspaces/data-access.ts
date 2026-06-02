@@ -9,6 +9,7 @@ import {
 import {
   getDashboardPermissionForPath,
   hasPermission,
+  type PermissionOverrides,
   type WorkspacePermission,
   type WorkspaceRole
 } from "@/lib/permissions/rbac";
@@ -21,7 +22,7 @@ type WorkspaceDataContextOptions = {
 
 export type WorkspaceDataContext = {
   role: UserWorkspaceMembership["role"] | null;
-  status: "active" | "pending" | "suspended" | "banned";
+  status: "active" | "pending" | "suspended" | "banned" | "removed";
   supabase: SupabaseClient;
   user: NonNullable<Awaited<ReturnType<SupabaseClient["auth"]["getUser"]>>["data"]["user"]>;
   workspaceId: string;
@@ -44,7 +45,7 @@ export type WorkspaceAccessDenied = {
 };
 
 function normalizeMemberStatus(value: string | null | undefined): WorkspaceDataContext["status"] {
-  if (value === "pending" || value === "suspended" || value === "banned") {
+  if (value === "pending" || value === "suspended" || value === "banned" || value === "removed") {
     return value;
   }
 
@@ -57,12 +58,12 @@ async function getWorkspaceMembershipAccess(
   userId: string
 ) {
   if (workspaceId === userId) {
-    return { role: "owner" as WorkspaceRole, status: "active" as const };
+    return { overrides: {} as PermissionOverrides, role: "owner" as WorkspaceRole, status: "active" as const };
   }
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("role, status")
+    .select("role, status, permission_overrides")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -75,10 +76,15 @@ async function getWorkspaceMembershipAccess(
     });
   }
 
-  const membership = data as { role?: string | null; status?: string | null } | null;
+  const membership = data as {
+    permission_overrides?: PermissionOverrides | null;
+    role?: string | null;
+    status?: string | null;
+  } | null;
   const role = (membership?.role ?? null) as WorkspaceRole | null;
 
   return {
+    overrides: membership?.permission_overrides ?? {},
     role,
     status: membership ? normalizeMemberStatus(membership.status) : "pending"
   };
@@ -97,7 +103,7 @@ export async function getWorkspaceDataContext(
   }
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
-  const { role, status } = await getWorkspaceMembershipAccess(
+  const { overrides, role, status } = await getWorkspaceMembershipAccess(
     supabase,
     selection.activeWorkspaceId,
     user.id
@@ -120,7 +126,7 @@ export async function getWorkspaceDataContext(
     redirect("/dashboard?workspace=inactive");
   }
 
-  if (options.permission && !hasPermission(role, options.permission)) {
+  if (options.permission && !hasPermission(role, options.permission, overrides)) {
     console.warn("[workspace-access-denied] permission denied for workspace data", {
       permission: options.permission,
       role,
@@ -181,12 +187,12 @@ export async function getDashboardPageAccess({
   }
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
-  const { role, status } = await getWorkspaceMembershipAccess(
+  const { overrides, role, status } = await getWorkspaceMembershipAccess(
     supabase,
     selection.activeWorkspaceId,
     user.id
   );
-  const allowed = status === "active" && hasPermission(role, requiredPermission);
+  const allowed = status === "active" && hasPermission(role, requiredPermission, overrides);
 
   if (!allowed) {
     console.warn("[workspace-access-denied] dashboard route blocked", {
@@ -287,12 +293,12 @@ export async function requireProtectedApiAccess({
     };
   }
 
-  const { role, status } = await getWorkspaceMembershipAccess(
+  const { overrides, role, status } = await getWorkspaceMembershipAccess(
     supabase,
     selection.activeWorkspaceId,
     user.id
   );
-  if (status !== "active" || !hasPermission(role, permission)) {
+  if (status !== "active" || !hasPermission(role, permission, overrides)) {
     console.warn("[workspace-access-denied] api permission blocked", {
       permission,
       role,
@@ -388,9 +394,9 @@ export async function assertStoreAccessInWorkspace({
   userId: string;
   workspaceId: string;
 }) {
-  const { role, status } = await getWorkspaceMembershipAccess(supabase, workspaceId, userId);
+  const { overrides, role, status } = await getWorkspaceMembershipAccess(supabase, workspaceId, userId);
 
-  if (status !== "active" || !hasPermission(role, permission)) {
+  if (status !== "active" || !hasPermission(role, permission, overrides)) {
     console.warn("[workspace-store-access-denied] store permission blocked", {
       permission,
       role,

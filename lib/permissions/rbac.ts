@@ -3,7 +3,29 @@ import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export type WorkspaceRole = "owner" | "admin" | "editor" | "support" | "billing_manager" | "viewer";
 
-export type WorkspacePermission =
+export const permissionGroups = [
+  "products",
+  "orders",
+  "customers",
+  "analytics",
+  "shipping",
+  "reviews",
+  "blog",
+  "pages",
+  "faq",
+  "contact",
+  "settings",
+  "team"
+] as const;
+
+export const permissionActions = ["view", "create", "edit", "delete"] as const;
+
+export type PermissionGroup = (typeof permissionGroups)[number];
+export type PermissionAction = (typeof permissionActions)[number];
+export type GranularPermission = `${PermissionGroup}.${PermissionAction}`;
+export type PermissionOverrides = Partial<Record<GranularPermission, boolean>>;
+
+type LegacyWorkspacePermission =
   | "can_manage_payments"
   | "can_manage_shipping"
   | "can_edit_stores"
@@ -32,8 +54,40 @@ export type WorkspacePermission =
   | "view_analytics"
   | "export_data";
 
+export type WorkspacePermission = LegacyWorkspacePermission | GranularPermission;
+
+function permissionsForGroups(groups: readonly PermissionGroup[], actions: readonly PermissionAction[]) {
+  return groups.flatMap((group) => actions.map((action) => `${group}.${action}` as GranularPermission));
+}
+
+const allGranularPermissions = permissionsForGroups(permissionGroups, permissionActions);
+
+const legacyPermissionAliases: Partial<Record<LegacyWorkspacePermission, GranularPermission[]>> = {
+  can_manage_shipping: ["shipping.edit"],
+  can_edit_stores: [
+    "products.edit",
+    "blog.edit",
+    "pages.edit",
+    "faq.edit",
+    "contact.edit",
+    "settings.edit"
+  ],
+  can_manage_team: ["team.edit"],
+  can_view_customers: ["customers.view"],
+  can_view_orders: ["orders.view"],
+  can_view_settings: ["settings.view"],
+  can_view_stores: ["settings.view"],
+  manage_products: ["products.edit"],
+  manage_team: ["team.edit"],
+  view_orders: ["orders.view"],
+  manage_orders: ["orders.edit"],
+  view_analytics: ["analytics.view"],
+  export_data: ["analytics.view"]
+};
+
 export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
   owner: [
+    ...allGranularPermissions,
     "manage_billing",
     "can_manage_billing",
     "manage_team",
@@ -63,6 +117,7 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_view_settings"
   ],
   admin: [
+    ...allGranularPermissions,
     "manage_billing",
     "can_manage_billing",
     "manage_team",
@@ -92,6 +147,8 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_view_settings"
   ],
   editor: [
+    ...permissionsForGroups(["products", "blog", "pages", "faq", "contact"], ["view", "create", "edit"]),
+    ...permissionsForGroups(["orders", "customers", "analytics", "reviews", "settings"], ["view"]),
     "can_view_overview",
     "can_view_landings",
     "can_edit_landings",
@@ -111,6 +168,8 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_view_settings"
   ],
   support: [
+    ...permissionsForGroups(["orders", "customers"], ["view", "edit"]),
+    ...permissionsForGroups(["analytics", "reviews", "settings"], ["view"]),
     "can_view_overview",
     "view_orders",
     "can_view_orders",
@@ -120,13 +179,19 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
     "can_view_settings"
   ],
   billing_manager: [
+    ...permissionsForGroups(["analytics", "settings"], ["view"]),
     "manage_billing",
     "can_manage_billing",
     "can_manage_payments",
     "can_view_notifications",
     "can_view_settings"
   ],
-  viewer: ["can_view_overview", "can_view_notifications", "can_view_settings"]
+  viewer: [
+    ...permissionsForGroups(["analytics", "settings"], ["view"]),
+    "can_view_overview",
+    "can_view_notifications",
+    "can_view_settings"
+  ]
 };
 
 export const dashboardRoutePermissions = [
@@ -135,41 +200,41 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/landings", label: "Landings", icon: "landings", permission: "can_view_landings" },
   { href: "/dashboard/stores/new", label: "New store", icon: "stores", permission: "can_edit_stores", showInSidebar: false },
   { href: "/dashboard/stores", label: "Stores", icon: "stores", permission: "can_view_stores" },
-  { href: "/dashboard/theme-customize", label: "Theme Customize", icon: "templates", permission: "can_edit_stores" },
-  { href: "/dashboard/homepage", label: "Homepage", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/navigation", label: "Navigation", icon: "navigation", permission: "can_edit_stores" },
-  { href: "/dashboard/pages", label: "Pages", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/about", label: "About Us", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/legal-pages", label: "Legal Pages", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/footer-links", label: "Footer Links", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/contact", label: "Contact", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/blog", label: "Blog / Articles", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/faq", label: "FAQ", icon: "pages", permission: "can_edit_stores" },
-  { href: "/dashboard/products", label: "Products", icon: "products", permission: "can_edit_stores" },
-  { href: "/dashboard/categories", label: "Categories", icon: "products", permission: "manage_products" },
-  { href: "/dashboard/back-in-stock", label: "Back in stock", icon: "products", permission: "manage_products" },
-  { href: "/dashboard/product-qa", label: "Product Q&A", icon: "products", permission: "manage_products" },
-  { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "can_view_orders" },
-  { href: "/dashboard/abandoned-carts", label: "Abandoned carts", icon: "orders", permission: "can_view_orders" },
-  { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "can_view_customers" },
-  { href: "/dashboard/reviews", label: "Reviews", icon: "customers", permission: "manage_products" },
-  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "view_analytics" },
-  { href: "/dashboard/monitoring", label: "Monitoring", icon: "monitoring", permission: "view_analytics" },
+  { href: "/dashboard/theme-customize", label: "Theme Customize", icon: "templates", permission: "settings.edit" },
+  { href: "/dashboard/homepage", label: "Homepage", icon: "pages", permission: "settings.edit" },
+  { href: "/dashboard/navigation", label: "Navigation", icon: "navigation", permission: "settings.edit" },
+  { href: "/dashboard/pages", label: "Pages", icon: "pages", permission: "pages.view" },
+  { href: "/dashboard/about", label: "About Us", icon: "pages", permission: "pages.view" },
+  { href: "/dashboard/legal-pages", label: "Legal Pages", icon: "pages", permission: "pages.view" },
+  { href: "/dashboard/footer-links", label: "Footer Links", icon: "pages", permission: "pages.view" },
+  { href: "/dashboard/contact", label: "Contact", icon: "pages", permission: "contact.view" },
+  { href: "/dashboard/blog", label: "Blog / Articles", icon: "pages", permission: "blog.view" },
+  { href: "/dashboard/faq", label: "FAQ", icon: "pages", permission: "faq.view" },
+  { href: "/dashboard/products", label: "Products", icon: "products", permission: "products.view" },
+  { href: "/dashboard/categories", label: "Categories", icon: "products", permission: "products.view" },
+  { href: "/dashboard/back-in-stock", label: "Back in stock", icon: "products", permission: "products.view" },
+  { href: "/dashboard/product-qa", label: "Product Q&A", icon: "products", permission: "reviews.view" },
+  { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "orders.view" },
+  { href: "/dashboard/abandoned-carts", label: "Abandoned carts", icon: "orders", permission: "orders.view" },
+  { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "customers.view" },
+  { href: "/dashboard/reviews", label: "Reviews", icon: "customers", permission: "reviews.view" },
+  { href: "/dashboard/analytics", label: "Analytics", icon: "analytics", permission: "analytics.view" },
+  { href: "/dashboard/monitoring", label: "Monitoring", icon: "monitoring", permission: "analytics.view" },
   { href: "/dashboard/support", label: "Support", icon: "support", permission: "can_view_notifications" },
   { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "can_manage_payments" },
   { href: "/dashboard/tax", label: "Tax", icon: "payments", permission: "can_manage_payments" },
-  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "can_manage_shipping" },
+  { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "shipping.view" },
   { href: "/dashboard/templates/studio", label: "Template studio", icon: "templates", permission: "can_edit_templates", showInSidebar: false },
   { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
   { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },
-  { href: "/dashboard/team", label: "Team", icon: "team", permission: "can_manage_team" },
+  { href: "/dashboard/team", label: "Team", icon: "team", permission: "team.view" },
   { href: "/dashboard/billing", label: "Billing", icon: "billing", permission: "can_manage_billing" },
   { href: "/dashboard/reseller", label: "Reseller", icon: "stores", permission: "can_manage_billing", showInSidebar: false },
   { href: "/dashboard/projects", label: "Projects", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
   { href: "/dashboard/notifications", label: "Notifications", icon: "notifications", permission: "can_view_notifications" },
   { href: "/dashboard/email", label: "Email", icon: "notifications", permission: "can_view_notifications" },
-  { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "can_manage_shipping", showInSidebar: false },
-  { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "can_view_settings" }
+  { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "settings.edit", showInSidebar: false },
+  { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "settings.view" }
 ] as const satisfies ReadonlyArray<{
   href: string;
   icon: string;
@@ -228,9 +293,54 @@ function isWorkspaceRole(value: string | null | undefined): value is WorkspaceRo
 
 export function hasPermission(
   role: WorkspaceRole | null | undefined,
-  permission: WorkspacePermission
+  permission: WorkspacePermission,
+  overrides?: PermissionOverrides | null
 ) {
-  return Boolean(role && rolePermissions[role]?.includes(permission));
+  if (!role) {
+    return false;
+  }
+
+  if (role === "owner") {
+    return true;
+  }
+
+  const defaults = rolePermissions[role] ?? [];
+  const aliases = legacyPermissionAliases[permission as LegacyWorkspacePermission] ?? [];
+  const defaultAllowed =
+    defaults.includes(permission) || aliases.some((alias) => defaults.includes(alias));
+
+  if (!defaultAllowed) {
+    return false;
+  }
+
+  const granularPermission =
+    permission.includes(".") ? (permission as GranularPermission) : aliases[0] ?? null;
+
+  if (granularPermission && overrides?.[granularPermission] === false) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizePermissionOverrides(value: unknown): PermissionOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const input = value as Record<string, unknown>;
+  const overrides: PermissionOverrides = {};
+
+  for (const group of permissionGroups) {
+    for (const action of permissionActions) {
+      const permission = `${group}.${action}` as GranularPermission;
+      if (typeof input[permission] === "boolean") {
+        overrides[permission] = input[permission];
+      }
+    }
+  }
+
+  return overrides;
 }
 
 export async function getUserWorkspaceRole(
@@ -245,7 +355,7 @@ export async function getUserWorkspaceRole(
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("role, status")
+    .select("role, status, permission_overrides")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -259,7 +369,11 @@ export async function getUserWorkspaceRole(
     return null;
   }
 
-  const membership = data as { role?: string | null; status?: string | null } | null;
+  const membership = data as {
+    permission_overrides?: unknown;
+    role?: string | null;
+    status?: string | null;
+  } | null;
   const status = membership?.status ?? "active";
   if (status !== "active") {
     console.warn("[rbac] inactive workspace role blocked", {
@@ -294,7 +408,8 @@ export async function requirePermission({
   workspaceId: string;
 }) {
   const role = await getUserWorkspaceRole(supabase, workspaceId, userId);
-  const allowed = hasPermission(role, permission);
+  const overrides = await getUserWorkspacePermissionOverrides(supabase, workspaceId, userId);
+  const allowed = hasPermission(role, permission, overrides);
 
   if (!allowed) {
     console.warn("[permission-denied] workspace permission denied", {
@@ -314,6 +429,47 @@ export async function requirePermission({
   });
 
   return { role };
+}
+
+export async function getUserWorkspacePermissionOverrides(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string
+): Promise<PermissionOverrides> {
+  if (workspaceId === userId) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("workspace_members" as never)
+    .select("permission_overrides")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[rbac] permission overrides lookup failed", {
+      message: error.message,
+      userId,
+      workspaceId
+    });
+  }
+
+  return normalizePermissionOverrides(
+    (data as { permission_overrides?: unknown } | null)?.permission_overrides
+  );
+}
+
+export function resolveRolePermissionState(
+  role: WorkspaceRole,
+  overrides?: PermissionOverrides | null
+) {
+  return Object.fromEntries(
+    allGranularPermissions.map((permission) => [
+      permission,
+      hasPermission(role, permission, overrides)
+    ])
+  ) as Record<GranularPermission, boolean>;
 }
 
 export async function getUserPrimaryWorkspaceId(supabase: SupabaseClient, userId: string) {

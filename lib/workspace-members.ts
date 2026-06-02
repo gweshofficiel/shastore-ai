@@ -11,7 +11,16 @@ import {
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
 import { getPublicUrl } from "@/lib/deployment/config";
-import { hasPermission, requirePermission, type WorkspaceRole } from "@/lib/permissions/rbac";
+import {
+  hasPermission,
+  permissionActions,
+  permissionGroups,
+  requirePermission,
+  resolveRolePermissionState,
+  type GranularPermission,
+  type PermissionOverrides,
+  type WorkspaceRole
+} from "@/lib/permissions/rbac";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -23,6 +32,7 @@ export type WorkspaceMember = {
   created_at: string;
   id: string;
   invited_by: string | null;
+  permission_overrides: PermissionOverrides;
   role: WorkspaceRole;
   status: WorkspaceMemberStatus;
   user_id: string;
@@ -66,6 +76,42 @@ function normalizeMemberStatus(value: FormDataEntryValue | string | null) {
   return manageableStatuses.has(value as WorkspaceMemberStatus)
     ? (value as WorkspaceMemberStatus)
     : "active";
+}
+
+function normalizePermissionOverrides(value: unknown): PermissionOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const input = value as Record<string, unknown>;
+  const overrides: PermissionOverrides = {};
+
+  for (const group of permissionGroups) {
+    for (const action of permissionActions) {
+      const permission = `${group}.${action}` as GranularPermission;
+      if (typeof input[permission] === "boolean") {
+        overrides[permission] = input[permission];
+      }
+    }
+  }
+
+  return overrides;
+}
+
+function permissionOverridesFromForm(role: WorkspaceRole, formData: FormData): PermissionOverrides {
+  const defaults = resolveRolePermissionState(role);
+  const overrides: PermissionOverrides = {};
+
+  for (const group of permissionGroups) {
+    for (const action of permissionActions) {
+      const permission = `${group}.${action}` as GranularPermission;
+      if (defaults[permission] && formData.get(permission) !== "on") {
+        overrides[permission] = false;
+      }
+    }
+  }
+
+  return overrides;
 }
 
 function hashInviteToken(token: string) {
@@ -178,7 +224,7 @@ export async function canManageWorkspace(
 
   const { data, error } = await supabase
     .from("workspace_members" as never)
-    .select("role, status")
+    .select("role, status, permission_overrides")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -186,7 +232,10 @@ export async function canManageWorkspace(
   const role = (data as { role?: WorkspaceRole | null } | null)?.role ?? null;
   const status =
     (data as { status?: WorkspaceMemberStatus | null } | null)?.status ?? "active";
-  const allowed = status === "active" && hasPermission(role, "manage_team");
+  const overrides = normalizePermissionOverrides(
+    (data as { permission_overrides?: unknown } | null)?.permission_overrides
+  );
+  const allowed = status === "active" && hasPermission(role, "team.edit", overrides);
 
   console.info("[workspace-access] manage workspace checked", {
     allowed,
@@ -198,6 +247,39 @@ export async function canManageWorkspace(
 
   if (error) {
     console.warn("[workspace-access] manage lookup failed", {
+      message: error.message,
+      userId,
+      workspaceId
+    });
+  }
+
+  return { allowed, role };
+}
+
+export async function canViewWorkspaceTeam(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string
+) {
+  await ensurePersonalWorkspaceOwnerMembership(supabase, workspaceId, userId);
+
+  const { data, error } = await supabase
+    .from("workspace_members" as never)
+    .select("role, status, permission_overrides")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const role = (data as { role?: WorkspaceRole | null } | null)?.role ?? null;
+  const status =
+    (data as { status?: WorkspaceMemberStatus | null } | null)?.status ?? "active";
+  const overrides = normalizePermissionOverrides(
+    (data as { permission_overrides?: unknown } | null)?.permission_overrides
+  );
+  const allowed = status === "active" && hasPermission(role, "team.view", overrides);
+
+  if (error) {
+    console.warn("[workspace-access] team view lookup failed", {
       message: error.message,
       userId,
       workspaceId
@@ -222,7 +304,7 @@ export async function getWorkspaceMembers(
 
   let membersResult = await supabase
     .from("workspace_members" as never)
-    .select("id, workspace_id, user_id, role, status, invited_by, created_at")
+    .select("id, workspace_id, user_id, role, status, permission_overrides, invited_by, created_at")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true });
 
@@ -248,6 +330,7 @@ export async function getWorkspaceMembers(
   const membersError = membersResult.error;
   let visibleMembers = members.map((member) => ({
     ...member,
+    permission_overrides: normalizePermissionOverrides(member.permission_overrides),
     status: normalizeMemberStatus(member.status ?? "active")
   }));
   const admin = createAdminClient();
@@ -283,7 +366,7 @@ export async function getWorkspaceMembers(
 
         const { data: roster, error: rosterError } = await admin
           .from("workspace_members" as never)
-          .select("id, workspace_id, user_id, role, status, invited_by, created_at")
+          .select("id, workspace_id, user_id, role, status, permission_overrides, invited_by, created_at")
           .eq("workspace_id", workspaceId)
           .order("created_at", { ascending: true });
 
@@ -291,6 +374,7 @@ export async function getWorkspaceMembers(
           visibleMembers = (roster as Array<WorkspaceMember & { status?: WorkspaceMemberStatus | null }>).map(
             (member) => ({
               ...member,
+              permission_overrides: normalizePermissionOverrides(member.permission_overrides),
               status: normalizeMemberStatus(member.status ?? "active")
             })
           );
@@ -662,7 +746,7 @@ export async function changeMemberRole(formData: FormData) {
 
   const { error } = await client
     .from("workspace_members" as never)
-    .update({ role: nextRole } as never)
+    .update({ permission_overrides: {}, role: nextRole } as never)
     .eq("id", memberId)
     .eq("workspace_id", workspaceId)
     .neq("role", "owner");
@@ -689,6 +773,84 @@ export async function changeMemberRole(formData: FormData) {
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("member-role-updated", workspaceId);
+}
+
+export async function saveMemberPermissions(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/team");
+  }
+
+  const workspaceId = String(formData.get("workspaceId") ?? user.id);
+  const memberId = String(formData.get("memberId") ?? "");
+
+  await requireActiveWorkspaceManagement(supabase, workspaceId, user.id, "role-change");
+
+  const admin = createAdminClient();
+  const client = admin ?? supabase;
+  const { data: targetMember, error: targetError } = await client
+    .from("workspace_members" as never)
+    .select("id, workspace_id, user_id, role")
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (targetError || !targetMember) {
+    console.warn("[team-member-permissions] target lookup failed", {
+      memberId,
+      message: targetError?.message ?? "Member not found",
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member could not be found.");
+  }
+
+  const target = targetMember as {
+    id: string;
+    role: WorkspaceRole;
+    user_id: string;
+    workspace_id: string;
+  };
+
+  if (target.role === "owner") {
+    teamWorkspaceRedirect("error", workspaceId, "Workspace owner permissions cannot be changed from Team.");
+  }
+
+  const overrides = permissionOverridesFromForm(target.role, formData);
+  const { error } = await client
+    .from("workspace_members" as never)
+    .update({ permission_overrides: overrides } as never)
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .neq("role", "owner");
+
+  if (error) {
+    console.warn("[team-member-permissions] update failed", {
+      memberId,
+      message: error.message,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Member permissions could not be updated.");
+  }
+
+  console.info("[team-member-permissions] permissions updated", {
+    deniedCount: Object.values(overrides).filter((value) => value === false).length,
+    memberId,
+    targetRole: target.role,
+    targetUserId: target.user_id,
+    userId: user.id,
+    workspaceId
+  });
+
+  revalidatePath("/dashboard/team");
+  teamWorkspaceRedirect("member-permissions-updated", workspaceId);
 }
 
 export async function changeMemberStatus(formData: FormData) {

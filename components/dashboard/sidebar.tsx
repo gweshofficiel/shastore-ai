@@ -7,7 +7,11 @@ import {
   getActiveWorkspaceForUser,
   switchActiveWorkspace
 } from "@/lib/workspaces/active-workspace";
-import { dashboardRoutePermissions, hasPermission } from "@/lib/permissions/rbac";
+import {
+  dashboardRoutePermissions,
+  getUserWorkspacePermissionOverrides,
+  hasPermission
+} from "@/lib/permissions/rbac";
 
 async function getUnreadNotificationCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -44,6 +48,10 @@ export async function Sidebar() {
     data: { user }
   } = await supabase.auth.getUser();
   const selection = user ? await getActiveWorkspaceForUser({ supabase, userId: user.id }) : null;
+  const permissionOverrides =
+    user && selection
+      ? await getUserWorkspacePermissionOverrides(supabase, selection.activeWorkspaceId, user.id)
+      : {};
   const unreadNotifications =
     user && selection
       ? await getUnreadNotificationCount(supabase, user.id, selection.activeWorkspaceId)
@@ -68,7 +76,7 @@ export async function Sidebar() {
             .filter(
               (item) =>
                 (!("showInSidebar" in item) || item.showInSidebar !== false) &&
-                hasPermission(selection?.activeWorkspaceRole, item.permission)
+                hasPermission(selection?.activeWorkspaceRole, item.permission, permissionOverrides)
             )
             .map((item) => {
             return (
