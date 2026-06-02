@@ -4,6 +4,7 @@ import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import { requestOrderRefundAction } from "@/lib/refund-request-actions";
 import { requestOrderReturnAction } from "@/lib/return-request-actions";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,6 +20,7 @@ type PublicOrderTrackingPageProps = {
     phone?: string;
     reference?: string;
     review?: string;
+    refunds?: string;
     returns?: string;
   }>;
 };
@@ -30,6 +32,15 @@ type TrackingItem = {
 };
 
 type ReturnRequest = {
+  created_at: string;
+  id: string;
+  notes: string | null;
+  reason: string;
+  status: string;
+};
+
+type RefundRequest = {
+  amount_requested: number | string;
   created_at: string;
   id: string;
   notes: string | null;
@@ -113,6 +124,18 @@ function returnMessage(status: string | undefined) {
     invalid: "Choose a return reason before submitting.",
     "not-authorized": "We could not verify this order for that phone number.",
     requested: "Return request submitted."
+  };
+
+  return status ? messages[status] : null;
+}
+
+function refundMessage(status: string | undefined) {
+  const messages: Record<string, string> = {
+    duplicate: "A refund request already exists for this order.",
+    failed: "Refund request could not be submitted. Please try again.",
+    invalid: "Enter a valid refund reason and amount.",
+    "not-authorized": "We could not verify this order for that phone number.",
+    requested: "Refund request submitted."
   };
 
   return status ? messages[status] : null;
@@ -264,6 +287,43 @@ async function loadCustomerReturnRequests({
   return (data ?? []) as unknown as ReturnRequest[];
 }
 
+async function loadCustomerRefundRequests({
+  admin,
+  orderId,
+  phone,
+  source,
+  storeId,
+  workspaceId
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  orderId: string;
+  phone: string;
+  source: "orders" | "store_orders";
+  storeId: string;
+  workspaceId: string | null;
+}) {
+  let query = admin
+    .from("store_refund_requests" as never)
+    .select("id, reason, amount_requested, notes, status, created_at")
+    .eq("store_id" as never, storeId as never)
+    .eq("order_source" as never, source as never)
+    .eq("order_id" as never, orderId as never)
+    .eq("customer_phone" as never, phone as never)
+    .order("created_at" as never, { ascending: false } as never);
+
+  if (workspaceId) {
+    query = query.eq("workspace_id" as never, workspaceId as never);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as unknown as RefundRequest[];
+}
+
 async function loadTrackedOrder({
   phone,
   reference,
@@ -358,6 +418,14 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const refundRequests = await loadCustomerRefundRequests({
+      admin,
+      orderId: order.id,
+      phone: order.customer_phone,
+      source: "orders",
+      storeId: preview.store.id,
+      workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -375,6 +443,7 @@ async function loadTrackedOrder({
         items,
         order_status: order.order_status ?? "draft",
         payment_status: order.payment_status ?? "pending",
+        refund_requests: refundRequests,
         return_requests: returnRequests,
         source: "orders" as const,
         store_id: preview.store.id,
@@ -429,6 +498,14 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const refundRequests = await loadCustomerRefundRequests({
+      admin,
+      orderId: storeOrder.id,
+      phone: storeOrder.customer_phone ?? phone,
+      source: "store_orders",
+      storeId: preview.store.id,
+      workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -446,6 +523,7 @@ async function loadTrackedOrder({
         items: parseStoreOrderItems(storeOrder.items),
         order_status: storeOrder.order_status ?? "draft",
         payment_status: storeOrder.payment_status ?? "pending",
+        refund_requests: refundRequests,
         return_requests: returnRequests,
         source: "store_orders" as const,
         store_id: preview.store.id,
@@ -509,6 +587,7 @@ export default async function PublicOrderTrackingPage({
       })
     : new Map<string, string>();
   const reviewStatusMessage = reviewMessage(query.review);
+  const refundStatusMessage = refundMessage(query.refunds);
   const returnStatusMessage = returnMessage(query.returns);
   const returnTo = `/store/${slug}/track?reference=${encodeURIComponent(reference)}&phone=${encodeURIComponent(phone)}`;
 
@@ -652,6 +731,15 @@ export default async function PublicOrderTrackingPage({
                   {returnStatusMessage}
                 </div>
               ) : null}
+              {refundStatusMessage ? (
+                <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
+                  query.refunds === "requested" || query.refunds === "duplicate"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  {refundStatusMessage}
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -725,6 +813,46 @@ export default async function PublicOrderTrackingPage({
                   </div>
                 ) : (
                   <ReturnRequestForm
+                    orderId={order.id}
+                    phone={phone}
+                    returnTo={returnTo}
+                    source={order.source}
+                  />
+                )}
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Refund request
+                </p>
+                {order.refund_requests.length ? (
+                  <div className="mt-4 grid gap-3">
+                    {order.refund_requests.map((request) => (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={request.id}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-black text-ink">{request.reason}</p>
+                            <p className="mt-1 text-sm font-bold text-muted">
+                              Requested {formatMoney(request.amount_requested, order.currency)}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+                            {request.status}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs font-bold text-slate-400">
+                          Requested {formatDate(request.created_at)}
+                        </p>
+                        {request.notes ? (
+                          <p className="mt-2 text-sm font-semibold leading-6 text-muted">{request.notes}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <RefundRequestForm
+                    currency={order.currency}
+                    defaultAmount={numericValue(order.total)}
                     orderId={order.id}
                     phone={phone}
                     returnTo={returnTo}
@@ -831,6 +959,68 @@ function ReturnRequestForm({
       </button>
       <p className="text-xs font-semibold leading-5 text-muted">
         The seller will review your request before approving or rejecting the return.
+      </p>
+    </form>
+  );
+}
+
+function RefundRequestForm({
+  currency,
+  defaultAmount,
+  orderId,
+  phone,
+  returnTo,
+  source
+}: {
+  currency: string;
+  defaultAmount: number;
+  orderId: string;
+  phone: string;
+  returnTo: string;
+  source: "orders" | "store_orders";
+}) {
+  return (
+    <form action={requestOrderRefundAction} className="mt-4 grid gap-3">
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="phone" type="hidden" value={phone} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="source" type="hidden" value={source} />
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Reason</span>
+        <select className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none" name="reason" required>
+          <option value="">Choose reason</option>
+          <option value="Order was cancelled">Order was cancelled</option>
+          <option value="Item returned">Item returned</option>
+          <option value="Item not received">Item not received</option>
+          <option value="Incorrect charge">Incorrect charge</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Amount requested ({currency})</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={defaultAmount > 0 ? defaultAmount.toFixed(2) : ""}
+          min="0"
+          name="amountRequested"
+          required
+          step="0.01"
+          type="number"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Notes optional</span>
+        <textarea
+          className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          name="notes"
+          placeholder="Tell the seller why you are requesting a refund."
+        />
+      </label>
+      <button className="h-11 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800" type="submit">
+        Request refund
+      </button>
+      <p className="text-xs font-semibold leading-5 text-muted">
+        Refunds are reviewed manually. This does not trigger an automatic payment refund.
       </p>
     </form>
   );
