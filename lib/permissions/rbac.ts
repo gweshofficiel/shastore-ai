@@ -236,6 +236,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/shipping", label: "Shipping", icon: "shipping", permission: "shipping.view" },
   { href: "/dashboard/shipping-profiles", label: "Shipping Profiles", icon: "shipping", permission: "shipping.view" },
   { href: "/dashboard/shipping-zones", label: "Shipping Zones", icon: "shipping", permission: "shipping.view" },
+  { href: "/dashboard/shipping-rates", label: "Shipping Rates", icon: "shipping", permission: "shipping.view" },
   { href: "/dashboard/templates/studio", label: "Template studio", icon: "templates", permission: "can_edit_templates", showInSidebar: false },
   { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
   { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },

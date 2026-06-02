@@ -18,7 +18,35 @@ export type PublicShippingMethod = {
     name: string;
     preparationDays: number | null;
   } | null;
+  rates: PublicShippingRate[];
   type: "express" | "local_delivery" | "local_pickup" | "standard";
+};
+
+export type PublicShippingRate = {
+  currency: string;
+  id: string;
+  maxOrderAmount: number | null;
+  maxWeight: number | null;
+  minOrderAmount: number | null;
+  minWeight: number | null;
+  name: string;
+  price: number;
+  profileId: string;
+  type: "flat_rate" | "free_shipping" | "order_amount" | "weight_based";
+  zone: {
+    cities: string[];
+    country: string;
+    id: string;
+    name: string;
+    regions: string[];
+  };
+};
+
+export type ShippingRateMatch = {
+  message: string | null;
+  rate: PublicShippingRate | null;
+  shippingAmount: number;
+  unavailable: boolean;
 };
 
 type ShippingMethodRow = {
@@ -55,6 +83,35 @@ type ShippingProfileRow = {
   status?: string | null;
 };
 
+type ShippingRateRow = {
+  currency?: string | null;
+  enabled?: boolean | null;
+  id: string;
+  max_order_amount?: number | string | null;
+  max_weight?: number | string | null;
+  min_order_amount?: number | string | null;
+  min_weight?: number | string | null;
+  price?: number | string | null;
+  profile_id?: string | null;
+  rate_name?: string | null;
+  rate_type?: string | null;
+  status?: string | null;
+  zone_id?: string | null;
+};
+
+type ShippingZoneRow = {
+  cities?: unknown;
+  city?: string | null;
+  country?: string | null;
+  enabled?: boolean | null;
+  id: string;
+  profile_id?: string | null;
+  region?: string | null;
+  regions?: unknown;
+  status?: string | null;
+  zone_name?: string | null;
+};
+
 function numberValue(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -68,6 +125,28 @@ function numberValue(value: unknown) {
   return null;
 }
 
+function textList(value: unknown, fallback?: string | null) {
+  const values = Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+
+  if (!values.length && fallback?.trim()) {
+    values.push(fallback.trim());
+  }
+
+  return values;
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function rateType(value: string | null | undefined): PublicShippingRate["type"] {
+  return value === "free_shipping" || value === "order_amount" || value === "weight_based"
+    ? value
+    : "flat_rate";
+}
+
 function isActiveShippingMethod(row: ShippingMethodRow) {
   if (row.status) {
     return row.status === "active";
@@ -76,7 +155,37 @@ function isActiveShippingMethod(row: ShippingMethodRow) {
   return row.enabled !== false;
 }
 
-function normalizeShippingMethod(row: ShippingMethodRow, profile: ShippingProfileRow | null = null): PublicShippingMethod | null {
+function normalizeRate(row: ShippingRateRow, zone: ShippingZoneRow | null): PublicShippingRate | null {
+  if (!zone || row.enabled === false || row.status === "inactive" || zone.enabled === false || zone.status === "inactive") {
+    return null;
+  }
+
+  return {
+    currency: row.currency?.trim() || "USD",
+    id: row.id,
+    maxOrderAmount: numberValue(row.max_order_amount),
+    maxWeight: numberValue(row.max_weight),
+    minOrderAmount: numberValue(row.min_order_amount),
+    minWeight: numberValue(row.min_weight),
+    name: row.rate_name?.trim() || "Shipping rate",
+    price: rateType(row.rate_type) === "free_shipping" ? 0 : numberValue(row.price) ?? 0,
+    profileId: row.profile_id ?? "",
+    type: rateType(row.rate_type),
+    zone: {
+      cities: textList(zone.cities, zone.city),
+      country: zone.country?.trim() || "Country",
+      id: zone.id,
+      name: zone.zone_name?.trim() || `${zone.country ?? "Shipping"} zone`,
+      regions: textList(zone.regions, zone.region)
+    }
+  };
+}
+
+function normalizeShippingMethod(
+  row: ShippingMethodRow,
+  profile: ShippingProfileRow | null = null,
+  ratesByProfileId = new Map<string, PublicShippingRate[]>()
+): PublicShippingMethod | null {
   if (!isActiveShippingMethod(row)) {
     return null;
   }
@@ -114,14 +223,108 @@ function normalizeShippingMethod(row: ShippingMethodRow, profile: ShippingProfil
         preparationDays: numberValue(profile.preparation_days)
       }
       : null,
+    rates: row.profile_id ? ratesByProfileId.get(row.profile_id) ?? [] : [],
     type
   };
 }
 
-function normalizeShippingMethods(rows: ShippingMethodRow[], profilesById = new Map<string, ShippingProfileRow>()) {
+function normalizeShippingMethods(
+  rows: ShippingMethodRow[],
+  profilesById = new Map<string, ShippingProfileRow>(),
+  ratesByProfileId = new Map<string, PublicShippingRate[]>()
+) {
   return rows
-    .map((row) => normalizeShippingMethod(row, row.profile_id ? profilesById.get(row.profile_id) ?? null : null))
+    .map((row) => normalizeShippingMethod(
+      row,
+      row.profile_id ? profilesById.get(row.profile_id) ?? null : null,
+      ratesByProfileId
+    ))
     .filter((method): method is PublicShippingMethod => Boolean(method));
+}
+
+function addressMatchesZone(addressText: string, zone: PublicShippingRate["zone"]) {
+  const normalizedAddress = normalizeText(addressText);
+
+  if (!normalizedAddress) {
+    return false;
+  }
+
+  const candidates = [zone.country, zone.name, ...zone.regions, ...zone.cities]
+    .map(normalizeText)
+    .filter(Boolean);
+
+  return candidates.some((candidate) => normalizedAddress.includes(candidate));
+}
+
+function amountMatches(rate: PublicShippingRate, subtotalAmount: number) {
+  return (
+    (rate.minOrderAmount == null || subtotalAmount >= rate.minOrderAmount) &&
+    (rate.maxOrderAmount == null || subtotalAmount <= rate.maxOrderAmount)
+  );
+}
+
+function weightMatches(rate: PublicShippingRate, totalWeight: number | null) {
+  if (rate.type !== "weight_based") {
+    return true;
+  }
+
+  if (totalWeight == null) {
+    return false;
+  }
+
+  return (
+    (rate.minWeight == null || totalWeight >= rate.minWeight) &&
+    (rate.maxWeight == null || totalWeight <= rate.maxWeight)
+  );
+}
+
+export function matchPublicShippingRate({
+  addressText,
+  method,
+  subtotalAmount,
+  totalWeight = null
+}: {
+  addressText: string;
+  method: PublicShippingMethod | null;
+  subtotalAmount: number;
+  totalWeight?: number | null;
+}): ShippingRateMatch {
+  if (!method) {
+    return { message: null, rate: null, shippingAmount: 0, unavailable: false };
+  }
+
+  if (!method.rates.length) {
+    const thresholdReached = method.freeShippingThreshold != null && subtotalAmount >= method.freeShippingThreshold;
+
+    return {
+      message: null,
+      rate: null,
+      shippingAmount: thresholdReached ? 0 : method.fee,
+      unavailable: false
+    };
+  }
+
+  const matchingRate = method.rates.find((rate) =>
+    addressMatchesZone(addressText, rate.zone) &&
+    amountMatches(rate, subtotalAmount) &&
+    weightMatches(rate, totalWeight)
+  ) ?? null;
+
+  if (!matchingRate) {
+    return {
+      message: "Shipping is not available for this address.",
+      rate: null,
+      shippingAmount: 0,
+      unavailable: true
+    };
+  }
+
+  return {
+    message: null,
+    rate: matchingRate,
+    shippingAmount: matchingRate.type === "free_shipping" ? 0 : matchingRate.price,
+    unavailable: false
+  };
 }
 
 export async function getPublicShippingMethodsForStore(storeId: string) {
@@ -175,6 +378,41 @@ export async function getPublicShippingMethodsForStore(storeId: string) {
       profilesById.set(profile.id, profile);
     }
   }
+  const { data: zoneRows } = profileIds.length
+    ? await admin
+      .from("shipping_zones" as never)
+      .select("id, zone_name, country, regions, cities, region, city, profile_id, enabled, status")
+      .eq("store_id" as never, storeId as never)
+      .in("profile_id" as never, profileIds as never)
+    : { data: [] };
+  const zonesById = new Map<string, ShippingZoneRow>();
+
+  for (const zone of (zoneRows ?? []) as unknown as ShippingZoneRow[]) {
+    zonesById.set(zone.id, zone);
+  }
+
+  const { data: rateRows } = profileIds.length
+    ? await admin
+      .from("shipping_rates" as never)
+      .select("id, rate_name, rate_type, price, currency, min_order_amount, max_order_amount, min_weight, max_weight, profile_id, zone_id, enabled, status, sort_order")
+      .eq("store_id" as never, storeId as never)
+      .eq("enabled" as never, true as never)
+      .eq("status" as never, "active" as never)
+      .in("profile_id" as never, profileIds as never)
+      .order("sort_order" as never, { ascending: true } as never)
+      .order("created_at" as never, { ascending: true } as never)
+    : { data: [] };
+  const ratesByProfileId = new Map<string, PublicShippingRate[]>();
+
+  for (const row of (rateRows ?? []) as unknown as ShippingRateRow[]) {
+    const rate = normalizeRate(row, row.zone_id ? zonesById.get(row.zone_id) ?? null : null);
+
+    if (!rate || !row.profile_id) {
+      continue;
+    }
+
+    ratesByProfileId.set(row.profile_id, [...(ratesByProfileId.get(row.profile_id) ?? []), rate]);
+  }
 
   const ownerUserId = store.owner_user_id ?? store.user_id;
   const { data: legacyMethods } = await admin
@@ -195,7 +433,7 @@ export async function getPublicShippingMethodsForStore(storeId: string) {
     merged.set(method.id, method);
   }
 
-  return normalizeShippingMethods([...merged.values()], profilesById);
+  return normalizeShippingMethods([...merged.values()], profilesById, ratesByProfileId);
 }
 
 export async function getPublicShippingMethodForStore({

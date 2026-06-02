@@ -6,7 +6,7 @@ import {
   createPublicStoreOrderDraftAction,
   type PublicStoreOrderState
 } from "@/lib/store-order-actions";
-import type { PublicShippingMethod } from "@/lib/public-shipping-methods";
+import { matchPublicShippingRate, type PublicShippingMethod } from "@/lib/public-shipping-methods";
 import { calculateCheckoutFinancials, type PublicTaxSettings } from "@/lib/checkout-financials";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import type {
@@ -946,15 +946,18 @@ export function CartPageClient({
   const needsShippingAddress = hasPhysicalShippingItems(items, productsById);
   const total = useMemo(() => cartTotal(items), [items]);
   const discountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
+  const rateSubtotal = Math.max(0, total - discountAmount);
   const selectedShippingMethod =
     shippingMethods.find((method) => method.id === shippingMethodId) ?? null;
-  const shippingThresholdReached =
-    selectedShippingMethod?.freeShippingThreshold != null &&
-    Math.max(0, total - discountAmount) >= selectedShippingMethod.freeShippingThreshold;
+  const selectedShippingRateMatch = matchPublicShippingRate({
+    addressText: customerAddress,
+    method: selectedShippingMethod,
+    subtotalAmount: rateSubtotal,
+    totalWeight: null
+  });
+  const shippingUnavailable = needsShippingAddress && selectedShippingRateMatch.unavailable;
   const selectedDeliveryFee = selectedShippingMethod
-    ? shippingThresholdReached
-      ? 0
-      : selectedShippingMethod.fee
+    ? selectedShippingRateMatch.shippingAmount
     : deliveryMethod === "delivery"
       ? deliverySettings.deliveryFee ?? 0
       : 0;
@@ -1582,6 +1585,16 @@ export function CartPageClient({
                 {selectedShippingMethod.deliveryNotes}
               </p>
             ) : null}
+            {selectedShippingRateMatch.rate ? (
+              <p className="mt-3 text-xs font-semibold leading-5 text-emerald-700">
+                Matched rate: {selectedShippingRateMatch.rate.name}
+              </p>
+            ) : null}
+            {shippingUnavailable ? (
+              <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800">
+                {selectedShippingRateMatch.message}
+              </p>
+            ) : null}
             <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
               The selected shipping method fee is included in your order total.
             </p>
@@ -1870,7 +1883,7 @@ export function CartPageClient({
           ) : null}
           <button
             className="h-12 rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={hasUnavailableItems || isDraftPending || draftState.ok || !paymentMethod}
+            disabled={hasUnavailableItems || isDraftPending || draftState.ok || !paymentMethod || shippingUnavailable}
             type="submit"
           >
             {isDraftPending

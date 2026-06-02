@@ -12,7 +12,11 @@ import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { assertUsageWithinLimits, billingEnforcementMessage } from "@/lib/billing/enforcement";
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { createClient } from "@/lib/supabase/server";
-import { getPublicShippingMethodForStore, type PublicShippingMethod } from "@/lib/public-shipping-methods";
+import {
+  getPublicShippingMethodForStore,
+  matchPublicShippingRate,
+  type PublicShippingMethod
+} from "@/lib/public-shipping-methods";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import {
   getEnabledPublicStorePaymentMethods,
@@ -1834,10 +1838,31 @@ export async function createPublicStoreOrderAction(
   }
 
   const deliveryFee = digitalSummary.hasPhysicalShippingItems && shippingMethod
-    ? shippingMethod.freeShippingThreshold != null && subtotal >= shippingMethod.freeShippingThreshold
-      ? 0
-      : shippingMethod.fee
+    ? matchPublicShippingRate({
+      addressText: customerAddress,
+      method: shippingMethod,
+      subtotalAmount: Math.max(0, subtotal - discountAmount),
+      totalWeight: null
+    }).shippingAmount
     : 0;
+  const shippingRateMatch = digitalSummary.hasPhysicalShippingItems && shippingMethod
+    ? matchPublicShippingRate({
+      addressText: customerAddress,
+      method: shippingMethod,
+      subtotalAmount: Math.max(0, subtotal - discountAmount),
+      totalWeight: null
+    })
+    : null;
+
+  if (shippingRateMatch?.unavailable) {
+    return {
+      error: shippingRateMatch.message ?? "Shipping is not available for this address.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
   const deliveryMethod =
     digitalSummary.hasPhysicalShippingItems && shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
@@ -1870,6 +1895,9 @@ export async function createPublicStoreOrderAction(
       shipping_method_id: shippingMethod?.id ?? null,
       shipping_method_name: shippingMethod?.name ?? null,
       shipping_method_type: shippingMethod?.type ?? null,
+      shipping_rate_id: shippingRateMatch?.rate?.id ?? null,
+      shipping_rate_name: shippingRateMatch?.rate?.name ?? null,
+      shipping_rate_type: shippingRateMatch?.rate?.type ?? null,
       subtotal_amount: financialBreakdown.subtotalAmount,
       shipping_amount: financialBreakdown.shippingAmount,
       taxable_amount: financialBreakdown.taxableAmount,
