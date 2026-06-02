@@ -48,6 +48,7 @@ export type WorkspaceInvite = {
   expires_at?: string | null;
   id: string;
   invited_by: string;
+  permission_overrides: PermissionOverrides;
   role: Exclude<WorkspaceRole, "owner">;
   status: "pending" | "accepted" | "revoked" | "expired";
   workspace_id: string;
@@ -322,7 +323,7 @@ export async function getWorkspaceMembers(
 
   const { data: invites, error: invitesError } = await supabase
     .from("workspace_invitations" as never)
-    .select("id, workspace_id, email, role, invited_by, status, expires_at, accepted_at, created_at")
+    .select("id, workspace_id, email, role, permission_overrides, invited_by, status, expires_at, accepted_at, created_at")
     .eq("workspace_id", workspaceId)
     .in("status" as never, ["pending", "revoked"] as never)
     .order("created_at", { ascending: false });
@@ -425,7 +426,10 @@ export async function getWorkspaceMembers(
   }
 
   return {
-    invites: (invites ?? []) as WorkspaceInvite[],
+    invites: ((invites ?? []) as Array<WorkspaceInvite & { permission_overrides?: unknown }>).map((invite) => ({
+      ...invite,
+      permission_overrides: normalizePermissionOverrides(invite.permission_overrides)
+    })),
     invitesError: invitesError?.message ?? null,
     members: visibleMembers,
     membersError: membersError?.message ?? null
@@ -464,6 +468,7 @@ export async function inviteMember(formData: FormData) {
   const workspaceId = String(formData.get("workspaceId") ?? user.id);
   const email = normalizeEmail(formData.get("email"));
   const role = normalizeRole(formData.get("role"));
+  const permissionOverrides = permissionOverridesFromForm(role, formData);
 
   if (!email || !email.includes("@")) {
     teamRedirect("error", "Enter a valid email address.");
@@ -544,6 +549,7 @@ export async function inviteMember(formData: FormData) {
       email,
       expires_at: expiresAt,
       invited_by: user.id,
+      permission_overrides: permissionOverrides,
       role,
       status: "pending",
       token_hash: tokenHash,
@@ -853,6 +859,79 @@ export async function saveMemberPermissions(formData: FormData) {
   teamWorkspaceRedirect("member-permissions-updated", workspaceId);
 }
 
+export async function saveInvitePermissions(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?next=/dashboard/team");
+  }
+
+  const workspaceId = String(formData.get("workspaceId") ?? user.id);
+  const inviteId = String(formData.get("inviteId") ?? "");
+
+  await requireActiveWorkspaceManagement(supabase, workspaceId, user.id, "role-change");
+
+  const admin = createAdminClient();
+  const client = admin ?? supabase;
+  const { data: targetInvite, error: targetError } = await client
+    .from("workspace_invitations" as never)
+    .select("id, workspace_id, email, role")
+    .eq("id", inviteId)
+    .eq("workspace_id", workspaceId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (targetError || !targetInvite) {
+    console.warn("[team-invite-permissions] target lookup failed", {
+      inviteId,
+      message: targetError?.message ?? "Invite not found",
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Invite could not be found.");
+  }
+
+  const invite = targetInvite as {
+    email: string;
+    id: string;
+    role: Exclude<WorkspaceRole, "owner">;
+    workspace_id: string;
+  };
+  const overrides = permissionOverridesFromForm(invite.role, formData);
+  const { error } = await client
+    .from("workspace_invitations" as never)
+    .update({ permission_overrides: overrides } as never)
+    .eq("id", inviteId)
+    .eq("workspace_id", workspaceId)
+    .eq("status", "pending");
+
+  if (error) {
+    console.warn("[team-invite-permissions] update failed", {
+      inviteId,
+      message: error.message,
+      userId: user.id,
+      workspaceId
+    });
+    teamWorkspaceRedirect("error", workspaceId, "Invite permissions could not be updated.");
+  }
+
+  console.info("[team-invite-permissions] permissions updated", {
+    deniedCount: Object.values(overrides).filter((value) => value === false).length,
+    email: invite.email,
+    inviteId,
+    userId: user.id,
+    workspaceId
+  });
+
+  revalidatePath("/dashboard/team");
+  teamWorkspaceRedirect("invite-permissions-updated", workspaceId);
+}
+
 export async function changeMemberStatus(formData: FormData) {
   "use server";
 
@@ -1053,6 +1132,7 @@ async function upsertWorkspaceMemberForInvite(
   userSupabase: SupabaseClient,
   invite: {
     invited_by: string;
+    permission_overrides?: PermissionOverrides | null;
     role: Exclude<WorkspaceRole, "owner">;
     workspace_id: string;
   },
@@ -1060,6 +1140,7 @@ async function upsertWorkspaceMemberForInvite(
 ) {
   const memberRow = {
     invited_by: invite.invited_by,
+    permission_overrides: normalizePermissionOverrides(invite.permission_overrides),
     role: invite.role,
     user_id: userId,
     workspace_id: invite.workspace_id
@@ -1150,7 +1231,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
 
   const { data, error } = await admin
     .from("workspace_invitations" as never)
-    .select("id, workspace_id, email, role, status, expires_at, invited_by, accepted_at")
+    .select("id, workspace_id, email, role, permission_overrides, status, expires_at, invited_by, accepted_at")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
@@ -1167,6 +1248,7 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     expires_at: string;
     id: string;
     invited_by: string;
+    permission_overrides?: PermissionOverrides | null;
     role: Exclude<WorkspaceRole, "owner">;
     status: string;
     workspace_id: string;
@@ -1235,7 +1317,11 @@ export async function acceptInviteToken(token: string, userId: string, userEmail
     if (member.status !== "active") {
       await admin
         .from("workspace_members" as never)
-        .update({ role: invite.role, status: "active" } as never)
+        .update({
+          permission_overrides: normalizePermissionOverrides(invite.permission_overrides),
+          role: invite.role,
+          status: "active"
+        } as never)
         .eq("id", member.id)
         .eq("workspace_id", invite.workspace_id)
         .neq("role", "owner");

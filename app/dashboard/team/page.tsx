@@ -19,14 +19,18 @@ import {
   inviteMember,
   removeMember,
   resendInvite,
+  saveInvitePermissions,
   saveMemberPermissions,
+  type WorkspaceInvite,
   type WorkspaceMember
 } from "@/lib/workspace-members";
 import {
   permissionActions,
   permissionGroups,
   resolveRolePermissionState,
-  type GranularPermission
+  type GranularPermission,
+  type PermissionOverrides,
+  type WorkspaceRole
 } from "@/lib/permissions/rbac";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +79,80 @@ function formatPermissionLabel(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function PermissionMatrixFields({
+  defaultCheckedAll = false,
+  overrides,
+  role,
+  showAllPermissions = false
+}: {
+  defaultCheckedAll?: boolean;
+  overrides?: PermissionOverrides | null;
+  role?: WorkspaceRole;
+  showAllPermissions?: boolean;
+}) {
+  const permissionState = role ? resolveRolePermissionState(role, overrides) : null;
+
+  return (
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      {permissionGroups.map((group) => {
+        const availablePermissions = permissionActions
+          .map((action) => `${group}.${action}` as GranularPermission)
+          .filter((permission) => showAllPermissions || Boolean(permissionState?.[permission]));
+
+        if (!availablePermissions.length) {
+          return null;
+        }
+
+        return (
+          <fieldset className="rounded-2xl border border-slate-200 p-3" key={group}>
+            <legend className="px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+              {formatPermissionLabel(group)}
+            </legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {availablePermissions.map((permission) => {
+                const action = permission.split(".")[1] ?? permission;
+
+                return (
+                  <label
+                    className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700"
+                    key={permission}
+                  >
+                    <input
+                      className="h-4 w-4 rounded border-slate-300"
+                      defaultChecked={defaultCheckedAll || Boolean(permissionState?.[permission])}
+                      name={permission}
+                      type="checkbox"
+                    />
+                    {action}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        );
+      })}
+    </div>
+  );
+}
+
+function PermissionDetails({
+  children,
+  description
+}: {
+  children: React.ReactNode;
+  description: string;
+}) {
+  return (
+    <details className="mt-4 w-full rounded-3xl bg-white p-4">
+      <summary className="cursor-pointer rounded-full bg-slate-900 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-white">
+        Manage Permissions
+      </summary>
+      <p className="mt-4 text-sm font-semibold leading-6 text-muted">{description}</p>
+      {children}
+    </details>
+  );
+}
+
 function MemberPermissionForm({
   member,
   workspaceId
@@ -82,10 +160,9 @@ function MemberPermissionForm({
   member: WorkspaceMember;
   workspaceId: string;
 }) {
-  const permissionState = resolveRolePermissionState(member.role, member.permission_overrides);
-
   return (
-    <form action={saveMemberPermissions} className="mt-4 w-full rounded-3xl bg-white p-4">
+    <PermissionDetails description="Adjust this staff member's access within the permissions allowed by their role.">
+      <form action={saveMemberPermissions}>
       <input name="workspaceId" type="hidden" value={workspaceId} />
       <input name="memberId" type="hidden" value={member.id} />
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -101,46 +178,40 @@ function MemberPermissionForm({
           Save permissions
         </Button>
       </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {permissionGroups.map((group) => {
-          const availablePermissions = permissionActions
-            .map((action) => `${group}.${action}` as GranularPermission)
-            .filter((permission) => resolveRolePermissionState(member.role)[permission]);
-
-          if (!availablePermissions.length) {
-            return null;
-          }
-
-          return (
-            <fieldset className="rounded-2xl border border-slate-200 p-3" key={group}>
-              <legend className="px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                {formatPermissionLabel(group)}
-              </legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {availablePermissions.map((permission) => {
-                  const action = permission.split(".")[1] ?? permission;
-
-                  return (
-                    <label
-                      className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700"
-                      key={permission}
-                    >
-                      <input
-                        className="h-4 w-4 rounded border-slate-300"
-                        defaultChecked={permissionState[permission]}
-                        name={permission}
-                        type="checkbox"
-                      />
-                      {action}
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-          );
-        })}
-      </div>
+      <PermissionMatrixFields overrides={member.permission_overrides} role={member.role} />
     </form>
+    </PermissionDetails>
+  );
+}
+
+function InvitePermissionForm({
+  invite,
+  workspaceId
+}: {
+  invite: WorkspaceInvite;
+  workspaceId: string;
+}) {
+  return (
+    <PermissionDetails description="These settings will be applied when the invited staff member accepts the invitation.">
+      <form action={saveInvitePermissions}>
+        <input name="workspaceId" type="hidden" value={workspaceId} />
+        <input name="inviteId" type="hidden" value={invite.id} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Invite permissions
+            </p>
+            <p className="mt-1 text-sm font-semibold text-muted">
+              Permissions cannot exceed the invited role defaults.
+            </p>
+          </div>
+          <Button type="submit" variant="secondary">
+            Save permissions
+          </Button>
+        </div>
+        <PermissionMatrixFields overrides={invite.permission_overrides} role={invite.role} />
+      </form>
+    </PermissionDetails>
   );
 }
 
@@ -489,6 +560,8 @@ export default async function TeamPage({
                         ? "Team member status updated."
                         : query.team === "member-permissions-updated"
                           ? "Team member permissions updated."
+                          : query.team === "invite-permissions-updated"
+                            ? "Invite permissions updated."
                   : query.team === "invite-accepted"
                     ? "Invitation accepted. Welcome to the workspace."
                   : "Team updated."}
@@ -533,35 +606,49 @@ export default async function TeamPage({
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
             Invite teammate
           </p>
-          <form action={inviteMember} className="mt-5 grid gap-4 sm:grid-cols-[1fr_180px_auto]">
+          <form action={inviteMember} className="mt-5 grid gap-4">
             <input name="workspaceId" type="hidden" value={workspaceId} />
-            <Input
-              disabled={!management.allowed || seatsAtLimit}
-              id="email"
-              label="Email"
-              name="email"
-              placeholder="teammate@example.com"
-              type="email"
-            />
-            <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="role">
-              <span>Role</span>
-              <select
-                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+            <div className="grid gap-4 sm:grid-cols-[1fr_180px_auto]">
+              <Input
                 disabled={!management.allowed || seatsAtLimit}
-                id="role"
-                name="role"
-                defaultValue="editor"
-              >
-                <option value="admin">Admin</option>
-                <option value="editor">Editor</option>
-                <option value="support">Support</option>
-              </select>
-            </label>
-            <div className="flex items-end">
-              <Button disabled={!management.allowed || seatsAtLimit} type="submit">
-                Invite
-              </Button>
+                id="email"
+                label="Email"
+                name="email"
+                placeholder="teammate@example.com"
+                type="email"
+              />
+              <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="role">
+                <span>Role</span>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                  disabled={!management.allowed || seatsAtLimit}
+                  id="role"
+                  name="role"
+                  defaultValue="editor"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
+                  <option value="support">Support</option>
+                </select>
+              </label>
+              <div className="flex items-end">
+                <Button disabled={!management.allowed || seatsAtLimit} type="submit">
+                  Invite
+                </Button>
+              </div>
             </div>
+            <details className="rounded-3xl bg-slate-50 p-4">
+              <summary className="cursor-pointer rounded-full bg-slate-900 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-white">
+                Manage Permissions
+              </summary>
+              <p className="mt-4 text-sm font-semibold leading-6 text-muted">
+                Review permissions before sending the invite. The selected role still caps what can be granted.
+              </p>
+              <PermissionMatrixFields defaultCheckedAll showAllPermissions />
+              <Button disabled={!management.allowed || seatsAtLimit} type="submit">
+                Invite with permissions
+              </Button>
+            </details>
           </form>
           {!management.allowed ? (
             <p className="mt-4 text-sm font-bold text-amber-700">
@@ -642,6 +729,7 @@ export default async function TeamPage({
                         Revoke
                       </Button>
                     </form>
+                    <InvitePermissionForm invite={invite} workspaceId={workspaceId} />
                   </div>
                 ) : null}
               </div>

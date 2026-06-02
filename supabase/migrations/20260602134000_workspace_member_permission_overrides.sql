@@ -4,10 +4,21 @@
 alter table public.workspace_members
   add column if not exists permission_overrides jsonb not null default '{}'::jsonb;
 
+alter table public.workspace_invitations
+  add column if not exists permission_overrides jsonb not null default '{}'::jsonb;
+
 update public.workspace_members
+set permission_overrides = '{}'::jsonb
+where permission_overrides is null
+   or jsonb_typeof(permission_overrides) <> 'object';
+
+update public.workspace_invitations
 set permission_overrides = '{}'::jsonb
 where permission_overrides is null
    or jsonb_typeof(permission_overrides) <> 'object';
 
 create index if not exists workspace_members_permission_overrides_idx
 on public.workspace_members using gin (permission_overrides);
+
+create index if not exists workspace_invitations_permission_overrides_idx
+on public.workspace_invitations using gin (permission_overrides);
