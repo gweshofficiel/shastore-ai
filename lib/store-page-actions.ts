@@ -8,6 +8,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const pagesPath = "/dashboard/pages";
 
@@ -245,6 +246,17 @@ export async function createStoreOwnerPage(formData: FormData) {
 
   const page = data as unknown as { id: string; slug?: string | null };
   await recordPageActivity({ action: "page_created", pageId: page.id, storeId, supabase, workspaceId });
+  await recordWorkspaceActivitySafe({
+    action: "page_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: page.id,
+    entityType: "page",
+    metadata: { pageType: payload.page_type, status: payload.status, title: payload.title },
+    storeId,
+    supabase,
+    workspaceId
+  });
   revalidatePagePaths(store, storeId, page.slug);
   pagesRedirect(storeId, "created");
 }
@@ -280,6 +292,17 @@ export async function updateStoreOwnerPage(formData: FormData) {
   }
 
   await recordPageActivity({ action: "page_saved", pageId, storeId, supabase, workspaceId });
+  await recordWorkspaceActivitySafe({
+    action: "page_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: pageId,
+    entityType: "page",
+    metadata: { pageType: payload.page_type, status: payload.status, title: payload.title },
+    storeId,
+    supabase,
+    workspaceId
+  });
   revalidatePagePaths(store, storeId, payload.slug);
   pagesRedirect(storeId, "updated");
 }
@@ -322,6 +345,17 @@ export async function setStoreOwnerPageStatus(formData: FormData) {
     supabase,
     workspaceId
   });
+  await recordWorkspaceActivitySafe({
+    action: "page_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: pageId,
+    entityType: "page",
+    metadata: { status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   revalidatePagePaths(store, storeId, slug);
   pagesRedirect(storeId, status === "published" ? "published" : status === "archived" ? "archived" : "unpublished");
 }
@@ -354,6 +388,17 @@ export async function deleteStoreOwnerPage(formData: FormData) {
   }
 
   await recordPageActivity({ action: "page_deleted", pageId: null, storeId, supabase, workspaceId });
+  await recordWorkspaceActivitySafe({
+    action: "page_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: pageId,
+    entityType: "page",
+    metadata: { deleted: true },
+    storeId,
+    supabase,
+    workspaceId
+  });
   revalidatePagePaths(store, storeId, slug);
   pagesRedirect(storeId, "deleted");
 }

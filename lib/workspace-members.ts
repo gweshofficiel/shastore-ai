@@ -11,6 +11,7 @@ import {
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
 import { getPublicUrl } from "@/lib/deployment/config";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 import {
   hasPermission,
   permissionActions,
@@ -568,6 +569,18 @@ export async function inviteMember(formData: FormData) {
   }
 
   await sendWorkspaceInviteEmailSafe({ acceptUrl, email, role });
+  await recordWorkspaceActivitySafe({
+    action: "member_invited",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: email,
+    entityType: "workspace_invitation",
+    metadata: {
+      role,
+      source: "dashboard_team"
+    },
+    workspaceId
+  });
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("invite-created", workspaceId);
@@ -661,6 +674,18 @@ export async function removeMember(formData: FormData) {
       userId: user.id,
       workspaceId
     });
+    await recordWorkspaceActivitySafe({
+      action: "member_removed",
+      actorEmail: user.email,
+      actorUserId: user.id,
+      entityId: memberId,
+      entityType: "workspace_member",
+      metadata: {
+        targetRole: target.role,
+        targetUserId: target.user_id
+      },
+      workspaceId
+    });
   }
 
   if (inviteId) {
@@ -680,6 +705,17 @@ export async function removeMember(formData: FormData) {
     }
 
     console.info("[workspace-invite] invite revoked", { inviteId, userId: user.id, workspaceId });
+    await recordWorkspaceActivitySafe({
+      action: "member_invite_removed",
+      actorEmail: user.email,
+      actorUserId: user.id,
+      entityId: inviteId,
+      entityType: "workspace_invitation",
+      metadata: {
+        source: "dashboard_team"
+      },
+      workspaceId
+    });
   }
 
   revalidatePath("/dashboard/team");
@@ -776,6 +812,19 @@ export async function changeMemberRole(formData: FormData) {
     userId: user.id,
     workspaceId
   });
+  await recordWorkspaceActivitySafe({
+    action: "member_role_changed",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: memberId,
+    entityType: "workspace_member",
+    metadata: {
+      nextRole,
+      previousRole: target.role,
+      targetUserId: target.user_id
+    },
+    workspaceId
+  });
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("member-role-updated", workspaceId);
@@ -854,6 +903,19 @@ export async function saveMemberPermissions(formData: FormData) {
     userId: user.id,
     workspaceId
   });
+  await recordWorkspaceActivitySafe({
+    action: "permissions_changed",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: memberId,
+    entityType: "workspace_member",
+    metadata: {
+      deniedCount: Object.values(overrides).filter((value) => value === false).length,
+      targetRole: target.role,
+      targetUserId: target.user_id
+    },
+    workspaceId
+  });
 
   revalidatePath("/dashboard/team");
   teamWorkspaceRedirect("member-permissions-updated", workspaceId);
@@ -925,6 +987,19 @@ export async function saveInvitePermissions(formData: FormData) {
     email: invite.email,
     inviteId,
     userId: user.id,
+    workspaceId
+  });
+  await recordWorkspaceActivitySafe({
+    action: "permissions_changed",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: inviteId,
+    entityType: "workspace_invitation",
+    metadata: {
+      deniedCount: Object.values(overrides).filter((value) => value === false).length,
+      email: invite.email,
+      role: invite.role
+    },
     workspaceId
   });
 
@@ -1026,6 +1101,19 @@ export async function changeMemberStatus(formData: FormData) {
     previousStatus: normalizeMemberStatus(target.status ?? "active"),
     targetUserId: target.user_id,
     userId: user.id,
+    workspaceId
+  });
+  await recordWorkspaceActivitySafe({
+    action: nextStatus === "active" ? "member_reactivated" : "member_suspended",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: memberId,
+    entityType: "workspace_member",
+    metadata: {
+      nextStatus,
+      previousStatus: normalizeMemberStatus(target.status ?? "active"),
+      targetUserId: target.user_id
+    },
     workspaceId
   });
 

@@ -76,7 +76,9 @@ export async function Sidebar() {
             .filter(
               (item) =>
                 (!("showInSidebar" in item) || item.showInSidebar !== false) &&
-                hasPermission(selection?.activeWorkspaceRole, item.permission, permissionOverrides)
+                (item.anyPermissions ?? [item.permission]).some((permission) =>
+                  hasPermission(selection?.activeWorkspaceRole, permission, permissionOverrides)
+                )
             )
             .map((item) => {
             return (

@@ -11,6 +11,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const navigationPath = "/dashboard/navigation";
 
@@ -63,6 +64,7 @@ async function requireWorkspaceStore(formData: FormData) {
     store: access.store as WorkspaceStoreRow,
     storeId,
     supabase,
+    user,
     workspaceId
   };
 }
@@ -145,7 +147,7 @@ function revalidateNavigationPaths(store: WorkspaceStoreRow, storeId: string) {
 }
 
 export async function createStoreNavigationLink(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const payload = navigationPayload(formData);
 
   if (!payload) {
@@ -168,11 +170,22 @@ export async function createStoreNavigationLink(formData: FormData) {
   }
 
   revalidateNavigationPaths(store, storeId);
+  await recordWorkspaceActivitySafe({
+    action: "navigation_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: storeId,
+    entityType: "navigation_link",
+    metadata: { label: payload.label, linkType: payload.link_type, operation: "created" },
+    storeId,
+    supabase,
+    workspaceId
+  });
   navigationRedirect(storeId, "created");
 }
 
 export async function saveStandardStoreNavigationLinks(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const storeSlug = cleanText(formData.get("storeSlug"), 160) || store.slug || "";
 
   if (!storeSlug) {
@@ -224,11 +237,25 @@ export async function saveStandardStoreNavigationLinks(formData: FormData) {
   }
 
   revalidateNavigationPaths(store, storeId);
+  await recordWorkspaceActivitySafe({
+    action: "navigation_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: storeId,
+    entityType: "navigation",
+    metadata: {
+      operation: "standard_links_saved",
+      standardLinkCount: storefrontStandardNavigationOptions.length
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
   navigationRedirect(storeId, "updated");
 }
 
 export async function updateStoreNavigationLink(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const linkId = cleanText(formData.get("linkId"), 80);
   const payload = navigationPayload(formData);
 
@@ -257,11 +284,22 @@ export async function updateStoreNavigationLink(formData: FormData) {
   }
 
   revalidateNavigationPaths(store, storeId);
+  await recordWorkspaceActivitySafe({
+    action: "navigation_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: linkId,
+    entityType: "navigation_link",
+    metadata: { label: payload.label, linkType: payload.link_type, operation: "updated" },
+    storeId,
+    supabase,
+    workspaceId
+  });
   navigationRedirect(storeId, "updated");
 }
 
 export async function setStoreNavigationLinkEnabled(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const linkId = cleanText(formData.get("linkId"), 80);
   const isEnabled = cleanText(formData.get("isEnabled"), 10) === "true";
 
@@ -290,11 +328,22 @@ export async function setStoreNavigationLinkEnabled(formData: FormData) {
   }
 
   revalidateNavigationPaths(store, storeId);
+  await recordWorkspaceActivitySafe({
+    action: "navigation_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: linkId,
+    entityType: "navigation_link",
+    metadata: { isEnabled, operation: "visibility_changed" },
+    storeId,
+    supabase,
+    workspaceId
+  });
   navigationRedirect(storeId, isEnabled ? "enabled" : "disabled");
 }
 
 export async function deleteStoreNavigationLink(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const linkId = cleanText(formData.get("linkId"), 80);
 
   if (!linkId) {
@@ -319,5 +368,16 @@ export async function deleteStoreNavigationLink(formData: FormData) {
   }
 
   revalidateNavigationPaths(store, storeId);
+  await recordWorkspaceActivitySafe({
+    action: "navigation_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: linkId,
+    entityType: "navigation_link",
+    metadata: { operation: "deleted" },
+    storeId,
+    supabase,
+    workspaceId
+  });
   navigationRedirect(storeId, "deleted");
 }

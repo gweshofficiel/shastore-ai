@@ -7,6 +7,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const contactDashboardPath = "/dashboard/contact";
 
@@ -66,6 +67,7 @@ async function requireWorkspaceStore(formData: FormData) {
     store: access.store as WorkspaceStoreRow,
     storeId,
     supabase,
+    user,
     workspaceId
   };
 }
@@ -80,7 +82,7 @@ function revalidateContactPaths(store: WorkspaceStoreRow) {
 }
 
 export async function updateStoreContactSettings(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
 
   const { error } = await supabase
     .from("stores" as never)
@@ -100,11 +102,22 @@ export async function updateStoreContactSettings(formData: FormData) {
   }
 
   revalidateContactPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "contact_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: storeId,
+    entityType: "contact_settings",
+    metadata: { source: "dashboard_contact" },
+    storeId,
+    supabase,
+    workspaceId
+  });
   dashboardRedirect(storeId, "settings-saved");
 }
 
 export async function updateStoreContactMessageStatus(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const messageId = cleanText(formData.get("messageId"), 80);
   const status = cleanText(formData.get("status"), 20);
 
@@ -127,6 +140,17 @@ export async function updateStoreContactMessageStatus(formData: FormData) {
   }
 
   revalidateContactPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "contact_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: messageId,
+    entityType: "contact_message",
+    metadata: { status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   dashboardRedirect(storeId, "message-updated");
 }
 

@@ -7,6 +7,7 @@ import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { assertUsageWithinLimits, billingEnforcementMessage } from "@/lib/billing/enforcement";
 import { recordSubscriptionEnforcementLog } from "@/lib/billing/enforcement-log";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertStoreAccessInWorkspace,
@@ -827,6 +828,20 @@ export async function createStoreOwnerProduct(formData: FormData) {
     userId: user.id,
     workspaceId
   });
+  await recordWorkspaceActivitySafe({
+    action: "product_created",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: (createdProduct as { id?: string | null } | null)?.id ?? null,
+    entityType: "product",
+    metadata: {
+      status: payload.status,
+      title: payload.title
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
   productsRedirect(storeId, "created");
 }
 
@@ -892,6 +907,20 @@ export async function updateStoreOwnerProduct(formData: FormData) {
     storeId,
     supabase,
     userId: user.id,
+    workspaceId
+  });
+  await recordWorkspaceActivitySafe({
+    action: "product_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: productId,
+    entityType: "product",
+    metadata: {
+      status: payload.status,
+      title: payload.title
+    },
+    storeId,
+    supabase,
     workspaceId
   });
   productsRedirect(storeId, "updated");
@@ -984,7 +1013,7 @@ export async function updateStoreOwnerProductVariant(formData: FormData) {
 }
 
 export async function archiveStoreOwnerProduct(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const productId = cleanText(formData.get("productId"), 80);
 
   if (!productId) {
@@ -1017,13 +1046,26 @@ export async function archiveStoreOwnerProduct(formData: FormData) {
     revalidatePath(`/store/${store.slug}`);
     revalidatePath(`/s/${store.slug}`);
   }
+  await recordWorkspaceActivitySafe({
+    action: "product_deleted",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: productId,
+    entityType: "product",
+    metadata: {
+      status: "archived"
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
   productsRedirect(storeId, "archived");
 }
 
 export const deleteStoreOwnerProduct = archiveStoreOwnerProduct;
 
 export async function setStoreOwnerProductVisibility(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const productId = cleanText(formData.get("productId"), 80);
   const status = cleanVisibilityStatus(formData.get("visibilityStatus"));
 
@@ -1060,6 +1102,20 @@ export async function setStoreOwnerProductVisibility(formData: FormData) {
     revalidatePath(`/s/${store.slug}`);
     revalidatePath(`/store/${store.slug}/product/${productId}`);
   }
+  await recordWorkspaceActivitySafe({
+    action: "product_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: productId,
+    entityType: "product",
+    metadata: {
+      status,
+      source: "visibility"
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
 
   productsRedirect(storeId, status === "active" ? "published" : "unpublished");
 }

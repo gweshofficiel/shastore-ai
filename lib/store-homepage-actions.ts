@@ -11,6 +11,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const homepagePath = "/dashboard/homepage";
 
@@ -84,6 +85,7 @@ async function requireWorkspaceStore(formData: FormData) {
     store,
     storeId,
     supabase,
+    user,
     workspaceId
   };
 }
@@ -124,7 +126,7 @@ function revalidateHomepagePaths(store: WorkspaceStoreRow) {
 }
 
 export async function saveStoreHomepageSections(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const rows = storeHomepageSectionOptions.map((option) => ({
     ...sectionPayload(formData, option.sectionType),
     store_id: storeId,
@@ -140,5 +142,19 @@ export async function saveStoreHomepageSections(formData: FormData) {
   }
 
   revalidateHomepagePaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "homepage_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: storeId,
+    entityType: "homepage",
+    metadata: {
+      enabledSections: rows.filter((row) => row.enabled).length,
+      sectionCount: rows.length
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
   homepageRedirect(storeId, "saved");
 }

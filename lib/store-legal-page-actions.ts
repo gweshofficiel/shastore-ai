@@ -7,6 +7,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const legalPagesPath = "/dashboard/legal-pages";
 
@@ -167,11 +168,22 @@ export async function createStoreLegalPage(formData: FormData) {
 
   const page = data as unknown as { id: string; slug?: string | null };
   revalidateLegalPaths(store, page.slug, payload.page_type);
+  await recordWorkspaceActivitySafe({
+    action: "legal_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: page.id,
+    entityType: "legal_page",
+    metadata: { pageType: payload.page_type, status: payload.status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   dashboardRedirect(storeId, "created", { edit: page.id });
 }
 
 export async function updateStoreLegalPage(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const pageId = cleanText(formData.get("pageId"), 80);
   const previousSlug = cleanText(formData.get("previousSlug"), 100);
   const payload = legalPagePayload(formData);
@@ -196,11 +208,22 @@ export async function updateStoreLegalPage(formData: FormData) {
 
   revalidateLegalPaths(store, previousSlug, payload.page_type);
   revalidateLegalPaths(store, payload.slug, payload.page_type);
+  await recordWorkspaceActivitySafe({
+    action: "legal_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: pageId,
+    entityType: "legal_page",
+    metadata: { pageType: payload.page_type, status: payload.status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   dashboardRedirect(storeId, "updated", { edit: pageId });
 }
 
 export async function setStoreLegalPageStatus(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const pageId = cleanText(formData.get("pageId"), 80);
   const pageType = legalPageType(formData.get("legalType"));
   const slug = cleanText(formData.get("slug"), 100);
@@ -226,5 +249,16 @@ export async function setStoreLegalPageStatus(formData: FormData) {
   }
 
   revalidateLegalPaths(store, slug, pageType);
+  await recordWorkspaceActivitySafe({
+    action: "legal_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: pageId,
+    entityType: "legal_page",
+    metadata: { pageType, status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   dashboardRedirect(storeId, status === "published" ? "published" : "unpublished");
 }

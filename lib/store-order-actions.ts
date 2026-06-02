@@ -26,6 +26,7 @@ import {
 } from "@/lib/store-coupons";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 import { getAppBaseUrl } from "@/lib/deployment/config";
 import { markAbandonedCartRecoveredSafe } from "@/lib/abandoned-cart-recovery";
 import { createPayPalCheckoutOrder, getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
@@ -2581,6 +2582,21 @@ export async function updateStoreOrderStatusAction(formData: FormData) {
       supabase,
       workspaceId
     });
+    await recordWorkspaceActivitySafe({
+      action: "order_status_changed",
+      actorEmail: user.email,
+      actorUserId: user.id,
+      entityId: orderId,
+      entityType: "order",
+      metadata: {
+        newStatus: status,
+        orderSource: source,
+        previousStatus: currentOrderRow.order_status
+      },
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
   }
 
   if (eventStoreId && currentOrderRow.payment_status && currentOrderRow.payment_status !== "pending") {
@@ -3105,6 +3121,22 @@ export async function updateStoreOrderFulfillmentStatusAction(formData: FormData
       orderId,
       orderSource: source,
       previousValue: currentFulfillmentStatus,
+      storeId: eventStoreId,
+      supabase,
+      workspaceId
+    });
+    await recordWorkspaceActivitySafe({
+      action: "order_status_changed",
+      actorEmail: user.email,
+      actorUserId: user.id,
+      entityId: orderId,
+      entityType: "order",
+      metadata: {
+        newStatus: fulfillmentStatus,
+        orderSource: source,
+        previousStatus: currentFulfillmentStatus,
+        statusType: "fulfillment"
+      },
       storeId: eventStoreId,
       supabase,
       workspaceId

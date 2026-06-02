@@ -8,6 +8,7 @@ import {
 } from "@/lib/workspaces/active-workspace";
 import {
   getDashboardPermissionForPath,
+  getDashboardPermissionsForPath,
   hasPermission,
   type PermissionOverrides,
   type WorkspacePermission,
@@ -167,7 +168,8 @@ export async function getDashboardPageAccess({
   pathname: string;
   permission?: WorkspacePermission;
 }): Promise<WorkspaceAccessContext | WorkspaceAccessDenied> {
-  const requiredPermission = permission ?? getDashboardPermissionForPath(pathname);
+  const requiredPermissions = permission ? [permission] : getDashboardPermissionsForPath(pathname);
+  const requiredPermission = requiredPermissions[0] ?? getDashboardPermissionForPath(pathname);
   const supabase = await createClient();
   const {
     data: { user }
@@ -192,7 +194,9 @@ export async function getDashboardPageAccess({
     selection.activeWorkspaceId,
     user.id
   );
-  const allowed = status === "active" && hasPermission(role, requiredPermission, overrides);
+  const allowed =
+    status === "active" &&
+    requiredPermissions.some((candidate) => hasPermission(role, candidate, overrides));
 
   if (!allowed) {
     console.warn("[workspace-access-denied] dashboard route blocked", {

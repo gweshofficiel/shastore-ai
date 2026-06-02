@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { CommerceOperationsScope } from "@/lib/commerce-operations/types";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (!value || typeof value !== "string") {
@@ -156,7 +158,20 @@ export async function saveShippingMethod(formData: FormData) {
     redirect(withStatus(returnTo, "error", "Shipping method could not be saved."));
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   revalidatePath(returnTo);
+  await recordWorkspaceActivitySafe({
+    action: "shipping_settings_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: methodName,
+    entityType: "shipping_method",
+    metadata: {
+      scope
+    },
+    supabase,
+    workspaceId: selection.activeWorkspaceId
+  });
   redirect(withStatus(returnTo, "saved", "shipping"));
 }
 
@@ -190,6 +205,20 @@ export async function saveDeliveryAgent(formData: FormData) {
     redirect(withStatus(returnTo, "error", "Delivery agent could not be saved."));
   }
 
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   revalidatePath(returnTo);
+  await recordWorkspaceActivitySafe({
+    action: "shipping_settings_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: agentName,
+    entityType: "delivery_agent",
+    metadata: {
+      scope,
+      status
+    },
+    supabase,
+    workspaceId: selection.activeWorkspaceId
+  });
   redirect(withStatus(returnTo, "saved", "agent"));
 }

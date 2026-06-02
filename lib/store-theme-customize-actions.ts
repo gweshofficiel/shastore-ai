@@ -11,6 +11,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const themeCustomizePath = "/dashboard/theme-customize";
 
@@ -196,6 +197,24 @@ export async function saveStoreThemeCustomizeSettings(formData: FormData) {
   if (store.slug) {
     revalidatePath(`/store/${store.slug}`);
   }
+
+  await recordWorkspaceActivitySafe({
+    action: "theme_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: storeId,
+    entityType: "theme",
+    metadata: {
+      buttonRadius: nextStyleConfig.buttonRadius,
+      cardRadius: nextStyleConfig.cardRadius,
+      footerStyle: nextStyleConfig.footerStyle,
+      headerStyle: nextStyleConfig.headerStyle,
+      productCardStyle: nextStyleConfig.productCardStyle
+    },
+    storeId,
+    supabase,
+    workspaceId
+  });
 
   themeRedirect(storeId, "saved");
 }

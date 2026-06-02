@@ -193,7 +193,16 @@ export const rolePermissions: Record<WorkspaceRole, WorkspacePermission[]> = {
   ]
 };
 
-export const dashboardRoutePermissions = [
+type DashboardRoutePermission = {
+  anyPermissions?: readonly WorkspacePermission[];
+  href: string;
+  icon: string;
+  label: string;
+  permission: WorkspacePermission;
+  showInSidebar?: boolean;
+};
+
+export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard", label: "Overview", icon: "overview", permission: "can_view_overview" },
   { href: "/dashboard/landings/new", label: "New landing", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
   { href: "/dashboard/landings", label: "Landings", icon: "landings", permission: "can_view_landings" },
@@ -227,6 +236,7 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/templates", label: "Templates", icon: "templates", permission: "can_view_templates" },
   { href: "/dashboard/domains", label: "Domains", icon: "domains", permission: "can_manage_domains" },
   { href: "/dashboard/team", label: "Team", icon: "team", permission: "team.view" },
+  { href: "/dashboard/activity-logs", label: "Activity Logs", icon: "monitoring", permission: "settings.view", anyPermissions: ["team.view", "settings.view"] },
   { href: "/dashboard/billing", label: "Billing", icon: "billing", permission: "can_manage_billing" },
   { href: "/dashboard/reseller", label: "Reseller", icon: "stores", permission: "can_manage_billing", showInSidebar: false },
   { href: "/dashboard/projects", label: "Projects", icon: "landings", permission: "can_edit_landings", showInSidebar: false },
@@ -234,23 +244,21 @@ export const dashboardRoutePermissions = [
   { href: "/dashboard/email", label: "Email", icon: "notifications", permission: "can_view_notifications" },
   { href: "/dashboard/settings/commerce", label: "Commerce settings", icon: "settings", permission: "settings.edit", showInSidebar: false },
   { href: "/dashboard/settings", label: "Settings", icon: "settings", permission: "settings.view" }
-] as const satisfies ReadonlyArray<{
-  href: string;
-  icon: string;
-  label: string;
-  permission: WorkspacePermission;
-  showInSidebar?: boolean;
-}>;
+] as const;
 
 export type DashboardRouteHref = (typeof dashboardRoutePermissions)[number]["href"];
 
 export function getDashboardPermissionForPath(pathname: string): WorkspacePermission {
+  return getDashboardPermissionsForPath(pathname)[0] ?? "can_view_overview";
+}
+
+export function getDashboardPermissionsForPath(pathname: string): readonly WorkspacePermission[] {
   const normalizedPath = pathname.split("?")[0]?.replace(/\/$/, "") || "/dashboard";
   const match = [...dashboardRoutePermissions]
     .sort((a, b) => b.href.length - a.href.length)
     .find((route) => normalizedPath === route.href || normalizedPath.startsWith(`${route.href}/`));
 
-  return match?.permission ?? "can_view_overview";
+  return match?.anyPermissions ?? [match?.permission ?? "can_view_overview"];
 }
 
 export class PermissionDeniedError extends Error {

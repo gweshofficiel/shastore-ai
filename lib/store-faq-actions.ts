@@ -6,6 +6,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const faqPath = "/dashboard/faq";
 
@@ -129,11 +130,22 @@ export async function createStoreFaq(formData: FormData) {
 
   const faq = data as unknown as { id: string };
   revalidateFaqPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "faq_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: faq.id,
+    entityType: "faq",
+    metadata: { status: payload.status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   faqRedirect(storeId, "created", { edit: faq.id });
 }
 
 export async function updateStoreFaq(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const faqId = cleanText(formData.get("faqId"), 80);
   const payload = faqPayload(formData);
 
@@ -156,11 +168,22 @@ export async function updateStoreFaq(formData: FormData) {
   }
 
   revalidateFaqPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "faq_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: faqId,
+    entityType: "faq",
+    metadata: { status: payload.status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   faqRedirect(storeId, "updated", { edit: faqId });
 }
 
 export async function setStoreFaqStatus(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const faqId = cleanText(formData.get("faqId"), 80);
   const status = faqStatus(formData.get("status"));
 
@@ -183,11 +206,22 @@ export async function setStoreFaqStatus(formData: FormData) {
   }
 
   revalidateFaqPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "faq_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: faqId,
+    entityType: "faq",
+    metadata: { status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   faqRedirect(storeId, status === "published" ? "published" : "unpublished");
 }
 
 export async function deleteStoreFaq(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const faqId = cleanText(formData.get("faqId"), 80);
 
   if (!faqId) {
@@ -206,5 +240,16 @@ export async function deleteStoreFaq(formData: FormData) {
   }
 
   revalidateFaqPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "faq_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: faqId,
+    entityType: "faq",
+    metadata: { deleted: true },
+    storeId,
+    supabase,
+    workspaceId
+  });
   faqRedirect(storeId, "deleted");
 }

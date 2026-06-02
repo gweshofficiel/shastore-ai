@@ -6,6 +6,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const aboutPath = "/dashboard/about";
 
@@ -153,5 +154,16 @@ export async function saveStoreAboutPage(formData: FormData) {
   }
 
   revalidateAboutPaths(store);
+  await recordWorkspaceActivitySafe({
+    action: "page_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: aboutId || storeId,
+    entityType: "about_page",
+    metadata: { status: payload.status, title: payload.title },
+    storeId,
+    supabase,
+    workspaceId
+  });
   aboutRedirect(storeId, payload.status === "published" ? "published" : "draft-saved");
 }

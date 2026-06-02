@@ -6,6 +6,7 @@ import {
   assertStoreAccessInWorkspace,
   getWorkspaceDataContext
 } from "@/lib/workspaces/data-access";
+import { recordWorkspaceActivitySafe } from "@/lib/audit/workspace-activity";
 
 const blogPath = "/dashboard/blog";
 
@@ -144,11 +145,22 @@ export async function createStoreBlogArticle(formData: FormData) {
 
   const article = data as unknown as { id: string; slug?: string | null };
   revalidateBlogPaths(store, article.slug);
+  await recordWorkspaceActivitySafe({
+    action: "blog_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: article.id,
+    entityType: "blog_article",
+    metadata: { status: payload.status, title: payload.title },
+    storeId,
+    supabase,
+    workspaceId
+  });
   blogRedirect(storeId, "created", { edit: article.id });
 }
 
 export async function updateStoreBlogArticle(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const articleId = cleanText(formData.get("articleId"), 80);
   const previousSlug = cleanText(formData.get("previousSlug"), 100);
   const payload = articlePayload(formData);
@@ -173,11 +185,22 @@ export async function updateStoreBlogArticle(formData: FormData) {
 
   revalidateBlogPaths(store, previousSlug);
   revalidateBlogPaths(store, payload.slug);
+  await recordWorkspaceActivitySafe({
+    action: "blog_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: articleId,
+    entityType: "blog_article",
+    metadata: { status: payload.status, title: payload.title },
+    storeId,
+    supabase,
+    workspaceId
+  });
   blogRedirect(storeId, "updated", { edit: articleId });
 }
 
 export async function setStoreBlogArticleStatus(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const articleId = cleanText(formData.get("articleId"), 80);
   const slug = cleanText(formData.get("slug"), 100);
   const status = articleStatus(formData.get("status"));
@@ -202,11 +225,22 @@ export async function setStoreBlogArticleStatus(formData: FormData) {
   }
 
   revalidateBlogPaths(store, slug);
+  await recordWorkspaceActivitySafe({
+    action: "blog_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: articleId,
+    entityType: "blog_article",
+    metadata: { status },
+    storeId,
+    supabase,
+    workspaceId
+  });
   blogRedirect(storeId, status === "published" ? "published" : "unpublished");
 }
 
 export async function deleteStoreBlogArticle(formData: FormData) {
-  const { store, storeId, supabase, workspaceId } = await requireWorkspaceStore(formData);
+  const { store, storeId, supabase, user, workspaceId } = await requireWorkspaceStore(formData);
   const articleId = cleanText(formData.get("articleId"), 80);
   const slug = cleanText(formData.get("slug"), 100);
 
@@ -226,5 +260,16 @@ export async function deleteStoreBlogArticle(formData: FormData) {
   }
 
   revalidateBlogPaths(store, slug);
+  await recordWorkspaceActivitySafe({
+    action: "blog_updated",
+    actorEmail: user.email,
+    actorUserId: user.id,
+    entityId: articleId,
+    entityType: "blog_article",
+    metadata: { deleted: true },
+    storeId,
+    supabase,
+    workspaceId
+  });
   blogRedirect(storeId, "deleted");
 }
