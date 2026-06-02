@@ -211,6 +211,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/theme-customize", label: "Theme Customize", icon: "templates", permission: "settings.edit" },
   { href: "/dashboard/homepage", label: "Homepage", icon: "pages", permission: "settings.edit" },
   { href: "/dashboard/navigation", label: "Navigation", icon: "navigation", permission: "settings.edit" },
+  { href: "/dashboard/popups-announcements", label: "Popups & Announcements", icon: "pages", permission: "can_edit_stores" },
   { href: "/dashboard/pages", label: "Pages", icon: "pages", permission: "pages.view" },
   { href: "/dashboard/about", label: "About Us", icon: "pages", permission: "pages.view" },
   { href: "/dashboard/legal-pages", label: "Legal Pages", icon: "pages", permission: "pages.view" },

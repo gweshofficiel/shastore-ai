@@ -16,6 +16,7 @@ import {
   StoreReferralAttribution
 } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
+import { StoreMarketingMessages } from "@/components/storefront/store-marketing-messages";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
 import {
   buildPublicProductSections,
@@ -28,6 +29,7 @@ import { loadStoreHomepageLayoutForStorefront } from "@/lib/store-homepage-secti
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
+import { loadActiveStoreMarketingMessages } from "@/lib/store-marketing-messages";
 import {
   getStoreNavigationRows,
   resolveStorefrontHeaderNavigation
@@ -412,6 +414,13 @@ export default async function PublicStorePage({
     preview.store.workspaceId
   );
   const footerLinkSettings = await loadStoreFooterLinkSettings(preview.store.id);
+  const marketingMessages = admin
+    ? await loadActiveStoreMarketingMessages({
+        storeId: preview.store.id,
+        supabase: admin,
+        workspaceId: preview.store.workspaceId
+      })
+    : [];
   const filteredPreview = {
     ...preview,
     products: discovery.products
@@ -851,6 +860,7 @@ export default async function PublicStorePage({
         slug={store.slug}
         templateId={preview.templateId}
       />
+      <StoreMarketingMessages messages={marketingMessages} storeId={store.id} />
       {discoveryControls}
       {discovery.active && preview.products.length > 0 && products.length === 0 ? (
         <section className="px-4 pb-8 sm:px-6 lg:px-8">
