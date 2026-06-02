@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
 import { maskGiftCardCode, redeemStoreGiftCard, type StoreGiftCardRow } from "@/lib/store-gift-cards";
 import { normalizeReferralCode, recordReferralForOrder } from "@/lib/customer-referrals";
+import { normalizeAffiliateCode, recordAffiliateOrderForCheckout } from "@/lib/store-affiliates";
 import type { Json } from "@/types/database";
 
 function dashboardErrorUrl(request: NextRequest, status: string) {
@@ -142,6 +143,7 @@ export async function GET(request: NextRequest) {
     const taxAmount = numberMetadata(metadata, "tax_amount");
     const giftCardAmount = numberMetadata(metadata, "gift_card_amount");
     const giftCardId = cleanMetadata(metadata, "gift_card_id");
+    const affiliateCode = normalizeAffiliateCode(cleanMetadata(metadata, "affiliate_code"));
     const referralCode = normalizeReferralCode(cleanMetadata(metadata, "referral_code"));
     const nowStatus = session.payment_status === "paid" ? "paid" : "pending_confirmation";
     const { data: giftCardRow } = giftCardId
@@ -181,6 +183,7 @@ export async function GET(request: NextRequest) {
         owner_user_id: cleanMetadata(metadata, "owner_user_id") || null,
         payment_method: "card",
         payment_status: nowStatus,
+        affiliate_code: affiliateCode || null,
         referral_code: referralCode || null,
         shipping_amount: shippingAmount,
         shipping_method_id: cleanMetadata(metadata, "shipping_method_id") || null,
@@ -231,6 +234,22 @@ export async function GET(request: NextRequest) {
       await admin
         .from("store_orders" as never)
         .update({ referral_id: referralId, referral_code: referralCode } as never)
+        .eq("id" as never, orderReference as never);
+    }
+
+    const affiliateOrder = await recordAffiliateOrderForCheckout(admin, {
+      affiliateCode,
+      orderId: orderReference,
+      orderSource: "store_orders",
+      orderTotal: total,
+      storeId,
+      workspaceId: cleanMetadata(metadata, "workspace_id") || null
+    });
+
+    if (affiliateOrder) {
+      await admin
+        .from("store_orders" as never)
+        .update({ affiliate_id: affiliateOrder.affiliateId, affiliate_code: affiliateCode } as never)
         .eq("id" as never, orderReference as never);
     }
 

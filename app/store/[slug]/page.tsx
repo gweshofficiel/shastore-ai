@@ -9,7 +9,12 @@ import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
-import { AddToCartButton, CartNavLink, StoreReferralAttribution } from "@/components/storefront/public-store-cart";
+import {
+  AddToCartButton,
+  CartNavLink,
+  StoreAffiliateAttribution,
+  StoreReferralAttribution
+} from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
 import {
@@ -839,6 +844,7 @@ export default async function PublicStorePage({
     >
       <StorefrontThemeTokens context={context} />
       <StorefrontTenantContextScript context={context} />
+      <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
       <StorefrontHydration
         layoutKey={context.theme.layout_key}

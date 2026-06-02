@@ -39,6 +39,7 @@ import {
   type AppliedDiscountCampaign
 } from "@/lib/discount-campaigns";
 import { normalizeReferralCode, recordReferralForOrder } from "@/lib/customer-referrals";
+import { normalizeAffiliateCode, recordAffiliateOrderForCheckout } from "@/lib/store-affiliates";
 import { reserveCheckoutInventory } from "@/lib/inventory-reservations";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
@@ -283,6 +284,7 @@ function applyGiftCardToBreakdown(
 }
 
 function stripeSuccessMetadata(input: {
+  affiliateCode: string;
   couponCode: string;
   customerAddress: string;
   customerEmail: string;
@@ -307,6 +309,7 @@ function stripeSuccessMetadata(input: {
 }) {
   return {
     coupon_code: stripeMetadataValue(input.couponCode, 80),
+    affiliate_code: stripeMetadataValue(normalizeAffiliateCode(input.affiliateCode), 40),
     customer_address: stripeMetadataValue(input.customerAddress),
     customer_email: stripeMetadataValue(input.customerEmail, 180),
     customer_name: stripeMetadataValue(input.customerName, 160),
@@ -782,6 +785,7 @@ async function persistStorefrontOrderDraft({
   shippingMethod,
   financialBreakdown,
   paymentMethod,
+  affiliateCode,
   coupon,
   discountCampaign,
   giftCard,
@@ -814,6 +818,7 @@ async function persistStorefrontOrderDraft({
   shippingMethod: PublicShippingMethod | null;
   financialBreakdown: CheckoutFinancialBreakdown;
   paymentMethod: StorePaymentMethod;
+  affiliateCode?: string | null;
   coupon: StoreCouponRow | null;
   discountCampaign: AppliedDiscountCampaign | null;
   giftCard: StoreGiftCardRow | null;
@@ -830,6 +835,7 @@ async function persistStorefrontOrderDraft({
   const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
   const orderNumber = generateDraftOrderNumber();
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
+  const safeAffiliateCode = normalizeAffiliateCode(affiliateCode);
   const safeGiftCardAmount = Math.max(0, Number(giftCardAmount.toFixed(2)));
   const safeReferralCode = normalizeReferralCode(referralCode);
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
@@ -888,6 +894,7 @@ async function persistStorefrontOrderDraft({
     payment_method: paymentMethod,
     payment_status: "pending",
     fulfillment_status: "pending",
+    affiliate_code: safeAffiliateCode || null,
     delivery_type: digitalSummary.deliveryType,
     gift_card_amount: safeGiftCardAmount,
     gift_card_code: giftCard ? maskGiftCardCode(giftCard.code) : null,
@@ -1116,6 +1123,22 @@ async function persistStorefrontOrderDraft({
           .eq("id" as never, orderRow.id as never);
       }
 
+      const affiliateOrder = await recordAffiliateOrderForCheckout(admin, {
+        affiliateCode: safeAffiliateCode,
+        orderId: orderRow.id,
+        orderSource: "orders",
+        orderTotal: total,
+        storeId: store.id,
+        workspaceId
+      });
+
+      if (affiliateOrder) {
+        await admin
+          .from("orders" as never)
+          .update({ affiliate_id: affiliateOrder.affiliateId, affiliate_code: safeAffiliateCode } as never)
+          .eq("id" as never, orderRow.id as never);
+      }
+
       await recordOrderEventSafe({
         eventType: "order_created",
         message: `Order draft created from public storefront for ${customerName}.`,
@@ -1265,6 +1288,7 @@ async function persistStorefrontOrderDraft({
       source: "public_storefront"
     },
     items: legacyItems as Json,
+    affiliate_code: safeAffiliateCode || null,
     referral_code: safeReferralCode || null,
     subtotal: discountedSubtotal,
     total,
@@ -1385,6 +1409,22 @@ async function persistStorefrontOrderDraft({
       .eq("id" as never, storeOrderRow.id as never);
   }
 
+  const affiliateOrder = await recordAffiliateOrderForCheckout(admin, {
+    affiliateCode: safeAffiliateCode,
+    orderId: storeOrderRow.id,
+    orderSource: "store_orders",
+    orderTotal: total,
+    storeId: store.id,
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (affiliateOrder) {
+    await admin
+      .from("store_orders" as never)
+      .update({ affiliate_id: affiliateOrder.affiliateId, affiliate_code: safeAffiliateCode } as never)
+      .eq("id" as never, storeOrderRow.id as never);
+  }
+
   await recordOrderEventSafe({
     eventType: "order_created",
     message: `Order draft created from public storefront for ${customerName}.`,
@@ -1474,6 +1514,7 @@ async function persistStorefrontOrderDraft({
 
 async function redirectToStoreCardCheckout({
   admin,
+  affiliateCode,
   couponCode,
   customerAddress,
   customerEmail,
@@ -1493,6 +1534,7 @@ async function redirectToStoreCardCheckout({
   store
 }: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  affiliateCode: string;
   couponCode: string;
   customerAddress: string;
   customerEmail: string;
@@ -1615,6 +1657,7 @@ async function redirectToStoreCardCheckout({
       line_items: lineItems,
       metadata: {
         ...stripeSuccessMetadata({
+          affiliateCode,
           couponCode,
           customerAddress,
           customerEmail,
@@ -1673,6 +1716,7 @@ async function redirectToStoreCardCheckout({
 
 async function redirectToStorePayPalCheckout({
   admin,
+  affiliateCode,
   cartSessionId,
   coupon,
   discountCampaign,
@@ -1696,6 +1740,7 @@ async function redirectToStorePayPalCheckout({
   subtotal
 }: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  affiliateCode: string;
   cartSessionId?: string | null;
   coupon: StoreCouponRow | null;
   discountCampaign: AppliedDiscountCampaign | null;
@@ -1766,6 +1811,7 @@ async function redirectToStorePayPalCheckout({
     giftCardAmount,
     items,
     paymentMethod: "paypal",
+    affiliateCode,
     referralCode,
     redeemGiftCardOnPersist: false,
     shippingMethod,
@@ -1844,6 +1890,7 @@ export async function createPublicStoreOrderAction(
   const customerEmail = cleanText(formData.get("customerEmail"), 180);
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
+  const affiliateCode = normalizeAffiliateCode(formData.get("affiliateCode"));
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
   const referralCode = normalizeReferralCode(formData.get("referralCode"));
@@ -2153,6 +2200,7 @@ export async function createPublicStoreOrderAction(
       gift_card_amount: giftCardAmount,
       gift_card_code: giftCardResult?.ok ? maskGiftCardCode(giftCardResult.giftCard.code) : null,
       gift_card_id: giftCardResult?.ok ? giftCardResult.giftCard.id : null,
+      affiliate_code: affiliateCode || null,
       referral_code: referralCode || null,
       discount_type: couponResult?.ok
         ? couponResult.coupon.discount_type
@@ -2250,6 +2298,22 @@ export async function createPublicStoreOrderAction(
       .eq("id" as never, (order as { id: string }).id as never);
   }
 
+  const affiliateOrder = await recordAffiliateOrderForCheckout(admin, {
+    affiliateCode,
+    orderId: (order as { id: string }).id,
+    orderSource: "store_orders",
+    orderTotal: total,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (affiliateOrder) {
+    await admin
+      .from("store_orders" as never)
+      .update({ affiliate_id: affiliateOrder.affiliateId, affiliate_code: affiliateCode } as never)
+      .eq("id" as never, (order as { id: string }).id as never);
+  }
+
   await createOrderNotificationSafe({
     customerName,
     orderId: (order as { id: string }).id,
@@ -2338,6 +2402,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
+  const affiliateCode = normalizeAffiliateCode(formData.get("affiliateCode"));
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
   const referralCode = normalizeReferralCode(formData.get("referralCode"));
@@ -2612,6 +2677,7 @@ export async function createPublicStoreOrderDraftAction(
   if (selectedPaymentMethod.method === "card" && financialBreakdown.totalAmount > 0) {
     const cardCheckoutError = await redirectToStoreCardCheckout({
       admin,
+      affiliateCode,
       couponCode,
       customerAddress,
       customerEmail,
@@ -2642,6 +2708,7 @@ export async function createPublicStoreOrderDraftAction(
   if (selectedPaymentMethod.method === "paypal" && financialBreakdown.totalAmount > 0) {
     const paypalCheckoutError = await redirectToStorePayPalCheckout({
       admin,
+      affiliateCode,
       cartSessionId,
       coupon: couponResult?.ok ? couponResult.coupon : null,
       discountCampaign,
@@ -2689,6 +2756,7 @@ export async function createPublicStoreOrderDraftAction(
     shippingMethod,
     financialBreakdown,
     paymentMethod: selectedPaymentMethod.provider_internal ?? internalStorePaymentMethod(selectedPaymentMethod.method),
+    affiliateCode,
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountCampaign,
     giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,

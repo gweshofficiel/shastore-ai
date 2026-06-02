@@ -111,6 +111,8 @@ type CartUpdatedDetail = {
 
 const CART_UPDATED_EVENT = "shastore-cart-updated";
 const CART_RECOVERY_SESSION_KEY = "shastore_cart_recovery_session";
+const AFFILIATE_CODE_STORAGE_PREFIX = "shastore_affiliate_code_";
+const AFFILIATE_VISITOR_STORAGE_PREFIX = "shastore_affiliate_visitor_";
 const REFERRAL_CODE_STORAGE_PREFIX = "shastore_referral_code_";
 const initialOrderDraftState: PublicStoreOrderState = {
   error: null,
@@ -132,7 +134,19 @@ function referralCodeStorageKey(storeId: string) {
   return `${REFERRAL_CODE_STORAGE_PREFIX}${storeId}`;
 }
 
+function affiliateCodeStorageKey(storeId: string) {
+  return `${AFFILIATE_CODE_STORAGE_PREFIX}${storeId}`;
+}
+
+function affiliateVisitorStorageKey(storeId: string) {
+  return `${AFFILIATE_VISITOR_STORAGE_PREFIX}${storeId}`;
+}
+
 function normalizeReferralCode(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
+}
+
+function normalizeAffiliateCode(value: string | null | undefined) {
   return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
 }
 
@@ -301,6 +315,44 @@ export function StoreReferralAttribution({ storeId }: { storeId: string }) {
     if (code) {
       window.localStorage.setItem(referralCodeStorageKey(storeId), code);
     }
+  }, [storeId]);
+
+  return null;
+}
+
+export function StoreAffiliateAttribution({ storeId }: { storeId: string }) {
+  useEffect(() => {
+    const code = normalizeAffiliateCode(new URLSearchParams(window.location.search).get("aff"));
+
+    if (!code) {
+      return;
+    }
+
+    window.localStorage.setItem(affiliateCodeStorageKey(storeId), code);
+    const visitorKey = affiliateVisitorStorageKey(storeId);
+    const existingVisitor = window.localStorage.getItem(visitorKey);
+    const visitorId =
+      existingVisitor ||
+      (typeof window.crypto?.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `aff_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
+    if (!existingVisitor) {
+      window.localStorage.setItem(visitorKey, visitorId);
+    }
+
+    void fetch("/api/store-affiliates/track-visit", {
+      body: JSON.stringify({
+        affiliateCode: code,
+        landingPath: `${window.location.pathname}${window.location.search}`,
+        storeId,
+        visitorId
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    }).catch(() => undefined);
   }, [storeId]);
 
   return null;
@@ -970,6 +1022,7 @@ export function CartPageClient({
   const [recoveryRestored, setRecoveryRestored] = useState(false);
   const [reservationPending, setReservationPending] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
+  const [affiliateCode, setAffiliateCode] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const customerAddressRef = useRef("");
   const customerNameRef = useRef("");
@@ -1053,6 +1106,20 @@ export function CartPageClient({
 
     if (nextCode) {
       setReferralCode(nextCode);
+    }
+  }, [storeId]);
+
+  useEffect(() => {
+    const urlCode = normalizeAffiliateCode(new URLSearchParams(window.location.search).get("aff"));
+    const storedCode = normalizeAffiliateCode(window.localStorage.getItem(affiliateCodeStorageKey(storeId)));
+    const nextCode = urlCode || storedCode;
+
+    if (urlCode) {
+      window.localStorage.setItem(affiliateCodeStorageKey(storeId), urlCode);
+    }
+
+    if (nextCode) {
+      setAffiliateCode(nextCode);
     }
   }, [storeId]);
 
@@ -1977,6 +2044,7 @@ export function CartPageClient({
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
           <input name="giftCardCode" type="hidden" value={appliedGiftCard ? giftCardCode : ""} />
+          <input name="affiliateCode" type="hidden" value={affiliateCode} />
           <input name="referralCode" type="hidden" value={referralCode} />
           <input name="cartSessionId" type="hidden" value={cartSessionId} />
           <input
