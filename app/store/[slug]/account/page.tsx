@@ -275,6 +275,9 @@ export default async function CustomerAccountPage({
             <Link className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200" href={`/store/${preview.store.slug}/wishlist`}>
               Wishlist
             </Link>
+            <Link className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200" href={`/store/${preview.store.slug}/account/downloads${phone ? `?phone=${encodeURIComponent(phone)}` : ""}`}>
+              Downloads
+            </Link>
             <Link className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200" href={`/store/${preview.store.slug}`}>
               Back to store
             </Link>
