@@ -85,6 +85,12 @@ type AppliedDiscountCampaign = {
   name: string;
 };
 
+type AppliedGiftCard = {
+  appliedAmount: number;
+  currency: string;
+  maskedCode: string;
+};
+
 type SavedCheckoutAddress = {
   address_line1: string;
   address_line2: string | null;
@@ -921,6 +927,11 @@ export function CartPageClient({
   const [couponMessageType, setCouponMessageType] = useState<"error" | "success" | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [appliedCampaign, setAppliedCampaign] = useState<AppliedDiscountCampaign | null>(null);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [giftCardMessage, setGiftCardMessage] = useState<string | null>(null);
+  const [giftCardMessageType, setGiftCardMessageType] = useState<"error" | "success" | null>(null);
+  const [appliedGiftCard, setAppliedGiftCard] = useState<AppliedGiftCard | null>(null);
+  const [giftCardPending, setGiftCardPending] = useState(false);
   const [couponPending, setCouponPending] = useState(false);
   const [autoCouponAttempted, setAutoCouponAttempted] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PublicStorePaymentMethodKey | "">(
@@ -996,6 +1007,8 @@ export function CartPageClient({
   });
   const discountedSubtotal = financialBreakdown.discountedSubtotalAmount;
   const finalTotal = financialBreakdown.totalAmount;
+  const giftCardAmount = appliedGiftCard ? Math.min(finalTotal, appliedGiftCard.appliedAmount) : 0;
+  const payableTotal = Number(Math.max(0, finalTotal - giftCardAmount).toFixed(2));
 
   useEffect(() => {
     if (initialRecoverySessionId && /^[a-zA-Z0-9_-]{16,160}$/.test(initialRecoverySessionId)) {
@@ -1071,9 +1084,18 @@ export function CartPageClient({
   useEffect(() => {
     setAppliedCoupon(null);
     setAppliedCampaign(null);
+    setAppliedGiftCard(null);
     setCouponMessage(null);
     setCouponMessageType(null);
+    setGiftCardMessage(null);
+    setGiftCardMessageType(null);
   }, [total]);
+
+  useEffect(() => {
+    setAppliedGiftCard(null);
+    setGiftCardMessage(null);
+    setGiftCardMessageType(null);
+  }, [finalTotal]);
 
   useEffect(() => {
     if (!items.length || total <= 0 || appliedCoupon) {
@@ -1407,6 +1429,70 @@ export function CartPageClient({
     setCouponMessageType(null);
   }
 
+  async function applyGiftCard(nextCode = giftCardCode) {
+    const code = nextCode.trim();
+
+    if (!code) {
+      setGiftCardMessage("Enter a gift card code.");
+      setGiftCardMessageType("error");
+      setAppliedGiftCard(null);
+      return;
+    }
+
+    if (finalTotal <= 0) {
+      setGiftCardMessage("Gift card cannot be applied to this order.");
+      setGiftCardMessageType("error");
+      setAppliedGiftCard(null);
+      return;
+    }
+
+    setGiftCardPending(true);
+    setGiftCardMessage(null);
+
+    try {
+      const response = await fetch("/api/store-gift-cards/validate", {
+        body: JSON.stringify({ code, currency, orderTotal: finalTotal, slug, storeId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
+      });
+      const data = (await response.json()) as {
+        appliedAmount?: number;
+        currency?: string;
+        error?: string;
+        maskedCode?: string;
+      };
+
+      if (!response.ok || typeof data.appliedAmount !== "number" || !data.maskedCode) {
+        setAppliedGiftCard(null);
+        setGiftCardMessage(data.error ?? "Gift card could not be applied.");
+        setGiftCardMessageType("error");
+        return;
+      }
+
+      setAppliedGiftCard({
+        appliedAmount: data.appliedAmount,
+        currency: data.currency ?? currency,
+        maskedCode: data.maskedCode
+      });
+      setGiftCardCode(code);
+      setGiftCardMessage(`${data.maskedCode} applied. Gift card covers ${formatMoney(data.appliedAmount, currency)}.`);
+      setGiftCardMessageType("success");
+    } catch {
+      setAppliedGiftCard(null);
+      setGiftCardMessage("Gift card could not be applied.");
+      setGiftCardMessageType("error");
+    } finally {
+      setGiftCardPending(false);
+    }
+  }
+
+  function removeGiftCard() {
+    setAppliedGiftCard(null);
+    setGiftCardCode("");
+    setGiftCardMessage(null);
+    setGiftCardMessageType(null);
+  }
+
   if (!items.length) {
     return (
       <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
@@ -1616,6 +1702,60 @@ export function CartPageClient({
             </div>
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                Gift card
+              </p>
+              {appliedGiftCard ? (
+                <button
+                  className="text-xs font-black uppercase tracking-[0.14em] text-red-600"
+                  onClick={removeGiftCard}
+                  type="button"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                className="h-11 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                onChange={(event) => {
+                  setGiftCardCode(event.target.value);
+                  setAppliedGiftCard(null);
+                  setGiftCardMessage(null);
+                  setGiftCardMessageType(null);
+                }}
+                placeholder="Gift card code"
+                value={giftCardCode}
+              />
+              <button
+                className="h-11 rounded-full bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-300"
+                disabled={giftCardPending}
+                onClick={() => void applyGiftCard()}
+                type="button"
+              >
+                {giftCardPending ? "Checking..." : "Apply"}
+              </button>
+            </div>
+            {giftCardMessage ? (
+              <p className={`mt-2 rounded-xl px-3 py-2 text-xs font-bold ${
+                giftCardMessageType === "success"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : giftCardMessageType === "error"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-white text-muted"
+              }`}>
+                {giftCardMessage}
+              </p>
+            ) : null}
+            {appliedGiftCard ? (
+              <div className="mt-3 flex justify-between text-emerald-700">
+                <span>Gift card ({appliedGiftCard.maskedCode})</span>
+                <span>-{formatMoney(giftCardAmount, currency)}</span>
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Delivery summary
             </p>
@@ -1761,8 +1901,8 @@ export function CartPageClient({
             </div>
           ) : null}
           <div className="flex justify-between text-lg font-black text-ink">
-            <span>Final total</span>
-            <span>{formatMoney(finalTotal, currency)}</span>
+            <span>{giftCardAmount > 0 ? "Amount due" : "Final total"}</span>
+            <span>{formatMoney(payableTotal, currency)}</span>
           </div>
         </div>
         <div className="mt-6 grid gap-3 border-t border-slate-100 pt-6">
@@ -1800,6 +1940,7 @@ export function CartPageClient({
           <input name="paymentMethod" type="hidden" value={paymentMethod} />
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
+          <input name="giftCardCode" type="hidden" value={appliedGiftCard ? giftCardCode : ""} />
           <input name="cartSessionId" type="hidden" value={cartSessionId} />
           <input
             name="items"
@@ -1875,8 +2016,20 @@ export function CartPageClient({
                   <span>-{formatMoney(displayDiscountAmount, currency)}</span>
                 </div>
                 <div className="flex justify-between text-ink">
-                  <span>Final total</span>
+                  <span>Total before gift card</span>
                   <span>{formatMoney(finalTotal, currency)}</span>
+                </div>
+              </div>
+            ) : null}
+            {appliedGiftCard ? (
+              <div className="mt-3 grid gap-1 text-xs font-bold text-muted">
+                <div className="flex justify-between text-emerald-700">
+                  <span>Gift card ({appliedGiftCard.maskedCode})</span>
+                  <span>-{formatMoney(giftCardAmount, currency)}</span>
+                </div>
+                <div className="flex justify-between text-ink">
+                  <span>Amount due</span>
+                  <span>{formatMoney(payableTotal, currency)}</span>
                 </div>
               </div>
             ) : null}

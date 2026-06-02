@@ -29,6 +29,12 @@ import {
   type StoreCouponRow
 } from "@/lib/store-coupons";
 import {
+  maskGiftCardCode,
+  redeemStoreGiftCard,
+  validateStoreGiftCard,
+  type StoreGiftCardRow
+} from "@/lib/store-gift-cards";
+import {
   findActiveDiscountCampaignForCart,
   type AppliedDiscountCampaign
 } from "@/lib/discount-campaigns";
@@ -260,6 +266,21 @@ function stripeMetadataValue(value: string | number | null | undefined, maxLengt
   return String(value ?? "").slice(0, maxLength);
 }
 
+function applyGiftCardToBreakdown(
+  breakdown: CheckoutFinancialBreakdown,
+  giftCardAmount: number
+): CheckoutFinancialBreakdown {
+  const appliedAmount = Math.min(
+    breakdown.totalAmount,
+    Math.max(0, Number(giftCardAmount.toFixed(2)))
+  );
+
+  return {
+    ...breakdown,
+    totalAmount: Number(Math.max(0, breakdown.totalAmount - appliedAmount).toFixed(2))
+  };
+}
+
 function stripeSuccessMetadata(input: {
   couponCode: string;
   customerAddress: string;
@@ -269,6 +290,9 @@ function stripeSuccessMetadata(input: {
   customerPhone: string;
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
+  giftCardAmount: number;
+  giftCardCode: string;
+  giftCardId: string | null;
   orderReference: string;
   shippingMethod: PublicShippingMethod | null;
   slug: string;
@@ -288,6 +312,9 @@ function stripeSuccessMetadata(input: {
     customer_phone: stripeMetadataValue(input.customerPhone, 80),
     delivery_fee: stripeMetadataValue(input.deliveryFee),
     delivery_method: stripeMetadataValue(input.deliveryMethod, 40),
+    gift_card_amount: stripeMetadataValue(input.giftCardAmount),
+    gift_card_code: stripeMetadataValue(maskGiftCardCode(input.giftCardCode), 80),
+    gift_card_id: stripeMetadataValue(input.giftCardId, 80),
     order_reference: input.orderReference,
     owner_user_id: stripeMetadataValue(input.store.owner_user_id ?? input.store.user_id, 80),
     shipping_method_id: stripeMetadataValue(input.shippingMethod?.id, 80),
@@ -754,6 +781,9 @@ async function persistStorefrontOrderDraft({
   paymentMethod,
   coupon,
   discountCampaign,
+  giftCard,
+  giftCardAmount,
+  redeemGiftCardOnPersist = true,
   discountAmount,
   subtotal,
   slug
@@ -782,6 +812,9 @@ async function persistStorefrontOrderDraft({
   paymentMethod: StorePaymentMethod;
   coupon: StoreCouponRow | null;
   discountCampaign: AppliedDiscountCampaign | null;
+  giftCard: StoreGiftCardRow | null;
+  giftCardAmount: number;
+  redeemGiftCardOnPersist?: boolean;
   discountAmount: number;
   subtotal: number;
   slug: string;
@@ -792,6 +825,7 @@ async function persistStorefrontOrderDraft({
   const combinedNotes = [customerAddress, customerNotes].filter(Boolean).join("\n\n") || null;
   const orderNumber = generateDraftOrderNumber();
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
+  const safeGiftCardAmount = Math.max(0, Number(giftCardAmount.toFixed(2)));
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
   const total = financialBreakdown.totalAmount;
   const digitalSummary = digitalOrderSummary(items);
@@ -849,6 +883,9 @@ async function persistStorefrontOrderDraft({
     payment_status: "pending",
     fulfillment_status: "pending",
     delivery_type: digitalSummary.deliveryType,
+    gift_card_amount: safeGiftCardAmount,
+    gift_card_code: giftCard ? maskGiftCardCode(giftCard.code) : null,
+    gift_card_id: giftCard ? giftCard.id : null,
     has_digital_items: digitalSummary.hasDigitalItems,
     digital_delivery_status: digitalSummary.status,
     digital_delivery_metadata: {
@@ -1036,6 +1073,20 @@ async function persistStorefrontOrderDraft({
       }
 
       if (coupon && !(await incrementCouponUsage(admin, coupon))) {
+        await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
+        return null;
+      }
+
+      if (
+        giftCard &&
+        redeemGiftCardOnPersist &&
+        !(await redeemStoreGiftCard(admin, {
+          amount: safeGiftCardAmount,
+          giftCard,
+          orderId: orderRow.id,
+          orderSource: "orders"
+        }))
+      ) {
         await admin.from("orders" as never).delete().eq("id" as never, orderRow.id as never);
         return null;
       }
@@ -1276,6 +1327,20 @@ async function persistStorefrontOrderDraft({
     return null;
   }
 
+  if (
+    giftCard &&
+    redeemGiftCardOnPersist &&
+    !(await redeemStoreGiftCard(admin, {
+      amount: safeGiftCardAmount,
+      giftCard,
+      orderId: storeOrderRow.id,
+      orderSource: "store_orders"
+    }))
+  ) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, storeOrderRow.id as never);
+    return null;
+  }
+
   await recordOrderEventSafe({
     eventType: "order_created",
     message: `Order draft created from public storefront for ${customerName}.`,
@@ -1375,6 +1440,8 @@ async function redirectToStoreCardCheckout({
   deliveryFee,
   deliveryMethod,
   financialBreakdown,
+  giftCard,
+  giftCardAmount,
   items,
   shippingMethod,
   slug,
@@ -1391,6 +1458,8 @@ async function redirectToStoreCardCheckout({
   deliveryFee: number;
   deliveryMethod: DeliveryMethod;
   financialBreakdown: CheckoutFinancialBreakdown;
+  giftCard: StoreGiftCardRow | null;
+  giftCardAmount: number;
   items: DraftLineItem[];
   shippingMethod: PublicShippingMethod | null;
   slug: string;
@@ -1478,15 +1547,16 @@ async function redirectToStoreCardCheckout({
       });
     }
 
-    const discounts = financialBreakdown.discountAmount > 0
+    const stripeDiscountAmount = Number((financialBreakdown.discountAmount + giftCardAmount).toFixed(2));
+    const discounts = stripeDiscountAmount > 0
       ? [
           {
             coupon: (
               await stripe.coupons.create({
-                amount_off: stripeAmount(financialBreakdown.discountAmount),
+                amount_off: stripeAmount(stripeDiscountAmount),
                 currency: currency.toLowerCase(),
                 duration: "once",
-                name: couponCode || "Store discount"
+                name: giftCard ? "Gift card / store discount" : couponCode || "Store discount"
               }, { stripeAccount: stripeAccountId })
             ).id
           }
@@ -1507,6 +1577,9 @@ async function redirectToStoreCardCheckout({
           customerPhone,
           deliveryFee,
           deliveryMethod,
+          giftCardAmount,
+          giftCardCode: giftCard?.code ?? "",
+          giftCardId: giftCard?.id ?? null,
           orderReference,
           shippingMethod,
           slug,
@@ -1566,6 +1639,8 @@ async function redirectToStorePayPalCheckout({
   deliveryMethod,
   discountAmount,
   financialBreakdown,
+  giftCard,
+  giftCardAmount,
   items,
   shippingMethod,
   slug,
@@ -1586,6 +1661,8 @@ async function redirectToStorePayPalCheckout({
   deliveryMethod: DeliveryMethod;
   discountAmount: number;
   financialBreakdown: CheckoutFinancialBreakdown;
+  giftCard: StoreGiftCardRow | null;
+  giftCardAmount: number;
   items: DraftLineItem[];
   shippingMethod: PublicShippingMethod | null;
   slug: string;
@@ -1636,8 +1713,11 @@ async function redirectToStorePayPalCheckout({
     deliveryMethod,
     discountAmount,
     financialBreakdown,
+    giftCard,
+    giftCardAmount,
     items,
     paymentMethod: "paypal",
+    redeemGiftCardOnPersist: false,
     shippingMethod,
     slug,
     store,
@@ -1715,6 +1795,7 @@ export async function createPublicStoreOrderAction(
   const customerAddress = cleanText(formData.get("customerAddress"), 500);
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
+  const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
@@ -1947,13 +2028,34 @@ export async function createPublicStoreOrderAction(
     discountCampaign?.freeShipping ? Math.min(baseDeliveryFee, discountCampaign.discountAmount) : 0;
   const deliveryFee = Number(Math.max(0, baseDeliveryFee - campaignShippingDiscount).toFixed(2));
   const discountAmount = couponDiscountAmount || campaignSubtotalDiscount;
-  const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
+  const baseFinancialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     customerAddress,
     discountAmount,
     shippingAmount: deliveryFee,
     storeId: store.id,
     subtotalAmount: subtotal
   });
+  const giftCardResult = giftCardCode
+    ? await validateStoreGiftCard(admin, {
+        code: giftCardCode,
+        currency: preview.store.currency ?? "USD",
+        orderTotal: baseFinancialBreakdown.totalAmount,
+        storeId: store.id,
+        workspaceId: store.workspace_id
+      })
+    : null;
+
+  if (giftCardResult && !giftCardResult.ok) {
+    return {
+      error: giftCardResult.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  const giftCardAmount = giftCardResult?.ok ? giftCardResult.appliedAmount : 0;
+  const financialBreakdown = applyGiftCardToBreakdown(baseFinancialBreakdown, giftCardAmount);
   const total = financialBreakdown.totalAmount;
   const { data: order, error: orderError } = await admin
     .from("store_orders")
@@ -1997,6 +2099,9 @@ export async function createPublicStoreOrderAction(
       coupon_code: couponResult?.ok ? couponResult.coupon.code : null,
       discount_campaign_id: discountCampaign?.campaign.id ?? null,
       discount_campaign_name: discountCampaign?.campaign.name ?? null,
+      gift_card_amount: giftCardAmount,
+      gift_card_code: giftCardResult?.ok ? maskGiftCardCode(giftCardResult.giftCard.code) : null,
+      gift_card_id: giftCardResult?.ok ? giftCardResult.giftCard.id : null,
       discount_type: couponResult?.ok
         ? couponResult.coupon.discount_type
         : discountCampaign?.campaign.discount_type ?? null,
@@ -2051,6 +2156,24 @@ export async function createPublicStoreOrderAction(
     await admin.from("store_orders" as never).delete().eq("id" as never, (order as { id: string }).id as never);
     return {
       error: "Coupon usage limit has been reached.",
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  if (
+    giftCardResult?.ok &&
+    !(await redeemStoreGiftCard(admin, {
+      amount: giftCardAmount,
+      giftCard: giftCardResult.giftCard,
+      orderId: (order as { id: string }).id,
+      orderSource: "store_orders"
+    }))
+  ) {
+    await admin.from("store_orders" as never).delete().eq("id" as never, (order as { id: string }).id as never);
+    return {
+      error: "Gift card balance could not be redeemed.",
       message: null,
       ok: false,
       orderId: null
@@ -2146,6 +2269,7 @@ export async function createPublicStoreOrderDraftAction(
   const customerNotes = cleanText(formData.get("customerNotes"), 1000);
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
+  const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
   const requestedPaymentMethod = parsePublicStorePaymentMethod(formData.get("paymentMethod"));
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
@@ -2385,15 +2509,36 @@ export async function createPublicStoreOrderDraftAction(
   const finalDeliveryFee = Number(Math.max(0, deliverySelection.deliveryFee - campaignShippingDiscount).toFixed(2));
   const appliedSubtotalDiscount = couponResult?.ok ? couponResult.discountAmount : campaignSubtotalDiscount;
 
-  const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
+  const baseFinancialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     customerAddress,
     discountAmount: appliedSubtotalDiscount,
     shippingAmount: finalDeliveryFee,
     storeId: store.id,
     subtotalAmount: subtotal
   });
+  const giftCardResult = giftCardCode
+    ? await validateStoreGiftCard(admin, {
+        code: giftCardCode,
+        currency,
+        orderTotal: baseFinancialBreakdown.totalAmount,
+        storeId: store.id,
+        workspaceId: store.workspace_id
+      })
+    : null;
 
-  if (selectedPaymentMethod.method === "card") {
+  if (giftCardResult && !giftCardResult.ok) {
+    return {
+      error: giftCardResult.error,
+      message: null,
+      ok: false,
+      orderId: null
+    };
+  }
+
+  const giftCardAmount = giftCardResult?.ok ? giftCardResult.appliedAmount : 0;
+  const financialBreakdown = applyGiftCardToBreakdown(baseFinancialBreakdown, giftCardAmount);
+
+  if (selectedPaymentMethod.method === "card" && financialBreakdown.totalAmount > 0) {
     const cardCheckoutError = await redirectToStoreCardCheckout({
       admin,
       couponCode,
@@ -2406,6 +2551,8 @@ export async function createPublicStoreOrderDraftAction(
       deliveryFee: finalDeliveryFee,
       deliveryMethod: deliverySelection.deliveryMethod,
       financialBreakdown,
+      giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
+      giftCardAmount,
       items,
       shippingMethod,
       slug,
@@ -2420,7 +2567,7 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
-  if (selectedPaymentMethod.method === "paypal") {
+  if (selectedPaymentMethod.method === "paypal" && financialBreakdown.totalAmount > 0) {
     const paypalCheckoutError = await redirectToStorePayPalCheckout({
       admin,
       cartSessionId,
@@ -2436,6 +2583,8 @@ export async function createPublicStoreOrderDraftAction(
       deliveryMethod: deliverySelection.deliveryMethod,
       discountAmount: appliedSubtotalDiscount,
       financialBreakdown,
+      giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
+      giftCardAmount,
       items,
       shippingMethod,
       slug,
@@ -2469,6 +2618,8 @@ export async function createPublicStoreOrderDraftAction(
     paymentMethod: selectedPaymentMethod.provider_internal ?? internalStorePaymentMethod(selectedPaymentMethod.method),
     coupon: couponResult?.ok ? couponResult.coupon : null,
     discountCampaign,
+    giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
+    giftCardAmount,
     discountAmount: appliedSubtotalDiscount,
     subtotal,
     slug

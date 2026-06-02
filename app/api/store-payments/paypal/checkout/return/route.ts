@@ -3,6 +3,7 @@ import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { capturePayPalCheckoutOrder } from "@/lib/store-payment-provider-runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
+import { redeemStoreGiftCard, type StoreGiftCardRow } from "@/lib/store-gift-cards";
 
 type OrderSource = "orders" | "store_orders";
 
@@ -73,8 +74,8 @@ export async function GET(request: NextRequest) {
       } as never)
       .eq("id" as never, requestedOrderId as never);
     const { data: orderRow, error: orderError } = source === "store_orders"
-      ? await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, items, total").single()
-      : await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, total").single();
+      ? await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, gift_card_id, gift_card_amount, items, total").single()
+      : await orderUpdate.select("id, store_id, workspace_id, user_id, owner_user_id, customer_email, gift_card_id, gift_card_amount, total").single();
 
     if (orderError || !orderRow) {
       throw new Error(orderError?.message ?? "PayPal paid order could not be updated.");
@@ -84,6 +85,8 @@ export async function GET(request: NextRequest) {
       id: string;
       customer_email?: string | null;
       items?: unknown;
+      gift_card_amount?: number | string | null;
+      gift_card_id?: string | null;
       owner_user_id?: string | null;
       store_id?: string | null;
       total?: number | null;
@@ -92,6 +95,30 @@ export async function GET(request: NextRequest) {
     };
 
     if (paid && order.store_id) {
+      const giftCardAmount = Number(order.gift_card_amount ?? 0);
+
+      if (order.gift_card_id && giftCardAmount > 0) {
+        const { data: giftCardRow } = await admin
+          .from("store_gift_cards" as never)
+          .select("id, workspace_id, store_id, code, initial_balance, remaining_balance, currency, status, expires_at")
+          .eq("id" as never, order.gift_card_id as never)
+          .eq("store_id" as never, order.store_id as never)
+          .maybeSingle();
+        const giftCard = giftCardRow as StoreGiftCardRow | null;
+
+        if (
+          giftCard &&
+          !(await redeemStoreGiftCard(admin, {
+            amount: giftCardAmount,
+            giftCard,
+            orderId: requestedOrderId,
+            orderSource: source
+          }))
+        ) {
+          throw new Error("PayPal paid order gift card could not be redeemed.");
+        }
+      }
+
       const orderItems =
         source === "orders"
           ? await admin

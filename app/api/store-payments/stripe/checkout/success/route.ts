@@ -4,6 +4,7 @@ import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
+import { maskGiftCardCode, redeemStoreGiftCard, type StoreGiftCardRow } from "@/lib/store-gift-cards";
 import type { Json } from "@/types/database";
 
 function dashboardErrorUrl(request: NextRequest, status: string) {
@@ -138,7 +139,18 @@ export async function GET(request: NextRequest) {
     const subtotalAmount = numberMetadata(metadata, "subtotal_amount") || moneyFromCents(session.amount_subtotal);
     const shippingAmount = numberMetadata(metadata, "delivery_fee");
     const taxAmount = numberMetadata(metadata, "tax_amount");
+    const giftCardAmount = numberMetadata(metadata, "gift_card_amount");
+    const giftCardId = cleanMetadata(metadata, "gift_card_id");
     const nowStatus = session.payment_status === "paid" ? "paid" : "pending_confirmation";
+    const { data: giftCardRow } = giftCardId
+      ? await admin
+          .from("store_gift_cards" as never)
+          .select("id, workspace_id, store_id, code, initial_balance, remaining_balance, currency, status, expires_at")
+          .eq("id" as never, giftCardId as never)
+          .eq("store_id" as never, storeId as never)
+          .maybeSingle()
+      : { data: null };
+    const giftCard = giftCardRow as StoreGiftCardRow | null;
     const { data: inserted, error } = await admin
       .from("store_orders" as never)
       .insert({
@@ -157,6 +169,9 @@ export async function GET(request: NextRequest) {
         },
         digital_delivery_status: digitalItemCount ? "pending" : "none",
         fulfillment_status: "unfulfilled",
+        gift_card_amount: giftCardAmount,
+        gift_card_code: giftCard ? maskGiftCardCode(giftCard.code) : null,
+        gift_card_id: giftCard ? giftCard.id : null,
         has_digital_items: digitalItemCount > 0,
         id: orderReference,
         items: enrichedItems as Json,
@@ -182,6 +197,20 @@ export async function GET(request: NextRequest) {
 
     if (error || !inserted) {
       throw new Error(error?.message ?? "Stripe paid order could not be saved.");
+    }
+
+    if (
+      nowStatus === "paid" &&
+      giftCard &&
+      giftCardAmount > 0 &&
+      !(await redeemStoreGiftCard(admin, {
+        amount: giftCardAmount,
+        giftCard,
+        orderId: orderReference,
+        orderSource: "store_orders"
+      }))
+    ) {
+      throw new Error("Stripe paid order gift card could not be redeemed.");
     }
 
     await assignLicenseKeysForOrder({
