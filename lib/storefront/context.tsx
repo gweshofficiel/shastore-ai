@@ -63,7 +63,14 @@ export function StorefrontThemeTokens({
   return (
     <style
       dangerouslySetInnerHTML={{
-        __html: `:root { ${cssVariables} }`
+        __html: `:root { ${cssVariables} }
+.shastore-storefront .rounded-full { border-radius: var(--store-button-radius) !important; }
+.shastore-storefront .rounded-2xl,
+.shastore-storefront .rounded-3xl,
+.shastore-storefront .rounded-\\[1\\.5rem\\],
+.shastore-storefront .rounded-\\[2rem\\],
+.shastore-storefront .rounded-\\[2\\.5rem\\],
+.shastore-storefront .rounded-\\[var\\(--store-border-radius\\)\\] { border-radius: var(--store-card-radius) !important; }`
       }}
       id="shastore-theme-tokens"
     />

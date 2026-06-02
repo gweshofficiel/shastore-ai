@@ -11,6 +11,7 @@ type PublicStoreFooterProps = {
   copyrightText?: string;
   footerBackgroundColor: string;
   footerLinkSettings?: StoreFooterLinkSettings;
+  footerStyle?: string;
   footerTextColor: string;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
@@ -24,6 +25,7 @@ export function PublicStoreFooter({
   copyrightText,
   footerBackgroundColor,
   footerLinkSettings = defaultStoreFooterLinkSettings,
+  footerStyle = "minimal",
   footerTextColor,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
@@ -66,13 +68,24 @@ export function PublicStoreFooter({
 
   return (
     <footer
-      className="px-4 py-8 sm:px-6 lg:px-8"
+      className={`px-4 sm:px-6 lg:px-8 ${
+        footerStyle === "bold"
+          ? "py-12"
+          : footerStyle === "glass"
+            ? "py-10 backdrop-blur"
+            : "py-8"
+      }`}
       style={{
-        backgroundColor: footerBackgroundColor,
+        backgroundColor:
+          footerStyle === "glass" ? `${footerBackgroundColor}ee` : footerBackgroundColor,
         color: footerTextColor
       }}
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+      <div
+        className={`mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 ${
+          footerStyle === "bold" ? "text-lg" : ""
+        }`}
+      >
         <p className="text-sm font-bold">
           {copyrightText || `© ${new Date().getFullYear()} ${storeTitle}`}
         </p>

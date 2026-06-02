@@ -112,13 +112,42 @@ function numberValue(value: unknown, fallback = 0) {
 }
 
 function templateConfig(context: StoreTenantContext) {
-  return resolveStorefrontTemplateConfig({
+  const base = resolveStorefrontTemplateConfig({
     fontStyle: context.preview.fontStyle,
     layoutStyle: context.preview.layoutStyle,
     templateId: context.preview.templateId,
     themeColor: context.preview.themeColor,
     themeSettings: context.preview.themeSettings
   });
+  const style = context.theme.styleConfig;
+  const headerStyle = textValue(style.headerStyle, base.layout.navbar);
+  const productCardStyle = textValue(style.productCardStyle, base.layout.productCard);
+
+  return {
+    ...base,
+    colorPalette: {
+      ...base.colorPalette,
+      ...context.theme.colorPalette
+    },
+    layout: {
+      ...base.layout,
+      navbar:
+        headerStyle === "boutique" ||
+        headerStyle === "utility" ||
+        headerStyle === "soft" ||
+        headerStyle === "classic"
+          ? headerStyle
+          : base.layout.navbar,
+      productCard:
+        productCardStyle === "lookbook" ||
+        productCardStyle === "spec-card" ||
+        productCardStyle === "glow-card" ||
+        productCardStyle === "classic"
+          ? productCardStyle
+          : base.layout.productCard
+    },
+    typography: context.theme.typography
+  };
 }
 
 function sectionPaddingClass(context: StoreTenantContext) {
@@ -137,6 +166,15 @@ function sectionPaddingClass(context: StoreTenantContext) {
 
 function cardRadiusClass(context: StoreTenantContext) {
   const config = templateConfig(context);
+  const cardRadius = textValue(context.theme.styleConfig.cardRadius, "");
+
+  if (cardRadius === "sharp") {
+    return "rounded-xl";
+  }
+
+  if (cardRadius === "rounded") {
+    return "rounded-[1.5rem]";
+  }
 
   if (config.layout.productCard === "spec-card") {
     return "rounded-2xl";
@@ -1237,6 +1275,7 @@ function FooterSection({
       copyrightText={theme.copyrightText}
       footerBackgroundColor={theme.footerBackgroundColor}
       footerLinkSettings={footerLinkSettings}
+      footerStyle={String(context.theme.styleConfig.footerStyle || theme.footerStyle)}
       footerTextColor={theme.footerTextColor}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}

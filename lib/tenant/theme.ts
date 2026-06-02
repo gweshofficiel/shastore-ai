@@ -47,6 +47,14 @@ export type StoreThemeTokens = {
   styleConfig: Record<string, unknown>;
 };
 
+export const themeVisualStyleOptions = {
+  buttonRadius: ["pill", "rounded", "sharp"],
+  cardRadius: ["soft", "rounded", "sharp"],
+  footerStyle: ["minimal", "bold", "glass"],
+  headerStyle: ["classic", "boutique", "soft", "utility"],
+  productCardStyle: ["classic", "lookbook", "spec-card", "glow-card"]
+} as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -58,6 +66,46 @@ function textValue(value: unknown, fallback: string) {
 function cleanColor(value: unknown, fallback: string) {
   const text = textValue(value, fallback);
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text) ? text : fallback;
+}
+
+function pickOption<T extends readonly string[]>(
+  value: unknown,
+  options: T,
+  fallback: string
+) {
+  return typeof value === "string" && options.includes(value) ? value : fallback;
+}
+
+function themeStyleConfig(value: Record<string, unknown>, fallback: Record<string, unknown>) {
+  return {
+    ...fallback,
+    ...value,
+    buttonRadius: pickOption(
+      value.buttonRadius,
+      themeVisualStyleOptions.buttonRadius,
+      textValue(fallback.buttonRadius, "pill")
+    ),
+    cardRadius: pickOption(
+      value.cardRadius,
+      themeVisualStyleOptions.cardRadius,
+      textValue(fallback.cardRadius, "soft")
+    ),
+    footerStyle: pickOption(
+      value.footerStyle,
+      themeVisualStyleOptions.footerStyle,
+      textValue(fallback.footerStyle, "minimal")
+    ),
+    headerStyle: pickOption(
+      value.headerStyle,
+      themeVisualStyleOptions.headerStyle,
+      textValue(fallback.headerStyle, "classic")
+    ),
+    productCardStyle: pickOption(
+      value.productCardStyle,
+      themeVisualStyleOptions.productCardStyle,
+      textValue(fallback.productCardStyle, "classic")
+    )
+  };
 }
 
 function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
@@ -112,10 +160,14 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
         ? spacing
         : "comfortable",
     store_instance_id: context.store_instance_id,
-    style_config: {
+    style_config: themeStyleConfig(isRecord(themeConfig) ? themeConfig : {}, {
       ...templateConfig,
-      ...themeConfig
-    },
+      buttonRadius: themeSettings.buttonStyle || "pill",
+      cardRadius: "soft",
+      footerStyle: themeSettings.footerStyle || "minimal",
+      headerStyle: templateConfig.layout.navbar,
+      productCardStyle: templateConfig.layout.productCard
+    }),
     theme_id: `shastore-${templateConfig.key}`,
     theme_key: textValue(themeConfig.theme_key, templateConfig.key),
     typography: {
@@ -169,7 +221,10 @@ function normalizeTheme(row: unknown, context: StoreTenantContext): StoreThemeRe
     spacing:
       spacing === "compact" || spacing === "spacious" ? spacing : fallback.spacing,
     store_instance_id: context.store_instance_id,
-    style_config: isRecord(row.style_config) ? row.style_config : {},
+    style_config: themeStyleConfig(
+      isRecord(row.style_config) ? row.style_config : {},
+      fallback.style_config
+    ),
     theme_id: textValue(row.theme_id, fallback.theme_id),
     theme_key: textValue(row.theme_key, fallback.theme_key),
     typography: {
@@ -249,6 +304,12 @@ export function resolveThemeTokens(theme: StoreThemeRecord): StoreThemeTokens {
       : theme.typography.body === "mono"
         ? "ui-monospace, SFMono-Regular, Menlo, monospace"
         : "Inter, ui-sans-serif, system-ui, sans-serif";
+  const buttonRadius = textValue(theme.style_config.buttonRadius, "pill");
+  const cardRadius = textValue(theme.style_config.cardRadius, "soft");
+  const buttonRadiusValue =
+    buttonRadius === "sharp" ? "0.5rem" : buttonRadius === "rounded" ? "1rem" : "999px";
+  const cardRadiusValue =
+    cardRadius === "sharp" ? "0.75rem" : cardRadius === "rounded" ? "1.5rem" : theme.border_radius;
 
   return {
     borderRadius: theme.border_radius,
@@ -257,6 +318,8 @@ export function resolveThemeTokens(theme: StoreThemeRecord): StoreThemeTokens {
       "--store-accent": theme.color_palette.accent,
       "--store-background": theme.color_palette.background,
       "--store-border-radius": theme.border_radius,
+      "--store-button-radius": buttonRadiusValue,
+      "--store-card-radius": cardRadiusValue,
       "--store-muted": theme.color_palette.muted,
       "--store-primary": theme.color_palette.primary,
       "--store-secondary": theme.color_palette.secondary,

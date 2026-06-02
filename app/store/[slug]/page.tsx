@@ -823,7 +823,7 @@ export default async function PublicStorePage({
 
   return (
     <main
-      className="min-h-screen text-ink"
+      className="shastore-storefront min-h-screen text-ink"
       style={{
         backgroundColor: context.theme.colorPalette.background,
         color: context.theme.colorPalette.text,
@@ -981,6 +981,7 @@ export default async function PublicStorePage({
         copyrightText={theme.copyrightText}
         footerBackgroundColor={theme.footerBackgroundColor}
         footerLinkSettings={footerLinkSettings}
+        footerStyle={String(context.theme.styleConfig.footerStyle || theme.footerStyle)}
         footerTextColor={theme.footerTextColor}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
