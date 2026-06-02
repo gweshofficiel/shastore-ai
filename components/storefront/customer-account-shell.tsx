@@ -21,7 +21,8 @@ export function customerAccountNavItems(slug: string, phone: string): AccountNav
     { href: accountHref(slug, "/licenses", phone), key: "licenses", label: "Licenses" },
     { href: accountHref(slug, "/wishlist", phone), key: "wishlist", label: "Wishlist" },
     { href: accountHref(slug, "/addresses", phone), key: "addresses", label: "Addresses" },
-    { href: accountHref(slug, "/referrals", phone), key: "referrals", label: "Referrals" }
+    { href: accountHref(slug, "/referrals", phone), key: "referrals", label: "Referrals" },
+    { href: accountHref(slug, "/support", phone), key: "support", label: "Support" }
   ];
 }
 
