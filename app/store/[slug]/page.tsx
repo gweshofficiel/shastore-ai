@@ -19,6 +19,7 @@ import {
 import { loadPublishedStoreAboutForStore } from "@/lib/store-about-public";
 import { loadPublishedStoreBlogArticlesForStore } from "@/lib/store-blog-public";
 import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
+import { loadOrCreateStoreHomepageSections } from "@/lib/store-homepage-sections";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
 import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
@@ -396,6 +397,10 @@ export default async function PublicStorePage({
   const hasPublishedFaqs = publishedFaqs.length > 0;
   const publishedAbout = await loadPublishedStoreAboutForStore(preview.store.id);
   const hasPublishedAbout = Boolean(publishedAbout);
+  const homepageSections = await loadOrCreateStoreHomepageSections({
+    storeId: preview.store.id,
+    workspaceId: preview.store.workspaceId
+  });
   const footerLinkSettings = await loadStoreFooterLinkSettings(preview.store.id);
   const filteredPreview = {
     ...preview,
@@ -844,52 +849,11 @@ export default async function PublicStorePage({
         hasPublishedAbout={hasPublishedAbout}
         hasPublishedBlogArticles={hasPublishedBlogArticles}
         hasPublishedFaqs={hasPublishedFaqs}
+        homepageSections={homepageSections.length ? homepageSections : undefined}
+        publishedAbout={publishedAbout}
+        publishedArticles={publishedArticles}
         publishedFaqs={publishedFaqs}
       />
-      {hasPublishedBlogArticles ? (
-        <section className="px-4 py-12 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:p-8">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                  Blog / Articles
-                </p>
-                <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-                  Latest articles
-                </h2>
-              </div>
-              <Link
-                className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                href={`/store/${store.slug}/blog`}
-              >
-                View all articles
-              </Link>
-            </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {publishedArticles.map((article) => (
-                <article className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4" key={article.id}>
-                  <Link href={`/store/${store.slug}/blog/${article.slug}`}>
-                    <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                      {article.title}
-                    </h3>
-                  </Link>
-                  {article.excerpt ? (
-                    <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-muted">
-                      {article.excerpt}
-                    </p>
-                  ) : null}
-                  <Link
-                    className="mt-4 inline-flex text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:text-ink"
-                    href={`/store/${store.slug}/blog/${article.slug}`}
-                  >
-                    Read article
-                  </Link>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
       <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>

@@ -22,6 +22,12 @@ import {
 import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
 import type { PublicStoreFaq } from "@/lib/store-faq-public";
+import type { PublicStoreAboutPage } from "@/lib/store-about-public";
+import type { PublicStoreBlogArticle } from "@/lib/store-blog-public";
+import type {
+  StoreHomepageSection,
+  StoreHomepageSectionType
+} from "@/lib/store-homepage-sections";
 import {
   defaultStoreFooterLinkSettings,
   type StoreFooterLinkSettings
@@ -31,8 +37,12 @@ export type StoreSectionType =
   | "hero"
   | "navbar"
   | "banner"
+  | "about_preview"
+  | "blog_preview"
   | "product_grid"
   | "featured_products"
+  | "featured_categories"
+  | "featured_collection"
   | "categories"
   | "rich_text"
   | "image"
@@ -41,6 +51,7 @@ export type StoreSectionType =
   | "testimonials"
   | "FAQ"
   | "faq"
+  | "faq_preview"
   | "footer"
   | "newsletter"
   | "spacer"
@@ -66,8 +77,12 @@ const supportedSectionTypes: StoreSectionType[] = [
   "hero",
   "navbar",
   "banner",
+  "about_preview",
+  "blog_preview",
   "product_grid",
   "featured_products",
+  "featured_categories",
+  "featured_collection",
   "categories",
   "rich_text",
   "image",
@@ -76,6 +91,7 @@ const supportedSectionTypes: StoreSectionType[] = [
   "testimonials",
   "FAQ",
   "faq",
+  "faq_preview",
   "footer",
   "newsletter",
   "spacer"
@@ -265,6 +281,56 @@ function withLiveProductSection(context: StoreTenantContext, sections: StoreSect
   ].sort((left, right) => left.section_order - right.section_order);
 }
 
+function homepageSectionRendererType(sectionType: StoreHomepageSectionType): StoreSectionType {
+  const sectionTypes: Record<StoreHomepageSectionType, StoreSectionType> = {
+    about_preview: "about_preview",
+    blog_preview: "blog_preview",
+    faq_preview: "faq_preview",
+    featured_categories: "featured_categories",
+    featured_collection: "featured_collection",
+    featured_products: "featured_products",
+    hero: "hero",
+    newsletter: "newsletter",
+    testimonials: "testimonials"
+  };
+
+  return sectionTypes[sectionType];
+}
+
+function resolveHomepageManagedSections(
+  context: StoreTenantContext,
+  homepageSections: StoreHomepageSection[]
+): StoreSection[] {
+  const navbar: StoreSection = {
+    config: {},
+    id: "homepage-runtime-navbar",
+    owner_user_id: context.owner_user_id,
+    section_enabled: true,
+    section_order: -100,
+    section_type: "navbar",
+    store_instance_id: context.store_instance_id
+  };
+  const sections = homepageSections
+    .filter((section) => section.enabled)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map<StoreSection>((section) => ({
+      config: {
+        ...section.settings,
+        body: section.subtitle ?? undefined,
+        subtitle: section.subtitle ?? undefined,
+        title: section.title ?? undefined
+      },
+      id: `homepage-${section.sectionType}`,
+      owner_user_id: context.owner_user_id,
+      section_enabled: true,
+      section_order: section.sortOrder,
+      section_type: homepageSectionRendererType(section.sectionType),
+      store_instance_id: context.store_instance_id
+    }));
+
+  return [navbar, ...sections];
+}
+
 export async function resolveSectionLayout(context: StoreTenantContext): Promise<StorePageLayout> {
   const builderState = await loadVisualEditorState(context);
   const builderSections = resolveBuilderSections(builderState, context);
@@ -313,11 +379,13 @@ function SectionShell({
   );
 }
 
-function ProductGridSection({ context }: { context: StoreTenantContext; section?: StoreSection }) {
+function ProductGridSection({ context, section }: { context: StoreTenantContext; section?: StoreSection }) {
   const config = templateConfig(context);
   const products = context.preview.products
     .filter((product) => isPublicProductStatus(product.status))
     .slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const title = textValue(section?.config.title, config.sections.productsTitle);
+  const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
   const productSections = buildPublicProductSections({
     categories: context.preview.categories,
     products
@@ -341,13 +409,13 @@ function ProductGridSection({ context }: { context: StoreTenantContext; section?
             className={`mt-2 font-black tracking-[-0.04em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"} ${config.typography.scale === "large" ? "text-4xl" : "text-3xl"}`}
             style={headingStyle()}
           >
-            {config.sections.productsTitle}
+            {title}
           </h2>
         </div>
         <p
           className={`max-w-xl text-sm font-semibold leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}
         >
-          {config.sections.productsDescription}
+          {subtitle}
         </p>
       </div>
       {products.length ? (
@@ -535,6 +603,8 @@ type SectionRenderProps = {
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  publishedAbout?: PublicStoreAboutPage | null;
+  publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
 };
@@ -751,9 +821,11 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
   );
 }
 
-function CategoriesSection({ context }: { context: StoreTenantContext; section: StoreSection }) {
+function CategoriesSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = templateConfig(context);
   const categories = context.preview.categories.slice(0, 8);
+  const title = textValue(section.config.title, config.sections.categoriesTitle);
+  const subtitle = textValue(section.config.subtitle);
 
   if (!categories.length) {
     return null;
@@ -770,8 +842,9 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
           Categories
         </p>
         <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
-          {config.sections.categoriesTitle}
+          {title}
         </h2>
+        {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
         <div
           className={`mt-6 grid gap-4 ${
             config.layout.mobileDensity === "dense" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4"
@@ -822,6 +895,8 @@ function CategoriesSection({ context }: { context: StoreTenantContext; section: 
 function TestimonialsSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = templateConfig(context);
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 3) : [];
+  const title = textValue(section.config.title, config.sections.testimonialsTitle);
+  const subtitle = textValue(section.config.subtitle);
   const testimonials = items.length
     ? items
     : [
@@ -836,8 +911,9 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
         Testimonials
       </p>
       <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
-        {config.sections.testimonialsTitle}
+        {title}
       </h2>
+      {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {testimonials.map((item, index) => (
           <figure
@@ -863,6 +939,8 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
 function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps) {
   const config = templateConfig(context);
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 5) : [];
+  const title = textValue(section.config.title, config.sections.faqTitle);
+  const subtitle = textValue(section.config.subtitle);
   const managedFaqs = publishedFaqs.slice(0, 8).map((faq) => ({
     answer: faq.answer,
     id: faq.id,
@@ -883,8 +961,9 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
       <div id="faq">
         <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>FAQ</p>
         <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
-          {config.sections.faqTitle}
+          {title}
         </h2>
+        {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
         <div className="mt-6 grid gap-3">
           {faqs.map((item, index) => (
             <details
@@ -901,6 +980,206 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
           ))}
         </div>
       </div>
+      </div>
+    </section>
+  );
+}
+
+function FaqPreviewSection(props: SectionRenderProps) {
+  if (!props.publishedFaqs?.length) {
+    return null;
+  }
+
+  return <FaqSection {...props} />;
+}
+
+function AboutPreviewSection({ context, publishedAbout, section }: SectionRenderProps) {
+  if (!publishedAbout) {
+    return null;
+  }
+
+  const title = textValue(section.config.title, publishedAbout.title);
+  const subtitle = textValue(
+    section.config.subtitle,
+    publishedAbout.subtitle || publishedAbout.companyStory || ""
+  );
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-6 rounded-[var(--store-border-radius)] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:p-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+              About
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+              {title}
+            </h2>
+            {subtitle ? (
+              <p className="mt-3 line-clamp-5 text-sm font-semibold leading-7 text-muted">
+                {subtitle}
+              </p>
+            ) : null}
+            <Link
+              className="mt-6 inline-flex rounded-full bg-ink px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+              href={`/store/${context.preview.store.slug}/about`}
+            >
+              Read more
+            </Link>
+          </div>
+          {publishedAbout.coverImageUrl ? (
+            <img
+              alt={publishedAbout.title}
+              className="aspect-[4/3] w-full rounded-[2rem] object-cover"
+              src={publishedAbout.coverImageUrl}
+            />
+          ) : (
+            <div
+              className="flex min-h-64 items-end rounded-[2rem] p-6"
+              style={{
+                background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}18, ${context.theme.colorPalette.secondary}28)`
+              }}
+            >
+              <p className="text-2xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+                {context.settings.title}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BlogPreviewSection({ context, publishedArticles = [], section }: SectionRenderProps) {
+  const articles = publishedArticles.slice(0, 3);
+
+  if (!articles.length) {
+    return null;
+  }
+
+  const title = textValue(section.config.title, "Latest articles");
+  const subtitle = textValue(section.config.subtitle, "Read the newest updates from this store.");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-[var(--store-border-radius)] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+                Blog / Articles
+              </p>
+              <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+                {title}
+              </h2>
+              {subtitle ? (
+                <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">
+                  {subtitle}
+                </p>
+              ) : null}
+            </div>
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={`/store/${context.preview.store.slug}/blog`}
+            >
+              View all articles
+            </Link>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {articles.map((article) => (
+              <article className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4" key={article.id}>
+                <Link href={`/store/${context.preview.store.slug}/blog/${article.slug}`}>
+                  <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
+                    {article.title}
+                  </h3>
+                </Link>
+                {article.excerpt ? (
+                  <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-muted">
+                    {article.excerpt}
+                  </p>
+                ) : null}
+                <Link
+                  className="mt-4 inline-flex text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:text-ink"
+                  href={`/store/${context.preview.store.slug}/blog/${article.slug}`}
+                >
+                  Read article
+                </Link>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
+  const categories = context.preview.categories;
+  const category = categories[0] ?? null;
+
+  if (!category) {
+    return null;
+  }
+
+  const products = context.preview.products
+    .filter((product) => product.categoryId === category.id || product.categoryName === category.name)
+    .filter((product) => isPublicProductStatus(product.status))
+    .slice(0, 4);
+  const title = textValue(section.config.title, category.name);
+  const subtitle = textValue(section.config.subtitle, category.description || "Explore this featured collection.");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+              Featured collection
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+              {title}
+            </h2>
+            {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
+          </div>
+          <Link
+            className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+            href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+          >
+            View collection
+          </Link>
+        </div>
+        {products.length ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {products.map((product) => {
+              const primaryImage = productPrimaryImage(product);
+
+              return (
+                <Link
+                  className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  href={publicProductHref(context.preview.store.slug, product)}
+                  key={product.id}
+                >
+                  {primaryImage ? (
+                    <img alt={product.title} className="aspect-[4/3] w-full object-cover" src={primaryImage} />
+                  ) : (
+                    <div
+                      className="aspect-[4/3]"
+                      style={{
+                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                      }}
+                    />
+                  )}
+                  <div className="p-4">
+                    <h3 className="text-base font-black tracking-[-0.02em] text-ink">
+                      {product.title}
+                    </h3>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -1000,10 +1279,15 @@ const sectionRegistry: Record<
 > = {
   CTA: CtaSection,
   FAQ: FaqSection,
+  about_preview: AboutPreviewSection,
   banner: GenericContentSection,
+  blog_preview: BlogPreviewSection,
   categories: CategoriesSection,
   cta: CtaSection,
   faq: FaqSection,
+  faq_preview: FaqPreviewSection,
+  featured_categories: CategoriesSection,
+  featured_collection: FeaturedCollectionSection,
   featured_products: ProductGridSection,
   footer: FooterSection,
   hero: HeroSection,
@@ -1021,6 +1305,8 @@ export function SectionRenderer({
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
+  publishedAbout = null,
+  publishedArticles = [],
   publishedFaqs = [],
   section
 }: {
@@ -1029,6 +1315,8 @@ export function SectionRenderer({
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  publishedAbout?: PublicStoreAboutPage | null;
+  publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
 }) {
@@ -1045,6 +1333,8 @@ export function SectionRenderer({
       hasPublishedAbout={hasPublishedAbout}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}
+      publishedAbout={publishedAbout}
+      publishedArticles={publishedArticles}
       publishedFaqs={publishedFaqs}
       section={section}
     />
@@ -1058,6 +1348,9 @@ export async function DynamicSectionLoader({
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
+  homepageSections,
+  publishedAbout = null,
+  publishedArticles = [],
   publishedFaqs = []
 }: {
   context: StoreTenantContext;
@@ -1066,9 +1359,18 @@ export async function DynamicSectionLoader({
   hasPublishedAbout?: boolean;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  homepageSections?: StoreHomepageSection[];
+  publishedAbout?: PublicStoreAboutPage | null;
+  publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
 }) {
-  const layout = await resolveSectionLayout(context);
+  const layout = homepageSections
+    ? {
+        builderPreview: {},
+        key: `${context.theme.layout_key}:homepage`,
+        sections: resolveHomepageManagedSections(context, homepageSections)
+      }
+    : await resolveSectionLayout(context);
   const previewScript = (
     <script
       dangerouslySetInnerHTML={{
@@ -1099,6 +1401,8 @@ export async function DynamicSectionLoader({
           hasPublishedBlogArticles={hasPublishedBlogArticles}
           hasPublishedFaqs={hasPublishedFaqs}
           key={section.id}
+          publishedAbout={publishedAbout}
+          publishedArticles={publishedArticles}
           publishedFaqs={publishedFaqs}
           section={section}
         />
