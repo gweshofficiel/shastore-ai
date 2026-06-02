@@ -5,6 +5,7 @@ import { getStorePaymentsStripe } from "@/lib/store-payment-provider-runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignLicenseKeysForOrder } from "@/lib/digital-license-keys";
 import { maskGiftCardCode, redeemStoreGiftCard, type StoreGiftCardRow } from "@/lib/store-gift-cards";
+import { normalizeReferralCode, recordReferralForOrder } from "@/lib/customer-referrals";
 import type { Json } from "@/types/database";
 
 function dashboardErrorUrl(request: NextRequest, status: string) {
@@ -141,6 +142,7 @@ export async function GET(request: NextRequest) {
     const taxAmount = numberMetadata(metadata, "tax_amount");
     const giftCardAmount = numberMetadata(metadata, "gift_card_amount");
     const giftCardId = cleanMetadata(metadata, "gift_card_id");
+    const referralCode = normalizeReferralCode(cleanMetadata(metadata, "referral_code"));
     const nowStatus = session.payment_status === "paid" ? "paid" : "pending_confirmation";
     const { data: giftCardRow } = giftCardId
       ? await admin
@@ -179,6 +181,7 @@ export async function GET(request: NextRequest) {
         owner_user_id: cleanMetadata(metadata, "owner_user_id") || null,
         payment_method: "card",
         payment_status: nowStatus,
+        referral_code: referralCode || null,
         shipping_amount: shippingAmount,
         shipping_method_id: cleanMetadata(metadata, "shipping_method_id") || null,
         shipping_method_name: cleanMetadata(metadata, "shipping_method_name") || null,
@@ -211,6 +214,24 @@ export async function GET(request: NextRequest) {
       }))
     ) {
       throw new Error("Stripe paid order gift card could not be redeemed.");
+    }
+
+    const referralId = await recordReferralForOrder(admin, {
+      customerEmail: session.customer_details?.email ?? (cleanMetadata(metadata, "customer_email") || null),
+      customerName: session.customer_details?.name ?? (cleanMetadata(metadata, "customer_name") || "Card customer"),
+      customerPhone: session.customer_details?.phone ?? (cleanMetadata(metadata, "customer_phone") || "card-payment"),
+      orderId: orderReference,
+      orderSource: "store_orders",
+      referralCode,
+      storeId,
+      workspaceId: cleanMetadata(metadata, "workspace_id") || null
+    });
+
+    if (referralId) {
+      await admin
+        .from("store_orders" as never)
+        .update({ referral_id: referralId, referral_code: referralCode } as never)
+        .eq("id" as never, orderReference as never);
     }
 
     await assignLicenseKeysForOrder({

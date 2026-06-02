@@ -38,6 +38,7 @@ import {
   findActiveDiscountCampaignForCart,
   type AppliedDiscountCampaign
 } from "@/lib/discount-campaigns";
+import { normalizeReferralCode, recordReferralForOrder } from "@/lib/customer-referrals";
 import { reserveCheckoutInventory } from "@/lib/inventory-reservations";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
@@ -294,6 +295,7 @@ function stripeSuccessMetadata(input: {
   giftCardCode: string;
   giftCardId: string | null;
   orderReference: string;
+  referralCode: string;
   shippingMethod: PublicShippingMethod | null;
   slug: string;
   store: {
@@ -317,6 +319,7 @@ function stripeSuccessMetadata(input: {
     gift_card_id: stripeMetadataValue(input.giftCardId, 80),
     order_reference: input.orderReference,
     owner_user_id: stripeMetadataValue(input.store.owner_user_id ?? input.store.user_id, 80),
+    referral_code: stripeMetadataValue(normalizeReferralCode(input.referralCode), 40),
     shipping_method_id: stripeMetadataValue(input.shippingMethod?.id, 80),
     shipping_method_name: stripeMetadataValue(input.shippingMethod?.name, 160),
     shipping_method_type: stripeMetadataValue(input.shippingMethod?.type, 80),
@@ -783,6 +786,7 @@ async function persistStorefrontOrderDraft({
   discountCampaign,
   giftCard,
   giftCardAmount,
+  referralCode,
   redeemGiftCardOnPersist = true,
   discountAmount,
   subtotal,
@@ -814,6 +818,7 @@ async function persistStorefrontOrderDraft({
   discountCampaign: AppliedDiscountCampaign | null;
   giftCard: StoreGiftCardRow | null;
   giftCardAmount: number;
+  referralCode?: string | null;
   redeemGiftCardOnPersist?: boolean;
   discountAmount: number;
   subtotal: number;
@@ -826,6 +831,7 @@ async function persistStorefrontOrderDraft({
   const orderNumber = generateDraftOrderNumber();
   const safeDiscountAmount = Math.min(subtotal, Math.max(0, Number(discountAmount.toFixed(2))));
   const safeGiftCardAmount = Math.max(0, Number(giftCardAmount.toFixed(2)));
+  const safeReferralCode = normalizeReferralCode(referralCode);
   const discountedSubtotal = Number(Math.max(0, subtotal - safeDiscountAmount).toFixed(2));
   const total = financialBreakdown.totalAmount;
   const digitalSummary = digitalOrderSummary(items);
@@ -886,6 +892,7 @@ async function persistStorefrontOrderDraft({
     gift_card_amount: safeGiftCardAmount,
     gift_card_code: giftCard ? maskGiftCardCode(giftCard.code) : null,
     gift_card_id: giftCard ? giftCard.id : null,
+    referral_code: safeReferralCode || null,
     has_digital_items: digitalSummary.hasDigitalItems,
     digital_delivery_status: digitalSummary.status,
     digital_delivery_metadata: {
@@ -1091,6 +1098,24 @@ async function persistStorefrontOrderDraft({
         return null;
       }
 
+      const referralId = await recordReferralForOrder(admin, {
+        customerEmail,
+        customerName,
+        customerPhone,
+        orderId: orderRow.id,
+        orderSource: "orders",
+        referralCode: safeReferralCode,
+        storeId: store.id,
+        workspaceId
+      });
+
+      if (referralId) {
+        await admin
+          .from("orders" as never)
+          .update({ referral_id: referralId, referral_code: safeReferralCode } as never)
+          .eq("id" as never, orderRow.id as never);
+      }
+
       await recordOrderEventSafe({
         eventType: "order_created",
         message: `Order draft created from public storefront for ${customerName}.`,
@@ -1240,6 +1265,7 @@ async function persistStorefrontOrderDraft({
       source: "public_storefront"
     },
     items: legacyItems as Json,
+    referral_code: safeReferralCode || null,
     subtotal: discountedSubtotal,
     total,
     ...couponPayload,
@@ -1339,6 +1365,24 @@ async function persistStorefrontOrderDraft({
   ) {
     await admin.from("store_orders" as never).delete().eq("id" as never, storeOrderRow.id as never);
     return null;
+  }
+
+  const referralId = await recordReferralForOrder(admin, {
+    customerEmail,
+    customerName,
+    customerPhone,
+    orderId: storeOrderRow.id,
+    orderSource: "store_orders",
+    referralCode: safeReferralCode,
+    storeId: store.id,
+    workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (referralId) {
+    await admin
+      .from("store_orders" as never)
+      .update({ referral_id: referralId, referral_code: safeReferralCode } as never)
+      .eq("id" as never, storeOrderRow.id as never);
   }
 
   await recordOrderEventSafe({
@@ -1443,6 +1487,7 @@ async function redirectToStoreCardCheckout({
   giftCard,
   giftCardAmount,
   items,
+  referralCode,
   shippingMethod,
   slug,
   store
@@ -1461,6 +1506,7 @@ async function redirectToStoreCardCheckout({
   giftCard: StoreGiftCardRow | null;
   giftCardAmount: number;
   items: DraftLineItem[];
+  referralCode: string;
   shippingMethod: PublicShippingMethod | null;
   slug: string;
   store: {
@@ -1581,6 +1627,7 @@ async function redirectToStoreCardCheckout({
           giftCardCode: giftCard?.code ?? "",
           giftCardId: giftCard?.id ?? null,
           orderReference,
+          referralCode,
           shippingMethod,
           slug,
           store
@@ -1642,6 +1689,7 @@ async function redirectToStorePayPalCheckout({
   giftCard,
   giftCardAmount,
   items,
+  referralCode,
   shippingMethod,
   slug,
   store,
@@ -1664,6 +1712,7 @@ async function redirectToStorePayPalCheckout({
   giftCard: StoreGiftCardRow | null;
   giftCardAmount: number;
   items: DraftLineItem[];
+  referralCode: string;
   shippingMethod: PublicShippingMethod | null;
   slug: string;
   store: {
@@ -1717,6 +1766,7 @@ async function redirectToStorePayPalCheckout({
     giftCardAmount,
     items,
     paymentMethod: "paypal",
+    referralCode,
     redeemGiftCardOnPersist: false,
     shippingMethod,
     slug,
@@ -1796,6 +1846,7 @@ export async function createPublicStoreOrderAction(
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
+  const referralCode = normalizeReferralCode(formData.get("referralCode"));
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
   const requestedItems = parseCartItems(formData.get("items"));
 
@@ -2102,6 +2153,7 @@ export async function createPublicStoreOrderAction(
       gift_card_amount: giftCardAmount,
       gift_card_code: giftCardResult?.ok ? maskGiftCardCode(giftCardResult.giftCard.code) : null,
       gift_card_id: giftCardResult?.ok ? giftCardResult.giftCard.id : null,
+      referral_code: referralCode || null,
       discount_type: couponResult?.ok
         ? couponResult.coupon.discount_type
         : discountCampaign?.campaign.discount_type ?? null,
@@ -2178,6 +2230,24 @@ export async function createPublicStoreOrderAction(
       ok: false,
       orderId: null
     };
+  }
+
+  const referralId = await recordReferralForOrder(admin, {
+    customerEmail,
+    customerName,
+    customerPhone,
+    orderId: (order as { id: string }).id,
+    orderSource: "store_orders",
+    referralCode,
+    storeId: store.id,
+    workspaceId: store.workspace_id ?? store.owner_user_id ?? store.user_id
+  });
+
+  if (referralId) {
+    await admin
+      .from("store_orders" as never)
+      .update({ referral_id: referralId, referral_code: referralCode } as never)
+      .eq("id" as never, (order as { id: string }).id as never);
   }
 
   await createOrderNotificationSafe({
@@ -2270,6 +2340,7 @@ export async function createPublicStoreOrderDraftAction(
   const cartSessionId = cleanText(formData.get("cartSessionId"), 180);
   const couponCode = cleanText(formData.get("couponCode"), 80);
   const giftCardCode = cleanText(formData.get("giftCardCode"), 80);
+  const referralCode = normalizeReferralCode(formData.get("referralCode"));
   const requestedDeliveryMethod = parseDeliveryMethod(formData.get("deliveryMethod"));
   const requestedPaymentMethod = parsePublicStorePaymentMethod(formData.get("paymentMethod"));
   const requestedShippingMethodId = cleanText(formData.get("shippingMethodId"), 80);
@@ -2554,6 +2625,7 @@ export async function createPublicStoreOrderDraftAction(
       giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
       giftCardAmount,
       items,
+      referralCode,
       shippingMethod,
       slug,
       store
@@ -2586,6 +2658,7 @@ export async function createPublicStoreOrderDraftAction(
       giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
       giftCardAmount,
       items,
+      referralCode,
       shippingMethod,
       slug,
       store,
@@ -2620,6 +2693,7 @@ export async function createPublicStoreOrderDraftAction(
     discountCampaign,
     giftCard: giftCardResult?.ok ? giftCardResult.giftCard : null,
     giftCardAmount,
+    referralCode,
     discountAmount: appliedSubtotalDiscount,
     subtotal,
     slug

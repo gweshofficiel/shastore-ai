@@ -111,6 +111,7 @@ type CartUpdatedDetail = {
 
 const CART_UPDATED_EVENT = "shastore-cart-updated";
 const CART_RECOVERY_SESSION_KEY = "shastore_cart_recovery_session";
+const REFERRAL_CODE_STORAGE_PREFIX = "shastore_referral_code_";
 const initialOrderDraftState: PublicStoreOrderState = {
   error: null,
   message: null,
@@ -125,6 +126,14 @@ export function cartStorageKey(storeId: string) {
 
 function checkoutContactStorageKey(storeId: string) {
   return `shastore_checkout_contact_${storeId}`;
+}
+
+function referralCodeStorageKey(storeId: string) {
+  return `${REFERRAL_CODE_STORAGE_PREFIX}${storeId}`;
+}
+
+function normalizeReferralCode(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
 }
 
 /** Legacy slug-only key — cleared on every write to prevent stale rehydration. */
@@ -283,6 +292,18 @@ export function writeStoreCart(scope: CartScope, items: CartItem[]) {
 /** Clear cart for one store (state + localStorage + header sync). */
 export function clearStoreCart(scope: CartScope) {
   writeStoreCart(scope, []);
+}
+
+export function StoreReferralAttribution({ storeId }: { storeId: string }) {
+  useEffect(() => {
+    const code = normalizeReferralCode(new URLSearchParams(window.location.search).get("ref"));
+
+    if (code) {
+      window.localStorage.setItem(referralCodeStorageKey(storeId), code);
+    }
+  }, [storeId]);
+
+  return null;
 }
 
 export function cartItemCount(items: CartItem[]) {
@@ -949,6 +970,7 @@ export function CartPageClient({
   const [recoveryRestored, setRecoveryRestored] = useState(false);
   const [reservationPending, setReservationPending] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
+  const [referralCode, setReferralCode] = useState("");
   const customerAddressRef = useRef("");
   const customerNameRef = useRef("");
   const customerNotesRef = useRef("");
@@ -1019,6 +1041,20 @@ export function CartPageClient({
 
     setCartSessionId(cartRecoverySessionId());
   }, [initialRecoverySessionId]);
+
+  useEffect(() => {
+    const urlCode = normalizeReferralCode(new URLSearchParams(window.location.search).get("ref"));
+    const storedCode = normalizeReferralCode(window.localStorage.getItem(referralCodeStorageKey(storeId)));
+    const nextCode = urlCode || storedCode;
+
+    if (urlCode) {
+      window.localStorage.setItem(referralCodeStorageKey(storeId), urlCode);
+    }
+
+    if (nextCode) {
+      setReferralCode(nextCode);
+    }
+  }, [storeId]);
 
   useEffect(() => {
     if (recoveryRestored || !initialRecoveryItems.length) {
@@ -1941,6 +1977,7 @@ export function CartPageClient({
           <input name="shippingMethodId" type="hidden" value={shippingMethodId} />
           <input name="couponCode" type="hidden" value={appliedCoupon?.code ?? ""} />
           <input name="giftCardCode" type="hidden" value={appliedGiftCard ? giftCardCode : ""} />
+          <input name="referralCode" type="hidden" value={referralCode} />
           <input name="cartSessionId" type="hidden" value={cartSessionId} />
           <input
             name="items"

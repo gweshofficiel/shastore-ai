@@ -20,7 +20,8 @@ export function customerAccountNavItems(slug: string, phone: string): AccountNav
     { href: accountHref(slug, "/downloads", phone), key: "downloads", label: "Downloads" },
     { href: accountHref(slug, "/licenses", phone), key: "licenses", label: "Licenses" },
     { href: accountHref(slug, "/wishlist", phone), key: "wishlist", label: "Wishlist" },
-    { href: accountHref(slug, "/addresses", phone), key: "addresses", label: "Addresses" }
+    { href: accountHref(slug, "/addresses", phone), key: "addresses", label: "Addresses" },
+    { href: accountHref(slug, "/referrals", phone), key: "referrals", label: "Referrals" }
   ];
 }
 
