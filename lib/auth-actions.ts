@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getPublicUrl } from "@/lib/deployment/config";
+import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { getInviteTokenPreview } from "@/lib/workspace-members";
@@ -39,9 +40,10 @@ export async function login(formData: FormData) {
     console.info("[invite-auth-redirect] login requested for invite", { email });
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    await recordAuthLoginAttempt({ email, route: "/login", success: false });
     if (next.startsWith("/invite/")) {
       console.warn("[invite-auth-failed] invite login failed", {
         email,
@@ -58,6 +60,13 @@ export async function login(formData: FormData) {
   if (next.startsWith("/invite/")) {
     console.info("[invite-auth-success] invite login succeeded", { email });
   }
+
+  await recordAuthLoginAttempt({
+    email,
+    route: "/login",
+    success: true,
+    userId: data.user?.id ?? null
+  });
 
   redirect(next);
 }
