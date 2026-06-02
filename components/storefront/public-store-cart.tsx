@@ -962,6 +962,7 @@ export function CartPageClient({
       ? deliverySettings.deliveryFee ?? 0
       : 0;
   const financialBreakdown = calculateCheckoutFinancials({
+    customerAddress,
     discountAmount,
     shippingAmount: selectedDeliveryFee,
     subtotalAmount: total,

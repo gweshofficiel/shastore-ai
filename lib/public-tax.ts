@@ -2,6 +2,7 @@ import {
   calculateCheckoutFinancials,
   calculateTax,
   type CheckoutFinancialBreakdown,
+  type PublicTaxRule,
   type PublicTaxSettings,
   type TaxCalculation
 } from "@/lib/checkout-financials";
@@ -13,6 +14,16 @@ type TaxSettingsRow = {
   prices_include_tax?: boolean | null;
   tax_enabled?: boolean | null;
   tax_name?: string | null;
+};
+
+type TaxRuleRow = {
+  city?: string | null;
+  country?: string | null;
+  enabled?: boolean | null;
+  region?: string | null;
+  status?: string | null;
+  tax_name?: string | null;
+  tax_rate?: number | string | null;
 };
 
 function numberValue(value: unknown) {
@@ -28,7 +39,23 @@ function numberValue(value: unknown) {
   return 0;
 }
 
-function normalizeTaxSettings(row: TaxSettingsRow | null): PublicTaxSettings | null {
+function normalizeTaxRule(row: TaxRuleRow): PublicTaxRule | null {
+  const country = row.country?.trim();
+
+  if (!country || row.enabled === false || row.status === "inactive") {
+    return null;
+  }
+
+  return {
+    city: row.city?.trim() || null,
+    country,
+    region: row.region?.trim() || null,
+    taxName: row.tax_name?.trim() || "Tax",
+    taxRate: numberValue(row.tax_rate)
+  };
+}
+
+function normalizeTaxSettings(row: TaxSettingsRow | null, rules: PublicTaxRule[] = []): PublicTaxSettings | null {
   if (!row) {
     return null;
   }
@@ -37,6 +64,7 @@ function normalizeTaxSettings(row: TaxSettingsRow | null): PublicTaxSettings | n
     applyTaxToShipping: Boolean(row.apply_tax_to_shipping),
     defaultTaxRate: numberValue(row.default_tax_rate),
     pricesIncludeTax: Boolean(row.prices_include_tax),
+    taxRules: rules,
     taxEnabled: Boolean(row.tax_enabled),
     taxName: row.tax_name?.trim() || "Tax"
   };
@@ -49,27 +77,41 @@ export async function getPublicTaxSettingsForStore(storeId: string) {
     return null;
   }
 
-  const { data } = await admin
+  const [settingsResult, rulesResult] = await Promise.all([
+    admin
     .from("store_tax_settings" as never)
     .select("tax_enabled, tax_name, default_tax_rate, prices_include_tax, apply_tax_to_shipping")
     .eq("store_id" as never, storeId as never)
-    .maybeSingle();
+      .maybeSingle(),
+    admin
+      .from("store_tax_rules" as never)
+      .select("tax_name, country, region, city, tax_rate, status, enabled, sort_order")
+      .eq("store_id" as never, storeId as never)
+      .eq("status" as never, "active" as never)
+      .order("sort_order" as never, { ascending: true } as never)
+  ]);
+  const rules = ((rulesResult.data ?? []) as unknown as TaxRuleRow[])
+    .map(normalizeTaxRule)
+    .filter((rule): rule is PublicTaxRule => Boolean(rule));
 
-  return normalizeTaxSettings(data as unknown as TaxSettingsRow | null);
+  return normalizeTaxSettings(settingsResult.data as unknown as TaxSettingsRow | null, rules);
 }
 
 export async function calculatePublicTaxForStore({
+  customerAddress = "",
   discountAmount,
   shippingFee,
   storeId,
   subtotal
 }: {
+  customerAddress?: string;
   discountAmount: number;
   shippingFee: number;
   storeId: string;
   subtotal: number;
 }): Promise<TaxCalculation> {
   return calculateTax({
+    customerAddress,
     discountAmount,
     shippingFee,
     subtotal,
@@ -78,17 +120,20 @@ export async function calculatePublicTaxForStore({
 }
 
 export async function calculatePublicCheckoutFinancialsForStore({
+  customerAddress = "",
   discountAmount,
   shippingAmount,
   storeId,
   subtotalAmount
 }: {
+  customerAddress?: string;
   discountAmount: number;
   shippingAmount: number;
   storeId: string;
   subtotalAmount: number;
 }): Promise<CheckoutFinancialBreakdown> {
   return calculateCheckoutFinancials({
+    customerAddress,
     discountAmount,
     shippingAmount,
     subtotalAmount,

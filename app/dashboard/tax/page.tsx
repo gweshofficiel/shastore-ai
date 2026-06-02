@@ -24,10 +24,12 @@ type TaxSettingsRow = {
 type TaxRuleRow = {
   city?: string | null;
   country: string;
+  enabled?: boolean | null;
   id: string;
   region?: string | null;
   sort_order?: number | null;
   status?: string | null;
+  tax_name?: string | null;
   tax_rate: number | string;
 };
 
@@ -112,7 +114,7 @@ async function getTaxDashboardData(selectedStoreId?: string): Promise<TaxDashboa
       .maybeSingle(),
     supabase
       .from("store_tax_rules" as never)
-      .select("id, country, region, city, tax_rate, status, sort_order")
+      .select("id, tax_name, country, region, city, tax_rate, status, enabled, sort_order")
       .eq("workspace_id" as never, workspaceId as never)
       .eq("store_id" as never, activeStore.id as never)
       .order("sort_order", { ascending: true })
@@ -149,6 +151,14 @@ function taxRate(value: unknown) {
 function TaxRuleFields({ rule }: { rule?: TaxRuleRow }) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
+      <Input
+        defaultValue={rule?.tax_name ?? ""}
+        id={rule ? `tax-rule-${rule.id}-name` : "tax-rule-name"}
+        label="Tax name"
+        maxLength={80}
+        name="taxRuleName"
+        placeholder="VAT, Sales Tax, GST"
+      />
       <Input
         defaultValue={rule?.country ?? ""}
         id={rule ? `tax-rule-${rule.id}-country` : "tax-rule-country"}
@@ -203,6 +213,10 @@ function TaxRuleFields({ rule }: { rule?: TaxRuleRow }) {
           <option value="inactive">Inactive</option>
         </select>
       </label>
+      <label className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-ink">
+        <input defaultChecked={rule?.enabled !== false && rule?.status !== "inactive"} name="enabled" type="checkbox" />
+        Enabled
+      </label>
     </div>
   );
 }
@@ -220,7 +234,7 @@ export default async function TaxPage({
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
         description="Configure store-scoped tax settings and regional tax rules for checkout."
-        title="Tax"
+        title="Taxes"
       />
 
       {message ? (
@@ -257,7 +271,7 @@ export default async function TaxPage({
                 {activeStore.store_name || activeStore.name || "Workspace store"}
               </h2>
               <p className="mt-1 text-sm text-muted">
-                Tax settings created here apply only to this store checkout.
+                Tax rates created here apply only to this store checkout.
               </p>
             </div>
             <form className="flex flex-col gap-3 sm:min-w-[260px]" method="get">
@@ -276,7 +290,7 @@ export default async function TaxPage({
                 </select>
               </label>
               <Button type="submit" variant="secondary">
-                View tax settings
+                View taxes
               </Button>
             </form>
           </Card>
@@ -335,17 +349,17 @@ export default async function TaxPage({
           <Card className="grid gap-5 p-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Tax Rules
+                Tax Rates
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-                Add regional tax rule
+                Add tax rate
               </h2>
             </div>
             <form action={createStoreTaxRule} className="grid gap-4">
               <input name="storeId" type="hidden" value={activeStore.id} />
               <TaxRuleFields />
               <div className="flex justify-end">
-                <Button type="submit">Create tax rule</Button>
+                <Button type="submit">Create tax rate</Button>
               </div>
             </form>
           </Card>
@@ -353,20 +367,20 @@ export default async function TaxPage({
           <section className="grid gap-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Rule List
+                Rate List
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-                {rules.length} {rules.length === 1 ? "rule" : "rules"}
+                {rules.length} {rules.length === 1 ? "rate" : "rates"}
               </h2>
             </div>
 
             {rules.length === 0 ? (
               <Card className="p-8 text-center">
                 <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                  No tax rules yet
+                  No tax rates yet
                 </h3>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                  The default tax rate is used until regional rules are added.
+                  The default tax rate is used until regional rates are added.
                 </p>
               </Card>
             ) : null}
@@ -376,21 +390,21 @@ export default async function TaxPage({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                      {[rule.city, rule.region, rule.country].filter(Boolean).join(", ")}
+                      {rule.tax_name?.trim() || "Tax"}
                     </h3>
                     <p className="mt-1 text-sm font-bold text-muted">
-                      {taxRate(rule.tax_rate)}% tax
+                      {taxRate(rule.tax_rate)}% · {[rule.city, rule.region, rule.country].filter(Boolean).join(", ")}
                     </p>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${
-                    rule.status === "inactive" ? "bg-slate-100 text-slate-600" : "bg-emerald-100 text-emerald-700"
+                    rule.enabled === false || rule.status === "inactive" ? "bg-slate-100 text-slate-600" : "bg-emerald-100 text-emerald-700"
                   }`}>
-                    {rule.status === "inactive" ? "inactive" : "active"}
+                    {rule.enabled === false || rule.status === "inactive" ? "inactive" : "active"}
                   </span>
                 </div>
                 <details className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                   <summary className="cursor-pointer text-sm font-black text-ink">
-                    Edit tax rule
+                    Edit tax rate
                   </summary>
                   <form action={updateStoreTaxRule} className="mt-4 grid gap-4">
                     <input name="storeId" type="hidden" value={activeStore.id} />
@@ -398,7 +412,7 @@ export default async function TaxPage({
                     <TaxRuleFields rule={rule} />
                     <div className="flex justify-end">
                       <Button type="submit" variant="secondary">
-                        Save tax rule
+                        Save tax rate
                       </Button>
                     </div>
                   </form>

@@ -1866,6 +1866,7 @@ export async function createPublicStoreOrderAction(
   const deliveryMethod =
     digitalSummary.hasPhysicalShippingItems && shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
+    customerAddress,
     discountAmount,
     shippingAmount: deliveryFee,
     storeId: store.id,
@@ -2253,6 +2254,7 @@ export async function createPublicStoreOrderDraftAction(
   }
 
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
+    customerAddress,
     discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
     shippingAmount: deliverySelection.deliveryFee,
     storeId: store.id,

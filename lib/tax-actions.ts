@@ -50,6 +50,10 @@ function ruleStatus(value: FormDataEntryValue | null) {
   return cleanText(value, 20) === "inactive" ? "inactive" : "active";
 }
 
+function ruleEnabled(formData: FormData) {
+  return formData.get("enabled") === "on" || ruleStatus(formData.get("status")) === "active";
+}
+
 function taxRedirect(storeId: string, status: string): never {
   const params = new URLSearchParams({ storeId, tax: status });
   redirect(`${taxPath}?${params.toString()}`);
@@ -138,9 +142,11 @@ export async function createStoreTaxRule(formData: FormData) {
   const { error } = await supabase.from("store_tax_rules" as never).insert({
     city: cleanOptionalText(formData.get("city"), 120),
     country,
+    enabled: ruleEnabled(formData),
     region: cleanOptionalText(formData.get("region"), 120),
     sort_order: cleanInteger(formData.get("sortOrder")),
     status: ruleStatus(formData.get("status")),
+    tax_name: cleanText(formData.get("taxRuleName"), 80) || "Tax",
     store_id: storeId,
     tax_rate: cleanNumber(formData.get("taxRate")),
     workspace_id: workspaceId
@@ -173,9 +179,11 @@ export async function updateStoreTaxRule(formData: FormData) {
     .update({
       city: cleanOptionalText(formData.get("city"), 120),
       country,
+      enabled: ruleEnabled(formData),
       region: cleanOptionalText(formData.get("region"), 120),
       sort_order: cleanInteger(formData.get("sortOrder")),
       status: ruleStatus(formData.get("status")),
+      tax_name: cleanText(formData.get("taxRuleName"), 80) || "Tax",
       tax_rate: cleanNumber(formData.get("taxRate")),
       updated_at: new Date().toISOString()
     } as never)

@@ -2,11 +2,21 @@ export type PublicTaxSettings = {
   applyTaxToShipping: boolean;
   defaultTaxRate: number;
   pricesIncludeTax: boolean;
+  taxRules?: PublicTaxRule[];
   taxEnabled: boolean;
   taxName: string;
 };
 
+export type PublicTaxRule = {
+  city: string | null;
+  country: string;
+  region: string | null;
+  taxName: string;
+  taxRate: number;
+};
+
 export type CheckoutFinancialInput = {
+  customerAddress?: string;
   discountAmount?: number;
   shippingAmount?: number;
   subtotalAmount: number;
@@ -41,7 +51,45 @@ export function money(value: number | string | null | undefined) {
   return Number.isFinite(amount) ? Math.max(0, Number(amount.toFixed(2))) : 0;
 }
 
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function matchesRule(address: string, rule: PublicTaxRule) {
+  const normalizedAddress = normalizeText(address);
+
+  if (!normalizedAddress) {
+    return false;
+  }
+
+  return [rule.city, rule.region, rule.country]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .every((value) => normalizedAddress.includes(normalizeText(value)));
+}
+
+function resolveTaxSettings(taxSettings: PublicTaxSettings | null, customerAddress = "") {
+  if (!taxSettings?.taxEnabled) {
+    return { taxName: null as string | null, taxRate: 0 };
+  }
+
+  const rules = taxSettings.taxRules ?? [];
+
+  if (rules.length) {
+    const matchedRule = rules.find((rule) => matchesRule(customerAddress, rule));
+
+    return matchedRule
+      ? { taxName: matchedRule.taxName, taxRate: money(matchedRule.taxRate) }
+      : { taxName: null as string | null, taxRate: 0 };
+  }
+
+  return {
+    taxName: taxSettings.taxName,
+    taxRate: money(taxSettings.defaultTaxRate)
+  };
+}
+
 export function calculateCheckoutFinancials({
+  customerAddress = "",
   discountAmount = 0,
   shippingAmount = 0,
   subtotalAmount,
@@ -52,8 +100,9 @@ export function calculateCheckoutFinancials({
   const discountedSubtotal = money(subtotal - discount);
   const shipping = money(shippingAmount);
   const preTaxTotal = money(discountedSubtotal + shipping);
-  const taxEnabled = Boolean(taxSettings?.taxEnabled && taxSettings.defaultTaxRate > 0);
-  const taxRate = taxEnabled ? money(taxSettings?.defaultTaxRate) : 0;
+  const resolvedTax = resolveTaxSettings(taxSettings, customerAddress);
+  const taxEnabled = resolvedTax.taxRate > 0;
+  const taxRate = taxEnabled ? resolvedTax.taxRate : 0;
   const taxAppliesToShipping = Boolean(taxSettings?.applyTaxToShipping);
   const pricesIncludeTax = Boolean(taxSettings?.pricesIncludeTax);
   const taxableAmount = taxEnabled
@@ -74,19 +123,21 @@ export function calculateCheckoutFinancials({
     taxableAmount,
     taxAmount,
     taxAppliesToShipping,
-    taxName: taxSettings?.taxName ?? null,
+    taxName: taxEnabled ? resolvedTax.taxName : null,
     taxRate,
     totalAmount: pricesIncludeTax ? preTaxTotal : money(preTaxTotal + taxAmount)
   };
 }
 
 export function calculateTax(input: {
+  customerAddress?: string;
   discountAmount: number;
   shippingFee: number;
   subtotal: number;
   taxSettings: PublicTaxSettings | null;
 }): TaxCalculation {
   const breakdown = calculateCheckoutFinancials({
+    customerAddress: input.customerAddress,
     discountAmount: input.discountAmount,
     shippingAmount: input.shippingFee,
     subtotalAmount: input.subtotal,
