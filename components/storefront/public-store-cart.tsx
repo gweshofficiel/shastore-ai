@@ -308,6 +308,10 @@ function formatSavedAddress(address: SavedCheckoutAddress) {
     .join("\n");
 }
 
+function defaultSavedAddress(addresses: SavedCheckoutAddress[]) {
+  return addresses.find((address) => address.is_default) ?? addresses[0] ?? null;
+}
+
 function formatMoney(value: number, currency: string) {
   return new Intl.NumberFormat("en", {
     currency: currency || "USD",
@@ -1013,6 +1017,18 @@ export function CartPageClient({
 
         setSavedAddresses(addresses);
         setAddressMessage(addresses.length ? null : "No saved addresses found for this phone.");
+
+        const defaultAddress = defaultSavedAddress(addresses);
+        if (defaultAddress && !selectedAddressId && !customerAddress.trim()) {
+          setSelectedAddressId(defaultAddress.id);
+          setCustomerName(defaultAddress.full_name ?? customerName);
+          setCustomerPhone(defaultAddress.phone ?? customerPhone);
+          setCustomerAddress(formatSavedAddress(defaultAddress));
+
+          if (defaultAddress.notes && !customerNotes) {
+            setCustomerNotes(defaultAddress.notes);
+          }
+        }
       } catch {
         if (!cancelled) {
           setSavedAddresses([]);

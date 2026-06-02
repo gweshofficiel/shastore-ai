@@ -188,6 +188,16 @@ export async function POST(request: Request) {
   }
 
   if (action === "delete") {
+    const { data: address } = await admin
+      .from("customer_addresses" as never)
+      .select("id, is_default")
+      .eq("id" as never, addressId as never)
+      .eq("workspace_id" as never, store.workspace_id as never)
+      .eq("store_id" as never, store.id as never)
+      .eq("customer_id" as never, customer.id as never)
+      .maybeSingle();
+    const deletedAddress = address as { id: string; is_default?: boolean | null } | null;
+
     await admin
       .from("customer_addresses" as never)
       .delete()
@@ -195,6 +205,29 @@ export async function POST(request: Request) {
       .eq("workspace_id" as never, store.workspace_id as never)
       .eq("store_id" as never, store.id as never)
       .eq("customer_id" as never, customer.id as never);
+
+    if (deletedAddress?.is_default) {
+      const { data: nextDefault } = await admin
+        .from("customer_addresses" as never)
+        .select("id")
+        .eq("workspace_id" as never, store.workspace_id as never)
+        .eq("store_id" as never, store.id as never)
+        .eq("customer_id" as never, customer.id as never)
+        .order("updated_at" as never, { ascending: false } as never)
+        .limit(1)
+        .maybeSingle();
+      const nextDefaultAddress = nextDefault as { id?: string | null } | null;
+
+      if (nextDefaultAddress?.id) {
+        await admin
+          .from("customer_addresses" as never)
+          .update({ is_default: true, updated_at: new Date().toISOString() } as never)
+          .eq("id" as never, nextDefaultAddress.id as never)
+          .eq("workspace_id" as never, store.workspace_id as never)
+          .eq("store_id" as never, store.id as never)
+          .eq("customer_id" as never, customer.id as never);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   }
@@ -231,8 +264,18 @@ export async function POST(request: Request) {
 
   const isDefault = body.isDefault === true || body.isDefault === "true";
   const now = new Date().toISOString();
+  const { data: existingAddresses } = addressId
+    ? { data: [] }
+    : await admin
+        .from("customer_addresses" as never)
+        .select("id")
+        .eq("workspace_id" as never, store.workspace_id as never)
+        .eq("store_id" as never, store.id as never)
+        .eq("customer_id" as never, customer.id as never)
+        .limit(1);
+  const shouldBeDefault = isDefault || (!addressId && !((existingAddresses ?? []) as unknown[]).length);
 
-  if (isDefault) {
+  if (shouldBeDefault) {
     await admin
       .from("customer_addresses" as never)
       .update({ is_default: false, updated_at: now } as never)
@@ -244,7 +287,7 @@ export async function POST(request: Request) {
   const updatePayload = {
     ...payload,
     customer_id: customer.id,
-    is_default: isDefault,
+    is_default: shouldBeDefault,
     metadata: {
       source: "storefront_account"
     },
