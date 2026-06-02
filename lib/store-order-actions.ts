@@ -177,6 +177,17 @@ function cleanOptionalUrl(value: FormDataEntryValue | null) {
   }
 }
 
+function cleanOptionalDateTime(value: FormDataEntryValue | null) {
+  const text = cleanText(value, 80);
+
+  if (!text) {
+    return null;
+  }
+
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   if (typeof value !== "string") {
     return "";
@@ -443,13 +454,15 @@ function safeOrderReturnPath(value: FormDataEntryValue | null) {
 }
 
 function orderStatusReturnRedirect(returnTo: string, status: string, orderId?: string): never {
-  const params = new URLSearchParams({ orders: status });
+  const [path, rawQuery = ""] = returnTo.split("?");
+  const params = new URLSearchParams(rawQuery);
+  params.set("orders", status);
 
   if (orderId) {
     params.set("orderId", orderId);
   }
 
-  redirect(`${returnTo}?${params.toString()}`);
+  redirect(`${path}?${params.toString()}`);
 }
 
 function generateDraftOrderNumber() {
@@ -3258,6 +3271,8 @@ export async function updateStoreOrderShippingTrackingAction(formData: FormData)
   const trackingUrl = cleanOptionalUrl(formData.get("trackingUrl"));
   const deliveryNotes = cleanText(formData.get("deliveryNotes"), 1000);
   const proofOfDelivery = cleanText(formData.get("proofOfDelivery"), 1000);
+  const shippedAt = cleanOptionalDateTime(formData.get("shippedAt"));
+  const deliveredAt = cleanOptionalDateTime(formData.get("deliveredAt"));
 
   if (!orderId) {
     orderStatusReturnRedirect(returnTo, "missing-order");
@@ -3268,6 +3283,10 @@ export async function updateStoreOrderShippingTrackingAction(formData: FormData)
   }
 
   if (rawTrackingUrl && !trackingUrl) {
+    orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
+  }
+
+  if (shippedAt === undefined || deliveredAt === undefined) {
     orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
   }
 
@@ -3337,14 +3356,12 @@ export async function updateStoreOrderShippingTrackingAction(formData: FormData)
     orderStatusReturnRedirect(returnTo, "not-authorized", orderId);
   }
 
-  if (!canEditShippingTracking(currentOrderRow.fulfillment_status)) {
-    orderStatusReturnRedirect(returnTo, "invalid-shipping", orderId);
-  }
-
   const normalizedTracking = {
     carrier_name: carrierName || null,
+    delivered_at: deliveredAt,
     delivery_notes: deliveryNotes || null,
     proof_of_delivery: proofOfDelivery || null,
+    shipped_at: shippedAt,
     tracking_number: trackingNumber || null,
     tracking_url: trackingUrl || null
   };
@@ -3356,18 +3373,6 @@ export async function updateStoreOrderShippingTrackingAction(formData: FormData)
     ...normalizedTracking,
     updated_at: now
   };
-  const fulfillmentStatus = normalizeFulfillmentStatus(currentOrderRow.fulfillment_status);
-
-  if ((fulfillmentStatus === "shipped" || fulfillmentStatus === "out_for_delivery" || fulfillmentStatus === "delivered") && !currentOrderRow.shipped_at) {
-    updatePayload.shipped_at = now;
-    changedFields.push("shipped_at");
-  }
-
-  if (fulfillmentStatus === "delivered" && !currentOrderRow.delivered_at) {
-    updatePayload.delivered_at = now;
-    changedFields.push("delivered_at");
-  }
-
   const { data, error } = await supabase
     .from(tableName as never)
     .update(updatePayload as never)

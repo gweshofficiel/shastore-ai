@@ -59,6 +59,10 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatOptionalDate(value: string | null | undefined) {
+  return value ? formatDate(value) : "Not set";
+}
+
 function normalizeReference(value: string) {
   return value.replace(/[^a-zA-Z0-9-]/g, "").toUpperCase();
 }
@@ -114,6 +118,19 @@ function fulfillmentStatusLabel(status: string | null | undefined) {
   }
 
   return normalized.replaceAll("_", " ");
+}
+
+function deliveryStatusLabel(status: string | null | undefined) {
+  const labels: Record<string, string> = {
+    assigned: "Assigned",
+    delivered: "Delivered",
+    failed: "Failed",
+    out_for_delivery: "Out for Delivery",
+    picked_up: "Picked Up"
+  };
+  const normalized = status?.trim();
+
+  return normalized ? (labels[normalized] ?? normalized.replaceAll("_", " ")) : "Not assigned";
 }
 
 function fulfillmentSteps() {
@@ -226,7 +243,7 @@ async function loadTrackedOrder({
   const { data: rawOrders } = await admin
     .from("orders" as never)
     .select(
-      "id, workspace_id, store_id, store_instance_id, customer_name, customer_phone, delivery_method, delivery_fee, fulfillment_status, total, total_amount, currency, order_status, payment_status, created_at"
+      "id, workspace_id, store_id, store_instance_id, customer_name, customer_phone, delivery_method, delivery_fee, delivery_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, fulfillment_status, total, total_amount, currency, order_status, payment_status, created_at"
     )
     .eq("customer_phone" as never, phone as never)
     .order("created_at" as never, { ascending: false } as never)
@@ -238,6 +255,9 @@ async function loadTrackedOrder({
     customer_phone: string;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
+    delivery_notes?: string | null;
+    delivery_status?: string | null;
+    delivered_at?: string | null;
     fulfillment_status?: string | null;
     id: string;
     order_status: string | null;
@@ -246,7 +266,11 @@ async function loadTrackedOrder({
     store_instance_id: string | null;
     total: number | string;
     total_amount?: number | string | null;
+    carrier_name?: string | null;
+    shipped_at?: string | null;
     workspace_id?: string | null;
+    tracking_number?: string | null;
+    tracking_url?: string | null;
   }>;
   const order = orders.find((row) => {
     const rowStoreId = row.store_id ?? row.store_instance_id ?? "";
@@ -276,6 +300,9 @@ async function loadTrackedOrder({
         customer_phone: order.customer_phone,
         delivery_fee: order.delivery_fee ?? 0,
         delivery_method: order.delivery_method ?? null,
+        delivery_notes: order.delivery_notes ?? null,
+        delivery_status: order.delivery_status ?? null,
+        delivered_at: order.delivered_at ?? null,
         fulfillment_status: order.fulfillment_status ?? "pending",
         id: order.id,
         items,
@@ -283,7 +310,11 @@ async function loadTrackedOrder({
         payment_status: order.payment_status ?? "pending",
         source: "orders" as const,
         store_id: preview.store.id,
+        carrier_name: order.carrier_name ?? null,
+        shipped_at: order.shipped_at ?? null,
         total: order.total_amount ?? order.total,
+        tracking_number: order.tracking_number ?? null,
+        tracking_url: order.tracking_url ?? null,
         workspace_id: order.workspace_id ?? preview.store.workspaceId ?? null
       },
       reason: null,
@@ -293,7 +324,7 @@ async function loadTrackedOrder({
 
   const { data: rawStoreOrders } = await admin
     .from("store_orders")
-    .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, fulfillment_status, items, total, total_amount, order_status, payment_status, created_at")
+    .select("id, workspace_id, store_id, customer_name, customer_phone, delivery_method, delivery_fee, delivery_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, fulfillment_status, items, total, total_amount, order_status, payment_status, created_at")
     .eq("store_id", preview.store.id)
     .eq("customer_phone", phone)
     .order("created_at", { ascending: false })
@@ -304,6 +335,9 @@ async function loadTrackedOrder({
     customer_phone?: string | null;
     delivery_fee?: number | string | null;
     delivery_method?: string | null;
+    delivery_notes?: string | null;
+    delivery_status?: string | null;
+    delivered_at?: string | null;
     fulfillment_status?: string | null;
     id: string;
     items: Json;
@@ -311,6 +345,10 @@ async function loadTrackedOrder({
     payment_status: string | null;
     total: number | string;
     total_amount?: number | string | null;
+    carrier_name?: string | null;
+    shipped_at?: string | null;
+    tracking_number?: string | null;
+    tracking_url?: string | null;
     workspace_id?: string | null;
   }>).find((row) => referenceMatches(row.id, reference));
 
@@ -323,6 +361,9 @@ async function loadTrackedOrder({
         customer_phone: storeOrder.customer_phone ?? phone,
         delivery_fee: storeOrder.delivery_fee ?? 0,
         delivery_method: storeOrder.delivery_method ?? null,
+        delivery_notes: storeOrder.delivery_notes ?? null,
+        delivery_status: storeOrder.delivery_status ?? null,
+        delivered_at: storeOrder.delivered_at ?? null,
         fulfillment_status: storeOrder.fulfillment_status ?? "pending",
         id: storeOrder.id,
         items: parseStoreOrderItems(storeOrder.items),
@@ -330,7 +371,11 @@ async function loadTrackedOrder({
         payment_status: storeOrder.payment_status ?? "pending",
         source: "store_orders" as const,
         store_id: preview.store.id,
+        carrier_name: storeOrder.carrier_name ?? null,
+        shipped_at: storeOrder.shipped_at ?? null,
         total: storeOrder.total_amount ?? storeOrder.total,
+        tracking_number: storeOrder.tracking_number ?? null,
+        tracking_url: storeOrder.tracking_url ?? null,
         workspace_id: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
       },
       reason: null,
@@ -478,9 +523,37 @@ export default async function PublicOrderTrackingPage({
                 <Info label="Order status" value={order.order_status} />
                 <Info label="Payment status" value={order.payment_status} />
                 <Info label="Fulfillment" value={fulfillmentStatusLabel(order.fulfillment_status)} />
+                <Info label="Delivery status" value={deliveryStatusLabel(order.delivery_status)} />
                 <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
                 <Info label="Created" value={formatDate(order.created_at)} />
                 <Info label="Currency" value={order.currency} />
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Tracking information
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Info label="Carrier" value={order.carrier_name || "Not provided"} />
+                  <Info label="Tracking number" value={order.tracking_number || "Not provided"} />
+                  <Info label="Shipped" value={formatOptionalDate(order.shipped_at)} />
+                  <Info label="Delivered" value={formatOptionalDate(order.delivered_at)} />
+                </div>
+                {order.tracking_url ? (
+                  <Link
+                    className="mt-4 inline-flex rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800"
+                    href={order.tracking_url}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Open tracking link
+                  </Link>
+                ) : null}
+                {order.delivery_notes ? (
+                  <p className="mt-4 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-muted">
+                    {order.delivery_notes}
+                  </p>
+                ) : null}
               </div>
               {reviewStatusMessage ? (
                 <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${

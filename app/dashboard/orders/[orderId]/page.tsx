@@ -94,6 +94,20 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function dateTimeInputValue(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 16);
+}
+
 function orderReference(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
@@ -205,12 +219,6 @@ function eventTypeLabel(type: string) {
 
 function timelineValueLabel(value: string | null) {
   return value ? fulfillmentStatusLabel(value) : "empty";
-}
-
-function canEditShippingTracking(status: string | null | undefined) {
-  const normalized = status?.trim() || "pending";
-
-  return normalized === "shipped" || normalized === "out_for_delivery" || normalized === "delivered";
 }
 
 function statusMessage(value: string | undefined) {
@@ -851,24 +859,24 @@ export default async function OrderDetailPage({
             )}
           </div>
 
-          {canEditShippingTracking(order.fulfillment_status) ? (
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                Shipping tracking
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Info label="Carrier" value={order.carrier_name || "Not provided"} />
-                <Info label="Tracking number" value={order.tracking_number || "Not provided"} />
-                <Info label="Tracking URL" value={order.tracking_url || "Not provided"} />
-                <Info label="Delivery proof" value={order.proof_of_delivery || "Not provided"} />
-              </div>
-              {order.delivery_notes ? (
-                <p className="mt-4 text-sm font-semibold leading-6 text-muted">
-                  {order.delivery_notes}
-                </p>
-              ) : null}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Tracking information
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Info label="Carrier" value={order.carrier_name || "Not provided"} />
+              <Info label="Tracking number" value={order.tracking_number || "Not provided"} />
+              <Info label="Tracking URL" value={order.tracking_url || "Not provided"} />
+              <Info label="Shipped" value={formatDate(order.shipped_at)} />
+              <Info label="Delivered" value={formatDate(order.delivered_at)} />
+              <Info label="Delivery proof" value={order.proof_of_delivery || "Not provided"} />
             </div>
-          ) : null}
+            {order.delivery_notes ? (
+              <p className="mt-4 text-sm font-semibold leading-6 text-muted">
+                {order.delivery_notes}
+              </p>
+            ) : null}
+          </div>
 
           {order.notes ? (
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
@@ -1054,10 +1062,12 @@ export default async function OrderDetailPage({
                 action={updateStoreOrderShippingTrackingAction}
                 carrierName={order.carrier_name}
                 deliveryNotes={order.delivery_notes}
-                disabled={!canEditShippingTracking(order.fulfillment_status)}
+                deliveredAt={order.delivered_at}
+                disabled={false}
                 orderId={order.id}
                 proofOfDelivery={order.proof_of_delivery}
                 returnTo={returnTo}
+                shippedAt={order.shipped_at}
                 source={order.source}
                 trackingNumber={order.tracking_number}
                 trackingUrl={order.tracking_url}
@@ -1190,10 +1200,12 @@ function ShippingTrackingForm({
   action,
   carrierName,
   deliveryNotes,
+  deliveredAt,
   disabled,
   orderId,
   proofOfDelivery,
   returnTo,
+  shippedAt,
   source,
   trackingNumber,
   trackingUrl
@@ -1201,10 +1213,12 @@ function ShippingTrackingForm({
   action: (formData: FormData) => void | Promise<void>;
   carrierName?: string | null;
   deliveryNotes?: string | null;
+  deliveredAt?: string | null;
   disabled: boolean;
   orderId: string;
   proofOfDelivery?: string | null;
   returnTo: string;
+  shippedAt?: string | null;
   source: OrderSource;
   trackingNumber?: string | null;
   trackingUrl?: string | null;
@@ -1215,10 +1229,10 @@ function ShippingTrackingForm({
       <input name="returnTo" type="hidden" value={returnTo} />
       <input name="source" type="hidden" value={source} />
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-        Shipping tracking
+        Tracking numbers
       </p>
       <p className="text-sm font-bold text-muted">
-        Add carrier, tracking, notes, and proof after shipping starts.
+        Add or edit carrier details, tracking numbers, ship/delivery dates, notes, and proof.
       </p>
       <label className="grid gap-2 text-sm font-semibold text-ink">
         <span>Carrier name</span>
@@ -1252,13 +1266,33 @@ function ShippingTrackingForm({
         />
       </label>
       <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Shipped at</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={dateTimeInputValue(shippedAt)}
+          disabled={disabled}
+          name="shippedAt"
+          type="datetime-local"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Delivered at</span>
+        <input
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
+          defaultValue={dateTimeInputValue(deliveredAt)}
+          disabled={disabled}
+          name="deliveredAt"
+          type="datetime-local"
+        />
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
         <span>Delivery notes</span>
         <textarea
           className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50"
           defaultValue={deliveryNotes ?? ""}
           disabled={disabled}
           name="deliveryNotes"
-          placeholder="Courier handoff, delivery window, customer instructions"
+          placeholder="Tracking notes, courier handoff, delivery window, customer instructions"
         />
       </label>
       <label className="grid gap-2 text-sm font-semibold text-ink">
@@ -1280,7 +1314,7 @@ function ShippingTrackingForm({
       </button>
       {disabled ? (
         <p className="text-xs font-semibold leading-5 text-muted">
-          Tracking opens after fulfillment reaches Shipped, Out for Delivery, or Delivered.
+          Tracking is currently disabled for this order.
         </p>
       ) : null}
     </form>
