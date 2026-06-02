@@ -5,6 +5,13 @@ import {
   absoluteBlogImageUrl,
   loadPublicStoreBlogArticle
 } from "@/lib/store-blog-public";
+import {
+  contentSeoTitle,
+  defaultStoreSeoSettings,
+  loadStoreSeoSettings,
+  productSeoDescription
+} from "@/lib/store-seo";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -40,23 +47,44 @@ export async function generateMetadata({
     };
   }
 
-  const image = absoluteBlogImageUrl(article.coverImageUrl);
-  const description = article.excerpt || article.content.slice(0, 160);
+  const admin = createAdminClient();
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
+  const image = absoluteBlogImageUrl(article.ogImageUrl || article.coverImageUrl || seoSettings.defaultOgImageUrl);
+  const title = contentSeoTitle({
+    explicitTitle: article.seoTitle,
+    rule: seoSettings.blogFallbackRule,
+    settings: seoSettings,
+    storeTitle: preview.store.title,
+    title: article.title
+  });
+  const description =
+    article.seoDescription ||
+    productSeoDescription({
+      description: article.excerpt || article.content.slice(0, 160),
+      productTitle: article.title,
+      rule: seoSettings.blogFallbackRule,
+      settings: seoSettings,
+      storeTitle: preview.store.title
+    });
 
   return {
-    title: `${article.title} | ${preview.store.title}`,
+    alternates: article.canonicalUrl ? { canonical: article.canonicalUrl } : undefined,
+    title: title.includes(preview.store.title) ? title : `${title} | ${preview.store.title}`,
     description,
     openGraph: {
-      description,
+      description: article.ogDescription || description,
       images: image ? [{ url: image }] : undefined,
-      title: article.title,
+      title: article.ogTitle || title,
       type: "article"
     },
+    robots: { follow: !article.noindex, index: !article.noindex },
     twitter: {
       card: image ? "summary_large_image" : "summary",
-      description,
+      description: article.ogDescription || description,
       images: image ? [image] : undefined,
-      title: article.title
+      title: article.ogTitle || title
     }
   };
 }

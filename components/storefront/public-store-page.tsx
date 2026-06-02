@@ -3,6 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
+import {
+  contentSeoTitle,
+  defaultStoreSeoSettings,
+  loadStoreSeoSettings
+} from "@/lib/store-seo";
 import { preparePageContentForRender, textFromPageContent } from "@/lib/store-pages/content";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -74,24 +79,35 @@ export async function generatePublicStorePageMetadata({
     };
   }
 
-  const description = page.seo_description || textFromPageContent(page.content).slice(0, 160);
-  const title = page.seo_title || page.title;
+  const admin = createAdminClient();
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
+  const description = page.seo_description || textFromPageContent(page.content).slice(0, 160) || seoSettings.defaultMetaDescription;
+  const title = contentSeoTitle({
+    explicitTitle: page.seo_title,
+    rule: "existing_data",
+    settings: seoSettings,
+    storeTitle: preview.store.title,
+    title: page.title
+  });
   const ogTitle = page.og_title || title;
   const ogDescription = page.og_description || description || undefined;
+  const ogImage = page.og_image_url || seoSettings.defaultOgImageUrl;
 
   return {
     description: description || undefined,
     keywords: page.seo_keywords || undefined,
     alternates: page.canonical_url ? { canonical: page.canonical_url } : undefined,
-    title: `${title} | ${preview.store.title}`,
+    title: title.includes(preview.store.title) ? title : `${title} | ${preview.store.title}`,
     openGraph: {
       description: ogDescription,
-      images: page.og_image_url ? [{ url: page.og_image_url }] : undefined,
+      images: ogImage ? [{ url: ogImage }] : undefined,
       title: ogTitle,
       type: "website"
     },
     twitter: {
-      card: page.og_image_url ? "summary_large_image" : "summary",
+      card: ogImage ? "summary_large_image" : "summary",
       description: ogDescription,
       title: ogTitle
     },

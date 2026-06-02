@@ -21,6 +21,12 @@ import {
   getPublicStorefrontPreview,
   type PublicStorefrontProduct
 } from "@/lib/public-storefront-preview";
+import {
+  contentSeoTitle,
+  defaultStoreSeoSettings,
+  loadStoreSeoSettings,
+  productSeoDescription
+} from "@/lib/store-seo";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -280,19 +286,33 @@ export async function generateMetadata({
     };
   }
 
-  const title = product.seoTitle || product.title;
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
+  const title = contentSeoTitle({
+    explicitTitle: product.seoTitle,
+    rule: seoSettings.productFallbackRule,
+    settings: seoSettings,
+    storeTitle: preview.store.title,
+    title: product.title
+  });
   const description =
     product.seoDescription ||
-    product.description ||
-    `Order ${product.title} from ${preview.store.title}, powered by SHASTORE AI.`;
+    productSeoDescription({
+      description: product.description,
+      productTitle: product.title,
+      rule: seoSettings.productFallbackRule,
+      settings: seoSettings,
+      storeTitle: preview.store.title
+    });
   const ogTitle = product.ogTitle || title;
   const ogDescription = product.ogDescription || description;
-  const ogImage = absolutePublicUrl(product.ogImageUrl || product.imageUrl);
+  const ogImage = absolutePublicUrl(product.ogImageUrl || product.imageUrl || seoSettings.defaultOgImageUrl);
   const canonicalUrl = productCanonicalUrl(preview.store.slug, product);
 
   return {
     alternates: { canonical: canonicalUrl },
-    title: `${title} | ${preview.store.title}`,
+    title: title.includes(preview.store.title) ? title : `${title} | ${preview.store.title}`,
     keywords: product.seoKeywords || undefined,
     description,
     openGraph: {

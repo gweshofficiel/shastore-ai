@@ -40,6 +40,7 @@ import {
 } from "@/lib/tenant/context";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getProductRecommendations } from "@/lib/product-recommendations";
+import { defaultStoreSeoSettings, homepageSeoMetadata, loadStoreSeoSettings } from "@/lib/store-seo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   PublicStorefrontCategory,
@@ -341,33 +342,23 @@ export async function generateMetadata({
     }
   }
 
-  const title = preview.store.seoTitle || preview.store.title;
-  const description =
-    preview.store.seoDescription ||
-    preview.store.description ||
-    `Preview ${preview.store.title}, powered by SHASTORE AI.`;
-  const ogTitle = preview.store.ogTitle || title;
-  const ogDescription = preview.store.ogDescription || description;
+  const seoSettings = admin
+    ? await loadStoreSeoSettings(admin, preview.store.id)
+    : defaultStoreSeoSettings;
 
-  return {
-    alternates: preview.store.canonicalUrl ? { canonical: preview.store.canonicalUrl } : undefined,
-    title,
-    keywords: preview.store.seoKeywords || undefined,
-    description,
-    openGraph: {
-      title: ogTitle,
-      description: ogDescription,
-      images: preview.store.ogImageUrl ? [{ url: preview.store.ogImageUrl }] : undefined,
-      siteName: preview.store.title,
-      type: "website"
-    },
-    twitter: {
-      card: preview.store.ogImageUrl ? "summary_large_image" : "summary",
-      title: ogTitle,
-      description: ogDescription
-    },
-    robots: { index: !preview.store.noindex, follow: !preview.store.noindex }
-  };
+  return homepageSeoMetadata({
+    canonicalUrl: preview.store.canonicalUrl,
+    noindex: preview.store.noindex,
+    settings: seoSettings,
+    storeDescription: preview.store.description || `Preview ${preview.store.title}, powered by SHASTORE AI.`,
+    storeKeywords: preview.store.seoKeywords,
+    storeOgDescription: preview.store.ogDescription,
+    storeOgImageUrl: preview.store.ogImageUrl,
+    storeOgTitle: preview.store.ogTitle,
+    storeSeoDescription: preview.store.seoDescription,
+    storeSeoTitle: preview.store.seoTitle,
+    storeTitle: preview.store.title
+  });
 }
 
 export default async function PublicStorePage({

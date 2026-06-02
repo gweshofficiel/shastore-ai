@@ -5,11 +5,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export type PublicStoreBlogArticle = {
+  canonicalUrl: string | null;
   content: string;
   coverImageUrl: string | null;
   excerpt: string | null;
   id: string;
+  noindex: boolean;
+  ogDescription: string | null;
+  ogImageUrl: string | null;
+  ogTitle: string | null;
   publishedAt: string | null;
+  seoDescription: string | null;
+  seoTitle: string | null;
   slug: string;
   title: string;
 };
@@ -30,11 +37,18 @@ function normalizeArticle(value: unknown): PublicStoreBlogArticle | null {
   }
 
   return {
+    canonicalUrl: typeof record.canonical_url === "string" ? record.canonical_url : null,
     content,
     coverImageUrl: typeof record.cover_image_url === "string" ? record.cover_image_url : null,
     excerpt: typeof record.excerpt === "string" ? record.excerpt : null,
     id,
+    noindex: record.noindex === true,
+    ogDescription: typeof record.og_description === "string" ? record.og_description : null,
+    ogImageUrl: typeof record.og_image_url === "string" ? record.og_image_url : null,
+    ogTitle: typeof record.og_title === "string" ? record.og_title : null,
     publishedAt: typeof record.published_at === "string" ? record.published_at : null,
+    seoDescription: typeof record.seo_description === "string" ? record.seo_description : null,
+    seoTitle: typeof record.seo_title === "string" ? record.seo_title : null,
     slug,
     title
   };
@@ -57,7 +71,7 @@ export async function loadPublishedStoreBlogArticlesForStore(storeId: string, li
   const readClient = admin ?? (await createClient());
   const { data } = await readClient
     .from("store_blog_articles" as never)
-    .select("id, title, slug, excerpt, content, cover_image_url, published_at")
+    .select("id, title, slug, excerpt, content, cover_image_url, published_at, seo_title, seo_description, og_title, og_description, og_image_url, canonical_url, noindex")
     .eq("store_id" as never, storeId as never)
     .eq("status" as never, "published" as never)
     .order("published_at" as never, { ascending: false } as never)
