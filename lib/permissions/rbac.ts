@@ -224,6 +224,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/product-qa", label: "Product Q&A", icon: "products", permission: "products.view" },
   { href: "/dashboard/orders", label: "Orders", icon: "orders", permission: "orders.view" },
   { href: "/dashboard/abandoned-carts", label: "Abandoned carts", icon: "orders", permission: "orders.view" },
+  { href: "/dashboard/discount-campaigns", label: "Discount Campaigns", icon: "orders", permission: "can_edit_stores" },
   { href: "/dashboard/customers", label: "Customers", icon: "customers", permission: "customers.view" },
   { href: "/dashboard/customer-segments", label: "Customer Segments", icon: "customers", permission: "customers.view" },
   { href: "/dashboard/loyalty", label: "Loyalty", icon: "customers", permission: "customers.view" },

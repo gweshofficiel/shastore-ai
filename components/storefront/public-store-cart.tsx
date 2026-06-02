@@ -77,6 +77,14 @@ type AppliedCoupon = {
   discountAmount: number;
 };
 
+type AppliedDiscountCampaign = {
+  discountAmount: number;
+  discountLabel: string;
+  freeShipping: boolean;
+  id: string;
+  name: string;
+};
+
 type SavedCheckoutAddress = {
   address_line1: string;
   address_line2: string | null;
@@ -912,6 +920,7 @@ export function CartPageClient({
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [couponMessageType, setCouponMessageType] = useState<"error" | "success" | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [appliedCampaign, setAppliedCampaign] = useState<AppliedDiscountCampaign | null>(null);
   const [couponPending, setCouponPending] = useState(false);
   const [autoCouponAttempted, setAutoCouponAttempted] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PublicStorePaymentMethodKey | "">(
@@ -952,8 +961,12 @@ export function CartPageClient({
   );
   const needsShippingAddress = hasPhysicalShippingItems(items, productsById);
   const total = useMemo(() => cartTotal(items), [items]);
-  const discountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
-  const rateSubtotal = Math.max(0, total - discountAmount);
+  const couponDiscountAmount = appliedCoupon ? Math.min(total, appliedCoupon.discountAmount) : 0;
+  const campaignSubtotalDiscount =
+    !appliedCoupon && appliedCampaign && !appliedCampaign.freeShipping
+      ? Math.min(total, appliedCampaign.discountAmount)
+      : 0;
+  const rateSubtotal = Math.max(0, total - couponDiscountAmount - campaignSubtotalDiscount);
   const selectedShippingMethod =
     shippingMethods.find((method) => method.id === shippingMethodId) ?? null;
   const selectedShippingRateMatch = matchPublicShippingRate({
@@ -968,10 +981,16 @@ export function CartPageClient({
     : deliveryMethod === "delivery"
       ? deliverySettings.deliveryFee ?? 0
       : 0;
+  const campaignShippingDiscount =
+    !appliedCoupon && appliedCampaign?.freeShipping
+      ? Math.min(selectedDeliveryFee, appliedCampaign.discountAmount)
+      : 0;
+  const discountAmount = couponDiscountAmount + campaignSubtotalDiscount;
+  const displayDiscountAmount = discountAmount + campaignShippingDiscount;
   const financialBreakdown = calculateCheckoutFinancials({
     customerAddress,
     discountAmount,
-    shippingAmount: selectedDeliveryFee,
+    shippingAmount: Math.max(0, selectedDeliveryFee - campaignShippingDiscount),
     subtotalAmount: total,
     taxSettings
   });
@@ -1051,9 +1070,55 @@ export function CartPageClient({
 
   useEffect(() => {
     setAppliedCoupon(null);
+    setAppliedCampaign(null);
     setCouponMessage(null);
     setCouponMessageType(null);
   }, [total]);
+
+  useEffect(() => {
+    if (!items.length || total <= 0 || appliedCoupon) {
+      setAppliedCampaign(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/store-discount-campaigns/active", {
+          body: JSON.stringify({
+            customerEmail,
+            items: items.map((item) => ({
+              categoryId: productsById.get(item.productId)?.categoryId ?? null,
+              productId: item.productId,
+              quantity: item.quantity,
+              subtotal: parsePrice(item.price) * item.quantity
+            })),
+            shippingAmount: selectedDeliveryFee,
+            slug,
+            storeId
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST"
+        });
+        const data = (await response.json().catch(() => null)) as {
+          campaign?: AppliedDiscountCampaign | null;
+        } | null;
+
+        if (!cancelled) {
+          setAppliedCampaign(response.ok && data?.campaign ? data.campaign : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAppliedCampaign(null);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [appliedCoupon, customerEmail, items, productsById, selectedDeliveryFee, slug, storeId, total]);
 
   useEffect(() => {
     const initialCode = initialCouponCode.trim();
@@ -1533,11 +1598,21 @@ export function CartPageClient({
                 <span>-{formatMoney(discountAmount, currency)}</span>
               </div>
             ) : null}
+            {!appliedCoupon && appliedCampaign ? (
+              <div className="mt-3 flex justify-between text-emerald-700">
+                <span>{appliedCampaign.name} ({appliedCampaign.discountLabel})</span>
+                <span>-{formatMoney(displayDiscountAmount, currency)}</span>
+              </div>
+            ) : null}
           </div>
-          {discountAmount > 0 ? (
+          {displayDiscountAmount > 0 ? (
             <div className="flex justify-between text-emerald-700">
-              <span>Subtotal after discount</span>
-              <span>{formatMoney(discountedSubtotal, currency)}</span>
+              <span>{campaignShippingDiscount > 0 ? "Total discount" : "Subtotal after discount"}</span>
+              <span>
+                {campaignShippingDiscount > 0
+                  ? `-${formatMoney(displayDiscountAmount, currency)}`
+                  : formatMoney(discountedSubtotal, currency)}
+              </span>
             </div>
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -1639,7 +1714,7 @@ export function CartPageClient({
               </div>
               <div className="flex justify-between">
                 <span>Selected fee</span>
-                <span>{formatMoney(selectedDeliveryFee, currency)}</span>
+                <span>{formatMoney(financialBreakdown.shippingAmount, currency)}</span>
               </div>
               {deliverySettings.freeDeliveryThreshold !== null ? (
                 <div className="flex justify-between">
@@ -1784,7 +1859,12 @@ export function CartPageClient({
                 {couponMessage}
               </p>
             ) : null}
-            {discountAmount > 0 ? (
+            {!appliedCoupon && appliedCampaign ? (
+              <div className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                {appliedCampaign.name} applied: {appliedCampaign.discountLabel}
+              </div>
+            ) : null}
+            {displayDiscountAmount > 0 ? (
               <div className="mt-3 grid gap-1 text-xs font-bold text-muted">
                 <div className="flex justify-between">
                   <span>Original subtotal</span>
@@ -1792,7 +1872,7 @@ export function CartPageClient({
                 </div>
                 <div className="flex justify-between text-emerald-700">
                   <span>Discount</span>
-                  <span>-{formatMoney(discountAmount, currency)}</span>
+                  <span>-{formatMoney(displayDiscountAmount, currency)}</span>
                 </div>
                 <div className="flex justify-between text-ink">
                   <span>Final total</span>

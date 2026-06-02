@@ -28,6 +28,10 @@ import {
   validateStoreCoupon,
   type StoreCouponRow
 } from "@/lib/store-coupons";
+import {
+  findActiveDiscountCampaignForCart,
+  type AppliedDiscountCampaign
+} from "@/lib/discount-campaigns";
 import { reserveCheckoutInventory } from "@/lib/inventory-reservations";
 import { validateCheckoutInventory } from "@/lib/store-inventory";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
@@ -593,6 +597,7 @@ async function resolveStoreInstanceId(
 }
 
 type DraftLineItem = {
+  category_id?: string | null;
   currency: string;
   digital_delivery_enabled?: boolean;
   digital_file_name?: string | null;
@@ -748,6 +753,7 @@ async function persistStorefrontOrderDraft({
   financialBreakdown,
   paymentMethod,
   coupon,
+  discountCampaign,
   discountAmount,
   subtotal,
   slug
@@ -775,6 +781,7 @@ async function persistStorefrontOrderDraft({
   financialBreakdown: CheckoutFinancialBreakdown;
   paymentMethod: StorePaymentMethod;
   coupon: StoreCouponRow | null;
+  discountCampaign: AppliedDiscountCampaign | null;
   discountAmount: number;
   subtotal: number;
   slug: string;
@@ -798,8 +805,19 @@ async function persistStorefrontOrderDraft({
         order_subtotal_before_discount: subtotal
       }
     : {
-        discount_amount: 0,
+        discount_amount: safeDiscountAmount,
         order_subtotal_before_discount: subtotal
+      };
+  const campaignPayload = discountCampaign
+    ? {
+        discount_campaign_id: discountCampaign.campaign.id,
+        discount_campaign_name: discountCampaign.campaign.name,
+        discount_type: discountCampaign.campaign.discount_type,
+        discount_value: Number(discountCampaign.campaign.discount_value)
+      }
+    : {
+        discount_campaign_id: null,
+        discount_campaign_name: null
       };
 
   const legacyOrderPayload: Record<string, unknown> = {
@@ -842,6 +860,7 @@ async function persistStorefrontOrderDraft({
   const extendedOrderPayload: Record<string, unknown> = {
     ...legacyOrderPayload,
     ...couponPayload,
+    ...campaignPayload,
     store_id: store.id,
     user_id: store.user_id,
     owner_user_id: store.owner_user_id ?? store.user_id,
@@ -1173,6 +1192,7 @@ async function persistStorefrontOrderDraft({
     subtotal: discountedSubtotal,
     total,
     ...couponPayload,
+    ...campaignPayload,
     payment_method: "manual",
     payment_status: "pending",
     order_status: "draft"
@@ -1535,6 +1555,7 @@ async function redirectToStorePayPalCheckout({
   admin,
   cartSessionId,
   coupon,
+  discountCampaign,
   customerAddress,
   customerEmail,
   customerName,
@@ -1554,6 +1575,7 @@ async function redirectToStorePayPalCheckout({
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
   cartSessionId?: string | null;
   coupon: StoreCouponRow | null;
+  discountCampaign: AppliedDiscountCampaign | null;
   customerAddress: string;
   customerEmail: string;
   customerName: string;
@@ -1603,6 +1625,7 @@ async function redirectToStorePayPalCheckout({
     admin,
     cartSessionId,
     coupon,
+    discountCampaign,
     currency,
     customerAddress,
     customerEmail,
@@ -1791,6 +1814,7 @@ export async function createPublicStoreOrderAction(
       const lineTotal = unitPrice * item.quantity;
 
       return {
+        category_id: product.categoryId,
         categoryName: product.categoryName,
         digitalDeliveryEnabled: product.digitalDeliveryEnabled,
         digitalFileName: product.digitalFileName,
@@ -1858,7 +1882,7 @@ export async function createPublicStoreOrderAction(
     };
   }
 
-  const discountAmount = couponResult?.ok ? couponResult.discountAmount : 0;
+  const couponDiscountAmount = couponResult?.ok ? couponResult.discountAmount : 0;
   const shippingMethod = requestedShippingMethodId && digitalSummary.hasPhysicalShippingItems
     ? await getPublicShippingMethodForStore({
         methodId: requestedShippingMethodId,
@@ -1875,11 +1899,11 @@ export async function createPublicStoreOrderAction(
     };
   }
 
-  const deliveryFee = digitalSummary.hasPhysicalShippingItems && shippingMethod
+  const baseDeliveryFee = digitalSummary.hasPhysicalShippingItems && shippingMethod
     ? matchPublicShippingRate({
       addressText: customerAddress,
       method: shippingMethod,
-      subtotalAmount: Math.max(0, subtotal - discountAmount),
+      subtotalAmount: Math.max(0, subtotal - couponDiscountAmount),
       totalWeight: null
     }).shippingAmount
     : 0;
@@ -1887,7 +1911,7 @@ export async function createPublicStoreOrderAction(
     ? matchPublicShippingRate({
       addressText: customerAddress,
       method: shippingMethod,
-      subtotalAmount: Math.max(0, subtotal - discountAmount),
+      subtotalAmount: Math.max(0, subtotal - couponDiscountAmount),
       totalWeight: null
     })
     : null;
@@ -1903,6 +1927,26 @@ export async function createPublicStoreOrderAction(
 
   const deliveryMethod =
     digitalSummary.hasPhysicalShippingItems && shippingMethod ? deliveryMethodForShippingMethod(shippingMethod) : "none";
+  const discountCampaign = couponResult?.ok
+    ? null
+    : await findActiveDiscountCampaignForCart(admin, {
+        customerEmail,
+        items: items.map((item) => ({
+          categoryId: item.category_id,
+          productId: item.id,
+          quantity: item.quantity,
+          subtotal: item.total
+        })),
+        shippingAmount: baseDeliveryFee,
+        storeId: store.id,
+        workspaceId: store.workspace_id
+      });
+  const campaignSubtotalDiscount =
+    discountCampaign && !discountCampaign.freeShipping ? discountCampaign.discountAmount : 0;
+  const campaignShippingDiscount =
+    discountCampaign?.freeShipping ? Math.min(baseDeliveryFee, discountCampaign.discountAmount) : 0;
+  const deliveryFee = Number(Math.max(0, baseDeliveryFee - campaignShippingDiscount).toFixed(2));
+  const discountAmount = couponDiscountAmount || campaignSubtotalDiscount;
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     customerAddress,
     discountAmount,
@@ -1951,8 +1995,16 @@ export async function createPublicStoreOrderAction(
       total,
       coupon_id: couponResult?.ok ? couponResult.coupon.id : null,
       coupon_code: couponResult?.ok ? couponResult.coupon.code : null,
-      discount_type: couponResult?.ok ? couponResult.coupon.discount_type : null,
-      discount_value: couponResult?.ok ? Number(couponResult.coupon.discount_value) : null,
+      discount_campaign_id: discountCampaign?.campaign.id ?? null,
+      discount_campaign_name: discountCampaign?.campaign.name ?? null,
+      discount_type: couponResult?.ok
+        ? couponResult.coupon.discount_type
+        : discountCampaign?.campaign.discount_type ?? null,
+      discount_value: couponResult?.ok
+        ? Number(couponResult.coupon.discount_value)
+        : discountCampaign
+          ? Number(discountCampaign.campaign.discount_value)
+          : null,
       discount_amount: discountAmount,
       order_subtotal_before_discount: subtotal,
       payment_method: "whatsapp",
@@ -2215,6 +2267,7 @@ export async function createPublicStoreOrderDraftAction(
       const subtotal = Number((unitPrice * quantity).toFixed(2));
 
       return {
+        category_id: product.categoryId,
         currency: product.currency || store.currency || preview.store.currency || "USD",
         digital_delivery_enabled: product.digitalDeliveryEnabled,
         digital_file_name: product.digitalFileName,
@@ -2311,10 +2364,31 @@ export async function createPublicStoreOrderDraftAction(
     };
   }
 
+  const discountCampaign = couponResult?.ok
+    ? null
+    : await findActiveDiscountCampaignForCart(admin, {
+        customerEmail,
+        items: items.map((item) => ({
+          categoryId: item.category_id,
+          productId: item.product_id,
+          quantity: item.quantity,
+          subtotal: item.subtotal
+        })),
+        shippingAmount: deliverySelection.deliveryFee,
+        storeId: store.id,
+        workspaceId: store.workspace_id
+      });
+  const campaignSubtotalDiscount =
+    discountCampaign && !discountCampaign.freeShipping ? discountCampaign.discountAmount : 0;
+  const campaignShippingDiscount =
+    discountCampaign?.freeShipping ? Math.min(deliverySelection.deliveryFee, discountCampaign.discountAmount) : 0;
+  const finalDeliveryFee = Number(Math.max(0, deliverySelection.deliveryFee - campaignShippingDiscount).toFixed(2));
+  const appliedSubtotalDiscount = couponResult?.ok ? couponResult.discountAmount : campaignSubtotalDiscount;
+
   const financialBreakdown = await calculatePublicCheckoutFinancialsForStore({
     customerAddress,
-    discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
-    shippingAmount: deliverySelection.deliveryFee,
+    discountAmount: appliedSubtotalDiscount,
+    shippingAmount: finalDeliveryFee,
     storeId: store.id,
     subtotalAmount: subtotal
   });
@@ -2329,7 +2403,7 @@ export async function createPublicStoreOrderDraftAction(
       customerNotes,
       customerPhone,
       currency,
-      deliveryFee: deliverySelection.deliveryFee,
+      deliveryFee: finalDeliveryFee,
       deliveryMethod: deliverySelection.deliveryMethod,
       financialBreakdown,
       items,
@@ -2349,17 +2423,18 @@ export async function createPublicStoreOrderDraftAction(
   if (selectedPaymentMethod.method === "paypal") {
     const paypalCheckoutError = await redirectToStorePayPalCheckout({
       admin,
-    cartSessionId,
+      cartSessionId,
       coupon: couponResult?.ok ? couponResult.coupon : null,
+      discountCampaign,
       customerAddress,
       customerEmail,
       customerName,
       customerNotes,
       customerPhone,
       currency,
-      deliveryFee: deliverySelection.deliveryFee,
+      deliveryFee: finalDeliveryFee,
       deliveryMethod: deliverySelection.deliveryMethod,
-      discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
+      discountAmount: appliedSubtotalDiscount,
       financialBreakdown,
       items,
       shippingMethod,
@@ -2387,13 +2462,14 @@ export async function createPublicStoreOrderDraftAction(
     customerNotes,
     items,
     currency,
-    deliveryFee: deliverySelection.deliveryFee,
+    deliveryFee: finalDeliveryFee,
     deliveryMethod: deliverySelection.deliveryMethod,
     shippingMethod,
     financialBreakdown,
     paymentMethod: selectedPaymentMethod.provider_internal ?? internalStorePaymentMethod(selectedPaymentMethod.method),
     coupon: couponResult?.ok ? couponResult.coupon : null,
-    discountAmount: couponResult?.ok ? couponResult.discountAmount : 0,
+    discountCampaign,
+    discountAmount: appliedSubtotalDiscount,
     subtotal,
     slug
   });
