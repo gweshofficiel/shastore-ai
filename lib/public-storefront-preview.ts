@@ -8,6 +8,7 @@ import {
   getEnabledStoreNavigationRows,
   type PublicStoreNavigation
 } from "@/lib/storefront/navigation";
+import { normalizeStoreLanguageSettings, type StoreLanguageSettings } from "@/lib/store-languages";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import type { StoreThemeSettings } from "@/types/storefront";
 
@@ -130,6 +131,7 @@ export type PublicStorefrontPreview = {
     slug: string;
     status: string;
     language: string;
+    languageSettings: StoreLanguageSettings;
     socialLinks: Record<string, string>;
     storeEmail: string | null;
     supportEmail: string | null;
@@ -542,6 +544,7 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       slug,
       status: textValue(store.status, "active"),
       language: textValue(store.language, "en"),
+      languageSettings: normalizeStoreLanguageSettings(store.languageSettings),
       socialLinks: isRecord(store.socialLinks)
         ? Object.fromEntries(
             Object.entries(store.socialLinks).filter(
@@ -612,7 +615,7 @@ async function loadStoreModePublicPreview(slug: string) {
   const { data: rawStore, error: storeError } = await client
     .from("stores")
     .select(
-      "id, workspace_id, name, description, brand_color, logo_image_url, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
+      "id, workspace_id, name, description, brand_color, logo_image_url, currency, whatsapp_number, store_email, support_email, support_phone, business_address, business_hours, language, language_settings, timezone, social_links, delivery_enabled, pickup_enabled, delivery_fee, free_delivery_threshold, delivery_notes, privacy_policy, terms_of_service, refund_policy, status, slug, store_data, template_id, theme_settings, theme_color, font_style, layout_style"
     )
     .eq("id", publication.store_id)
     .eq("status", "published")
@@ -642,6 +645,7 @@ async function loadStoreModePublicPreview(slug: string) {
     privacy_policy?: string | null;
     refund_policy?: string | null;
     language?: string | null;
+    language_settings?: unknown;
     social_links?: unknown;
     store_email?: string | null;
     support_email?: string | null;
@@ -859,6 +863,7 @@ async function loadStoreModePublicPreview(slug: string) {
       slug: store.slug,
       status: "active",
       language: store.language || "en",
+      languageSettings: normalizeStoreLanguageSettings(store.language_settings),
       socialLinks: isRecord(store.social_links)
         ? Object.fromEntries(
             Object.entries(store.social_links).filter(

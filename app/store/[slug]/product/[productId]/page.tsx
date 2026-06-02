@@ -8,6 +8,7 @@ import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { GoogleAnalyticsScript, GoogleAnalyticsViewItem } from "@/components/storefront/google-analytics";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript, MetaPixelViewContent } from "@/components/storefront/meta-pixel";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
@@ -477,6 +478,9 @@ export default async function PublicProductDetailPage({
         value={numericProductPrice(product.price)}
       />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
       <MetaPixelViewContent
         contentId={product.id}
         contentName={product.title}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { preparePageContentForRender, textFromPageContent } from "@/lib/store-pages/content";
@@ -142,6 +143,9 @@ export async function StoreLegalPage({ kind, slug }: StoreLegalPageProps) {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-12 text-ink sm:px-6 lg:px-8">
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
       <article className="mx-auto max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-60px_rgba(15,23,42,0.9)] sm:p-8">
         <Link
           className="text-sm font-black text-muted transition hover:text-ink"

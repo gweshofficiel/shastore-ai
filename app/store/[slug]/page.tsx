@@ -19,6 +19,7 @@ import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-
 import { StoreMarketingMessages } from "@/components/storefront/store-marketing-messages";
 import { StorefrontHydration } from "@/components/storefront/storefront-hydration";
 import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import {
   buildPublicProductSections,
@@ -851,6 +852,9 @@ export default async function PublicStorePage({
       <StorefrontTenantContextScript context={context} />
       <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={store.languageSettings} />
+      </div>
       <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
       <StorefrontHydration

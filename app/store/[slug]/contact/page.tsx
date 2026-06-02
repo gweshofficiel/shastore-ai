@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { submitStoreContactMessage } from "@/lib/store-contact-actions";
 import { loadPublicStoreContact } from "@/lib/store-contact-public";
 
@@ -89,6 +90,9 @@ export default async function StoreContactPage({
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-12 text-ink sm:px-6 lg:px-8">
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
       <section className="mx-auto max-w-6xl">
         <Link
           className="text-sm font-black text-muted transition hover:text-ink"

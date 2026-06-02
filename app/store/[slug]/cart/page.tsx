@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { CartPageClient, type CartItem } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -252,6 +253,9 @@ export default async function StoreCartPage({ params, searchParams }: StoreCartP
     >
       <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={preview.store.languageSettings} />
+      </div>
       <div className="mx-auto max-w-7xl">
         <header
           className={`mb-6 flex flex-wrap items-center justify-between gap-4 border border-slate-200 bg-white/90 px-5 py-3 shadow-sm backdrop-blur ${buttonRadiusClass(theme.buttonStyle)}`}

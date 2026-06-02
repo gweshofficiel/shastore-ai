@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GoogleAnalyticsPurchase, GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelPurchase, MetaPixelScript } from "@/components/storefront/meta-pixel";
 import { ClearStoreCartOnOrderSuccess } from "@/components/storefront/public-store-cart";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -8,6 +9,7 @@ import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { defaultStoreLanguageSettings } from "@/lib/store-languages";
 import { defaultStoreSeoSettings, loadStoreSeoSettings } from "@/lib/store-seo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
@@ -410,6 +412,8 @@ export default async function PublicOrderConfirmationPage({
   const seoSettings = order && admin
     ? await loadStoreSeoSettings(admin, order.store_id)
     : defaultStoreSeoSettings;
+  const preview = await getPublicStorefrontPreview(slug);
+  const languageSettings = preview?.store.languageSettings ?? defaultStoreLanguageSettings;
 
   if (!order) {
     return (
@@ -458,6 +462,9 @@ export default async function PublicOrderConfirmationPage({
         value={numericValue(order.total)}
       />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
+      <div className="fixed right-4 top-4 z-50">
+        <StorefrontLanguageSwitcher settings={languageSettings} />
+      </div>
       <MetaPixelPurchase
         contentIds={order.items.map((item) => item.id).filter((id): id is string => Boolean(id))}
         currency={order.currency}
