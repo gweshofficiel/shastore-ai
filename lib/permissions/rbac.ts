@@ -237,6 +237,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/analytics-advanced", label: "Analytics Advanced", icon: "analytics", permission: "analytics.view" },
   { href: "/dashboard/seo", label: "SEO", icon: "pages", permission: "settings.edit" },
   { href: "/dashboard/seo/redirects", label: "SEO Redirects", icon: "pages", permission: "settings.edit", showInSidebar: false },
+  { href: "/dashboard/seo/search-console", label: "Search Console", icon: "pages", permission: "settings.edit", showInSidebar: false },
   { href: "/dashboard/reports/sales", label: "Sales Reports", icon: "analytics", permission: "analytics.view" },
   { href: "/dashboard/reports/products", label: "Product Reports", icon: "analytics", permission: "analytics.view" },
   { href: "/dashboard/reports/customers", label: "Customer Reports", icon: "analytics", permission: "analytics.view" },

@@ -24,6 +24,7 @@ import {
 import {
   contentSeoTitle,
   defaultStoreSeoSettings,
+  googleVerificationMetadata,
   loadStoreSeoSettings,
   productSeoDescription
 } from "@/lib/store-seo";
@@ -329,6 +330,7 @@ export async function generateMetadata({
       description: ogDescription,
       images: ogImage ? [ogImage] : undefined
     },
+    verification: googleVerificationMetadata(seoSettings),
     robots: { follow: !product.noindex, index: !product.noindex }
   };
 }

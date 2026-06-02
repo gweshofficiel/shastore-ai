@@ -8,6 +8,7 @@ import {
 import {
   contentSeoTitle,
   defaultStoreSeoSettings,
+  googleVerificationMetadata,
   loadStoreSeoSettings,
   productSeoDescription
 } from "@/lib/store-seo";
@@ -85,7 +86,8 @@ export async function generateMetadata({
       description: article.ogDescription || description,
       images: image ? [image] : undefined,
       title: article.ogTitle || title
-    }
+    },
+    verification: googleVerificationMetadata(seoSettings)
   };
 }
 

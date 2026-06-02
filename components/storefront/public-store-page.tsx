@@ -6,6 +6,7 @@ import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import {
   contentSeoTitle,
   defaultStoreSeoSettings,
+  googleVerificationMetadata,
   loadStoreSeoSettings
 } from "@/lib/store-seo";
 import { preparePageContentForRender, textFromPageContent } from "@/lib/store-pages/content";
@@ -111,6 +112,7 @@ export async function generatePublicStorePageMetadata({
       description: ogDescription,
       title: ogTitle
     },
+    verification: googleVerificationMetadata(seoSettings),
     robots: { follow: !page.noindex, index: !page.noindex }
   };
 }

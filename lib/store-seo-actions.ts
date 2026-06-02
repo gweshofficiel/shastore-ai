@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getUserPrimaryWorkspaceId, hasPermission, type WorkspaceRole } from "@/lib/permissions/rbac";
 import {
+  cleanGoogleVerificationMetaCode,
   cleanSeoText,
   cleanSeoUrl,
   defaultStoreSeoSettings,
+  loadStoreSeoSettings,
+  normalizeGoogleVerificationStatus,
   normalizeStoreSeoSettings,
   type SeoFallbackRule
 } from "@/lib/store-seo";
@@ -20,6 +23,7 @@ import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 const seoPath = "/dashboard/seo";
 const redirectsPath = "/dashboard/seo/redirects";
+const searchConsolePath = "/dashboard/seo/search-console";
 const fallbackRules = new Set<SeoFallbackRule>(["existing_data", "store_defaults", "title_with_store"]);
 
 function redirectWith(status: string, storeId?: string): never {
@@ -40,6 +44,16 @@ function redirectManagerWith(status: string, storeId?: string): never {
   }
 
   redirect(`${redirectsPath}?${params.toString()}`);
+}
+
+function searchConsoleWith(status: string, storeId?: string): never {
+  const params = new URLSearchParams({ searchConsoleStatus: status });
+
+  if (storeId) {
+    params.set("storeId", storeId);
+  }
+
+  redirect(`${searchConsolePath}?${params.toString()}`);
 }
 
 function cleanId(value: FormDataEntryValue | null) {
@@ -109,7 +123,9 @@ export async function saveStoreSeoSettingsAction(formData: FormData) {
   }
 
   const { store, supabase, workspaceId } = await requireSeoStoreAccess(storeId);
+  const existingSettings = await loadStoreSeoSettings(supabase, storeId);
   const settings = normalizeStoreSeoSettings({
+    ...existingSettings,
     blogFallbackRule: normalizeRule(formData.get("blogFallbackRule")),
     defaultMetaDescription: cleanSeoText(formData.get("defaultMetaDescription")),
     defaultMetaTitle: cleanSeoText(formData.get("defaultMetaTitle"), 180),
@@ -332,4 +348,43 @@ export async function updateStoreRedirectStatusAction(formData: FormData) {
 
   revalidatePath(redirectsPath);
   redirectManagerWith("updated", storeId);
+}
+
+export async function saveSearchConsoleSettingsAction(formData: FormData) {
+  const storeId = cleanId(formData.get("storeId"));
+
+  if (!storeId) {
+    searchConsoleWith("invalid");
+  }
+
+  const { store, supabase, workspaceId } = await requireSeoStoreAccess(storeId);
+  const existingSettings = await loadStoreSeoSettings(supabase, storeId);
+  const googleConnectedPropertyUrl = cleanSeoUrl(formData.get("googleConnectedPropertyUrl"));
+  const googleVerificationMetaCode = cleanGoogleVerificationMetaCode(formData.get("googleVerificationMetaCode"));
+  const googleVerificationStatus = normalizeGoogleVerificationStatus(formData.get("googleVerificationStatus"));
+
+  if (googleConnectedPropertyUrl && !googleConnectedPropertyUrl.startsWith("http")) {
+    searchConsoleWith("invalid-property", storeId);
+  }
+
+  const settings = normalizeStoreSeoSettings({
+    ...existingSettings,
+    googleConnectedPropertyUrl,
+    googleVerificationMetaCode,
+    googleVerificationStatus
+  });
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({ seo_settings: settings } as never)
+    .eq("id" as never, storeId as never)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    searchConsoleWith("save-failed", storeId);
+  }
+
+  revalidatePath(searchConsolePath);
+  revalidatePath(seoPath);
+  revalidatePath(`/store/${store.slug}`);
+  searchConsoleWith("saved", storeId);
 }

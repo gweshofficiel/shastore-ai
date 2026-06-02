@@ -240,14 +240,22 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">SEO tools</p>
-            <p className="mt-1 text-sm font-semibold text-muted">Manage URL redirects separately from sitemap and robots.</p>
+            <p className="mt-1 text-sm font-semibold text-muted">Manage URL redirects and Google Search Console verification separately from sitemap and robots.</p>
           </div>
-          <Link
-            className="rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white"
-            href={`/dashboard/seo/redirects${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}
-          >
-            Redirects
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-muted"
+              href={`/dashboard/seo/search-console${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}
+            >
+              Search Console
+            </Link>
+            <Link
+              className="rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white"
+              href={`/dashboard/seo/redirects${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}
+            >
+              Redirects
+            </Link>
+          </div>
         </div>
       </Card>
 
