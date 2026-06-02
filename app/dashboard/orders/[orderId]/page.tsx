@@ -3,6 +3,10 @@ import { OrderFulfillmentActions } from "@/components/dashboard/order-fulfillmen
 import { OrderStatusActions } from "@/components/dashboard/order-status-actions";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  assignOrderDeliveryAgentAction,
+  updateOrderDeliveryStatusAction
+} from "@/lib/delivery-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import {
   updateStoreOrderFulfillmentStatusAction,
@@ -37,6 +41,15 @@ type OrderEvent = {
   message: string;
   new_value: string | null;
   previous_value: string | null;
+};
+
+type DeliveryAgent = {
+  city_zone: string | null;
+  email: string | null;
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
 };
 
 function numericValue(value: number | string | null | undefined) {
@@ -157,6 +170,35 @@ function fulfillmentBadgeClass(status: string | null | undefined) {
   return "bg-slate-100 text-slate-700";
 }
 
+function deliveryStatusLabel(status: string | null | undefined) {
+  const labels: Record<string, string> = {
+    assigned: "Assigned",
+    delivered: "Delivered",
+    failed: "Failed",
+    out_for_delivery: "Out for Delivery",
+    picked_up: "Picked Up"
+  };
+  const normalized = status?.trim() || "Not assigned";
+
+  return labels[normalized] ?? normalized.replaceAll("_", " ");
+}
+
+function deliveryBadgeClass(status: string | null | undefined) {
+  if (status === "delivered") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "failed") {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (status === "assigned" || status === "picked_up" || status === "out_for_delivery") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
 function eventTypeLabel(type: string) {
   return type.replaceAll("_", " ");
 }
@@ -188,6 +230,34 @@ function statusMessage(value: string | undefined) {
     "invalid-transition": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Cancelled orders cannot be moved back to another status."
+    },
+    "delivery-agent-inactive": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That delivery agent is inactive."
+    },
+    "delivery-agent-invalid": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Choose a delivery agent from this order's store."
+    },
+    "delivery-agent-required": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Assign a delivery agent before changing delivery status."
+    },
+    "delivery-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Delivery assignment could not be updated. Please try again."
+    },
+    "delivery-invalid": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That delivery action is not supported."
+    },
+    "delivery-not-authorized": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "You can only assign delivery agents to your own store orders."
+    },
+    "delivery-updated": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Delivery assignment updated."
     },
     "inventory-insufficient": {
       className: "border-red-200 bg-red-50 text-red-700",
@@ -275,6 +345,55 @@ async function loadOrderEvents({
   return (data ?? []) as unknown as OrderEvent[];
 }
 
+async function loadDeliveryEvents({
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("store_delivery_events" as never)
+    .select("event_type, previous_value, new_value, message, created_at")
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .order("created_at" as never, { ascending: false } as never);
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as unknown as OrderEvent[];
+}
+
+async function loadDeliveryAgents({
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("store_delivery_agents" as never)
+    .select("id, name, phone, email, city_zone, status")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .order("name" as never, { ascending: true } as never);
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as unknown as DeliveryAgent[];
+}
+
 async function loadOrderDetail(orderId: string, sourceHint?: string) {
   const supabase = await createClient();
   const {
@@ -313,7 +432,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("store_orders")
         .select(
-          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, shipped_at, out_for_delivery_at, delivered_at, fulfilled_at, carrier_name, tracking_number, tracking_url, delivery_notes, proof_of_delivery, items, subtotal, subtotal_amount, total, total_amount, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, delivery_agent_id, delivery_status, delivery_assigned_at, delivery_picked_up_at, delivery_out_for_delivery_at, delivery_delivered_at, delivery_failed_at, fulfillment_status, fulfillment_notes, preparing_at, ready_for_pickup_at, shipped_at, out_for_delivery_at, delivered_at, fulfilled_at, carrier_name, tracking_number, tracking_url, delivery_notes, proof_of_delivery, items, subtotal, subtotal_amount, total, total_amount, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id", orderId)
         .eq("workspace_id" as never, workspaceId as never)
@@ -332,9 +451,16 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_name: string;
         customer_phone: string;
         delivery_fee?: number | string | null;
+        delivery_agent_id?: string | null;
+        delivery_assigned_at?: string | null;
+        delivery_delivered_at?: string | null;
+        delivery_failed_at?: string | null;
         delivery_method?: string | null;
+        delivery_out_for_delivery_at?: string | null;
         delivered_at?: string | null;
         delivery_notes?: string | null;
+        delivery_picked_up_at?: string | null;
+        delivery_status?: string | null;
         fulfillment_status?: string | null;
         fulfillment_notes?: string | null;
         fulfilled_at?: string | null;
@@ -364,12 +490,27 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       } | null;
 
       if (row && storeIds.has(row.store_id)) {
-        const events = await loadOrderEvents({
+        const orderEvents = await loadOrderEvents({
           orderId: row.id,
           source: "store_orders",
           supabase,
           workspaceId
         });
+        const deliveryEvents = await loadDeliveryEvents({
+          orderId: row.id,
+          source: "store_orders",
+          supabase,
+          workspaceId
+        });
+        const deliveryAgents = await loadDeliveryAgents({
+          storeId: row.store_id,
+          supabase,
+          workspaceId
+        });
+        const deliveryAgent = deliveryAgents.find((agent) => agent.id === row.delivery_agent_id) ?? null;
+        const events = [...orderEvents, ...deliveryEvents].sort(
+          (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+        );
 
         return {
           canManageOrders,
@@ -386,9 +527,18 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_name: row.customer_name,
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
+            delivery_agent: deliveryAgent,
+            delivery_agent_id: row.delivery_agent_id ?? null,
+            delivery_agents: deliveryAgents,
+            delivery_assigned_at: row.delivery_assigned_at ?? null,
+            delivery_delivered_at: row.delivery_delivered_at ?? null,
+            delivery_failed_at: row.delivery_failed_at ?? null,
             delivery_method: row.delivery_method ?? null,
+            delivery_out_for_delivery_at: row.delivery_out_for_delivery_at ?? null,
             delivered_at: row.delivered_at ?? null,
             delivery_notes: row.delivery_notes ?? null,
+            delivery_picked_up_at: row.delivery_picked_up_at ?? null,
+            delivery_status: row.delivery_status ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: row.fulfillment_notes ?? null,
@@ -424,7 +574,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
       const { data, error } = await supabase
         .from("orders" as never)
         .select(
-          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, fulfillment_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, proof_of_delivery, notes, subtotal, subtotal_amount, total, total_amount, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
+          "id, store_id, store_instance_id, customer_name, customer_phone, customer_email, customer_address, delivery_method, delivery_fee, shipping_amount, tax_name, tax_rate, tax_amount, prices_include_tax, delivery_agent_id, delivery_status, delivery_assigned_at, delivery_picked_up_at, delivery_out_for_delivery_at, delivery_delivered_at, delivery_failed_at, fulfillment_status, carrier_name, tracking_number, tracking_url, shipped_at, delivered_at, delivery_notes, proof_of_delivery, notes, subtotal, subtotal_amount, total, total_amount, currency, payment_method, payment_status, order_status, confirmed_at, cancelled_at, internal_note, created_at"
         )
         .eq("id" as never, orderId as never)
         .eq("workspace_id" as never, workspaceId as never)
@@ -444,9 +594,16 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
         customer_name: string;
         customer_phone: string;
         delivery_fee?: number | string | null;
+        delivery_agent_id?: string | null;
+        delivery_assigned_at?: string | null;
+        delivery_delivered_at?: string | null;
+        delivery_failed_at?: string | null;
         delivery_method?: string | null;
+        delivery_out_for_delivery_at?: string | null;
         delivered_at?: string | null;
         delivery_notes?: string | null;
+        delivery_picked_up_at?: string | null;
+        delivery_status?: string | null;
         fulfillment_status?: string | null;
         carrier_name?: string | null;
         id: string;
@@ -492,12 +649,27 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           title: item.product_title ?? "Product",
           subtotal: numericValue(item.subtotal)
         }));
-        const events = await loadOrderEvents({
+        const orderEvents = await loadOrderEvents({
           orderId: row.id,
           source: "orders",
           supabase,
           workspaceId
         });
+        const deliveryEvents = await loadDeliveryEvents({
+          orderId: row.id,
+          source: "orders",
+          supabase,
+          workspaceId
+        });
+        const deliveryAgents = await loadDeliveryAgents({
+          storeId,
+          supabase,
+          workspaceId
+        });
+        const deliveryAgent = deliveryAgents.find((agent) => agent.id === row.delivery_agent_id) ?? null;
+        const events = [...orderEvents, ...deliveryEvents].sort(
+          (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+        );
 
         return {
           canManageOrders,
@@ -514,9 +686,18 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             customer_name: row.customer_name,
             customer_phone: row.customer_phone,
             delivery_fee: row.delivery_fee ?? 0,
+            delivery_agent: deliveryAgent,
+            delivery_agent_id: row.delivery_agent_id ?? null,
+            delivery_agents: deliveryAgents,
+            delivery_assigned_at: row.delivery_assigned_at ?? null,
+            delivery_delivered_at: row.delivery_delivered_at ?? null,
+            delivery_failed_at: row.delivery_failed_at ?? null,
             delivery_method: row.delivery_method ?? null,
+            delivery_out_for_delivery_at: row.delivery_out_for_delivery_at ?? null,
             delivered_at: row.delivered_at ?? null,
             delivery_notes: row.delivery_notes ?? null,
+            delivery_picked_up_at: row.delivery_picked_up_at ?? null,
+            delivery_status: row.delivery_status ?? null,
             events,
             fulfillment_status: row.fulfillment_status ?? "pending",
             fulfillment_notes: null,
@@ -630,6 +811,7 @@ export default async function OrderDetailPage({
             <Info label="Email" value={order.customer_email || "Not provided"} />
             <Info label="Address" value={order.customer_address || "Not provided"} />
             <Info label="Delivery method" value={deliveryMethodLabel(order.delivery_method)} />
+            <Info label="Delivery status" value={deliveryStatusLabel(order.delivery_status)} />
             <Info label="Delivery fee" value={formatMoney(order.delivery_fee ?? 0, order.currency)} />
             <Info
               label={order.tax_name ? `${order.tax_name}${order.prices_include_tax ? " included" : ""}` : "Tax"}
@@ -644,6 +826,29 @@ export default async function OrderDetailPage({
             <Info label="Shipped" value={formatDate(order.shipped_at)} />
             <Info label="Out for delivery" value={formatDate(order.out_for_delivery_at)} />
             <Info label="Delivered" value={formatDate(order.delivered_at ?? order.fulfilled_at)} />
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Delivery assignment
+            </p>
+            {order.delivery_agent ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Info label="Agent" value={order.delivery_agent.name} />
+                <Info label="Phone" value={order.delivery_agent.phone} />
+                <Info label="Email" value={order.delivery_agent.email || "Not provided"} />
+                <Info label="City / Zone" value={order.delivery_agent.city_zone || "Not provided"} />
+                <Info label="Assigned" value={formatDate(order.delivery_assigned_at)} />
+                <Info label="Picked up" value={formatDate(order.delivery_picked_up_at)} />
+                <Info label="Delivery out" value={formatDate(order.delivery_out_for_delivery_at)} />
+                <Info label="Delivery completed" value={formatDate(order.delivery_delivered_at)} />
+                <Info label="Delivery failed" value={formatDate(order.delivery_failed_at)} />
+              </div>
+            ) : (
+              <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+                No delivery agent has been assigned to this order yet.
+              </p>
+            )}
           </div>
 
           {canEditShippingTracking(order.fulfillment_status) ? (
@@ -778,6 +983,9 @@ export default async function OrderDetailPage({
               <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${fulfillmentBadgeClass(order.fulfillment_status)}`}>
                 Fulfillment: {fulfillmentStatusLabel(order.fulfillment_status)}
               </span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${deliveryBadgeClass(order.delivery_status)}`}>
+                Delivery: {deliveryStatusLabel(order.delivery_status)}
+              </span>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
                 Payment method: {order.payment_method}
               </span>
@@ -826,6 +1034,22 @@ export default async function OrderDetailPage({
                 returnTo={returnTo}
                 source={order.source}
               />
+              <DeliveryAssignmentForm
+                action={assignOrderDeliveryAgentAction}
+                agents={order.delivery_agents}
+                currentAgentId={order.delivery_agent_id}
+                orderId={order.id}
+                returnTo={returnTo}
+                source={order.source}
+              />
+              <DeliveryStatusForm
+                action={updateOrderDeliveryStatusAction}
+                currentStatus={order.delivery_status}
+                disabled={!order.delivery_agent_id}
+                orderId={order.id}
+                returnTo={returnTo}
+                source={order.source}
+              />
               <ShippingTrackingForm
                 action={updateStoreOrderShippingTrackingAction}
                 carrierName={order.carrier_name}
@@ -849,6 +1073,116 @@ export default async function OrderDetailPage({
         </aside>
       </div>
     </div>
+  );
+}
+
+function DeliveryAssignmentForm({
+  action,
+  agents,
+  currentAgentId,
+  orderId,
+  returnTo,
+  source
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  agents: DeliveryAgent[];
+  currentAgentId?: string | null;
+  orderId: string;
+  returnTo: string;
+  source: OrderSource;
+}) {
+  return (
+    <form action={action} className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-3 text-left">
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="source" type="hidden" value={source} />
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        Delivery assignment
+      </p>
+      <p className="text-sm font-bold text-muted">
+        Assign or change the delivery agent for this store order.
+      </p>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Delivery agent</span>
+        <select
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-ink outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+          defaultValue={currentAgentId ?? ""}
+          name="deliveryAgentId"
+        >
+          <option value="">No delivery agent</option>
+          {agents.map((agent) => (
+            <option disabled={agent.status !== "active"} key={agent.id} value={agent.id}>
+              {agent.name} · {agent.city_zone ?? "No zone"} · {agent.status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="h-11 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5" type="submit">
+        Save delivery agent
+      </button>
+      {!agents.length ? (
+        <p className="text-xs font-semibold leading-5 text-muted">
+          Create delivery agents from Dashboard → Delivery Agents before assigning this order.
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function DeliveryStatusForm({
+  action,
+  currentStatus,
+  disabled,
+  orderId,
+  returnTo,
+  source
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  currentStatus?: string | null;
+  disabled: boolean;
+  orderId: string;
+  returnTo: string;
+  source: OrderSource;
+}) {
+  const statuses: Array<{ label: string; value: string }> = [
+    { label: "Assigned", value: "assigned" },
+    { label: "Picked Up", value: "picked_up" },
+    { label: "Out For Delivery", value: "out_for_delivery" },
+    { label: "Delivered", value: "delivered" },
+    { label: "Failed", value: "failed" }
+  ];
+
+  return (
+    <form action={action} className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-3 text-left">
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="source" type="hidden" value={source} />
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        Delivery status
+      </p>
+      <p className="text-sm font-bold text-muted">
+        Current delivery status: {deliveryStatusLabel(currentStatus)}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {statuses.map((status) => (
+          <button
+            className="h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-ink transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={disabled || currentStatus === status.value}
+            key={status.value}
+            name="deliveryStatus"
+            type="submit"
+            value={status.value}
+          >
+            {status.label}
+          </button>
+        ))}
+      </div>
+      {disabled ? (
+        <p className="text-xs font-semibold leading-5 text-muted">
+          Assign a delivery agent before updating delivery status.
+        </p>
+      ) : null}
+    </form>
   );
 }
 
