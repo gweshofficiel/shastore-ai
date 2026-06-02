@@ -9,6 +9,15 @@ export type PublicShippingMethod = {
   id: string;
   name: string;
   processingTimeDays: number | null;
+  profile: {
+    codSupported: boolean;
+    description: string | null;
+    estimatedDeliveryDays: number | null;
+    freeShippingEnabled: boolean;
+    id: string;
+    name: string;
+    preparationDays: number | null;
+  } | null;
   type: "express" | "local_delivery" | "local_pickup" | "standard";
 };
 
@@ -29,7 +38,20 @@ type ShippingMethodRow = {
   name?: string | null;
   pickup_enabled?: boolean | null;
   preparation_delay_days?: number | string | null;
+  profile_id?: string | null;
   processing_time_days?: number | string | null;
+  status?: string | null;
+};
+
+type ShippingProfileRow = {
+  cod_supported?: boolean | null;
+  description?: string | null;
+  enabled?: boolean | null;
+  estimated_delivery_days?: number | string | null;
+  free_shipping_enabled?: boolean | null;
+  id: string;
+  name?: string | null;
+  preparation_days?: number | string | null;
   status?: string | null;
 };
 
@@ -54,7 +76,7 @@ function isActiveShippingMethod(row: ShippingMethodRow) {
   return row.enabled !== false;
 }
 
-function normalizeShippingMethod(row: ShippingMethodRow): PublicShippingMethod | null {
+function normalizeShippingMethod(row: ShippingMethodRow, profile: ShippingProfileRow | null = null): PublicShippingMethod | null {
   if (!isActiveShippingMethod(row)) {
     return null;
   }
@@ -81,13 +103,24 @@ function normalizeShippingMethod(row: ShippingMethodRow): PublicShippingMethod |
     id: row.id,
     name: row.name?.trim() || row.method_name?.trim() || "Shipping method",
     processingTimeDays: numberValue(row.processing_time_days) ?? numberValue(row.preparation_delay_days),
+    profile: profile && profile.status !== "inactive" && profile.enabled !== false
+      ? {
+        codSupported: profile.cod_supported !== false,
+        description: profile.description ?? null,
+        estimatedDeliveryDays: numberValue(profile.estimated_delivery_days),
+        freeShippingEnabled: profile.free_shipping_enabled === true,
+        id: profile.id,
+        name: profile.name?.trim() || "Shipping profile",
+        preparationDays: numberValue(profile.preparation_days)
+      }
+      : null,
     type
   };
 }
 
-function normalizeShippingMethods(rows: ShippingMethodRow[]) {
+function normalizeShippingMethods(rows: ShippingMethodRow[], profilesById = new Map<string, ShippingProfileRow>()) {
   return rows
-    .map(normalizeShippingMethod)
+    .map((row) => normalizeShippingMethod(row, row.profile_id ? profilesById.get(row.profile_id) ?? null : null))
     .filter((method): method is PublicShippingMethod => Boolean(method));
 }
 
@@ -115,17 +148,32 @@ export async function getPublicShippingMethodsForStore(storeId: string) {
   }
 
   const selectColumns =
-    "id, name, method_name, method_type, status, enabled, fixed_fee, flat_fee, free_shipping_enabled, free_shipping_threshold, processing_time_days, preparation_delay_days, estimated_min_days, estimated_max_days, estimated_delivery_days, local_delivery_enabled, pickup_enabled, delivery_notes, sort_order";
+    "id, name, method_name, method_type, status, enabled, fixed_fee, flat_fee, free_shipping_enabled, free_shipping_threshold, processing_time_days, preparation_delay_days, estimated_min_days, estimated_max_days, estimated_delivery_days, local_delivery_enabled, pickup_enabled, delivery_notes, profile_id, sort_order";
   const { data: storeScopedMethods } = await admin
     .from("shipping_methods" as never)
     .select(selectColumns)
     .eq("store_id" as never, storeId as never)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
-  const storeScoped = normalizeShippingMethods((storeScopedMethods ?? []) as unknown as ShippingMethodRow[]);
+  const profileIds = [
+    ...new Set(
+      ((storeScopedMethods ?? []) as unknown as ShippingMethodRow[])
+        .map((method) => method.profile_id)
+        .filter((profileId): profileId is string => Boolean(profileId))
+    )
+  ];
+  const profilesById = new Map<string, ShippingProfileRow>();
 
-  if (storeScoped.length) {
-    return storeScoped;
+  if (profileIds.length) {
+    const { data: profileRows } = await admin
+      .from("shipping_profiles" as never)
+      .select("id, name, description, enabled, status, preparation_days, estimated_delivery_days, cod_supported, free_shipping_enabled")
+      .eq("store_id" as never, storeId as never)
+      .in("id" as never, profileIds as never);
+
+    for (const profile of (profileRows ?? []) as unknown as ShippingProfileRow[]) {
+      profilesById.set(profile.id, profile);
+    }
   }
 
   const ownerUserId = store.owner_user_id ?? store.user_id;
@@ -138,7 +186,16 @@ export async function getPublicShippingMethodsForStore(storeId: string) {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
-  return normalizeShippingMethods((legacyMethods ?? []) as unknown as ShippingMethodRow[]);
+  const merged = new Map<string, ShippingMethodRow>();
+
+  for (const method of [
+    ...((storeScopedMethods ?? []) as unknown as ShippingMethodRow[]),
+    ...((legacyMethods ?? []) as unknown as ShippingMethodRow[])
+  ]) {
+    merged.set(method.id, method);
+  }
+
+  return normalizeShippingMethods([...merged.values()], profilesById);
 }
 
 export async function getPublicShippingMethodForStore({

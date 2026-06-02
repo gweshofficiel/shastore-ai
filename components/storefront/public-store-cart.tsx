@@ -1471,7 +1471,7 @@ export function CartPageClient({
             {shippingMethods.length ? (
               <div className="mt-3 grid gap-3">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                  Choose shipping method
+                  Choose shipping profile / method
                 </p>
                 <div className="grid gap-2">
                   {shippingMethods.map((method) => (
@@ -1488,6 +1488,13 @@ export function CartPageClient({
                       }}
                       type="button"
                     >
+                      {method.profile ? (
+                        <span className={`mb-1 block text-[0.68rem] font-black uppercase tracking-[0.16em] ${
+                          shippingMethodId === method.id ? "text-white/60" : "text-emerald-700"
+                        }`}>
+                          {method.profile.name}
+                        </span>
+                      ) : null}
                       <span className="block">{method.name}</span>
                       <span className={`mt-1 block text-xs ${shippingMethodId === method.id ? "text-white/70" : "text-muted"}`}>
                         {method.type.replace(/_/g, " ")} · {formatMoney(method.fee, currency)}
@@ -1495,6 +1502,13 @@ export function CartPageClient({
                           ? ` · ${method.estimatedMinDays ?? method.estimatedMaxDays}-${method.estimatedMaxDays ?? method.estimatedMinDays} days`
                           : ""}
                       </span>
+                      {method.profile ? (
+                        <span className={`mt-1 block text-xs ${shippingMethodId === method.id ? "text-white/70" : "text-muted"}`}>
+                          {method.profile.preparationDays ?? 0} prep days
+                          {method.profile.codSupported ? " · COD supported" : " · No COD"}
+                          {method.profile.freeShippingEnabled ? " · Free shipping profile" : ""}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
