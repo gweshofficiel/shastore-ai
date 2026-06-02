@@ -10,10 +10,16 @@ import {
   normalizeStoreSeoSettings,
   type SeoFallbackRule
 } from "@/lib/store-seo";
+import {
+  isRedirectLoop,
+  normalizeRedirectDestination,
+  normalizeRedirectSource
+} from "@/lib/store-redirects";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStoresForAuthUser } from "@/lib/stores/user-stores";
 
 const seoPath = "/dashboard/seo";
+const redirectsPath = "/dashboard/seo/redirects";
 const fallbackRules = new Set<SeoFallbackRule>(["existing_data", "store_defaults", "title_with_store"]);
 
 function redirectWith(status: string, storeId?: string): never {
@@ -26,6 +32,16 @@ function redirectWith(status: string, storeId?: string): never {
   redirect(`${seoPath}?${params.toString()}`);
 }
 
+function redirectManagerWith(status: string, storeId?: string): never {
+  const params = new URLSearchParams({ redirectStatus: status });
+
+  if (storeId) {
+    params.set("storeId", storeId);
+  }
+
+  redirect(`${redirectsPath}?${params.toString()}`);
+}
+
 function cleanId(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim().slice(0, 80) : "";
 }
@@ -34,6 +50,14 @@ function normalizeRule(value: FormDataEntryValue | null) {
   return fallbackRules.has(value as SeoFallbackRule)
     ? value as SeoFallbackRule
     : defaultStoreSeoSettings.productFallbackRule;
+}
+
+function stripStoreSourcePrefix(sourcePath: string, slug: string) {
+  const prefix = `/store/${slug.toLowerCase()}`;
+
+  return sourcePath.toLowerCase().startsWith(`${prefix}/`)
+    ? sourcePath.slice(prefix.length) || "/"
+    : sourcePath;
 }
 
 async function requireSeoStoreAccess(storeId: string) {
@@ -244,4 +268,68 @@ export async function saveBlogSeoOverrideAction(formData: FormData) {
   revalidatePath(seoPath);
   revalidatePath(`/store/${store.slug}/blog/${encodeURIComponent(articleRow.slug || articleRow.id)}`);
   redirectWith("override-saved", storeId);
+}
+
+export async function createStoreRedirectAction(formData: FormData) {
+  const storeId = cleanId(formData.get("storeId"));
+  const rawSourcePath = normalizeRedirectSource(cleanSeoText(formData.get("sourceUrl"), 500));
+  const destinationUrl = normalizeRedirectDestination(cleanSeoText(formData.get("destinationUrl"), 1000));
+  const redirectType = cleanSeoText(formData.get("redirectType"), 3) === "302" ? 302 : 301;
+
+  if (!storeId || !rawSourcePath || rawSourcePath === "/" || !destinationUrl) {
+    redirectManagerWith("invalid", storeId);
+  }
+
+  const { store, supabase, user, workspaceId } = await requireSeoStoreAccess(storeId);
+  const sourcePath = normalizeRedirectSource(stripStoreSourcePrefix(rawSourcePath, store.slug ?? ""));
+
+  if (isRedirectLoop(sourcePath, destinationUrl)) {
+    redirectManagerWith("loop", storeId);
+  }
+
+  const { error } = await supabase.from("store_redirects" as never).insert({
+    created_by: user.id,
+    destination_url: destinationUrl,
+    redirect_type: redirectType,
+    source_path: sourcePath,
+    status: "active",
+    store_id: storeId,
+    workspace_id: workspaceId
+  } as never);
+
+  if (error?.code === "23505") {
+    redirectManagerWith("duplicate", storeId);
+  }
+
+  if (error) {
+    redirectManagerWith("create-failed", storeId);
+  }
+
+  revalidatePath(redirectsPath);
+  revalidatePath(`/store/${store.slug}`);
+  redirectManagerWith("created", storeId);
+}
+
+export async function updateStoreRedirectStatusAction(formData: FormData) {
+  const storeId = cleanId(formData.get("storeId"));
+  const redirectId = cleanId(formData.get("redirectId"));
+  const status = cleanSeoText(formData.get("status"), 20);
+
+  if (!storeId || !redirectId || !["active", "disabled"].includes(status)) {
+    redirectManagerWith("invalid", storeId);
+  }
+
+  const { supabase } = await requireSeoStoreAccess(storeId);
+  const { error } = await supabase
+    .from("store_redirects" as never)
+    .update({ status } as never)
+    .eq("id" as never, redirectId as never)
+    .eq("store_id" as never, storeId as never);
+
+  if (error) {
+    redirectManagerWith("update-failed", storeId);
+  }
+
+  revalidatePath(redirectsPath);
+  redirectManagerWith("updated", storeId);
 }

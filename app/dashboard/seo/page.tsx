@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -234,6 +235,21 @@ export default async function SeoPage({ searchParams }: SeoPageProps) {
         description="Manage store SEO defaults, homepage metadata, fallback rules, and scoped page/product/blog overrides."
         title="SEO"
       />
+
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">SEO tools</p>
+            <p className="mt-1 text-sm font-semibold text-muted">Manage URL redirects separately from sitemap and robots.</p>
+          </div>
+          <Link
+            className="rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white"
+            href={`/dashboard/seo/redirects${activeStore ? `?storeId=${encodeURIComponent(activeStore.id)}` : ""}`}
+          >
+            Redirects
+          </Link>
+        </div>
+      </Card>
 
       {message ? (
         <Card className="border-blue-200 bg-blue-50 p-5">

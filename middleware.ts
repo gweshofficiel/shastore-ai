@@ -5,11 +5,39 @@ import {
   getRequestHostname,
   getStorefrontContextFromHostname
 } from "@/lib/storefront-hostname-context";
+import {
+  recordStoreRedirectHit,
+  resolveStoreRedirect
+} from "@/lib/store-redirects";
 import { updateSession } from "@/lib/supabase/middleware";
 import type { Database } from "@/types/database";
 
 function shouldResolveStorefrontHostname(request: NextRequest) {
   return request.nextUrl.pathname === "/";
+}
+
+function createPublicMiddlewareClient(request: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  return createServerClient<Database>(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll() {
+          // Public middleware lookups do not mutate auth cookies.
+        }
+      }
+    }
+  );
 }
 
 function getFormActionDirective() {
@@ -62,27 +90,12 @@ async function resolveHostnameStorefront(request: NextRequest) {
     return null;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabase = createPublicMiddlewareClient(request);
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabase) {
     return null;
   }
 
-  const supabase = createServerClient<Database>(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll() {
-          // Public hostname resolution does not mutate auth cookies.
-        }
-      }
-    }
-  );
   const context = await getStorefrontContextFromHostname(
     getRequestHostname(request),
     supabase as never
@@ -111,7 +124,116 @@ async function resolveHostnameStorefront(request: NextRequest) {
   }));
 }
 
+function storeSlugFromPath(pathname: string) {
+  const match = pathname.match(/^\/store\/([^/]+)(\/.*)?$/);
+
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return {
+    slug: decodeURIComponent(match[1]),
+    sourcePath: match[2] || "/"
+  };
+}
+
+async function storeIdForSlug(supabase: ReturnType<typeof createPublicMiddlewareClient>, slug: string) {
+  if (!supabase) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from("published_stores" as never)
+    .select("store_id")
+    .eq("slug" as never, slug as never)
+    .eq("status" as never, "published" as never)
+    .eq("visibility" as never, "public" as never)
+    .maybeSingle();
+  const row = data as { store_id?: string | null } | null;
+
+  return row?.store_id ?? null;
+}
+
+function redirectUrlForDestination(request: NextRequest, destinationUrl: string, storeSlug?: string | null) {
+  if (destinationUrl.startsWith("http://") || destinationUrl.startsWith("https://")) {
+    return destinationUrl;
+  }
+
+  const nextUrl = request.nextUrl.clone();
+  const destination = destinationUrl.startsWith("/") ? destinationUrl : `/${destinationUrl}`;
+  const isPlatformStorePath = Boolean(storeSlug) && request.nextUrl.pathname.startsWith(`/store/${storeSlug}`);
+
+  nextUrl.pathname = isPlatformStorePath && !destination.startsWith("/store/")
+    ? `/store/${storeSlug}${destination === "/" ? "" : destination}`
+    : destination;
+  nextUrl.search = "";
+
+  return nextUrl;
+}
+
+async function resolveStorefrontRedirect(request: NextRequest) {
+  const supabase = createPublicMiddlewareClient(request);
+
+  if (!supabase) {
+    return null;
+  }
+
+  const platformStore = storeSlugFromPath(request.nextUrl.pathname);
+  let storeSlug = platformStore?.slug ?? null;
+  let sourcePath = platformStore?.sourcePath ?? null;
+
+  if (!storeSlug) {
+    const context = await getStorefrontContextFromHostname(
+      getRequestHostname(request),
+      supabase as never
+    );
+
+    if (!context) {
+      return null;
+    }
+
+    storeSlug = context.storeSlug;
+    sourcePath = request.nextUrl.pathname;
+  }
+
+  if (!storeSlug || !sourcePath || sourcePath === "/") {
+    return null;
+  }
+
+  const storeId = await storeIdForSlug(supabase, storeSlug);
+
+  if (!storeId) {
+    return null;
+  }
+
+  const redirect = await resolveStoreRedirect({
+    sourcePath,
+    storeId,
+    supabase: supabase as never
+  });
+
+  if (!redirect) {
+    return null;
+  }
+
+  await recordStoreRedirectHit({
+    redirectId: redirect.id,
+    supabase: supabase as never
+  });
+
+  return applySecurityHeaders(NextResponse.redirect(
+    redirectUrlForDestination(request, redirect.destination_url, platformStore ? storeSlug : null),
+    redirect.redirect_type
+  ));
+}
+
 export async function middleware(request: NextRequest) {
+  const storefrontRedirect = await resolveStorefrontRedirect(request);
+
+  if (storefrontRedirect) {
+    return storefrontRedirect;
+  }
+
   const hostnameStorefront = await resolveHostnameStorefront(request);
 
   if (hostnameStorefront) {
