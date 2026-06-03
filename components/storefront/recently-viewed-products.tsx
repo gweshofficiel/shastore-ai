@@ -167,14 +167,14 @@ export function RecentlyViewedProducts({
           Browse store
         </Link>
       </div>
-      <div className="mt-6 flex items-stretch gap-4 overflow-x-auto overflow-y-visible pb-6">
+      <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
         {displayProducts.map((product) => {
           const productHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const productCurrency = product.currency || currency;
 
           return (
             <article
-              className="group flex min-h-[38rem] w-[min(82vw,22rem)] shrink-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
+              className="group flex min-h-[38rem] min-w-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
               key={product.id}
             >
               <Link className="relative block shrink-0 overflow-hidden rounded-t-[inherit]" href={productHref}>

@@ -445,6 +445,11 @@ export default async function PublicStorePage({
   const products = discovery.products;
   const theme = preview.themeSettings;
   const isFlagshipPremium = normalizeStorefrontTemplateKey(preview.templateId) === "shastore-flagship-premium";
+  const hasSearchQuery = Boolean(cleanQueryValue(query.q, 120));
+  const shouldShowEmptySearchState =
+    preview.products.length > 0 &&
+    products.length === 0 &&
+    (isFlagshipPremium ? hasSearchQuery : discovery.active);
   const homepageContext = isFlagshipPremium
     ? {
         ...context,
@@ -852,7 +857,7 @@ export default async function PublicStorePage({
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                {preview.products.length ? "Product search placeholder" : "Product image placeholders"}
+                {preview.products.length ? "No products matched your search" : "No product images yet"}
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
                 {preview.products.length
@@ -953,11 +958,11 @@ export default async function PublicStorePage({
       />
       <StoreMarketingMessages messages={marketingMessages} storeId={store.id} />
       {isFlagshipPremium ? null : discoveryControls}
-      {discovery.active && preview.products.length > 0 && products.length === 0 ? (
+      {shouldShowEmptySearchState ? (
         <section className="px-4 pb-8 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
             <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-              Product search placeholder
+              No products matched your search
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
               Try adjusting the search, filters, or price range.
