@@ -874,7 +874,10 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
 async function ProductGridSection({ context, section, selectedCurrency }: SectionRenderProps) {
   const config = templateConfig(context);
   const isFlagship = config.key === "shastore-flagship-premium";
-  const products = productSectionProducts(context, section).slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const liveCatalogProducts = context.preview.products.filter((product) => isPublicProductStatus(product.status));
+  const sectionProducts = productSectionProducts(context, section);
+  const products = (sectionProducts.length || !isFlagship ? sectionProducts : liveCatalogProducts)
+    .slice(0, config.key === "electronics-starter" ? 8 : 6);
   const title = textValue(section?.config.title, config.sections.productsTitle);
   const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
   const eyebrow = section?.section_type === "new_arrivals"
@@ -988,7 +991,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       }}
                     >
                       <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-                        {isFlagship ? "Premium image placeholder" : "Image coming soon"}
+                        Image coming soon
                       </span>
                     </div>
                   )}
@@ -1606,7 +1609,7 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
 
 function CategoriesSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = templateConfig(context);
-  const categories = context.preview.categories.slice(0, 8);
+  const categories = context.preview.categories.slice(0, config.key === "shastore-flagship-premium" ? 21 : 8);
   const title = textValue(section.config.title, config.sections.categoriesTitle);
   const subtitle = textValue(section.config.subtitle);
 
@@ -1630,45 +1633,53 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
               config.layout.mobileDensity === "dense" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4"
             }`}
           >
-            {categories.map((category) => (
-              <Link
-                className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
-                  config.key === "electronics-starter"
-                    ? "border-cyan-400/20 bg-slate-900 text-white"
-                    : config.key === "beauty-starter"
-                      ? "border-pink-100"
-                      : "border-slate-200"
-                } transition hover:-translate-y-0.5 hover:shadow-lg`}
-                href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
-                key={category.id}
-              >
-                {category.imageUrl ? (
-                  <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
-                ) : (
-                  <div
-                    className="flex aspect-[4/3] items-end p-4"
-                    style={{
-                      background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                    }}
-                  >
-                    <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
-                      Category image placeholder
-                    </span>
+            {categories.map((category) => {
+              const categoryIcon = flagshipCategoryPlaceholders.find((item) => item.label === category.name);
+              const Icon = categoryIcon?.icon ?? ShoppingBag;
+
+              return (
+                <Link
+                  className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
+                    config.key === "electronics-starter"
+                      ? "border-cyan-400/20 bg-slate-900 text-white"
+                      : config.key === "beauty-starter"
+                        ? "border-pink-100"
+                        : "border-slate-200"
+                  } transition hover:-translate-y-0.5 hover:shadow-lg`}
+                  href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+                  key={category.id}
+                >
+                  {category.imageUrl ? (
+                    <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
+                  ) : (
+                    <div
+                      className="flex aspect-[4/3] items-end justify-between p-4"
+                      style={{
+                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                      }}
+                    >
+                      <span className="rounded-2xl bg-white/85 p-3 text-slate-700 shadow-sm">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                        {category.name}
+                      </span>
+                    </div>
+                  )}
+                  <div className="p-5">
+                    <h3
+                      className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
+                      style={headingStyle()}
+                    >
+                      {category.name}
+                    </h3>
+                    <p className={`mt-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                      {category.description || "Explore products in this collection."}
+                    </p>
                   </div>
-                )}
-                <div className="p-5">
-                  <h3
-                    className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
-                    style={headingStyle()}
-                  >
-                    {category.name}
-                  </h3>
-                  <p className={`mt-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-                    {category.description || "Explore products in this collection."}
-                  </p>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         ) : config.key === "shastore-flagship-premium" ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1972,10 +1983,14 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
 function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
   const categories = context.preview.categories;
   const category = categories[0] ?? null;
-  const products = context.preview.products
+  const collectionProducts = context.preview.products
     .filter((product) => category && (product.categoryId === category.id || product.categoryName === category.name))
     .filter((product) => isPublicProductStatus(product.status))
     .slice(0, 4);
+  const fallbackProducts = context.preview.products
+    .filter((product) => isPublicProductStatus(product.status))
+    .slice(0, 4);
+  const products = collectionProducts.length ? collectionProducts : fallbackProducts;
   const title = textValue(section.config.title, category?.name ?? "Featured collection");
   const subtitle = textValue(section.config.subtitle, category?.description || "Explore this premium collection area.");
 
@@ -2042,6 +2057,8 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
 }
 
 function RecentlyViewedSection({ context, section }: SectionRenderProps) {
+  const hasLiveCatalog = context.preview.products.some((product) => isPublicProductStatus(product.status));
+
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
       <div className="mx-auto max-w-7xl">
@@ -2053,7 +2070,8 @@ function RecentlyViewedSection({ context, section }: SectionRenderProps) {
           title={textValue(section.config.title, "Recently viewed")}
           trackCurrentProduct={false}
         />
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+        {hasLiveCatalog ? null : (
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
             Recently viewed
           </p>
@@ -2061,6 +2079,7 @@ function RecentlyViewedSection({ context, section }: SectionRenderProps) {
             <PremiumSkeletonGrid label="Product image placeholder" />
           </div>
         </div>
+        )}
       </div>
     </section>
   );
