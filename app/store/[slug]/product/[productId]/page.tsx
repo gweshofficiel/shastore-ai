@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BackInStockRequest } from "@/components/storefront/back-in-stock-request";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductDetailFoundation } from "@/components/storefront/product-detail-foundation";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
-import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { GoogleAnalyticsScript, GoogleAnalyticsViewItem } from "@/components/storefront/google-analytics";
@@ -13,7 +12,7 @@ import { StorefrontLanguageSwitcher } from "@/components/storefront/language-swi
 import { MetaPixelScript, MetaPixelViewContent } from "@/components/storefront/meta-pixel";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
-import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
+import { WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicUrl } from "@/lib/deployment/config";
 import { getProductRecommendations } from "@/lib/product-recommendations";
@@ -560,144 +559,17 @@ export default async function PublicProductDetailPage({
             </div>
           </header>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
-            <div className="relative overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)]">
-              <ProductBadges className="absolute left-5 top-5 z-10" product={product} />
-              {product.imageUrl ? (
-                <img
-                  alt={product.title}
-                  className="aspect-square w-full object-cover"
-                  src={product.imageUrl}
-                />
-              ) : (
-                <div
-                  className="flex aspect-square items-end p-8 text-white"
-                  style={{ background: heroBackground }}
-                >
-                  <span className="rounded-full bg-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white backdrop-blur">
-                    Product gallery placeholder
-                  </span>
-                </div>
-              )}
-              <div className="grid grid-cols-3 gap-3 border-t border-slate-100 p-4">
-                {galleryUrls.length ? (
-                  galleryUrls.slice(0, 6).map((url) => (
-                    <img
-                      alt={`${product.title} gallery image`}
-                      className="aspect-square rounded-2xl object-cover"
-                      key={url}
-                      src={url}
-                    />
-                  ))
-                ) : (
-                  [0, 1, 2].map((item) => (
-                    <div className="flex aspect-square items-end rounded-2xl bg-slate-100 p-3" key={item}>
-                      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                        Gallery placeholder
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <article className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)] sm:p-8 lg:p-10">
-              <ProductBadges className="mb-4" product={product} />
-              {isPublicCategoryTitle(product.categoryName) ? (
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                  {product.categoryName}
-                </p>
-              ) : null}
-              <h1 className="mt-3 text-4xl font-black leading-none tracking-[-0.06em] text-ink sm:text-6xl">
-                {product.title}
-              </h1>
-              <div className="mt-5 flex flex-wrap items-end gap-3">
-                <p className="text-2xl font-black text-ink">
-                  {formatProductPrice(product.price, product.priceLabel, currency, preview.store.currencySettings)}
-                </p>
-                {product.compareAtPrice ? (
-                  <p className="text-base font-bold text-slate-400 line-through">
-                    {formatProductPrice(product.compareAtPrice, null, currency, preview.store.currencySettings)}
-                  </p>
-                ) : null}
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                  {currency}
-                </span>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
-                <span className="text-amber-500">{ratingStars(summary.averageRating)}</span>
-                <span className="text-muted">
-                  {summary.reviewCount
-                    ? `${summary.averageRating.toFixed(1)} from ${summary.reviewCount} ${summary.reviewCount === 1 ? "review" : "reviews"}`
-                    : "Reviews placeholder"}
-                </span>
-              </div>
-              <p className="mt-6 text-base leading-8 text-muted">
-                {product.description || "Premium product information placeholder for materials, benefits, fit, compatibility, or usage details."}
-              </p>
-              <ProductSalesProof product={product} />
-              <ProductStockUrgency className="mt-5" product={product} />
-              <div className="mt-5 grid gap-3 rounded-3xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  Variants
-                </p>
-                {product.variants.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {product.variants.map((variant) => (
-                      <span
-                        className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-muted"
-                        key={variant.id}
-                      >
-                        {variant.name}
-                        {variant.stockQuantity !== null ? ` • ${variant.stockQuantity} left` : ""}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {["Option placeholder", "Size placeholder", "Color placeholder"].map((item) => (
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-muted" key={item}>
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs font-bold text-muted">
-                  Inventory status: {product.inventoryStatus?.replace(/_/g, " ") || "Not tracked"}
-                </p>
-              </div>
-              <ProductShareButtons productTitle={product.title} />
-              <BackInStockRequest
-                product={product}
-                slug={preview.store.slug}
-                storeId={preview.store.id}
-              />
-
-              <div className="mt-8 grid gap-3 border-t border-slate-100 pt-6">
-                <AddToCartButton
-                  currency={currency}
-                  detailsHref={`/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`}
-                  product={product}
-                  showBuyNow
-                  showViewDetails
-                  slug={preview.store.slug}
-                  storeId={preview.store.id}
-                />
-                <WishlistButton
-                  currency={currency}
-                  product={product}
-                  slug={preview.store.slug}
-                  storeId={preview.store.id}
-                />
-                <CompareButton
-                  currency={currency}
-                  product={product}
-                  slug={preview.store.slug}
-                  storeId={preview.store.id}
-                />
-              </div>
-            </article>
-          </div>
+          <ProductDetailFoundation
+            averageRating={summary.averageRating}
+            currency={currency}
+            currencySettings={preview.store.currencySettings}
+            galleryUrls={galleryUrls}
+            heroBackground={heroBackground}
+            product={product}
+            reviewCount={summary.reviewCount}
+            slug={preview.store.slug}
+            storeId={preview.store.id}
+          />
 
           <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
