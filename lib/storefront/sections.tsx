@@ -1312,16 +1312,13 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
     href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
     label: link.label
   }));
-  const navLinks = uniqueStorefrontNavLinks([
-    ...flagshipNavLinks,
-    ...(headerNavigation?.links ?? [])
-  ]);
+  const navLinks = uniqueStorefrontNavLinks(flagshipNavLinks);
   const iconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200";
   const darkIconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800";
   const iconCountClassName = "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950";
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
       <div className="bg-slate-950 px-4 py-2 text-white sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3 text-xs font-bold lg:justify-between">
           <div className="hidden flex-wrap gap-5 text-white/80 md:flex">
@@ -1364,10 +1361,10 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
               </span>
             </span>
           </Link>
-          <form action={`/store/${slug}`} className="flex min-h-12 min-w-0 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm focus-within:border-slate-400">
-            <details className="relative hidden border-r border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-700 md:block">
+          <form action={`/store/${slug}`} className="relative flex min-h-12 min-w-0 rounded-2xl border-2 border-slate-200 bg-white shadow-sm focus-within:border-slate-400">
+            <details className="relative hidden rounded-l-[0.85rem] border-r border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-700 md:block">
               <summary className="flex cursor-pointer list-none items-center gap-2"><Menu className="h-4 w-4" /> All categories</summary>
-              <div className="absolute left-0 top-12 z-40 grid max-h-[70vh] min-w-72 gap-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-xl">
+              <div className="absolute left-0 top-full z-[80] mt-3 grid max-h-[70vh] min-w-72 gap-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-2xl">
                 {categoryItems.map((item) => (
                   <Link className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold transition hover:bg-slate-100" href={item.href} key={item.label}>
                     <item.icon className="h-4 w-4 text-slate-500" /> {item.label}
@@ -1381,7 +1378,7 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
               name="q"
               placeholder="Search products, brands, categories..."
             />
-            <button className="shrink-0 bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.14em] text-white sm:px-6" type="submit">
+            <button className="shrink-0 rounded-r-[0.85rem] bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.14em] text-white sm:px-6" type="submit">
               Search
             </button>
           </form>
@@ -1426,16 +1423,6 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
       </div>
       <nav className="border-t border-slate-100 px-4 py-3 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center gap-4 overflow-x-auto text-sm font-black text-slate-700">
-          <details className="relative">
-            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-white"><Menu className="h-4 w-4" /> All categories</summary>
-            <div className="absolute left-0 top-10 z-40 grid max-h-[70vh] min-w-72 gap-1 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-xl">
-              {categoryItems.map((item) => (
-                <Link className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold transition hover:bg-slate-100" href={item.href} key={item.label}>
-                  <item.icon className="h-4 w-4 text-slate-500" /> {item.label}
-                </Link>
-              ))}
-            </div>
-          </details>
           {navLinks.map((link) => (
             <Link href={link.href} key={navKey(link)}>
               {link.label}
