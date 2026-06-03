@@ -6,6 +6,7 @@ import { trackGoogleAnalyticsEvent } from "@/components/storefront/google-analyt
 import { trackMetaPixelEvent } from "@/components/storefront/meta-pixel";
 import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
+import { ProductRatingSummary } from "@/components/storefront/product-rating-summary";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
@@ -150,14 +151,6 @@ function stockToneClass(tone: StockTone) {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
-function ratingStars(rating: number) {
-  if (rating <= 0) {
-    return "No reviews yet";
-  }
-
-  return `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
-}
-
 export function ProductDetailFoundation({
   averageRating,
   currency,
@@ -299,14 +292,11 @@ export function ProductDetailFoundation({
             {currency}
           </span>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
-          <span className="text-amber-500">{ratingStars(averageRating)}</span>
-          <span className="text-muted">
-            {reviewCount
-              ? `${averageRating.toFixed(1)} from ${reviewCount} ${reviewCount === 1 ? "review" : "reviews"}`
-              : "No reviews yet"}
-          </span>
-        </div>
+        <ProductRatingSummary
+          className="mt-4"
+          emptyLabel="No reviews yet"
+          summary={{ averageRating, reviewCount }}
+        />
         <p className="mt-6 text-base leading-8 text-muted">
           {product.description || "Product details will appear here when the store owner adds a description."}
         </p>

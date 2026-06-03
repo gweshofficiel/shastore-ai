@@ -36,6 +36,7 @@ import type { LucideIcon } from "lucide-react";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductRatingSummary } from "@/components/storefront/product-rating-summary";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
@@ -862,14 +863,14 @@ function numericProductPrice(price: number | string | null) {
 }
 
 type ProductGridProduct = StoreTenantContext["preview"]["products"][number];
-type FlagshipProductReviewSummary = Pick<ProductReviewSummary, "averageRating" | "reviewCount">;
+type ProductCardReviewSummary = Pick<ProductReviewSummary, "averageRating" | "reviewCount">;
 
 function numericRecordValue(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value ?? NaN);
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function productReviewSummaryFromProduct(product: ProductGridProduct): FlagshipProductReviewSummary | null {
+function productReviewSummaryFromProduct(product: ProductGridProduct): ProductCardReviewSummary | null {
   const record = product as unknown as Record<string, unknown>;
   const averageRating = numericRecordValue(
     record.averageRating ??
@@ -898,14 +899,14 @@ function productReviewSummaryFromProduct(product: ProductGridProduct): FlagshipP
   };
 }
 
-async function loadFlagshipProductReviewSummaries(
+async function loadProductCardReviewSummaries(
   context: StoreTenantContext,
   products: ProductGridProduct[]
 ) {
-  const summaries = new Map<string, FlagshipProductReviewSummary>();
+  const summaries = new Map<string, ProductCardReviewSummary>();
 
   await Promise.all(
-    products.map(async (product) => {
+    products.slice(0, 12).map(async (product) => {
       const existingSummary = productReviewSummaryFromProduct(product);
 
       if (existingSummary) {
@@ -925,35 +926,6 @@ async function loadFlagshipProductReviewSummaries(
   );
 
   return summaries;
-}
-
-function FlagshipProductRating({
-  summary
-}: {
-  summary: FlagshipProductReviewSummary | null;
-}) {
-  const averageRating = summary?.averageRating ?? 0;
-  const reviewCount = summary?.reviewCount ?? 0;
-  const hasReviews = averageRating > 0 && reviewCount > 0;
-  const roundedRating = hasReviews ? Math.round(averageRating) : 0;
-
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-black">
-      <span className="flex items-center gap-0.5 text-amber-500" aria-label={hasReviews ? `${averageRating.toFixed(1)} out of 5 stars` : "Ratings placeholder"}>
-        {[0, 1, 2, 3, 4].map((item) => (
-          <Star
-            className={`h-3.5 w-3.5 ${hasReviews && item < roundedRating ? "fill-current" : "text-slate-300"}`}
-            key={item}
-          />
-        ))}
-      </span>
-      <span className="text-slate-500">
-        {hasReviews
-          ? `${averageRating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? "review" : "reviews"})`
-          : "Ratings placeholder"}
-      </span>
-    </div>
-  );
 }
 
 function productSectionProducts(context: StoreTenantContext, section?: StoreSection) {
@@ -1037,9 +1009,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
         : section?.section_type === "recommended_products"
           ? "Recommended"
           : config.label;
-  const flagshipReviewSummaries = isFlagship
-    ? await loadFlagshipProductReviewSummaries(context, products)
-    : new Map<string, FlagshipProductReviewSummary>();
+  const productCardReviewSummaries = await loadProductCardReviewSummaries(context, products);
 
   return (
     <section
@@ -1099,9 +1069,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
             const primaryImage = productPrimaryImage(product);
             const currency = selectedCurrency ?? context.preview.store.currencySettings.defaultCurrency;
             const detailsHref = publicProductHref(context.preview.store.slug, product);
-            const reviewSummary = isFlagship
-              ? flagshipReviewSummaries.get(product.id) ?? productReviewSummaryFromProduct(product)
-              : null;
+            const reviewSummary = productCardReviewSummaries.get(product.id) ?? productReviewSummaryFromProduct(product);
 
             return (
               <article
@@ -1175,7 +1143,10 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       {product.title}
                     </h3>
                   </Link>
-                  {isFlagship ? <FlagshipProductRating summary={reviewSummary} /> : null}
+                  <ProductRatingSummary
+                    className="mt-3"
+                    summary={reviewSummary}
+                  />
                   <p className={`line-clamp-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "Product details coming soon."}
                   </p>

@@ -4,6 +4,7 @@ import { CompareButton, CompareNavLink } from "@/components/storefront/product-c
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductDetailFoundation } from "@/components/storefront/product-detail-foundation";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
+import { ProductRatingSummary } from "@/components/storefront/product-rating-summary";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
@@ -239,6 +240,24 @@ function ratingStars(rating: number) {
   return `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
 }
 
+function formatPublicDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(date);
+}
+
 function reviewFilterLabel(filter: ProductReviewFilter) {
   const labels: Record<ProductReviewFilter, string> = {
     highest: "Highest rating",
@@ -472,6 +491,17 @@ export default async function PublicProductDetailPage({
     productId: product.id,
     storeId: preview.store.id
   });
+  const relatedProductReviewSummaries = new Map(
+    await Promise.all(
+      relatedProducts.map(async (relatedProduct) => [
+        relatedProduct.id,
+        await getProductReviewSummary({
+          productId: relatedProduct.id,
+          storeId: preview.store.id
+        })
+      ] as const)
+    )
+  );
   const message = reviewMessage(query.review);
   const qaMessage = questionMessage(query.question);
 
@@ -647,33 +677,44 @@ export default async function PublicProductDetailPage({
               <h3 className="text-2xl font-black tracking-[-0.04em] text-ink">
                 {questions.length
                   ? `${questions.length} answered ${questions.length === 1 ? "question" : "questions"}`
-                  : "FAQ placeholder"}
+                  : "No answered questions yet"}
               </h3>
               <div className="mt-5 grid gap-4">
                 {questions.length ? (
                   questions.map((question) => (
                     <article className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={question.id}>
-                      <p className="text-sm font-black text-ink">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Asked by {question.customerName}
+                        </p>
+                        {formatPublicDate(question.answeredAt) ? (
+                          <p className="text-xs font-bold text-slate-400">
+                            Answered {formatPublicDate(question.answeredAt)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <p className="mt-3 text-base font-black leading-6 text-ink">
                         Q: {question.questionText}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-muted">
-                        A: {question.answerText}
-                      </p>
-                      <p className="mt-3 text-xs font-bold text-slate-400">
-                        Asked by {question.customerName}
-                      </p>
+                      <div className="mt-4 rounded-2xl border border-white bg-white p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Seller answer
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          {question.answerText}
+                        </p>
+                      </div>
                     </article>
                   ))
                 ) : (
-                  ["Sizing question placeholder", "Shipping question placeholder", "Return question placeholder"].map((item) => (
-                    <details className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={item}>
-                      <summary className="cursor-pointer text-sm font-black text-ink">{item}</summary>
-                      <div className="mt-3 grid gap-2">
-                        <div className="h-3 rounded-full bg-slate-200" />
-                        <div className="h-3 w-2/3 rounded-full bg-slate-200" />
-                      </div>
-                    </details>
-                  ))
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-6">
+                    <p className="text-lg font-black tracking-[-0.03em] text-ink">
+                      Be the first to ask.
+                    </p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                      Questions submitted here are sent to the seller for moderation and answered Q&A appears publicly after approval.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -774,6 +815,10 @@ export default async function PublicProductDetailPage({
                           <p className="mt-2 text-sm font-black text-ink">
                             {formatProductPrice(relatedProduct.price, relatedProduct.priceLabel, relatedCurrency, preview.store.currencySettings)}
                           </p>
+                          <ProductRatingSummary
+                            className="mt-3"
+                            summary={relatedProductReviewSummaries.get(relatedProduct.id) ?? null}
+                          />
                           <ProductSalesProof compact product={relatedProduct} />
                           <ProductStockUrgency className="mt-3" compact product={relatedProduct} />
                         </div>
@@ -838,7 +883,7 @@ export default async function PublicProductDetailPage({
               <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
                 {summary.reviewCount
                   ? `${summary.averageRating.toFixed(1)} average rating`
-                  : "Reviews placeholder"}
+                  : "No reviews yet"}
               </h2>
               {summary.reviewCount ? (
                 <div className="mt-4 grid gap-3 rounded-3xl border border-slate-100 bg-slate-50 p-4">
@@ -903,6 +948,7 @@ export default async function PublicProductDetailPage({
                           </h3>
                           <p className="mt-1 text-xs font-bold text-muted">
                             {review.customerName}
+                            {formatPublicDate(review.createdAt) ? ` · ${formatPublicDate(review.createdAt)}` : ""}
                           </p>
                         </div>
                       </div>
@@ -921,18 +967,28 @@ export default async function PublicProductDetailPage({
                       ) : null}
                       {review.sellerReply ? (
                         <div className="mt-4 rounded-2xl border border-white bg-white p-4 text-sm leading-6 text-muted">
-                          <p className="font-black text-ink">Seller reply</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-black text-ink">Seller reply</p>
+                            {formatPublicDate(review.sellerRepliedAt) ? (
+                              <p className="text-xs font-bold text-slate-400">
+                                {formatPublicDate(review.sellerRepliedAt)}
+                              </p>
+                            ) : null}
+                          </div>
                           <p className="mt-1">{review.sellerReply}</p>
                         </div>
                       ) : null}
                     </article>
                   ))
                 ) : (
-                  <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
-                    {filter === "verified"
-                      ? "Verified review placeholder"
-                      : "Customer review placeholder"}
-                  </p>
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-6">
+                    <p className="text-lg font-black tracking-[-0.03em] text-ink">
+                      {filter === "verified" ? "No verified reviews yet." : "No approved reviews yet."}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                      Reviews appear here after a verified buyer submits feedback and the seller approves it.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
