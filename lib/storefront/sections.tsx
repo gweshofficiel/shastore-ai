@@ -306,6 +306,145 @@ function PremiumSkeletonGrid({
   );
 }
 
+const flagshipCategoryPlaceholders = [
+  "Electronics",
+  "Fashion",
+  "Beauty",
+  "Home & Living",
+  "Sports",
+  "Books",
+  "Toys",
+  "Automotive"
+];
+
+const flagshipMainNavLinks = [
+  { href: "", label: "Home" },
+  { href: "#categories", label: "Shop" },
+  { href: "#products", label: "Products" },
+  { href: "#pages", label: "Pages" },
+  { href: "blog", label: "Blog" },
+  { href: "about", label: "About Us" },
+  { href: "contact", label: "Contact Us" },
+  { href: "#deals", label: "Deals" },
+  { href: "#top-selling", label: "Top Selling" }
+];
+
+function isFlagshipTemplate(context: StoreTenantContext) {
+  return templateConfig(context).key === "shastore-flagship-premium";
+}
+
+function FlagshipProductPlaceholderCard({ index }: { index: number }) {
+  return (
+    <article className="group overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+      <div className="relative flex aspect-[4/3] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
+        <button
+          aria-label="Wishlist placeholder"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-black text-slate-500 shadow-sm"
+          type="button"
+        >
+          ♡
+        </button>
+        <span className="rounded-full bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+          Image placeholder
+        </span>
+      </div>
+      <div className="grid gap-3 p-4">
+        <div>
+          <h3 className="text-lg font-black tracking-[-0.03em] text-ink">Premium Product {index + 1}</h3>
+          <p className="mt-1 text-sm font-black text-amber-500">★★★★★</p>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+          <p className="text-lg font-black text-ink">$0.00</p>
+          <button
+            aria-label="Cart placeholder"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white"
+            type="button"
+          >
+            +
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function FlagshipProductPlaceholderGrid({ count = 6 }: { count?: number }) {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: count }).map((_, index) => (
+        <FlagshipProductPlaceholderCard index={index} key={index} />
+      ))}
+    </div>
+  );
+}
+
+function FlagshipSectionHeader({
+  eyebrow,
+  subtitle,
+  title
+}: {
+  eyebrow: string;
+  subtitle?: string;
+  title: string;
+}) {
+  return (
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-600">{eyebrow}</p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+          {title}
+        </h2>
+      </div>
+      {subtitle ? <p className="max-w-xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
+    </div>
+  );
+}
+
+function FlagshipFlashDealsPlaceholder() {
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]" id="deals">
+      <FlagshipProductPlaceholderGrid count={6} />
+      <aside className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-[0_30px_90px_-60px_rgba(15,23,42,0.95)]">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">Flash deals</p>
+        <h3 className="mt-3 text-3xl font-black tracking-[-0.05em]" style={headingStyle()}>
+          Premium deal placeholder
+        </h3>
+        <p className="mt-3 text-sm font-semibold leading-6 text-white/70">
+          Countdown placeholder for limited-time offers.
+        </p>
+        <div className="mt-6 grid grid-cols-4 gap-2">
+          {["DD", "HH", "MM", "SS"].map((label) => (
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-3 text-center" key={label}>
+              <p className="text-2xl font-black">00</p>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{label}</p>
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function FlagshipNewArrivalsPlaceholder() {
+  return (
+    <div className="grid gap-5 lg:grid-cols-3">
+      {["New season edit", "Premium essentials", "Trending now"].map((title) => (
+        <article className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={title}>
+          <div className="flex min-h-48 items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-5">
+            <span className="rounded-full bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Promo image placeholder
+            </span>
+          </div>
+          <div className="p-5">
+            <h3 className="text-xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>{title}</h3>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">Promotional card placeholder</p>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function normalizeSection(value: unknown, context: StoreTenantContext): StoreSection | null {
   if (!isRecord(value)) {
     return null;
@@ -551,7 +690,7 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
   return (
     <section
       className={`${sectionPaddingClass(context)} ${config.key === "electronics-starter" ? "bg-slate-950" : "bg-[var(--store-background)]"}`}
-      id="products"
+      id={section?.section_type === "flash_deals" ? "deals" : section?.section_type === "best_sellers" ? "top-selling" : "products"}
     >
       <div className="mx-auto max-w-7xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -733,6 +872,12 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
             </div>
           ))}
         </div>
+      ) : config.key === "shastore-flagship-premium" && section?.section_type === "flash_deals" ? (
+        <FlagshipFlashDealsPlaceholder />
+      ) : config.key === "shastore-flagship-premium" && section?.section_type === "new_arrivals" ? (
+        <FlagshipNewArrivalsPlaceholder />
+      ) : config.key === "shastore-flagship-premium" ? (
+        <FlagshipProductPlaceholderGrid count={6} />
       ) : (
         <PremiumSkeletonGrid count={config.layout.mobileDensity === "dense" ? 8 : 6} label="Product image placeholder" />
       )}
@@ -786,12 +931,117 @@ function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
   return unique;
 }
 
+function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps) {
+  const slug = context.preview.store.slug;
+  const categories = context.preview.categories.slice(0, 8);
+  const categoryItems = categories.length
+    ? categories.map((category) => ({
+        href: `/store/${slug}/category/${encodeURIComponent(category.slug || category.id)}`,
+        label: category.name
+      }))
+    : flagshipCategoryPlaceholders.map((label) => ({ href: "#categories", label }));
+
+  return (
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+      <div className="bg-slate-950 px-4 py-2 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.16em]">
+          <div className="flex flex-wrap gap-4 text-white/80">
+            <span>Free shipping on premium orders</span>
+            <span>30-day returns</span>
+            <span>Premium support</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <StorefrontLanguageSwitcher settings={context.preview.store.languageSettings} />
+            <StorefrontCurrencySwitcher settings={context.preview.store.currencySettings} />
+            <Link className="text-white/80 transition hover:text-white" href={`/store/${slug}/track`}>
+              Track order
+            </Link>
+            <Link className="text-white/80 transition hover:text-white" href={`/store/${slug}/faq`}>
+              Help center
+            </Link>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[260px_minmax(0,1fr)_auto] lg:items-center">
+          <Link className="flex min-w-0 items-center gap-3" href={`/store/${slug}`}>
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-amber-300">
+              S
+            </span>
+            <span>
+              <span className="block text-lg font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+                SHASTORE Flagship
+              </span>
+              <span className="block text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Premium Store
+              </span>
+            </span>
+          </Link>
+          <form action={`/store/${slug}`} className="flex overflow-hidden rounded-full border border-slate-200 bg-slate-50 shadow-inner">
+            <details className="relative hidden border-r border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 md:block">
+              <summary className="cursor-pointer list-none">All categories</summary>
+              <div className="absolute left-0 top-12 z-40 grid min-w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-xl">
+                {categoryItems.map((item) => (
+                  <Link className="rounded-xl px-3 py-2 transition hover:bg-slate-100" href={item.href} key={item.label}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </details>
+            <input
+              className="min-h-12 flex-1 bg-transparent px-5 text-sm font-semibold text-ink outline-none"
+              name="q"
+              placeholder="Search premium products, brands, and categories"
+            />
+            <button className="bg-slate-950 px-6 text-xs font-black uppercase tracking-[0.16em] text-white" type="submit">
+              Search
+            </button>
+          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            {headerNavigation?.accountEnabled ?? true ? (
+              <Link className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted" href={`/store/${slug}/account`}>
+                Account
+              </Link>
+            ) : null}
+            {headerNavigation?.wishlistEnabled ?? true ? (
+              <WishlistNavLink currency={context.preview.store.currency} slug={slug} storeId={context.preview.store.id} />
+            ) : null}
+            {headerNavigation?.cartEnabled ?? true ? (
+              <CartNavLink currency={context.preview.store.currency} slug={slug} storeId={context.preview.store.id} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <nav className="border-t border-slate-100 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
+          <details className="relative">
+            <summary className="cursor-pointer list-none rounded-full bg-slate-950 px-4 py-2 text-white">All categories</summary>
+            <div className="absolute left-0 top-10 z-40 grid min-w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-xl">
+              {categoryItems.map((item) => (
+                <Link className="rounded-xl px-3 py-2 transition hover:bg-slate-100" href={item.href} key={item.label}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </details>
+          {flagshipMainNavLinks.map((link) => (
+            <Link href={link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`} key={link.label}>
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
+    </header>
+  );
+}
+
 function NavbarSection({
   context,
   hasPublishedAbout = false,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
-  headerNavigation
+  headerNavigation,
+  section
 }: SectionRenderProps) {
   const theme = context.preview.themeSettings;
   const config = templateConfig(context);
@@ -815,6 +1065,10 @@ function NavbarSection({
         { href: contactHref, label: "Contact" },
         ...(hasPublishedBlogArticles ? [{ href: blogHref, label: "Blog" }] : [])
       ]);
+
+  if (config.key === "shastore-flagship-premium") {
+    return <FlagshipNavbarSection context={context} headerNavigation={headerNavigation} section={section} />;
+  }
 
   return (
     <section
@@ -1091,6 +1345,24 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
               </Link>
             ))}
           </div>
+        ) : config.key === "shastore-flagship-premium" ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {flagshipCategoryPlaceholders.map((name) => (
+              <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm" key={name}>
+                <div className="flex aspect-[4/3] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
+                  <span className="rounded-full bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    Category image placeholder
+                  </span>
+                </div>
+                <div className="p-5">
+                  <h3 className="text-lg font-black tracking-[-0.03em] text-ink" style={headingStyle()}>
+                    {name}
+                  </h3>
+                  <p className="mt-2 text-sm font-bold text-muted">Item count placeholder</p>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="mt-6">
             <PremiumSkeletonGrid label="Category image placeholder" />
@@ -1136,6 +1408,20 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
               </figcaption>
             </figure>
           ))
+        ) : config.key === "shastore-flagship-premium" ? (
+          <div className="grid gap-4 md:grid-cols-4">
+            {[
+              ["10K+", "Customer placeholder"],
+              ["500+", "Brand placeholder"],
+              ["24/7", "Support placeholder"],
+              ["4.9", "Rating placeholder"]
+            ].map(([value, label]) => (
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-6 text-center shadow-sm" key={label}>
+                <p className="text-4xl font-black tracking-[-0.05em] text-ink" style={headingStyle()}>{value}</p>
+                <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {[0, 1].map((item) => (
@@ -1449,7 +1735,8 @@ function RecentlyViewedSection({ context, section }: SectionRenderProps) {
 
 function BrandsSection({ context, section }: SectionRenderProps) {
   const categories = context.preview.categories.slice(0, 8);
-  const title = textValue(section.config.title, "Brands and collections");
+  const isFlagship = isFlagshipTemplate(context);
+  const title = textValue(section.config.title, isFlagship ? "Top Brands" : "Brands and collections");
   const subtitle = textValue(section.config.subtitle, "Browse the store through category-led brand entry points.");
 
   return (
@@ -1475,8 +1762,8 @@ function BrandsSection({ context, section }: SectionRenderProps) {
             ))}
           </div>
         ) : (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[0, 1, 2, 3].map((item) => (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+            {[0, 1, 2, 3, 4, 5].map((item) => (
               <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm" key={item}>
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                   Brand
@@ -1493,28 +1780,36 @@ function BrandsSection({ context, section }: SectionRenderProps) {
 
 function TrustBadgesSection({ context, section }: SectionRenderProps) {
   const store = context.preview.store;
-  const badges = [
-    {
-      body: store.deliveryEnabled || store.pickupEnabled
-        ? "Delivery and pickup settings are managed by the store owner."
-        : "Delivery promise placeholder for this store.",
-      title: "Delivery ready"
-    },
-    {
-      body: store.supportEmail || store.supportPhone || store.whatsappNumber
-        ? "Support channels are connected for this store."
-        : "Customer support placeholder for this store.",
-      title: "Customer support"
-    },
-    {
-      body: "Checkout uses the store's active payment and order settings.",
-      title: "Secure checkout"
-    },
-    {
-      body: "Language and currency tools are available for localized shopping.",
-      title: "Localized shopping"
-    }
-  ];
+  const config = templateConfig(context);
+  const badges = config.key === "shastore-flagship-premium"
+    ? [
+        { body: "Shipping promise placeholder", title: "Free Shipping" },
+        { body: "Return policy placeholder", title: "30-Day Returns" },
+        { body: "Payment security placeholder", title: "Secure Payment" },
+        { body: "Premium support placeholder", title: "24/7 Support" }
+      ]
+    : [
+        {
+          body: store.deliveryEnabled || store.pickupEnabled
+            ? "Delivery and pickup settings are managed by the store owner."
+            : "Delivery promise placeholder for this store.",
+          title: "Delivery ready"
+        },
+        {
+          body: store.supportEmail || store.supportPhone || store.whatsappNumber
+            ? "Support channels are connected for this store."
+            : "Customer support placeholder for this store.",
+          title: "Customer support"
+        },
+        {
+          body: "Checkout uses the store's active payment and order settings.",
+          title: "Secure checkout"
+        },
+        {
+          body: "Language and currency tools are available for localized shopping.",
+          title: "Localized shopping"
+        }
+      ];
   const title = textValue(section.config.title, "Why shop here");
   const subtitle = textValue(section.config.subtitle, "Trust signals powered by store settings.");
 
@@ -1567,6 +1862,40 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
   );
 }
 
+function NewsletterSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
+  const config = templateConfig(context);
+  const title = textValue(section.config.title, "Join the newsletter");
+  const body = textValue(section.config.body, "Newsletter placeholder for future customer updates and premium offers.");
+
+  if (config.key !== "shastore-flagship-premium") {
+    return <GenericContentSection context={context} section={section} />;
+  }
+
+  return (
+    <section className="bg-slate-950 px-4 py-14 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-6 rounded-[2.5rem] border border-white/10 bg-white/5 p-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">Newsletter</p>
+          <h2 className="mt-3 text-4xl font-black tracking-[-0.05em]" style={headingStyle()}>
+            {title}
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-white/65">{body}</p>
+        </div>
+        <form className="flex overflow-hidden rounded-full border border-white/10 bg-white text-slate-950">
+          <input
+            className="min-h-12 flex-1 px-5 text-sm font-semibold outline-none"
+            placeholder="Email address placeholder"
+            type="email"
+          />
+          <button className="bg-amber-400 px-6 text-xs font-black uppercase tracking-[0.16em]" type="button">
+            Subscribe
+          </button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
 function FooterSection({
   context,
   footerLinkSettings = defaultStoreFooterLinkSettings,
@@ -1592,6 +1921,7 @@ function FooterSection({
       socialLinks={context.preview.store.socialLinks}
       storeSlug={context.store_slug}
       storeTitle={context.settings.title}
+      premiumSkeleton={templateConfig(context).key === "shastore-flagship-premium"}
     />
   );
 }
@@ -1658,7 +1988,7 @@ const sectionRegistry: Record<
   image: GenericContentSection,
   navbar: NavbarSection,
   new_arrivals: ProductGridSection,
-  newsletter: GenericContentSection,
+  newsletter: NewsletterSection,
   product_grid: ProductGridSection,
   recommended_products: ProductGridSection,
   recently_viewed: RecentlyViewedSection,

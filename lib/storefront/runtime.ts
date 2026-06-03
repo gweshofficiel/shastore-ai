@@ -95,20 +95,17 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
       ? [
           "navbar",
           "hero",
+          "trust_badges",
           "featured_categories",
           "featured_products",
+          "flash_deals",
           "new_arrivals",
           "best_sellers",
-          "flash_deals",
-          "recommended_products",
-          "recently_viewed",
           "brands",
-          "trust_badges",
           "testimonials",
           "blog_preview",
           "faq_preview",
           "newsletter",
-          "footer_cta",
           "footer"
         ]
       : template.key === "beauty-starter"

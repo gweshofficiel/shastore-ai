@@ -2471,7 +2471,7 @@ export async function publishStoreDraft(formData: FormData) {
   const workspaceId = selection.activeWorkspaceId;
   const { data: store, error: storeLookupError } = await supabase
     .from("stores")
-    .select("id, name, slug, workspace_id")
+    .select("id, name, slug, template_id, workspace_id")
     .eq("id", storeId)
     .eq("workspace_id" as never, workspaceId as never)
     .single();
@@ -2536,14 +2536,18 @@ export async function publishStoreDraft(formData: FormData) {
     redirectWithStoreError(detailPath, formatStoreActionError(productsError));
   }
 
-  if (!categories?.length) {
+  const templateId = String(store.template_id || defaultStoreTemplateId);
+  const categoryRequiredForPublish = templateId !== "shastore-flagship-premium";
+  const productRequiredForPublish = templateId !== "shastore-flagship-premium";
+
+  if (categoryRequiredForPublish && !categories?.length) {
     redirectWithStoreError(
       detailPath,
       "Add at least one category before publishing this store."
     );
   }
 
-  if (!products?.length) {
+  if (productRequiredForPublish && !products?.length) {
     redirectWithStoreError(
       detailPath,
       "Add at least one product before publishing this store."
