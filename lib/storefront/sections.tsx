@@ -476,6 +476,7 @@ const flagshipMainNavLinks = [
   { href: "#products", label: "Products" },
   { href: "#pages", label: "Pages" },
   { href: "blog", label: "Blog" },
+  { href: "faq", label: "FAQ" },
   { href: "about", label: "About Us" },
   { href: "contact", label: "Contact Us" },
   { href: "#deals", label: "Deals" },
