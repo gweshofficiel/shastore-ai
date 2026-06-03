@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Camera, CreditCard, Mail, MapPin, MessageCircle, Phone, Share2 } from "lucide-react";
 import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import type { PublicStorefrontPageLink } from "@/lib/public-storefront-preview";
@@ -139,7 +140,18 @@ export function PublicStoreFooter({
               <div className="mt-5 flex flex-wrap gap-2">
                 {["Visa", "Mastercard", "COD", "Wallet"].map((label) => (
                   <span className="rounded-full border border-white/15 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white/70" key={label}>
-                    {label}
+                    <span className="inline-flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5" /> {label}</span>
+                  </span>
+                ))}
+              </div>
+              <div className="mt-5 flex gap-2">
+                {[
+                  { icon: Camera, label: "Instagram" },
+                  { icon: MessageCircle, label: "Community" },
+                  { icon: Share2, label: "Social" }
+                ].map(({ icon: Icon, label }) => (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-white/70" key={label}>
+                    <Icon className="h-4 w-4" />
                   </span>
                 ))}
               </div>
@@ -150,10 +162,10 @@ export function PublicStoreFooter({
             <div>
               <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">Contact Us</h3>
               <div className="mt-4 grid gap-2 text-sm font-semibold leading-6 text-white/60">
-                <p>example@yourstore.com</p>
-                <p>+212 123 456 789</p>
-                <p>WhatsApp: +212 123 456 789</p>
-                <p>Casablanca, Morocco</p>
+                <p className="flex items-center gap-2"><Mail className="h-4 w-4" /> example@yourstore.com</p>
+                <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> +212 123 456 789</p>
+                <p className="flex items-center gap-2"><MessageCircle className="h-4 w-4" /> WhatsApp: +212 123 456 789</p>
+                <p className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Casablanca, Morocco</p>
               </div>
             </div>
           </div>
