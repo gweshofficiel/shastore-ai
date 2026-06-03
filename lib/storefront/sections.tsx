@@ -2085,8 +2085,15 @@ function FooterSection({
       navigationLinks={context.preview.navigation.footer}
       pages={context.preview.pages}
       socialLinks={context.preview.store.socialLinks}
+      storeBusinessAddress={context.preview.store.businessAddress}
+      storeBusinessHours={context.preview.store.businessHours}
+      storeDescription={context.preview.store.description}
+      storeEmail={context.preview.store.storeEmail}
       storeSlug={context.store_slug}
+      storeSupportEmail={context.preview.store.supportEmail}
+      storeSupportPhone={context.preview.store.supportPhone}
       storeTitle={context.settings.title}
+      storeWhatsappNumber={context.preview.store.whatsappNumber}
       premiumSkeleton={templateConfig(context).key === "shastore-flagship-premium"}
     />
   );
