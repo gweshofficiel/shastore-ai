@@ -146,6 +146,7 @@ export function PublicStoreFooter({
   const visibleSocialLinks = Object.entries(socialLinks).filter(([, href]) => href.trim());
 
   if (premiumSkeleton) {
+    const brandInitial = storeTitle.trim().slice(0, 1) || "S";
     const contactEmail = storeSupportEmail || storeEmail || "example@yourstore.com";
     const contactPhone = storeSupportPhone || "+212 123 456 789";
     const whatsappNumber = storeWhatsappNumber || "+212 123 456 789";
@@ -159,24 +160,26 @@ export function PublicStoreFooter({
       { href: `/store/${storeSlug}#products`, label: "New Arrivals" },
       { href: `/store/${storeSlug}#top-selling`, label: "Best Sellers" },
       { href: `/store/${storeSlug}#deals`, label: "Deals" },
-      { href: `/store/${storeSlug}#products`, label: "Gift Cards" }
+      { href: `/store/${storeSlug}/cart`, label: "Cart" }
     ];
     const serviceLinks = [
       { href: `/store/${storeSlug}/faq`, label: "Help Center" },
       { href: `/store/${storeSlug}/track`, label: "Track Order" },
       { href: `/store/${storeSlug}/shipping`, label: "Shipping Policy" },
       { href: `/store/${storeSlug}/refund`, label: "Returns & Refunds" },
-      { href: `/store/${storeSlug}/faq`, label: "FAQ" },
+      { href: `/store/${storeSlug}/account/orders`, label: "Orders" },
       { href: `/store/${storeSlug}/account/support`, label: "Support Center" }
     ];
-    const companyLinks = [
-      { href: `/store/${storeSlug}/about`, label: "About Us" },
-      { href: `/store/${storeSlug}/blog`, label: "Blog" },
-      { href: `/store/${storeSlug}/contact`, label: "Careers" },
-      { href: `/store/${storeSlug}/contact`, label: "Affiliate Program" },
-      { href: `/store/${storeSlug}/privacy`, label: "Privacy Policy" },
-      { href: `/store/${storeSlug}/terms`, label: "Terms of Service" }
-    ];
+    const companyLinks = links.length
+      ? links.slice(0, 8).map((link) => ({ href: link.href, label: link.label }))
+      : [
+          { href: `/store/${storeSlug}/about`, label: "About Us" },
+          { href: `/store/${storeSlug}/blog`, label: "Blog" },
+          { href: `/store/${storeSlug}/contact`, label: "Contact" },
+          { href: `/store/${storeSlug}/privacy`, label: "Privacy Policy" },
+          { href: `/store/${storeSlug}/terms`, label: "Terms of Service" },
+          { href: `/store/${storeSlug}/refund`, label: "Refund Policy" }
+        ];
     const socialItems = [
       { href: socialLinks.instagram || "#", icon: Camera, label: "Instagram" },
       { href: socialLinks.facebook || "#", icon: MessageCircle, label: "Facebook" },
@@ -230,14 +233,14 @@ export function PublicStoreFooter({
               <div className="xl:col-span-1">
                 <div className="flex items-center gap-3">
                   <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl font-black text-slate-950">
-                    S
+                    {brandInitial}
                   </span>
                   <div>
                     <h2 className="text-lg font-black leading-tight tracking-[-0.03em] text-white">
-                      SHASTORE Flagship Premium
+                      {storeTitle}
                     </h2>
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">
-                      {storeTitle}
+                      Premium storefront
                     </p>
                   </div>
                 </div>
@@ -288,12 +291,19 @@ export function PublicStoreFooter({
           <div className="border-t border-white/10 px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-sm font-semibold text-white/55">
               <p>{copyrightText || `© ${new Date().getFullYear()} ${storeTitle}`}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {languageSettings ? <StorefrontLanguageSwitcher settings={languageSettings} /> : null}
+                {currencySettings ? <StorefrontCurrencySwitcher settings={currencySettings} /> : null}
+              </div>
               <div className="flex flex-wrap gap-4">
                 <Link className="transition hover:text-white" href={`/store/${storeSlug}/privacy`}>
                   Privacy Policy
                 </Link>
                 <Link className="transition hover:text-white" href={`/store/${storeSlug}/terms`}>
                   Terms of Service
+                </Link>
+                <Link className="transition hover:text-white" href={`/store/${storeSlug}/refund`}>
+                  Refund Policy
                 </Link>
                 <Link className="transition hover:text-white" href="/sitemap.xml">
                   Sitemap

@@ -30,7 +30,7 @@ import {
   Watch
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { CompareButton } from "@/components/storefront/product-compare";
+import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
@@ -67,6 +67,10 @@ import {
   defaultStoreFooterLinkSettings,
   type StoreFooterLinkSettings
 } from "@/lib/store-footer-links";
+import {
+  convertCurrencyAmount,
+  type StoreCurrencyCode
+} from "@/lib/store-currencies";
 
 export type StoreSectionType =
   | "hero"
@@ -240,8 +244,13 @@ function headingStyle() {
   return { fontFamily: "var(--store-font-heading)" };
 }
 
-function formatProductPrice(price: number | string | null, priceLabel: string | null, currency: string) {
-  if (priceLabel) {
+function formatProductPrice(
+  price: number | string | null,
+  priceLabel: string | null,
+  currency: StoreCurrencyCode,
+  settings?: StoreTenantContext["preview"]["store"]["currencySettings"]
+) {
+  if (priceLabel && (!settings || currency === settings.defaultCurrency)) {
     return priceLabel;
   }
 
@@ -255,10 +264,12 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
     return String(price);
   }
 
+  const displayPrice = settings ? convertCurrencyAmount(numericPrice, settings, currency) : numericPrice;
+
   return new Intl.NumberFormat("en", {
     currency: currency || "USD",
     style: "currency"
-  }).format(numericPrice);
+  }).format(displayPrice);
 }
 
 function productGalleryUrls(gallery: unknown[]) {
@@ -764,7 +775,7 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
   return products.slice(0, 6);
 }
 
-function ProductGridSection({ context, section }: { context: StoreTenantContext; section?: StoreSection }) {
+function ProductGridSection({ context, section, selectedCurrency }: SectionRenderProps) {
   const config = templateConfig(context);
   const products = productSectionProducts(context, section).slice(0, config.key === "electronics-starter" ? 8 : 6);
   const title = textValue(section?.config.title, config.sections.productsTitle);
@@ -837,7 +848,7 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
                 {section.products.map((product) => {
             const galleryImages = productGalleryUrls(product.gallery);
             const primaryImage = productPrimaryImage(product);
-            const currency = product.currency || context.preview.store.currency;
+            const currency = selectedCurrency ?? context.preview.store.currencySettings.defaultCurrency;
             const detailsHref = publicProductHref(context.preview.store.slug, product);
 
             return (
@@ -921,11 +932,11 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
                     }`}
                   >
                     <p className="text-lg font-black">
-                      {formatProductPrice(product.price, product.priceLabel, currency)}
+                      {formatProductPrice(product.price, product.priceLabel, currency, context.preview.store.currencySettings)}
                     </p>
                     {product.compareAtPrice ? (
                       <p className={`text-sm font-bold line-through ${config.key === "electronics-starter" ? "text-slate-500" : "text-slate-400"}`}>
-                        {formatProductPrice(product.compareAtPrice, null, currency)}
+                        {formatProductPrice(product.compareAtPrice, null, currency, context.preview.store.currencySettings)}
                       </p>
                     ) : null}
                     <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${config.key === "electronics-starter" ? "bg-cyan-400/10 text-cyan-100" : "bg-slate-100 text-slate-500"}`}>
@@ -995,6 +1006,7 @@ type SectionRenderProps = {
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
+  selectedCurrency?: StoreCurrencyCode;
 };
 
 type StorefrontNavLink = {
@@ -1031,6 +1043,8 @@ function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
 
 function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps) {
   const slug = context.preview.store.slug;
+  const logoUrl = context.theme.logo.url || context.preview.themeSettings.logoUrl || null;
+  const storeDescription = context.preview.store.description || "Premium Store";
   const categories = context.preview.categories.slice(0, 21);
   const categoryItems = categories.length
     ? categories.map((category) => ({
@@ -1039,6 +1053,12 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
         label: category.name
       }))
     : flagshipCategoryPlaceholders.map((category) => ({ icon: category.icon, href: "#categories", label: category.label }));
+  const navLinks = headerNavigation?.links.length
+    ? uniqueStorefrontNavLinks(headerNavigation.links)
+    : flagshipMainNavLinks.map((link) => ({
+        href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
+        label: link.label
+      }));
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
@@ -1064,15 +1084,23 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
       <div className="px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[280px_minmax(0,1fr)_auto] lg:items-center">
           <Link className="flex min-w-0 items-center gap-3" href={`/store/${slug}`}>
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-xl font-black text-amber-300 shadow-sm">
-              S
-            </span>
+            {logoUrl ? (
+              <img
+                alt={context.theme.logo.alt || context.settings.title}
+                className="h-12 w-12 rounded-2xl object-cover shadow-sm"
+                src={logoUrl}
+              />
+            ) : (
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-xl font-black text-amber-300 shadow-sm">
+                {context.settings.title.slice(0, 1)}
+              </span>
+            )}
             <span>
               <span className="block text-xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
-                SHASTORE Flagship
+                {context.settings.title}
               </span>
               <span className="block text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                Premium Store
+                {storeDescription.slice(0, 36)}
               </span>
             </span>
           </Link>
@@ -1098,26 +1126,28 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
             </button>
           </form>
           <div className="flex flex-wrap items-center gap-1">
-            <span className="hidden items-center gap-2 rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700 lg:flex">
-              <Languages className="h-4 w-4" /> Lang
-            </span>
-            <span className="hidden items-center gap-2 rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700 lg:flex">
-              <Globe2 className="h-4 w-4" /> Currency
-            </span>
             <FlagshipIconLink href={`/store/${slug}/track`} icon={PackageSearch} label="Track" />
             {headerNavigation?.accountEnabled ?? true ? (
               <FlagshipIconLink href={`/store/${slug}/account`} icon={User} label="Account" />
             ) : null}
             {headerNavigation?.wishlistEnabled ?? true ? (
-              <Link className="relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200" href={`/store/${slug}/wishlist`}>
-                <Heart className="h-5 w-5" />
-              </Link>
+              <WishlistNavLink
+                currency={context.preview.store.currency}
+                slug={slug}
+                storeId={context.preview.store.id}
+              />
             ) : null}
+            <CompareNavLink
+              currency={context.preview.store.currency}
+              slug={slug}
+              storeId={context.preview.store.id}
+            />
             {headerNavigation?.cartEnabled ?? true ? (
-              <Link className="relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800" href={`/store/${slug}/cart`}>
-                <ShoppingCart className="h-5 w-5" />
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950">0</span>
-              </Link>
+              <CartNavLink
+                currency={context.preview.store.currency}
+                slug={slug}
+                storeId={context.preview.store.id}
+              />
             ) : null}
           </div>
         </div>
@@ -1134,8 +1164,8 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
               ))}
             </div>
           </details>
-          {flagshipMainNavLinks.map((link) => (
-            <Link href={link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`} key={link.label}>
+          {navLinks.map((link) => (
+            <Link href={link.href} key={navKey(link)}>
               {link.label}
             </Link>
           ))}
@@ -2200,7 +2230,8 @@ export function SectionRenderer({
   publishedAbout = null,
   publishedArticles = [],
   publishedFaqs = [],
-  section
+  section,
+  selectedCurrency
 }: {
   context: StoreTenantContext;
   footerLinkSettings?: StoreFooterLinkSettings;
@@ -2212,6 +2243,7 @@ export function SectionRenderer({
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
   section: StoreSection;
+  selectedCurrency?: StoreCurrencyCode;
 }) {
   const Renderer = sectionRegistry[section.section_type] ?? MissingSectionRenderer;
 
@@ -2231,6 +2263,7 @@ export function SectionRenderer({
       publishedArticles={publishedArticles}
       publishedFaqs={publishedFaqs}
       section={section}
+      selectedCurrency={selectedCurrency}
     />
   );
 }
@@ -2247,7 +2280,8 @@ export async function DynamicSectionLoader({
   homepageLayout,
   publishedAbout = null,
   publishedArticles = [],
-  publishedFaqs = []
+  publishedFaqs = [],
+  selectedCurrency
 }: {
   beforeFooter?: ReactNode;
   context: StoreTenantContext;
@@ -2261,6 +2295,7 @@ export async function DynamicSectionLoader({
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
+  selectedCurrency?: StoreCurrencyCode;
 }) {
   const layout = homepageLayout?.configured
     ? {
@@ -2307,6 +2342,7 @@ export async function DynamicSectionLoader({
           publishedArticles={publishedArticles}
           publishedFaqs={publishedFaqs}
           section={section}
+          selectedCurrency={selectedCurrency}
         />
       ))}
       {beforeFooter}
@@ -2323,6 +2359,7 @@ export async function DynamicSectionLoader({
           publishedArticles={publishedArticles}
           publishedFaqs={publishedFaqs}
           section={section}
+          selectedCurrency={selectedCurrency}
         />
       ))}
     </>
