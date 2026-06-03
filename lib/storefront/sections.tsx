@@ -2086,7 +2086,6 @@ function FooterSection({
       pages={context.preview.pages}
       socialLinks={context.preview.store.socialLinks}
       storeBusinessAddress={context.preview.store.businessAddress}
-      storeBusinessHours={context.preview.store.businessHours}
       storeDescription={context.preview.store.description}
       storeEmail={context.preview.store.storeEmail}
       storeSlug={context.store_slug}
