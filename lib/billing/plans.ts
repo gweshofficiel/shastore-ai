@@ -25,11 +25,22 @@ export type BillingPlan = {
 };
 
 export const freeTemplateIds = [
+  "shastore-flagship-premium",
   "minimal",
   "local-business"
 ] as const;
 
-export const premiumTemplateIds = ["beauty", "fashion", "gadget", "luxury"] as const;
+export const premiumTemplateIds = [
+  "aurora-pro",
+  "beauty",
+  "beauty-starter",
+  "electronics-starter",
+  "fashion",
+  "fashion-starter",
+  "gadget",
+  "general-starter",
+  "luxury"
+] as const;
 
 export const billingPlans: BillingPlan[] = [
   {

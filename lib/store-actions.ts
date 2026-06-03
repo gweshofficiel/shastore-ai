@@ -27,6 +27,7 @@ import { ensurePersonalWorkspaceOwnerMembership } from "@/lib/workspace-members"
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
+import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
@@ -484,6 +485,12 @@ function normalizeTemplateId(value: string) {
 }
 
 const databaseTemplateIds = new Set([
+  "shastore-flagship-premium",
+  "aurora-pro",
+  "fashion-starter",
+  "electronics-starter",
+  "beauty-starter",
+  "general-starter",
   "minimal-luxury",
   "fashion-modern",
   "electronics-dark",
@@ -498,6 +505,7 @@ const databaseTemplateIds = new Set([
 ]);
 
 const templateIdAliases: Record<string, string> = {
+  "flagship-premium": "shastore-flagship-premium",
   "luxury-dark": "minimal-luxury",
   "minimal-clean": "clean-scandinavian",
   "arabic-premium": "arabic-luxury",
@@ -968,6 +976,35 @@ export async function saveStoreDraftAction(
     error: "Unknown save failure.",
     message: null
   };
+}
+
+export async function createStoreFromTemplateAction(formData: FormData) {
+  const requestedTemplateId = String(formData.get("templateId") ?? defaultStoreTemplateId).trim() || defaultStoreTemplateId;
+  const template = await getProductionStoreTemplate(requestedTemplateId);
+  const templateId = resolveDatabaseTemplateId(template.id);
+  const draftForm = new FormData();
+  const storeName = `New ${template.name} Store`;
+
+  draftForm.set("storeName", storeName);
+  draftForm.set("storeDescription", "");
+  draftForm.set("brandColor", "#0f172a");
+  draftForm.set("currency", "USD");
+  draftForm.set("whatsappNumber", "");
+  draftForm.set("templateId", templateId);
+  draftForm.set("categories", "[]");
+  draftForm.set("products", "[]");
+
+  const result = await persistStoreDraftFromForm(draftForm);
+
+  if (!result.ok) {
+    redirect(
+      `/dashboard/stores/new?error=REAL_DATABASE_ERROR&detail=${encodeURIComponent(result.error)}&templateId=${encodeURIComponent(requestedTemplateId)}`
+    );
+  }
+
+  revalidatePath("/dashboard/stores");
+  revalidatePath("/dashboard");
+  redirect(`/dashboard/stores/${result.storeId}`);
 }
 
 function parseCategories(formData: FormData): DraftCategory[] {
