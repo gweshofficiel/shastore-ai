@@ -71,6 +71,7 @@ import {
   convertCurrencyAmount,
   type StoreCurrencyCode
 } from "@/lib/store-currencies";
+import { getProductReviewSummary, type ProductReviewSummary } from "@/lib/product-reviews";
 
 export type StoreSectionType =
   | "hero"
@@ -740,6 +741,101 @@ function numericProductPrice(price: number | string | null) {
   return Number.isFinite(numericPrice) ? numericPrice : null;
 }
 
+type ProductGridProduct = StoreTenantContext["preview"]["products"][number];
+type FlagshipProductReviewSummary = Pick<ProductReviewSummary, "averageRating" | "reviewCount">;
+
+function numericRecordValue(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value ?? NaN);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function productReviewSummaryFromProduct(product: ProductGridProduct): FlagshipProductReviewSummary | null {
+  const record = product as unknown as Record<string, unknown>;
+  const averageRating = numericRecordValue(
+    record.averageRating ??
+      record.average_rating ??
+      record.ratingAverage ??
+      record.rating_average ??
+      record.reviewAverage ??
+      record.review_average
+  );
+  const reviewCount = numericRecordValue(
+    record.reviewCount ??
+      record.review_count ??
+      record.reviewsCount ??
+      record.reviews_count ??
+      record.ratingCount ??
+      record.rating_count
+  );
+
+  if (!averageRating || !reviewCount || averageRating <= 0 || reviewCount <= 0) {
+    return null;
+  }
+
+  return {
+    averageRating: Math.min(5, Math.max(0, averageRating)),
+    reviewCount: Math.floor(reviewCount)
+  };
+}
+
+async function loadFlagshipProductReviewSummaries(
+  context: StoreTenantContext,
+  products: ProductGridProduct[]
+) {
+  const summaries = new Map<string, FlagshipProductReviewSummary>();
+
+  await Promise.all(
+    products.map(async (product) => {
+      const existingSummary = productReviewSummaryFromProduct(product);
+
+      if (existingSummary) {
+        summaries.set(product.id, existingSummary);
+        return;
+      }
+
+      const summary = await getProductReviewSummary({
+        productId: product.id,
+        storeId: context.preview.store.id
+      });
+
+      if (summary.averageRating > 0 && summary.reviewCount > 0) {
+        summaries.set(product.id, summary);
+      }
+    })
+  );
+
+  return summaries;
+}
+
+function FlagshipProductRating({
+  summary
+}: {
+  summary: FlagshipProductReviewSummary | null;
+}) {
+  const averageRating = summary?.averageRating ?? 0;
+  const reviewCount = summary?.reviewCount ?? 0;
+  const hasReviews = averageRating > 0 && reviewCount > 0;
+  const roundedRating = hasReviews ? Math.round(averageRating) : 0;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-black">
+      <span className="flex items-center gap-0.5 text-amber-500" aria-label={hasReviews ? `${averageRating.toFixed(1)} out of 5 stars` : "Ratings placeholder"}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <Star
+            className={`h-3.5 w-3.5 ${hasReviews && item < roundedRating ? "fill-current" : "text-slate-300"}`}
+            key={item}
+          />
+        ))}
+      </span>
+      <span className="text-slate-500">
+        {hasReviews
+          ? `${averageRating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? "review" : "reviews"})`
+          : "Ratings placeholder"}
+      </span>
+    </div>
+  );
+}
+
 function productSectionProducts(context: StoreTenantContext, section?: StoreSection) {
   const products = context.preview.products.filter((product) => isPublicProductStatus(product.status));
   const type = section?.section_type ?? "featured_products";
@@ -775,8 +871,9 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
   return products.slice(0, 6);
 }
 
-function ProductGridSection({ context, section, selectedCurrency }: SectionRenderProps) {
+async function ProductGridSection({ context, section, selectedCurrency }: SectionRenderProps) {
   const config = templateConfig(context);
+  const isFlagship = config.key === "shastore-flagship-premium";
   const products = productSectionProducts(context, section).slice(0, config.key === "electronics-starter" ? 8 : 6);
   const title = textValue(section?.config.title, config.sections.productsTitle);
   const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
@@ -793,6 +890,9 @@ function ProductGridSection({ context, section, selectedCurrency }: SectionRende
     categories: context.preview.categories,
     products
   });
+  const flagshipReviewSummaries = isFlagship
+    ? await loadFlagshipProductReviewSummaries(context, products)
+    : new Map<string, FlagshipProductReviewSummary>();
 
   return (
     <section
@@ -850,11 +950,16 @@ function ProductGridSection({ context, section, selectedCurrency }: SectionRende
             const primaryImage = productPrimaryImage(product);
             const currency = selectedCurrency ?? context.preview.store.currencySettings.defaultCurrency;
             const detailsHref = publicProductHref(context.preview.store.slug, product);
+            const reviewSummary = isFlagship
+              ? flagshipReviewSummaries.get(product.id) ?? productReviewSummaryFromProduct(product)
+              : null;
 
             return (
               <article
                 className={`overflow-hidden border transition hover:-translate-y-1 ${
-                  config.layout.productCard === "spec-card"
+                  isFlagship
+                    ? "border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)]"
+                    : config.layout.productCard === "spec-card"
                     ? "border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)]"
                     : config.layout.productCard === "glow-card"
                       ? "border-pink-100 bg-white shadow-[0_24px_80px_-60px_rgba(236,72,153,0.9)]"
@@ -883,7 +988,7 @@ function ProductGridSection({ context, section, selectedCurrency }: SectionRende
                       }}
                     >
                       <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-                        Image coming soon
+                        {isFlagship ? "Premium image placeholder" : "Image coming soon"}
                       </span>
                     </div>
                   )}
@@ -921,6 +1026,7 @@ function ProductGridSection({ context, section, selectedCurrency }: SectionRende
                       {product.title}
                     </h3>
                   </Link>
+                  {isFlagship ? <FlagshipProductRating summary={reviewSummary} /> : null}
                   <p className={`mt-3 text-sm leading-6 ${config.key === "shastore-flagship-premium" ? "line-clamp-2" : ""} ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "Premium product information placeholder."}
                   </p>
@@ -2205,7 +2311,7 @@ function MissingSectionRenderer({ section }: { context: StoreTenantContext; sect
 
 const sectionRegistry: Record<
   string,
-  (props: SectionRenderProps) => ReactNode
+  (props: SectionRenderProps) => ReactNode | Promise<ReactNode>
 > = {
   CTA: CtaSection,
   FAQ: FaqSection,
