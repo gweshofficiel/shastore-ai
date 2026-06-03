@@ -1053,12 +1053,17 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
         label: category.name
       }))
     : flagshipCategoryPlaceholders.map((category) => ({ icon: category.icon, href: "#categories", label: category.label }));
-  const navLinks = headerNavigation?.links.length
-    ? uniqueStorefrontNavLinks(headerNavigation.links)
-    : flagshipMainNavLinks.map((link) => ({
-        href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
-        label: link.label
-      }));
+  const flagshipNavLinks = flagshipMainNavLinks.map((link) => ({
+    href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
+    label: link.label
+  }));
+  const navLinks = uniqueStorefrontNavLinks([
+    ...flagshipNavLinks,
+    ...(headerNavigation?.links ?? [])
+  ]);
+  const iconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200";
+  const darkIconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800";
+  const iconCountClassName = "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950";
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
@@ -1132,19 +1137,31 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
             ) : null}
             {headerNavigation?.wishlistEnabled ?? true ? (
               <WishlistNavLink
+                className={iconLinkClassName}
+                countClassName={iconCountClassName}
                 currency={context.preview.store.currency}
+                label={<Heart className="h-5 w-5" />}
+                showCountBadge
                 slug={slug}
                 storeId={context.preview.store.id}
               />
             ) : null}
             <CompareNavLink
+              className={iconLinkClassName}
+              countClassName={iconCountClassName}
               currency={context.preview.store.currency}
+              label={<CircleDot className="h-5 w-5" />}
+              showCountBadge
               slug={slug}
               storeId={context.preview.store.id}
             />
             {headerNavigation?.cartEnabled ?? true ? (
               <CartNavLink
+                className={darkIconLinkClassName}
+                countClassName={iconCountClassName}
                 currency={context.preview.store.currency}
+                label={<ShoppingCart className="h-5 w-5" />}
+                showCountBadge
                 slug={slug}
                 storeId={context.preview.store.id}
               />

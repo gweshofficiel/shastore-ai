@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   createPublicStoreOrderDraftAction,
   type PublicStoreOrderState
@@ -972,11 +972,19 @@ export function AddToCartButton({
 }
 
 export function CartNavLink({
+  className = "rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200",
+  countClassName,
   currency,
+  label = "Cart",
+  showCountBadge = false,
   slug,
   storeId
 }: {
+  className?: string;
+  countClassName?: string;
   currency: string;
+  label?: ReactNode;
+  showCountBadge?: boolean;
   slug: string;
   storeId: string;
 }) {
@@ -989,10 +997,15 @@ export function CartNavLink({
 
   return (
     <Link
-      className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+      className={className}
       href={`/store/${slug}/cart`}
     >
-      Cart{count ? ` (${count})` : ""}
+      {label}
+      {showCountBadge ? (
+        count ? <span className={countClassName}>{count}</span> : null
+      ) : (
+        count ? ` (${count})` : ""
+      )}
     </Link>
   );
 }

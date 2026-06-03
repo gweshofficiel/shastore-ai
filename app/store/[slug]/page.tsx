@@ -922,12 +922,16 @@ export default async function PublicStorePage({
       <StorefrontTenantContextScript context={context} />
       <GoogleAnalyticsScript enabled={seoSettings.googleAnalyticsEnabled} measurementId={seoSettings.googleAnalyticsMeasurementId} />
       <MetaPixelScript enabled={seoSettings.metaPixelEnabled} pixelId={seoSettings.metaPixelId} />
-      <div className="fixed right-4 top-4 z-50">
-        <StorefrontLanguageSwitcher settings={store.languageSettings} />
-      </div>
-      <div className="fixed right-4 top-16 z-50">
-        <StorefrontCurrencySwitcher settings={store.currencySettings} />
-      </div>
+      {isFlagshipPremium ? null : (
+        <>
+          <div className="fixed right-4 top-4 z-50">
+            <StorefrontLanguageSwitcher settings={store.languageSettings} />
+          </div>
+          <div className="fixed right-4 top-16 z-50">
+            <StorefrontCurrencySwitcher settings={store.currencySettings} />
+          </div>
+        </>
+      )}
       <StoreAffiliateAttribution storeId={store.id} />
       <StoreReferralAttribution storeId={store.id} />
       <StorefrontHydration
@@ -936,7 +940,7 @@ export default async function PublicStorePage({
         templateId={preview.templateId}
       />
       <StoreMarketingMessages messages={marketingMessages} storeId={store.id} />
-      {discoveryControls}
+      {isFlagshipPremium ? null : discoveryControls}
       {discovery.active && preview.products.length > 0 && products.length === 0 ? (
         <section className="px-4 pb-8 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
