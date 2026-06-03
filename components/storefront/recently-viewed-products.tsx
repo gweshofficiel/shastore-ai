@@ -167,33 +167,33 @@ export function RecentlyViewedProducts({
           Browse store
         </Link>
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {displayProducts.map((product) => {
           const productHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const productCurrency = product.currency || currency;
 
           return (
             <article
-              className="group overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+              className="group flex h-full min-w-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
               key={product.id}
             >
-              <Link className="relative block" href={productHref}>
+              <Link className="relative block shrink-0 overflow-hidden rounded-t-[inherit]" href={productHref}>
                 <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
                 {product.imageUrl ? (
                   <img
                     alt={product.title}
-                    className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
+                    className="block aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105"
                     src={product.imageUrl}
                   />
                 ) : (
-                  <div className="flex aspect-square items-end bg-slate-900 p-5 text-white">
+                  <div className="flex aspect-[4/3] items-end bg-slate-900 p-5 text-white">
                     <span className="rounded-full bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white backdrop-blur">
                       {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
                     </span>
                   </div>
                 )}
               </Link>
-              <div className="grid gap-3 p-4">
+              <div className="flex flex-1 flex-col gap-3 p-4">
                 {isPublicCategoryTitle(product.categoryName) ? (
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                     {product.categoryName}
@@ -211,27 +211,29 @@ export function RecentlyViewedProducts({
                   <ProductSalesProof compact product={product} />
                   <ProductStockUrgency className="mt-3" compact product={product} />
                 </div>
-                <ProductQuickView
-                  currency={productCurrency}
-                  detailsHref={productHref}
-                  product={product}
-                  slug={slug}
-                  storeId={storeId}
-                />
-                <CompareButton
-                  currency={productCurrency}
-                  product={product}
-                  slug={slug}
-                  storeId={storeId}
-                />
-                <AddToCartButton
-                  currency={productCurrency}
-                  detailsHref={productHref}
-                  product={product}
-                  showViewDetails
-                  slug={slug}
-                  storeId={storeId}
-                />
+                <div className="mt-auto grid gap-2 pt-3">
+                  <ProductQuickView
+                    currency={productCurrency}
+                    detailsHref={productHref}
+                    product={product}
+                    slug={slug}
+                    storeId={storeId}
+                  />
+                  <CompareButton
+                    currency={productCurrency}
+                    product={product}
+                    slug={slug}
+                    storeId={storeId}
+                  />
+                  <AddToCartButton
+                    currency={productCurrency}
+                    detailsHref={productHref}
+                    product={product}
+                    showViewDetails
+                    slug={slug}
+                    storeId={storeId}
+                  />
+                </div>
               </div>
             </article>
           );

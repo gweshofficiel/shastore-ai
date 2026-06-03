@@ -1084,9 +1084,9 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                 </p>
               </div>
               <div
-                className={`grid gap-5 ${
+                className={`grid items-stretch gap-5 ${
                   config.key === "shastore-flagship-premium"
-                    ? "grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
+                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                     : config.layout.mobileDensity === "dense"
                     ? "grid-cols-2 lg:grid-cols-4"
                     : "sm:grid-cols-2 lg:grid-cols-3"
@@ -1103,33 +1103,33 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
 
             return (
               <article
-                className={`overflow-hidden border transition hover:-translate-y-1 ${
+                className={`flex h-full min-w-0 flex-col border transition ${
                   isFlagship
-                    ? "border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)]"
+                    ? "overflow-visible border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)] hover:shadow-[0_32px_100px_-76px_rgba(15,23,42,0.95)]"
                     : config.layout.productCard === "spec-card"
-                    ? "border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)]"
+                    ? "overflow-hidden border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)] hover:-translate-y-1"
                     : config.layout.productCard === "glow-card"
-                      ? "border-pink-100 bg-white shadow-[0_24px_80px_-60px_rgba(236,72,153,0.9)]"
+                      ? "overflow-hidden border-pink-100 bg-white shadow-[0_24px_80px_-60px_rgba(236,72,153,0.9)] hover:-translate-y-1"
                       : config.layout.productCard === "lookbook"
-                        ? "border-rose-100 bg-white shadow-[0_30px_90px_-70px_rgba(159,18,57,0.85)]"
-                        : "border-slate-200 bg-white"
+                        ? "overflow-hidden border-rose-100 bg-white shadow-[0_30px_90px_-70px_rgba(159,18,57,0.85)] hover:-translate-y-1"
+                        : "overflow-hidden border-slate-200 bg-white hover:-translate-y-1"
                 } ${cardRadiusClass(context)}`}
                 key={product.id}
               >
                 <Link
-                  className="relative block"
+                  className={`relative block shrink-0 overflow-hidden ${config.key === "shastore-flagship-premium" ? "rounded-t-[inherit]" : ""}`}
                   href={publicProductHref(context.preview.store.slug, product)}
                 >
                   <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
                   {primaryImage ? (
                     <img
                       alt={product.title}
-                      className={`w-full object-cover ${config.key === "shastore-flagship-premium" ? "aspect-square" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+                      className={`block w-full object-cover ${config.key === "shastore-flagship-premium" ? "aspect-[4/3]" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
                       src={primaryImage}
                     />
                   ) : (
                     <div
-                      className={`flex items-end p-4 ${config.key === "shastore-flagship-premium" ? "aspect-square" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
+                      className={`flex items-end p-4 ${config.key === "shastore-flagship-premium" ? "aspect-[4/3]" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
                       style={{
                         background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
                       }}
@@ -1140,7 +1140,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     </div>
                   )}
                 </Link>
-                {galleryImages.length ? (
+                {galleryImages.length && !isFlagship ? (
                   <div className={`grid gap-2 px-4 pt-4 ${config.key === "fashion-starter" ? "grid-cols-4" : "grid-cols-3"}`}>
                     {galleryImages.slice(0, config.key === "electronics-starter" ? 3 : 4).map((url) => (
                       <img
@@ -1152,7 +1152,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     ))}
                   </div>
                 ) : null}
-                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "p-4" : "p-5"}>
+                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "flex flex-1 flex-col p-4" : "flex flex-1 flex-col p-5"}>
                   {isPublicCategoryTitle(product.categoryName) ? (
                         <p
                           className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
@@ -1196,7 +1196,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       {currency}
                     </span>
                   </div>
-                  <div className="mt-5 grid gap-2">
+                  <div className="mt-auto grid gap-2 pt-5">
                     <ProductQuickView
                       currency={currency}
                       detailsHref={detailsHref}
