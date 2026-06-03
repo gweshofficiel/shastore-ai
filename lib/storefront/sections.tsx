@@ -1338,8 +1338,8 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
           </div>
         </div>
       </div>
-      <div className="px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-4 xl:grid-cols-[260px_minmax(0,1fr)_auto] xl:items-center">
+      <div className="px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-3 xl:grid-cols-[260px_minmax(0,1fr)_auto] xl:items-center">
           <Link className="flex min-w-0 items-center gap-3" href={`/store/${slug}`}>
             {logoUrl ? (
               <img
@@ -1421,10 +1421,10 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
           </div>
         </div>
       </div>
-      <nav className="border-t border-slate-100 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 overflow-x-auto text-sm font-black text-slate-700">
+      <nav className="border-t border-slate-100 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto text-sm font-black text-slate-700">
           {navLinks.map((link) => (
-            <Link href={link.href} key={navKey(link)}>
+            <Link className="shrink-0 whitespace-nowrap" href={link.href} key={navKey(link)}>
               {link.label}
             </Link>
           ))}
@@ -1611,32 +1611,32 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
   if (template.key === "shastore-flagship-premium") {
     return (
       <section className="bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="hidden overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm lg:block">
             <div className="border-b border-slate-100 bg-slate-950 px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-white">
               <span className="flex items-center gap-2"><Menu className="h-4 w-4" /> Categories</span>
             </div>
             <div className="max-h-[520px] overflow-auto p-2">
               {flagshipCategories.map((category) => (
-                <Link className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950" href={category.href} key={category.label}>
-                  <category.icon className="h-4 w-4 text-slate-500" />
-                  <span>{category.label}</span>
+                <Link className="flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950" href={category.href} key={category.label}>
+                  <category.icon className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="min-w-0 leading-5">{category.label}</span>
                 </Link>
               ))}
             </div>
           </aside>
-          <div className="grid overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="p-7 sm:p-9 lg:p-10">
-              <p className="inline-flex rounded-full bg-amber-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+          <div className="grid min-w-0 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="flex min-w-0 flex-col justify-center p-7 text-center sm:p-9 lg:p-10 lg:text-left">
+              <p className="inline-flex self-center rounded-full bg-amber-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-700 lg:self-start">
                 Premium ecommerce storefront
               </p>
-              <h1 className="mt-5 max-w-3xl text-4xl font-black leading-[1.06] tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-6xl" style={headingStyle()}>
+              <h1 className="mx-auto mt-5 max-w-3xl text-4xl font-black leading-[1.08] tracking-[-0.04em] text-slate-950 sm:text-5xl lg:mx-0 lg:text-6xl" style={headingStyle()}>
                 {title}
               </h1>
-              <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-slate-600">
+              <p className="mx-auto mt-4 max-w-2xl text-base font-semibold leading-7 text-slate-600 lg:mx-0">
                 {body || "A refined premium shopping experience with real catalog data, active inventory, and checkout-ready products."}
               </p>
-              <div className="mt-7 flex flex-wrap gap-3">
+              <div className="mt-7 flex flex-wrap justify-center gap-3 lg:justify-start">
                 <a className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800" href="#products">
                   Shop products
                 </a>
@@ -1657,8 +1657,8 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
                 ))}
               </div>
             </div>
-            <div className="flex min-h-80 items-end bg-gradient-to-br from-slate-100 via-white to-amber-50 p-5">
-              <div className="w-full rounded-[2rem] border border-white bg-white/70 p-6 shadow-inner">
+            <div className="flex min-h-80 min-w-0 items-center bg-gradient-to-br from-slate-100 via-white to-amber-50 p-5">
+              <div className="w-full min-w-0 rounded-[2rem] border border-white bg-white/75 p-5 shadow-inner">
                 {heroProducts.length ? (
                   <div className="grid gap-3">
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1666,17 +1666,17 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
                     </p>
                     {heroProducts.map((product) => (
                       <Link
-                        className="flex items-center justify-between gap-4 rounded-2xl border border-white bg-white/80 p-4 shadow-sm transition hover:bg-white"
+                        className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white bg-white/85 p-3.5 shadow-sm transition hover:bg-white"
                         href={publicProductHref(context.preview.store.slug, product)}
                         key={product.id}
                       >
-                        <span>
-                          <span className="block text-sm font-black text-ink">{product.title}</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-black leading-5 text-ink">{product.title}</span>
                           <span className="mt-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
                             {product.categoryName || "Featured"}
                           </span>
                         </span>
-                        <ShoppingCart className="h-5 w-5 text-slate-500" />
+                        <ShoppingCart className="h-5 w-5 shrink-0 text-slate-500" />
                       </Link>
                     ))}
                   </div>
