@@ -524,7 +524,9 @@ export default async function PublicOrderConfirmationPage({
             )}
             <Link
               className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-black text-white transition hover:bg-slate-800"
-              href={`/store/${slug}/track?reference=${orderReference(order.id)}`}
+              href={`/store/${slug}/track?reference=${encodeURIComponent(orderReference(order.id))}${
+                order.customer_phone ? `&phone=${encodeURIComponent(order.customer_phone)}` : ""
+              }`}
             >
               Track this order
             </Link>

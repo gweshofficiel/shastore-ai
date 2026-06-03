@@ -127,6 +127,7 @@ async function getSecurityCenterData(selectedStoreId?: string) {
     activityEvents: [] as Array<{ action: string; created_at: string; id: string; source: string }>,
     auditEvents: [] as SecurityAuditRow[],
     error: null as string | null,
+    loadWarning: null as string | null,
     failedLogins: [] as SecurityAuditRow[],
     invitedMembers: [] as WorkspaceInviteRow[],
     passwordResets: [] as SecurityAuditRow[],
@@ -227,6 +228,28 @@ async function getSecurityCenterData(selectedStoreId?: string) {
     getWorkspaceMembers(supabase, workspaceId, user.id)
   ]);
 
+  const partialLoadIssues: string[] = [];
+
+  if (sessionsResult.error) {
+    partialLoadIssues.push("active sessions");
+  }
+
+  if (auditResult.error) {
+    partialLoadIssues.push("security audit events");
+  }
+
+  if (activityResult.error) {
+    partialLoadIssues.push("workspace security activity");
+  }
+
+  if (roster.membersError || roster.invitesError) {
+    partialLoadIssues.push("team security roster");
+  }
+
+  const loadWarning = partialLoadIssues.length
+    ? `Could not load ${partialLoadIssues.join(", ")}. Apply pending Supabase migrations if sections look empty.`
+    : null;
+
   const sessions = (sessionsResult.data ?? []) as unknown as SecuritySessionRow[];
   const auditEvents = ((auditResult.data ?? []) as unknown as SecurityAuditRow[]).filter((event) =>
     isSecurityActivityAction(event.action)
@@ -268,6 +291,7 @@ async function getSecurityCenterData(selectedStoreId?: string) {
     activityEvents,
     auditEvents,
     error: null,
+    loadWarning,
     failedLogins,
     invitedMembers,
     passwordResets,
@@ -304,6 +328,12 @@ export default async function SecurityCenterPage({ searchParams }: SecurityPageP
       {message ? (
         <Card className="border-emerald-200 bg-emerald-50 p-4">
           <p className="text-sm font-bold text-emerald-800">{message}</p>
+        </Card>
+      ) : null}
+
+      {data.loadWarning ? (
+        <Card className="border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-bold text-amber-900">{data.loadWarning}</p>
         </Card>
       ) : null}
 

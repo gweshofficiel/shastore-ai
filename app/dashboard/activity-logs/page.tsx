@@ -91,6 +91,13 @@ export default async function ActivityLogsPage() {
           Showing the latest {logs.length} activity events for the active workspace.
         </p>
       </Card>
+      {error && !logs.length ? (
+        <Card className="border-amber-200 bg-amber-50 p-6">
+          <p className="text-sm font-bold text-amber-900">
+            Activity logs could not be loaded. Apply the workspace activity logs migration or check workspace access.
+          </p>
+        </Card>
+      ) : null}
       <div className="grid gap-4">
         {logs.length ? (
           logs.map((log) => (
