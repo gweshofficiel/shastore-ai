@@ -298,7 +298,7 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
 }
 
 function isPublicProductStatus(status: string | null) {
-  return status === "active";
+  return status === "active" || status === "published";
 }
 
 function publicProductHref(
