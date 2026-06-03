@@ -9,6 +9,7 @@ import {
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 
 type ProductQuickViewProps = {
@@ -174,11 +175,11 @@ export function ProductQuickView({
                     src={product.imageUrl}
                   />
                 ) : (
-                  <div className="flex aspect-square items-end bg-slate-900 p-5 text-white">
-                    <span className="rounded-full bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white">
-                      Image coming soon
-                    </span>
-                  </div>
+                  <PremiumVisualFallback
+                    accentLabel={`${product.title} visual`}
+                    className="aspect-square"
+                    theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+                  />
                 )}
               </div>
               <div className="grid min-w-0 content-start gap-4">

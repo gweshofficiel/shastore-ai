@@ -10,6 +10,7 @@ import { ProductRatingSummary } from "@/components/storefront/product-rating-sum
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import {
   addProductToStoreCart
 } from "@/components/storefront/public-store-cart";
@@ -30,7 +31,6 @@ type ProductDetailFoundationProps = {
   currency: StoreCurrencyCode;
   currencySettings: StoreCurrencySettings;
   galleryUrls: string[];
-  heroBackground: string;
   product: PublicStorefrontProduct;
   reviewCount: number;
   slug: string;
@@ -156,7 +156,6 @@ export function ProductDetailFoundation({
   currency,
   currencySettings,
   galleryUrls,
-  heroBackground,
   product,
   reviewCount,
   slug,
@@ -236,14 +235,11 @@ export function ProductDetailFoundation({
               src={selectedImage}
             />
           ) : (
-            <div
-              className="flex aspect-square items-end p-8 text-white"
-              style={{ background: heroBackground }}
-            >
-              <span className="rounded-full bg-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white backdrop-blur">
-                Image coming soon
-              </span>
-            </div>
+            <PremiumVisualFallback
+              accentLabel={`${product.title} visual`}
+              className="aspect-square"
+              theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+            />
           )}
         </div>
         {images.length > 1 ? (

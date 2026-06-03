@@ -594,7 +594,6 @@ export default async function PublicProductDetailPage({
             currency={currency}
             currencySettings={preview.store.currencySettings}
             galleryUrls={galleryUrls}
-            heroBackground={heroBackground}
             product={product}
             reviewCount={summary.reviewCount}
             slug={preview.store.slug}

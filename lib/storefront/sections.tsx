@@ -45,6 +45,17 @@ import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
+import {
+  CategoryVisualMedia,
+  PopupAnnouncementSlots,
+  PremiumVisualFallback,
+  PromotionalVisualBlocks,
+  TrustVisualBlocks,
+  VisualSlotPanel,
+  defaultTrustVisualSlots,
+  resolveCategoryVisualSlot,
+  resolveHeroVisualSlots
+} from "@/components/storefront/visual-slots";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -85,6 +96,11 @@ export type StoreSectionType =
   | "hero"
   | "navbar"
   | "banner"
+  | "promotional_blocks"
+  | "popup_slots"
+  | "announcement_slots"
+  | "newsletter_popup"
+  | "discount_popup"
   | "about_preview"
   | "blog_preview"
   | "product_grid"
@@ -133,6 +149,11 @@ const supportedSectionTypes: StoreSectionType[] = [
   "hero",
   "navbar",
   "banner",
+  "promotional_blocks",
+  "popup_slots",
+  "announcement_slots",
+  "newsletter_popup",
+  "discount_popup",
   "about_preview",
   "blog_preview",
   "product_grid",
@@ -1099,16 +1120,11 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       src={primaryImage}
                     />
                   ) : (
-                    <div
-                      className={`flex items-end p-4 ${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
-                      style={{
-                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                      }}
-                    >
-                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700">
-                        Image coming soon
-                      </span>
-                    </div>
+                    <PremiumVisualFallback
+                      accentLabel={`${product.title} visual`}
+                      className={`${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+                      theme={context.theme.colorPalette}
+                    />
                   )}
                 </Link>
                 {galleryImages.length && !isFlagship ? (
@@ -1565,8 +1581,14 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
   const config = section.config;
   const template = templateConfig(context);
   const theme = context.preview.themeSettings;
-  const title = textValue(config.title, theme.heroTitle || context.settings.title);
-  const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
+  const heroSlots = resolveHeroVisualSlots({
+    config,
+    fallbackSubtitle: theme.heroSubtitle || (context.settings.description ?? ""),
+    fallbackTitle: theme.heroTitle || context.settings.title,
+    themeSettings: theme
+  });
+  const title = heroSlots.title;
+  const body = heroSlots.subtitle;
   const heroProducts = context.preview.products.filter((product) => isPublicProductStatus(product.status)).slice(0, 4);
   const flagshipCategories = context.preview.categories.length
     ? context.preview.categories.slice(0, 21).map((category) => ({
@@ -1609,8 +1631,8 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
                 {body || "A refined premium shopping experience with real catalog data, active inventory, and checkout-ready products."}
               </p>
               <div className="mt-7 flex flex-wrap justify-center gap-3 lg:justify-start">
-                <a className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800" href="#products">
-                  Shop products
+                <a className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800" href={heroSlots.ctaLink}>
+                  {heroSlots.ctaText}
                 </a>
                 <a className="rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-black text-slate-800 transition hover:bg-slate-50" href="#categories">
                   Browse categories
@@ -1631,7 +1653,16 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
             </div>
             <div className="flex min-h-80 min-w-0 items-center bg-gradient-to-br from-slate-100 via-white to-amber-50 p-5">
               <div className="w-full min-w-0 rounded-[2rem] border border-white bg-white/75 p-5 shadow-inner">
-                {heroProducts.length ? (
+                {heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl ? (
+                  <picture>
+                    {heroSlots.mobileBannerUrl ? <source media="(max-width: 767px)" srcSet={heroSlots.mobileBannerUrl} /> : null}
+                    <img
+                      alt={title}
+                      className="aspect-[4/5] w-full rounded-[1.5rem] object-cover"
+                      src={heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl || ""}
+                    />
+                  </picture>
+                ) : heroProducts.length ? (
                   <div className="grid gap-3">
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
                       Featured live catalog
@@ -1653,11 +1684,11 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
                     ))}
                   </div>
                 ) : (
-                  <div className="flex aspect-[4/5] items-end rounded-[1.5rem] bg-gradient-to-br from-slate-200 via-white to-slate-100 p-5">
-                    <span className="rounded-full bg-white/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm">
-                      Catalog coming soon
-                    </span>
-                  </div>
+                  <PremiumVisualFallback
+                    accentLabel="Premium catalog visual"
+                    className="aspect-[4/5] rounded-[1.5rem]"
+                    theme={context.theme.colorPalette}
+                  />
                 )}
               </div>
             </div>
@@ -1667,8 +1698,8 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
     );
   }
   const background =
-    theme.heroBackground === "image" && theme.bannerImageUrl
-      ? `linear-gradient(135deg, ${context.theme.colorPalette.primary}cc, ${context.theme.colorPalette.secondary}99), url("${theme.bannerImageUrl}") center/cover`
+    theme.heroBackground === "image" && heroSlots.desktopBannerUrl
+      ? `linear-gradient(135deg, ${context.theme.colorPalette.primary}cc, ${context.theme.colorPalette.secondary}99), url("${heroSlots.desktopBannerUrl}") center/cover`
       : `radial-gradient(circle at 20% 10%, ${context.theme.colorPalette.accent}33, transparent 30%), linear-gradient(135deg, ${context.theme.colorPalette.primary}, ${context.theme.colorPalette.secondary})`;
 
   return (
@@ -1704,15 +1735,24 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
           </h1>
           {body ? <p className="mt-6 max-w-2xl text-base font-semibold leading-8 text-white/75">{body}</p> : null}
           <div className="mt-8 flex flex-wrap gap-3">
-            <a className="rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950" href="#products">
-              Browse products
+            <a className="rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950" href={heroSlots.ctaLink}>
+              {heroSlots.ctaText}
             </a>
             <a className="rounded-full border border-white/20 px-6 py-3 text-sm font-black text-white/80" href="#categories">
               View categories
             </a>
           </div>
         </div>
-        {template.layout.hero === "technical-grid" ? (
+        {heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl ? (
+          <picture className="min-h-80 bg-white/10 p-6 lg:p-10">
+            {heroSlots.mobileBannerUrl ? <source media="(max-width: 767px)" srcSet={heroSlots.mobileBannerUrl} /> : null}
+            <img
+              alt={title}
+              className="h-full min-h-72 w-full rounded-[2rem] object-cover ring-1 ring-white/20"
+              src={heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl || ""}
+            />
+          </picture>
+        ) : template.layout.hero === "technical-grid" ? (
           <div className="grid content-center gap-4 border-t border-cyan-400/20 bg-slate-900/70 p-8 lg:border-l lg:border-t-0">
             {["Fast checkout", "Live catalog", "Mobile ready"].map((item) => (
               <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4" key={item}>
@@ -1764,6 +1804,11 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
           >
             {categories.map((category) => {
               const Icon = flagshipCategoryIcon(category);
+              const visualSlot = resolveCategoryVisualSlot({
+                accentColor: context.theme.colorPalette.accent,
+                category,
+                fallbackIcon: Icon
+              });
 
               return (
                 <Link
@@ -1777,23 +1822,11 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
                   href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
                   key={category.id}
                 >
-                  {category.imageUrl ? (
-                    <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
-                  ) : (
-                    <div
-                      className="flex aspect-[4/3] items-end justify-between p-4"
-                      style={{
-                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                      }}
-                    >
-                      <span className="rounded-2xl bg-white/85 p-3 text-slate-700 shadow-sm">
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
-                        {category.name}
-                      </span>
-                    </div>
-                  )}
+                  <CategoryVisualMedia
+                    categoryName={category.name}
+                    slot={visualSlot}
+                    theme={context.theme.colorPalette}
+                  />
                   <div className="p-5">
                     <h3
                       className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
@@ -1817,14 +1850,15 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
 
               return (
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg" key={name}>
-                <div className="flex aspect-[4/3] items-end justify-between bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
-                  <span className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="rounded-full bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                    Image placeholder
-                  </span>
-                </div>
+                <CategoryVisualMedia
+                  categoryName={name}
+                  slot={{
+                    accentColor: context.theme.colorPalette.accent,
+                    icon: Icon,
+                    imageUrl: null
+                  }}
+                  theme={context.theme.colorPalette}
+                />
                 <div className="p-5">
                   <h3 className="text-lg font-black tracking-[-0.03em] text-ink" style={headingStyle()}>
                     {name}
@@ -2146,11 +2180,10 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
                   {primaryImage ? (
                     <img alt={product.title} className="aspect-[4/3] w-full object-cover" src={primaryImage} />
                   ) : (
-                    <div
+                    <PremiumVisualFallback
+                      accentLabel={`${product.title} visual`}
                       className="aspect-[4/3]"
-                      style={{
-                        background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                      }}
+                      theme={context.theme.colorPalette}
                     />
                   )}
                   <div className="flex flex-1 flex-col p-4">
@@ -2243,40 +2276,23 @@ function BrandsSection({ context, section }: SectionRenderProps) {
 
 function TrustBadgesSection({ context, section }: SectionRenderProps) {
   const store = context.preview.store;
-  const config = templateConfig(context);
-  const badges = config.key === "shastore-flagship-premium"
-    ? [
-        { body: "Shipping promise placeholder", icon: Truck, title: "Free Shipping" },
-        { body: "Return policy placeholder", icon: RotateCcw, title: "30-Day Returns" },
-        { body: "Payment security placeholder", icon: ShieldCheck, title: "Secure Payment" },
-        { body: "Premium support placeholder", icon: Headphones, title: "24/7 Support" }
-      ]
-    : [
-        {
-          body: store.deliveryEnabled || store.pickupEnabled
-            ? "Delivery and pickup settings are managed by the store owner."
-            : "Delivery promise placeholder for this store.",
-          icon: Truck,
-          title: "Delivery ready"
-        },
-        {
-          body: store.supportEmail || store.supportPhone || store.whatsappNumber
-            ? "Support channels are connected for this store."
-            : "Customer support placeholder for this store.",
-          icon: Headphones,
-          title: "Customer support"
-        },
-        {
-          body: "Checkout uses the store's active payment and order settings.",
-          icon: ShieldCheck,
-          title: "Secure checkout"
-        },
-        {
-          body: "Language and currency tools are available for localized shopping.",
-          icon: Globe2,
-          title: "Localized shopping"
-        }
-      ];
+  const badges = defaultTrustVisualSlots().map((slot) => {
+    if (slot.title === "Fast delivery" && (store.deliveryEnabled || store.pickupEnabled)) {
+      return {
+        ...slot,
+        body: "Delivery and pickup settings are connected for this store."
+      };
+    }
+
+    if (slot.title === "24/7 support" && (store.supportEmail || store.supportPhone || store.whatsappNumber)) {
+      return {
+        ...slot,
+        body: "Support channels are connected for this store."
+      };
+    }
+
+    return slot;
+  });
   const title = textValue(section.config.title, "Why shop here");
   const subtitle = textValue(section.config.subtitle, "Trust signals powered by store settings.");
 
@@ -2290,17 +2306,62 @@ function TrustBadgesSection({ context, section }: SectionRenderProps) {
           {title}
         </h2>
         <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {badges.map((badge) => (
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={badge.title}>
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <badge.icon className="h-5 w-5" />
-              </div>
-              <h3 className="text-base font-black text-ink">{badge.title}</h3>
-              <p className="mt-2 text-sm font-semibold leading-6 text-muted">{badge.body}</p>
-            </div>
-          ))}
+        <div className="mt-6">
+          <TrustVisualBlocks slots={badges} />
         </div>
+      </div>
+    </section>
+  );
+}
+
+function promotionalSlotItems(section: StoreSection) {
+  const rawItems = Array.isArray(section.config.promotions)
+    ? section.config.promotions
+    : Array.isArray(section.config.items)
+      ? section.config.items
+      : [];
+
+  return rawItems
+    .filter(isRecord)
+    .map((item) => ({
+      body: textValue(item.body ?? item.subtitle),
+      ctaText: textValue(item.ctaText, "Shop now"),
+      eyebrow: textValue(item.eyebrow),
+      title: textValue(item.title)
+    }))
+    .filter((item) => item.title || item.body || item.eyebrow);
+}
+
+function PromotionalBlocksSection({ context, section }: SectionRenderProps) {
+  const title = textValue(section.config.title, "Premium promotions");
+  const subtitle = textValue(section.config.subtitle, "Visual merchandising slots for campaigns, shipping incentives, and seasonal offers.");
+  const ctaHref = textValue(section.config.ctaLink ?? section.config.ctaHref, "#products");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
+        <VisualSlotPanel eyebrow="Promotions" subtitle={subtitle} title={title}>
+          <PromotionalVisualBlocks
+            ctaHref={ctaHref}
+            slots={promotionalSlotItems(section)}
+            theme={context.theme.colorPalette}
+          />
+        </VisualSlotPanel>
+      </div>
+    </section>
+  );
+}
+
+function PopupSlotsSection({ context, section }: SectionRenderProps) {
+  const title = textValue(section.config.title, "Marketing message slots");
+  const subtitle = textValue(section.config.subtitle, "Prepared slots for announcement bars, newsletter capture, and discount campaigns.");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <VisualSlotPanel eyebrow="Popup ready" subtitle={subtitle} title={title}>
+          <PopupAnnouncementSlots theme={context.theme.colorPalette} />
+        </VisualSlotPanel>
       </div>
     </section>
   );
@@ -2446,7 +2507,8 @@ const sectionRegistry: Record<
   CTA: CtaSection,
   FAQ: FaqSection,
   about_preview: AboutPreviewSection,
-  banner: GenericContentSection,
+  announcement_slots: PopupSlotsSection,
+  banner: PromotionalBlocksSection,
   best_sellers: ProductGridSection,
   blog_preview: BlogPreviewSection,
   brands: BrandsSection,
@@ -2462,10 +2524,14 @@ const sectionRegistry: Record<
   footer_cta: CtaSection,
   hero: HeroSection,
   image: GenericContentSection,
+  discount_popup: PopupSlotsSection,
   navbar: NavbarSection,
   new_arrivals: ProductGridSection,
   newsletter: NewsletterSection,
+  newsletter_popup: PopupSlotsSection,
+  popup_slots: PopupSlotsSection,
   product_grid: ProductGridSection,
+  promotional_blocks: PromotionalBlocksSection,
   recommended_products: ProductGridSection,
   recently_viewed: RecentlyViewedSection,
   rich_text: GenericContentSection,
