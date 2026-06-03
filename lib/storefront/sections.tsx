@@ -51,6 +51,10 @@ import {
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
 import {
+  summarizeFlagshipProductGrid,
+  type FlagshipProductGridTrace
+} from "@/lib/storefront/flagship-product-trace";
+import {
   getVisualBuilderPayload,
   loadVisualEditorState,
   resolveBuilderSections
@@ -299,6 +303,85 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
 
 function isPublicProductStatus(status: string | null) {
   return status === "active" || status === "published";
+}
+
+function liveCatalogProducts(context: StoreTenantContext) {
+  return context.preview.products.filter((product) => isPublicProductStatus(product.status));
+}
+
+function productGridDisplayLimit(templateKey: string) {
+  return templateKey === "electronics-starter" ? 8 : 6;
+}
+
+function resolveProductGridDisplayProducts(
+  context: StoreTenantContext,
+  section: StoreSection | undefined,
+  limit: number
+) {
+  const catalogProducts = liveCatalogProducts(context);
+  let sectionProducts = productSectionProducts(context, section);
+
+  if (!sectionProducts.length && catalogProducts.length) {
+    sectionProducts = catalogProducts;
+  }
+
+  return {
+    catalogProducts,
+    products: sectionProducts.slice(0, limit)
+  };
+}
+
+function resolveProductGridBranch({
+  catalogProductsLength,
+  configKey,
+  isFlagship,
+  productsLength,
+  sectionType
+}: {
+  catalogProductsLength: number;
+  configKey: string;
+  isFlagship: boolean;
+  productsLength: number;
+  sectionType: string | undefined;
+}): FlagshipProductGridTrace["branch"] {
+  if (productsLength > 0) {
+    return "real-cards";
+  }
+
+  if (isFlagship && catalogProductsLength > 0) {
+    return "real-cards";
+  }
+
+  if (isFlagship && sectionType === "flash_deals") {
+    return "flash-deals-placeholder";
+  }
+
+  if (isFlagship && sectionType === "new_arrivals") {
+    return "new-arrivals-placeholder";
+  }
+
+  if (configKey === "shastore-flagship-premium") {
+    return "flagship-product-placeholder-grid";
+  }
+
+  return "premium-skeleton-grid";
+}
+
+function placeholderSourceForBranch(branch: FlagshipProductGridTrace["branch"]) {
+  switch (branch) {
+    case "real-cards":
+      return null;
+    case "flash-deals-placeholder":
+      return "lib/storefront/sections.tsx FlagshipFlashDealsPlaceholder → FlagshipProductPlaceholderGrid (Premium Product 1 at line 456)";
+    case "new-arrivals-placeholder":
+      return "lib/storefront/sections.tsx FlagshipNewArrivalsPlaceholder (Promo image placeholder at line 542)";
+    case "flagship-product-placeholder-grid":
+      return "lib/storefront/sections.tsx FlagshipProductPlaceholderGrid → FlagshipProductPlaceholderCard (Premium Product 1 at line 456)";
+    case "premium-skeleton-grid":
+      return "lib/storefront/sections.tsx PremiumSkeletonGrid (Product image placeholder at line 341)";
+    default:
+      return null;
+  }
 }
 
 function publicProductHref(
@@ -896,13 +979,13 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
   }
 
   if (type === "flash_deals") {
-    return products
-      .filter((product) => {
-        const compareAt = numericProductPrice(product.compareAtPrice);
-        const price = numericProductPrice(product.price);
-        return compareAt !== null && price !== null && compareAt > price;
-      })
-      .slice(0, 8);
+    const discountedProducts = products.filter((product) => {
+      const compareAt = numericProductPrice(product.compareAtPrice);
+      const price = numericProductPrice(product.price);
+      return compareAt !== null && price !== null && compareAt > price;
+    });
+
+    return (discountedProducts.length ? discountedProducts : products).slice(0, 8);
   }
 
   if (type === "recommended_products") {
@@ -917,9 +1000,32 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
 async function ProductGridSection({ context, section, selectedCurrency }: SectionRenderProps) {
   const config = templateConfig(context);
   const isFlagship = config.key === "shastore-flagship-premium";
-  const liveCatalogProducts = context.preview.products.filter((product) => isPublicProductStatus(product.status));
-  const sectionProducts = productSectionProducts(context, section);
-  const products = sectionProducts.slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const displayLimit = productGridDisplayLimit(config.key);
+  const { catalogProducts, products } = resolveProductGridDisplayProducts(context, section, displayLimit);
+  const inputProductsLength = productSectionProducts(context, section).length;
+  const productSections = buildPublicProductSections({
+    categories: context.preview.categories,
+    products
+  });
+  const renderBranch = resolveProductGridBranch({
+    catalogProductsLength: catalogProducts.length,
+    configKey: config.key,
+    isFlagship,
+    productsLength: products.length,
+    sectionType: section?.section_type
+  });
+
+  summarizeFlagshipProductGrid({
+    branch: renderBranch,
+    inputProductsLength,
+    liveCatalogProductsLength: catalogProducts.length,
+    outputProductsLength: products.length,
+    placeholderSource: placeholderSourceForBranch(renderBranch),
+    productSectionsLength: productSections.length,
+    sectionType: section?.section_type ?? "featured_products",
+    storeSlug: context.preview.store.slug
+  });
+
   const title = textValue(section?.config.title, config.sections.productsTitle);
   const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
   const eyebrow = section?.section_type === "new_arrivals"
@@ -931,10 +1037,6 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
         : section?.section_type === "recommended_products"
           ? "Recommended"
           : config.label;
-  const productSections = buildPublicProductSections({
-    categories: context.preview.categories,
-    products
-  });
   const flagshipReviewSummaries = isFlagship
     ? await loadFlagshipProductReviewSummaries(context, products)
     : new Map<string, FlagshipProductReviewSummary>();
@@ -1131,22 +1233,6 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
               </div>
             </div>
           ))}
-        </div>
-      ) : isFlagship && liveCatalogProducts.length ? (
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">{eyebrow}</p>
-          <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
-            No matching products in this section right now
-          </h3>
-          <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-muted">
-            Browse the full catalog for active products, variants, wishlist, compare, quick view, and cart actions.
-          </p>
-          <Link
-            className="mt-5 inline-flex rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-            href={`/store/${context.preview.store.slug}#products`}
-          >
-            Browse catalog
-          </Link>
         </div>
       ) : config.key === "shastore-flagship-premium" && section?.section_type === "flash_deals" ? (
         <FlagshipFlashDealsPlaceholder />
@@ -2055,14 +2141,11 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
 function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
   const categories = context.preview.categories;
   const category = categories[0] ?? null;
-  const collectionProducts = context.preview.products
+  const catalogProducts = liveCatalogProducts(context);
+  const collectionProducts = catalogProducts
     .filter((product) => category && (product.categoryId === category.id || product.categoryName === category.name))
-    .filter((product) => isPublicProductStatus(product.status))
     .slice(0, 4);
-  const fallbackProducts = context.preview.products
-    .filter((product) => isPublicProductStatus(product.status))
-    .slice(0, 4);
-  const products = collectionProducts.length ? collectionProducts : fallbackProducts;
+  const products = (collectionProducts.length ? collectionProducts : catalogProducts).slice(0, 4);
   const title = textValue(section.config.title, category?.name ?? "Featured collection");
   const subtitle = textValue(section.config.subtitle, category?.description || "Explore this premium collection area.");
 
@@ -2118,21 +2201,21 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
               );
             })}
           </div>
-        ) : (
-          <div className="mt-6">
-            <PremiumSkeletonGrid label="Product image placeholder" />
-          </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
 }
 
 function RecentlyViewedSection({ context, section }: SectionRenderProps) {
-  const newestProducts = context.preview.products
-    .filter((product) => isPublicProductStatus(product.status))
+  const catalogProducts = liveCatalogProducts(context);
+  const newestProducts = [...catalogProducts]
     .sort((left, right) => new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime())
     .slice(0, 4);
+
+  if (!newestProducts.length) {
+    return null;
+  }
 
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
@@ -2141,17 +2224,12 @@ function RecentlyViewedSection({ context, section }: SectionRenderProps) {
           currency={context.preview.store.currency}
           fallbackProducts={newestProducts}
           fallbackTitle="Newest products to explore"
-          products={context.preview.products}
+          products={catalogProducts}
           slug={context.preview.store.slug}
           storeId={context.preview.store.id}
           title={textValue(section.config.title, "Recently viewed")}
           trackCurrentProduct={false}
         />
-        {newestProducts.length ? null : (
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-black text-ink">No active products are available yet.</p>
-          </div>
-        )}
       </div>
     </section>
   );

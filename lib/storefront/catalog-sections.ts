@@ -14,6 +14,10 @@ export function isPublicCategoryTitle(value: string | null | undefined) {
   return Boolean(normalized) && !hiddenPublicCategoryNames.has(normalized);
 }
 
+function isPublicCategoryStatus(status: string | null | undefined) {
+  return status === "active" || status === "published";
+}
+
 export type PublicProductSection = {
   category: PublicStorefrontCategory;
   products: PublicStorefrontProduct[];
@@ -42,7 +46,7 @@ export function buildPublicProductSections({
 }): PublicProductSection[] {
   const categorizedProductIds = new Set<string>();
   const categorySections = categories
-    .filter((category) => category.status === "active" && isPublicCategoryTitle(category.name))
+    .filter((category) => isPublicCategoryStatus(category.status) && isPublicCategoryTitle(category.name))
     .map((category) => {
       const categoryProducts = products.filter((product) => {
         const matchesCategory =

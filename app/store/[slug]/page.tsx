@@ -33,6 +33,7 @@ import { loadPublishedStoreFaqsForStore } from "@/lib/store-faq-public";
 import { loadStoreHomepageLayoutForStorefront } from "@/lib/store-homepage-sections";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { DynamicSectionLoader } from "@/lib/storefront/sections";
+import { summarizeFlagshipPageProducts } from "@/lib/storefront/flagship-product-trace";
 import { loadStoreFooterLinkSettings } from "@/lib/store-footer-links";
 import { loadActiveStoreMarketingMessages } from "@/lib/store-marketing-messages";
 import {
@@ -444,6 +445,17 @@ export default async function PublicStorePage({
   const products = discovery.products;
   const theme = preview.themeSettings;
   const isFlagshipPremium = normalizeStorefrontTemplateKey(preview.templateId) === "shastore-flagship-premium";
+  const homepageContext = isFlagshipPremium
+    ? {
+        ...context,
+        preview: {
+          ...preview,
+          products: preview.products
+        }
+      }
+    : filteredContext;
+
+  summarizeFlagshipPageProducts(store.slug, preview.products, homepageContext.preview.products);
   const selectedCurrency = selectedCurrencyFromValue(query.currency, store.currencySettings);
   const productSections = buildPublicProductSections({
     categories: filteredPreview.categories,
@@ -955,7 +967,7 @@ export default async function PublicStorePage({
       ) : null}
       <DynamicSectionLoader
         beforeFooter={flagshipBeforeFooter}
-        context={filteredContext}
+        context={homepageContext}
         fallback={fallbackStorefront}
         footerLinkSettings={footerLinkSettings}
         hasPublishedAbout={hasPublishedAbout}
