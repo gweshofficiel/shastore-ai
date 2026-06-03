@@ -15,6 +15,8 @@ type RecentlyViewedProductsProps = {
   currentProductId?: string | null;
   currency: string;
   displayLimit?: number;
+  fallbackProducts?: PublicStorefrontProduct[];
+  fallbackTitle?: string;
   products: PublicStorefrontProduct[];
   slug: string;
   storeId: string;
@@ -93,6 +95,8 @@ export function RecentlyViewedProducts({
   currentProductId = null,
   currency,
   displayLimit = RECENTLY_VIEWED_DISPLAY_LIMIT,
+  fallbackProducts = [],
+  fallbackTitle = "Newest products to explore",
   products,
   slug,
   storeId,
@@ -129,8 +133,15 @@ export function RecentlyViewedProducts({
     .map((productId) => productById.get(productId) ?? null)
     .filter((product): product is PublicStorefrontProduct => Boolean(product && product.status === "active"))
     .slice(0, Math.max(1, Math.min(displayLimit, RECENTLY_VIEWED_LIMIT)));
+  const displayProducts = recentProducts.length
+    ? recentProducts
+    : fallbackProducts
+        .filter((product) => product.status === "active")
+        .filter((product) => product.id !== currentProductId)
+        .slice(0, Math.max(1, Math.min(displayLimit, RECENTLY_VIEWED_LIMIT)));
+  const displayTitle = recentProducts.length ? title : fallbackTitle;
 
-  if (!recentProducts.length) {
+  if (!displayProducts.length) {
     return null;
   }
 
@@ -142,7 +153,7 @@ export function RecentlyViewedProducts({
             Recently Viewed
           </p>
           <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-            {title}
+            {displayTitle}
           </h2>
         </div>
         <Link
@@ -153,7 +164,7 @@ export function RecentlyViewedProducts({
         </Link>
       </div>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {recentProducts.map((product) => {
+        {displayProducts.map((product) => {
           const productHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const productCurrency = product.currency || currency;
 

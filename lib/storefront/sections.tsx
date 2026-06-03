@@ -2,14 +2,16 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   Baby,
-  BadgeDollarSign,
   BookOpen,
-  Briefcase,
   Car,
   CircleDot,
+  Cpu,
+  Diamond,
+  Footprints,
   Gem,
   Gift,
   Glasses,
+  Gamepad2,
   Globe2,
   Headphones,
   Heart,
@@ -25,6 +27,7 @@ import {
   ShoppingCart,
   Sparkles,
   Star,
+  Trophy,
   Truck,
   User,
   Watch
@@ -349,24 +352,24 @@ function PremiumSkeletonGrid({
 }
 
 const flagshipCategoryPlaceholders: Array<{ icon: LucideIcon; label: string }> = [
-  { icon: Gem, label: "Jewelry" },
+  { icon: Diamond, label: "Jewelry" },
   { icon: CircleDot, label: "Rings" },
   { icon: Sparkles, label: "Necklaces" },
   { icon: Gem, label: "Earrings" },
   { icon: CircleDot, label: "Bracelets" },
   { icon: Watch, label: "Watches" },
   { icon: Gift, label: "Accessories" },
-  { icon: Briefcase, label: "Bags & Wallets" },
+  { icon: ShoppingBag, label: "Bags & Wallets" },
   { icon: Glasses, label: "Sunglasses" },
   { icon: Sparkles, label: "Beauty & Fragrance" },
   { icon: Shirt, label: "Women's Clothing" },
   { icon: Shirt, label: "Men's Clothing" },
-  { icon: ShoppingBag, label: "Shoes" },
+  { icon: Footprints, label: "Shoes" },
   { icon: Home, label: "Home & Living" },
-  { icon: BadgeDollarSign, label: "Electronics" },
-  { icon: ShieldCheck, label: "Sports & Outdoors" },
+  { icon: Cpu, label: "Electronics" },
+  { icon: Trophy, label: "Sports & Outdoors" },
   { icon: Baby, label: "Baby & Kids" },
-  { icon: Gift, label: "Toys & Games" },
+  { icon: Gamepad2, label: "Toys & Games" },
   { icon: Car, label: "Automotive" },
   { icon: BookOpen, label: "Books & Stationery" },
   { icon: Star, label: "Best Sellers" }
@@ -397,6 +400,40 @@ const flagshipMainNavLinks = [
 
 function isFlagshipTemplate(context: StoreTenantContext) {
   return templateConfig(context).key === "shastore-flagship-premium";
+}
+
+function normalizeCategoryKey(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function flagshipCategoryIcon(category: { name?: string | null; slug?: string | null }) {
+  const keys = [
+    normalizeCategoryKey(category.slug),
+    normalizeCategoryKey(category.name)
+  ];
+
+  if (keys.some((key) => key === "jewelry")) return Diamond;
+  if (keys.some((key) => key === "rings")) return CircleDot;
+  if (keys.some((key) => key === "necklaces")) return Sparkles;
+  if (keys.some((key) => key === "earrings")) return Gem;
+  if (keys.some((key) => key === "bracelets")) return CircleDot;
+  if (keys.some((key) => key === "watches")) return Watch;
+  if (keys.some((key) => key === "accessories")) return Gift;
+  if (keys.some((key) => key === "bags-wallets" || key === "bags" || key === "wallets")) return ShoppingBag;
+  if (keys.some((key) => key === "sunglasses")) return Glasses;
+  if (keys.some((key) => key === "beauty-fragrance" || key === "beauty")) return Sparkles;
+  if (keys.some((key) => key === "womens-clothing" || key === "mens-clothing")) return Shirt;
+  if (keys.some((key) => key === "shoes")) return Footprints;
+  if (keys.some((key) => key === "home-living" || key === "home")) return Home;
+  if (keys.some((key) => key === "electronics")) return Cpu;
+  if (keys.some((key) => key === "sports-outdoors" || key === "sports")) return Trophy;
+  if (keys.some((key) => key === "baby-kids" || key === "baby")) return Baby;
+  if (keys.some((key) => key === "toys-games" || key === "toys")) return Gamepad2;
+  if (keys.some((key) => key === "automotive")) return Car;
+  if (keys.some((key) => key === "books-stationery" || key === "books")) return BookOpen;
+  if (keys.some((key) => key === "best-sellers" || key === "bestsellers")) return Star;
+
+  return ShoppingBag;
 }
 
 function FlagshipProductPlaceholderCard({ index }: { index: number }) {
@@ -847,7 +884,13 @@ function productSectionProducts(context: StoreTenantContext, section?: StoreSect
   }
 
   if (type === "best_sellers") {
-    return [...products]
+    const bestSellerProducts = products.filter((product) => {
+      const categoryKey = normalizeCategoryKey(product.categoryName);
+      const inventoryKey = normalizeCategoryKey(product.inventoryStatus);
+      return categoryKey === "best-sellers" || inventoryKey === "best-seller" || inventoryKey === "bestseller";
+    });
+
+    return [...(bestSellerProducts.length ? bestSellerProducts : products)]
       .sort((left, right) => right.salesCount - left.salesCount)
       .slice(0, 8);
   }
@@ -876,8 +919,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
   const isFlagship = config.key === "shastore-flagship-premium";
   const liveCatalogProducts = context.preview.products.filter((product) => isPublicProductStatus(product.status));
   const sectionProducts = productSectionProducts(context, section);
-  const products = (sectionProducts.length || !isFlagship ? sectionProducts : liveCatalogProducts)
-    .slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const products = sectionProducts.slice(0, config.key === "electronics-starter" ? 8 : 6);
   const title = textValue(section?.config.title, config.sections.productsTitle);
   const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
   const eyebrow = section?.section_type === "new_arrivals"
@@ -1031,7 +1073,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                   </Link>
                   {isFlagship ? <FlagshipProductRating summary={reviewSummary} /> : null}
                   <p className={`mt-3 text-sm leading-6 ${config.key === "shastore-flagship-premium" ? "line-clamp-2" : ""} ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-                    {product.description || "Premium product information placeholder."}
+                    {product.description || "Product details coming soon."}
                   </p>
                   <ProductSalesProof compact product={product} />
                   <ProductStockUrgency className="mt-3" compact product={product} />
@@ -1089,6 +1131,22 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
               </div>
             </div>
           ))}
+        </div>
+      ) : isFlagship && liveCatalogProducts.length ? (
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">{eyebrow}</p>
+          <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+            No matching products in this section right now
+          </h3>
+          <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-muted">
+            Browse the full catalog for active products, variants, wishlist, compare, quick view, and cart actions.
+          </p>
+          <Link
+            className="mt-5 inline-flex rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+            href={`/store/${context.preview.store.slug}#products`}
+          >
+            Browse catalog
+          </Link>
         </div>
       ) : config.key === "shastore-flagship-premium" && section?.section_type === "flash_deals" ? (
         <FlagshipFlashDealsPlaceholder />
@@ -1157,7 +1215,7 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
   const categories = context.preview.categories.slice(0, 21);
   const categoryItems = categories.length
     ? categories.map((category) => ({
-        icon: Menu,
+        icon: flagshipCategoryIcon(category),
         href: `/store/${slug}/category/${encodeURIComponent(category.slug || category.id)}`,
         label: category.name
       }))
@@ -1462,9 +1520,10 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
   const theme = context.preview.themeSettings;
   const title = textValue(config.title, theme.heroTitle || context.settings.title);
   const body = textValue(config.body, theme.heroSubtitle || (context.settings.description ?? ""));
+  const heroProducts = context.preview.products.filter((product) => isPublicProductStatus(product.status)).slice(0, 4);
   const flagshipCategories = context.preview.categories.length
     ? context.preview.categories.slice(0, 21).map((category) => ({
-        icon: Menu,
+        icon: flagshipCategoryIcon(category),
         href: `/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`,
         label: category.name
       }))
@@ -1500,7 +1559,7 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
                 {title}
               </h1>
               <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-slate-600">
-                {body || "A refined premium shopping experience with real catalog data when available and elegant placeholders while you prepare your store."}
+                {body || "A refined premium shopping experience with real catalog data, active inventory, and checkout-ready products."}
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800" href="#products">
@@ -1525,11 +1584,34 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
             </div>
             <div className="flex min-h-96 items-end bg-gradient-to-br from-slate-100 via-white to-amber-50 p-6">
               <div className="w-full rounded-[2rem] border border-white bg-white/70 p-6 shadow-inner">
-                <div className="flex aspect-[4/5] items-end rounded-[1.5rem] bg-gradient-to-br from-slate-200 via-white to-slate-100 p-5">
-                  <span className="rounded-full bg-white/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm">
-                    Hero image placeholder
-                  </span>
-                </div>
+                {heroProducts.length ? (
+                  <div className="grid gap-3">
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                      Featured live catalog
+                    </p>
+                    {heroProducts.map((product) => (
+                      <Link
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-white bg-white/80 p-4 shadow-sm transition hover:bg-white"
+                        href={publicProductHref(context.preview.store.slug, product)}
+                        key={product.id}
+                      >
+                        <span>
+                          <span className="block text-sm font-black text-ink">{product.title}</span>
+                          <span className="mt-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                            {product.categoryName || "Featured"}
+                          </span>
+                        </span>
+                        <ShoppingCart className="h-5 w-5 text-slate-500" />
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex aspect-[4/5] items-end rounded-[1.5rem] bg-gradient-to-br from-slate-200 via-white to-slate-100 p-5">
+                    <span className="rounded-full bg-white/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm">
+                      Catalog coming soon
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1634,8 +1716,7 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
             }`}
           >
             {categories.map((category) => {
-              const categoryIcon = flagshipCategoryPlaceholders.find((item) => item.label === category.name);
-              const Icon = categoryIcon?.icon ?? ShoppingBag;
+              const Icon = flagshipCategoryIcon(category);
 
               return (
                 <Link
@@ -1905,7 +1986,7 @@ function AboutPreviewSection({ context, publishedAbout, section }: SectionRender
 }
 
 function BlogPreviewSection({ context, publishedArticles = [], section }: SectionRenderProps) {
-  const articles = publishedArticles.slice(0, 3);
+  const articles = publishedArticles.slice(0, 5);
   const title = textValue(section.config.title, "Latest articles");
   const subtitle = textValue(section.config.subtitle, "Read the newest updates from this store.");
 
@@ -1935,7 +2016,7 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
             </Link>
           </div>
           {articles.length ? (
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
               {articles.map((article) => (
                 <article className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4" key={article.id}>
                   <Link href={`/store/${context.preview.store.slug}/blog/${article.slug}`}>
@@ -1958,20 +2039,11 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
               ))}
             </div>
           ) : (
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {[0, 1, 2].map((item) => (
-                <article className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50" key={item}>
-                  <div className="flex aspect-[16/10] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
-                    <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                      Blog cover placeholder
-                    </span>
-                  </div>
-                  <div className="grid gap-3 p-4">
-                    <div className="h-3 w-2/3 rounded-full bg-slate-200" />
-                    <div className="h-3 w-1/2 rounded-full bg-slate-100" />
-                  </div>
-                </article>
-              ))}
+            <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-6">
+              <p className="text-sm font-black text-ink">No guides are published yet.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                Store articles will appear here as soon as they are published.
+              </p>
             </div>
           )}
         </div>
@@ -2057,28 +2129,28 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
 }
 
 function RecentlyViewedSection({ context, section }: SectionRenderProps) {
-  const hasLiveCatalog = context.preview.products.some((product) => isPublicProductStatus(product.status));
+  const newestProducts = context.preview.products
+    .filter((product) => isPublicProductStatus(product.status))
+    .sort((left, right) => new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime())
+    .slice(0, 4);
 
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
       <div className="mx-auto max-w-7xl">
         <RecentlyViewedProducts
           currency={context.preview.store.currency}
+          fallbackProducts={newestProducts}
+          fallbackTitle="Newest products to explore"
           products={context.preview.products}
           slug={context.preview.store.slug}
           storeId={context.preview.store.id}
           title={textValue(section.config.title, "Recently viewed")}
           trackCurrentProduct={false}
         />
-        {hasLiveCatalog ? null : (
+        {newestProducts.length ? null : (
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Recently viewed
-          </p>
-          <div className="mt-5">
-            <PremiumSkeletonGrid label="Product image placeholder" />
+            <p className="text-sm font-black text-ink">No active products are available yet.</p>
           </div>
-        </div>
         )}
       </div>
     </section>

@@ -411,7 +411,7 @@ export default async function PublicStorePage({
     products: preview.products,
     searchParams: query
   });
-  const publishedArticles = await loadPublishedStoreBlogArticlesForStore(preview.store.id, 3);
+  const publishedArticles = await loadPublishedStoreBlogArticlesForStore(preview.store.id, 5);
   const hasPublishedBlogArticles = publishedArticles.length > 0;
   const publishedFaqs = await loadPublishedStoreFaqsForStore(preview.store.id, 8);
   const hasPublishedFaqs = publishedFaqs.length > 0;
