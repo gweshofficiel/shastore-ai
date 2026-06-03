@@ -907,8 +907,10 @@ export default async function PublicStorePage({
         publishedArticles={publishedArticles}
         publishedFaqs={publishedFaqs}
       />
-      {recommendedProducts.length ? (
-        <section className="px-4 py-12 sm:px-6 lg:px-8">
+      {isFlagshipPremium ? null : (
+        <>
+          {recommendedProducts.length ? (
+            <section className="px-4 py-12 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -994,9 +996,9 @@ export default async function PublicStorePage({
               })}
             </div>
           </div>
-        </section>
-      ) : null}
-      <section className="px-4 py-12 sm:px-6 lg:px-8">
+            </section>
+          ) : null}
+          <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1048,8 +1050,8 @@ export default async function PublicStorePage({
             </div>
           )}
         </div>
-      </section>
-      <section className="px-4 py-12 sm:px-6 lg:px-8">
+          </section>
+          <section className="px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_70px_-60px_rgba(15,23,42,0.8)] lg:grid-cols-[minmax(0,1fr)_1.2fr] lg:p-8">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1109,7 +1111,9 @@ export default async function PublicStorePage({
             </div>
           )}
         </div>
-      </section>
+          </section>
+        </>
+      )}
       {isFlagshipPremium ? null : (
         <PublicStoreFooter
           copyrightText={theme.copyrightText}

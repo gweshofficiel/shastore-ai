@@ -2236,6 +2236,7 @@ export function SectionRenderer({
 }
 
 export async function DynamicSectionLoader({
+  beforeFooter = null,
   context,
   fallback,
   footerLinkSettings = defaultStoreFooterLinkSettings,
@@ -2248,6 +2249,7 @@ export async function DynamicSectionLoader({
   publishedArticles = [],
   publishedFaqs = []
 }: {
+  beforeFooter?: ReactNode;
   context: StoreTenantContext;
   fallback: ReactNode;
   footerLinkSettings?: StoreFooterLinkSettings;
@@ -2286,10 +2288,29 @@ export async function DynamicSectionLoader({
     );
   }
 
+  const contentSections = layout.sections.filter((section) => section.section_type !== "footer");
+  const footerSections = layout.sections.filter((section) => section.section_type === "footer");
+
   return (
     <>
       {previewScript}
-      {layout.sections.map((section) => (
+      {contentSections.map((section) => (
+        <SectionRenderer
+          context={context}
+          footerLinkSettings={footerLinkSettings}
+          hasPublishedAbout={hasPublishedAbout}
+          hasPublishedBlogArticles={hasPublishedBlogArticles}
+          hasPublishedFaqs={hasPublishedFaqs}
+          headerNavigation={headerNavigation}
+          key={section.id}
+          publishedAbout={publishedAbout}
+          publishedArticles={publishedArticles}
+          publishedFaqs={publishedFaqs}
+          section={section}
+        />
+      ))}
+      {beforeFooter}
+      {footerSections.map((section) => (
         <SectionRenderer
           context={context}
           footerLinkSettings={footerLinkSettings}
