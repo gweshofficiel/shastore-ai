@@ -91,6 +91,10 @@ function formatProductPrice(price: number | string | null, priceLabel: string | 
   }).format(numericPrice);
 }
 
+function isPublicProductStatus(status: string | null) {
+  return status === "active" || status === "published";
+}
+
 export function RecentlyViewedProducts({
   currentProductId = null,
   currency,
@@ -131,12 +135,12 @@ export function RecentlyViewedProducts({
   const recentProducts = recentProductIds
     .filter((productId) => productId !== currentProductId)
     .map((productId) => productById.get(productId) ?? null)
-    .filter((product): product is PublicStorefrontProduct => Boolean(product && product.status === "active"))
+    .filter((product): product is PublicStorefrontProduct => Boolean(product && isPublicProductStatus(product.status)))
     .slice(0, Math.max(1, Math.min(displayLimit, RECENTLY_VIEWED_LIMIT)));
   const displayProducts = recentProducts.length
     ? recentProducts
     : fallbackProducts
-        .filter((product) => product.status === "active")
+        .filter((product) => isPublicProductStatus(product.status))
         .filter((product) => product.id !== currentProductId)
         .slice(0, Math.max(1, Math.min(displayLimit, RECENTLY_VIEWED_LIMIT)));
   const displayTitle = recentProducts.length ? title : fallbackTitle;

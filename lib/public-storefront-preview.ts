@@ -304,6 +304,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
 
   const id = textValue(value.id);
   const title = textValue(value.title);
+  const status = textValue(value.status) || null;
 
   if (!id || !title) {
     return null;
@@ -340,7 +341,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
     seoTitle: textValue(value.seoTitle) || textValue(value.seo_title) || null,
     sku: textValue(value.sku) || null,
     slug: textValue(value.slug) || null,
-    status: textValue(value.status) || null,
+    status: status === "published" ? "active" : status,
     recentlyPurchasedAt: textValue(value.recentlyPurchasedAt) || textValue(value.recently_purchased_at) || null,
     salesCount: salesQuantity(value.salesCount ?? value.sales_count),
     title,
