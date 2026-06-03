@@ -116,6 +116,105 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
   };
 });
 
+const flagshipSectionDefinitions = [
+  ["flagship-hero", "hero", 10, "Premium commerce, powered by your real catalog", "Official SHASTORE flagship storefront structure."],
+  ["flagship-categories", "featured_categories", 20, "Shop by category", "Browse store-managed categories."],
+  ["flagship-featured-products", "featured_products", 30, "Featured products", "Highlight active products from this store."],
+  ["flagship-new-arrivals", "new_arrivals", 40, "New arrivals", "Recently added active products."],
+  ["flagship-best-sellers", "best_sellers", 50, "Best sellers", "Products ranked by real order signals when available."],
+  ["flagship-flash-deals", "flash_deals", 60, "Flash deals", "Products with sale pricing appear here."],
+  ["flagship-recommended", "recommended_products", 70, "Recommended products", "Store recommendations and merchandising picks."],
+  ["flagship-recently-viewed", "recently_viewed", 80, "Recently viewed", "Customer-specific browsing history on this device."],
+  ["flagship-brands", "brands", 90, "Brands and collections", "Store categories and collections are presented as brand-style entry points."],
+  ["flagship-trust", "trust_badges", 100, "Why shop here", "Trust, delivery, payment, and support structure."],
+  ["flagship-testimonials", "testimonials", 110, "Customer testimonials", "Approved testimonials can be configured here later."],
+  ["flagship-blog", "blog_preview", 120, "From the blog", "Published store articles appear here."],
+  ["flagship-faq", "faq_preview", 130, "Frequently asked questions", "Published store FAQs appear here."],
+  ["flagship-newsletter", "newsletter", 140, "Join the newsletter", "Newsletter structure for future customer engagement."],
+  ["flagship-footer-cta", "footer_cta", 150, "Ready to shop?", "Return customers to the real catalog."],
+  ["flagship-footer", "footer", 160, "Footer", "Store footer links, legal pages, social links, and locale tools."]
+] as const;
+
+const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
+  ai_customization_config: {
+    recommendedPrompts: [
+      "Tune the flagship storefront for the store category",
+      "Prioritize homepage sections for conversion",
+      "Refine premium navigation and merchandising copy"
+    ]
+  },
+  branding_config: {
+    accentColor: "#d4af37",
+    primaryColor: "#0f172a",
+    secondaryColor: "#1d4ed8",
+    tone: "premium"
+  },
+  category: "premium",
+  category_key: "premium",
+  default_theme_settings: {
+    aiTemplateReady: true,
+    buttonStyle: "pill",
+    colorPresets: ["slate", "blue", "gold", "white"],
+    ctaStyle: "filled",
+    fontScale: "comfortable",
+    fontStyle: "display",
+    footerStyle: "bold",
+    heroBackground: "glass",
+    layoutStyle: "spacious",
+    multilingualReady: true,
+    navigationStyle: "mega",
+    stickyHeader: true,
+    themeColor: "#0f172a"
+  },
+  description: "Official SHASTORE premium storefront structure with full ecommerce header, homepage merchandising, product discovery, customer account entry points, multilingual, multicurrency, and conversion-ready footer.",
+  id: "shastore-flagship-premium",
+  is_active: true,
+  layout_schema: normalizeBuilderPageSchema({
+    sections: flagshipSectionDefinitions.map(([id, type, order, heading, subheading]) => ({
+      enabled: true,
+      id,
+      order,
+      props: {
+        heading,
+        subtitle: subheading,
+        title: heading
+      },
+      responsive: {},
+      type
+    })),
+    version: 1
+  }),
+  name: "SHASTORE Flagship Premium",
+  niche_category: "premium",
+  preview_image: null,
+  preview_config: {
+    devices: ["desktop", "tablet", "mobile"],
+    highlights: [
+      "Mega navigation and catalog search",
+      "Full premium homepage structure",
+      "Language and currency ready",
+      "Customer account, wishlist, and cart entry points"
+    ]
+  },
+  preview_gradient: "linear-gradient(135deg,#020617,#1d4ed8 52%,#d4af37)",
+  preview_summary: "Official SHASTORE reference template for premium ecommerce structure without demo data.",
+  responsive_preview_config: {
+    desktop: "Full premium commerce structure with header, discovery, merchandising, trust, content previews, and footer",
+    mobile: "Stacked premium shopping flow with account, wishlist, cart, language, and currency access",
+    tablet: "Balanced catalog and content sections for store browsing"
+  },
+  sections_schema: [],
+  slug: "shastore-flagship-premium",
+  template_slug: "shastore-flagship-premium",
+  template_type: "store",
+  theme_config: {
+    border_radius: "2rem",
+    layout_key: "premium",
+    spacing: "spacious",
+    theme_key: "shastore-flagship-premium"
+  }
+};
+
 const auroraProTemplate: StoreTemplateRecord = {
   ai_customization_config: {
     recommendedPrompts: [
@@ -391,9 +490,12 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
         { category_key: "premium", description: "Luxury storefronts with editorial merchandising.", name: "Premium", sort_order: 65 }
       ].sort((left, right) => left.sort_order - right.sort_order);
   const baseTemplates = templates.length ? templates : fallbackTemplates;
-  const libraryTemplates = baseTemplates.some((template) => template.id === auroraProTemplate.id)
+  const withFlagship = baseTemplates.some((template) => template.id === shastoreFlagshipPremiumTemplate.id)
     ? baseTemplates
-    : [...baseTemplates, auroraProTemplate];
+    : [shastoreFlagshipPremiumTemplate, ...baseTemplates];
+  const libraryTemplates = withFlagship.some((template) => template.id === auroraProTemplate.id)
+    ? withFlagship
+    : [...withFlagship, auroraProTemplate];
 
   return {
     categories: libraryCategories,
@@ -410,11 +512,13 @@ export async function getTemplatesByCategory(categoryKey: string) {
 
 export async function getProductionStoreTemplate(templateId?: string | null) {
   const library = await getTemplateLibrary();
-  const requestedId = textValue(templateId, "general-starter");
+  const requestedId = textValue(templateId, "shastore-flagship-premium");
   const template =
     library.templates.find((candidate) => candidate.id === requestedId || candidate.slug === requestedId) ??
+    library.templates.find((candidate) => candidate.id === "shastore-flagship-premium") ??
     library.templates.find((candidate) => candidate.id === "general-starter") ??
     library.templates[0] ??
+    shastoreFlagshipPremiumTemplate ??
     fallbackTemplates.find((candidate) => candidate.id === "general-starter") ??
     fallbackTemplates[0];
 

@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import type { PublicStorefrontPageLink } from "@/lib/public-storefront-preview";
+import type { StoreCurrencySettings } from "@/lib/store-currencies";
+import type { StoreLanguageSettings } from "@/lib/store-languages";
 import type { PublicStoreNavigationLink } from "@/lib/storefront/navigation";
 import {
   buildManagedFooterLinks,
@@ -13,10 +17,13 @@ type PublicStoreFooterProps = {
   footerLinkSettings?: StoreFooterLinkSettings;
   footerStyle?: string;
   footerTextColor: string;
+  currencySettings?: StoreCurrencySettings;
   hasPublishedBlogArticles?: boolean;
   hasPublishedFaqs?: boolean;
+  languageSettings?: StoreLanguageSettings;
   navigationLinks?: PublicStoreNavigationLink[];
   pages: PublicStorefrontPageLink[];
+  socialLinks?: Record<string, string>;
   storeSlug: string;
   storeTitle: string;
 };
@@ -27,10 +34,13 @@ export function PublicStoreFooter({
   footerLinkSettings = defaultStoreFooterLinkSettings,
   footerStyle = "minimal",
   footerTextColor,
+  currencySettings,
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
+  languageSettings,
   navigationLinks = [],
   pages,
+  socialLinks = {},
   storeSlug,
   storeTitle
 }: PublicStoreFooterProps) {
@@ -65,6 +75,7 @@ export function PublicStoreFooter({
 
     return allLinks.findIndex((item) => item.href.toLowerCase() === hrefKey || item.label.toLowerCase() === labelKey) === index;
   });
+  const visibleSocialLinks = Object.entries(socialLinks).filter(([, href]) => href.trim());
 
   return (
     <footer
@@ -82,13 +93,19 @@ export function PublicStoreFooter({
       }}
     >
       <div
-        className={`mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 ${
+        className={`mx-auto grid max-w-7xl gap-6 ${
           footerStyle === "bold" ? "text-lg" : ""
         }`}
       >
-        <p className="text-sm font-bold">
-          {copyrightText || `© ${new Date().getFullYear()} ${storeTitle}`}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-sm font-bold">
+            {copyrightText || `© ${new Date().getFullYear()} ${storeTitle}`}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {languageSettings ? <StorefrontLanguageSwitcher settings={languageSettings} /> : null}
+            {currencySettings ? <StorefrontCurrencySwitcher settings={currencySettings} /> : null}
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.18em] opacity-75">
           {links.map((link) => (
             <Link
@@ -99,6 +116,24 @@ export function PublicStoreFooter({
               {link.label}
             </Link>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-black uppercase tracking-[0.18em] opacity-75">
+          <div className="flex flex-wrap gap-2">
+            {["COD", "Card", "WhatsApp"].map((label) => (
+              <span className="rounded-full border border-current/20 px-3 py-1" key={label}>
+                {label}
+              </span>
+            ))}
+          </div>
+          {visibleSocialLinks.length ? (
+            <div className="flex flex-wrap gap-3">
+              {visibleSocialLinks.map(([label, href]) => (
+                <a className="transition hover:opacity-100" href={href} key={label} rel="noreferrer" target="_blank">
+                  {label}
+                </a>
+              ))}
+            </div>
+          ) : null}
           <span>Powered by SHASTORE AI</span>
         </div>
       </div>

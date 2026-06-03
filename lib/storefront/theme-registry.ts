@@ -1,6 +1,7 @@
 import type { StoreThemeSettings } from "@/types/storefront";
 
 export type StorefrontTemplateKey =
+  | "shastore-flagship-premium"
   | "fashion-starter"
   | "electronics-starter"
   | "beauty-starter"
@@ -53,6 +54,41 @@ type ResolveTemplateConfigInput = {
 const colorPattern = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const registry: Record<StorefrontTemplateKey, StorefrontTemplateConfig> = {
+  "shastore-flagship-premium": {
+    key: "shastore-flagship-premium",
+    label: "SHASTORE Flagship Premium",
+    colorPalette: {
+      accent: "#d4af37",
+      background: "#f8fafc",
+      muted: "#64748b",
+      primary: "#0f172a",
+      secondary: "#1d4ed8",
+      surface: "#ffffff",
+      text: "#0f172a"
+    },
+    typography: {
+      body: "inter",
+      heading: "display",
+      scale: "comfortable"
+    },
+    layout: {
+      hero: "classic",
+      mobileDensity: "balanced",
+      navbar: "utility",
+      productCard: "classic",
+      spacing: "spacious"
+    },
+    sections: {
+      categoriesTitle: "Shop by category",
+      ctaBody: "Browse the complete storefront experience powered by real products, live navigation, customer accounts, and localized checkout.",
+      ctaTitle: "Ready to shop the full store?",
+      faqTitle: "Store questions",
+      heroEyebrow: "Official SHASTORE template",
+      productsDescription: "Live products from this store appear in premium merchandising sections without seeded demo content.",
+      productsTitle: "Featured products",
+      testimonialsTitle: "Customer testimonials"
+    }
+  },
   "fashion-starter": {
     key: "fashion-starter",
     label: "Fashion Starter",
@@ -204,6 +240,10 @@ function textValue(value: unknown, fallback: string) {
 }
 
 export function normalizeStorefrontTemplateKey(value?: string | null): StorefrontTemplateKey {
+  if (value === "shastore-flagship-premium" || value === "flagship-premium") {
+    return "shastore-flagship-premium";
+  }
+
   if (value === "fashion-starter" || value === "fashion-atelier") {
     return "fashion-starter";
   }

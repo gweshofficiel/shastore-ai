@@ -91,11 +91,50 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
     themeSettings: context.preview.themeSettings
   });
   const order =
-    template.key === "beauty-starter"
+    template.key === "shastore-flagship-premium"
+      ? [
+          "navbar",
+          "hero",
+          "featured_categories",
+          "featured_products",
+          "new_arrivals",
+          "best_sellers",
+          "flash_deals",
+          "recommended_products",
+          "recently_viewed",
+          "brands",
+          "trust_badges",
+          "testimonials",
+          "blog_preview",
+          "faq_preview",
+          "newsletter",
+          "footer_cta",
+          "footer"
+        ]
+      : template.key === "beauty-starter"
       ? ["navbar", "hero", "categories", "testimonials", "featured_products", "faq", "cta"]
       : template.key === "electronics-starter"
         ? ["navbar", "hero", "categories", "featured_products", "faq", "testimonials", "cta"]
         : ["navbar", "hero", "featured_products", "categories", "testimonials", "faq", "cta"];
+
+  if (template.key === "shastore-flagship-premium") {
+    return normalizeRuntimeSections(
+      order.map((type, index) => ({
+        id: `runtime-${type.replace(/_/g, "-")}`,
+        order: (index + 1) * 10,
+        type,
+        props: type === "hero"
+          ? {
+              title: context.preview.themeSettings.heroTitle || context.settings.title,
+              body: context.preview.themeSettings.heroSubtitle || context.settings.description,
+              templateKey: template.key
+            }
+          : {}
+      })),
+      context
+    );
+  }
+
   const baseSections = [
     {
       id: "runtime-navbar",

@@ -1,4 +1,5 @@
 export const storeTemplates = [
+  "SHASTORE Flagship Premium",
   "Luxury Dark",
   "Minimal Clean",
   "Beauty Glow",
@@ -18,9 +19,10 @@ export function storeTemplateId(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
 }
 
-export const defaultStoreTemplateId = "luxury-dark";
+export const defaultStoreTemplateId = "shastore-flagship-premium";
 
 export const storeTemplateDescriptions: Record<string, string> = {
+  "shastore-flagship-premium": "Official SHASTORE flagship premium structure with full ecommerce navigation, merchandising sections, account links, multilingual, multicurrency, and conversion-ready storefront foundations.",
   "luxury-dark": "Dark luxury storefront with concierge-style product presentation.",
   "minimal-clean": "Precise clean commerce with calm spacing and focused cards.",
   "beauty-glow": "Soft polished beauty storefront with warm glowing sections.",

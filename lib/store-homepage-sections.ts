@@ -4,13 +4,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export type StoreHomepageSectionType =
   | "hero"
   | "featured_products"
+  | "new_arrivals"
+  | "best_sellers"
+  | "flash_deals"
+  | "recommended_products"
+  | "recently_viewed"
   | "featured_categories"
   | "featured_collection"
+  | "brands"
+  | "trust_badges"
   | "about_preview"
   | "testimonials"
   | "newsletter"
   | "faq_preview"
-  | "blog_preview";
+  | "blog_preview"
+  | "footer_cta";
 
 export type StoreHomepageSection = {
   enabled: boolean;
@@ -51,6 +59,36 @@ export const storeHomepageSectionOptions: Array<{
     sectionType: "featured_products"
   },
   {
+    defaultSubtitle: "Show recently added active products from this store.",
+    defaultTitle: "New arrivals",
+    label: "New Arrivals",
+    sectionType: "new_arrivals"
+  },
+  {
+    defaultSubtitle: "Show products ranked by real sales signals when available.",
+    defaultTitle: "Best sellers",
+    label: "Best Sellers",
+    sectionType: "best_sellers"
+  },
+  {
+    defaultSubtitle: "Show products with sale pricing or compare-at pricing.",
+    defaultTitle: "Flash deals",
+    label: "Flash Deals",
+    sectionType: "flash_deals"
+  },
+  {
+    defaultSubtitle: "Show recommendation-ready products from this store.",
+    defaultTitle: "Recommended products",
+    label: "Recommended Products",
+    sectionType: "recommended_products"
+  },
+  {
+    defaultSubtitle: "Show products recently viewed by this customer on this device.",
+    defaultTitle: "Recently viewed",
+    label: "Recently Viewed",
+    sectionType: "recently_viewed"
+  },
+  {
     defaultSubtitle: "Help customers browse your main product categories.",
     defaultTitle: "Featured categories",
     label: "Featured Categories",
@@ -61,6 +99,18 @@ export const storeHomepageSectionOptions: Array<{
     defaultTitle: "Featured collection",
     label: "Featured Collection",
     sectionType: "featured_collection"
+  },
+  {
+    defaultSubtitle: "Use store categories and collections as brand-style entry points.",
+    defaultTitle: "Brands and collections",
+    label: "Brands Section",
+    sectionType: "brands"
+  },
+  {
+    defaultSubtitle: "Summarize delivery, support, secure checkout, and store trust signals.",
+    defaultTitle: "Why shop here",
+    label: "Trust Badges",
+    sectionType: "trust_badges"
   },
   {
     defaultSubtitle: "Share a short introduction and link to the full About page.",
@@ -91,6 +141,12 @@ export const storeHomepageSectionOptions: Array<{
     defaultTitle: "Latest articles",
     label: "Blog Preview",
     sectionType: "blog_preview"
+  },
+  {
+    defaultSubtitle: "Guide customers back to the real catalog and checkout flow.",
+    defaultTitle: "Ready to shop?",
+    label: "Footer CTA",
+    sectionType: "footer_cta"
   }
 ];
 

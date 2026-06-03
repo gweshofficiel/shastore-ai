@@ -629,6 +629,29 @@ export default async function PublicProductDetailPage({
               </p>
               <ProductSalesProof product={product} />
               <ProductStockUrgency className="mt-5" product={product} />
+              <div className="mt-5 grid gap-3 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Variants
+                </p>
+                {product.variants.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {product.variants.map((variant) => (
+                      <span
+                        className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-muted"
+                        key={variant.id}
+                      >
+                        {variant.name}
+                        {variant.stockQuantity !== null ? ` • ${variant.stockQuantity} left` : ""}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm font-bold text-muted">No variants are configured for this product.</p>
+                )}
+                <p className="text-xs font-bold text-muted">
+                  Inventory status: {product.inventoryStatus?.replace(/_/g, " ") || "Not tracked"}
+                </p>
+              </div>
               <ProductShareButtons productTitle={product.title} />
               <BackInStockRequest
                 product={product}
@@ -761,6 +784,35 @@ export default async function PublicProductDetailPage({
                   </p>
                 )}
               </div>
+            </div>
+          </section>
+
+          <section className="mt-8 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Shipping Information
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+                Delivery and pickup
+              </h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+                {preview.store.deliveryNotes ||
+                  (preview.store.deliveryEnabled || preview.store.pickupEnabled
+                    ? "Delivery and pickup options are configured by this store."
+                    : "Shipping information will appear when the store owner configures delivery settings.")}
+              </p>
+            </div>
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                Return Information
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+                Returns and refunds
+              </h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-muted">
+                {preview.store.refundPolicy ||
+                  "Return and refund information will appear when the store owner publishes a policy."}
+              </p>
             </div>
           </section>
 

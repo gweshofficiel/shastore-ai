@@ -5,9 +5,12 @@ import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
+import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-switcher";
+import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -43,8 +46,15 @@ export type StoreSectionType =
   | "blog_preview"
   | "product_grid"
   | "featured_products"
+  | "new_arrivals"
+  | "best_sellers"
+  | "flash_deals"
+  | "recommended_products"
+  | "recently_viewed"
   | "featured_categories"
   | "featured_collection"
+  | "brands"
+  | "trust_badges"
   | "categories"
   | "rich_text"
   | "image"
@@ -55,6 +65,7 @@ export type StoreSectionType =
   | "faq"
   | "faq_preview"
   | "footer"
+  | "footer_cta"
   | "newsletter"
   | "spacer"
   | (string & {});
@@ -83,8 +94,15 @@ const supportedSectionTypes: StoreSectionType[] = [
   "blog_preview",
   "product_grid",
   "featured_products",
+  "new_arrivals",
+  "best_sellers",
+  "flash_deals",
+  "recommended_products",
+  "recently_viewed",
   "featured_categories",
   "featured_collection",
+  "brands",
+  "trust_badges",
   "categories",
   "rich_text",
   "image",
@@ -95,6 +113,7 @@ const supportedSectionTypes: StoreSectionType[] = [
   "faq",
   "faq_preview",
   "footer",
+  "footer_cta",
   "newsletter",
   "spacer"
 ];
@@ -324,13 +343,21 @@ function withLiveProductSection(context: StoreTenantContext, sections: StoreSect
 function homepageSectionRendererType(sectionType: StoreHomepageSectionType): StoreSectionType {
   const sectionTypes: Record<StoreHomepageSectionType, StoreSectionType> = {
     about_preview: "about_preview",
+    best_sellers: "best_sellers",
     blog_preview: "blog_preview",
+    brands: "brands",
     faq_preview: "faq_preview",
     featured_categories: "featured_categories",
     featured_collection: "featured_collection",
     featured_products: "featured_products",
+    flash_deals: "flash_deals",
+    footer_cta: "footer_cta",
     hero: "hero",
+    new_arrivals: "new_arrivals",
     newsletter: "newsletter",
+    recommended_products: "recommended_products",
+    recently_viewed: "recently_viewed",
+    trust_badges: "trust_badges",
     testimonials: "testimonials"
   };
 
@@ -419,13 +446,60 @@ function SectionShell({
   );
 }
 
+function numericProductPrice(price: number | string | null) {
+  const numericPrice = typeof price === "number" ? price : Number(price ?? NaN);
+  return Number.isFinite(numericPrice) ? numericPrice : null;
+}
+
+function productSectionProducts(context: StoreTenantContext, section?: StoreSection) {
+  const products = context.preview.products.filter((product) => isPublicProductStatus(product.status));
+  const type = section?.section_type ?? "featured_products";
+
+  if (type === "new_arrivals") {
+    return [...products]
+      .sort((left, right) => new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime())
+      .slice(0, 8);
+  }
+
+  if (type === "best_sellers") {
+    return [...products]
+      .sort((left, right) => right.salesCount - left.salesCount)
+      .slice(0, 8);
+  }
+
+  if (type === "flash_deals") {
+    return products
+      .filter((product) => {
+        const compareAt = numericProductPrice(product.compareAtPrice);
+        const price = numericProductPrice(product.price);
+        return compareAt !== null && price !== null && compareAt > price;
+      })
+      .slice(0, 8);
+  }
+
+  if (type === "recommended_products") {
+    return [...products]
+      .sort((left, right) => (right.salesCount * 2 + (right.recentlyPurchasedAt ? 1 : 0)) - (left.salesCount * 2 + (left.recentlyPurchasedAt ? 1 : 0)))
+      .slice(0, 8);
+  }
+
+  return products.slice(0, 6);
+}
+
 function ProductGridSection({ context, section }: { context: StoreTenantContext; section?: StoreSection }) {
   const config = templateConfig(context);
-  const products = context.preview.products
-    .filter((product) => isPublicProductStatus(product.status))
-    .slice(0, config.key === "electronics-starter" ? 8 : 6);
+  const products = productSectionProducts(context, section).slice(0, config.key === "electronics-starter" ? 8 : 6);
   const title = textValue(section?.config.title, config.sections.productsTitle);
   const subtitle = textValue(section?.config.subtitle, config.sections.productsDescription);
+  const eyebrow = section?.section_type === "new_arrivals"
+    ? "New arrivals"
+    : section?.section_type === "best_sellers"
+      ? "Best sellers"
+      : section?.section_type === "flash_deals"
+        ? "Flash deals"
+        : section?.section_type === "recommended_products"
+          ? "Recommended"
+          : config.label;
   const productSections = buildPublicProductSections({
     categories: context.preview.categories,
     products
@@ -443,7 +517,7 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
             className="text-xs font-black uppercase tracking-[0.22em]"
             style={{ color: context.theme.colorPalette.accent }}
           >
-            {config.label}
+            {eyebrow}
           </p>
           <h2
             className={`mt-2 font-black tracking-[-0.04em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"} ${config.typography.scale === "large" ? "text-4xl" : "text-3xl"}`}
@@ -760,13 +834,38 @@ function NavbarSection({
             config.layout.navbar === "utility" ? "text-cyan-100" : "text-muted"
           }`}
         >
+          {context.preview.categories.length ? (
+            <details className="relative">
+              <summary className="cursor-pointer list-none">Categories</summary>
+              <div className="absolute left-0 top-8 z-40 grid min-w-56 gap-1 rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-xl">
+                {context.preview.categories.slice(0, 8).map((category) => (
+                  <Link
+                    className="rounded-xl px-3 py-2 transition hover:bg-slate-100"
+                    href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+                    key={category.id}
+                  >
+                    {category.name}
+                  </Link>
+                ))}
+              </div>
+            </details>
+          ) : null}
           {primaryLinks.map((link) => (
             <Link href={link.href} key={navKey(link)}>
               {link.label}
             </Link>
           ))}
         </nav>
-        <div className="flex flex-wrap gap-2">
+        <form action={`/store/${context.preview.store.slug}`} className="hidden min-w-44 lg:block">
+          <input
+            className="h-10 w-full rounded-full border border-slate-200 bg-white px-4 text-xs font-bold text-ink outline-none"
+            name="q"
+            placeholder="Search products"
+          />
+        </form>
+        <div className="flex flex-wrap items-center gap-2">
+          <StorefrontLanguageSwitcher settings={context.preview.store.languageSettings} />
+          <StorefrontCurrencySwitcher settings={context.preview.store.currencySettings} />
           {headerNavigation?.accountEnabled ?? true ? (
             <Link
               className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
@@ -947,12 +1046,7 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
   const items = Array.isArray(section.config.items) ? section.config.items.filter(isRecord).slice(0, 3) : [];
   const title = textValue(section.config.title, config.sections.testimonialsTitle);
   const subtitle = textValue(section.config.subtitle);
-  const testimonials = items.length
-    ? items
-    : [
-        { quote: "Fast ordering and a clean shopping experience.", name: "Happy customer" },
-        { quote: "The catalog is simple to browse on mobile.", name: "Store shopper" }
-      ];
+  const testimonials = items;
 
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
@@ -965,21 +1059,27 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
       </h2>
       {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        {testimonials.map((item, index) => (
-          <figure
-            className={`border bg-white p-6 ${cardRadiusClass(context)} ${
-              config.key === "electronics-starter" ? "border-cyan-400/20 bg-slate-900" : "border-slate-200"
-            }`}
-            key={index}
-          >
-            <blockquote className="text-sm font-semibold leading-7 text-muted">
-              “{textValue(item.quote, "Great store experience.")}”
-            </blockquote>
-            <figcaption className={`mt-4 text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
-              {textValue(item.name, "Customer")}
-            </figcaption>
-          </figure>
-        ))}
+        {testimonials.length ? (
+          testimonials.map((item, index) => (
+            <figure
+              className={`border bg-white p-6 ${cardRadiusClass(context)} ${
+                config.key === "electronics-starter" ? "border-cyan-400/20 bg-slate-900" : "border-slate-200"
+              }`}
+              key={index}
+            >
+              <blockquote className="text-sm font-semibold leading-7 text-muted">
+                “{textValue(item.quote, "Customer testimonial")}”
+              </blockquote>
+              <figcaption className={`mt-4 text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
+                {textValue(item.name, "Customer")}
+              </figcaption>
+            </figure>
+          ))
+        ) : (
+          <div className={`rounded-[2rem] border border-dashed p-6 text-sm font-bold ${config.key === "electronics-starter" ? "border-cyan-400/20 bg-slate-900 text-slate-300" : "border-slate-300 bg-white text-muted"}`}>
+            Approved testimonials can appear here when the store owner configures them.
+          </div>
+        )}
       </div>
       </div>
     </section>
@@ -996,14 +1096,7 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
     id: faq.id,
     question: faq.question
   }));
-  const faqs = managedFaqs.length
-    ? managedFaqs
-    : items.length
-    ? items
-    : [
-        { answer: "Orders can be submitted through the store cart or WhatsApp when available.", question: "How do I order?" },
-        { answer: "Products and checkout options are managed by the store owner.", question: "Are products updated live?" }
-      ];
+  const faqs = managedFaqs.length ? managedFaqs : items;
 
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
@@ -1015,19 +1108,25 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
         </h2>
         {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
         <div className="mt-6 grid gap-3">
-          {faqs.map((item, index) => (
-            <details
-              className={`border bg-white p-5 ${config.key === "electronics-starter" ? "rounded-xl border-cyan-400/20 bg-slate-900" : "rounded-[1.5rem] border-slate-200"}`}
-              key={typeof item.id === "string" ? item.id : index}
-            >
-              <summary className={`cursor-pointer text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
-                {textValue(item.question, "Question")}
-              </summary>
-              <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-                {textValue(item.answer, "Answer coming soon.")}
-              </p>
-            </details>
-          ))}
+          {faqs.length ? (
+            faqs.map((item, index) => (
+              <details
+                className={`border bg-white p-5 ${config.key === "electronics-starter" ? "rounded-xl border-cyan-400/20 bg-slate-900" : "rounded-[1.5rem] border-slate-200"}`}
+                key={typeof item.id === "string" ? item.id : index}
+              >
+                <summary className={`cursor-pointer text-sm font-black ${config.key === "electronics-starter" ? "text-cyan-100" : "text-ink"}`}>
+                  {textValue(item.question, "Question")}
+                </summary>
+                <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                  {textValue(item.answer, "Answer coming soon.")}
+                </p>
+              </details>
+            ))
+          ) : (
+            <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-white p-5 text-sm font-bold text-muted">
+              Published store FAQs will appear here.
+            </div>
+          )}
         </div>
       </div>
       </div>
@@ -1103,11 +1202,6 @@ function AboutPreviewSection({ context, publishedAbout, section }: SectionRender
 
 function BlogPreviewSection({ context, publishedArticles = [], section }: SectionRenderProps) {
   const articles = publishedArticles.slice(0, 3);
-
-  if (!articles.length) {
-    return null;
-  }
-
   const title = textValue(section.config.title, "Latest articles");
   const subtitle = textValue(section.config.subtitle, "Read the newest updates from this store.");
 
@@ -1136,28 +1230,34 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
               View all articles
             </Link>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {articles.map((article) => (
-              <article className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4" key={article.id}>
-                <Link href={`/store/${context.preview.store.slug}/blog/${article.slug}`}>
-                  <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
-                    {article.title}
-                  </h3>
-                </Link>
-                {article.excerpt ? (
-                  <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-muted">
-                    {article.excerpt}
-                  </p>
-                ) : null}
-                <Link
-                  className="mt-4 inline-flex text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:text-ink"
-                  href={`/store/${context.preview.store.slug}/blog/${article.slug}`}
-                >
-                  Read article
-                </Link>
-              </article>
-            ))}
-          </div>
+          {articles.length ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {articles.map((article) => (
+                <article className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4" key={article.id}>
+                  <Link href={`/store/${context.preview.store.slug}/blog/${article.slug}`}>
+                    <h3 className="text-xl font-black tracking-[-0.03em] text-ink">
+                      {article.title}
+                    </h3>
+                  </Link>
+                  {article.excerpt ? (
+                    <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-muted">
+                      {article.excerpt}
+                    </p>
+                  ) : null}
+                  <Link
+                    className="mt-4 inline-flex text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:text-ink"
+                    href={`/store/${context.preview.store.slug}/blog/${article.slug}`}
+                  >
+                    Read article
+                  </Link>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-bold text-muted">
+              Published store articles will appear here.
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -1235,6 +1335,113 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
   );
 }
 
+function RecentlyViewedSection({ context, section }: SectionRenderProps) {
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <RecentlyViewedProducts
+          currency={context.preview.store.currency}
+          products={context.preview.products}
+          slug={context.preview.store.slug}
+          storeId={context.preview.store.id}
+          title={textValue(section.config.title, "Recently viewed")}
+          trackCurrentProduct={false}
+        />
+        <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-sm font-bold text-muted">
+          Recently viewed products appear here after customers browse product pages on this device.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BrandsSection({ context, section }: SectionRenderProps) {
+  const categories = context.preview.categories.slice(0, 8);
+  const title = textValue(section.config.title, "Brands and collections");
+  const subtitle = textValue(section.config.subtitle, "Browse the store through category-led brand entry points.");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
+        <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+          Brands
+        </p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+          {title}
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p>
+        {categories.length ? (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {categories.map((category) => (
+              <Link
+                className="rounded-[1.5rem] border border-slate-200 bg-white p-5 text-sm font-black text-ink transition hover:-translate-y-0.5 hover:shadow-lg"
+                href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+                key={category.id}
+              >
+                {category.name}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-sm font-bold text-muted">
+            Store categories and collections will appear here.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TrustBadgesSection({ context, section }: SectionRenderProps) {
+  const store = context.preview.store;
+  const badges = [
+    {
+      body: store.deliveryEnabled || store.pickupEnabled
+        ? "Delivery and pickup settings are managed by the store owner."
+        : "Delivery details appear when configured by the store owner.",
+      title: "Delivery ready"
+    },
+    {
+      body: store.supportEmail || store.supportPhone || store.whatsappNumber
+        ? "Support channels are connected for this store."
+        : "Support channels appear when configured.",
+      title: "Customer support"
+    },
+    {
+      body: "Checkout uses the store's active payment and order settings.",
+      title: "Secure checkout"
+    },
+    {
+      body: "Language and currency tools are available for localized shopping.",
+      title: "Localized shopping"
+    }
+  ];
+  const title = textValue(section.config.title, "Why shop here");
+  const subtitle = textValue(section.config.subtitle, "Trust signals powered by store settings.");
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <p className="text-xs font-black uppercase tracking-[0.22em]" style={{ color: context.theme.colorPalette.accent }}>
+          Trust
+        </p>
+        <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>
+          {title}
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {badges.map((badge) => (
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={badge.title}>
+              <h3 className="text-base font-black text-ink">{badge.title}</h3>
+              <p className="mt-2 text-sm font-semibold leading-6 text-muted">{badge.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CtaSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = templateConfig(context);
   const title = textValue(section.config.title, config.sections.ctaTitle || `Ready to shop ${context.settings.title}?`);
@@ -1277,10 +1484,13 @@ function FooterSection({
       footerLinkSettings={footerLinkSettings}
       footerStyle={String(context.theme.styleConfig.footerStyle || theme.footerStyle)}
       footerTextColor={theme.footerTextColor}
+      currencySettings={context.preview.store.currencySettings}
       hasPublishedBlogArticles={hasPublishedBlogArticles}
       hasPublishedFaqs={hasPublishedFaqs}
+      languageSettings={context.preview.store.languageSettings}
       navigationLinks={context.preview.navigation.footer}
       pages={context.preview.pages}
+      socialLinks={context.preview.store.socialLinks}
       storeSlug={context.store_slug}
       storeTitle={context.settings.title}
     />
@@ -1332,7 +1542,9 @@ const sectionRegistry: Record<
   FAQ: FaqSection,
   about_preview: AboutPreviewSection,
   banner: GenericContentSection,
+  best_sellers: ProductGridSection,
   blog_preview: BlogPreviewSection,
+  brands: BrandsSection,
   categories: CategoriesSection,
   cta: CtaSection,
   faq: FaqSection,
@@ -1340,14 +1552,20 @@ const sectionRegistry: Record<
   featured_categories: CategoriesSection,
   featured_collection: FeaturedCollectionSection,
   featured_products: ProductGridSection,
+  flash_deals: ProductGridSection,
   footer: FooterSection,
+  footer_cta: CtaSection,
   hero: HeroSection,
   image: GenericContentSection,
   navbar: NavbarSection,
+  new_arrivals: ProductGridSection,
   newsletter: GenericContentSection,
   product_grid: ProductGridSection,
+  recommended_products: ProductGridSection,
+  recently_viewed: RecentlyViewedSection,
   rich_text: GenericContentSection,
-  testimonials: TestimonialsSection
+  testimonials: TestimonialsSection,
+  trust_badges: TrustBadgesSection
 };
 
 export function SectionRenderer({
