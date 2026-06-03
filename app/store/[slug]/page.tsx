@@ -773,7 +773,7 @@ export default async function PublicStorePage({
                         </h3>
                       </Link>
                       <p className="mt-3 min-h-12 text-sm leading-6 text-muted">
-                        {product.description || "No description has been added for this product yet."}
+                        {product.description || "Premium product information placeholder."}
                       </p>
                       <ProductSalesProof compact product={product} />
                       <ProductStockUrgency className="mt-3" compact product={product} />
@@ -838,7 +838,7 @@ export default async function PublicStorePage({
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                {preview.products.length ? "No products found." : "No products available yet"}
+                {preview.products.length ? "Product search placeholder" : "Product image placeholders"}
               </h3>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
                 {preview.products.length
@@ -884,7 +884,7 @@ export default async function PublicStorePage({
         <section className="px-4 pb-8 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
             <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-              No products found.
+              Product search placeholder
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
               Try adjusting the search, filters, or price range.

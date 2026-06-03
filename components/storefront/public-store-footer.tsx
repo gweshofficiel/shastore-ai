@@ -53,8 +53,14 @@ export function PublicStoreFooter({
   });
   const managedHrefs = new Set(managedLinks.map((link) => link.href.toLowerCase()));
   const managedLabels = new Set(managedLinks.map((link) => link.label.toLowerCase()));
+  const skeletonLinks = [
+    { href: `/store/${storeSlug}/about`, id: "about", label: "About" },
+    { href: `/store/${storeSlug}/faq`, id: "faq-skeleton", label: "FAQ" },
+    { href: `/store/${storeSlug}/blog`, id: "blog-skeleton", label: "Blog" }
+  ];
   const links = [
     ...managedLinks,
+    ...skeletonLinks,
     ...navigationLinks,
     ...pages.map((page) => ({
       href: `/store/${storeSlug}/pages/${page.slug}`,
@@ -119,7 +125,7 @@ export function PublicStoreFooter({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-black uppercase tracking-[0.18em] opacity-75">
           <div className="flex flex-wrap gap-2">
-            {["COD", "Card", "WhatsApp"].map((label) => (
+            {["COD", "Card", "Wallet", "WhatsApp"].map((label) => (
               <span className="rounded-full border border-current/20 px-3 py-1" key={label}>
                 {label}
               </span>
@@ -133,7 +139,15 @@ export function PublicStoreFooter({
                 </a>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {["Instagram", "Facebook", "TikTok"].map((label) => (
+                <span className="transition hover:opacity-100" key={label}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
           <span>Powered by SHASTORE AI</span>
         </div>
       </div>

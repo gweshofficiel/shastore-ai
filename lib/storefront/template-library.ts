@@ -128,8 +128,8 @@ const flagshipSectionDefinitions = [
   ["flagship-brands", "brands", 90, "Brands and collections", "Store categories and collections are presented as brand-style entry points."],
   ["flagship-trust", "trust_badges", 100, "Why shop here", "Trust, delivery, payment, and support structure."],
   ["flagship-testimonials", "testimonials", 110, "Customer testimonials", "Approved testimonials can be configured here later."],
-  ["flagship-blog", "blog_preview", 120, "From the blog", "Published store articles appear here."],
-  ["flagship-faq", "faq_preview", 130, "Frequently asked questions", "Published store FAQs appear here."],
+  ["flagship-blog", "blog_preview", 120, "From the blog", "Editorial placeholders keep this premium section complete."],
+  ["flagship-faq", "faq_preview", 130, "Frequently asked questions", "FAQ placeholders keep this premium section complete."],
   ["flagship-newsletter", "newsletter", 140, "Join the newsletter", "Newsletter structure for future customer engagement."],
   ["flagship-footer-cta", "footer_cta", 150, "Ready to shop?", "Return customers to the real catalog."],
   ["flagship-footer", "footer", 160, "Footer", "Store footer links, legal pages, social links, and locale tools."]

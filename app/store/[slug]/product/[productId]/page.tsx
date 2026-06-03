@@ -234,7 +234,7 @@ function questionMessage(status: string | undefined) {
 
 function ratingStars(rating: number) {
   if (rating <= 0) {
-    return "No ratings yet";
+    return "Ratings placeholder";
   }
 
   return `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
@@ -575,22 +575,30 @@ export default async function PublicProductDetailPage({
                   style={{ background: heroBackground }}
                 >
                   <span className="rounded-full bg-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white backdrop-blur">
-                    {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
+                    Product gallery placeholder
                   </span>
                 </div>
               )}
-              {galleryUrls.length ? (
-                <div className="grid grid-cols-3 gap-3 border-t border-slate-100 p-4">
-                  {galleryUrls.slice(0, 6).map((url) => (
+              <div className="grid grid-cols-3 gap-3 border-t border-slate-100 p-4">
+                {galleryUrls.length ? (
+                  galleryUrls.slice(0, 6).map((url) => (
                     <img
                       alt={`${product.title} gallery image`}
                       className="aspect-square rounded-2xl object-cover"
                       key={url}
                       src={url}
                     />
-                  ))}
-                </div>
-              ) : null}
+                  ))
+                ) : (
+                  [0, 1, 2].map((item) => (
+                    <div className="flex aspect-square items-end rounded-2xl bg-slate-100 p-3" key={item}>
+                      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                        Gallery placeholder
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             <article className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)] sm:p-8 lg:p-10">
@@ -621,11 +629,11 @@ export default async function PublicProductDetailPage({
                 <span className="text-muted">
                   {summary.reviewCount
                     ? `${summary.averageRating.toFixed(1)} from ${summary.reviewCount} ${summary.reviewCount === 1 ? "review" : "reviews"}`
-                    : "No approved reviews yet"}
+                    : "Reviews placeholder"}
                 </span>
               </div>
               <p className="mt-6 text-base leading-8 text-muted">
-                {product.description || "No description has been added for this product yet."}
+                {product.description || "Premium product information placeholder for materials, benefits, fit, compatibility, or usage details."}
               </p>
               <ProductSalesProof product={product} />
               <ProductStockUrgency className="mt-5" product={product} />
@@ -646,7 +654,13 @@ export default async function PublicProductDetailPage({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm font-bold text-muted">No variants are configured for this product.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["Option placeholder", "Size placeholder", "Color placeholder"].map((item) => (
+                      <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-muted" key={item}>
+                        {item}
+                      </span>
+                    ))}
+                  </div>
                 )}
                 <p className="text-xs font-bold text-muted">
                   Inventory status: {product.inventoryStatus?.replace(/_/g, " ") || "Not tracked"}
@@ -761,7 +775,7 @@ export default async function PublicProductDetailPage({
               <h3 className="text-2xl font-black tracking-[-0.04em] text-ink">
                 {questions.length
                   ? `${questions.length} answered ${questions.length === 1 ? "question" : "questions"}`
-                  : "No answered questions yet"}
+                  : "FAQ placeholder"}
               </h3>
               <div className="mt-5 grid gap-4">
                 {questions.length ? (
@@ -779,9 +793,15 @@ export default async function PublicProductDetailPage({
                     </article>
                   ))
                 ) : (
-                  <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
-                    Seller-approved answers will appear here after moderation.
-                  </p>
+                  ["Sizing question placeholder", "Shipping question placeholder", "Return question placeholder"].map((item) => (
+                    <details className="rounded-3xl border border-slate-100 bg-slate-50 p-4" key={item}>
+                      <summary className="cursor-pointer text-sm font-black text-ink">{item}</summary>
+                      <div className="mt-3 grid gap-2">
+                        <div className="h-3 rounded-full bg-slate-200" />
+                        <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+                      </div>
+                    </details>
+                  ))
                 )}
               </div>
             </div>
@@ -816,24 +836,26 @@ export default async function PublicProductDetailPage({
             </div>
           </section>
 
-          {relatedProducts.length ? (
-            <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                    Related Products
-                  </p>
-                  <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
-                    You may also like
-                  </h2>
-                </div>
+          <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                  Related Products
+                </p>
+                <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+                  You may also like
+                </h2>
+              </div>
+              {relatedProducts.length ? (
                 <Link
                   className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
                   href={`/store/${preview.store.slug}`}
                 >
                   View all products
                 </Link>
-              </div>
+              ) : null}
+            </div>
+            {relatedProducts.length ? (
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {relatedProducts.map((relatedProduct) => {
                   const relatedHref = `/store/${preview.store.slug}/product/${encodeURIComponent(relatedProduct.slug || relatedProduct.id)}`;
@@ -909,8 +931,24 @@ export default async function PublicProductDetailPage({
                   );
                 })}
               </div>
-            </section>
-          ) : null}
+            ) : (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((item) => (
+                  <div className="overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50" key={item}>
+                    <div className="flex aspect-square items-end bg-slate-100 p-4">
+                      <span className="rounded-full bg-white/80 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                        Related product placeholder
+                      </span>
+                    </div>
+                    <div className="grid gap-3 p-4">
+                      <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+                      <div className="h-3 w-1/2 rounded-full bg-slate-200" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           <RecentlyViewedProducts
             currentProductId={product.id}
@@ -928,7 +966,7 @@ export default async function PublicProductDetailPage({
               <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
                 {summary.reviewCount
                   ? `${summary.averageRating.toFixed(1)} average rating`
-                  : "No approved reviews yet"}
+                  : "Reviews placeholder"}
               </h2>
               {summary.reviewCount ? (
                 <div className="mt-4 grid gap-3 rounded-3xl border border-slate-100 bg-slate-50 p-4">
@@ -1020,8 +1058,8 @@ export default async function PublicProductDetailPage({
                 ) : (
                   <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
                     {filter === "verified"
-                      ? "No verified approved reviews yet."
-                      : "Approved reviews will appear here after moderation."}
+                      ? "Verified review placeholder"
+                      : "Customer review placeholder"}
                   </p>
                 )}
               </div>

@@ -280,7 +280,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                           </h2>
                         </Link>
                         <p className="mt-2 text-sm leading-6 text-muted">
-                          {product.description || "No description has been added for this product yet."}
+                          {product.description || "Premium product information placeholder."}
                         </p>
                         <p className="mt-3 text-lg font-black text-ink">
                           {formatProductPrice(product.price, product.priceLabel, currency)}
@@ -321,13 +321,20 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                 })}
               </div>
             ) : (
-              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
-                <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                  No products available yet
-                </h2>
-                <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-                  Please check back soon.
-                </p>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {[0, 1, 2, 3, 4, 5].map((item) => (
+                  <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={item}>
+                    <div className="flex aspect-square items-end rounded-[1.5rem] bg-slate-100 p-4">
+                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                        Product image placeholder
+                      </span>
+                    </div>
+                    <div className="grid gap-3 p-5">
+                      <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+                      <div className="h-3 w-1/2 rounded-full bg-slate-100" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>

@@ -263,6 +263,49 @@ function publicProductHref(
   return `/store/${storeSlug}/product/${encodeURIComponent(product.slug || product.id)}`;
 }
 
+function PremiumVisualPlaceholder({
+  eyebrow,
+  title
+}: {
+  eyebrow: string;
+  title: string;
+}) {
+  return (
+    <div className="flex min-h-44 items-end overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/10 p-5 shadow-inner backdrop-blur">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-white/55">{eyebrow}</p>
+        <p className="mt-2 text-xl font-black tracking-[-0.04em] text-white">{title}</p>
+      </div>
+    </div>
+  );
+}
+
+function PremiumSkeletonGrid({
+  count = 4,
+  label
+}: {
+  count?: number;
+  label: string;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: count }).map((_, index) => (
+        <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm" key={`${label}-${index}`}>
+          <div className="flex aspect-[4/3] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
+            <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              {label}
+            </span>
+          </div>
+          <div className="grid gap-3 p-4">
+            <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+            <div className="h-3 w-1/2 rounded-full bg-slate-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function normalizeSection(value: unknown, context: StoreTenantContext): StoreSection | null {
   if (!isRecord(value)) {
     return null;
@@ -631,7 +674,7 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
                     </h3>
                   </Link>
                   <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-                    {product.description || "No description has been added for this product yet."}
+                    {product.description || "Premium product information placeholder."}
                   </p>
                   <ProductSalesProof compact product={product} />
                   <ProductStockUrgency className="mt-3" compact product={product} />
@@ -691,20 +734,7 @@ function ProductGridSection({ context, section }: { context: StoreTenantContext;
           ))}
         </div>
       ) : (
-        <div
-          className={`rounded-[2rem] border border-dashed p-10 text-center ${
-            config.key === "electronics-starter"
-              ? "border-cyan-400/20 bg-slate-900 text-cyan-50"
-              : "border-slate-300 bg-white text-ink"
-          }`}
-        >
-          <h3 className="text-2xl font-black tracking-[-0.03em]">
-            No products available yet
-          </h3>
-          <p className={`mx-auto mt-3 max-w-xl text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-            This published store does not have active products yet.
-          </p>
-        </div>
+        <PremiumSkeletonGrid count={config.layout.mobileDensity === "dense" ? 8 : 6} label="Product image placeholder" />
       )}
       </div>
     </section>
@@ -849,7 +879,19 @@ function NavbarSection({
                 ))}
               </div>
             </details>
-          ) : null}
+          ) : (
+            <details className="relative">
+              <summary className="cursor-pointer list-none">Categories</summary>
+              <div className="absolute left-0 top-8 z-40 grid min-w-64 gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-slate-700 shadow-xl">
+                {[0, 1, 2].map((item) => (
+                  <div className="grid gap-2 rounded-xl bg-slate-50 p-3" key={item}>
+                    <div className="h-3 w-28 rounded-full bg-slate-200" />
+                    <div className="h-2 w-20 rounded-full bg-slate-100" />
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
           {primaryLinks.map((link) => (
             <Link href={link.href} key={navKey(link)}>
               {link.label}
@@ -910,7 +952,9 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
       <div className="mx-auto max-w-7xl">
       <div
         className={`overflow-hidden rounded-[var(--store-border-radius)] text-white shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)] ${
-          template.layout.hero === "technical-grid"
+          template.key === "shastore-flagship-premium"
+            ? "grid gap-0 bg-slate-950 lg:grid-cols-[1fr_0.85fr]"
+            : template.layout.hero === "technical-grid"
             ? "grid gap-0 border border-cyan-400/20 bg-slate-950 lg:grid-cols-[1.1fr_0.9fr]"
             : template.layout.hero === "editorial-split"
               ? "grid gap-0 bg-white lg:grid-cols-[0.9fr_1.1fr]"
@@ -946,7 +990,18 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
             </a>
           </div>
         </div>
-        {template.layout.hero === "technical-grid" ? (
+        {template.key === "shastore-flagship-premium" ? (
+          <div className="grid content-center gap-4 border-t border-white/10 bg-white/10 p-8 lg:border-l lg:border-t-0">
+            <PremiumVisualPlaceholder eyebrow="Hero image placeholder" title="Premium storefront visual" />
+            <div className="grid grid-cols-3 gap-3">
+              {["Category", "Product", "Brand"].map((item) => (
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-3 text-xs font-black uppercase tracking-[0.14em] text-white/70" key={item}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : template.layout.hero === "technical-grid" ? (
           <div className="grid content-center gap-4 border-t border-cyan-400/20 bg-slate-900/70 p-8 lg:border-l lg:border-t-0">
             {["Fast checkout", "Live catalog", "Mobile ready"].map((item) => (
               <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4" key={item}>
@@ -976,10 +1031,6 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
   const title = textValue(section.config.title, config.sections.categoriesTitle);
   const subtitle = textValue(section.config.subtitle);
 
-  if (!categories.length) {
-    return null;
-  }
-
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
       <div className="mx-auto max-w-7xl">
@@ -994,47 +1045,57 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
           {title}
         </h2>
         {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
-        <div
-          className={`mt-6 grid gap-4 ${
-            config.layout.mobileDensity === "dense" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4"
-          }`}
-        >
-          {categories.map((category) => (
-            <Link
-              className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
-                config.key === "electronics-starter"
-                  ? "border-cyan-400/20 bg-slate-900 text-white"
-                  : config.key === "beauty-starter"
-                    ? "border-pink-100"
-                    : "border-slate-200"
-              } transition hover:-translate-y-0.5 hover:shadow-lg`}
-              href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
-              key={category.id}
-            >
-              {category.imageUrl ? (
-                <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
-              ) : (
-                <div
-                  className="aspect-[4/3]"
-                  style={{
-                    background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
-                  }}
-                />
-              )}
-              <div className="p-5">
-                <h3
-                  className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
-                  style={headingStyle()}
-                >
-                  {category.name}
-                </h3>
-                <p className={`mt-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
-                  {category.description || "Explore products in this collection."}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {categories.length ? (
+          <div
+            className={`mt-6 grid gap-4 ${
+              config.layout.mobileDensity === "dense" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-4"
+            }`}
+          >
+            {categories.map((category) => (
+              <Link
+                className={`overflow-hidden border bg-white shadow-sm ${cardRadiusClass(context)} ${
+                  config.key === "electronics-starter"
+                    ? "border-cyan-400/20 bg-slate-900 text-white"
+                    : config.key === "beauty-starter"
+                      ? "border-pink-100"
+                      : "border-slate-200"
+                } transition hover:-translate-y-0.5 hover:shadow-lg`}
+                href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+                key={category.id}
+              >
+                {category.imageUrl ? (
+                  <img alt={category.name} className="aspect-[4/3] w-full object-cover" src={category.imageUrl} />
+                ) : (
+                  <div
+                    className="flex aspect-[4/3] items-end p-4"
+                    style={{
+                      background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
+                    }}
+                  >
+                    <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                      Category image placeholder
+                    </span>
+                  </div>
+                )}
+                <div className="p-5">
+                  <h3
+                    className={`text-lg font-black tracking-[-0.03em] ${config.key === "electronics-starter" ? "text-white" : "text-ink"}`}
+                    style={headingStyle()}
+                  >
+                    {category.name}
+                  </h3>
+                  <p className={`mt-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                    {category.description || "Explore products in this collection."}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6">
+            <PremiumSkeletonGrid label="Category image placeholder" />
+          </div>
+        )}
       </div>
       </div>
     </section>
@@ -1076,8 +1137,17 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
             </figure>
           ))
         ) : (
-          <div className={`rounded-[2rem] border border-dashed p-6 text-sm font-bold ${config.key === "electronics-starter" ? "border-cyan-400/20 bg-slate-900 text-slate-300" : "border-slate-300 bg-white text-muted"}`}>
-            Approved testimonials can appear here when the store owner configures them.
+          <div className="grid gap-4 md:grid-cols-2">
+            {[0, 1].map((item) => (
+              <figure className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm" key={item}>
+                <div className="h-3 w-24 rounded-full bg-slate-200" />
+                <div className="mt-5 grid gap-2">
+                  <div className="h-3 rounded-full bg-slate-100" />
+                  <div className="h-3 w-4/5 rounded-full bg-slate-100" />
+                </div>
+                <figcaption className="mt-5 text-sm font-black text-ink">Testimonial placeholder</figcaption>
+              </figure>
+            ))}
           </div>
         )}
       </div>
@@ -1123,8 +1193,16 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
               </details>
             ))
           ) : (
-            <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-white p-5 text-sm font-bold text-muted">
-              Published store FAQs will appear here.
+            <div className="grid gap-3">
+              {["Shipping question placeholder", "Return question placeholder", "Payment question placeholder"].map((item) => (
+                <details className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={item}>
+                  <summary className="cursor-pointer text-sm font-black text-ink">{item}</summary>
+                  <div className="mt-3 grid gap-2">
+                    <div className="h-3 rounded-full bg-slate-100" />
+                    <div className="h-3 w-2/3 rounded-full bg-slate-100" />
+                  </div>
+                </details>
+              ))}
             </div>
           )}
         </div>
@@ -1135,10 +1213,6 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
 }
 
 function FaqPreviewSection(props: SectionRenderProps) {
-  if (!props.publishedFaqs?.length) {
-    return null;
-  }
-
   return <FaqSection {...props} />;
 }
 
@@ -1254,8 +1328,20 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
               ))}
             </div>
           ) : (
-            <div className="mt-6 rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-bold text-muted">
-              Published store articles will appear here.
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {[0, 1, 2].map((item) => (
+                <article className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50" key={item}>
+                  <div className="flex aspect-[16/10] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
+                    <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                      Blog cover placeholder
+                    </span>
+                  </div>
+                  <div className="grid gap-3 p-4">
+                    <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+                    <div className="h-3 w-1/2 rounded-full bg-slate-100" />
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </div>
@@ -1267,17 +1353,12 @@ function BlogPreviewSection({ context, publishedArticles = [], section }: Sectio
 function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
   const categories = context.preview.categories;
   const category = categories[0] ?? null;
-
-  if (!category) {
-    return null;
-  }
-
   const products = context.preview.products
-    .filter((product) => product.categoryId === category.id || product.categoryName === category.name)
+    .filter((product) => category && (product.categoryId === category.id || product.categoryName === category.name))
     .filter((product) => isPublicProductStatus(product.status))
     .slice(0, 4);
-  const title = textValue(section.config.title, category.name);
-  const subtitle = textValue(section.config.subtitle, category.description || "Explore this featured collection.");
+  const title = textValue(section.config.title, category?.name ?? "Featured collection");
+  const subtitle = textValue(section.config.subtitle, category?.description || "Explore this premium collection area.");
 
   return (
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
@@ -1292,12 +1373,14 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
             </h2>
             {subtitle ? <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p> : null}
           </div>
-          <Link
-            className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-            href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
-          >
-            View collection
-          </Link>
+          {category ? (
+            <Link
+              className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
+              href={`/store/${context.preview.store.slug}/category/${encodeURIComponent(category.slug || category.id)}`}
+            >
+              View collection
+            </Link>
+          ) : null}
         </div>
         {products.length ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1329,7 +1412,11 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
               );
             })}
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-6">
+            <PremiumSkeletonGrid label="Product image placeholder" />
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1347,8 +1434,13 @@ function RecentlyViewedSection({ context, section }: SectionRenderProps) {
           title={textValue(section.config.title, "Recently viewed")}
           trackCurrentProduct={false}
         />
-        <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-sm font-bold text-muted">
-          Recently viewed products appear here after customers browse product pages on this device.
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Recently viewed
+          </p>
+          <div className="mt-5">
+            <PremiumSkeletonGrid label="Product image placeholder" />
+          </div>
         </div>
       </div>
     </section>
@@ -1383,8 +1475,15 @@ function BrandsSection({ context, section }: SectionRenderProps) {
             ))}
           </div>
         ) : (
-          <div className="mt-6 rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-sm font-bold text-muted">
-            Store categories and collections will appear here.
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((item) => (
+              <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm" key={item}>
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  Brand
+                </div>
+                <p className="mt-4 text-sm font-black text-ink">Brand logo placeholder</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1398,13 +1497,13 @@ function TrustBadgesSection({ context, section }: SectionRenderProps) {
     {
       body: store.deliveryEnabled || store.pickupEnabled
         ? "Delivery and pickup settings are managed by the store owner."
-        : "Delivery details appear when configured by the store owner.",
+        : "Delivery promise placeholder for this store.",
       title: "Delivery ready"
     },
     {
       body: store.supportEmail || store.supportPhone || store.whatsappNumber
         ? "Support channels are connected for this store."
-        : "Support channels appear when configured.",
+        : "Customer support placeholder for this store.",
       title: "Customer support"
     },
     {
