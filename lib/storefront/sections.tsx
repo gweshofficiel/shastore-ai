@@ -1107,7 +1107,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
               <article
                 className={`flex h-full min-w-0 flex-col border transition ${
                   isFlagship
-                    ? "min-h-[44rem] overflow-visible border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)] hover:shadow-[0_32px_100px_-76px_rgba(15,23,42,0.95)]"
+                    ? "min-h-[45rem] overflow-hidden border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)] hover:shadow-[0_32px_100px_-76px_rgba(15,23,42,0.95)]"
                     : config.layout.productCard === "spec-card"
                     ? "overflow-hidden border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)] hover:-translate-y-1"
                     : config.layout.productCard === "glow-card"
@@ -1122,16 +1122,16 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                   className={`relative block shrink-0 overflow-hidden ${config.key === "shastore-flagship-premium" ? "rounded-t-[inherit]" : ""}`}
                   href={publicProductHref(context.preview.store.slug, product)}
                 >
-                  <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
+                  <ProductBadges className="absolute inset-x-3 top-3 z-10" product={product} />
                   {primaryImage ? (
                     <img
                       alt={product.title}
-                      className={`block w-full object-cover ${config.key === "shastore-flagship-premium" ? "aspect-[4/3]" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+                      className={`block w-full object-cover ${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
                       src={primaryImage}
                     />
                   ) : (
                     <div
-                      className={`flex items-end p-4 ${config.key === "shastore-flagship-premium" ? "aspect-[4/3]" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
+                      className={`flex items-end p-4 ${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"} bg-slate-100`}
                       style={{
                         background: `linear-gradient(135deg, ${context.theme.colorPalette.primary}16, ${context.theme.colorPalette.secondary}24)`
                       }}
@@ -1154,10 +1154,10 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     ))}
                   </div>
                 ) : null}
-                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "flex min-h-0 flex-1 flex-col p-4" : "flex min-h-0 flex-1 flex-col p-5"}>
+                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "flex min-h-0 flex-1 flex-col gap-3 p-5" : "flex min-h-0 flex-1 flex-col gap-3 p-5"}>
                   {isPublicCategoryTitle(product.categoryName) ? (
                         <p
-                          className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
+                          className="text-xs font-black uppercase tracking-[0.18em]"
                           style={{ color: context.theme.colorPalette.accent }}
                         >
                       {product.categoryName}
@@ -1167,26 +1167,26 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     href={publicProductHref(context.preview.store.slug, product)}
                   >
                     <h3
-                      className={`font-black tracking-[-0.03em] transition ${
+                      className={`font-black leading-tight tracking-[-0.03em] transition ${
                         config.key === "electronics-starter" ? "text-white hover:text-cyan-200" : "text-ink hover:text-slate-600"
-                      } ${config.key === "shastore-flagship-premium" ? "text-base" : config.layout.productCard === "spec-card" ? "text-lg" : "text-xl"}`}
+                      } ${config.key === "shastore-flagship-premium" ? "text-xl" : config.layout.productCard === "spec-card" ? "text-lg" : "text-xl"}`}
                       style={headingStyle()}
                     >
                       {product.title}
                     </h3>
                   </Link>
                   {isFlagship ? <FlagshipProductRating summary={reviewSummary} /> : null}
-                  <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                  <p className={`line-clamp-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "Product details coming soon."}
                   </p>
                   <ProductSalesProof compact product={product} />
-                  <ProductStockUrgency className="mt-3" compact product={product} />
+                  <ProductStockUrgency compact product={product} />
                   <div
-                    className={`mt-5 flex flex-wrap items-end gap-2 border-t pt-5 ${
+                    className={`mt-1 flex flex-wrap items-end gap-2 border-t pt-4 ${
                       config.key === "electronics-starter" ? "border-cyan-400/10 text-cyan-100" : "border-slate-100 text-ink"
                     }`}
                   >
-                    <p className="text-lg font-black">
+                    <p className="text-xl font-black leading-none">
                       {formatProductPrice(product.price, product.priceLabel, currency, context.preview.store.currencySettings)}
                     </p>
                     {product.compareAtPrice ? (
@@ -1194,11 +1194,11 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                         {formatProductPrice(product.compareAtPrice, null, currency, context.preview.store.currencySettings)}
                       </p>
                     ) : null}
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${config.key === "electronics-starter" ? "bg-cyan-400/10 text-cyan-100" : "bg-slate-100 text-slate-500"}`}>
+                    <span className={`ml-auto rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${config.key === "electronics-starter" ? "bg-cyan-400/10 text-cyan-100" : "bg-slate-100 text-slate-500"}`}>
                       {currency}
                     </span>
                   </div>
-                  <div className="mt-auto grid min-w-0 gap-2 pt-5">
+                  <div className="mt-auto grid min-w-0 gap-2 pt-4">
                     <ProductQuickView
                       currency={currency}
                       detailsHref={detailsHref}

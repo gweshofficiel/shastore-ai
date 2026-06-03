@@ -130,10 +130,10 @@ export function ProductBadges({
   }
 
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
+    <div className={`flex max-w-full flex-wrap items-start gap-2 ${className}`}>
       {badges.map((badge) => (
         <span
-          className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${badgeToneClasses[badge.tone]}`}
+          className={`max-w-full rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] shadow-sm ${badgeToneClasses[badge.tone]}`}
           key={badge.label}
         >
           {badge.label}

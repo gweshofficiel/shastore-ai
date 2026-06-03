@@ -174,26 +174,26 @@ export function RecentlyViewedProducts({
 
           return (
             <article
-              className="group flex min-h-[38rem] min-w-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
+              className="group flex min-h-[42rem] min-w-0 flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
               key={product.id}
             >
               <Link className="relative block shrink-0 overflow-hidden rounded-t-[inherit]" href={productHref}>
-                <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
+                <ProductBadges className="absolute inset-x-3 top-3 z-10" product={product} />
                 {product.imageUrl ? (
                   <img
                     alt={product.title}
-                    className="block aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105"
+                    className="block h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-60"
                     src={product.imageUrl}
                   />
                 ) : (
-                  <div className="flex aspect-[4/3] items-end bg-slate-900 p-5 text-white">
+                  <div className="flex h-56 items-end bg-slate-900 p-5 text-white sm:h-60">
                     <span className="rounded-full bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white backdrop-blur">
                       {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
                     </span>
                   </div>
                 )}
               </Link>
-              <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 p-5">
                 {isPublicCategoryTitle(product.categoryName) ? (
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                     {product.categoryName}
@@ -201,17 +201,17 @@ export function RecentlyViewedProducts({
                 ) : null}
                 <div>
                   <Link href={productHref}>
-                    <h3 className="text-lg font-black tracking-[-0.03em] text-ink">
+                    <h3 className="text-xl font-black leading-tight tracking-[-0.03em] text-ink">
                       {product.title}
                     </h3>
                   </Link>
-                  <p className="mt-2 text-sm font-black text-ink">
+                  <p className="mt-3 text-xl font-black leading-none text-ink">
                     {formatProductPrice(product.price, product.priceLabel, productCurrency)}
                   </p>
                   <ProductSalesProof compact product={product} />
                   <ProductStockUrgency className="mt-3" compact product={product} />
                 </div>
-                <div className="mt-auto grid min-w-0 gap-2 pt-3">
+                <div className="mt-auto grid min-w-0 gap-2 pt-4">
                   <ProductQuickView
                     currency={productCurrency}
                     detailsHref={productHref}
