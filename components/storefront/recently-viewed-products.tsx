@@ -167,14 +167,14 @@ export function RecentlyViewedProducts({
           Browse store
         </Link>
       </div>
-      <div className="mt-6 grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 flex items-stretch gap-4 overflow-x-auto overflow-y-visible pb-6">
         {displayProducts.map((product) => {
           const productHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const productCurrency = product.currency || currency;
 
           return (
             <article
-              className="group flex h-full min-w-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
+              className="group flex min-h-[38rem] w-[min(82vw,22rem)] shrink-0 flex-col rounded-[1.75rem] border border-slate-100 bg-slate-50 transition hover:border-slate-300 hover:shadow-xl"
               key={product.id}
             >
               <Link className="relative block shrink-0 overflow-hidden rounded-t-[inherit]" href={productHref}>
@@ -193,7 +193,7 @@ export function RecentlyViewedProducts({
                   </div>
                 )}
               </Link>
-              <div className="flex flex-1 flex-col gap-3 p-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
                 {isPublicCategoryTitle(product.categoryName) ? (
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                     {product.categoryName}
@@ -201,7 +201,7 @@ export function RecentlyViewedProducts({
                 ) : null}
                 <div>
                   <Link href={productHref}>
-                    <h3 className="line-clamp-2 text-lg font-black tracking-[-0.03em] text-ink">
+                    <h3 className="text-lg font-black tracking-[-0.03em] text-ink">
                       {product.title}
                     </h3>
                   </Link>
@@ -211,7 +211,7 @@ export function RecentlyViewedProducts({
                   <ProductSalesProof compact product={product} />
                   <ProductStockUrgency className="mt-3" compact product={product} />
                 </div>
-                <div className="mt-auto grid gap-2 pt-3">
+                <div className="mt-auto grid min-w-0 gap-2 pt-3">
                   <ProductQuickView
                     currency={productCurrency}
                     detailsHref={productHref}

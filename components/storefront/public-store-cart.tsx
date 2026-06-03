@@ -896,12 +896,12 @@ export function AddToCartButton({
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       {product.variants.length ? (
-        <label className="grid gap-2 text-sm font-bold text-ink">
+        <label className="grid min-w-0 gap-2 text-sm font-bold text-ink">
           <span>Choose option</span>
           <select
-            className="h-11 rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-ink"
+            className="h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink"
             onChange={(event) => setSelectedVariantId(event.target.value)}
             value={selectedVariantId}
           >
@@ -917,9 +917,9 @@ export function AddToCartButton({
       ) : null}
       {stockMessage ? (
         <p
-          className={`rounded-2xl border px-4 py-3 text-center text-base font-black ${
+          className={`w-full rounded-2xl border px-4 py-3 text-center text-sm font-black ${
             isOutOfStock
-              ? "border-red-600 bg-red-600 text-white shadow-lg shadow-red-200"
+              ? "border-red-600 bg-red-600 text-white"
               : "border-amber-200 bg-amber-50 text-amber-800"
           }`}
         >
@@ -928,7 +928,7 @@ export function AddToCartButton({
       ) : null}
       {showViewDetails && detailsHref ? (
         <Link
-          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+          className="inline-flex min-h-11 w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black leading-5 text-ink transition hover:border-slate-300 hover:bg-slate-50"
           href={detailsHref}
         >
           View product details
@@ -936,9 +936,11 @@ export function AddToCartButton({
       ) : null}
       {showBuyNow ? (
         <button
-          className={`inline-flex h-11 items-center justify-center rounded-full border px-4 text-sm font-black transition ${
+          className={`inline-flex min-h-11 w-full min-w-0 items-center justify-center rounded-full border px-4 py-3 text-center text-sm font-black leading-5 transition ${
             isAddToCartDisabled
-              ? "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-50"
+              ? isOutOfStock
+                ? "pointer-events-none cursor-not-allowed border-red-600 bg-red-600 text-white"
+                : "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-60"
               : "border-transparent text-white hover:opacity-90"
           }`}
           disabled={isAddToCartDisabled}
@@ -952,9 +954,11 @@ export function AddToCartButton({
         </button>
       ) : null}
       <button
-        className={`inline-flex h-11 items-center justify-center border px-4 text-sm font-black transition ${
+        className={`inline-flex min-h-11 w-full min-w-0 items-center justify-center border px-4 py-3 text-center text-sm font-black leading-5 transition ${
           isAddToCartDisabled
-            ? "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-50"
+            ? isOutOfStock
+              ? "pointer-events-none cursor-not-allowed border-red-600 bg-red-600 text-white"
+              : "pointer-events-none cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500 opacity-60"
             : "border-transparent text-white hover:opacity-90"
         }`}
         disabled={isAddToCartDisabled}
@@ -965,7 +969,7 @@ export function AddToCartButton({
         }}
         type="button"
       >
-        {isAddToCartDisabled ? "Unavailable" : added ? "Added to cart" : "Add to cart"}
+        {isOutOfStock ? "Out of stock" : isAddToCartDisabled ? "Unavailable" : added ? "Added to cart" : "Add to cart"}
       </button>
     </div>
   );

@@ -201,7 +201,7 @@ export function CompareButton({
   return (
     <button
       aria-pressed={selected}
-      className={`inline-flex h-10 items-center justify-center rounded-full border px-4 text-xs font-black uppercase tracking-[0.14em] transition ${
+      className={`inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-full border px-4 py-2 text-center text-xs font-black uppercase leading-5 tracking-[0.14em] transition ${
         selected
           ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
           : limitReached

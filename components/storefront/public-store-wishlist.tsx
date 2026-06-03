@@ -249,7 +249,7 @@ export function WishlistButton({
   return (
     <button
       aria-pressed={saved}
-      className={`inline-flex h-11 items-center justify-center rounded-full border px-4 text-sm font-black transition ${
+      className={`inline-flex min-h-11 w-full min-w-0 items-center justify-center rounded-full border px-4 py-3 text-center text-sm font-black leading-5 transition ${
         saved
           ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
           : "border-slate-200 bg-white text-ink hover:border-slate-300 hover:bg-slate-50"

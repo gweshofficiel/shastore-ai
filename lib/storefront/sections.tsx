@@ -1084,13 +1084,15 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                 </p>
               </div>
               <div
-                className={`grid items-stretch gap-5 ${
+                className={
                   config.key === "shastore-flagship-premium"
-                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                    : config.layout.mobileDensity === "dense"
-                    ? "grid-cols-2 lg:grid-cols-4"
-                    : "sm:grid-cols-2 lg:grid-cols-3"
-                }`}
+                    ? "flex items-stretch gap-5 overflow-x-auto overflow-y-visible pb-6"
+                    : `grid items-stretch gap-5 ${
+                        config.layout.mobileDensity === "dense"
+                          ? "grid-cols-2 lg:grid-cols-4"
+                          : "sm:grid-cols-2 lg:grid-cols-3"
+                      }`
+                }
               >
                 {section.products.map((product) => {
             const galleryImages = productGalleryUrls(product.gallery);
@@ -1105,7 +1107,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
               <article
                 className={`flex h-full min-w-0 flex-col border transition ${
                   isFlagship
-                    ? "overflow-visible border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)] hover:shadow-[0_32px_100px_-76px_rgba(15,23,42,0.95)]"
+                    ? "min-h-[44rem] w-[min(82vw,22rem)] shrink-0 overflow-visible border-slate-200 bg-white shadow-[0_24px_90px_-70px_rgba(15,23,42,0.85)] hover:shadow-[0_32px_100px_-76px_rgba(15,23,42,0.95)]"
                     : config.layout.productCard === "spec-card"
                     ? "overflow-hidden border-cyan-400/20 bg-slate-900 text-slate-100 shadow-[0_18px_70px_-50px_rgba(34,211,238,0.7)] hover:-translate-y-1"
                     : config.layout.productCard === "glow-card"
@@ -1152,7 +1154,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     ))}
                   </div>
                 ) : null}
-                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "flex flex-1 flex-col p-4" : "flex flex-1 flex-col p-5"}>
+                <div className={config.key === "shastore-flagship-premium" || config.layout.productCard === "spec-card" ? "flex min-h-0 flex-1 flex-col p-4" : "flex min-h-0 flex-1 flex-col p-5"}>
                   {isPublicCategoryTitle(product.categoryName) ? (
                         <p
                           className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
@@ -1174,7 +1176,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                     </h3>
                   </Link>
                   {isFlagship ? <FlagshipProductRating summary={reviewSummary} /> : null}
-                  <p className={`mt-3 text-sm leading-6 ${config.key === "shastore-flagship-premium" ? "line-clamp-2" : ""} ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
+                  <p className={`mt-3 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "Product details coming soon."}
                   </p>
                   <ProductSalesProof compact product={product} />
@@ -1196,7 +1198,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       {currency}
                     </span>
                   </div>
-                  <div className="mt-auto grid gap-2 pt-5">
+                  <div className="mt-auto grid min-w-0 gap-2 pt-5">
                     <ProductQuickView
                       currency={currency}
                       detailsHref={detailsHref}

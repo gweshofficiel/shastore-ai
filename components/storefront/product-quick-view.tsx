@@ -139,7 +139,7 @@ export function ProductQuickView({
   return (
     <>
       <button
-        className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-ink transition hover:border-slate-300 hover:bg-slate-50"
+        className="inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-center text-xs font-black uppercase leading-5 tracking-[0.14em] text-ink transition hover:border-slate-300 hover:bg-slate-50"
         onClick={() => setIsOpen(true)}
         type="button"
       >
@@ -181,7 +181,7 @@ export function ProductQuickView({
                   </div>
                 )}
               </div>
-              <div className="grid content-start gap-4">
+              <div className="grid min-w-0 content-start gap-4">
                 <ProductBadges product={product} />
                 <div>
                   <h3 className="text-3xl font-black tracking-[-0.05em] text-ink">
@@ -214,10 +214,10 @@ export function ProductQuickView({
                   {availability.message}
                 </div>
                 {product.variants.length ? (
-                  <label className="grid gap-2 text-sm font-bold text-ink">
+                  <label className="grid min-w-0 gap-2 text-sm font-bold text-ink">
                     <span>Choose option</span>
                     <select
-                      className="h-11 rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-ink"
+                      className="h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-ink"
                       onChange={(event) => {
                         setSelectedVariantId(event.target.value);
                         setQuantity(1);
@@ -280,7 +280,7 @@ export function ProductQuickView({
                 ) : null}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
-                    className="h-11 rounded-full bg-ink px-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="min-h-11 w-full rounded-full bg-ink px-4 py-3 text-sm font-black leading-5 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-red-600 disabled:text-white"
                     disabled={isAddDisabled}
                     onClick={addToCart}
                     type="button"
@@ -288,7 +288,7 @@ export function ProductQuickView({
                     {availability.isSoldOut ? "Sold Out" : "Add to Cart"}
                   </button>
                   <Link
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-ink transition hover:border-slate-300 hover:bg-slate-50"
+                    className="inline-flex min-h-11 w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black leading-5 text-ink transition hover:border-slate-300 hover:bg-slate-50"
                     href={detailsHref}
                     onClick={closeModal}
                   >
