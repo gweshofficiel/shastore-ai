@@ -651,8 +651,29 @@ function resolveHomepageManagedSections(
       section_type: homepageSectionRendererType(section.sectionType),
       store_instance_id: context.store_instance_id
     }));
+  const resolvedSections = [navbar, ...sections];
 
-  return [navbar, ...sections];
+  if (
+    templateConfig(context).key === "shastore-flagship-premium" &&
+    !resolvedSections.some((section) => section.section_type === "footer")
+  ) {
+    const maxOrder = resolvedSections.reduce(
+      (current, section) => Math.max(current, section.section_order),
+      0
+    );
+
+    resolvedSections.push({
+      config: {},
+      id: "homepage-runtime-footer",
+      owner_user_id: context.owner_user_id,
+      section_enabled: true,
+      section_order: maxOrder + 10,
+      section_type: "footer",
+      store_instance_id: context.store_instance_id
+    });
+  }
+
+  return resolvedSections;
 }
 
 export async function resolveSectionLayout(context: StoreTenantContext): Promise<StorePageLayout> {

@@ -22,6 +22,7 @@ import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-swi
 import { GoogleAnalyticsScript } from "@/components/storefront/google-analytics";
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import { MetaPixelScript } from "@/components/storefront/meta-pixel";
+import { normalizeStorefrontTemplateKey } from "@/lib/storefront/theme-registry";
 import {
   buildPublicProductSections,
   isPublicCategoryTitle
@@ -442,6 +443,7 @@ export default async function PublicStorePage({
   const { branding, store } = filteredPreview;
   const products = discovery.products;
   const theme = preview.themeSettings;
+  const isFlagshipPremium = normalizeStorefrontTemplateKey(preview.templateId) === "shastore-flagship-premium";
   const selectedCurrency = selectedCurrencyFromValue(query.currency, store.currencySettings);
   const productSections = buildPublicProductSections({
     categories: filteredPreview.categories,
@@ -1108,19 +1110,21 @@ export default async function PublicStorePage({
           )}
         </div>
       </section>
-      <PublicStoreFooter
-        copyrightText={theme.copyrightText}
-        footerBackgroundColor={theme.footerBackgroundColor}
-        footerLinkSettings={footerLinkSettings}
-        footerStyle={String(context.theme.styleConfig.footerStyle || theme.footerStyle)}
-        footerTextColor={theme.footerTextColor}
-        hasPublishedBlogArticles={hasPublishedBlogArticles}
-        hasPublishedFaqs={hasPublishedFaqs}
-        navigationLinks={preview.navigation.footer}
-        pages={preview.pages}
-        storeSlug={store.slug}
-        storeTitle={store.title}
-      />
+      {isFlagshipPremium ? null : (
+        <PublicStoreFooter
+          copyrightText={theme.copyrightText}
+          footerBackgroundColor={theme.footerBackgroundColor}
+          footerLinkSettings={footerLinkSettings}
+          footerStyle={String(context.theme.styleConfig.footerStyle || theme.footerStyle)}
+          footerTextColor={theme.footerTextColor}
+          hasPublishedBlogArticles={hasPublishedBlogArticles}
+          hasPublishedFaqs={hasPublishedFaqs}
+          navigationLinks={preview.navigation.footer}
+          pages={preview.pages}
+          storeSlug={store.slug}
+          storeTitle={store.title}
+        />
+      )}
     </main>
   );
 }
