@@ -166,8 +166,8 @@ async function main() {
   }
 
   console.log("");
-  console.log("Premium Product 1 source when placeholders render:");
-  console.log("lib/storefront/sections.tsx:456 FlagshipProductPlaceholderCard");
+  console.log("Empty-catalog fallback source:");
+  console.log("lib/storefront/sections.tsx FlagshipProductPlaceholderGrid -> premium visual fallback cards");
 }
 
 main().catch((error) => {

@@ -9,7 +9,16 @@ type VisualTheme = {
   secondary: string;
 };
 
+export type VisualAssetHook = {
+  assetId: string | null;
+  promptKey: string | null;
+  source: string;
+};
+
+export type CategoryVisualCardStyle = "image-led" | "icon-led" | "standard";
+
 export type HeroVisualSlots = {
+  assetHook: VisualAssetHook | null;
   ctaLink: string;
   ctaText: string;
   desktopBannerUrl: string | null;
@@ -20,6 +29,8 @@ export type HeroVisualSlots = {
 
 export type CategoryVisualSlot = {
   accentColor: string;
+  assetHook: VisualAssetHook | null;
+  cardStyle: CategoryVisualCardStyle;
   icon: LucideIcon;
   imageUrl: string | null;
 };
@@ -45,10 +56,37 @@ function configRecord(value: unknown) {
     : {};
 }
 
+function visualAssetHook(value: unknown): VisualAssetHook | null {
+  const record = configRecord(value);
+  const assetId = nullableString(record.assetId ?? record.assetKey ?? record.id);
+  const promptKey = nullableString(record.promptKey ?? record.aiPromptKey ?? record.generationKey);
+  const source = stringValue(record.source, assetId ? "uploaded" : promptKey ? "ai-ready" : "");
+
+  if (!assetId && !promptKey && !source) {
+    return null;
+  }
+
+  return {
+    assetId,
+    promptKey,
+    source
+  };
+}
+
 function colorFromText(value: string, fallback: string) {
   const palette = ["#0f172a", "#1d4ed8", "#d97706", "#047857", "#7c3aed", "#be123c"];
   const sum = value.split("").reduce((total, char) => total + char.charCodeAt(0), 0);
   return palette[sum % palette.length] ?? fallback;
+}
+
+function categoryCardStyle(value: unknown): CategoryVisualCardStyle {
+  const style = stringValue(value);
+
+  if (style === "image-led" || style === "icon-led" || style === "standard") {
+    return style;
+  }
+
+  return "image-led";
 }
 
 export function resolveHeroVisualSlots({
@@ -65,6 +103,7 @@ export function resolveHeroVisualSlots({
   const visual = configRecord(config.visual);
 
   return {
+    assetHook: visualAssetHook(config.asset ?? visual.asset ?? visual.aiAsset),
     ctaLink: stringValue(config.ctaLink ?? config.ctaHref ?? visual.ctaLink, "#products"),
     ctaText: stringValue(config.ctaText ?? visual.ctaText, themeSettings.ctaText || "Shop now"),
     desktopBannerUrl: nullableString(
@@ -88,20 +127,30 @@ export function resolveHeroVisualSlots({
 
 export function resolveCategoryVisualSlot({
   accentColor,
+  cardStyle,
   category,
   fallbackIcon
 }: {
   accentColor: string;
+  cardStyle?: unknown;
   category: {
+    accentColor?: string | null;
+    asset?: unknown;
+    cardStyle?: string | null;
     imageUrl?: string | null;
     name: string;
+    visual?: unknown;
   };
   fallbackIcon: LucideIcon;
 }): CategoryVisualSlot {
+  const visual = configRecord(category.visual);
+
   return {
-    accentColor: colorFromText(category.name, accentColor),
+    accentColor: stringValue(category.accentColor ?? visual.accentColor, colorFromText(category.name, accentColor)),
+    assetHook: visualAssetHook(category.asset ?? visual.asset ?? visual.aiAsset),
+    cardStyle: categoryCardStyle(category.cardStyle ?? visual.cardStyle ?? cardStyle),
     icon: fallbackIcon,
-    imageUrl: category.imageUrl ?? null
+    imageUrl: nullableString(category.imageUrl ?? visual.imageUrl ?? visual.generatedImageUrl)
   };
 }
 
@@ -173,6 +222,21 @@ export function CategoryVisualMedia({
     return <img alt={categoryName} className={`${className} w-full object-cover`} src={slot.imageUrl} />;
   }
 
+  if (slot.cardStyle === "icon-led") {
+    return (
+      <div
+        className={`relative grid place-items-center overflow-hidden ${className}`}
+        style={{
+          background: `radial-gradient(circle at 50% 25%, ${slot.accentColor}2e, transparent 30%), linear-gradient(135deg, ${theme.primary}10, ${theme.secondary}20)`
+        }}
+      >
+        <span className="rounded-[1.5rem] bg-white/85 p-5 text-slate-700 shadow-sm">
+          <Icon className="h-7 w-7" />
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`relative flex items-end justify-between overflow-hidden p-4 ${className}`}
@@ -220,12 +284,18 @@ export function PromotionalVisualBlocks({
       ctaText: "Browse collection",
       eyebrow: "Seasonal sale",
       title: "Campaign spotlight"
+    },
+    {
+      body: "Collection launch space for new drops, editorial edits, and future AI imagery.",
+      ctaText: "See what's new",
+      eyebrow: "New collection",
+      title: "Launch-ready feature"
     }
   ];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {promoSlots.slice(0, 3).map((slot, index) => (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {promoSlots.slice(0, 4).map((slot, index) => (
         <a
           className="group overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
           href={ctaHref}
@@ -259,9 +329,11 @@ export function PromotionalVisualBlocks({
 
 export function PopupAnnouncementSlots({ theme }: { theme: VisualTheme }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       {[
-        ["Announcement bar", "Ready for store-wide shipping, launch, or service notices."],
+        ["Top announcement bar", "Ready for store-wide shipping, launch, or service notices."],
+        ["Marketing banner", "Prepared for homepage campaign messaging and future visual assets."],
+        ["Promo ribbon", "Prepared for compact sale messaging across premium templates."],
         ["Newsletter popup", "Ready for email capture once a signup destination is connected."],
         ["Discount popup", "Ready for campaign codes and future popup targeting."]
       ].map(([title, body], index) => (

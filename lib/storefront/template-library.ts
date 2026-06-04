@@ -118,18 +118,18 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
 
 const flagshipSectionDefinitions = [
   ["flagship-hero", "hero", 10, "Premium commerce, powered by your real catalog", "Official SHASTORE flagship storefront structure."],
-  ["flagship-trust", "trust_badges", 20, "Trust badges", "Free shipping, returns, secure payment, and support placeholders."],
-  ["flagship-categories", "featured_categories", 30, "Shop by Categories", "Eight premium placeholder category cards appear until real categories exist."],
-  ["flagship-featured-products", "featured_products", 40, "Featured Products", "Six premium placeholder products appear until real products exist."],
-  ["flagship-flash-deals", "flash_deals", 50, "Flash Deals", "Deal card and countdown placeholders."],
-  ["flagship-new-arrivals", "new_arrivals", 60, "New Arrivals", "Promotional placeholders for new merchandise."],
-  ["flagship-best-sellers", "best_sellers", 70, "Top Selling", "Top selling product placeholders."],
-  ["flagship-brands", "brands", 80, "Top Brands", "Brand logo placeholders."],
-  ["flagship-testimonials", "testimonials", 90, "Stats and trust", "Premium stats strip placeholders."],
-  ["flagship-blog", "blog_preview", 100, "From the blog", "Editorial placeholders keep this premium section complete."],
-  ["flagship-faq", "faq_preview", 110, "Frequently asked questions", "FAQ placeholders keep this premium section complete."],
+  ["flagship-trust", "trust_badges", 20, "Trust badges", "Free shipping, returns, secure payment, and support foundations."],
+  ["flagship-categories", "featured_categories", 30, "Shop by Categories", "Eight premium category visual slots appear until real categories exist."],
+  ["flagship-featured-products", "featured_products", 40, "Featured Products", "Six premium product visual slots appear until real products exist."],
+  ["flagship-flash-deals", "flash_deals", 50, "Flash Deals", "Deal card and countdown-ready campaign slots."],
+  ["flagship-new-arrivals", "new_arrivals", 60, "New Arrivals", "Promotional visual slots for new merchandise."],
+  ["flagship-best-sellers", "best_sellers", 70, "Top Selling", "Top selling product visual slots."],
+  ["flagship-brands", "brands", 80, "Top Brands", "Brand logo visual slots."],
+  ["flagship-testimonials", "testimonials", 90, "Stats and trust", "Premium stats strip foundations."],
+  ["flagship-blog", "blog_preview", 100, "From the blog", "Editorial slots keep this premium section complete."],
+  ["flagship-faq", "faq_preview", 110, "Frequently asked questions", "FAQ slots keep this premium section complete."],
   ["flagship-newsletter", "newsletter", 120, "Join the newsletter", "Newsletter structure for future customer engagement."],
-  ["flagship-footer", "footer", 130, "Footer", "Dark premium footer with links, contact, payments, and legal placeholders."]
+  ["flagship-footer", "footer", 130, "Footer", "Dark premium footer with links, contact, payments, and legal foundations."]
 ] as const;
 
 const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {

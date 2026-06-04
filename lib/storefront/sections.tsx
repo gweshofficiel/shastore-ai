@@ -394,13 +394,13 @@ function placeholderSourceForBranch(branch: FlagshipProductGridTrace["branch"]) 
     case "real-cards":
       return null;
     case "flash-deals-placeholder":
-      return "lib/storefront/sections.tsx FlagshipFlashDealsPlaceholder → FlagshipProductPlaceholderGrid (Premium Product 1 at line 456)";
+      return "lib/storefront/sections.tsx FlagshipFlashDealsPlaceholder → premium empty-catalog fallback";
     case "new-arrivals-placeholder":
-      return "lib/storefront/sections.tsx FlagshipNewArrivalsPlaceholder (Promo image placeholder at line 542)";
+      return "lib/storefront/sections.tsx FlagshipNewArrivalsPlaceholder → premium campaign fallback";
     case "flagship-product-placeholder-grid":
-      return "lib/storefront/sections.tsx FlagshipProductPlaceholderGrid → FlagshipProductPlaceholderCard (Premium Product 1 at line 456)";
+      return "lib/storefront/sections.tsx FlagshipProductPlaceholderGrid → premium empty-catalog fallback";
     case "premium-skeleton-grid":
-      return "lib/storefront/sections.tsx PremiumSkeletonGrid (Product image placeholder at line 341)";
+      return "lib/storefront/sections.tsx PremiumSkeletonGrid → premium visual fallback";
     default:
       return null;
   }
@@ -432,20 +432,18 @@ function PremiumVisualPlaceholder({
 
 function PremiumSkeletonGrid({
   count = 4,
-  label
+  label,
+  theme
 }: {
   count?: number;
   label: string;
+  theme: StoreTenantContext["theme"]["colorPalette"];
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {Array.from({ length: count }).map((_, index) => (
         <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm" key={`${label}-${index}`}>
-          <div className="flex aspect-[4/3] items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-4">
-            <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-              {label}
-            </span>
-          </div>
+          <PremiumVisualFallback accentLabel={label} className="aspect-[4/3]" theme={theme} />
           <div className="grid gap-3 p-4">
             <div className="h-3 w-2/3 rounded-full bg-slate-200" />
             <div className="h-3 w-1/2 rounded-full bg-slate-100" />
@@ -542,50 +540,44 @@ function flagshipCategoryIcon(category: { name?: string | null; slug?: string | 
   return ShoppingBag;
 }
 
-function FlagshipProductPlaceholderCard({ index }: { index: number }) {
+function FlagshipProductPlaceholderCard({
+  index,
+  theme
+}: {
+  index: number;
+  theme: StoreTenantContext["theme"]["colorPalette"];
+}) {
   return (
     <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative flex aspect-square items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-3">
-        <button
-          aria-label="Wishlist placeholder"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
-          type="button"
-        >
-          <Heart className="h-4 w-4" />
-        </button>
-        <span className="rounded-full bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-          Image placeholder
-        </span>
-      </div>
+      <PremiumVisualFallback accentLabel={`Premium catalog visual ${index + 1}`} className="aspect-square" theme={theme} />
       <div className="grid gap-2.5 p-4">
-        <div>
-          <h3 className="text-base font-black tracking-[-0.02em] text-ink">Premium Product {index + 1}</h3>
-          <div className="mt-1 flex items-center gap-1 text-amber-500">
-            {[0, 1, 2, 3, 4].map((item) => (
-              <Star className="h-3.5 w-3.5 fill-current" key={item} />
-            ))}
-          </div>
+        <div className="flex items-center gap-1 text-amber-500">
+          {[0, 1, 2, 3, 4].map((item) => (
+            <Star className="h-3.5 w-3.5 fill-current" key={item} />
+          ))}
         </div>
+        <div className="h-4 w-3/4 rounded-full bg-slate-200" />
+        <div className="h-3 w-1/2 rounded-full bg-slate-100" />
         <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-          <p className="text-base font-black text-ink">$0.00</p>
-          <button
-            aria-label="Cart placeholder"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white"
-            type="button"
-          >
-            <ShoppingCart className="h-4 w-4" />
-          </button>
+          <div className="h-4 w-16 rounded-full bg-slate-200" />
+          <div className="h-9 w-9 rounded-full bg-slate-950" />
         </div>
       </div>
     </article>
   );
 }
 
-function FlagshipProductPlaceholderGrid({ count = 6 }: { count?: number }) {
+function FlagshipProductPlaceholderGrid({
+  count = 6,
+  theme
+}: {
+  count?: number;
+  theme: StoreTenantContext["theme"]["colorPalette"];
+}) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {Array.from({ length: count }).map((_, index) => (
-        <FlagshipProductPlaceholderCard index={index} key={index} />
+        <FlagshipProductPlaceholderCard index={index} key={index} theme={theme} />
       ))}
     </div>
   );
@@ -613,17 +605,17 @@ function FlagshipSectionHeader({
   );
 }
 
-function FlagshipFlashDealsPlaceholder() {
+function FlagshipFlashDealsPlaceholder({ theme }: { theme: StoreTenantContext["theme"]["colorPalette"] }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]" id="deals">
-      <FlagshipProductPlaceholderGrid count={6} />
+      <FlagshipProductPlaceholderGrid count={6} theme={theme} />
       <aside className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-[0_30px_90px_-60px_rgba(15,23,42,0.95)]">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">Flash deals</p>
         <h3 className="mt-3 text-3xl font-black tracking-[-0.05em]" style={headingStyle()}>
-          Premium deal placeholder
+          Limited-time offer slot
         </h3>
         <p className="mt-3 text-sm font-semibold leading-6 text-white/70">
-          Countdown placeholder for limited-time offers.
+          Campaign-ready countdown space for future merchandising.
         </p>
         <div className="mt-6 grid grid-cols-4 gap-2">
           {["DD", "HH", "MM", "SS"].map((label) => (
@@ -638,19 +630,15 @@ function FlagshipFlashDealsPlaceholder() {
   );
 }
 
-function FlagshipNewArrivalsPlaceholder() {
+function FlagshipNewArrivalsPlaceholder({ theme }: { theme: StoreTenantContext["theme"]["colorPalette"] }) {
   return (
     <div className="grid gap-5 lg:grid-cols-3">
       {["New season edit", "Premium essentials", "Trending now"].map((title) => (
         <article className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={title}>
-          <div className="flex min-h-48 items-end bg-gradient-to-br from-slate-100 via-white to-slate-200 p-5">
-            <span className="rounded-full bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-              Promo image placeholder
-            </span>
-          </div>
+          <PremiumVisualFallback accentLabel={`${title} visual`} className="min-h-48" theme={theme} />
           <div className="p-5">
             <h3 className="text-xl font-black tracking-[-0.04em] text-ink" style={headingStyle()}>{title}</h3>
-            <p className="mt-2 text-sm font-semibold leading-6 text-muted">Promotional card placeholder</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">Campaign-ready visual merchandising slot.</p>
           </div>
         </article>
       ))}
@@ -1225,13 +1213,17 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
           ))}
         </div>
       ) : config.key === "shastore-flagship-premium" && section?.section_type === "flash_deals" ? (
-        <FlagshipFlashDealsPlaceholder />
+        <FlagshipFlashDealsPlaceholder theme={context.theme.colorPalette} />
       ) : config.key === "shastore-flagship-premium" && section?.section_type === "new_arrivals" ? (
-        <FlagshipNewArrivalsPlaceholder />
+        <FlagshipNewArrivalsPlaceholder theme={context.theme.colorPalette} />
       ) : config.key === "shastore-flagship-premium" ? (
-        <FlagshipProductPlaceholderGrid count={6} />
+        <FlagshipProductPlaceholderGrid count={6} theme={context.theme.colorPalette} />
       ) : (
-        <PremiumSkeletonGrid count={config.layout.mobileDensity === "dense" ? 8 : 6} label="Product image placeholder" />
+        <PremiumSkeletonGrid
+          count={config.layout.mobileDensity === "dense" ? 8 : 6}
+          label="Product visual fallback"
+          theme={context.theme.colorPalette}
+        />
       )}
       </div>
     </section>
@@ -1806,6 +1798,7 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
               const Icon = flagshipCategoryIcon(category);
               const visualSlot = resolveCategoryVisualSlot({
                 accentColor: context.theme.colorPalette.accent,
+                cardStyle: section.config.categoryCardStyle ?? section.config.cardStyle,
                 category,
                 fallbackIcon: Icon
               });
@@ -1854,6 +1847,8 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
                   categoryName={name}
                   slot={{
                     accentColor: context.theme.colorPalette.accent,
+                    assetHook: null,
+                    cardStyle: "icon-led",
                     icon: Icon,
                     imageUrl: null
                   }}
@@ -1863,7 +1858,7 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
                   <h3 className="text-lg font-black tracking-[-0.03em] text-ink" style={headingStyle()}>
                     {name}
                   </h3>
-                  <p className="mt-2 text-sm font-bold text-muted">Item count placeholder</p>
+                  <p className="mt-2 text-sm font-bold text-muted">Collection-ready visual slot</p>
                 </div>
               </div>
             );
@@ -1871,7 +1866,7 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
           </div>
         ) : (
           <div className="mt-6">
-            <PremiumSkeletonGrid label="Category image placeholder" />
+            <PremiumSkeletonGrid label="Category visual fallback" theme={context.theme.colorPalette} />
           </div>
         )}
       </div>
@@ -1917,10 +1912,10 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
         ) : config.key === "shastore-flagship-premium" ? (
           <div className="grid gap-4 md:grid-cols-4">
             {[
-              ["10K+", "Customer placeholder"],
-              ["500+", "Brand placeholder"],
-              ["24/7", "Support placeholder"],
-              ["4.9", "Rating placeholder"]
+              ["10K+", "Shoppers served"],
+              ["500+", "Brands ready"],
+              ["24/7", "Support ready"],
+              ["4.9", "Average rating"]
             ].map(([value, label]) => (
               <div className="rounded-[2rem] border border-slate-200 bg-white p-6 text-center shadow-sm" key={label}>
                 <p className="text-4xl font-black tracking-[-0.05em] text-ink" style={headingStyle()}>{value}</p>
@@ -1937,7 +1932,7 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
                   <div className="h-3 rounded-full bg-slate-100" />
                   <div className="h-3 w-4/5 rounded-full bg-slate-100" />
                 </div>
-                <figcaption className="mt-5 text-sm font-black text-ink">Testimonial placeholder</figcaption>
+                <figcaption className="mt-5 text-sm font-black text-ink">Customer story slot</figcaption>
               </figure>
             ))}
           </div>
@@ -1986,7 +1981,7 @@ function FaqSection({ context, publishedFaqs = [], section }: SectionRenderProps
             ))
           ) : (
             <div className="grid gap-3">
-              {["Shipping question placeholder", "Return question placeholder", "Payment question placeholder"].map((item) => (
+              {["Shipping question slot", "Return question slot", "Payment question slot"].map((item) => (
                 <details className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={item}>
                   <summary className="cursor-pointer text-sm font-black text-ink">{item}</summary>
                   <div className="mt-3 grid gap-2">
@@ -2264,7 +2259,7 @@ function BrandsSection({ context, section }: SectionRenderProps) {
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                   Brand
                 </div>
-                <p className="mt-4 text-sm font-black text-ink">Brand logo placeholder</p>
+                <p className="mt-4 text-sm font-black text-ink">Brand mark slot</p>
               </div>
             ))}
           </div>
@@ -2396,7 +2391,7 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
 function NewsletterSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
   const config = templateConfig(context);
   const title = textValue(section.config.title, "Join the newsletter");
-  const body = textValue(section.config.body, "Newsletter placeholder for future customer updates and premium offers.");
+  const body = textValue(section.config.body, "Newsletter foundation for future customer updates and premium offers.");
 
   if (config.key !== "shastore-flagship-premium") {
     return <GenericContentSection context={context} section={section} />;
@@ -2415,7 +2410,7 @@ function NewsletterSection({ context, section }: { context: StoreTenantContext; 
         <form className="flex overflow-hidden rounded-full border border-white/10 bg-white text-slate-950">
           <input
             className="min-h-12 flex-1 px-5 text-sm font-semibold outline-none"
-            placeholder="Email address placeholder"
+            placeholder="Email address"
             type="email"
           />
           <button className="bg-amber-400 px-6 text-xs font-black uppercase tracking-[0.16em]" type="button">
@@ -2493,7 +2488,7 @@ function MissingSectionRenderer({ section }: { context: StoreTenantContext; sect
       <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-6 text-center">
         <p className="text-sm font-black text-ink">Unsupported storefront section</p>
         <p className="mt-2 text-xs font-semibold text-muted">
-          The section type &quot;{section.section_type}&quot; is not available yet, so this safe placeholder is shown.
+          The section type &quot;{section.section_type}&quot; is not available yet, so this safe fallback is shown.
         </p>
       </div>
     </SectionShell>

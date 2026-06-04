@@ -416,7 +416,7 @@ export function StoreBuilder({ databaseError }: StoreBuilderProps) {
               <Input
                 accept="image/*"
                 id={`product-${product.id}-image`}
-                label="Product image placeholder"
+                label="Product image asset"
                 type="file"
               />
               <Input

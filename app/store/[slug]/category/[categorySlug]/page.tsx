@@ -5,6 +5,7 @@ import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -168,6 +169,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
       (product.categoryId === category.id || (!product.categoryId && product.categoryName === category.name))
   );
   const theme = preview.themeSettings;
+  const visualTheme = {
+    accent: theme.accentColor,
+    primary: theme.primaryColor,
+    secondary: theme.secondaryColor
+  };
   const categoryHeroBackground = category.imageUrl
     ? undefined
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}44, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
@@ -270,7 +276,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                             src={product.imageUrl}
                           />
                         ) : (
-                          <div className="aspect-square rounded-[1.5rem] bg-slate-100" />
+                          <PremiumVisualFallback
+                            accentLabel={`${product.title} visual`}
+                            className="aspect-square rounded-[1.5rem]"
+                            theme={visualTheme}
+                          />
                         )}
                       </Link>
                       <div>
@@ -280,7 +290,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                           </h2>
                         </Link>
                         <p className="mt-2 text-sm leading-6 text-muted">
-                          {product.description || "Premium product information placeholder."}
+                          {product.description || "Product details coming soon."}
                         </p>
                         <p className="mt-3 text-lg font-black text-ink">
                           {formatProductPrice(product.price, product.priceLabel, currency)}
@@ -324,11 +334,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {[0, 1, 2, 3, 4, 5].map((item) => (
                   <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={item}>
-                    <div className="flex aspect-square items-end rounded-[1.5rem] bg-slate-100 p-4">
-                      <span className="rounded-full bg-white/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                        Product image placeholder
-                      </span>
-                    </div>
+                    <PremiumVisualFallback
+                      accentLabel={`Category product visual ${item + 1}`}
+                      className="aspect-square rounded-[1.5rem]"
+                      theme={visualTheme}
+                    />
                     <div className="grid gap-3 p-5">
                       <div className="h-3 w-2/3 rounded-full bg-slate-200" />
                       <div className="h-3 w-1/2 rounded-full bg-slate-100" />
