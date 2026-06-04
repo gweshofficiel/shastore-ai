@@ -19,12 +19,18 @@ export type VisualAssetSlot =
 export type VisualAssetReference = {
   alt?: string | null;
   assetId?: string | null;
+  assetType?: string | null;
   bucket?: string | null;
+  generatedAt?: string | null;
   height?: number | null;
   promptKey?: string | null;
+  provider?: string | null;
   publicUrl?: string | null;
   r2Key?: string | null;
   source?: VisualAssetSource | string | null;
+  storageKey?: string | null;
+  targetId?: string | null;
+  targetType?: string | null;
   url?: string | null;
   width?: number | null;
 };
@@ -147,7 +153,7 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
   const publicUrl = safeAssetUrl(value.publicUrl ?? value.url ?? value.imageUrl ?? value.src);
   const promptKey = stringValue(value.promptKey ?? value.aiPromptKey ?? value.generationKey) || null;
   const assetId = stringValue(value.assetId ?? value.assetKey ?? value.id) || null;
-  const r2Key = stringValue(value.r2Key ?? value.key ?? value.path) || null;
+  const r2Key = stringValue(value.r2Key ?? value.storageKey ?? value.key ?? value.path) || null;
 
   if (!url && !publicUrl && !promptKey && !assetId && !r2Key) {
     return null;
@@ -156,12 +162,18 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
   return {
     alt: stringValue(value.alt) || null,
     assetId,
+    assetType: stringValue(value.assetType) || null,
     bucket: stringValue(value.bucket) || null,
+    generatedAt: stringValue(value.generatedAt) || null,
     height: numberValue(value.height),
     promptKey,
+    provider: stringValue(value.provider) || null,
     publicUrl,
     r2Key,
     source: normalizeVisualAssetSource(value.source, url ?? publicUrl),
+    storageKey: r2Key,
+    targetId: stringValue(value.targetId) || null,
+    targetType: stringValue(value.targetType) || null,
     url: url ?? publicUrl,
     width: numberValue(value.width)
   };

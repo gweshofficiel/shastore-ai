@@ -1,18 +1,20 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { visualAssetReferenceForCompletedRequest } from "@/lib/storefront/ai-visual-assets";
 import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider";
+import {
+  attachGeneratedVisualAsset,
+  createGeneratedAssetReference,
+  planGeneratedAssetStorage
+} from "@/lib/storefront/ai-visual-storage";
 import {
   aiVisualQueueFromStoreData,
   claimAIVisualGenerationJob,
-  planAIVisualAssetAttachment,
   transitionAIVisualJobStatus,
   updateAIVisualWorkerStep,
   upsertAIVisualQueueJob,
   type AIVisualGenerationJob
 } from "@/lib/storefront/ai-visual-queue";
-import type { VisualAssetReference } from "@/lib/storefront/visual-assets";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -76,52 +78,6 @@ function safeWorkerLog(level: "info" | "warn", message: string, job: AIVisualGen
   }
 
   console.info(message, payload);
-}
-
-export function planAIVisualR2Upload(job: AIVisualGenerationJob) {
-  return {
-    bucket: job.storage.bucket,
-    enabled: job.storage.provider === "cloudflare-r2",
-    publicUrl: null as string | null,
-    r2KeyPrefix: job.storage.r2KeyPrefix,
-    resolverSource: job.storage.resolverSource
-  };
-}
-
-export function attachGeneratedVisualAssetToStoreData({
-  asset,
-  job,
-  storeData
-}: {
-  asset: VisualAssetReference;
-  job: AIVisualGenerationJob;
-  storeData: Record<string, unknown>;
-}) {
-  const attachment = planAIVisualAssetAttachment(job);
-  const generatedVisualAssets = isRecord(storeData.generatedVisualAssets)
-    ? storeData.generatedVisualAssets
-    : {};
-  const targetGroup = isRecord(generatedVisualAssets[attachment.targetType])
-    ? generatedVisualAssets[attachment.targetType] as Record<string, unknown>
-    : {};
-  const entityKey = attachment.entityId ?? "template";
-  const entityAssets = isRecord(targetGroup[entityKey])
-    ? targetGroup[entityKey] as Record<string, unknown>
-    : {};
-
-  return {
-    ...storeData,
-    generatedVisualAssets: {
-      ...generatedVisualAssets,
-      [attachment.targetType]: {
-        ...targetGroup,
-        [entityKey]: {
-          ...entityAssets,
-          [attachment.visualAssetSlot]: asset
-        }
-      }
-    }
-  };
 }
 
 async function persistWorkerJob({
@@ -257,39 +213,46 @@ export async function processPendingAIVisualAssetJob({
     };
   }
 
-  const uploadPlan = planAIVisualR2Upload(claimedJob);
-  const publicUrl = uploadPlan.publicUrl;
-  const asset = visualAssetReferenceForCompletedRequest({
-    publicUrl,
-    request: claimedJob.request
+  const uploadPlan = planGeneratedAssetStorage({
+    job: claimedJob,
+    output: null
+  });
+  const asset = createGeneratedAssetReference({
+    job: claimedJob,
+    output: {
+      publicUrl: uploadPlan.publicUrl
+    }
   });
   const uploadedJob = updateAIVisualWorkerStep({
-    error: publicUrl ? null : "R2 upload hook is prepared, but no provider asset was returned yet.",
+    error: uploadPlan.publicUrl ? null : "R2 upload hook is prepared, but no provider asset was returned yet.",
     job: updateAIVisualWorkerStep({
       job: claimedJob,
       key: "generate",
       status: "completed"
     }),
     key: "upload",
-    status: publicUrl ? "completed" : "skipped"
+    status: uploadPlan.publicUrl ? "completed" : "skipped"
   });
-  const attachStoreData = attachGeneratedVisualAssetToStoreData({
+  const attachment = attachGeneratedVisualAsset({
     asset,
-    job: uploadedJob,
-    storeData: claimedStoreData
+    slot: uploadedJob.slot,
+    storeData: claimedStoreData,
+    targetId: uploadedJob.attachTarget.entityId,
+    targetType: uploadedJob.attachTarget.type
   });
+  const attachStoreData = attachment.storeData;
   const completedJob = transitionAIVisualJobStatus({
-    asset,
+    asset: attachment.asset,
     job: updateAIVisualWorkerStep({
       job: updateAIVisualWorkerStep({
         job: uploadedJob,
         key: "attach",
-        status: "completed"
+        status: attachment.skipped ? "skipped" : "completed"
       }),
       key: "publish",
       status: "completed"
     }),
-    publicUrl,
+    publicUrl: attachment.asset.publicUrl ?? null,
     status: "completed"
   });
   const persistError = await persistWorkerJob({
