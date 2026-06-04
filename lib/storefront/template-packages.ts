@@ -26,10 +26,18 @@ export type TemplatePackageProduct = {
   name: string;
   price: string;
   productType?: "digital" | "physical" | "service";
+  salesCount?: number;
   slug?: string;
   status?: "active" | "archived" | "draft" | "published";
   stockQuantity?: number;
   trackInventory?: boolean;
+};
+
+export type TemplatePackageCollection = {
+  body?: string;
+  categoryKeys?: string[];
+  key: string;
+  title: string;
 };
 
 export type TemplatePackageVariant = {
@@ -117,6 +125,7 @@ export type TemplatePackage = {
   aboutPage?: TemplatePackageAboutPage;
   blogArticles?: TemplatePackageBlogArticle[];
   categories?: TemplatePackageCategory[];
+  collections?: TemplatePackageCollection[];
   faq?: TemplatePackageFaq[];
   footerLinkSettings?: Partial<StoreFooterLinkSettings>;
   homepageSections?: TemplatePackageHomepageSection[];
@@ -181,7 +190,23 @@ const flagshipPremiumPackage: TemplatePackage = {
     { cardStyle: "icon-led", description: "Premium accessories, gifts, and curated products.", key: "jewelry", name: "Jewelry", sortOrder: 10 },
     { cardStyle: "icon-led", description: "Timepieces and watch-ready merchandising.", key: "watches", name: "Watches", sortOrder: 20 },
     { cardStyle: "icon-led", description: "Beauty, fragrance, and self-care collections.", key: "beauty", name: "Beauty", sortOrder: 30 },
-    { cardStyle: "icon-led", description: "Fashion, bags, and editorial collection slots.", key: "fashion", name: "Fashion", sortOrder: 40 }
+    { cardStyle: "icon-led", description: "Fashion, bags, and editorial collection slots.", key: "fashion", name: "Fashion", sortOrder: 40 },
+    { cardStyle: "icon-led", description: "Bags, wallets, sunglasses, and premium add-ons.", key: "accessories", name: "Accessories", sortOrder: 50 },
+    { cardStyle: "icon-led", description: "Home, lifestyle, and giftable everyday upgrades.", key: "home-living", name: "Home & Living", sortOrder: 60 }
+  ],
+  collections: [
+    {
+      body: "A cross-category premium edit for first-time storefront shoppers.",
+      categoryKeys: ["jewelry", "watches", "beauty", "fashion"],
+      key: "flagship-editorial-edit",
+      title: "Flagship Editorial Edit"
+    },
+    {
+      body: "Gift-ready products and collection slots for seasonal campaigns.",
+      categoryKeys: ["jewelry", "accessories", "home-living"],
+      key: "premium-gift-edit",
+      title: "Premium Gift Edit"
+    }
   ],
   faq: [
     {
@@ -263,8 +288,23 @@ const flagshipPremiumPackage: TemplatePackage = {
       enabled: true,
       sectionType: "featured_products",
       sortOrder: 50,
-      subtitle: "Shows real active products when the store catalog is ready.",
+      subtitle: "Shows active package products first, then real catalog additions as the store grows.",
       title: "Featured Products"
+    },
+    {
+      enabled: true,
+      sectionType: "featured_collection",
+      settings: { collectionKey: "flagship-editorial-edit" },
+      sortOrder: 60,
+      subtitle: "A collection-ready editorial block for premium merchandising.",
+      title: "Flagship Editorial Edit"
+    },
+    {
+      enabled: true,
+      sectionType: "best_sellers",
+      sortOrder: 70,
+      subtitle: "Package best sellers use deterministic sales signals for storefront social proof.",
+      title: "Top Selling"
     },
     {
       enabled: true,
@@ -330,7 +370,7 @@ const flagshipPremiumPackage: TemplatePackage = {
       title: "Newsletter signup"
     }
   ],
-  name: "SHASTORE Flagship Premium Foundation",
+  name: "SHASTORE Flagship Premium",
   navigationLinks: [
     { customUrl: "#products", label: "Products", linkType: "custom", location: "header", sortOrder: 10 },
     { customUrl: "#categories", label: "Categories", linkType: "custom", location: "header", sortOrder: 20 },
@@ -348,10 +388,124 @@ const flagshipPremiumPackage: TemplatePackage = {
       title: "Contact Us"
     }
   ],
-  products: [],
-  reviews: [],
+  products: [
+    {
+      categoryKey: "jewelry",
+      compareAtPrice: "189.00",
+      currency: "USD",
+      description: "Polished gold-tone necklace for premium gifting and everyday styling.",
+      key: "gold-signature-necklace",
+      name: "Gold Signature Necklace",
+      price: "149.00",
+      salesCount: 24,
+      slug: "gold-signature-necklace",
+      status: "active",
+      stockQuantity: 18,
+      trackInventory: true
+    },
+    {
+      categoryKey: "watches",
+      compareAtPrice: "289.00",
+      currency: "USD",
+      description: "Minimal premium watch with a refined case, comfortable strap, and gift-ready presentation.",
+      key: "heritage-minimal-watch",
+      name: "Heritage Minimal Watch",
+      price: "239.00",
+      salesCount: 18,
+      slug: "heritage-minimal-watch",
+      status: "active",
+      stockQuantity: 12,
+      trackInventory: true
+    },
+    {
+      categoryKey: "beauty",
+      compareAtPrice: "95.00",
+      currency: "USD",
+      description: "Curated fragrance discovery set for premium scent exploration and gifting.",
+      key: "signature-fragrance-set",
+      name: "Signature Fragrance Set",
+      price: "79.00",
+      salesCount: 15,
+      slug: "signature-fragrance-set",
+      status: "active",
+      stockQuantity: 25,
+      trackInventory: true
+    },
+    {
+      categoryKey: "fashion",
+      compareAtPrice: "165.00",
+      currency: "USD",
+      description: "Soft structured scarf with an editorial premium look for seasonal styling.",
+      key: "editorial-silk-scarf",
+      name: "Editorial Silk Scarf",
+      price: "129.00",
+      salesCount: 11,
+      slug: "editorial-silk-scarf",
+      status: "active",
+      stockQuantity: 20,
+      trackInventory: true
+    },
+    {
+      categoryKey: "accessories",
+      compareAtPrice: "145.00",
+      currency: "USD",
+      description: "Compact leather wallet designed for premium daily carry and gifting.",
+      key: "compact-leather-wallet",
+      name: "Compact Leather Wallet",
+      price: "118.00",
+      salesCount: 14,
+      slug: "compact-leather-wallet",
+      status: "active",
+      stockQuantity: 16,
+      trackInventory: true
+    },
+    {
+      categoryKey: "home-living",
+      compareAtPrice: "110.00",
+      currency: "USD",
+      description: "Premium candle and home scent set for lifestyle storefront merchandising.",
+      key: "home-scent-ritual-set",
+      name: "Home Scent Ritual Set",
+      price: "88.00",
+      salesCount: 9,
+      slug: "home-scent-ritual-set",
+      status: "active",
+      stockQuantity: 22,
+      trackInventory: true
+    }
+  ],
+  reviews: [
+    {
+      comment: "The storefront made it easy to browse premium products and understand the offer quickly.",
+      customerName: "Amina R.",
+      productKey: "gold-signature-necklace",
+      rating: 5,
+      title: "Beautiful premium presentation"
+    },
+    {
+      comment: "Clear categories, polished product cards, and trust sections made the store feel ready to shop.",
+      customerName: "Karim B.",
+      productKey: "heritage-minimal-watch",
+      rating: 5,
+      title: "Professional shopping experience"
+    },
+    {
+      comment: "The package content gives a strong starting point without changing the real checkout flow.",
+      customerName: "Sara M.",
+      productKey: "signature-fragrance-set",
+      rating: 4,
+      title: "Strong launch foundation"
+    }
+  ],
   templateIds: ["shastore-flagship-premium"],
-  variants: [],
+  variants: [
+    { key: "gold-necklace-16", name: "16 inch", productKey: "gold-signature-necklace", size: "16 in", sku: "FLAG-NECK-16", stockQuantity: 8 },
+    { key: "gold-necklace-18", name: "18 inch", productKey: "gold-signature-necklace", size: "18 in", sku: "FLAG-NECK-18", stockQuantity: 10 },
+    { color: "Black", key: "watch-black-strap", name: "Black strap", productKey: "heritage-minimal-watch", sku: "FLAG-WATCH-BLK", stockQuantity: 6 },
+    { key: "watch-brown", color: "Brown", name: "Brown strap", productKey: "heritage-minimal-watch", sku: "FLAG-WATCH-BRN", stockQuantity: 6 },
+    { key: "scarf-warm", color: "Warm sand", name: "Warm sand", productKey: "editorial-silk-scarf", sku: "FLAG-SCARF-SAND", stockQuantity: 10 },
+    { key: "scarf-midnight", color: "Midnight", name: "Midnight", productKey: "editorial-silk-scarf", sku: "FLAG-SCARF-MID", stockQuantity: 10 }
+  ],
   version: 1,
   visualSlots: {
     categoryCardStyle: "icon-led",

@@ -40,7 +40,7 @@ function slugify(value: string) {
   return slug || "template-item";
 }
 
-function asStoreData(value: unknown) {
+function asStoreData(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
@@ -61,7 +61,10 @@ function packageStatusFromSteps(steps: InstallStepResult[]): TemplatePackageStat
   return succeeded > 0 ? "partially_installed" : "failed";
 }
 
-async function loadStoreData(supabase: SupabaseClient, storeId: string) {
+async function loadStoreData(
+  supabase: SupabaseClient,
+  storeId: string
+): Promise<{ error: string | null; storeData: Record<string, unknown> }> {
   const { data, error } = await supabase
     .from("stores" as never)
     .select("store_data")
@@ -236,6 +239,7 @@ async function installProducts({
         price: product.price,
         product_type: product.productType ?? "physical",
         requires_shipping: product.productType !== "digital",
+        sales_count: product.salesCount ?? 0,
         slug,
         status: product.status ?? "draft",
         stock_quantity: product.stockQuantity ?? 0,
@@ -290,12 +294,28 @@ async function installVariants({
   }
 
   const products = await productIdMap(installer, templatePackage);
+  const { data } = await installer.supabase
+    .from("product_variants" as never)
+    .select("product_id, name, sku")
+    .eq("store_id" as never, installer.storeId as never);
+  const existing = new Set(
+    (Array.isArray(data) ? data : []).map((row) => {
+      const variant = row as { name?: string | null; product_id?: string | null; sku?: string | null };
+      return `${variant.product_id ?? ""}:${variant.sku ?? ""}:${variant.name ?? ""}`;
+    })
+  );
   let inserted = 0;
 
   for (const variant of variants) {
     const productId = products.get(variant.productKey);
 
     if (!productId) {
+      continue;
+    }
+
+    const key = `${productId}:${variant.sku ?? ""}:${variant.name}`;
+
+    if (existing.has(key)) {
       continue;
     }
 
@@ -320,6 +340,7 @@ async function installVariants({
     }
 
     inserted += 1;
+    existing.add(key);
   }
 
   return inserted;
@@ -339,12 +360,28 @@ async function installReviews({
   }
 
   const products = await productIdMap(installer, templatePackage);
+  const { data } = await installer.supabase
+    .from("product_reviews" as never)
+    .select("product_id, customer_name, title")
+    .eq("store_id" as never, installer.storeId as never);
+  const existing = new Set(
+    (Array.isArray(data) ? data : []).map((row) => {
+      const review = row as { customer_name?: string | null; product_id?: string | null; title?: string | null };
+      return `${review.product_id ?? ""}:${review.customer_name ?? ""}:${review.title ?? ""}`;
+    })
+  );
   let inserted = 0;
 
   for (const review of reviews) {
     const productId = products.get(review.productKey);
 
     if (!productId) {
+      continue;
+    }
+
+    const key = `${productId}:${review.customerName}:${review.title ?? ""}`;
+
+    if (existing.has(key)) {
       continue;
     }
 
@@ -367,6 +404,7 @@ async function installReviews({
     }
 
     inserted += 1;
+    existing.add(key);
   }
 
   return inserted;
@@ -630,6 +668,44 @@ async function installMarketingBlocks(installer: InstallerInput, templatePackage
   return inserted;
 }
 
+async function installCollections(installer: InstallerInput, templatePackage: TemplatePackage) {
+  const collections = templatePackage.collections ?? [];
+
+  if (!collections.length) {
+    return 0;
+  }
+
+  const current = await loadStoreData(installer.supabase, installer.storeId);
+  const storeData = current.storeData;
+  const existingCollections = isRecord(storeData.templateCollections)
+    ? storeData.templateCollections
+    : {};
+  const nextCollections = {
+    ...existingCollections
+  };
+
+  for (const collection of collections) {
+    nextCollections[collection.key] = collection;
+  }
+
+  const { error } = await installer.supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        templateCollections: nextCollections
+      },
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, installer.storeId as never);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return collections.length;
+}
+
 async function installNavigationLinks(installer: InstallerInput, templatePackage: TemplatePackage) {
   const links = templatePackage.navigationLinks ?? [];
 
@@ -681,11 +757,9 @@ async function installNavigationLinks(installer: InstallerInput, templatePackage
 
 async function installFooterSettings({
   installer,
-  storeData,
   templatePackage
 }: {
   installer: InstallerInput;
-  storeData: Record<string, unknown>;
   templatePackage: TemplatePackage;
 }) {
   if (!templatePackage.footerLinkSettings && !templatePackage.visualSlots) {
@@ -703,10 +777,13 @@ async function installFooterSettings({
   }
 
   if (templatePackage.visualSlots) {
+    const latest = await loadStoreData(installer.supabase, installer.storeId);
+    const latestStoreData = latest.storeData;
+
     updates.store_data = {
-      ...storeData,
+      ...latestStoreData,
       templateVisualSlots: {
-        ...(isRecord(storeData.templateVisualSlots) ? storeData.templateVisualSlots : {}),
+        ...(isRecord(latestStoreData.templateVisualSlots) ? latestStoreData.templateVisualSlots : {}),
         [templatePackage.id]: templatePackage.visualSlots
       }
     };
@@ -771,6 +848,7 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
   steps.push(await runStep("products", () => installProducts({ installer, templatePackage: input.templatePackage })));
   steps.push(await runStep("variants", () => installVariants({ installer, templatePackage: input.templatePackage })));
   steps.push(await runStep("reviews", () => installReviews({ installer, templatePackage: input.templatePackage })));
+  steps.push(await runStep("collections", () => installCollections(installer, input.templatePackage)));
   steps.push(await runStep("faq", () => installFaqs(installer, input.templatePackage)));
   steps.push(await runStep("blog", () => installBlogArticles(installer, input.templatePackage)));
   steps.push(await runStep("about-page", () => installAboutPage(installer, input.templatePackage)));
@@ -780,7 +858,6 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
   steps.push(await runStep("navigation-links", () => installNavigationLinks(installer, input.templatePackage)));
   steps.push(await runStep("footer-and-visual-settings", () => installFooterSettings({
     installer,
-    storeData: storeDataResult.storeData,
     templatePackage: input.templatePackage
   })));
 

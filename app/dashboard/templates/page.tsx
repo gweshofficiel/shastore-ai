@@ -22,7 +22,7 @@ import {
   applyTemplateToStore,
   applyWorkspaceStoreTemplate
 } from "@/lib/template-application-actions";
-import { getTemplateLibrary, validateTemplateSchema } from "@/lib/storefront/template-library";
+import { getTemplateLibrary, validateTemplateSchema, type StoreTemplateRecord } from "@/lib/storefront/template-library";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
@@ -93,6 +93,15 @@ const statusMessages: Record<string, string> = {
   "theme-failed": "Template theme could not be applied.",
   "upgrade-required": "This template is unavailable on your current plan. Upgrade at /dashboard/billing."
 };
+
+function templateBadges(template: StoreTemplateRecord) {
+  return [
+    template.is_official ? "Official" : null,
+    template.is_recommended ? "Recommended" : null,
+    template.category_key === "multi-purpose" ? "Multi-purpose" : null,
+    template.package_enabled ? "Ready-to-use" : null
+  ].filter((badge): badge is string => Boolean(badge));
+}
 
 function appliedTemplateId(editorState: unknown) {
   if (!editorState || typeof editorState !== "object" || Array.isArray(editorState)) {
@@ -926,6 +935,15 @@ export default async function TemplatesPage({
                   <p className="mt-2 text-sm leading-6 text-muted">
                     {template.preview_summary ?? template.description}
                   </p>
+                  {templateBadges(template).length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {templateBadges(template).map((badge) => (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.14em] text-slate-700" key={badge}>
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {["Desktop", "Tablet", "Mobile"].map((mode) => (
@@ -977,7 +995,7 @@ export default async function TemplatesPage({
                   </div>
                 </details>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {["AI customize template", "Preview placeholder"].map((label) => (
+                  {["AI customize template", "Ready preview"].map((label) => (
                     <div
                       className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-xs font-black uppercase tracking-[0.16em] text-muted"
                       key={label}

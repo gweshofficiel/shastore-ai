@@ -19,10 +19,14 @@ export type StoreTemplateRecord = {
   default_theme_settings: Record<string, unknown>;
   description: string | null;
   id: string;
+  is_default: boolean;
   is_active: boolean;
+  is_official: boolean;
+  is_recommended: boolean;
   layout_schema: BuilderPageSchema;
   name: string;
   niche_category: string;
+  package_enabled: boolean;
   preview_image: string | null;
   preview_config: Record<string, unknown>;
   preview_gradient: string | null;
@@ -42,6 +46,7 @@ export type TemplateLibrary = {
 };
 
 const fallbackCategories: TemplateCategoryRecord[] = [
+  { category_key: "multi-purpose", description: "Ready-to-use storefront packages for many store types.", name: "Multi-purpose", sort_order: 5 },
   { category_key: "fashion", description: "Boutique apparel and seasonal edits.", name: "Fashion", sort_order: 10 },
   { category_key: "electronics", description: "Gadgets, smart bundles, and comparisons.", name: "Electronics", sort_order: 20 },
   { category_key: "beauty", description: "Skincare, cosmetics, and routines.", name: "Beauty", sort_order: 30 },
@@ -76,7 +81,10 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
     },
     description: category.description,
     id: `${category.category_key}-starter`,
+    is_default: false,
     is_active: true,
+    is_official: false,
+    is_recommended: false,
     layout_schema: normalizeBuilderPageSchema({
       sections: [
         {
@@ -94,6 +102,7 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
     }),
     name: `${category.name} Starter`,
     niche_category: category.category_key,
+    package_enabled: false,
     preview_image: null,
     preview_config: { devices: ["desktop", "tablet", "mobile"] },
     preview_gradient: "linear-gradient(135deg,#f8fafc,#2563eb 52%,#020617)",
@@ -146,8 +155,8 @@ const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
     secondaryColor: "#1d4ed8",
     tone: "premium"
   },
-  category: "premium",
-  category_key: "premium",
+  category: "multi-purpose",
+  category_key: "multi-purpose",
   default_theme_settings: {
     aiTemplateReady: true,
     buttonStyle: "pill",
@@ -165,7 +174,10 @@ const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
   },
   description: "Official SHASTORE premium storefront structure with full ecommerce header, homepage merchandising, product discovery, customer account entry points, multilingual, multicurrency, and conversion-ready footer.",
   id: "shastore-flagship-premium",
+  is_default: true,
   is_active: true,
+  is_official: true,
+  is_recommended: true,
   layout_schema: normalizeBuilderPageSchema({
     sections: flagshipSectionDefinitions.map(([id, type, order, heading, subheading]) => ({
       enabled: true,
@@ -182,7 +194,8 @@ const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
     version: 1
   }),
   name: "SHASTORE Flagship Premium",
-  niche_category: "premium",
+  niche_category: "multi-purpose",
+  package_enabled: true,
   preview_image: null,
   preview_config: {
     devices: ["desktop", "tablet", "mobile"],
@@ -191,7 +204,12 @@ const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
       "Full premium homepage structure",
       "Language and currency ready",
       "Customer account, wishlist, and cart entry points"
-    ]
+    ],
+    badges: ["Official", "Recommended", "Multi-purpose", "Ready-to-use"],
+    official: true,
+    packageEnabled: true,
+    readyToUse: true,
+    recommended: true
   },
   preview_gradient: "linear-gradient(135deg,#020617,#1d4ed8 52%,#d4af37)",
   preview_summary: "Official SHASTORE reference template for premium ecommerce structure without demo data.",
@@ -246,7 +264,10 @@ const auroraProTemplate: StoreTemplateRecord = {
   },
   description: "A premium Shopify-grade luxury ecommerce template with a dark hero, gold accents, editorial product cards, trust sections, testimonials, newsletter, and professional footer.",
   id: "aurora-pro",
+  is_default: false,
   is_active: true,
+  is_official: false,
+  is_recommended: true,
   layout_schema: normalizeBuilderPageSchema({
     sections: [
       {
@@ -306,6 +327,7 @@ const auroraProTemplate: StoreTemplateRecord = {
   }),
   name: "Aurora Pro",
   niche_category: "premium",
+  package_enabled: false,
   preview_image: "https://images.unsplash.com/photo-1491933382434-500287f9b54b?auto=format&fit=crop&w=1400&q=85",
   preview_config: {
     devices: ["desktop", "tablet", "mobile"],
@@ -382,26 +404,43 @@ function normalizeTemplate(value: unknown): StoreTemplateRecord | null {
 
   const layoutSchema = validateTemplateSchema(value.layout_schema).schema;
   const defaultThemeSettings = recordValue(value.default_theme_settings);
+  const isFlagship = id === "shastore-flagship-premium";
   const themeConfig = {
     ...defaultThemeSettings,
     ...recordValue(value.theme_config)
   };
   const slug = textValue(value.slug, textValue(value.template_slug, textValue(value.template_key, id)));
+  const previewConfig = recordValue(value.preview_config);
 
   return {
     ai_customization_config: recordValue(value.ai_customization_config),
     branding_config: recordValue(value.branding_config),
-    category: textValue(value.category, categoryKey),
-    category_key: categoryKey,
+    category: isFlagship ? "multi-purpose" : textValue(value.category, categoryKey),
+    category_key: isFlagship ? "multi-purpose" : categoryKey,
     default_theme_settings: defaultThemeSettings,
     description: typeof value.description === "string" ? value.description : null,
     id,
+    is_default: isFlagship || value.is_default === true,
     is_active: value.is_active !== false,
+    is_official: isFlagship || value.is_official === true,
+    is_recommended: isFlagship || value.is_recommended === true,
     layout_schema: layoutSchema,
     name: textValue(value.name, "Store Template"),
-    niche_category: textValue(value.niche_category, categoryKey),
+    niche_category: isFlagship ? "multi-purpose" : textValue(value.niche_category, categoryKey),
+    package_enabled: isFlagship || value.package_enabled === true,
     preview_image: typeof value.preview_image === "string" ? value.preview_image : null,
-    preview_config: recordValue(value.preview_config),
+    preview_config: isFlagship
+      ? {
+          ...previewConfig,
+          badges: Array.isArray(previewConfig.badges)
+            ? Array.from(new Set([...previewConfig.badges, "Official", "Recommended", "Multi-purpose", "Ready-to-use"]))
+            : ["Official", "Recommended", "Multi-purpose", "Ready-to-use"],
+          official: true,
+          packageEnabled: true,
+          readyToUse: true,
+          recommended: true
+        }
+      : previewConfig,
     preview_gradient: typeof value.preview_gradient === "string" ? value.preview_gradient : null,
     preview_summary: typeof value.preview_summary === "string" ? value.preview_summary : null,
     responsive_preview_config: recordValue(value.responsive_preview_config),
@@ -480,12 +519,27 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
     ? templateData.map(normalizeTemplate).filter((template): template is StoreTemplateRecord => Boolean(template))
     : [];
   const baseCategories = categories.length ? categories : fallbackCategories;
-  const libraryCategories = baseCategories.some((category) => category.category_key === "premium")
-    ? baseCategories
-    : [
-        ...baseCategories,
-        { category_key: "premium", description: "Luxury storefronts with editorial merchandising.", name: "Premium", sort_order: 65 }
-      ].sort((left, right) => left.sort_order - right.sort_order);
+  const categoryAdditions: TemplateCategoryRecord[] = [];
+
+  if (!baseCategories.some((category) => category.category_key === "multi-purpose")) {
+    categoryAdditions.push({
+      category_key: "multi-purpose",
+      description: "Ready-to-use storefront packages for many store types.",
+      name: "Multi-purpose",
+      sort_order: 5
+    });
+  }
+
+  if (!baseCategories.some((category) => category.category_key === "premium")) {
+    categoryAdditions.push({
+      category_key: "premium",
+      description: "Luxury storefronts with editorial merchandising.",
+      name: "Premium",
+      sort_order: 65
+    });
+  }
+
+  const libraryCategories = [...baseCategories, ...categoryAdditions].sort((left, right) => left.sort_order - right.sort_order);
   const baseTemplates = templates.length ? templates : fallbackTemplates;
   const withFlagship = baseTemplates.some((template) => template.id === shastoreFlagshipPremiumTemplate.id)
     ? baseTemplates

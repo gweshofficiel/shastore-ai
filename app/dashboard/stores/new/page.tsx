@@ -14,6 +14,15 @@ function formatLimit(value: number | null) {
   return value === null ? "Unlimited" : value.toLocaleString();
 }
 
+function templateBadges(template: StoreTemplateRecord) {
+  return [
+    template.is_official ? "Official" : null,
+    template.is_recommended ? "Recommended" : null,
+    template.category_key === "multi-purpose" ? "Multi-purpose" : null,
+    template.package_enabled ? "Ready-to-use" : null
+  ].filter((badge): badge is string => Boolean(badge));
+}
+
 export default async function NewStorePage({
   searchParams
 }: {
@@ -198,6 +207,15 @@ function TemplateCard({
           {template.category_key}
         </p>
         <h3 className="mt-1 text-xl font-black tracking-[-0.03em] text-ink">{template.name}</h3>
+        {templateBadges(template).length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {templateBadges(template).map((badge) => (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.14em] text-slate-700" key={badge}>
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-muted">
           {template.preview_summary ?? template.description ?? "Storefront template"}
         </p>
