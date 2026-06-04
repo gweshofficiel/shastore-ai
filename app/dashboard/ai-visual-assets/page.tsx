@@ -74,20 +74,6 @@ const requestCards: Array<{
     label: "Generate hero banner",
     slot: "hero.desktop",
     targetKind: "template"
-  },
-  {
-    description: "Queue a shared promotional banner for campaign blocks.",
-    entityTitle: "Promo banner",
-    label: "Generate promo banner",
-    slot: "marketing.flashSale",
-    targetKind: "template"
-  },
-  {
-    description: "Queue a shared collection banner for collection sections.",
-    entityTitle: "Collection banner",
-    label: "Generate collection banner",
-    slot: "marketing.collection",
-    targetKind: "template"
   }
 ];
 

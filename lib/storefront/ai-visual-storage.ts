@@ -1,5 +1,6 @@
 import "server-only";
 
+import crypto from "node:crypto";
 import type { AIVisualProviderKey } from "@/lib/storefront/ai-visual-provider";
 import type {
   AIVisualAttachTargetType,
@@ -42,6 +43,12 @@ export type AIVisualStoragePlan = {
   storageKey: string;
 };
 
+export type AIVisualStorageUploadResult = {
+  error: string | null;
+  output: AIVisualAssetOutput | null;
+  plan: AIVisualStoragePlan;
+};
+
 export type AIVisualAttachmentResult = {
   asset: AIVisualGeneratedAssetReference;
   overwritten: boolean;
@@ -61,6 +68,52 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "asset";
+}
+
+function hmac(key: Buffer | string, value: string) {
+  return crypto.createHmac("sha256", key).update(value).digest();
+}
+
+function sha256(value: Uint8Array | string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function awsDate(date = new Date()) {
+  const iso = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  return {
+    date: iso.slice(0, 8),
+    timestamp: iso
+  };
+}
+
+function encodeS3Path(path: string) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function r2Config() {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+  const bucket = process.env.CLOUDFLARE_R2_BUCKET;
+  const publicBaseUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.AI_VISUAL_R2_PUBLIC_BASE_URL;
+
+  if (!accountId || !accessKeyId || !secretAccessKey || !bucket || !publicBaseUrl) {
+    return {
+      error: "Cloudflare R2 is not fully configured. Set CLOUDFLARE_R2_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY_ID, CLOUDFLARE_R2_SECRET_ACCESS_KEY, CLOUDFLARE_R2_BUCKET, and CLOUDFLARE_R2_PUBLIC_URL.",
+      value: null
+    };
+  }
+
+  return {
+    error: null,
+    value: {
+      accessKeyId,
+      accountId,
+      bucket,
+      publicBaseUrl,
+      secretAccessKey
+    }
+  };
 }
 
 export function generatedAssetTypeForSlot(slot: VisualAssetSlot): AIVisualGeneratedAssetType {
@@ -174,6 +227,102 @@ export function createGeneratedAssetReference({
     targetId: job.attachTarget.entityId,
     targetType: job.attachTarget.type,
     url: storage.publicUrl
+  };
+}
+
+export async function uploadGeneratedAssetToR2({
+  job,
+  output
+}: {
+  job: AIVisualGenerationJob;
+  output: AIVisualAssetOutput;
+}): Promise<AIVisualStorageUploadResult> {
+  const plan = planGeneratedAssetStorage({ job, output });
+
+  if (!output.data?.length) {
+    return {
+      error: "Generated asset output did not include image bytes.",
+      output: null,
+      plan
+    };
+  }
+
+  const config = r2Config();
+
+  if (!config.value) {
+    return {
+      error: config.error,
+      output: null,
+      plan
+    };
+  }
+
+  const region = "auto";
+  const service = "s3";
+  const { date, timestamp } = awsDate();
+  const host = `${config.value.accountId}.r2.cloudflarestorage.com`;
+  const contentType = output.contentType || "image/png";
+  const bodyHash = sha256(output.data);
+  const canonicalUri = `/${encodeURIComponent(config.value.bucket)}/${encodeS3Path(plan.storageKey)}`;
+  const canonicalHeaders = [
+    `host:${host}`,
+    `x-amz-content-sha256:${bodyHash}`,
+    `x-amz-date:${timestamp}`
+  ].join("\n");
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest = [
+    "PUT",
+    canonicalUri,
+    "",
+    `${canonicalHeaders}\n`,
+    signedHeaders,
+    bodyHash
+  ].join("\n");
+  const credentialScope = `${date}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    timestamp,
+    credentialScope,
+    sha256(canonicalRequest)
+  ].join("\n");
+  const dateKey = hmac(`AWS4${config.value.secretAccessKey}`, date);
+  const regionKey = hmac(dateKey, region);
+  const serviceKey = hmac(regionKey, service);
+  const signingKey = hmac(serviceKey, "aws4_request");
+  const signature = crypto.createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+  const uploadUrl = `https://${host}${canonicalUri}`;
+  const response = await fetch(uploadUrl, {
+    body: Buffer.from(output.data),
+    headers: {
+      Authorization: `AWS4-HMAC-SHA256 Credential=${config.value.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      "Content-Type": contentType,
+      "x-amz-content-sha256": bodyHash,
+      "x-amz-date": timestamp
+    },
+    method: "PUT"
+  });
+
+  if (!response.ok) {
+    return {
+      error: `Cloudflare R2 upload failed with status ${response.status}.`,
+      output: null,
+      plan
+    };
+  }
+
+  const publicUrl = `${config.value.publicBaseUrl.replace(/\/$/, "")}/${plan.storageKey}`;
+
+  return {
+    error: null,
+    output: {
+      contentType,
+      data: output.data,
+      publicUrl
+    },
+    plan: {
+      ...plan,
+      publicUrl
+    }
   };
 }
 

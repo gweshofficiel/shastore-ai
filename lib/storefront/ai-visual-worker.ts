@@ -5,7 +5,7 @@ import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider"
 import {
   attachGeneratedVisualAsset,
   createGeneratedAssetReference,
-  planGeneratedAssetStorage
+  uploadGeneratedAssetToR2
 } from "@/lib/storefront/ai-visual-storage";
 import {
   aiVisualQueueFromStoreData,
@@ -185,7 +185,7 @@ export async function processPendingAIVisualAssetJob({
   const provider = getAIVisualProviderAdapter();
   const providerResult = await provider.generate(claimedJob.request);
 
-  if (providerResult.error || providerResult.status === "skipped") {
+  if (providerResult.error || providerResult.status === "skipped" || !providerResult.output) {
     const failedJob = transitionAIVisualJobStatus({
       error: providerResult.error ?? "AI visual provider did not return a generated asset.",
       job: updateAIVisualWorkerStep({
@@ -213,25 +213,53 @@ export async function processPendingAIVisualAssetJob({
     };
   }
 
-  const uploadPlan = planGeneratedAssetStorage({
+  const generatedJob = updateAIVisualWorkerStep({
     job: claimedJob,
-    output: null
+    key: "generate",
+    status: "completed"
   });
+  const uploadResult = await uploadGeneratedAssetToR2({
+    job: generatedJob,
+    output: providerResult.output
+  });
+
+  if (uploadResult.error || !uploadResult.output?.publicUrl) {
+    const failedJob = transitionAIVisualJobStatus({
+      error: uploadResult.error ?? "Generated asset upload did not return a public URL.",
+      job: updateAIVisualWorkerStep({
+        error: uploadResult.error,
+        job: generatedJob,
+        key: "upload",
+        status: "failed"
+      }),
+      status: "failed"
+    });
+
+    await persistWorkerJob({
+      job: failedJob,
+      storeData: claimedStoreData,
+      supabase,
+      workspaceId
+    });
+    safeWorkerLog("warn", "AI visual worker failed during R2 upload.", failedJob, failedJob.error);
+
+    return {
+      error: failedJob.error,
+      job: failedJob,
+      requestId: failedJob.requestId,
+      status: "failed"
+    };
+  }
+
   const asset = createGeneratedAssetReference({
-    job: claimedJob,
-    output: {
-      publicUrl: uploadPlan.publicUrl
-    }
+    job: generatedJob,
+    output: uploadResult.output
   });
   const uploadedJob = updateAIVisualWorkerStep({
-    error: uploadPlan.publicUrl ? null : "R2 upload hook is prepared, but no provider asset was returned yet.",
-    job: updateAIVisualWorkerStep({
-      job: claimedJob,
-      key: "generate",
-      status: "completed"
-    }),
+    error: null,
+    job: generatedJob,
     key: "upload",
-    status: uploadPlan.publicUrl ? "completed" : "skipped"
+    status: "completed"
   });
   const attachment = attachGeneratedVisualAsset({
     asset,
