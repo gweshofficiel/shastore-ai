@@ -74,27 +74,101 @@ function r2S3Endpoint(accountId: string) {
   return `https://${accountId}.r2.cloudflarestorage.com`;
 }
 
+function invalidHeaderCredentialChars(value: string) {
+  return /[\r\n\u0000]/.test(value);
+}
+
+function readR2Env(name: string, raw: string | undefined): { error: string | null; value: string | null } {
+  if (!raw) {
+    return { error: null, value: null };
+  }
+
+  const value = raw.trim();
+
+  if (!value) {
+    return { error: null, value: null };
+  }
+
+  if (invalidHeaderCredentialChars(value)) {
+    return {
+      error: `${name} contains invalid characters (newline, carriage return, or null). Re-save the value in your server environment without line breaks or pasted formatting.`,
+      value: null
+    };
+  }
+
+  return { error: null, value };
+}
+
 function createR2S3Client(config: {
   accessKeyId: string;
   accountId: string;
+  bucket: string;
   secretAccessKey: string;
 }) {
-  return new S3Client({
+  const endpoint = r2S3Endpoint(config.accountId);
+  const client = new S3Client({
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey
     },
-    endpoint: r2S3Endpoint(config.accountId),
+    endpoint,
     region: "auto"
   });
+
+  client.middlewareStack.add(
+    (next) => async (args) => {
+      const request = args.request as { headers?: Record<string, unknown> } | undefined;
+      const headerKeys = request?.headers ? Object.keys(request.headers).map((key) => key.toLowerCase()) : [];
+
+      console.info("AI visual R2 SDK outgoing request.", {
+        bucket: config.bucket,
+        endpoint,
+        headerKeys,
+        uploadMethod: "S3Client.send(PutObjectCommand)"
+      });
+
+      return next(args);
+    },
+    {
+      name: "aiVisualR2RequestDebugLogging",
+      step: "finalizeRequest"
+    }
+  );
+
+  return client;
 }
 
 function r2Config() {
-  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
-  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.CLOUDFLARE_R2_BUCKET;
-  const publicBaseUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.AI_VISUAL_R2_PUBLIC_BASE_URL;
+  const accountIdResult = readR2Env("CLOUDFLARE_R2_ACCOUNT_ID", process.env.CLOUDFLARE_R2_ACCOUNT_ID);
+  const accessKeyIdResult = readR2Env("CLOUDFLARE_R2_ACCESS_KEY_ID", process.env.CLOUDFLARE_R2_ACCESS_KEY_ID);
+  const secretAccessKeyResult = readR2Env(
+    "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  );
+  const bucketResult = readR2Env("CLOUDFLARE_R2_BUCKET", process.env.CLOUDFLARE_R2_BUCKET);
+  const publicBaseUrlResult = readR2Env(
+    "CLOUDFLARE_R2_PUBLIC_URL",
+    process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.AI_VISUAL_R2_PUBLIC_BASE_URL
+  );
+  const invalidEnvError =
+    accountIdResult.error ||
+    accessKeyIdResult.error ||
+    secretAccessKeyResult.error ||
+    bucketResult.error ||
+    publicBaseUrlResult.error;
+
+  if (invalidEnvError) {
+    return {
+      error: invalidEnvError,
+      value: null
+    };
+  }
+
+  const accountId = accountIdResult.value;
+  const accessKeyId = accessKeyIdResult.value;
+  const secretAccessKey = secretAccessKeyResult.value;
+  const bucket = bucketResult.value;
+  const publicBaseUrl = publicBaseUrlResult.value;
 
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket || !publicBaseUrl) {
     return {
@@ -261,10 +335,18 @@ export async function uploadGeneratedAssetToR2({
   const contentType = output.contentType || "image/png";
   const key = plan.storageKey;
 
-  console.info("AI visual R2 upload starting.", { bucket, endpoint, key });
+  console.info("AI visual R2 upload starting.", {
+    bucket,
+    endpoint,
+    key,
+    uploadMethod: "S3Client.send(PutObjectCommand)"
+  });
 
   try {
-    const client = createR2S3Client(config.value);
+    const client = createR2S3Client({
+      ...config.value,
+      bucket
+    });
 
     await client.send(
       new PutObjectCommand({
@@ -275,7 +357,13 @@ export async function uploadGeneratedAssetToR2({
       })
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown R2 upload error.";
+    let message = error instanceof Error ? error.message : "Unknown R2 upload error.";
+
+    if (message.includes('Invalid character in header content ["authorization"]')) {
+      message =
+        "Cloudflare R2 credentials produced an invalid Authorization header. Check CLOUDFLARE_R2_ACCESS_KEY_ID (and related R2 secrets) in your deployment environment for trailing spaces, quotes, or Windows line breaks. " +
+        message;
+    }
 
     return {
       error: `Cloudflare R2 upload failed for bucket "${bucket}" key "${key}" at ${endpoint}: ${message}`,
