@@ -208,6 +208,81 @@ export function transitionAIVisualJobStatus({
   };
 }
 
+export const AI_VISUAL_STALE_PROCESSING_MS = 5 * 60 * 1000;
+
+export function staleProcessingReferenceAt(job: AIVisualGenerationJob): number {
+  const iso = job.claimedAt ?? job.updatedAt;
+  return new Date(iso).getTime();
+}
+
+export function isStaleProcessingJob(
+  job: AIVisualGenerationJob,
+  maxAgeMs: number = AI_VISUAL_STALE_PROCESSING_MS
+): boolean {
+  if (job.status !== "processing") {
+    return false;
+  }
+
+  return Date.now() - staleProcessingReferenceAt(job) > maxAgeMs;
+}
+
+export function recoverStaleProcessingJob(job: AIVisualGenerationJob): AIVisualGenerationJob {
+  const limitMinutes = AI_VISUAL_STALE_PROCESSING_MS / 60_000;
+  const elapsedMinutes = Math.max(
+    1,
+    Math.round((Date.now() - staleProcessingReferenceAt(job)) / 60_000)
+  );
+  const message = `AI visual job exceeded the ${limitMinutes}-minute processing limit (${elapsedMinutes} min in processing). The worker was interrupted, timed out, or did not finalize.`;
+
+  if (job.attempts >= job.maxAttempts) {
+    return transitionAIVisualJobStatus({
+      error: `${message} Maximum attempts (${job.maxAttempts}) reached.`,
+      job: updateAIVisualWorkerStep({
+        error: message,
+        job,
+        key: "generate",
+        status: "failed"
+      }),
+      status: "failed"
+    });
+  }
+
+  const timestamp = nowIso();
+
+  return {
+    ...job,
+    claimedAt: null,
+    claimedBy: null,
+    completedAt: null,
+    error: null,
+    status: "pending",
+    updatedAt: timestamp,
+    workerSteps: createAIVisualWorkerSteps()
+  };
+}
+
+export function recoverStaleProcessingJobs(
+  jobs: Record<string, AIVisualGenerationJob>
+): {
+  jobs: Record<string, AIVisualGenerationJob>;
+  recovered: AIVisualGenerationJob[];
+} {
+  const recovered: AIVisualGenerationJob[] = [];
+  const nextJobs = { ...jobs };
+
+  for (const [requestId, job] of Object.entries(jobs)) {
+    if (!isStaleProcessingJob(job)) {
+      continue;
+    }
+
+    const recoveredJob = recoverStaleProcessingJob(job);
+    nextJobs[requestId] = recoveredJob;
+    recovered.push(recoveredJob);
+  }
+
+  return { jobs: nextJobs, recovered };
+}
+
 export function claimAIVisualGenerationJob({
   claimedBy,
   job

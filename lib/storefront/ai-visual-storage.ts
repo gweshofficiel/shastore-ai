@@ -303,8 +303,10 @@ export async function uploadGeneratedAssetToR2({
   });
 
   if (!response.ok) {
+    const responseText = await response.text().catch(() => "");
+
     return {
-      error: `Cloudflare R2 upload failed with status ${response.status}.`,
+      error: `Cloudflare R2 upload failed with HTTP ${response.status} for bucket "${config.value.bucket}" key "${plan.storageKey}".${responseText ? ` ${responseText.slice(0, 240)}` : ""}`,
       output: null,
       plan
     };

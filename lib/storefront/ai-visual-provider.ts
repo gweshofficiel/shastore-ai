@@ -157,6 +157,102 @@ function isFirstSafeExecutionSlot(request: AIVisualAssetRequest) {
   return request.slot === "product.primary" || request.slot === "category.image" || request.slot === "hero.desktop";
 }
 
+const OPENAI_IMAGE_GENERATION_TIMEOUT_MS = 120_000;
+const OPENAI_IMAGE_DOWNLOAD_TIMEOUT_MS = 60_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${Math.round(ms / 1000)} seconds.`));
+        }, ms);
+      })
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+type OpenAIImageItem = {
+  b64_json?: string | null;
+  revised_prompt?: string | null;
+  url?: string | null;
+};
+
+function contentTypeFromUrl(url: string) {
+  const lowered = url.toLowerCase();
+
+  if (lowered.includes(".webp")) {
+    return "image/webp";
+  }
+
+  if (lowered.includes(".jpg") || lowered.includes(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return "image/png";
+}
+
+async function decodeOpenAIImageItem(
+  image: OpenAIImageItem
+): Promise<{ contentType: string; data: Uint8Array } | { error: string }> {
+  const b64 = image.b64_json;
+
+  if (typeof b64 === "string" && b64.length > 0) {
+    return {
+      contentType: "image/png",
+      data: Uint8Array.from(Buffer.from(b64, "base64"))
+    };
+  }
+
+  const url = image.url;
+
+  if (typeof url === "string" && url.length > 0) {
+    try {
+      const response = await withTimeout(
+        fetch(url),
+        OPENAI_IMAGE_DOWNLOAD_TIMEOUT_MS,
+        "OpenAI image URL download"
+      );
+
+      if (!response.ok) {
+        return {
+          error: `OpenAI returned an image URL but download failed with HTTP ${response.status}.`
+        };
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      if (!buffer.length) {
+        return {
+          error: "OpenAI image URL download returned an empty body."
+        };
+      }
+
+      return {
+        contentType: response.headers.get("content-type") || contentTypeFromUrl(url),
+        data: Uint8Array.from(buffer)
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "OpenAI image URL download failed.";
+
+      return { error: message };
+    }
+  }
+
+  const keys = Object.keys(image).filter((key) => image[key as keyof OpenAIImageItem] != null);
+
+  return {
+    error: `OpenAI image generation completed without usable image data (expected b64_json or url; received keys: ${keys.join(", ") || "none"}).`
+  };
+}
+
 export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
   return {
     createPendingJob(request) {
@@ -197,18 +293,34 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
 
       try {
         const client = new OpenAI({ apiKey });
-        const response = await client.images.generate({
-          model: openAIImageModel(),
-          n: 1,
-          prompt: imagePromptForRequest(request),
-          size: openAIImageSize(process.env.AI_VISUAL_OPENAI_IMAGE_SIZE)
-        });
-        const image = response.data?.[0] as { b64_json?: string | null } | undefined;
-        const b64 = image?.b64_json;
+        const model = openAIImageModel();
+        const response = await withTimeout(
+          client.images.generate({
+            model,
+            n: 1,
+            prompt: imagePromptForRequest(request),
+            size: openAIImageSize(process.env.AI_VISUAL_OPENAI_IMAGE_SIZE)
+          }),
+          OPENAI_IMAGE_GENERATION_TIMEOUT_MS,
+          `OpenAI ${model} image generation`
+        );
+        const image = response.data?.[0] as OpenAIImageItem | undefined;
 
-        if (!b64) {
+        if (!image) {
           return {
-            error: "OpenAI image generation completed without returning image data.",
+            error: `OpenAI ${model} returned no image entries in response.data.`,
+            job: this.createPendingJob(request),
+            output: null,
+            providerPlan,
+            status: "skipped"
+          };
+        }
+
+        const decoded = await decodeOpenAIImageItem(image);
+
+        if ("error" in decoded) {
+          return {
+            error: decoded.error,
             job: this.createPendingJob(request),
             output: null,
             providerPlan,
@@ -219,10 +331,7 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
         return {
           error: null,
           job: this.createPendingJob(request),
-          output: {
-            contentType: "image/png",
-            data: Uint8Array.from(Buffer.from(b64, "base64"))
-          },
+          output: decoded,
           providerPlan,
           status: "completed"
         };
@@ -230,7 +339,7 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
         const message = error instanceof Error ? error.message : "OpenAI image generation failed.";
 
         return {
-          error: message,
+          error: `OpenAI image generation failed: ${message}`,
           job: this.createPendingJob(request),
           output: null,
           providerPlan,
