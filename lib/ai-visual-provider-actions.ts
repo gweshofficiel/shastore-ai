@@ -8,6 +8,11 @@ import {
   type AIVisualAssetRequest
 } from "@/lib/storefront/ai-visual-assets";
 import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider";
+import {
+  createAIVisualGenerationJob,
+  dispatchAIVisualGenerationJob,
+  upsertAIVisualQueueJob
+} from "@/lib/storefront/ai-visual-queue";
 import { sharedTemplateVisualAssetSlots } from "@/lib/storefront/template-blueprints";
 import type { VisualAssetSlot } from "@/lib/storefront/visual-assets";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -49,11 +54,6 @@ function requestedSlot(value: unknown): VisualAssetSlot | null {
   return sharedTemplateVisualAssetSlots.includes(slot as VisualAssetSlot)
     ? slot as VisualAssetSlot
     : null;
-}
-
-function pendingJobs(value: unknown) {
-  const storeData = asStoreData(value);
-  return isRecord(storeData.aiVisualAssetJobs) ? storeData.aiVisualAssetJobs : {};
 }
 
 export async function requestAIVisualAssetGenerationAction(
@@ -146,26 +146,24 @@ export async function requestAIVisualAssetGenerationAction(
   const pendingJob = provider.createPendingJob(request);
   const providerPlan = planAIVisualAssetProviderRequest(request);
   const storeData = asStoreData((storeRow as { store_data?: unknown }).store_data);
-  const nextJobs = {
-    ...pendingJobs(storeData),
-    [request.requestId]: {
-      createdAt: pendingJob.createdAt,
-      jobId: pendingJob.jobId,
-      provider: pendingJob.provider,
-      providerPlan,
-      providerStatus: pendingJob.providerStatus,
-      request,
-      status: "pending"
-    }
-  };
+  const queuedJob = createAIVisualGenerationJob({
+    jobId: pendingJob.jobId,
+    provider: pendingJob.provider,
+    providerPlan,
+    providerStatus: pendingJob.providerStatus,
+    request,
+    workspaceId
+  });
+  const dispatch = dispatchAIVisualGenerationJob(queuedJob);
+  const nextStoreData = upsertAIVisualQueueJob({
+    job: dispatch.job,
+    storeData
+  });
 
   const { error: updateError } = await supabase
     .from("stores" as never)
     .update({
-      store_data: {
-        ...storeData,
-        aiVisualAssetJobs: nextJobs
-      },
+      store_data: nextStoreData,
       updated_at: new Date().toISOString()
     } as never)
     .eq("id" as never, storeId as never)

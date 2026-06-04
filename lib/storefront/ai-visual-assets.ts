@@ -18,7 +18,14 @@ export type AIVisualAssetRequestKind =
   | "promo_banner"
   | "collection_banner";
 
-export type AIVisualAssetGenerationStatus = "pending" | "generating" | "completed" | "failed" | "skipped";
+export type AIVisualAssetGenerationStatus =
+  | "pending"
+  | "processing"
+  | "generating"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "skipped";
 
 export type AIVisualAssetStorageDestination = {
   bucket: string | null;
