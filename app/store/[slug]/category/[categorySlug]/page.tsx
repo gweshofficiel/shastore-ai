@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
@@ -11,6 +12,7 @@ import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
+import { resolveCategoryImageSlots, resolveProductImageSlots } from "@/lib/storefront/visual-assets";
 import { buttonRadiusClass, fontClass, fontScaleClass } from "@/lib/store-theme";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -174,7 +176,12 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
     primary: theme.primaryColor,
     secondary: theme.secondaryColor
   };
-  const categoryHeroBackground = category.imageUrl
+  const categoryImageSlots = resolveCategoryImageSlots({
+    banner: category.imageUrl,
+    image: category.imageUrl,
+    name: category.name
+  });
+  const categoryHeroBackground = categoryImageSlots.banner.url
     ? undefined
     : `radial-gradient(circle at 20% 10%, ${preview.branding.secondaryColor}44, transparent 34%), linear-gradient(135deg, ${preview.branding.primaryColor}, ${preview.branding.secondaryColor})`;
 
@@ -238,17 +245,21 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
             className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-[0_35px_100px_-80px_rgba(15,23,42,0.95)]"
             style={categoryHeroBackground ? { background: categoryHeroBackground } : undefined}
           >
-            {category.imageUrl ? (
-              <img alt={category.name} className="max-h-80 w-full object-cover" src={category.imageUrl} />
+            {categoryImageSlots.banner.url ? (
+              <StorefrontAssetImage
+                asset={categoryImageSlots.banner}
+                className="max-h-80 w-full object-cover"
+                theme={visualTheme}
+              />
             ) : null}
             <div className="p-8 sm:p-10">
-              <p className={`text-xs font-black uppercase tracking-[0.22em] ${category.imageUrl ? "text-slate-400" : "text-white/55"}`}>
+              <p className={`text-xs font-black uppercase tracking-[0.22em] ${categoryImageSlots.banner.url ? "text-slate-400" : "text-white/55"}`}>
                 Category
               </p>
-              <h1 className={`mt-3 text-4xl font-black tracking-[-0.05em] sm:text-6xl ${category.imageUrl ? "text-ink" : "text-white"} ${fontClass(theme.headingFont)}`}>
+              <h1 className={`mt-3 text-4xl font-black tracking-[-0.05em] sm:text-6xl ${categoryImageSlots.banner.url ? "text-ink" : "text-white"} ${fontClass(theme.headingFont)}`}>
                 {category.name}
               </h1>
-              <p className={`mt-4 max-w-3xl text-sm font-semibold leading-6 ${category.imageUrl ? "text-muted" : "text-white/75"}`}>
+              <p className={`mt-4 max-w-3xl text-sm font-semibold leading-6 ${categoryImageSlots.banner.url ? "text-muted" : "text-white/75"}`}>
                 {category.description || "Browse products in this category."}
               </p>
             </div>
@@ -259,6 +270,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {products.map((product) => {
                   const currency = product.currency || preview.store.currency;
+                  const imageSlots = resolveProductImageSlots({
+                    gallery: product.gallery,
+                    primary: product.imageUrl,
+                    title: product.title
+                  });
 
                   const detailsHref = `/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`;
 
@@ -269,19 +285,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                     >
                       <Link className="relative block" href={detailsHref}>
                         <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
-                        {product.imageUrl ? (
-                          <img
-                            alt={product.title}
-                            className="aspect-square w-full rounded-[1.5rem] object-cover"
-                            src={product.imageUrl}
-                          />
-                        ) : (
-                          <PremiumVisualFallback
-                            accentLabel={`${product.title} visual`}
-                            className="aspect-square rounded-[1.5rem]"
-                            theme={visualTheme}
-                          />
-                        )}
+                        <StorefrontAssetImage
+                          asset={imageSlots.primary}
+                          className="aspect-square w-full rounded-[1.5rem] object-cover"
+                          theme={visualTheme}
+                        />
                       </Link>
                       <div>
                         <Link href={`/store/${preview.store.slug}/product/${encodeURIComponent(product.slug || product.id)}`}>

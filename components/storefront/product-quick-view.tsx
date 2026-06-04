@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import {
   addProductToStoreCart,
   CartNavLink
@@ -9,8 +10,8 @@ import {
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
-import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
+import { resolveProductImageSlots } from "@/lib/storefront/visual-assets";
 
 type ProductQuickViewProps = {
   currency: string;
@@ -112,6 +113,14 @@ export function ProductQuickView({
     product.variants.find((variant) => variant.id === selectedVariantId) ?? null;
   const activePrice = selectedVariant?.priceOverride ?? product.price;
   const activePriceLabel = selectedVariant?.priceOverride ? null : product.priceLabel;
+  const imageSlots = useMemo(
+    () => resolveProductImageSlots({
+      gallery: product.gallery,
+      primary: product.imageUrl,
+      title: product.title
+    }),
+    [product.gallery, product.imageUrl, product.title]
+  );
   const availability = useMemo(
     () => stockStatus(product, selectedVariant?.id ?? null),
     [product, selectedVariant]
@@ -168,19 +177,11 @@ export function ProductQuickView({
             </div>
             <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
               <div className="overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50">
-                {product.imageUrl ? (
-                  <img
-                    alt={product.title}
-                    className="aspect-square w-full object-cover"
-                    src={product.imageUrl}
-                  />
-                ) : (
-                  <PremiumVisualFallback
-                    accentLabel={`${product.title} visual`}
-                    className="aspect-square"
-                    theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
-                  />
-                )}
+                <StorefrontAssetImage
+                  asset={imageSlots.primary}
+                  className="aspect-square w-full object-cover"
+                  theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+                />
               </div>
               <div className="grid min-w-0 content-start gap-4">
                 <ProductBadges product={product} />

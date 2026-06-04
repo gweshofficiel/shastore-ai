@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import { Headphones, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  resolveCategoryImageSlots,
+  resolveHeroBannerSlots,
+  type ResolvedVisualAsset,
+  type VisualAssetSource
+} from "@/lib/storefront/visual-assets";
 import type { StoreThemeSettings } from "@/types/storefront";
 
 type VisualTheme = {
@@ -12,7 +18,7 @@ type VisualTheme = {
 export type VisualAssetHook = {
   assetId: string | null;
   promptKey: string | null;
-  source: string;
+  source: VisualAssetSource | string;
 };
 
 export type CategoryVisualCardStyle = "image-led" | "icon-led" | "standard";
@@ -20,8 +26,11 @@ export type CategoryVisualCardStyle = "image-led" | "icon-led" | "standard";
 export type HeroVisualSlots = {
   assetHook: VisualAssetHook | null;
   ctaLink: string;
+  ctaOverlayAsset: ResolvedVisualAsset;
   ctaText: string;
+  desktopBannerAsset: ResolvedVisualAsset;
   desktopBannerUrl: string | null;
+  mobileBannerAsset: ResolvedVisualAsset;
   mobileBannerUrl: string | null;
   subtitle: string;
   title: string;
@@ -30,8 +39,11 @@ export type HeroVisualSlots = {
 export type CategoryVisualSlot = {
   accentColor: string;
   assetHook: VisualAssetHook | null;
+  bannerAsset: ResolvedVisualAsset;
   cardStyle: CategoryVisualCardStyle;
   icon: LucideIcon;
+  iconAsset: ResolvedVisualAsset;
+  imageAsset: ResolvedVisualAsset;
   imageUrl: string | null;
 };
 
@@ -101,27 +113,41 @@ export function resolveHeroVisualSlots({
   themeSettings: StoreThemeSettings;
 }): HeroVisualSlots {
   const visual = configRecord(config.visual);
+  const title = stringValue(config.title ?? visual.title, fallbackTitle);
+  const desktopCandidate =
+    config.desktopBannerAsset ??
+    visual.desktopBannerAsset ??
+    config.desktopBannerUrl ??
+    config.desktopBanner ??
+    visual.desktopBannerUrl ??
+    visual.desktopBanner ??
+    config.bannerImageUrl ??
+    themeSettings.bannerImageUrl;
+  const mobileCandidate =
+    config.mobileBannerAsset ??
+    visual.mobileBannerAsset ??
+    config.mobileBannerUrl ??
+    config.mobileBanner ??
+    visual.mobileBannerUrl ??
+    visual.mobileBanner;
+  const bannerSlots = resolveHeroBannerSlots({
+    ctaOverlay: config.ctaOverlay ?? visual.ctaOverlay ?? visual.overlayAsset,
+    desktop: desktopCandidate,
+    mobile: mobileCandidate,
+    title
+  });
 
   return {
     assetHook: visualAssetHook(config.asset ?? visual.asset ?? visual.aiAsset),
+    ctaOverlayAsset: bannerSlots.ctaOverlay,
     ctaLink: stringValue(config.ctaLink ?? config.ctaHref ?? visual.ctaLink, "#products"),
     ctaText: stringValue(config.ctaText ?? visual.ctaText, themeSettings.ctaText || "Shop now"),
-    desktopBannerUrl: nullableString(
-      config.desktopBannerUrl ??
-        config.desktopBanner ??
-        visual.desktopBannerUrl ??
-        visual.desktopBanner ??
-        config.bannerImageUrl ??
-        themeSettings.bannerImageUrl
-    ),
-    mobileBannerUrl: nullableString(
-      config.mobileBannerUrl ??
-        config.mobileBanner ??
-        visual.mobileBannerUrl ??
-        visual.mobileBanner
-    ),
+    desktopBannerAsset: bannerSlots.desktop,
+    desktopBannerUrl: bannerSlots.desktop.url,
+    mobileBannerAsset: bannerSlots.mobile,
+    mobileBannerUrl: bannerSlots.mobile.url,
     subtitle: stringValue(config.subtitle ?? config.body ?? visual.subtitle, fallbackSubtitle),
-    title: stringValue(config.title ?? visual.title, fallbackTitle)
+    title
   };
 }
 
@@ -144,13 +170,22 @@ export function resolveCategoryVisualSlot({
   fallbackIcon: LucideIcon;
 }): CategoryVisualSlot {
   const visual = configRecord(category.visual);
+  const imageSlots = resolveCategoryImageSlots({
+    banner: visual.bannerImage ?? visual.bannerImageUrl ?? visual.categoryBannerImage ?? visual.categoryBannerImageUrl,
+    icon: visual.iconAsset ?? visual.iconImage ?? visual.iconImageUrl,
+    image: category.imageUrl ?? visual.imageAsset ?? visual.imageUrl ?? visual.generatedImageUrl,
+    name: category.name
+  });
 
   return {
     accentColor: stringValue(category.accentColor ?? visual.accentColor, colorFromText(category.name, accentColor)),
     assetHook: visualAssetHook(category.asset ?? visual.asset ?? visual.aiAsset),
+    bannerAsset: imageSlots.banner,
     cardStyle: categoryCardStyle(category.cardStyle ?? visual.cardStyle ?? cardStyle),
     icon: fallbackIcon,
-    imageUrl: nullableString(category.imageUrl ?? visual.imageUrl ?? visual.generatedImageUrl)
+    iconAsset: imageSlots.icon,
+    imageAsset: imageSlots.image,
+    imageUrl: imageSlots.image.url
   };
 }
 

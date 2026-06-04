@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { BackInStockRequest } from "@/components/storefront/back-in-stock-request";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import { trackGoogleAnalyticsEvent } from "@/components/storefront/google-analytics";
 import { trackMetaPixelEvent } from "@/components/storefront/meta-pixel";
 import { CompareButton } from "@/components/storefront/product-compare";
@@ -10,7 +11,6 @@ import { ProductRatingSummary } from "@/components/storefront/product-rating-sum
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductShareButtons } from "@/components/storefront/product-share-buttons";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
-import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import {
   addProductToStoreCart
 } from "@/components/storefront/public-store-cart";
@@ -21,6 +21,7 @@ import {
   type StoreCurrencySettings
 } from "@/lib/store-currencies";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
+import { resolveProductImageSlots, resolveVisualAssetSlot } from "@/lib/storefront/visual-assets";
 import type {
   PublicStorefrontProduct,
   PublicStorefrontVariant
@@ -161,11 +162,26 @@ export function ProductDetailFoundation({
   slug,
   storeId
 }: ProductDetailFoundationProps) {
+  const imageSlots = useMemo(
+    () => resolveProductImageSlots({
+      gallery: galleryUrls,
+      primary: product.imageUrl,
+      title: product.title
+    }),
+    [galleryUrls, product.imageUrl, product.title]
+  );
   const images = useMemo(
-    () => Array.from(new Set([product.imageUrl, ...galleryUrls].filter((url): url is string => Boolean(url)))),
-    [galleryUrls, product.imageUrl]
+    () => Array.from(new Set([imageSlots.primary.url, ...imageSlots.gallery.map((asset) => asset.url)].filter((url): url is string => Boolean(url)))),
+    [imageSlots.gallery, imageSlots.primary.url]
   );
   const [selectedImage, setSelectedImage] = useState(images[0] ?? null);
+  const selectedAsset = selectedImage
+    ? resolveVisualAssetSlot({
+        alt: product.title,
+        candidates: [selectedImage],
+        slot: "product.primary"
+      })
+    : imageSlots.primary;
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
   const [cartMessage, setCartMessage] = useState<string | null>(null);
@@ -228,19 +244,11 @@ export function ProductDetailFoundation({
       <section className="min-w-0 rounded-[2.5rem] border border-slate-200 bg-white p-3 shadow-[0_35px_100px_-70px_rgba(15,23,42,0.95)] sm:p-4">
         <div className="relative overflow-hidden rounded-[2rem] bg-slate-100">
           <ProductBadges className="absolute left-5 top-5 z-10" product={product} />
-          {selectedImage ? (
-            <img
-              alt={product.title}
-              className="aspect-square w-full object-cover"
-              src={selectedImage}
-            />
-          ) : (
-            <PremiumVisualFallback
-              accentLabel={`${product.title} visual`}
-              className="aspect-square"
-              theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
-            />
-          )}
+          <StorefrontAssetImage
+            asset={selectedAsset}
+            className="aspect-square w-full object-cover"
+            theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+          />
         </div>
         {images.length > 1 ? (
           <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-5">
@@ -254,10 +262,14 @@ export function ProductDetailFoundation({
                 onClick={() => setSelectedImage(url)}
                 type="button"
               >
-                <img
-                  alt={`${product.title} thumbnail ${index + 1}`}
+                <StorefrontAssetImage
+                  asset={resolveVisualAssetSlot({
+                    alt: `${product.title} thumbnail ${index + 1}`,
+                    candidates: [url],
+                    slot: "product.gallery"
+                  })}
                   className="aspect-square w-full object-cover"
-                  src={url}
+                  theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
                 />
               </button>
             ))}

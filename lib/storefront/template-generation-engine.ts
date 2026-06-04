@@ -21,6 +21,7 @@ export type TemplateGenerationProfile = {
   packageVersion: number | null;
   recommendedAudience: string[];
   style: string;
+  visualAssetSlots: TemplateBlueprint["visualAssetSlots"];
   visualProfile: TemplateBlueprint["visualProfile"];
 };
 
@@ -58,6 +59,7 @@ export function resolveTemplateGenerationProfile(templateId?: string | null): Te
     packageVersion: templatePackage?.version ?? blueprint.packageVersion,
     recommendedAudience: blueprint.recommendedAudience,
     style: blueprint.style,
+    visualAssetSlots: blueprint.visualAssetSlots,
     visualProfile: blueprint.visualProfile
   };
 }
@@ -78,6 +80,7 @@ export function buildFutureTemplateConfiguration(input: FutureTemplateConfigurat
         }
       : null,
     runtimeSectionOrder: blueprint.runtimeSectionOrder,
+    visualAssetSlots: blueprint.visualAssetSlots,
     templateId: input.templateId,
     templateMetadata: {
       blueprintId: blueprint.id,

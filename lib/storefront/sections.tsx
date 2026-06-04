@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
+import { StorefrontAssetImage, StorefrontPictureAsset } from "@/components/storefront/asset-image";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
@@ -68,6 +69,10 @@ import {
   buildPublicProductSections,
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
+import {
+  resolveProductImageSlots,
+  resolveVisualAssetSlot
+} from "@/lib/storefront/visual-assets";
 import {
   summarizeFlagshipProductGrid,
   type FlagshipProductGridTrace
@@ -347,6 +352,14 @@ function productGalleryUrls(gallery: unknown[]) {
 
 function productPrimaryImage(product: StoreTenantContext["preview"]["products"][number]) {
   return product.imageUrl || productGalleryUrls(product.gallery)[0] || null;
+}
+
+function productImageSlots(product: StoreTenantContext["preview"]["products"][number]) {
+  return resolveProductImageSlots({
+    gallery: product.gallery,
+    primary: product.imageUrl,
+    title: product.title
+  });
 }
 
 function isPublicProductStatus(status: string | null) {
@@ -1107,8 +1120,8 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                 }
               >
                 {section.products.map((product) => {
-            const galleryImages = productGalleryUrls(product.gallery);
-            const primaryImage = productPrimaryImage(product);
+            const imageSlots = productImageSlots(product);
+            const galleryImages = imageSlots.gallery.filter((asset) => asset.url);
             const currency = selectedCurrency ?? context.preview.store.currencySettings.defaultCurrency;
             const detailsHref = publicProductHref(context.preview.store.slug, product);
             const reviewSummary = productCardReviewSummaries.get(product.id) ?? productReviewSummaryFromProduct(product);
@@ -1133,28 +1146,20 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                   href={publicProductHref(context.preview.store.slug, product)}
                 >
                   <ProductBadges className="absolute inset-x-3 top-3 z-10" product={product} />
-                  {primaryImage ? (
-                    <img
-                      alt={product.title}
-                      className={`block w-full object-cover ${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-                      src={primaryImage}
-                    />
-                  ) : (
-                    <PremiumVisualFallback
-                      accentLabel={`${product.title} visual`}
-                      className={`${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-                      theme={context.theme.colorPalette}
-                    />
-                  )}
+                  <StorefrontAssetImage
+                    asset={imageSlots.primary}
+                    className={`block w-full object-cover ${config.key === "shastore-flagship-premium" ? "h-56 sm:h-60" : config.layout.productCard === "lookbook" ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+                    theme={context.theme.colorPalette}
+                  />
                 </Link>
                 {galleryImages.length && !isFlagship ? (
                   <div className={`grid gap-2 px-4 pt-4 ${config.key === "fashion-starter" ? "grid-cols-4" : "grid-cols-3"}`}>
-                    {galleryImages.slice(0, config.key === "electronics-starter" ? 3 : 4).map((url) => (
-                      <img
-                        alt={`${product.title} gallery image`}
+                    {galleryImages.slice(0, config.key === "electronics-starter" ? 3 : 4).map((asset) => (
+                      <StorefrontAssetImage
+                        asset={asset}
                         className={`aspect-square object-cover ${config.layout.productCard === "spec-card" ? "rounded-xl border border-cyan-400/20" : "rounded-2xl"}`}
-                        key={url}
-                        src={url}
+                        key={`${asset.slot}-${asset.url}`}
+                        theme={context.theme.colorPalette}
                       />
                     ))}
                   </div>
@@ -1674,15 +1679,13 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
             </div>
             <div className="flex min-h-80 min-w-0 items-center bg-gradient-to-br from-slate-100 via-white to-amber-50 p-5">
               <div className="w-full min-w-0 rounded-[2rem] border border-white bg-white/75 p-5 shadow-inner">
-                {heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl ? (
-                  <picture>
-                    {heroSlots.mobileBannerUrl ? <source media="(max-width: 767px)" srcSet={heroSlots.mobileBannerUrl} /> : null}
-                    <img
-                      alt={title}
-                      className="aspect-[4/5] w-full rounded-[1.5rem] object-cover"
-                      src={heroSlots.desktopBannerUrl || heroSlots.mobileBannerUrl || ""}
-                    />
-                  </picture>
+                {heroSlots.desktopBannerAsset.url || heroSlots.mobileBannerAsset.url ? (
+                  <StorefrontPictureAsset
+                    className="aspect-[4/5] w-full rounded-[1.5rem] object-cover"
+                    desktop={heroSlots.desktopBannerAsset}
+                    mobile={heroSlots.mobileBannerAsset}
+                    theme={context.theme.colorPalette}
+                  />
                 ) : heroProducts.length ? (
                   <div className="grid gap-3">
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -1869,18 +1872,24 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
             {flagshipHomeCategoryPlaceholders.map((name) => {
               const category = flagshipCategoryPlaceholders.find((item) => item.label === name) ?? flagshipCategoryPlaceholders[0];
               const Icon = category.icon;
+              const slot = resolveCategoryVisualSlot({
+                accentColor: context.theme.colorPalette.accent,
+                cardStyle: "icon-led",
+                category: {
+                  asset: null,
+                  cardStyle: "icon-led",
+                  imageUrl: null,
+                  name,
+                  visual: null
+                },
+                fallbackIcon: Icon
+              });
 
               return (
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg" key={name}>
                 <CategoryVisualMedia
                   categoryName={name}
-                  slot={{
-                    accentColor: context.theme.colorPalette.accent,
-                    assetHook: null,
-                    cardStyle: "icon-led",
-                    icon: Icon,
-                    imageUrl: null
-                  }}
+                  slot={slot}
                   theme={context.theme.colorPalette}
                 />
                 <div className="p-5">
@@ -2193,7 +2202,7 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
         {products.length ? (
           <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => {
-              const primaryImage = productPrimaryImage(product);
+                  const imageSlots = productImageSlots(product);
 
               return (
                 <Link
@@ -2201,15 +2210,11 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
                   href={publicProductHref(context.preview.store.slug, product)}
                   key={product.id}
                 >
-                  {primaryImage ? (
-                    <img alt={product.title} className="aspect-[4/3] w-full object-cover" src={primaryImage} />
-                  ) : (
-                    <PremiumVisualFallback
-                      accentLabel={`${product.title} visual`}
-                      className="aspect-[4/3]"
-                      theme={context.theme.colorPalette}
-                    />
-                  )}
+                  <StorefrontAssetImage
+                    asset={imageSlots.primary}
+                    className="aspect-[4/3] w-full object-cover"
+                    theme={context.theme.colorPalette}
+                  />
                   <div className="flex flex-1 flex-col p-4">
                     <h3 className="text-base font-black tracking-[-0.02em] text-ink">
                       {product.title}
@@ -2347,13 +2352,31 @@ function promotionalSlotItems(section: StoreSection) {
 
   return rawItems
     .filter(isRecord)
-    .map((item) => ({
-      body: textValue(item.body ?? item.subtitle),
-      ctaHref: textValue(item.ctaHref ?? item.ctaLink),
-      ctaText: textValue(item.ctaText, "Shop now"),
-      eyebrow: textValue(item.eyebrow),
-      title: textValue(item.title)
-    }))
+    .map((item, index) => {
+      const eyebrow = textValue(item.eyebrow);
+      const title = textValue(item.title);
+      const slot =
+        eyebrow.toLowerCase().includes("flash") || title.toLowerCase().includes("flash")
+          ? "marketing.flashSale"
+          : eyebrow.toLowerCase().includes("season") || title.toLowerCase().includes("season")
+            ? "marketing.seasonalSale"
+            : eyebrow.toLowerCase().includes("collection") || title.toLowerCase().includes("collection")
+              ? "marketing.collection"
+              : "marketing.announcement";
+
+      return {
+        bannerAsset: resolveVisualAssetSlot({
+          alt: title || eyebrow || `Promotion banner ${index + 1}`,
+          candidates: [item.bannerAsset, item.banner, item.bannerUrl, item.image, item.imageUrl],
+          slot
+        }),
+        body: textValue(item.body ?? item.subtitle),
+        ctaHref: textValue(item.ctaHref ?? item.ctaLink),
+        ctaText: textValue(item.ctaText, "Shop now"),
+        eyebrow,
+        title
+      };
+    })
     .filter((item) => item.title || item.body || item.eyebrow);
 }
 

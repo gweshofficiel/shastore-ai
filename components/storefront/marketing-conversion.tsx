@@ -1,7 +1,9 @@
 import { Award, BadgeCheck, Gift, Headphones, RotateCcw, ShieldCheck, ShoppingBag, Star, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import type { ProductRatingSummaryValue } from "@/components/storefront/product-rating-summary";
+import type { ResolvedVisualAsset } from "@/lib/storefront/visual-assets";
 
 type MarketingTheme = {
   accent: string;
@@ -16,6 +18,7 @@ export type MarketingTrustBadge = {
 };
 
 export type PromotionStripItem = {
+  bannerAsset?: ResolvedVisualAsset;
   body: string;
   ctaHref?: string;
   ctaText?: string;
@@ -153,9 +156,16 @@ export function PromotionStrips({
               background: `linear-gradient(135deg, ${index % 2 === 0 ? theme.primary : theme.secondary}, ${index === 2 ? theme.accent : theme.secondary})`
             }}
           >
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">{item.eyebrow}</p>
-            <h3 className="mt-2 text-lg font-black tracking-[-0.03em]">{item.title}</h3>
-            <p className="mt-2 text-xs font-semibold leading-5 text-white/75">{item.body}</p>
+                {item.bannerAsset ? (
+                  <StorefrontAssetImage
+                    asset={item.bannerAsset}
+                    className="mb-3 aspect-[16/9] w-full rounded-2xl object-cover"
+                    theme={theme}
+                  />
+                ) : null}
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">{item.eyebrow}</p>
+                <h3 className="mt-2 text-lg font-black tracking-[-0.03em]">{item.title}</h3>
+                <p className="mt-2 text-xs font-semibold leading-5 text-white/75">{item.body}</p>
           </div>
           <span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition group-hover:text-slate-950">
             {item.ctaText || "Shop now"}

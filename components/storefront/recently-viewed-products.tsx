@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import { CompareButton } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
@@ -10,6 +11,7 @@ import { ProductStockUrgency } from "@/components/storefront/product-stock-urgen
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import { isPublicCategoryTitle } from "@/lib/storefront/catalog-sections";
+import { resolveProductImageSlots } from "@/lib/storefront/visual-assets";
 
 type RecentlyViewedProductsProps = {
   currentProductId?: string | null;
@@ -171,6 +173,11 @@ export function RecentlyViewedProducts({
         {displayProducts.map((product) => {
           const productHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const productCurrency = product.currency || currency;
+          const imageSlots = resolveProductImageSlots({
+            gallery: product.gallery,
+            primary: product.imageUrl,
+            title: product.title
+          });
 
           return (
             <article
@@ -179,19 +186,11 @@ export function RecentlyViewedProducts({
             >
               <Link className="relative block shrink-0 overflow-hidden rounded-t-[inherit]" href={productHref}>
                 <ProductBadges className="absolute inset-x-3 top-3 z-10" product={product} />
-                {product.imageUrl ? (
-                  <img
-                    alt={product.title}
-                    className="block h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-60"
-                    src={product.imageUrl}
-                  />
-                ) : (
-                  <div className="flex h-56 items-end bg-slate-900 p-5 text-white sm:h-60">
-                    <span className="rounded-full bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white backdrop-blur">
-                      {isPublicCategoryTitle(product.categoryName) ? product.categoryName : "Product"}
-                    </span>
-                  </div>
-                )}
+                <StorefrontAssetImage
+                  asset={imageSlots.primary}
+                  className="block h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-60"
+                  theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+                />
               </Link>
               <div className="flex min-h-0 flex-1 flex-col gap-3 p-5">
                 {isPublicCategoryTitle(product.categoryName) ? (

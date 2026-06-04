@@ -789,6 +789,7 @@ async function installPackageBlueprintMetadata({
             recommendedAudience: templatePackage.recommendedAudience ?? blueprint.recommendedAudience,
             style: templatePackage.style ?? blueprint.style,
             templateId,
+            visualAssetSlots: templatePackage.visualAssetSlots ?? {},
             visualProfile: templatePackage.visualProfile ?? blueprint.visualProfile
           }
         }

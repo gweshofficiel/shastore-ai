@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { StorefrontAssetImage } from "@/components/storefront/asset-image";
 import { AddToCartButton } from "@/components/storefront/public-store-cart";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
+import { resolveProductImageSlots } from "@/lib/storefront/visual-assets";
 
 type CompareScope = {
   currency: string;
@@ -308,20 +310,21 @@ export function ComparePageClient({
         {compareProducts.map((product) => {
           const productCurrency = product.currency || currency;
           const detailsHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
+          const imageSlots = resolveProductImageSlots({
+            gallery: product.gallery,
+            primary: product.imageUrl,
+            title: product.title
+          });
 
           return (
             <article className="grid gap-4 bg-white p-4" key={product.id}>
               <Link className="relative block" href={detailsHref}>
                 <ProductBadges className="absolute left-3 top-3 z-10" product={product} />
-                {product.imageUrl ? (
-                  <img
-                    alt={product.title}
-                    className="aspect-square w-full rounded-[1.5rem] object-cover"
-                    src={product.imageUrl}
-                  />
-                ) : (
-                  <div className="aspect-square rounded-[1.5rem] bg-slate-100" />
-                )}
+                <StorefrontAssetImage
+                  asset={imageSlots.primary}
+                  className="aspect-square w-full rounded-[1.5rem] object-cover"
+                  theme={{ accent: "#d4af37", primary: "#0f172a", secondary: "#1d4ed8" }}
+                />
               </Link>
               <div>
                 <Link href={detailsHref}>

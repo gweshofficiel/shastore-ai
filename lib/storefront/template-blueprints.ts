@@ -1,3 +1,5 @@
+import type { VisualAssetSlot } from "@/lib/storefront/visual-assets";
+
 export type TemplateIndustry =
   | "multi-purpose"
   | "fashion"
@@ -44,6 +46,7 @@ export type TemplateBlueprint = {
   runtimeSectionOrder: string[];
   style: string;
   templateIds: string[];
+  visualAssetSlots: VisualAssetSlot[];
   visualProfile: TemplateVisualProfile;
 };
 
@@ -77,6 +80,23 @@ export const sharedTemplateRuntimeSectionOrder = [
   "footer"
 ] as const;
 
+export const sharedTemplateVisualAssetSlots: VisualAssetSlot[] = [
+  "product.primary",
+  "product.gallery",
+  "product.fallback",
+  "product.comingSoon",
+  "category.icon",
+  "category.image",
+  "category.banner",
+  "hero.desktop",
+  "hero.mobile",
+  "hero.ctaOverlay",
+  "marketing.flashSale",
+  "marketing.seasonalSale",
+  "marketing.collection",
+  "marketing.announcement"
+];
+
 const flagshipRuntimeSectionOrder = [
   "navbar",
   "announcement_bar",
@@ -97,8 +117,11 @@ const flagshipRuntimeSectionOrder = [
   "footer"
 ] as const;
 
-function blueprint(partial: TemplateBlueprint): TemplateBlueprint {
-  return partial;
+function blueprint(partial: Omit<TemplateBlueprint, "visualAssetSlots"> & Partial<Pick<TemplateBlueprint, "visualAssetSlots">>): TemplateBlueprint {
+  return {
+    ...partial,
+    visualAssetSlots: partial.visualAssetSlots ?? [...sharedTemplateVisualAssetSlots]
+  };
 }
 
 export const templateBlueprintRegistry: TemplateBlueprint[] = [
@@ -513,6 +536,7 @@ export function applyBlueprintMetadata<T extends Record<string, unknown>>({
       industry: blueprint.industry,
       recommendedAudience: blueprint.recommendedAudience,
       style: blueprint.style,
+      visualAssetSlots: blueprint.visualAssetSlots,
       visualProfile: blueprint.visualProfile
     },
     preview_gradient: blueprint.previewGradient,

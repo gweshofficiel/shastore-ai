@@ -2,6 +2,7 @@ import type { StoreFooterLinkSettings } from "@/lib/store-footer-links";
 import type { StoreHomepageSectionType } from "@/lib/store-homepage-sections";
 import type { StoreMarketingMessageType } from "@/lib/store-marketing-messages";
 import type { TemplateGenerationHooks, TemplateIndustry } from "@/lib/storefront/template-blueprints";
+import type { VisualAssetReference, VisualAssetSlot } from "@/lib/storefront/visual-assets";
 
 export type TemplatePackageStatus = "failed" | "installed" | "partially_installed";
 
@@ -146,6 +147,7 @@ export type TemplatePackage = {
   templateIds: string[];
   variants?: TemplatePackageVariant[];
   version: number;
+  visualAssetSlots?: Partial<Record<VisualAssetSlot, VisualAssetReference>>;
   visualProfile?: Record<string, unknown>;
   visualSlots?: Record<string, unknown>;
 };
@@ -530,6 +532,22 @@ const flagshipPremiumPackage: TemplatePackage = {
     heroMood: "premium glass commerce",
     productCardStyle: "editorial commerce card",
     productImageTreatment: "premium visual fallback"
+  },
+  visualAssetSlots: {
+    "category.banner": { promptKey: "multi-purpose-category-banner", source: "ai-ready" },
+    "category.icon": { promptKey: "multi-purpose-category-icon", source: "ai-ready" },
+    "category.image": { promptKey: "multi-purpose-category-image", source: "ai-ready" },
+    "hero.ctaOverlay": { promptKey: "flagship-premium-cta-overlay", source: "ai-ready" },
+    "hero.desktop": { promptKey: "flagship-premium-hero-desktop", source: "ai-ready" },
+    "hero.mobile": { promptKey: "flagship-premium-hero-mobile", source: "ai-ready" },
+    "marketing.announcement": { promptKey: "flagship-announcement-banner", source: "ai-ready" },
+    "marketing.collection": { promptKey: "flagship-collection-banner", source: "ai-ready" },
+    "marketing.flashSale": { promptKey: "flagship-flash-sale-banner", source: "ai-ready" },
+    "marketing.seasonalSale": { promptKey: "flagship-seasonal-sale-banner", source: "ai-ready" },
+    "product.comingSoon": { promptKey: "multi-purpose-product-coming-soon", source: "ai-ready" },
+    "product.fallback": { promptKey: "multi-purpose-product-fallback", source: "ai-ready" },
+    "product.gallery": { promptKey: "multi-purpose-product-gallery", source: "ai-ready" },
+    "product.primary": { promptKey: "multi-purpose-product-primary", source: "ai-ready" }
   },
   visualSlots: {
     categoryCardStyle: "icon-led",
