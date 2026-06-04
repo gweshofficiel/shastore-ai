@@ -101,6 +101,18 @@ function targetName(job: AIVisualGenerationJob) {
   return job.request.entityTitle || job.attachTarget.entityId || "Template visual";
 }
 
+function completedAssetUrl(job: AIVisualGenerationJob) {
+  if (job.status !== "completed") {
+    return null;
+  }
+
+  return job.result?.publicUrl || job.result?.asset?.url || job.result?.asset?.publicUrl || null;
+}
+
+function completedAssetStorageKey(job: AIVisualGenerationJob) {
+  return job.result?.asset?.storageKey || job.result?.asset?.r2Key || null;
+}
+
 async function getAIVisualAssetsDashboardData(
   selectedStoreId?: string
 ): Promise<AIVisualAssetsDashboardData> {
@@ -432,43 +444,72 @@ export default async function AIVisualAssetsDashboard({
               </div>
 
               <div className="mt-5 grid gap-3">
-                {jobs.length ? jobs.map((job) => (
-                  <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4" key={job.requestId}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-black tracking-[-0.03em] text-ink">
-                          {targetName(job)}
-                        </h3>
-                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                          {job.kind.replaceAll("_", " ")} · {job.slot}
-                        </p>
+                {jobs.length ? jobs.map((job) => {
+                  const assetUrl = completedAssetUrl(job);
+                  const storageKey = completedAssetStorageKey(job);
+
+                  return (
+                    <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4" key={job.requestId}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-black tracking-[-0.03em] text-ink">
+                            {targetName(job)}
+                          </h3>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                            {job.kind.replaceAll("_", " ")} · {job.slot}
+                          </p>
+                        </div>
+                        <StatusBadge status={job.status} />
                       </div>
-                      <StatusBadge status={job.status} />
+                      {assetUrl ? (
+                        <div className="mt-4 grid gap-3 rounded-[1.5rem] border border-emerald-100 bg-white p-3 sm:grid-cols-[120px_minmax(0,1fr)]">
+                          <img
+                            alt={job.request.entityTitle || "Generated AI visual asset"}
+                            className="aspect-video w-full rounded-2xl object-cover sm:aspect-square"
+                            src={assetUrl}
+                          />
+                          <div className="grid min-w-0 content-center gap-2">
+                            <a
+                              className="text-sm font-black text-emerald-700 underline-offset-4 hover:underline"
+                              href={assetUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Open asset
+                            </a>
+                            {storageKey ? (
+                              <p className="break-all rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500">
+                                Storage key: {storageKey}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="mt-4 grid gap-2 text-sm font-semibold text-muted md:grid-cols-2">
+                        <p>Asset type: {job.kind.replaceAll("_", " ")}</p>
+                        <p>Target type: {job.attachTarget.type}</p>
+                        <p>Provider: {job.provider}</p>
+                        <p>Attempts: {job.attempts}</p>
+                        <p>Created: {new Date(job.createdAt).toLocaleString()}</p>
+                        <p>Updated: {new Date(job.updatedAt).toLocaleString()}</p>
+                      </div>
+                      {job.error ? (
+                        <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
+                          {job.error}
+                        </p>
+                      ) : null}
+                      {job.status === "pending" ? (
+                        <form action={processAIVisualAssetJob} className="mt-4">
+                          <input name="storeId" type="hidden" value={activeStore.id} />
+                          <input name="requestId" type="hidden" value={job.requestId} />
+                          <Button type="submit" variant="secondary">
+                            Process this job
+                          </Button>
+                        </form>
+                      ) : null}
                     </div>
-                    <div className="mt-4 grid gap-2 text-sm font-semibold text-muted md:grid-cols-2">
-                      <p>Asset type: {job.kind.replaceAll("_", " ")}</p>
-                      <p>Target type: {job.attachTarget.type}</p>
-                      <p>Provider: {job.provider}</p>
-                      <p>Attempts: {job.attempts}</p>
-                      <p>Created: {new Date(job.createdAt).toLocaleString()}</p>
-                      <p>Updated: {new Date(job.updatedAt).toLocaleString()}</p>
-                    </div>
-                    {job.error ? (
-                      <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
-                        {job.error}
-                      </p>
-                    ) : null}
-                    {job.status === "pending" ? (
-                      <form action={processAIVisualAssetJob} className="mt-4">
-                        <input name="storeId" type="hidden" value={activeStore.id} />
-                        <input name="requestId" type="hidden" value={job.requestId} />
-                        <Button type="submit" variant="secondary">
-                          Process this job
-                        </Button>
-                      </form>
-                    ) : null}
-                  </div>
-                )) : (
+                  );
+                }) : (
                   <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 p-6 text-sm font-bold text-muted">
                     No AI visual jobs yet. Queue a visual asset above to start the manual pipeline.
                   </div>

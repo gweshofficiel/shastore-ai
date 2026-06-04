@@ -70,6 +70,7 @@ import {
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
 import {
+  generatedVisualAssetForTarget,
   resolveProductImageSlots,
   resolveVisualAssetSlot
 } from "@/lib/storefront/visual-assets";
@@ -357,8 +358,23 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
 function productImageSlots(product: StoreTenantContext["preview"]["products"][number]) {
   return resolveProductImageSlots({
     gallery: product.gallery,
+    generatedPrimary: product.aiVisualAsset,
     primary: product.imageUrl,
     title: product.title
+  });
+}
+
+function generatedHeroDesktopAsset(context: StoreTenantContext) {
+  return generatedVisualAssetForTarget({
+    generatedVisualAssets: context.preview.generatedVisualAssets,
+    slot: "hero.desktop",
+    targetId: `${context.preview.store.id}-hero.desktop`,
+    targetType: "banner"
+  }) ?? generatedVisualAssetForTarget({
+    generatedVisualAssets: context.preview.generatedVisualAssets,
+    slot: "hero.desktop",
+    targetId: "template",
+    targetType: "banner"
   });
 }
 
@@ -1611,6 +1627,7 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
     config,
     fallbackSubtitle: theme.heroSubtitle || (context.settings.description ?? ""),
     fallbackTitle: theme.heroTitle || context.settings.title,
+    generatedDesktopAsset: generatedHeroDesktopAsset(context),
     themeSettings: theme
   });
   const title = heroSlots.title;

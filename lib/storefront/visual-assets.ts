@@ -64,6 +64,12 @@ export type HeroBannerSlots = {
   mobile: ResolvedVisualAsset;
 };
 
+export type GeneratedVisualAssetTargetType = "product" | "category" | "banner" | "collection";
+
+export type GeneratedVisualAssetStore = Partial<
+  Record<GeneratedVisualAssetTargetType, Record<string, Partial<Record<VisualAssetSlot, VisualAssetReference>>>>
+>;
+
 export type MarketingBannerSlots = {
   announcement: ResolvedVisualAsset;
   collection: ResolvedVisualAsset;
@@ -179,6 +185,68 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
   };
 }
 
+export function generatedVisualAssetsFromStoreData(value: unknown): GeneratedVisualAssetStore {
+  if (!isRecord(value) || !isRecord(value.generatedVisualAssets)) {
+    return {};
+  }
+
+  const generatedVisualAssets: GeneratedVisualAssetStore = {};
+
+  for (const targetType of ["product", "category", "banner", "collection"] as const) {
+    const targetGroup = value.generatedVisualAssets[targetType];
+
+    if (!isRecord(targetGroup)) {
+      continue;
+    }
+
+    const normalizedTargetGroup: Record<string, Partial<Record<VisualAssetSlot, VisualAssetReference>>> = {};
+
+    for (const [targetId, slots] of Object.entries(targetGroup)) {
+      if (!isRecord(slots)) {
+        continue;
+      }
+
+      const normalizedSlots: Partial<Record<VisualAssetSlot, VisualAssetReference>> = {};
+
+      for (const [slot, asset] of Object.entries(slots)) {
+        const reference = visualAssetReference(asset);
+
+        if (reference) {
+          normalizedSlots[slot as VisualAssetSlot] = reference;
+        }
+      }
+
+      if (Object.keys(normalizedSlots).length > 0) {
+        normalizedTargetGroup[targetId] = normalizedSlots;
+      }
+    }
+
+    if (Object.keys(normalizedTargetGroup).length > 0) {
+      generatedVisualAssets[targetType] = normalizedTargetGroup;
+    }
+  }
+
+  return generatedVisualAssets;
+}
+
+export function generatedVisualAssetForTarget({
+  generatedVisualAssets,
+  slot,
+  targetId,
+  targetType
+}: {
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
+  slot: VisualAssetSlot;
+  targetId: string | null;
+  targetType: GeneratedVisualAssetTargetType;
+}): VisualAssetReference | null {
+  if (!generatedVisualAssets || !targetId) {
+    return null;
+  }
+
+  return generatedVisualAssets[targetType]?.[targetId]?.[slot] ?? null;
+}
+
 export function resolveVisualAssetSlot({
   alt,
   candidates,
@@ -210,18 +278,20 @@ export function productGalleryAssetReferences(gallery: unknown[]) {
 export function resolveProductImageSlots({
   fallback,
   gallery,
+  generatedPrimary,
   primary,
   title
 }: {
   fallback?: unknown;
   gallery?: unknown[];
+  generatedPrimary?: unknown;
   primary?: unknown;
   title: string;
 }): ProductImageSlots {
   const galleryAssets = productGalleryAssetReferences(gallery ?? []);
   const primaryAsset = resolveVisualAssetSlot({
     alt: title,
-    candidates: [primary, ...galleryAssets],
+    candidates: [generatedPrimary, primary, ...galleryAssets],
     slot: "product.primary"
   });
 

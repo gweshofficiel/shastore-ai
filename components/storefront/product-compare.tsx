@@ -312,6 +312,7 @@ export function ComparePageClient({
           const detailsHref = `/store/${slug}/product/${encodeURIComponent(product.slug || product.id)}`;
           const imageSlots = resolveProductImageSlots({
             gallery: product.gallery,
+            generatedPrimary: product.aiVisualAsset,
             primary: product.imageUrl,
             title: product.title
           });

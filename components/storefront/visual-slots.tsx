@@ -105,11 +105,13 @@ export function resolveHeroVisualSlots({
   config,
   fallbackSubtitle,
   fallbackTitle,
+  generatedDesktopAsset,
   themeSettings
 }: {
   config: Record<string, unknown>;
   fallbackSubtitle: string;
   fallbackTitle: string;
+  generatedDesktopAsset?: unknown;
   themeSettings: StoreThemeSettings;
 }): HeroVisualSlots {
   const visual = configRecord(config.visual);
@@ -132,7 +134,7 @@ export function resolveHeroVisualSlots({
     visual.mobileBanner;
   const bannerSlots = resolveHeroBannerSlots({
     ctaOverlay: config.ctaOverlay ?? visual.ctaOverlay ?? visual.overlayAsset,
-    desktop: desktopCandidate,
+    desktop: generatedDesktopAsset ?? desktopCandidate,
     mobile: mobileCandidate,
     title
   });
@@ -162,6 +164,7 @@ export function resolveCategoryVisualSlot({
   category: {
     accentColor?: string | null;
     asset?: unknown;
+    aiVisualAsset?: unknown;
     cardStyle?: string | null;
     imageUrl?: string | null;
     name: string;
@@ -173,7 +176,7 @@ export function resolveCategoryVisualSlot({
   const imageSlots = resolveCategoryImageSlots({
     banner: visual.bannerImage ?? visual.bannerImageUrl ?? visual.categoryBannerImage ?? visual.categoryBannerImageUrl,
     icon: visual.iconAsset ?? visual.iconImage ?? visual.iconImageUrl,
-    image: category.imageUrl ?? visual.imageAsset ?? visual.imageUrl ?? visual.generatedImageUrl,
+    image: category.aiVisualAsset ?? category.imageUrl ?? visual.imageAsset ?? visual.imageUrl ?? visual.generatedImageUrl,
     name: category.name
   });
 

@@ -11,6 +11,12 @@ import {
 import { normalizeStoreCurrencySettings, type StoreCurrencySettings } from "@/lib/store-currencies";
 import { normalizeStoreLanguageSettings, type StoreLanguageSettings } from "@/lib/store-languages";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
+import {
+  generatedVisualAssetForTarget,
+  generatedVisualAssetsFromStoreData,
+  type GeneratedVisualAssetStore,
+  type VisualAssetReference
+} from "@/lib/storefront/visual-assets";
 import type { StoreThemeSettings } from "@/types/storefront";
 
 export type PublicStorefrontVariant = {
@@ -28,6 +34,7 @@ export type PublicStorefrontVariant = {
 };
 
 export type PublicStorefrontProduct = {
+  aiVisualAsset?: VisualAssetReference | null;
   canonicalUrl: string | null;
   categoryId: string | null;
   categoryName: string | null;
@@ -65,6 +72,7 @@ export type PublicStorefrontProduct = {
 };
 
 export type PublicStorefrontCategory = {
+  aiVisualAsset?: VisualAssetReference | null;
   canonicalUrl: string | null;
   description: string | null;
   id: string;
@@ -97,6 +105,7 @@ export type PublicStorefrontPreview = {
   brandingConfig: Record<string, unknown>;
   categories: PublicStorefrontCategory[];
   fontStyle: string;
+  generatedVisualAssets: GeneratedVisualAssetStore;
   layoutStyle: string;
   navigation: PublicStoreNavigation;
   pages: PublicStorefrontPageLink[];
@@ -311,6 +320,7 @@ function normalizeProduct(value: unknown): PublicStorefrontProduct | null {
   }
 
   return {
+    aiVisualAsset: isRecord(value.aiVisualAsset) ? value.aiVisualAsset as VisualAssetReference : null,
     canonicalUrl: textValue(value.canonicalUrl) || textValue(value.canonical_url) || null,
     categoryId: textValue(value.categoryId) || null,
     categoryName: textValue(value.categoryName) || null,
@@ -381,6 +391,7 @@ function normalizeCategory(value: unknown): PublicStorefrontCategory | null {
   }
 
   return {
+    aiVisualAsset: isRecord(value.aiVisualAsset) ? value.aiVisualAsset as VisualAssetReference : null,
     canonicalUrl: textValue(value.canonicalUrl) || textValue(value.canonical_url) || null,
     description: textValue(value.description) || null,
     id,
@@ -465,6 +476,63 @@ async function getPublishedStoreSeo(client: SupabaseClient, storeId: string) {
   } | null;
 }
 
+async function getStoreDataForPreview(client: SupabaseClient, storeId: string) {
+  const { data, error } = await client
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (error || !data) {
+    return {};
+  }
+
+  const row = data as { store_data?: unknown };
+  return isRecord(row.store_data) ? row.store_data : {};
+}
+
+function withGeneratedVisualAssets(preview: PublicStorefrontPreview, storeData: unknown): PublicStorefrontPreview {
+  const generatedVisualAssets = generatedVisualAssetsFromStoreData(storeData);
+  const heroAsset = generatedVisualAssetForTarget({
+    generatedVisualAssets,
+    slot: "hero.desktop",
+    targetId: `${preview.store.id}-hero.desktop`,
+    targetType: "banner"
+  }) ?? generatedVisualAssetForTarget({
+    generatedVisualAssets,
+    slot: "hero.desktop",
+    targetId: "template",
+    targetType: "banner"
+  });
+
+  return {
+    ...preview,
+    categories: preview.categories.map((category) => ({
+      ...category,
+      aiVisualAsset: generatedVisualAssetForTarget({
+        generatedVisualAssets,
+        slot: "category.image",
+        targetId: category.id,
+        targetType: "category"
+      }) ?? category.aiVisualAsset ?? null
+    })),
+    generatedVisualAssets,
+    products: preview.products.map((product) => ({
+      ...product,
+      aiVisualAsset: generatedVisualAssetForTarget({
+        generatedVisualAssets,
+        slot: "product.primary",
+        targetId: product.id,
+        targetType: "product"
+      }) ?? product.aiVisualAsset ?? null
+    })),
+    themeSettings: {
+      ...preview.themeSettings,
+      bannerImageUrl: heroAsset?.url ?? heroAsset?.publicUrl ?? preview.themeSettings.bannerImageUrl
+    }
+  };
+}
+
 function normalizePreview(value: unknown): PublicStorefrontPreview | null {
   if (!isRecord(value)) {
     return null;
@@ -496,6 +564,7 @@ function normalizePreview(value: unknown): PublicStorefrontPreview | null {
       ? value.categories.map(normalizeCategory).filter((category): category is PublicStorefrontCategory => Boolean(category))
       : [],
     fontStyle: textValue(value.fontStyle, "inter"),
+    generatedVisualAssets: generatedVisualAssetsFromStoreData(value.storeData),
     layoutStyle: textValue(value.layoutStyle, "classic"),
     navigation: {
       footer: [],
@@ -688,7 +757,14 @@ async function loadStoreModePublicPreview(slug: string) {
     .eq("store_id" as never, store.id as never)
     .eq("status" as never, "active" as never)
     .order("sort_order", { ascending: true });
+  const generatedVisualAssets = generatedVisualAssetsFromStoreData(store.store_data);
   const savedCategories = ((categories ?? []) as Array<Record<string, unknown>>).map((category) => ({
+    aiVisualAsset: generatedVisualAssetForTarget({
+      generatedVisualAssets,
+      slot: "category.image",
+      targetId: String(category.id ?? ""),
+      targetType: "category"
+    }),
     description: textValue(category.description) || null,
     id: String(category.id ?? ""),
     imageUrl: textValue(category.image_url) || null,
@@ -738,6 +814,12 @@ async function loadStoreModePublicPreview(slug: string) {
   }
   const salesSummaryByProduct = await loadProductSalesSummaries(client, store.id, productIds);
   const savedProducts = ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
+    aiVisualAsset: generatedVisualAssetForTarget({
+      generatedVisualAssets,
+      slot: "product.primary",
+      targetId: String(product.id ?? ""),
+      targetType: "product"
+    }),
     categoryId: typeof product.category_id === "string" ? product.category_id : null,
     categoryName:
       typeof product.category_id === "string" ? categoriesById.get(product.category_id) ?? null : null,
@@ -833,6 +915,7 @@ async function loadStoreModePublicPreview(slug: string) {
     brandingConfig: {},
     categories: savedCategories.length ? savedCategories : fallbackCategories,
     fontStyle: themeRuntime.fontStyle,
+    storeData: store.store_data,
     layoutStyle: themeRuntime.layoutStyle,
     pages,
     products: savedProducts,
@@ -892,15 +975,17 @@ async function loadStoreModePublicPreview(slug: string) {
     }
   });
 
-  return preview
+  const enrichedPreview = preview ? withGeneratedVisualAssets(preview, store.store_data) : null;
+
+  return enrichedPreview
     ? {
-        ...preview,
+        ...enrichedPreview,
         navigation: buildPublicStoreNavigation({
-          categories: preview.categories,
-          pages: preview.pages,
-          products: preview.products,
+          categories: enrichedPreview.categories,
+          pages: enrichedPreview.pages,
+          products: enrichedPreview.products,
           rows: navigationRows,
-          storeSlug: preview.store.slug
+          storeSlug: enrichedPreview.store.slug
         })
       }
     : null;
@@ -935,10 +1020,11 @@ export async function getPublicStorefrontPreview(slug: string) {
   }
 
   const readClient = createAdminClient() ?? supabase;
-  const [pages, navigationRows, storeSeo] = await Promise.all([
+  const [pages, navigationRows, storeSeo, storeData] = await Promise.all([
     getPublishedPageLinks(readClient, preview.store.id),
     getEnabledStoreNavigationRows(readClient, preview.store.id),
-    getPublishedStoreSeo(readClient, preview.store.id)
+    getPublishedStoreSeo(readClient, preview.store.id),
+    getStoreDataForPreview(readClient, preview.store.id)
   ]);
 
   const previewWithPages = {
@@ -959,14 +1045,16 @@ export async function getPublicStorefrontPreview(slug: string) {
       : preview.store
   };
 
+  const enrichedPreview = withGeneratedVisualAssets(previewWithPages, storeData);
+
   return {
-    ...previewWithPages,
+    ...enrichedPreview,
     navigation: buildPublicStoreNavigation({
-      categories: previewWithPages.categories,
-      pages: previewWithPages.pages,
-      products: previewWithPages.products,
+      categories: enrichedPreview.categories,
+      pages: enrichedPreview.pages,
+      products: enrichedPreview.products,
       rows: navigationRows,
-      storeSlug: previewWithPages.store.slug
+      storeSlug: enrichedPreview.store.slug
     })
   };
 }

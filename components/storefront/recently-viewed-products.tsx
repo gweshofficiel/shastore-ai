@@ -175,6 +175,7 @@ export function RecentlyViewedProducts({
           const productCurrency = product.currency || currency;
           const imageSlots = resolveProductImageSlots({
             gallery: product.gallery,
+            generatedPrimary: product.aiVisualAsset,
             primary: product.imageUrl,
             title: product.title
           });

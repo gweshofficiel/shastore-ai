@@ -177,8 +177,8 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
     secondary: theme.secondaryColor
   };
   const categoryImageSlots = resolveCategoryImageSlots({
-    banner: category.imageUrl,
-    image: category.imageUrl,
+    banner: category.aiVisualAsset ?? category.imageUrl,
+    image: category.aiVisualAsset ?? category.imageUrl,
     name: category.name
   });
   const categoryHeroBackground = categoryImageSlots.banner.url
@@ -272,6 +272,7 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                   const currency = product.currency || preview.store.currency;
                   const imageSlots = resolveProductImageSlots({
                     gallery: product.gallery,
+                    generatedPrimary: product.aiVisualAsset,
                     primary: product.imageUrl,
                     title: product.title
                   });

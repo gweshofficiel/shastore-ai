@@ -165,10 +165,11 @@ export function ProductDetailFoundation({
   const imageSlots = useMemo(
     () => resolveProductImageSlots({
       gallery: galleryUrls,
+      generatedPrimary: product.aiVisualAsset,
       primary: product.imageUrl,
       title: product.title
     }),
-    [galleryUrls, product.imageUrl, product.title]
+    [galleryUrls, product.aiVisualAsset, product.imageUrl, product.title]
   );
   const images = useMemo(
     () => Array.from(new Set([imageSlots.primary.url, ...imageSlots.gallery.map((asset) => asset.url)].filter((url): url is string => Boolean(url)))),

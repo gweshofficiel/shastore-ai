@@ -116,10 +116,11 @@ export function ProductQuickView({
   const imageSlots = useMemo(
     () => resolveProductImageSlots({
       gallery: product.gallery,
+      generatedPrimary: product.aiVisualAsset,
       primary: product.imageUrl,
       title: product.title
     }),
-    [product.gallery, product.imageUrl, product.title]
+    [product.aiVisualAsset, product.gallery, product.imageUrl, product.title]
   );
   const availability = useMemo(
     () => stockStatus(product, selectedVariant?.id ?? null),
