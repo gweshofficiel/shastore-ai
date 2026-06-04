@@ -52,6 +52,10 @@ export type AIVisualProviderAdapter = {
 };
 
 function enabledProvider(value: unknown): AIVisualProviderKey {
+  if (value === "disabled") {
+    return "disabled";
+  }
+
   if (
     value === "openai-image" ||
     value === "replicate" ||
@@ -61,12 +65,19 @@ function enabledProvider(value: unknown): AIVisualProviderKey {
     return value;
   }
 
-  return "disabled";
+  return "openai-image";
+}
+
+function providerApiKey() {
+  return process.env.AI_IMAGE_PROVIDER_API_KEY ||
+    process.env.AI_VISUAL_PROVIDER_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    null;
 }
 
 export function getAIVisualProviderRuntimeConfig(): AIVisualProviderRuntimeConfig {
   const provider = enabledProvider(process.env.AI_VISUAL_PROVIDER);
-  const apiKeyConfigured = Boolean(process.env.AI_VISUAL_PROVIDER_API_KEY || process.env.OPENAI_API_KEY);
+  const apiKeyConfigured = Boolean(providerApiKey());
   const endpointConfigured = Boolean(process.env.AI_VISUAL_PROVIDER_ENDPOINT);
   const r2Configured = Boolean(
     process.env.CLOUDFLARE_R2_ACCOUNT_ID &&
@@ -162,7 +173,7 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
     },
     async generate(request) {
       const providerPlan = planAIVisualAssetProviderRequest(request);
-      const apiKey = process.env.AI_VISUAL_PROVIDER_API_KEY || process.env.OPENAI_API_KEY;
+      const apiKey = providerApiKey();
 
       if (!isFirstSafeExecutionSlot(request)) {
         return {
@@ -176,7 +187,7 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
 
       if (!apiKey) {
         return {
-          error: "OpenAI image generation is not configured. Set AI_VISUAL_PROVIDER_API_KEY or OPENAI_API_KEY on the server.",
+          error: "AI image provider is not configured. Set AI_IMAGE_PROVIDER_API_KEY on the server.",
           job: this.createPendingJob(request),
           output: null,
           providerPlan,
