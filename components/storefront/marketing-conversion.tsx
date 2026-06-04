@@ -1,4 +1,4 @@
-import { Award, BadgeCheck, Gift, Headphones, RotateCcw, ShieldCheck, ShoppingBag, Sparkles, Star, Truck } from "lucide-react";
+import { Award, BadgeCheck, Gift, Headphones, RotateCcw, ShieldCheck, ShoppingBag, Star, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PublicStorefrontProduct } from "@/lib/public-storefront-preview";
 import type { ProductRatingSummaryValue } from "@/components/storefront/product-rating-summary";

@@ -17,6 +17,7 @@ import {
   validateTemplateSchema,
   type StoreTemplateRecord
 } from "@/lib/storefront/template-library";
+import { installTemplatePackageForTemplate } from "@/lib/storefront/template-package-installer";
 import type { BuilderPageSchema } from "@/lib/storefront/builder";
 import {
   assertStoreAccessInWorkspace,
@@ -426,7 +427,26 @@ export async function applyWorkspaceStoreTemplate(formData: FormData) {
     });
   }
 
+  const packageInstall = await installTemplatePackageForTemplate({
+    storeId,
+    supabase,
+    templateId: persistedTemplateId,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (packageInstall.status === "failed" || packageInstall.status === "partially_installed") {
+    console.warn("[template-package-installer] workspace template package completed with issues", {
+      packageId: packageInstall.packageId,
+      status: packageInstall.status,
+      storeId,
+      templateId: persistedTemplateId,
+      workspaceId
+    });
+  }
+
   console.info("[template-application] workspace store template applied", {
+    packageInstallStatus: packageInstall.status,
     storeId,
     templateId: persistedTemplateId,
     themeSyncFallback: themeSettingsResult.usedFallback,

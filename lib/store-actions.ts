@@ -27,6 +27,7 @@ import { ensurePersonalWorkspaceOwnerMembership } from "@/lib/workspace-members"
 import { createClient } from "@/lib/supabase/server";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import { defaultStoreTemplateId } from "@/lib/store-templates";
+import { installTemplatePackageForTemplate } from "@/lib/storefront/template-package-installer";
 import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -919,6 +920,23 @@ async function persistStoreDraftFromForm(
       console.warn("[saveStoreDraft] product insert warning:", error);
       break;
     }
+  }
+
+  const packageInstall = await installTemplatePackageForTemplate({
+    storeId: store.id,
+    supabase,
+    templateId,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (packageInstall.status === "failed" || packageInstall.status === "partially_installed") {
+    console.warn("[template-package-installer] package install completed with issues", {
+      packageId: packageInstall.packageId,
+      status: packageInstall.status,
+      storeId: store.id,
+      templateId
+    });
   }
 
   await persistStoreSlug(supabase, store.id, storeName);
