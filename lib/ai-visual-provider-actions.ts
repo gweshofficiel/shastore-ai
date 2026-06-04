@@ -13,6 +13,7 @@ import {
   dispatchAIVisualGenerationJob,
   upsertAIVisualQueueJob
 } from "@/lib/storefront/ai-visual-queue";
+import { processPendingAIVisualAssetJob } from "@/lib/storefront/ai-visual-worker";
 import { sharedTemplateVisualAssetSlots } from "@/lib/storefront/template-blueprints";
 import type { VisualAssetSlot } from "@/lib/storefront/visual-assets";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -28,11 +29,27 @@ export type AIVisualProviderRequestState = {
   status: "idle" | "pending" | "failed";
 };
 
+export type AIVisualWorkerActionState = {
+  error: string | null;
+  jobId: string | null;
+  ok: boolean;
+  requestId: string | null;
+  status: "idle" | "completed" | "failed" | "not_found" | "claim_conflict" | "no_pending_job";
+};
+
 const defaultState: AIVisualProviderRequestState = {
   error: null,
   jobId: null,
   ok: false,
   providerStatus: null,
+  requestId: null,
+  status: "idle"
+};
+
+const defaultWorkerState: AIVisualWorkerActionState = {
+  error: null,
+  jobId: null,
+  ok: false,
   requestId: null,
   status: "idle"
 };
@@ -186,6 +203,78 @@ export async function requestAIVisualAssetGenerationAction(
     providerStatus: pendingJob.providerStatus,
     requestId: request.requestId,
     status: "pending"
+  };
+}
+
+export async function triggerAIVisualAssetWorkerAction(
+  _prevState: AIVisualWorkerActionState = defaultWorkerState,
+  formData: FormData
+): Promise<AIVisualWorkerActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+  const requestId = textValue(formData.get("requestId"), 220) || null;
+
+  if (!storeId) {
+    return {
+      ...defaultWorkerState,
+      error: "Store is required to process AI visual jobs.",
+      status: "failed"
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ...defaultWorkerState,
+      error: "Sign in required to process AI visual jobs.",
+      status: "failed"
+    };
+  }
+
+  const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
+  const workspaceId = selection.activeWorkspaceId;
+
+  if (selection.activeWorkspaceRole !== "owner" && selection.activeWorkspaceRole !== "admin") {
+    return {
+      ...defaultWorkerState,
+      error: "Only workspace owners and admins can process AI visual jobs.",
+      status: "failed"
+    };
+  }
+
+  const access = await assertStoreAccessInWorkspace({
+    permission: "can_edit_stores",
+    storeId,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (!access.allowed) {
+    return {
+      ...defaultWorkerState,
+      error: access.reason,
+      status: "failed"
+    };
+  }
+
+  const result = await processPendingAIVisualAssetJob({
+    requestedByUserId: user.id,
+    requestId,
+    storeId,
+    supabase,
+    workspaceId
+  });
+
+  return {
+    error: result.error,
+    jobId: result.job?.jobId ?? null,
+    ok: result.status === "completed",
+    requestId: result.requestId,
+    status: result.status
   };
 }
 

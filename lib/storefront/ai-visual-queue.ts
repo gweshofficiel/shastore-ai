@@ -38,6 +38,8 @@ export type AIVisualWorkerStep = {
 export type AIVisualGenerationJob = {
   attachTarget: AIVisualAttachTarget;
   attempts: number;
+  claimedAt: string | null;
+  claimedBy: string | null;
   completedAt: string | null;
   createdAt: string;
   error: string | null;
@@ -150,6 +152,8 @@ export function createAIVisualGenerationJob({
       type: attachTargetTypeForRequest(request)
     },
     attempts: 0,
+    claimedAt: null,
+    claimedBy: null,
     completedAt: null,
     createdAt: timestamp,
     error: null,
@@ -201,6 +205,68 @@ export function transitionAIVisualJobStatus({
       : job.result,
     status,
     updatedAt: nowIso()
+  };
+}
+
+export function claimAIVisualGenerationJob({
+  claimedBy,
+  job
+}: {
+  claimedBy: string;
+  job: AIVisualGenerationJob;
+}): AIVisualGenerationJob | null {
+  if (job.status !== "pending") {
+    return null;
+  }
+
+  const timestamp = nowIso();
+
+  return {
+    ...job,
+    attempts: job.attempts + 1,
+    claimedAt: timestamp,
+    claimedBy,
+    status: "processing",
+    updatedAt: timestamp,
+    workerSteps: job.workerSteps.map((step) =>
+      step.key === "generate"
+        ? {
+            ...step,
+            startedAt: timestamp,
+            status: "processing"
+          }
+        : step
+    )
+  };
+}
+
+export function updateAIVisualWorkerStep({
+  error,
+  job,
+  key,
+  status
+}: {
+  error?: string | null;
+  job: AIVisualGenerationJob;
+  key: AIVisualWorkerStepKey;
+  status: AIVisualWorkerStepStatus;
+}): AIVisualGenerationJob {
+  const timestamp = nowIso();
+
+  return {
+    ...job,
+    updatedAt: timestamp,
+    workerSteps: job.workerSteps.map((step) =>
+      step.key === key
+        ? {
+            ...step,
+            completedAt: status === "completed" || status === "failed" || status === "skipped" ? timestamp : step.completedAt,
+            error: error ?? null,
+            startedAt: step.startedAt ?? timestamp,
+            status
+          }
+        : step
+    )
   };
 }
 
