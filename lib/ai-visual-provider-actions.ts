@@ -195,6 +195,7 @@ export async function requestAIVisualAssetGenerationAction(
   }
 
   revalidatePath(`/dashboard/stores/${storeId}`);
+  revalidatePath("/dashboard/ai-visual-assets");
 
   return {
     error: null,
@@ -268,6 +269,8 @@ export async function triggerAIVisualAssetWorkerAction(
     supabase,
     workspaceId
   });
+
+  revalidatePath("/dashboard/ai-visual-assets");
 
   return {
     error: result.error,
