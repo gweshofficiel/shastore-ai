@@ -1,4 +1,13 @@
 import {
+  planBlueprintAIVisualAssetRequests,
+  planAIVisualAssetProviderRequest,
+  type AIVisualAssetProviderPlan,
+  type AIVisualAssetRequest
+} from "@/lib/storefront/ai-visual-assets";
+import {
+  aiVisualPromptBlueprintRegistry
+} from "@/lib/storefront/ai-visual-prompts";
+import {
   getTemplateBlueprint,
   getTemplateBlueprintForTemplate,
   inheritedStorefrontRuntimeSlots,
@@ -21,6 +30,7 @@ export type TemplateGenerationProfile = {
   packageVersion: number | null;
   recommendedAudience: string[];
   style: string;
+  visualPromptBlueprints: typeof aiVisualPromptBlueprintRegistry;
   visualAssetSlots: TemplateBlueprint["visualAssetSlots"];
   visualProfile: TemplateBlueprint["visualProfile"];
 };
@@ -30,6 +40,19 @@ export type FutureTemplateConfiguration = {
   package?: Partial<TemplatePackage>;
   templateId: string;
   templateName: string;
+};
+
+export type TemplateAIVisualAssetPlanInput = {
+  brandName: string;
+  requestedByUserId?: string | null;
+  storeId: string;
+  templateId: string;
+};
+
+export type TemplateAIVisualAssetPlan = {
+  providerPlans: AIVisualAssetProviderPlan[];
+  requests: AIVisualAssetRequest[];
+  templateId: string;
 };
 
 /** Official templates prepared for registry expansion (blueprint-backed; packages optional). */
@@ -44,6 +67,8 @@ export const officialTemplateRegistryEntries = templateBlueprintRegistry.map((bl
   recommendedAudience: blueprint.recommendedAudience,
   style: blueprint.style,
   templateIds: blueprint.templateIds,
+  visualAssetSlots: blueprint.visualAssetSlots,
+  visualPromptBlueprints: aiVisualPromptBlueprintRegistry.map((prompt) => prompt.id),
   visualProfile: blueprint.visualProfile
 }));
 
@@ -59,6 +84,7 @@ export function resolveTemplateGenerationProfile(templateId?: string | null): Te
     packageVersion: templatePackage?.version ?? blueprint.packageVersion,
     recommendedAudience: blueprint.recommendedAudience,
     style: blueprint.style,
+    visualPromptBlueprints: aiVisualPromptBlueprintRegistry,
     visualAssetSlots: blueprint.visualAssetSlots,
     visualProfile: blueprint.visualProfile
   };
@@ -88,8 +114,26 @@ export function buildFutureTemplateConfiguration(input: FutureTemplateConfigurat
       packageVersion: blueprint.packageVersion,
       recommendedAudience: blueprint.recommendedAudience,
       style: blueprint.style,
+      visualAssetSlots: blueprint.visualAssetSlots,
       visualProfile: blueprint.visualProfile
     }
+  };
+}
+
+export function planTemplateAIVisualAssetRequests(input: TemplateAIVisualAssetPlanInput): TemplateAIVisualAssetPlan {
+  const blueprint = getTemplateBlueprintForTemplate(input.templateId);
+  const requests = planBlueprintAIVisualAssetRequests({
+    blueprint,
+    brandName: input.brandName,
+    requestedByUserId: input.requestedByUserId ?? null,
+    storeId: input.storeId,
+    templateId: input.templateId
+  });
+
+  return {
+    providerPlans: requests.map(planAIVisualAssetProviderRequest),
+    requests,
+    templateId: input.templateId
   };
 }
 
@@ -111,6 +155,7 @@ export function verifyTemplateGenerationInheritance(templateId?: string | null) 
     industry: profile.industry,
     packageCompatible: profile.package ? profile.package.templateIds.includes(templateId ?? "") : true,
     profile,
-    runtimeInherited: blueprintCheck.ok
+    runtimeInherited: blueprintCheck.ok,
+    visualPipelineReady: profile.visualAssetSlots.length > 0 && profile.visualPromptBlueprints.length > 0
   };
 }
