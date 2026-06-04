@@ -94,7 +94,9 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
     template.key === "shastore-flagship-premium"
       ? [
           "navbar",
+          "announcement_bar",
           "hero",
+          "promotion_strips",
           "trust_badges",
           "featured_categories",
           "featured_products",
@@ -105,14 +107,15 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
           "testimonials",
           "blog_preview",
           "faq_preview",
+          "conversion_blocks",
           "newsletter",
           "footer"
         ]
       : template.key === "beauty-starter"
-      ? ["navbar", "hero", "categories", "testimonials", "featured_products", "faq", "cta"]
+      ? ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "categories", "testimonials", "featured_products", "conversion_blocks", "newsletter", "faq", "cta"]
       : template.key === "electronics-starter"
-        ? ["navbar", "hero", "categories", "featured_products", "faq", "testimonials", "cta"]
-        : ["navbar", "hero", "featured_products", "categories", "testimonials", "faq", "cta"];
+        ? ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "categories", "featured_products", "conversion_blocks", "newsletter", "faq", "testimonials", "cta"]
+        : ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "featured_products", "categories", "conversion_blocks", "newsletter", "testimonials", "faq", "cta"];
 
   if (template.key === "shastore-flagship-premium") {
     return normalizeRuntimeSections(
@@ -140,6 +143,12 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
       props: {}
     },
     {
+      id: "runtime-announcement-bar",
+      order: (order.indexOf("announcement_bar") + 1) * 10,
+      type: "announcement_bar",
+      props: {}
+    },
+    {
       id: "runtime-hero",
       order: (order.indexOf("hero") + 1) * 10,
       type: "hero",
@@ -148,6 +157,18 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
         body: context.preview.themeSettings.heroSubtitle || context.settings.description,
         templateKey: template.key
       }
+    },
+    {
+      id: "runtime-promotion-strips",
+      order: (order.indexOf("promotion_strips") + 1) * 10,
+      type: "promotion_strips",
+      props: {}
+    },
+    {
+      id: "runtime-trust-badges",
+      order: (order.indexOf("trust_badges") + 1) * 10,
+      type: "trust_badges",
+      props: {}
     },
     {
       id: "runtime-categories",
@@ -165,6 +186,18 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
       id: "runtime-testimonials",
       order: (order.indexOf("testimonials") + 1) * 10,
       type: "testimonials",
+      props: {}
+    },
+    {
+      id: "runtime-conversion-blocks",
+      order: (order.indexOf("conversion_blocks") + 1) * 10,
+      type: "conversion_blocks",
+      props: {}
+    },
+    {
+      id: "runtime-newsletter",
+      order: (order.indexOf("newsletter") + 1) * 10,
+      type: "newsletter",
       props: {}
     },
     {

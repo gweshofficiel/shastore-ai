@@ -36,9 +36,19 @@ import type { LucideIcon } from "lucide-react";
 import { CompareButton, CompareNavLink } from "@/components/storefront/product-compare";
 import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
-import { ProductRatingSummary } from "@/components/storefront/product-rating-summary";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
+import {
+  AnnouncementBarRuntime,
+  ConversionBlocks,
+  MarketingTrustBadges,
+  NewsletterSignupBlock,
+  ProductSocialProof,
+  PromotionStrips,
+  defaultConversionBlocks,
+  defaultMarketingTrustBadges,
+  defaultPromotionStrips
+} from "@/components/storefront/marketing-conversion";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { PublicStoreFooter } from "@/components/storefront/public-store-footer";
@@ -47,12 +57,8 @@ import { StorefrontCurrencySwitcher } from "@/components/storefront/currency-swi
 import { StorefrontLanguageSwitcher } from "@/components/storefront/language-switcher";
 import {
   CategoryVisualMedia,
-  PopupAnnouncementSlots,
   PremiumVisualFallback,
-  PromotionalVisualBlocks,
-  TrustVisualBlocks,
   VisualSlotPanel,
-  defaultTrustVisualSlots,
   resolveCategoryVisualSlot,
   resolveHeroVisualSlots
 } from "@/components/storefront/visual-slots";
@@ -96,13 +102,22 @@ export type StoreSectionType =
   | "hero"
   | "navbar"
   | "banner"
+  | "announcement_bar"
+  | "marketing_banner"
+  | "campaign_banner"
+  | "promotion_strips"
   | "promotional_blocks"
   | "popup_slots"
   | "announcement_slots"
   | "newsletter_popup"
   | "discount_popup"
+  | "conversion_blocks"
+  | "why_choose_us"
+  | "customer_benefits"
+  | "shopping_advantages"
   | "about_preview"
   | "blog_preview"
+  | "products"
   | "product_grid"
   | "featured_products"
   | "new_arrivals"
@@ -113,6 +128,7 @@ export type StoreSectionType =
   | "featured_categories"
   | "featured_collection"
   | "brands"
+  | "trust"
   | "trust_badges"
   | "categories"
   | "rich_text"
@@ -149,13 +165,22 @@ const supportedSectionTypes: StoreSectionType[] = [
   "hero",
   "navbar",
   "banner",
+  "announcement_bar",
+  "marketing_banner",
+  "campaign_banner",
+  "promotion_strips",
   "promotional_blocks",
   "popup_slots",
   "announcement_slots",
   "newsletter_popup",
   "discount_popup",
+  "conversion_blocks",
+  "why_choose_us",
+  "customer_benefits",
+  "shopping_advantages",
   "about_preview",
   "blog_preview",
+  "products",
   "product_grid",
   "featured_products",
   "new_arrivals",
@@ -166,6 +191,7 @@ const supportedSectionTypes: StoreSectionType[] = [
   "featured_categories",
   "featured_collection",
   "brands",
+  "trust",
   "trust_badges",
   "categories",
   "rich_text",
@@ -743,9 +769,12 @@ function withLiveProductSection(context: StoreTenantContext, sections: StoreSect
 function homepageSectionRendererType(sectionType: StoreHomepageSectionType): StoreSectionType {
   const sectionTypes: Record<StoreHomepageSectionType, StoreSectionType> = {
     about_preview: "about_preview",
+    announcement_bar: "announcement_bar",
     best_sellers: "best_sellers",
     blog_preview: "blog_preview",
     brands: "brands",
+    conversion_blocks: "conversion_blocks",
+    customer_benefits: "customer_benefits",
     faq_preview: "faq_preview",
     featured_categories: "featured_categories",
     featured_collection: "featured_collection",
@@ -755,10 +784,13 @@ function homepageSectionRendererType(sectionType: StoreHomepageSectionType): Sto
     hero: "hero",
     new_arrivals: "new_arrivals",
     newsletter: "newsletter",
+    promotion_strips: "promotion_strips",
     recommended_products: "recommended_products",
     recently_viewed: "recently_viewed",
+    shopping_advantages: "shopping_advantages",
     trust_badges: "trust_badges",
-    testimonials: "testimonials"
+    testimonials: "testimonials",
+    why_choose_us: "why_choose_us"
   };
 
   return sectionTypes[sectionType];
@@ -1148,10 +1180,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                       {product.title}
                     </h3>
                   </Link>
-                  <ProductRatingSummary
-                    className="mt-3"
-                    summary={reviewSummary}
-                  />
+                  <ProductSocialProof className="mt-3" product={product} summary={reviewSummary} />
                   <p className={`line-clamp-2 text-sm leading-6 ${config.key === "electronics-starter" ? "text-slate-300" : "text-muted"}`}>
                     {product.description || "Product details coming soon."}
                   </p>
@@ -2271,8 +2300,8 @@ function BrandsSection({ context, section }: SectionRenderProps) {
 
 function TrustBadgesSection({ context, section }: SectionRenderProps) {
   const store = context.preview.store;
-  const badges = defaultTrustVisualSlots().map((slot) => {
-    if (slot.title === "Fast delivery" && (store.deliveryEnabled || store.pickupEnabled)) {
+  const badges = defaultMarketingTrustBadges().map((slot) => {
+    if (slot.title === "Fast shipping" && (store.deliveryEnabled || store.pickupEnabled)) {
       return {
         ...slot,
         body: "Delivery and pickup settings are connected for this store."
@@ -2302,7 +2331,7 @@ function TrustBadgesSection({ context, section }: SectionRenderProps) {
         </h2>
         <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">{subtitle}</p>
         <div className="mt-6">
-          <TrustVisualBlocks slots={badges} />
+          <MarketingTrustBadges badges={badges} />
         </div>
       </div>
     </section>
@@ -2320,6 +2349,7 @@ function promotionalSlotItems(section: StoreSection) {
     .filter(isRecord)
     .map((item) => ({
       body: textValue(item.body ?? item.subtitle),
+      ctaHref: textValue(item.ctaHref ?? item.ctaLink),
       ctaText: textValue(item.ctaText, "Shop now"),
       eyebrow: textValue(item.eyebrow),
       title: textValue(item.title)
@@ -2336,9 +2366,9 @@ function PromotionalBlocksSection({ context, section }: SectionRenderProps) {
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
       <div className="mx-auto max-w-7xl">
         <VisualSlotPanel eyebrow="Promotions" subtitle={subtitle} title={title}>
-          <PromotionalVisualBlocks
+          <PromotionStrips
             ctaHref={ctaHref}
-            slots={promotionalSlotItems(section)}
+            items={promotionalSlotItems(section)}
             theme={context.theme.colorPalette}
           />
         </VisualSlotPanel>
@@ -2355,10 +2385,34 @@ function PopupSlotsSection({ context, section }: SectionRenderProps) {
     <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
       <div className="mx-auto max-w-7xl">
         <VisualSlotPanel eyebrow="Popup ready" subtitle={subtitle} title={title}>
-          <PopupAnnouncementSlots theme={context.theme.colorPalette} />
+          <PromotionStrips items={defaultPromotionStrips().slice(0, 3)} theme={context.theme.colorPalette} />
         </VisualSlotPanel>
       </div>
     </section>
+  );
+}
+
+function AnnouncementSection({ context, section }: SectionRenderProps) {
+  const title = textValue(section.config.title, "Store announcement");
+  const message = textValue(
+    section.config.message ?? section.config.body ?? section.config.subtitle,
+    context.preview.themeSettings.announcementText
+  );
+  const ctaHref = textValue(section.config.ctaHref ?? section.config.ctaLink);
+  const ctaText = textValue(section.config.ctaText);
+
+  if (!message && !title) {
+    return null;
+  }
+
+  return (
+    <AnnouncementBarRuntime
+      ctaHref={ctaHref || undefined}
+      ctaText={ctaText || undefined}
+      message={message}
+      theme={context.theme.colorPalette}
+      title={title}
+    />
   );
 }
 
@@ -2389,34 +2443,45 @@ function CtaSection({ context, section }: { context: StoreTenantContext; section
 }
 
 function NewsletterSection({ context, section }: { context: StoreTenantContext; section: StoreSection }) {
-  const config = templateConfig(context);
   const title = textValue(section.config.title, "Join the newsletter");
   const body = textValue(section.config.body, "Newsletter foundation for future customer updates and premium offers.");
-
-  if (config.key !== "shastore-flagship-premium") {
-    return <GenericContentSection context={context} section={section} />;
-  }
+  const buttonText = textValue(section.config.buttonText ?? section.config.ctaText, "Subscribe");
+  const eyebrow = textValue(section.config.eyebrow, "Newsletter");
 
   return (
-    <section className="bg-slate-950 px-4 py-14 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6 rounded-[2.5rem] border border-white/10 bg-white/5 p-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">Newsletter</p>
-          <h2 className="mt-3 text-4xl font-black tracking-[-0.05em]" style={headingStyle()}>
-            {title}
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm font-semibold leading-7 text-white/65">{body}</p>
-        </div>
-        <form className="flex overflow-hidden rounded-full border border-white/10 bg-white text-slate-950">
-          <input
-            className="min-h-12 flex-1 px-5 text-sm font-semibold outline-none"
-            placeholder="Email address"
-            type="email"
-          />
-          <button className="bg-amber-400 px-6 text-xs font-black uppercase tracking-[0.16em]" type="button">
-            Subscribe
-          </button>
-        </form>
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-background)]`}>
+      <div className="mx-auto max-w-7xl">
+        <NewsletterSignupBlock
+          body={body}
+          buttonText={buttonText}
+          eyebrow={eyebrow}
+          theme={context.theme.colorPalette}
+          title={title}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ConversionBlocksSection({ context, section }: SectionRenderProps) {
+  const title = textValue(section.config.title, "Shopping advantages");
+  const subtitle = textValue(section.config.subtitle, "Reusable conversion blocks for customer benefits and store advantages.");
+  const rawItems = Array.isArray(section.config.items) ? section.config.items.filter(isRecord) : [];
+  const defaults = defaultConversionBlocks();
+  const items = rawItems.length
+    ? rawItems.slice(0, 3).map((item, index) => ({
+        ...defaults[index % defaults.length],
+        body: textValue(item.body ?? item.subtitle, defaults[index % defaults.length].body),
+        title: textValue(item.title, defaults[index % defaults.length].title)
+      }))
+    : defaults;
+
+  return (
+    <section className={`${sectionPaddingClass(context)} bg-[var(--store-surface)]`}>
+      <div className="mx-auto max-w-7xl">
+        <VisualSlotPanel eyebrow="Conversion" subtitle={subtitle} title={title}>
+          <ConversionBlocks items={items} />
+        </VisualSlotPanel>
       </div>
     </section>
   );
@@ -2502,13 +2567,17 @@ const sectionRegistry: Record<
   CTA: CtaSection,
   FAQ: FaqSection,
   about_preview: AboutPreviewSection,
+  announcement_bar: AnnouncementSection,
   announcement_slots: PopupSlotsSection,
   banner: PromotionalBlocksSection,
   best_sellers: ProductGridSection,
   blog_preview: BlogPreviewSection,
   brands: BrandsSection,
+  campaign_banner: AnnouncementSection,
+  conversion_blocks: ConversionBlocksSection,
   categories: CategoriesSection,
   cta: CtaSection,
+  customer_benefits: ConversionBlocksSection,
   faq: FaqSection,
   faq_preview: FaqPreviewSection,
   featured_categories: CategoriesSection,
@@ -2520,18 +2589,24 @@ const sectionRegistry: Record<
   hero: HeroSection,
   image: GenericContentSection,
   discount_popup: PopupSlotsSection,
+  marketing_banner: AnnouncementSection,
   navbar: NavbarSection,
   new_arrivals: ProductGridSection,
   newsletter: NewsletterSection,
   newsletter_popup: PopupSlotsSection,
   popup_slots: PopupSlotsSection,
   product_grid: ProductGridSection,
+  products: ProductGridSection,
+  promotion_strips: PromotionalBlocksSection,
   promotional_blocks: PromotionalBlocksSection,
   recommended_products: ProductGridSection,
   recently_viewed: RecentlyViewedSection,
   rich_text: GenericContentSection,
+  shopping_advantages: ConversionBlocksSection,
   testimonials: TestimonialsSection,
-  trust_badges: TrustBadgesSection
+  trust: TrustBadgesSection,
+  trust_badges: TrustBadgesSection,
+  why_choose_us: ConversionBlocksSection
 };
 
 export function SectionRenderer({

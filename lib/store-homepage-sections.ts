@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type StoreHomepageSectionType =
   | "hero"
+  | "announcement_bar"
+  | "promotion_strips"
   | "featured_products"
   | "new_arrivals"
   | "best_sellers"
@@ -13,6 +15,10 @@ export type StoreHomepageSectionType =
   | "featured_collection"
   | "brands"
   | "trust_badges"
+  | "conversion_blocks"
+  | "why_choose_us"
+  | "customer_benefits"
+  | "shopping_advantages"
   | "about_preview"
   | "testimonials"
   | "newsletter"
@@ -51,6 +57,18 @@ export const storeHomepageSectionOptions: Array<{
     defaultTitle: "Welcome to our store",
     label: "Hero",
     sectionType: "hero"
+  },
+  {
+    defaultSubtitle: "Surface top-of-store promo messages and campaign banners.",
+    defaultTitle: "Store announcement",
+    label: "Announcement Bar",
+    sectionType: "announcement_bar"
+  },
+  {
+    defaultSubtitle: "Show reusable promotion strips for shipping, flash, seasonal, and collection campaigns.",
+    defaultTitle: "Current promotions",
+    label: "Promotion Strips",
+    sectionType: "promotion_strips"
   },
   {
     defaultSubtitle: "Show live products from this store.",
@@ -111,6 +129,30 @@ export const storeHomepageSectionOptions: Array<{
     defaultTitle: "Why shop here",
     label: "Trust Badges",
     sectionType: "trust_badges"
+  },
+  {
+    defaultSubtitle: "Explain customer benefits and shopping advantages.",
+    defaultTitle: "Shopping advantages",
+    label: "Conversion Blocks",
+    sectionType: "conversion_blocks"
+  },
+  {
+    defaultSubtitle: "Explain why customers should choose this store.",
+    defaultTitle: "Why choose us",
+    label: "Why Choose Us",
+    sectionType: "why_choose_us"
+  },
+  {
+    defaultSubtitle: "Highlight service, quality, delivery, and support benefits.",
+    defaultTitle: "Customer benefits",
+    label: "Customer Benefits",
+    sectionType: "customer_benefits"
+  },
+  {
+    defaultSubtitle: "Summarize the advantages of shopping with this storefront.",
+    defaultTitle: "Shopping advantages",
+    label: "Shopping Advantages",
+    sectionType: "shopping_advantages"
   },
   {
     defaultSubtitle: "Share a short introduction and link to the full About page.",

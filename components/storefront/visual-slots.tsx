@@ -164,12 +164,12 @@ export function defaultTrustVisualSlots(): TrustVisualSlot[] {
     {
       body: "Delivery and pickup messaging can connect to the store's fulfillment settings.",
       icon: Truck,
-      title: "Fast delivery"
+      title: "Fast shipping"
     },
     {
       body: "Return and refund policies can be surfaced wherever the template needs trust support.",
       icon: RotateCcw,
-      title: "Money back guarantee"
+      title: "Easy returns"
     },
     {
       body: "Support channels are ready for email, phone, WhatsApp, and future helpdesk integrations.",

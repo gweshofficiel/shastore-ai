@@ -3016,9 +3016,13 @@ export default async function StoreDraftPage({
                   defaultValue="rich_text"
                 >
                   <option value="hero">Hero</option>
+                  <option value="announcement_bar">Announcement bar</option>
                   <option value="banner">Banner</option>
+                  <option value="promotion_strips">Promotion strips</option>
                   <option value="product_grid">Product grid</option>
                   <option value="featured_products">Featured products</option>
+                  <option value="trust_badges">Trust badges</option>
+                  <option value="conversion_blocks">Conversion blocks</option>
                   <option value="rich_text">Rich text</option>
                   <option value="CTA">CTA</option>
                   <option value="testimonials">Testimonials</option>
