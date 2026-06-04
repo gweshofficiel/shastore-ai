@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizePageContent } from "@/lib/store-pages/content";
+import { getTemplateBlueprintForTemplate } from "@/lib/storefront/template-blueprints";
 import {
   getTemplatePackageForTemplate,
+  isTemplatePackageCompatible,
   type TemplatePackage,
   type TemplatePackageInstallationRecord,
   type TemplatePackageStatus
@@ -755,6 +757,53 @@ async function installNavigationLinks(installer: InstallerInput, templatePackage
   return inserted;
 }
 
+async function installPackageBlueprintMetadata({
+  installer,
+  templatePackage,
+  templateId
+}: {
+  installer: InstallerInput;
+  templateId: string;
+  templatePackage: TemplatePackage;
+}) {
+  const blueprint = getTemplateBlueprintForTemplate(templatePackage.blueprintId ?? templateId);
+  const latest = await loadStoreData(installer.supabase, installer.storeId);
+  const latestStoreData = latest.storeData;
+  const blueprintProfiles = isRecord(latestStoreData.templateBlueprintProfiles)
+    ? latestStoreData.templateBlueprintProfiles
+    : {};
+
+  const { error } = await installer.supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...latestStoreData,
+        templateBlueprintProfiles: {
+          ...blueprintProfiles,
+          [templatePackage.id]: {
+            blueprintId: blueprint.id,
+            generationHooks: templatePackage.generationHooks ?? blueprint.aiGenerationHooks,
+            industry: templatePackage.industry ?? blueprint.industry,
+            inheritedRuntimeSlots: blueprint.inheritedRuntimeSlots,
+            packageVersion: templatePackage.version,
+            recommendedAudience: templatePackage.recommendedAudience ?? blueprint.recommendedAudience,
+            style: templatePackage.style ?? blueprint.style,
+            templateId,
+            visualProfile: templatePackage.visualProfile ?? blueprint.visualProfile
+          }
+        }
+      },
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, installer.storeId as never);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return 1;
+}
+
 async function installFooterSettings({
   installer,
   templatePackage
@@ -762,32 +811,37 @@ async function installFooterSettings({
   installer: InstallerInput;
   templatePackage: TemplatePackage;
 }) {
-  if (!templatePackage.footerLinkSettings && !templatePackage.visualSlots) {
+  const latest = await loadStoreData(installer.supabase, installer.storeId);
+  const latestStoreData = latest.storeData;
+  const nextStoreData = { ...latestStoreData };
+  let count = 0;
+
+  if (templatePackage.footerLinkSettings) {
+    count += 1;
+  }
+
+  if (templatePackage.visualSlots) {
+    nextStoreData.templateVisualSlots = {
+      ...(isRecord(latestStoreData.templateVisualSlots) ? latestStoreData.templateVisualSlots : {}),
+      [templatePackage.id]: templatePackage.visualSlots
+    };
+    count += 1;
+  }
+
+  if (!count && !templatePackage.footerLinkSettings) {
     return 0;
   }
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString()
   };
-  let count = 0;
 
   if (templatePackage.footerLinkSettings) {
     updates.footer_link_settings = templatePackage.footerLinkSettings;
-    count += 1;
   }
 
   if (templatePackage.visualSlots) {
-    const latest = await loadStoreData(installer.supabase, installer.storeId);
-    const latestStoreData = latest.storeData;
-
-    updates.store_data = {
-      ...latestStoreData,
-      templateVisualSlots: {
-        ...(isRecord(latestStoreData.templateVisualSlots) ? latestStoreData.templateVisualSlots : {}),
-        [templatePackage.id]: templatePackage.visualSlots
-      }
-    };
-    count += 1;
+    updates.store_data = nextStoreData;
   }
 
   const { error } = await installer.supabase
@@ -821,6 +875,15 @@ export async function installTemplatePackageForTemplate(input: InstallerInput): 
 }
 
 export async function installTemplatePackage(input: InstallerInput & { templatePackage: TemplatePackage }): Promise<TemplatePackageInstallResult> {
+  if (!isTemplatePackageCompatible(input.templatePackage)) {
+    return {
+      installed: false,
+      packageId: input.templatePackage.id,
+      status: "failed",
+      steps: [{ error: "Template package is missing required registry metadata.", name: "package-compatibility", status: "failed" }]
+    };
+  }
+
   const startedAt = new Date().toISOString();
   const storeDataResult = await loadStoreData(input.supabase, input.storeId);
   const existingInstall = packageInstallations(storeDataResult.storeData)[input.templatePackage.id];
@@ -858,6 +921,11 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
   steps.push(await runStep("navigation-links", () => installNavigationLinks(installer, input.templatePackage)));
   steps.push(await runStep("footer-and-visual-settings", () => installFooterSettings({
     installer,
+    templatePackage: input.templatePackage
+  })));
+  steps.push(await runStep("blueprint-metadata", () => installPackageBlueprintMetadata({
+    installer,
+    templateId: input.templateId,
     templatePackage: input.templatePackage
   })));
 

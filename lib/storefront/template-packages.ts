@@ -1,6 +1,7 @@
 import type { StoreFooterLinkSettings } from "@/lib/store-footer-links";
 import type { StoreHomepageSectionType } from "@/lib/store-homepage-sections";
 import type { StoreMarketingMessageType } from "@/lib/store-marketing-messages";
+import type { TemplateGenerationHooks, TemplateIndustry } from "@/lib/storefront/template-blueprints";
 
 export type TemplatePackageStatus = "failed" | "installed" | "partially_installed";
 
@@ -124,22 +125,28 @@ export type TemplatePackageAboutPage = {
 export type TemplatePackage = {
   aboutPage?: TemplatePackageAboutPage;
   blogArticles?: TemplatePackageBlogArticle[];
+  blueprintId?: TemplateIndustry | string;
   categories?: TemplatePackageCategory[];
   collections?: TemplatePackageCollection[];
   faq?: TemplatePackageFaq[];
   footerLinkSettings?: Partial<StoreFooterLinkSettings>;
+  generationHooks?: TemplateGenerationHooks;
   homepageSections?: TemplatePackageHomepageSection[];
   id: string;
+  industry?: TemplateIndustry | string;
   legalPages?: TemplatePackagePage[];
   marketingBlocks?: TemplatePackageMarketingBlock[];
   name: string;
   navigationLinks?: TemplatePackageNavigationLink[];
   pages?: TemplatePackagePage[];
   products?: TemplatePackageProduct[];
+  recommendedAudience?: string[];
   reviews?: TemplatePackageReview[];
+  style?: string;
   templateIds: string[];
   variants?: TemplatePackageVariant[];
   version: number;
+  visualProfile?: Record<string, unknown>;
   visualSlots?: Record<string, unknown>;
 };
 
@@ -159,6 +166,7 @@ export type TemplatePackageInstallationRecord = {
 };
 
 const flagshipPremiumPackage: TemplatePackage = {
+  blueprintId: "multi-purpose",
   aboutPage: {
     companyStory:
       "SHASTORE Flagship Premium is a reference storefront package for premium commerce experiences powered by real catalog, checkout, content, and marketing systems.",
@@ -321,7 +329,14 @@ const flagshipPremiumPackage: TemplatePackage = {
       title: "Join the newsletter"
     }
   ],
+  generationHooks: {
+    bannerPromptKey: "flagship-premium-hero",
+    categoryPromptKey: "multi-purpose-category-set",
+    demoProductPromptKey: "multi-purpose-demo-products",
+    marketingPromptKey: "multi-purpose-marketing-blocks"
+  },
   id: "flagship-premium-foundation",
+  industry: "multi-purpose",
   legalPages: [
     {
       content: "<p>Describe how this store collects, uses, and protects customer information.</p>",
@@ -371,6 +386,7 @@ const flagshipPremiumPackage: TemplatePackage = {
     }
   ],
   name: "SHASTORE Flagship Premium",
+  recommendedAudience: ["new sellers", "multi-category stores", "premium commerce launches"],
   navigationLinks: [
     { customUrl: "#products", label: "Products", linkType: "custom", location: "header", sortOrder: 10 },
     { customUrl: "#categories", label: "Categories", linkType: "custom", location: "header", sortOrder: 20 },
@@ -497,6 +513,7 @@ const flagshipPremiumPackage: TemplatePackage = {
       title: "Strong launch foundation"
     }
   ],
+  style: "premium editorial",
   templateIds: ["shastore-flagship-premium"],
   variants: [
     { key: "gold-necklace-16", name: "16 inch", productKey: "gold-signature-necklace", size: "16 in", sku: "FLAG-NECK-16", stockQuantity: 8 },
@@ -507,6 +524,13 @@ const flagshipPremiumPackage: TemplatePackage = {
     { key: "scarf-midnight", color: "Midnight", name: "Midnight", productKey: "editorial-silk-scarf", sku: "FLAG-SCARF-MID", stockQuantity: 10 }
   ],
   version: 1,
+  visualProfile: {
+    accentColor: "#d4af37",
+    categoryCardStyle: "icon-led",
+    heroMood: "premium glass commerce",
+    productCardStyle: "editorial commerce card",
+    productImageTreatment: "premium visual fallback"
+  },
   visualSlots: {
     categoryCardStyle: "icon-led",
     hero: {
@@ -521,4 +545,12 @@ export function getTemplatePackageForTemplate(templateId: string) {
   return templatePackageRegistry.find((templatePackage) =>
     templatePackage.templateIds.includes(templateId)
   ) ?? null;
+}
+
+export function getTemplatePackageRegistryEntry(packageId: string) {
+  return templatePackageRegistry.find((templatePackage) => templatePackage.id === packageId) ?? null;
+}
+
+export function isTemplatePackageCompatible(templatePackage: TemplatePackage) {
+  return Boolean(templatePackage.id && templatePackage.version > 0 && templatePackage.templateIds.length > 0);
 }

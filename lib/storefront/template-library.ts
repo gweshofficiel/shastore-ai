@@ -2,6 +2,15 @@ import {
   normalizeBuilderPageSchema,
   type BuilderPageSchema
 } from "@/lib/storefront/builder";
+import {
+  applyBlueprintMetadata,
+  blueprintCategoryRecords,
+  getTemplateBlueprint,
+  getTemplateBlueprintForTemplate,
+  type TemplateIndustry,
+  type TemplateVisualProfile
+} from "@/lib/storefront/template-blueprints";
+import { officialTemplateRegistryEntries } from "@/lib/storefront/template-generation-engine";
 import { createClient } from "@/lib/supabase/server";
 
 export type TemplateCategoryRecord = {
@@ -13,12 +22,14 @@ export type TemplateCategoryRecord = {
 
 export type StoreTemplateRecord = {
   ai_customization_config: Record<string, unknown>;
+  blueprint_id: TemplateIndustry | string;
   branding_config: Record<string, unknown>;
   category: string;
   category_key: string;
   default_theme_settings: Record<string, unknown>;
   description: string | null;
   id: string;
+  industry: TemplateIndustry | string;
   is_default: boolean;
   is_active: boolean;
   is_official: boolean;
@@ -27,16 +38,20 @@ export type StoreTemplateRecord = {
   name: string;
   niche_category: string;
   package_enabled: boolean;
+  package_version: number;
   preview_image: string | null;
   preview_config: Record<string, unknown>;
   preview_gradient: string | null;
   preview_summary: string | null;
+  recommended_audience: string[];
   responsive_preview_config: Record<string, unknown>;
   sections_schema: unknown[];
   slug: string;
+  style: string;
   template_slug: string;
   template_type: string;
   theme_config: Record<string, unknown>;
+  visual_profile: TemplateVisualProfile;
 };
 
 export type TemplateLibrary = {
@@ -57,10 +72,26 @@ const fallbackCategories: TemplateCategoryRecord[] = [
   { category_key: "general", description: "Flexible storefront layouts for any store.", name: "General", sort_order: 70 }
 ];
 
+function withBlueprintMetadata(
+  record: Omit<
+    StoreTemplateRecord,
+    | "blueprint_id"
+    | "industry"
+    | "package_version"
+    | "recommended_audience"
+    | "style"
+    | "visual_profile"
+  >,
+  templateId = record.id
+): StoreTemplateRecord {
+  const blueprint = getTemplateBlueprintForTemplate(templateId);
+  return applyBlueprintMetadata({ blueprint, record }) as StoreTemplateRecord;
+}
+
 const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).map((category, index) => {
   const sectionId = `${category.category_key}-hero`;
 
-  return {
+  return withBlueprintMetadata({
     ai_customization_config: {
       recommendedPrompts: [`Adapt ${category.name.toLowerCase()} branding`, "Improve layout sections"]
     },
@@ -122,7 +153,7 @@ const fallbackTemplates: StoreTemplateRecord[] = fallbackCategories.slice(0, 6).
       spacing: "comfortable",
       theme_key: "modern"
     }
-  };
+  });
 });
 
 const flagshipSectionDefinitions = [
@@ -141,7 +172,7 @@ const flagshipSectionDefinitions = [
   ["flagship-footer", "footer", 130, "Footer", "Dark premium footer with links, contact, payments, and legal foundations."]
 ] as const;
 
-const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
+const shastoreFlagshipPremiumTemplate = withBlueprintMetadata({
   ai_customization_config: {
     recommendedPrompts: [
       "Tune the flagship storefront for the store category",
@@ -228,9 +259,9 @@ const shastoreFlagshipPremiumTemplate: StoreTemplateRecord = {
     spacing: "spacious",
     theme_key: "shastore-flagship-premium"
   }
-};
+});
 
-const auroraProTemplate: StoreTemplateRecord = {
+const auroraProTemplate = withBlueprintMetadata({
   ai_customization_config: {
     recommendedPrompts: [
       "Adapt Aurora Pro for a luxury ecommerce niche",
@@ -350,7 +381,7 @@ const auroraProTemplate: StoreTemplateRecord = {
     spacing: "spacious",
     theme_key: "aurora-pro"
   }
-};
+}, "aurora-pro");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -411,8 +442,9 @@ function normalizeTemplate(value: unknown): StoreTemplateRecord | null {
   };
   const slug = textValue(value.slug, textValue(value.template_slug, textValue(value.template_key, id)));
   const previewConfig = recordValue(value.preview_config);
+  const blueprint = getTemplateBlueprintForTemplate(isFlagship ? "shastore-flagship-premium" : id);
 
-  return {
+  return withBlueprintMetadata({
     ai_customization_config: recordValue(value.ai_customization_config),
     branding_config: recordValue(value.branding_config),
     category: isFlagship ? "multi-purpose" : textValue(value.category, categoryKey),
@@ -449,7 +481,7 @@ function normalizeTemplate(value: unknown): StoreTemplateRecord | null {
     template_slug: slug,
     template_type: textValue(value.template_type, "store"),
     theme_config: themeConfig
-  };
+  }, id);
 }
 
 function missingTemplateFoundation(error: unknown) {
@@ -519,7 +551,14 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
     ? templateData.map(normalizeTemplate).filter((template): template is StoreTemplateRecord => Boolean(template))
     : [];
   const baseCategories = categories.length ? categories : fallbackCategories;
-  const categoryAdditions: TemplateCategoryRecord[] = [];
+  const categoryAdditions: TemplateCategoryRecord[] = blueprintCategoryRecords().filter(
+    (blueprintCategory) => !baseCategories.some((category) => category.category_key === blueprintCategory.key)
+  ).map((blueprintCategory) => ({
+    category_key: blueprintCategory.key,
+    description: blueprintCategory.description,
+    name: blueprintCategory.name,
+    sort_order: blueprintCategory.sortOrder
+  }));
 
   if (!baseCategories.some((category) => category.category_key === "multi-purpose")) {
     categoryAdditions.push({
@@ -554,6 +593,8 @@ export async function getTemplateLibrary(): Promise<TemplateLibrary> {
     templates: libraryTemplates
   };
 }
+
+export { officialTemplateRegistryEntries, getTemplateBlueprint, getTemplateBlueprintForTemplate };
 
 export async function getTemplatesByCategory(categoryKey: string) {
   const library = await getTemplateLibrary();

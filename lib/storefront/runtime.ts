@@ -1,4 +1,5 @@
 import type { StoreTenantContext } from "@/lib/tenant/context";
+import { getRuntimeSectionOrderForTemplate } from "@/lib/storefront/template-blueprints";
 import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StoreSection } from "@/lib/storefront/sections";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
@@ -90,131 +91,24 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
     themeColor: context.preview.themeColor,
     themeSettings: context.preview.themeSettings
   });
-  const order =
-    template.key === "shastore-flagship-premium"
-      ? [
-          "navbar",
-          "announcement_bar",
-          "hero",
-          "promotion_strips",
-          "trust_badges",
-          "featured_categories",
-          "featured_products",
-          "flash_deals",
-          "new_arrivals",
-          "best_sellers",
-          "brands",
-          "testimonials",
-          "blog_preview",
-          "faq_preview",
-          "conversion_blocks",
-          "newsletter",
-          "footer"
-        ]
-      : template.key === "beauty-starter"
-      ? ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "categories", "testimonials", "featured_products", "conversion_blocks", "newsletter", "faq", "cta"]
-      : template.key === "electronics-starter"
-        ? ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "categories", "featured_products", "conversion_blocks", "newsletter", "faq", "testimonials", "cta"]
-        : ["navbar", "announcement_bar", "hero", "promotion_strips", "trust_badges", "featured_products", "categories", "conversion_blocks", "newsletter", "testimonials", "faq", "cta"];
+  const order = getRuntimeSectionOrderForTemplate(template.key);
 
-  if (template.key === "shastore-flagship-premium") {
-    return normalizeRuntimeSections(
-      order.map((type, index) => ({
-        id: `runtime-${type.replace(/_/g, "-")}`,
-        order: (index + 1) * 10,
-        type,
-        props: type === "hero"
+  return normalizeRuntimeSections(
+    order.map((type, index) => ({
+      id: `runtime-${type.replace(/_/g, "-")}`,
+      order: (index + 1) * 10,
+      type,
+      props:
+        type === "hero"
           ? {
-              title: context.preview.themeSettings.heroTitle || context.settings.title,
               body: context.preview.themeSettings.heroSubtitle || context.settings.description,
-              templateKey: template.key
+              templateKey: template.key,
+              title: context.preview.themeSettings.heroTitle || context.settings.title
             }
           : {}
-      })),
-      context
-    );
-  }
-
-  const baseSections = [
-    {
-      id: "runtime-navbar",
-      order: (order.indexOf("navbar") + 1) * 10,
-      type: "navbar",
-      props: {}
-    },
-    {
-      id: "runtime-announcement-bar",
-      order: (order.indexOf("announcement_bar") + 1) * 10,
-      type: "announcement_bar",
-      props: {}
-    },
-    {
-      id: "runtime-hero",
-      order: (order.indexOf("hero") + 1) * 10,
-      type: "hero",
-      props: {
-        title: context.preview.themeSettings.heroTitle || context.settings.title,
-        body: context.preview.themeSettings.heroSubtitle || context.settings.description,
-        templateKey: template.key
-      }
-    },
-    {
-      id: "runtime-promotion-strips",
-      order: (order.indexOf("promotion_strips") + 1) * 10,
-      type: "promotion_strips",
-      props: {}
-    },
-    {
-      id: "runtime-trust-badges",
-      order: (order.indexOf("trust_badges") + 1) * 10,
-      type: "trust_badges",
-      props: {}
-    },
-    {
-      id: "runtime-categories",
-      order: (order.indexOf("categories") + 1) * 10,
-      type: "categories",
-      props: {}
-    },
-    {
-      id: "runtime-featured-products",
-      order: (order.indexOf("featured_products") + 1) * 10,
-      type: "featured_products",
-      props: {}
-    },
-    {
-      id: "runtime-testimonials",
-      order: (order.indexOf("testimonials") + 1) * 10,
-      type: "testimonials",
-      props: {}
-    },
-    {
-      id: "runtime-conversion-blocks",
-      order: (order.indexOf("conversion_blocks") + 1) * 10,
-      type: "conversion_blocks",
-      props: {}
-    },
-    {
-      id: "runtime-newsletter",
-      order: (order.indexOf("newsletter") + 1) * 10,
-      type: "newsletter",
-      props: {}
-    },
-    {
-      id: "runtime-faq",
-      order: (order.indexOf("faq") + 1) * 10,
-      type: "faq",
-      props: {}
-    },
-    {
-      id: "runtime-cta",
-      order: (order.indexOf("cta") + 1) * 10,
-      type: "cta",
-      props: {}
-    }
-  ];
-
-  return normalizeRuntimeSections(baseSections, context);
+    })),
+    context
+  );
 }
 
 function ensureCommercialSections(sections: StoreSection[], context: StoreTenantContext) {

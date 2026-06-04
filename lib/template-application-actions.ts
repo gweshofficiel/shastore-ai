@@ -234,10 +234,16 @@ function workspaceTemplateSettings(template: StoreTemplateRecord) {
   return {
     ...template.default_theme_settings,
     ...template.theme_config,
+    blueprintId: template.blueprint_id,
+    industry: template.industry,
+    packageVersion: template.package_version,
+    recommendedAudience: template.recommended_audience,
     source: "workspace_template_application",
+    style: template.style,
     templateCategory: template.category,
     templateId: template.id,
-    templateType: template.template_type
+    templateType: template.template_type,
+    visualProfile: template.visual_profile
   };
 }
 
