@@ -1,6 +1,6 @@
 import "server-only";
 
-import crypto from "node:crypto";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { AIVisualProviderKey } from "@/lib/storefront/ai-visual-provider";
 import type {
   AIVisualAttachTargetType,
@@ -70,24 +70,23 @@ function slugify(value: string) {
     .slice(0, 80) || "asset";
 }
 
-function hmac(key: Buffer | string, value: string) {
-  return crypto.createHmac("sha256", key).update(value).digest();
+function r2S3Endpoint(accountId: string) {
+  return `https://${accountId}.r2.cloudflarestorage.com`;
 }
 
-function sha256(value: Uint8Array | string) {
-  return crypto.createHash("sha256").update(value).digest("hex");
-}
-
-function awsDate(date = new Date()) {
-  const iso = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  return {
-    date: iso.slice(0, 8),
-    timestamp: iso
-  };
-}
-
-function encodeS3Path(path: string) {
-  return path.split("/").map(encodeURIComponent).join("/");
+function createR2S3Client(config: {
+  accessKeyId: string;
+  accountId: string;
+  secretAccessKey: string;
+}) {
+  return new S3Client({
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey
+    },
+    endpoint: r2S3Endpoint(config.accountId),
+    region: "auto"
+  });
 }
 
 function r2Config() {
@@ -257,56 +256,29 @@ export async function uploadGeneratedAssetToR2({
     };
   }
 
-  const region = "auto";
-  const service = "s3";
-  const { date, timestamp } = awsDate();
-  const host = `${config.value.accountId}.r2.cloudflarestorage.com`;
+  const bucket = config.value.bucket;
+  const endpoint = r2S3Endpoint(config.value.accountId);
   const contentType = output.contentType || "image/png";
-  const bodyHash = sha256(output.data);
-  const canonicalUri = `/${encodeURIComponent(config.value.bucket)}/${encodeS3Path(plan.storageKey)}`;
-  const canonicalHeaders = [
-    `host:${host}`,
-    `x-amz-content-sha256:${bodyHash}`,
-    `x-amz-date:${timestamp}`
-  ].join("\n");
-  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  const canonicalRequest = [
-    "PUT",
-    canonicalUri,
-    "",
-    `${canonicalHeaders}\n`,
-    signedHeaders,
-    bodyHash
-  ].join("\n");
-  const credentialScope = `${date}/${region}/${service}/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    timestamp,
-    credentialScope,
-    sha256(canonicalRequest)
-  ].join("\n");
-  const dateKey = hmac(`AWS4${config.value.secretAccessKey}`, date);
-  const regionKey = hmac(dateKey, region);
-  const serviceKey = hmac(regionKey, service);
-  const signingKey = hmac(serviceKey, "aws4_request");
-  const signature = crypto.createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-  const uploadUrl = `https://${host}${canonicalUri}`;
-  const response = await fetch(uploadUrl, {
-    body: Buffer.from(output.data),
-    headers: {
-      Authorization: `AWS4-HMAC-SHA256 Credential=${config.value.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-      "Content-Type": contentType,
-      "x-amz-content-sha256": bodyHash,
-      "x-amz-date": timestamp
-    },
-    method: "PUT"
-  });
+  const key = plan.storageKey;
 
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => "");
+  console.info("AI visual R2 upload starting.", { bucket, endpoint, key });
+
+  try {
+    const client = createR2S3Client(config.value);
+
+    await client.send(
+      new PutObjectCommand({
+        Body: Buffer.from(output.data),
+        Bucket: bucket,
+        ContentType: contentType,
+        Key: key
+      })
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown R2 upload error.";
 
     return {
-      error: `Cloudflare R2 upload failed with HTTP ${response.status} for bucket "${config.value.bucket}" key "${plan.storageKey}".${responseText ? ` ${responseText.slice(0, 240)}` : ""}`,
+      error: `Cloudflare R2 upload failed for bucket "${bucket}" key "${key}" at ${endpoint}: ${message}`,
       output: null,
       plan
     };
