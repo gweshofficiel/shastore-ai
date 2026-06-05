@@ -13,6 +13,7 @@ import {
   canCreateAIVisualJobs,
   canRetryAIVisualJob,
   reserveAIVisualCreditsHook,
+  estimatedCreditsForAIVisualJob,
   trackAIVisualJobCreated,
   trackAIVisualJobRetry,
   trackAIVisualJobStatus
@@ -421,7 +422,7 @@ function bulkTemplateTargetId(storeId: string, slot: VisualAssetSlot) {
   return `${storeId}-${slot}`;
 }
 
-function aiVisualGenerationReadiness(storeData: Record<string, unknown>, requestedJobs = 1) {
+function aiVisualGenerationReadiness(storeData: Record<string, unknown>, requestedJobs = 1, estimatedCredits = 0) {
   const providerConfig = getAIVisualProviderRuntimeConfig();
 
   if (providerConfig.status !== "configured") {
@@ -434,7 +435,7 @@ function aiVisualGenerationReadiness(storeData: Record<string, unknown>, request
     };
   }
 
-  const limit = canCreateAIVisualJobs(storeData, requestedJobs);
+  const limit = canCreateAIVisualJobs(storeData, requestedJobs, estimatedCredits);
 
   if (!limit.allowed) {
     return limit;
@@ -600,7 +601,15 @@ export async function requestAIVisualAssetGenerationAction(
   const pendingJob = provider.createPendingJob(request);
   const providerPlan = planAIVisualAssetProviderRequest(request);
   const storeData = asStoreData(storeRecord.store_data);
-  const readiness = aiVisualGenerationReadiness(storeData, 1);
+  const queuedJob = createAIVisualGenerationJob({
+    jobId: pendingJob.jobId,
+    provider: pendingJob.provider,
+    providerPlan,
+    providerStatus: pendingJob.providerStatus,
+    request,
+    workspaceId
+  });
+  const readiness = aiVisualGenerationReadiness(storeData, 1, estimatedCreditsForAIVisualJob(queuedJob));
 
   if (!readiness.allowed) {
     return {
@@ -611,14 +620,6 @@ export async function requestAIVisualAssetGenerationAction(
   }
 
   const queue = aiVisualQueueFromStoreData(storeData);
-  const queuedJob = createAIVisualGenerationJob({
-    jobId: pendingJob.jobId,
-    provider: pendingJob.provider,
-    providerPlan,
-    providerStatus: pendingJob.providerStatus,
-    request,
-    workspaceId
-  });
   const dispatch = dispatchAIVisualGenerationJob(queue.pausedAt
     ? {
         ...queuedJob,
@@ -630,6 +631,7 @@ export async function requestAIVisualAssetGenerationAction(
     storeData
   });
   const trackedStoreData = reserveAIVisualCreditsHook({
+    job: dispatch.job,
     storeData: trackAIVisualJobCreated({
       job: dispatch.job,
       storeData: nextStoreData
@@ -784,7 +786,7 @@ export async function generateFullAIVisualPackageAction(
   }
 
   const queue = aiVisualQueueFromStoreData(context.storeData);
-  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
+  const readiness = aiVisualGenerationReadiness(context.storeData, 0);
 
   if (!readiness.allowed) {
     return {
@@ -853,6 +855,12 @@ export async function generateFullAIVisualPackageAction(
       request,
       workspaceId: context.workspaceId
     });
+    const targetReadiness = aiVisualGenerationReadiness(nextStoreData, 1, estimatedCreditsForAIVisualJob(queuedJob));
+
+    if (!targetReadiness.allowed) {
+      break;
+    }
+
     const dispatch = dispatchAIVisualGenerationJob(queue.pausedAt
       ? {
           ...queuedJob,
@@ -864,6 +872,7 @@ export async function generateFullAIVisualPackageAction(
       storeData: nextStoreData
     });
     nextStoreData = reserveAIVisualCreditsHook({
+      job: dispatch.job,
       storeData: trackAIVisualJobCreated({
         job: dispatch.job,
         storeData: nextStoreData
@@ -1057,17 +1066,6 @@ export async function regenerateAIVisualAssetJobAction(
     };
   }
 
-  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
-
-  if (!readiness.allowed) {
-    return {
-      ...defaultState,
-      error: readiness.message,
-      requestId,
-      status: "failed"
-    };
-  }
-
   const regeneratedRequestId = `${sourceJob.request.requestId}-regen-${Date.now()}`;
   const promptContext = await buildAIVisualPromptContext({
     entityId: sourceJob.request.entityId,
@@ -1106,6 +1104,17 @@ export async function regenerateAIVisualAssetJobAction(
     request,
     workspaceId: context.workspaceId
   });
+  const readiness = aiVisualGenerationReadiness(context.storeData, 1, estimatedCreditsForAIVisualJob(queuedJob));
+
+  if (!readiness.allowed) {
+    return {
+      ...defaultState,
+      error: readiness.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
   const queuePaused = Boolean(aiVisualQueueFromStoreData(context.storeData).pausedAt);
   const dispatch = dispatchAIVisualGenerationJob(queuePaused
     ? {
@@ -1118,6 +1127,7 @@ export async function regenerateAIVisualAssetJobAction(
     storeData: context.storeData
   });
   const trackedStoreData = reserveAIVisualCreditsHook({
+    job: dispatch.job,
     storeData: trackAIVisualJobCreated({
       job: dispatch.job,
       storeData: nextStoreData
@@ -1461,7 +1471,7 @@ export async function retryFailedAIVisualJobAction(
     };
   }
 
-  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
+  const readiness = aiVisualGenerationReadiness(context.storeData, 1, estimatedCreditsForAIVisualJob(job));
 
   if (!readiness.allowed) {
     return {
@@ -1496,6 +1506,7 @@ export async function retryFailedAIVisualJobAction(
     workerSteps: createAIVisualWorkerSteps()
   };
   const nextStoreData = reserveAIVisualCreditsHook({
+    job: retriedJob,
     storeData: trackAIVisualJobRetry({
       job: retriedJob,
       storeData: upsertAIVisualQueueJob({

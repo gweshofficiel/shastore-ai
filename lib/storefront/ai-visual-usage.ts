@@ -26,9 +26,34 @@ export type AIVisualUsageState = {
   updatedAt: string;
 };
 
+export type AIVisualCreditReservationStatus = "reserved" | "completed" | "released";
+
+export type AIVisualCreditReservation = {
+  completedAt: string | null;
+  cost: number;
+  createdAt: string;
+  jobId: string;
+  releasedAt: string | null;
+  requestId: string;
+  status: AIVisualCreditReservationStatus;
+};
+
+export type AIVisualCreditState = {
+  active: boolean;
+  availableCredits: number | null;
+  balance: number | null;
+  reservations: Record<string, AIVisualCreditReservation>;
+  reservedCredits: number;
+  schemaVersion: 1;
+  updatedAt: string;
+};
+
 export type AIVisualUsageSummary = {
   cancelledToday: number;
   completedToday: number;
+  creditsActive: boolean;
+  creditsAvailable: number | null;
+  creditsReserved: number;
   dailyLimit: number;
   failedToday: number;
   remainingDailyAllowance: number;
@@ -39,7 +64,14 @@ export type AIVisualUsageSummary = {
 
 export const AI_VISUAL_DAILY_JOB_LIMIT = 30;
 export const AI_VISUAL_RETRY_LIMIT = 2;
-export const AI_VISUAL_ESTIMATED_COST = 0;
+
+export const aiVisualCreditRules = {
+  bulkPackageBase: 0,
+  categoryImage: 1,
+  heroBanner: 3,
+  productImage: 1,
+  promoBanner: 2
+} as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -59,6 +91,64 @@ function todayKey(date = new Date()) {
 
 function sameUtcDay(value: string | null | undefined, day = todayKey()) {
   return typeof value === "string" && value.slice(0, 10) === day;
+}
+
+export function estimatedCreditsForAIVisualJob(job: Pick<AIVisualGenerationJob, "kind">) {
+  if (job.kind === "product_image") {
+    return aiVisualCreditRules.productImage;
+  }
+
+  if (job.kind === "category_image") {
+    return aiVisualCreditRules.categoryImage;
+  }
+
+  if (job.kind === "hero_banner") {
+    return aiVisualCreditRules.heroBanner;
+  }
+
+  return aiVisualCreditRules.promoBanner;
+}
+
+export function aiVisualCreditsFromStoreData(value: unknown): AIVisualCreditState {
+  const storeData = isRecord(value) ? value : {};
+  const credits = isRecord(storeData.aiVisualCredits) ? storeData.aiVisualCredits : {};
+  const reservationsInput = isRecord(credits.reservations) ? credits.reservations : {};
+  const reservations: Record<string, AIVisualCreditReservation> = {};
+
+  for (const [requestId, reservation] of Object.entries(reservationsInput)) {
+    if (!isRecord(reservation)) {
+      continue;
+    }
+
+    const status = textValue(reservation.status);
+
+    reservations[requestId] = {
+      completedAt: textValue(reservation.completedAt) || null,
+      cost: numberValue(reservation.cost),
+      createdAt: textValue(reservation.createdAt) || new Date().toISOString(),
+      jobId: textValue(reservation.jobId),
+      releasedAt: textValue(reservation.releasedAt) || null,
+      requestId,
+      status: status === "reserved" || status === "completed" || status === "released" ? status : "reserved"
+    };
+  }
+
+  const reservedCredits = Object.values(reservations)
+    .filter((reservation) => reservation.status === "reserved")
+    .reduce((total, reservation) => total + reservation.cost, 0);
+  const balance = typeof credits.balance === "number" && Number.isFinite(credits.balance)
+    ? credits.balance
+    : null;
+
+  return {
+    active: credits.active === true && balance !== null,
+    availableCredits: balance === null ? null : Math.max(0, balance - reservedCredits),
+    balance,
+    reservations,
+    reservedCredits,
+    schemaVersion: 1,
+    updatedAt: textValue(credits.updatedAt) || new Date().toISOString()
+  };
 }
 
 export function aiVisualUsageFromStoreData(value: unknown): AIVisualUsageState {
@@ -106,6 +196,7 @@ export function aiVisualUsageFromStoreData(value: unknown): AIVisualUsageState {
 
 export function aiVisualUsageSummary(storeData: unknown): AIVisualUsageSummary {
   const usage = aiVisualUsageFromStoreData(storeData);
+  const credits = aiVisualCreditsFromStoreData(storeData);
   const events = Object.values(usage.events);
   const today = todayKey();
   const todayEvents = events.filter((event) => sameUtcDay(event.createdAt, today));
@@ -113,6 +204,9 @@ export function aiVisualUsageSummary(storeData: unknown): AIVisualUsageSummary {
   return {
     cancelledToday: todayEvents.filter((event) => event.status === "cancelled").length,
     completedToday: todayEvents.filter((event) => event.status === "completed").length,
+    creditsActive: credits.active,
+    creditsAvailable: credits.availableCredits,
+    creditsReserved: credits.reservedCredits,
     dailyLimit: usage.dailyLimit,
     failedToday: todayEvents.filter((event) => event.status === "failed").length,
     remainingDailyAllowance: Math.max(0, usage.dailyLimit - todayEvents.length),
@@ -122,7 +216,25 @@ export function aiVisualUsageSummary(storeData: unknown): AIVisualUsageSummary {
   };
 }
 
-export function canCreateAIVisualJobs(storeData: unknown, requestedJobs = 1) {
+export function canCreateAIVisualJobs(storeData: unknown, requestedJobs = 1, estimatedCredits = 0) {
+  const credits = aiVisualCreditsFromStoreData(storeData);
+
+  if (credits.active) {
+    if ((credits.availableCredits ?? 0) < estimatedCredits) {
+      return {
+        allowed: false,
+        message: `Not enough AI visual credits. ${estimatedCredits} credits required, ${credits.availableCredits ?? 0} available.`,
+        remaining: 0
+      };
+    }
+
+    return {
+      allowed: true,
+      message: null,
+      remaining: Number.MAX_SAFE_INTEGER
+    };
+  }
+
   const summary = aiVisualUsageSummary(storeData);
 
   if (summary.remainingDailyAllowance < requestedJobs) {
@@ -173,10 +285,12 @@ function usageWithEvent(storeData: Record<string, unknown>, event: AIVisualUsage
     updatedAt: new Date().toISOString()
   };
 
-  return {
+  const nextStoreData = {
     ...storeData,
     aiVisualUsage: nextUsage
   };
+
+  return updateCreditReservationForEvent(nextStoreData, event);
 }
 
 export function trackAIVisualJobCreated({
@@ -193,7 +307,7 @@ export function trackAIVisualJobCreated({
   return usageWithEvent(storeData, {
     assetType: job.kind,
     createdAt: existing?.createdAt ?? job.createdAt,
-    estimatedCost: existing?.estimatedCost ?? AI_VISUAL_ESTIMATED_COST,
+    estimatedCost: existing?.estimatedCost ?? estimatedCreditsForAIVisualJob(job),
     jobId: job.jobId,
     provider: job.provider,
     requestId: job.requestId,
@@ -218,7 +332,7 @@ export function trackAIVisualJobStatus({
   return usageWithEvent(storeData, {
     assetType: existing?.assetType ?? job.kind,
     createdAt: existing?.createdAt ?? job.createdAt,
-    estimatedCost: existing?.estimatedCost ?? AI_VISUAL_ESTIMATED_COST,
+    estimatedCost: existing?.estimatedCost ?? estimatedCreditsForAIVisualJob(job),
     jobId: job.jobId,
     provider: job.provider,
     requestId: job.requestId,
@@ -243,7 +357,7 @@ export function trackAIVisualJobRetry({
   return usageWithEvent(storeData, {
     assetType: existing?.assetType ?? job.kind,
     createdAt: existing?.createdAt ?? job.createdAt,
-    estimatedCost: existing?.estimatedCost ?? AI_VISUAL_ESTIMATED_COST,
+    estimatedCost: existing?.estimatedCost ?? estimatedCreditsForAIVisualJob(job),
     jobId: job.jobId,
     provider: job.provider,
     requestId: job.requestId,
@@ -256,21 +370,101 @@ export function trackAIVisualJobRetry({
 }
 
 export function reserveAIVisualCreditsHook({
-  estimatedCost,
+  job,
   storeData
 }: {
-  estimatedCost?: number | null;
+  job?: AIVisualGenerationJob;
   storeData: Record<string, unknown>;
 }) {
   const usage = aiVisualUsageFromStoreData(storeData);
+  const credits = aiVisualCreditsFromStoreData(storeData);
+  const estimatedCost = job ? estimatedCreditsForAIVisualJob(job) : 0;
+  const now = new Date().toISOString();
+  const nextCredits: AIVisualCreditState = credits.active && job
+    ? {
+        ...credits,
+        reservations: {
+          ...credits.reservations,
+          [job.requestId]: {
+            completedAt: null,
+            cost: estimatedCost,
+            createdAt: now,
+            jobId: job.jobId,
+            releasedAt: null,
+            requestId: job.requestId,
+            status: "reserved"
+          }
+        },
+        availableCredits: credits.balance === null ? null : Math.max(0, credits.balance - credits.reservedCredits - estimatedCost),
+        reservedCredits: credits.reservedCredits + estimatedCost,
+        updatedAt: now
+      }
+    : credits;
 
   return {
     ...storeData,
+    aiVisualCredits: nextCredits,
     aiVisualUsage: {
       ...usage,
-      creditsReserved: usage.creditsReserved + (estimatedCost ?? 0),
-      lastCreditCheckAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      creditsReserved: usage.creditsReserved + estimatedCost,
+      lastCreditCheckAt: now,
+      updatedAt: now
+    }
+  };
+}
+
+function updateCreditReservationForEvent(
+  storeData: Record<string, unknown>,
+  event: AIVisualUsageEvent
+) {
+  const credits = aiVisualCreditsFromStoreData(storeData);
+
+  if (!credits.active) {
+    return storeData;
+  }
+
+  const reservation = credits.reservations[event.requestId];
+
+  if (!reservation) {
+    return storeData;
+  }
+
+  const now = new Date().toISOString();
+  const nextReservation: AIVisualCreditReservation =
+    event.status === "completed"
+      ? {
+          ...reservation,
+          completedAt: reservation.completedAt ?? now,
+          status: "completed"
+        }
+      : event.status === "failed" || event.status === "cancelled"
+        ? {
+            ...reservation,
+            releasedAt: reservation.releasedAt ?? now,
+            status: "released"
+          }
+        : reservation;
+
+  if (nextReservation === reservation) {
+    return storeData;
+  }
+
+  const reservations = {
+    ...credits.reservations,
+    [event.requestId]: nextReservation
+  };
+  const reservedCredits = Object.values(reservations)
+    .filter((item) => item.status === "reserved")
+    .reduce((total, item) => total + item.cost, 0);
+
+  return {
+    ...storeData,
+    aiVisualCredits: {
+      ...credits,
+      availableCredits: credits.balance === null ? null : Math.max(0, credits.balance - reservedCredits),
+      reservations,
+      reservedCredits,
+      updatedAt: now
     }
   };
 }

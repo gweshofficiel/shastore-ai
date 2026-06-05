@@ -14,7 +14,11 @@ import {
   updateAIVisualAssetApprovalAction
 } from "@/lib/ai-visual-provider-actions";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
-import { aiVisualUsageSummary, type AIVisualUsageSummary } from "@/lib/storefront/ai-visual-usage";
+import {
+  aiVisualCreditRules,
+  aiVisualUsageSummary,
+  type AIVisualUsageSummary
+} from "@/lib/storefront/ai-visual-usage";
 import {
   aiVisualQueueFromStoreData,
   type AIVisualGenerationJob,
@@ -53,6 +57,9 @@ type AIVisualAssetsDashboardData = {
 const emptyUsageSummary: AIVisualUsageSummary = {
   cancelledToday: 0,
   completedToday: 0,
+  creditsActive: false,
+  creditsAvailable: null,
+  creditsReserved: 0,
   dailyLimit: 30,
   failedToday: 0,
   remainingDailyAllowance: 30,
@@ -435,7 +442,11 @@ export default async function AIVisualAssetsDashboard({
   const { activeStore, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
-  const generationAllowed = providerReady && usageSummary.remainingDailyAllowance > 0;
+  const generationAllowed = providerReady && (
+    usageSummary.creditsActive
+      ? (usageSummary.creditsAvailable ?? 0) > 0
+      : usageSummary.remainingDailyAllowance > 0
+  );
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -508,9 +519,15 @@ export default async function AIVisualAssetsDashboard({
             </Card>
           ) : null}
 
-          {providerReady && usageSummary.remainingDailyAllowance <= 0 ? (
+          {providerReady && !usageSummary.creditsActive && usageSummary.remainingDailyAllowance <= 0 ? (
             <Card className="border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
               AI visual daily limit reached. Try again tomorrow or wait for future credits support.
+            </Card>
+          ) : null}
+
+          {providerReady && usageSummary.creditsActive && (usageSummary.creditsAvailable ?? 0) <= 0 ? (
+            <Card className="border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              Not enough AI visual credits available. Future billing credits can refill this balance.
             </Card>
           ) : null}
 
@@ -524,7 +541,9 @@ export default async function AIVisualAssetsDashboard({
                   {usageSummary.remainingDailyAllowance} of {usageSummary.dailyLimit} jobs remaining
                 </h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-                  AI visual jobs are tracked for cost control. Credits are prepared for future billing but users are not charged yet.
+                  {usageSummary.creditsActive
+                    ? `Credits mode is active with ${usageSummary.creditsAvailable ?? 0} credits available and ${usageSummary.creditsReserved} reserved.`
+                    : "Credits are not active yet, so AI visuals use the fallback daily allowance. Users are not charged."}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm font-bold text-muted sm:grid-cols-4">
@@ -545,6 +564,13 @@ export default async function AIVisualAssetsDashboard({
                   <p>Total assets</p>
                 </div>
               </div>
+            </div>
+            <div className="mt-4 grid gap-2 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500 sm:grid-cols-2 lg:grid-cols-5">
+              <p>Product image: {aiVisualCreditRules.productImage} credit</p>
+              <p>Category image: {aiVisualCreditRules.categoryImage} credit</p>
+              <p>Hero banner: {aiVisualCreditRules.heroBanner} credits</p>
+              <p>Promo banner: {aiVisualCreditRules.promoBanner} credits</p>
+              <p>Bulk package: estimated from selected slots</p>
             </div>
           </Card>
 
