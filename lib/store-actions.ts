@@ -566,6 +566,7 @@ function buildStoreDataPayload({
   products,
   storeDescription,
   storeName,
+  templateCreationKey,
   templateId,
   themeSettings,
   whatsappNumber
@@ -576,6 +577,7 @@ function buildStoreDataPayload({
   products: DraftProduct[];
   storeDescription: string;
   storeName: string;
+  templateCreationKey?: string | null;
   templateId: string;
   themeSettings: StoreThemeSettings;
   whatsappNumber: string;
@@ -587,10 +589,43 @@ function buildStoreDataPayload({
     products,
     storeDescription,
     storeName,
+    templateCreationKey: templateCreationKey || null,
     templateId,
     themeSettings,
     whatsappNumber
   };
+}
+
+async function findStoreByTemplateCreationKey({
+  creationKey,
+  supabase,
+  userId,
+  workspaceId
+}: {
+  creationKey: string;
+  supabase: SupabaseClient;
+  userId: string;
+  workspaceId: string;
+}) {
+  if (!creationKey) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from("stores" as never)
+    .select("id, store_data, created_at")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("user_id" as never, userId as never)
+    .order("created_at" as never, { ascending: false })
+    .limit(25);
+  const rows = Array.isArray(data)
+    ? data as Array<{ id?: string; store_data?: unknown }>
+    : [];
+
+  return rows.find((row) => {
+    const storeData = isRecord(row.store_data) ? row.store_data : {};
+    return storeData.templateCreationKey === creationKey;
+  })?.id ?? null;
 }
 
 async function insertStoreDraftRow(
@@ -708,7 +743,16 @@ async function insertStoreDraftRow(
 
 async function persistStoreDraftFromForm(
   formData: FormData
-): Promise<{ error?: string; ok: true; storeId: string } | { error: string; ok: false }> {
+): Promise<
+  | {
+      error?: string;
+      ok: true;
+      packageInstallId: string | null;
+      packageInstallStatus: string;
+      storeId: string;
+    }
+  | { error: string; ok: false }
+> {
   console.log("[saveStoreDraft] persistStoreDraftFromForm start");
 
   const supabase = await createClient();
@@ -734,6 +778,7 @@ async function persistStoreDraftFromForm(
   const brandColor = String(formData.get("brandColor") ?? "#0f172a").trim() || "#0f172a";
   const currency = String(formData.get("currency") ?? "USD").trim() || "USD";
   const whatsappNumber = String(formData.get("whatsappNumber") ?? "").trim();
+  const templateCreationKey = String(formData.get("templateCreationKey") ?? "").trim().slice(0, 120);
   const templateId = resolveDatabaseTemplateId(String(formData.get("templateId") ?? ""));
   const categories = parseCategories(formData);
   const products = parseProducts(formData);
@@ -786,6 +831,22 @@ async function persistStoreDraftFromForm(
     };
   }
 
+  const existingStoreId = await findStoreByTemplateCreationKey({
+    creationKey: templateCreationKey,
+    supabase,
+    userId: user.id,
+    workspaceId
+  });
+
+  if (existingStoreId) {
+    return {
+      ok: true,
+      packageInstallId: null,
+      packageInstallStatus: "skipped",
+      storeId: existingStoreId
+    };
+  }
+
   const { projectId, error: projectError } = await createStoreProject(
     supabase,
     user.id,
@@ -804,6 +865,7 @@ async function persistStoreDraftFromForm(
     products,
     storeDescription,
     storeName,
+    templateCreationKey,
     templateId,
     themeSettings,
     whatsappNumber
@@ -952,7 +1014,12 @@ async function persistStoreDraftFromForm(
   });
 
   console.log("[saveStoreDraft] persistStoreDraftFromForm complete", store.id);
-  return { ok: true, storeId: store.id };
+  return {
+    ok: true,
+    packageInstallId: packageInstall.packageId,
+    packageInstallStatus: packageInstall.status,
+    storeId: store.id
+  };
 }
 
 export async function saveStoreDraftAction(
@@ -998,6 +1065,7 @@ export async function saveStoreDraftAction(
 
 export async function createStoreFromTemplateAction(formData: FormData) {
   const requestedTemplateId = String(formData.get("templateId") ?? defaultStoreTemplateId).trim() || defaultStoreTemplateId;
+  const templateCreationKey = String(formData.get("templateCreationKey") ?? "").trim().slice(0, 120);
   const template = await getProductionStoreTemplate(requestedTemplateId);
   const templateId = resolveDatabaseTemplateId(template.id);
   const draftForm = new FormData();
@@ -1008,6 +1076,7 @@ export async function createStoreFromTemplateAction(formData: FormData) {
   draftForm.set("brandColor", "#0f172a");
   draftForm.set("currency", "USD");
   draftForm.set("whatsappNumber", "");
+  draftForm.set("templateCreationKey", templateCreationKey);
   draftForm.set("templateId", templateId);
   draftForm.set("categories", "[]");
   draftForm.set("products", "[]");
@@ -1022,7 +1091,17 @@ export async function createStoreFromTemplateAction(formData: FormData) {
 
   revalidatePath("/dashboard/stores");
   revalidatePath("/dashboard");
-  redirect(`/dashboard/stores/${result.storeId}`);
+  const redirectParams = new URLSearchParams({
+    created: "template",
+    templateId,
+    templateInstall: result.packageInstallStatus
+  });
+
+  if (result.packageInstallId) {
+    redirectParams.set("packageId", result.packageInstallId);
+  }
+
+  redirect(`/dashboard/stores/${result.storeId}?${redirectParams.toString()}`);
 }
 
 function parseCategories(formData: FormData): DraftCategory[] {

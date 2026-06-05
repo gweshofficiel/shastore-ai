@@ -894,8 +894,39 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
     return {
       installed: false,
       packageId: input.templatePackage.id,
-      status: status === "failed" || status === "partially_installed" || status === "installed" ? status : "skipped",
+      status:
+        status === "failed" ||
+        status === "installing" ||
+        status === "partially_installed" ||
+        status === "installed"
+          ? status
+          : "skipped",
       steps: [{ name: "duplicate-prevention", status: "skipped" }]
+    };
+  }
+
+  const startingRecord: TemplatePackageInstallationRecord = {
+    completedAt: null,
+    packageId: input.templatePackage.id,
+    packageVersion: input.templatePackage.version,
+    startedAt,
+    status: "installing",
+    steps: [{ name: "install-started", status: "success" }],
+    templateId: input.templateId
+  };
+  const startMetadataError = await writeInstallationRecord({
+    record: startingRecord,
+    storeData: storeDataResult.storeData,
+    storeId: input.storeId,
+    supabase: input.supabase
+  });
+
+  if (startMetadataError) {
+    return {
+      installed: false,
+      packageId: input.templatePackage.id,
+      status: "failed",
+      steps: [{ error: startMetadataError, name: "install-started", status: "failed" }]
     };
   }
 

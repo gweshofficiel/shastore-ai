@@ -398,6 +398,7 @@ export default async function StoreDraftPage({
 }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
+    created?: string;
     saved?: string;
     published?: string;
     unpublished?: string;
@@ -414,6 +415,9 @@ export default async function StoreDraftPage({
     publication?: string;
     catalog?: string;
     domain?: string;
+    packageId?: string;
+    templateId?: string;
+    templateInstall?: string;
   }>;
 }) {
   const { id } = await params;
@@ -1145,6 +1149,34 @@ export default async function StoreDraftPage({
           description="Buyer-owned store management foundation backed by ownership links and access permissions."
           title={ownedStore.store_name}
         />
+        {query.created === "template" && (query.templateInstall === "installed" || query.templateInstall === "skipped") ? (
+          <Card className="border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-bold text-emerald-800">
+              Store created from template. The template package is ready.
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-emerald-700">
+              Manage Store is open now. Products, categories, pages, homepage sections, and storefront preview links are available from this dashboard.
+            </p>
+          </Card>
+        ) : query.created === "template" && query.templateInstall ? (
+          <Card className="border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-bold text-amber-900">
+              Store created, but the template package finished with status: {query.templateInstall.replace(/_/g, " ")}.
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+              You can continue managing the store, or retry by creating a new store from the same template.
+            </p>
+            {query.templateId ? (
+              <ButtonLink
+                className="mt-4"
+                href={`/dashboard/stores/new?templateId=${encodeURIComponent(query.templateId)}`}
+                variant="secondary"
+              >
+                Retry from template
+              </ButtonLink>
+            ) : null}
+          </Card>
+        ) : null}
         {query["management-branding-save-failed"] === "bucket-missing" ? (
           <Card className="border-red-200 bg-red-50 p-5">
             <p className="text-sm font-bold text-red-700">

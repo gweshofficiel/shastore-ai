@@ -4,7 +4,7 @@ import type { StoreMarketingMessageType } from "@/lib/store-marketing-messages";
 import type { TemplateGenerationHooks, TemplateIndustry } from "@/lib/storefront/template-blueprints";
 import type { VisualAssetReference, VisualAssetSlot } from "@/lib/storefront/visual-assets";
 
-export type TemplatePackageStatus = "failed" | "installed" | "partially_installed";
+export type TemplatePackageStatus = "failed" | "installed" | "installing" | "partially_installed";
 
 export type TemplatePackageCategory = {
   accentColor?: string;

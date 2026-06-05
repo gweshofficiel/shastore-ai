@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { CreateStoreSubmitButton } from "@/components/templates/create-store-submit-button";
 import { ProductionTemplateLibraryCard } from "@/components/templates/production-template-preview";
@@ -28,6 +29,7 @@ export default async function NewStorePage({
     templates.find((template) => template.id === query.templateId || template.slug === query.templateId) ??
     templates[0] ??
     null;
+  const creationKey = randomUUID();
   const selectedDevice = query.device === "tablet" || query.device === "mobile" ? query.device : "desktop";
   const access = await getCurrentUserSubscriptionAccess();
   const canCreate = access ? canCreateStore(access) : true;
@@ -55,11 +57,25 @@ export default async function NewStorePage({
         {databaseError ? (
           <Card className="border-red-200 bg-red-50 p-5">
             <p className="text-sm font-bold text-red-700">Database error: {databaseError}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-red-700">
+              No store was created. You can retry with the selected template or choose a different template.
+            </p>
+            {selectedTemplate ? (
+              <a
+                className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-red-700 px-4 text-sm font-black text-white transition hover:bg-red-800"
+                href={`/dashboard/stores/new?templateId=${encodeURIComponent(selectedTemplate.id)}&device=${encodeURIComponent(selectedDevice)}`}
+              >
+                Retry store creation
+              </a>
+            ) : null}
           </Card>
         ) : null}
         <Card className="border-blue-100 bg-blue-50 p-5">
           <p className="text-sm font-bold text-blue-800">
             Shopify/Wix style flow: preview a template, apply it, then finish setup inside Manage Store.
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-blue-800">
+            Store logo, description, theme, navigation, domains, SEO, products, categories, and pages are configured after creation in Manage Store.
           </p>
         </Card>
         {access ? (
@@ -141,6 +157,7 @@ export default async function NewStorePage({
                     SHASTORE will create a draft store with this template and open Manage Store.
                   </p>
                   <form action={createStoreFromTemplateAction} className="mt-5">
+                    <input name="templateCreationKey" type="hidden" value={creationKey} />
                     <input name="templateId" type="hidden" value={selectedTemplate.id} />
                     <CreateStoreSubmitButton
                       className="w-full"
