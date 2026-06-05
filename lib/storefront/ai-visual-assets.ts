@@ -10,6 +10,7 @@ import type {
   VisualAssetSlot,
   VisualAssetSource
 } from "@/lib/storefront/visual-assets";
+import { visualAssetSlotSizing } from "@/lib/storefront/visual-assets";
 
 export type AIVisualAssetRequestKind =
   | "product_image"
@@ -149,6 +150,7 @@ export function storageDestinationForVisualAssetSlot({
 
 export function createAIVisualAssetRequest(input: AIVisualAssetRequestInput): AIVisualAssetRequest {
   const blueprint = promptBlueprintForAssetSlot(input.slot);
+  const slotSizing = visualAssetSlotSizing(input.slot);
   const promptText = renderAIVisualPrompt({
     blueprint,
     context: input.promptContext ?? {},
@@ -161,7 +163,19 @@ export function createAIVisualAssetRequest(input: AIVisualAssetRequestInput): AI
     entityId: input.entityId ?? null,
     entityTitle: input.entityTitle,
     kind: input.kind,
-    metadata: input.metadata ?? {},
+    metadata: {
+      ...(input.metadata ?? {}),
+      visualSlotSizing: {
+        aspectRatio: slotSizing.aspectRatio,
+        composition: slotSizing.composition,
+        fitMode: slotSizing.fitMode,
+        height: slotSizing.height,
+        objectPosition: slotSizing.objectPosition,
+        openAIImageSize: slotSizing.openAIImageSize,
+        slot: slotSizing.slot,
+        width: slotSizing.width
+      }
+    },
     prompt: {
       blueprint,
       negativePrompt: blueprint.negativePrompt,
@@ -214,14 +228,21 @@ export function visualAssetReferenceForCompletedRequest({
   publicUrl: string | null;
   request: AIVisualAssetRequest;
 }): VisualAssetReference {
+  const slotSizing = visualAssetSlotSizing(request.slot);
+
   return {
     alt: request.entityTitle,
+    aspectRatio: slotSizing.aspectRatio,
     bucket: request.storage.bucket,
+    fitMode: slotSizing.fitMode,
+    height: slotSizing.height,
+    objectPosition: slotSizing.objectPosition,
     promptKey: request.prompt.blueprint.id,
     publicUrl,
     r2Key: request.storage.r2KeyPrefix,
     source: publicUrl ? request.storage.resolverSource : "ai-ready",
-    url: publicUrl
+    url: publicUrl,
+    width: slotSizing.width
   };
 }
 

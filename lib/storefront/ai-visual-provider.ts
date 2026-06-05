@@ -6,6 +6,7 @@ import type {
   AIVisualAssetRequest
 } from "@/lib/storefront/ai-visual-assets";
 import { planAIVisualAssetProviderRequest } from "@/lib/storefront/ai-visual-assets";
+import { visualAssetSlotSizing, type OpenAIVisualImageSize } from "@/lib/storefront/visual-assets";
 
 export type AIVisualProviderKey =
   | "disabled"
@@ -39,6 +40,8 @@ export type AIVisualProviderGenerateResult = {
   output: {
     contentType: string;
     data: Uint8Array;
+    height?: number | null;
+    width?: number | null;
   } | null;
   providerPlan: AIVisualAssetProviderPlan;
   status: "completed" | "pending" | "skipped";
@@ -141,8 +144,12 @@ function openAIImageModel() {
   return process.env.AI_VISUAL_OPENAI_IMAGE_MODEL || "gpt-image-1";
 }
 
-function openAIImageSize(value: unknown) {
-  return value === "1024x1536" || value === "1536x1024" || value === "auto" ? value : "1024x1024";
+function configuredOpenAIImageSize(value: unknown): OpenAIVisualImageSize | null {
+  return value === "1024x1536" || value === "1536x1024" || value === "1024x1024" || value === "auto" ? value : null;
+}
+
+function openAIImageSizeForRequest(request: AIVisualAssetRequest): OpenAIVisualImageSize {
+  return configuredOpenAIImageSize(process.env.AI_VISUAL_OPENAI_IMAGE_SIZE) ?? visualAssetSlotSizing(request.slot).openAIImageSize;
 }
 
 function imagePromptForRequest(request: AIVisualAssetRequest) {
@@ -299,7 +306,7 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
             model,
             n: 1,
             prompt: imagePromptForRequest(request),
-            size: openAIImageSize(process.env.AI_VISUAL_OPENAI_IMAGE_SIZE)
+            size: openAIImageSizeForRequest(request)
           }),
           OPENAI_IMAGE_GENERATION_TIMEOUT_MS,
           `OpenAI ${model} image generation`
@@ -331,7 +338,11 @@ export function createOpenAIVisualProviderAdapter(): AIVisualProviderAdapter {
         return {
           error: null,
           job: this.createPendingJob(request),
-          output: decoded,
+          output: {
+            ...decoded,
+            height: visualAssetSlotSizing(request.slot).height,
+            width: visualAssetSlotSizing(request.slot).width
+          },
           providerPlan,
           status: "completed"
         };

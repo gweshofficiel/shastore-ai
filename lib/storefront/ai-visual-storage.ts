@@ -10,6 +10,7 @@ import type {
   VisualAssetReference,
   VisualAssetSlot
 } from "@/lib/storefront/visual-assets";
+import { visualAssetSlotSizing } from "@/lib/storefront/visual-assets";
 
 export type AIVisualGeneratedAssetType =
   | "product_primary_image"
@@ -32,15 +33,22 @@ export type AIVisualGeneratedAssetReference = VisualAssetReference & {
 export type AIVisualAssetOutput = {
   contentType?: string | null;
   data?: Uint8Array | null;
+  height?: number | null;
   publicUrl?: string | null;
+  width?: number | null;
 };
 
 export type AIVisualStoragePlan = {
+  aspectRatio: string;
   bucket: string | null;
   contentType: string | null;
+  fitMode: string;
+  height: number;
+  objectPosition: string;
   publicUrl: string | null;
   r2Configured: boolean;
   storageKey: string;
+  width: number;
 };
 
 export type AIVisualStorageUploadResult = {
@@ -258,6 +266,7 @@ export function planGeneratedAssetStorage({
   output?: AIVisualAssetOutput | null;
 }): AIVisualStoragePlan {
   const extension = output?.contentType === "image/png" ? "png" : "webp";
+  const sizing = visualAssetSlotSizing(job.slot);
   const storageKey = [
     r2PrefixForGeneratedAsset({
       slot: job.slot,
@@ -268,11 +277,16 @@ export function planGeneratedAssetStorage({
   ].join("");
 
   return {
+    aspectRatio: sizing.aspectRatio,
     bucket: job.storage.bucket,
     contentType: output?.contentType ?? null,
+    fitMode: sizing.fitMode,
+    height: output?.height ?? sizing.height,
+    objectPosition: sizing.objectPosition,
     publicUrl: output?.publicUrl ?? null,
     r2Configured: job.storage.provider === "cloudflare-r2" && Boolean(job.storage.bucket),
-    storageKey
+    storageKey,
+    width: output?.width ?? sizing.width
   };
 }
 
@@ -287,10 +301,14 @@ export function createGeneratedAssetReference({
 
   return {
     alt: job.request.entityTitle,
+    aspectRatio: storage.aspectRatio,
     assetId: job.requestId,
     assetType: generatedAssetTypeForSlot(job.slot),
     bucket: storage.bucket,
+    fitMode: storage.fitMode,
     generatedAt: new Date().toISOString(),
+    height: storage.height,
+    objectPosition: storage.objectPosition,
     promptKey: job.request.prompt.blueprint.id,
     provider: job.provider,
     publicUrl: storage.publicUrl,
@@ -299,7 +317,8 @@ export function createGeneratedAssetReference({
     storageKey: storage.storageKey,
     targetId: job.attachTarget.entityId,
     targetType: job.attachTarget.type,
-    url: storage.publicUrl
+    url: storage.publicUrl,
+    width: storage.width
   };
 }
 
@@ -379,7 +398,9 @@ export async function uploadGeneratedAssetToR2({
     output: {
       contentType,
       data: output.data,
-      publicUrl
+      height: plan.height,
+      publicUrl,
+      width: plan.width
     },
     plan: {
       ...plan,

@@ -1,4 +1,7 @@
-import type { VisualAssetSlot } from "@/lib/storefront/visual-assets";
+import {
+  visualAssetSlotSizing,
+  type VisualAssetSlot
+} from "@/lib/storefront/visual-assets";
 
 export type AIVisualPromptBlueprintId =
   | "ecommerce-product-photo"
@@ -186,22 +189,25 @@ export function renderAIVisualPrompt({
 }
 
 function slotRealismDirection(slot: VisualAssetSlot) {
+  const sizing = visualAssetSlotSizing(slot);
+  const sizingGuidance = `Required slot composition: ${sizing.composition} Target aspect ratio: ${sizing.aspectRatio}. Preferred generated canvas: ${sizing.width}x${sizing.height}. Fit mode in storefront: object-${sizing.fitMode}, object-position ${sizing.objectPosition}. Compose with safe margins so the image displays cleanly without stretching or awkward crop.`;
+
   if (slot.startsWith("product.")) {
-    return "Product primary image direction: show the real product as the hero subject, centered and clear, with realistic proportions, packaging/material details when relevant, commercial studio lighting, and no fake labels or invented brand marks.";
+    return `${sizingGuidance} Product primary image direction: show the real product as the hero subject, centered and clear, with realistic proportions, packaging/material details when relevant, commercial studio lighting, and no fake labels or invented brand marks.`;
   }
 
   if (slot.startsWith("category.")) {
-    return "Category image direction: show a small set of real products that match the category name and description. Avoid single symbolic objects unless the category truly requires it. Make it suitable for category cards and landing pages.";
+    return `${sizingGuidance} Category image direction: show a small set of real products that match the category name and description. Avoid single symbolic objects unless the category truly requires it. Make it suitable for category cards and landing pages.`;
   }
 
   if (slot.startsWith("hero.")) {
-    return "Hero banner direction: create a wide realistic commercial ecommerce scene with product/lifestyle styling and clean negative space for site copy overlays. Do not render text inside the image.";
+    return `${sizingGuidance} Hero banner direction: create a wide realistic commercial ecommerce scene with product/lifestyle styling and clean negative space for site copy overlays. Do not render text inside the image.`;
   }
 
   if (slot.startsWith("marketing.")) {
-    return "Promotion/banner direction: create a realistic sale or campaign product scene with commercial merchandising energy, but no rendered promo text, fake discounts, random typography, or UI elements.";
+    return `${sizingGuidance} Promotion/banner direction: create a realistic sale or campaign product scene with commercial merchandising energy, but no rendered promo text, fake discounts, random typography, or UI elements.`;
   }
 
-  return "Visual direction: realistic ecommerce photography, clean composition, and subject-specific commercial styling.";
+  return `${sizingGuidance} Visual direction: realistic ecommerce photography, clean composition, and subject-specific commercial styling.`;
 }
 

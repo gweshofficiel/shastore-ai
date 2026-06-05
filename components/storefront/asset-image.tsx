@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import type { ResolvedVisualAsset } from "@/lib/storefront/visual-assets";
 
@@ -9,6 +9,13 @@ type VisualTheme = {
   primary: string;
   secondary: string;
 };
+
+function assetImageStyle(asset: ResolvedVisualAsset): CSSProperties {
+  return {
+    objectFit: asset.fitMode,
+    objectPosition: asset.objectPosition
+  };
+}
 
 export function StorefrontAssetImage({
   asset,
@@ -37,8 +44,11 @@ export function StorefrontAssetImage({
     <img
       alt={asset.alt}
       className={className}
+      height={asset.height ?? undefined}
       onError={() => setFailed(true)}
       src={asset.url}
+      style={assetImageStyle(asset)}
+      width={asset.width ?? undefined}
     />
   );
 }
@@ -75,8 +85,11 @@ export function StorefrontPictureAsset({
       <img
         alt={desktop.alt}
         className={className}
+        height={desktop.height ?? undefined}
         onError={() => setFailed(true)}
         src={imageUrl}
+        style={assetImageStyle(desktop)}
+        width={desktop.width ?? undefined}
       />
     </picture>
   );
