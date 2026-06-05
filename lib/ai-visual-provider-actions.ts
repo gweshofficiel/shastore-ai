@@ -8,7 +8,15 @@ import {
   type AIVisualAssetRequest
 } from "@/lib/storefront/ai-visual-assets";
 import type { AIVisualPromptContext } from "@/lib/storefront/ai-visual-prompts";
-import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider";
+import { getAIVisualProviderAdapter, getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
+import {
+  canCreateAIVisualJobs,
+  canRetryAIVisualJob,
+  reserveAIVisualCreditsHook,
+  trackAIVisualJobCreated,
+  trackAIVisualJobRetry,
+  trackAIVisualJobStatus
+} from "@/lib/storefront/ai-visual-usage";
 import {
   aiVisualQueueFromStoreData,
   createAIVisualGenerationJob,
@@ -413,6 +421,32 @@ function bulkTemplateTargetId(storeId: string, slot: VisualAssetSlot) {
   return `${storeId}-${slot}`;
 }
 
+function aiVisualGenerationReadiness(storeData: Record<string, unknown>, requestedJobs = 1) {
+  const providerConfig = getAIVisualProviderRuntimeConfig();
+
+  if (providerConfig.status !== "configured") {
+    return {
+      allowed: false,
+      message: providerConfig.status === "missing_credentials"
+        ? "AI visual provider missing. Add provider credentials before queueing generation jobs."
+        : "AI visual provider is disabled. Enable a provider before queueing generation jobs.",
+      remaining: 0
+    };
+  }
+
+  const limit = canCreateAIVisualJobs(storeData, requestedJobs);
+
+  if (!limit.allowed) {
+    return limit;
+  }
+
+  return {
+    allowed: true,
+    message: null,
+    remaining: limit.remaining
+  };
+}
+
 function queueStoreData({
   jobs,
   pausedAt,
@@ -566,6 +600,16 @@ export async function requestAIVisualAssetGenerationAction(
   const pendingJob = provider.createPendingJob(request);
   const providerPlan = planAIVisualAssetProviderRequest(request);
   const storeData = asStoreData(storeRecord.store_data);
+  const readiness = aiVisualGenerationReadiness(storeData, 1);
+
+  if (!readiness.allowed) {
+    return {
+      ...defaultState,
+      error: readiness.message,
+      status: "failed"
+    };
+  }
+
   const queue = aiVisualQueueFromStoreData(storeData);
   const queuedJob = createAIVisualGenerationJob({
     jobId: pendingJob.jobId,
@@ -585,11 +629,17 @@ export async function requestAIVisualAssetGenerationAction(
     job: dispatch.job,
     storeData
   });
+  const trackedStoreData = reserveAIVisualCreditsHook({
+    storeData: trackAIVisualJobCreated({
+      job: dispatch.job,
+      storeData: nextStoreData
+    })
+  });
 
   const { error: updateError } = await supabase
     .from("stores" as never)
     .update({
-      store_data: nextStoreData,
+      store_data: trackedStoreData,
       updated_at: new Date().toISOString()
     } as never)
     .eq("id" as never, storeId as never)
@@ -734,6 +784,16 @@ export async function generateFullAIVisualPackageAction(
   }
 
   const queue = aiVisualQueueFromStoreData(context.storeData);
+  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
+
+  if (!readiness.allowed) {
+    return {
+      ...defaultBulkPackageState,
+      error: readiness.message,
+      status: "failed"
+    };
+  }
+
   const provider = getAIVisualProviderAdapter();
   const bulkPackageId = `ai-visual-bulk-${storeId}-${Date.now()}`;
   let nextStoreData = context.storeData;
@@ -742,7 +802,7 @@ export async function generateFullAIVisualPackageAction(
   const requestIds: string[] = [];
 
   for (const target of targets) {
-    if (requestIds.length >= AI_VISUAL_BULK_MAX_JOBS) {
+    if (requestIds.length >= Math.min(AI_VISUAL_BULK_MAX_JOBS, readiness.remaining)) {
       break;
     }
 
@@ -802,6 +862,12 @@ export async function generateFullAIVisualPackageAction(
     nextStoreData = upsertAIVisualQueueJob({
       job: dispatch.job,
       storeData: nextStoreData
+    });
+    nextStoreData = reserveAIVisualCreditsHook({
+      storeData: trackAIVisualJobCreated({
+        job: dispatch.job,
+        storeData: nextStoreData
+      })
     });
     requestIds.push(request.requestId);
   }
@@ -991,6 +1057,17 @@ export async function regenerateAIVisualAssetJobAction(
     };
   }
 
+  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
+
+  if (!readiness.allowed) {
+    return {
+      ...defaultState,
+      error: readiness.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
   const regeneratedRequestId = `${sourceJob.request.requestId}-regen-${Date.now()}`;
   const promptContext = await buildAIVisualPromptContext({
     entityId: sourceJob.request.entityId,
@@ -1040,10 +1117,16 @@ export async function regenerateAIVisualAssetJobAction(
     job: dispatch.job,
     storeData: context.storeData
   });
+  const trackedStoreData = reserveAIVisualCreditsHook({
+    storeData: trackAIVisualJobCreated({
+      job: dispatch.job,
+      storeData: nextStoreData
+    })
+  });
   const { error } = await context.supabase
     .from("stores" as never)
     .update({
-      store_data: nextStoreData,
+      store_data: trackedStoreData,
       updated_at: new Date().toISOString()
     } as never)
     .eq("id" as never, storeId as never)
@@ -1176,12 +1259,17 @@ export async function pauseAIVisualQueueAction(
         }
       : job
   ])) as Record<string, AIVisualGenerationJob>;
-  const nextStoreData = queueStoreData({
+  let nextStoreData: Record<string, unknown> = queueStoreData({
     jobs,
     pausedAt: timestamp,
     pausedByUserId: context.userId,
     storeData: context.storeData
   });
+  for (const job of Object.values(jobs)) {
+    if (job.status === "paused") {
+      nextStoreData = trackAIVisualJobStatus({ job, storeData: nextStoreData });
+    }
+  }
   const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
 
   if (error) {
@@ -1235,12 +1323,17 @@ export async function resumeAIVisualQueueAction(
         }
       : job
   ])) as Record<string, AIVisualGenerationJob>;
-  const nextStoreData = queueStoreData({
+  let nextStoreData: Record<string, unknown> = queueStoreData({
     jobs,
     pausedAt: null,
     pausedByUserId: null,
     storeData: context.storeData
   });
+  for (const job of Object.values(jobs)) {
+    if (job.status === "pending") {
+      nextStoreData = trackAIVisualJobStatus({ job, storeData: nextStoreData });
+    }
+  }
   const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
 
   if (error) {
@@ -1302,9 +1395,12 @@ export async function cancelPendingAIVisualJobAction(
     job,
     status: "cancelled"
   });
-  const nextStoreData = upsertAIVisualQueueJob({
+  const nextStoreData = trackAIVisualJobStatus({
     job: cancelledJob,
-    storeData: context.storeData
+    storeData: upsertAIVisualQueueJob({
+      job: cancelledJob,
+      storeData: context.storeData
+    })
   });
   const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
 
@@ -1365,6 +1461,28 @@ export async function retryFailedAIVisualJobAction(
     };
   }
 
+  const readiness = aiVisualGenerationReadiness(context.storeData, 1);
+
+  if (!readiness.allowed) {
+    return {
+      ...defaultQueueControlState,
+      error: readiness.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
+  const retryLimit = canRetryAIVisualJob(context.storeData, requestId);
+
+  if (!retryLimit.allowed) {
+    return {
+      ...defaultQueueControlState,
+      error: retryLimit.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
   const retriedJob: AIVisualGenerationJob = {
     ...job,
     attempts: 0,
@@ -1377,9 +1495,14 @@ export async function retryFailedAIVisualJobAction(
     updatedAt: new Date().toISOString(),
     workerSteps: createAIVisualWorkerSteps()
   };
-  const nextStoreData = upsertAIVisualQueueJob({
-    job: retriedJob,
-    storeData: context.storeData
+  const nextStoreData = reserveAIVisualCreditsHook({
+    storeData: trackAIVisualJobRetry({
+      job: retriedJob,
+      storeData: upsertAIVisualQueueJob({
+        job: retriedJob,
+        storeData: context.storeData
+      })
+    })
   });
   const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
 

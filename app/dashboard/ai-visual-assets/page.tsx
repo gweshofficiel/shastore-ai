@@ -14,6 +14,7 @@ import {
   updateAIVisualAssetApprovalAction
 } from "@/lib/ai-visual-provider-actions";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
+import { aiVisualUsageSummary, type AIVisualUsageSummary } from "@/lib/storefront/ai-visual-usage";
 import {
   aiVisualQueueFromStoreData,
   type AIVisualGenerationJob,
@@ -46,6 +47,18 @@ type AIVisualAssetsDashboardData = {
   products: ProductTarget[];
   queuePaused: boolean;
   stores: UserStoreRow[];
+  usageSummary: AIVisualUsageSummary;
+};
+
+const emptyUsageSummary: AIVisualUsageSummary = {
+  cancelledToday: 0,
+  completedToday: 0,
+  dailyLimit: 30,
+  failedToday: 0,
+  remainingDailyAllowance: 30,
+  retryLimit: 2,
+  todayJobs: 0,
+  totalGeneratedAssets: 0
 };
 
 const statusClasses: Record<AIVisualJobLifecycleStatus, string> = {
@@ -197,7 +210,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores: []
+      stores: [],
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -212,7 +226,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores: []
+      stores: [],
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -230,7 +245,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores: []
+      stores: [],
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -244,7 +260,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores
+      stores,
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -264,7 +281,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores
+      stores,
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -299,7 +317,8 @@ async function getAIVisualAssetsDashboardData(
       jobs: [],
       products: [],
       queuePaused: false,
-      stores
+      stores,
+      usageSummary: emptyUsageSummary
     };
   }
 
@@ -319,7 +338,8 @@ async function getAIVisualAssetsDashboardData(
     jobs,
     products: (productsResult.data ?? []) as unknown as ProductTarget[],
     queuePaused: Boolean(queue.pausedAt),
-    stores
+    stores,
+    usageSummary: aiVisualUsageSummary(storeData)
   };
 }
 
@@ -412,9 +432,10 @@ export default async function AIVisualAssetsDashboard({
   searchParams: Promise<{ storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, categories, error, jobs, products, queuePaused, stores } = await getAIVisualAssetsDashboardData(query.storeId);
+  const { activeStore, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
+  const generationAllowed = providerReady && usageSummary.remainingDailyAllowance > 0;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -471,7 +492,7 @@ export default async function AIVisualAssetsDashboard({
               <form action={queueFullAIVisualPackage} className="grid gap-2">
                 <input name="storeId" type="hidden" value={activeStore.id} />
                 <input name="templateId" type="hidden" value={activeStore.template_id ?? ""} />
-                <Button type="submit">
+                <Button disabled={!generationAllowed} type="submit">
                   Generate full visual package
                 </Button>
                 <p className="max-w-xs text-xs font-bold leading-5 text-slate-500">
@@ -481,9 +502,56 @@ export default async function AIVisualAssetsDashboard({
             </div>
           </Card>
 
+          {!providerReady ? (
+            <Card className="border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+              AI visual provider missing. Add provider credentials before queueing generation jobs.
+            </Card>
+          ) : null}
+
+          {providerReady && usageSummary.remainingDailyAllowance <= 0 ? (
+            <Card className="border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              AI visual daily limit reached. Try again tomorrow or wait for future credits support.
+            </Card>
+          ) : null}
+
+          <Card>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Usage today
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-ink">
+                  {usageSummary.remainingDailyAllowance} of {usageSummary.dailyLimit} jobs remaining
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                  AI visual jobs are tracked for cost control. Credits are prepared for future billing but users are not charged yet.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm font-bold text-muted sm:grid-cols-4">
+                <div className="rounded-2xl bg-slate-50 p-3">
+                  <p className="text-xl font-black text-ink">{usageSummary.todayJobs}</p>
+                  <p>Today jobs</p>
+                </div>
+                <div className="rounded-2xl bg-emerald-50 p-3">
+                  <p className="text-xl font-black text-emerald-700">{usageSummary.completedToday}</p>
+                  <p>Completed</p>
+                </div>
+                <div className="rounded-2xl bg-red-50 p-3">
+                  <p className="text-xl font-black text-red-700">{usageSummary.failedToday}</p>
+                  <p>Failed</p>
+                </div>
+                <div className="rounded-2xl bg-blue-50 p-3">
+                  <p className="text-xl font-black text-blue-700">{usageSummary.totalGeneratedAssets}</p>
+                  <p>Total assets</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {requestCards.map((card) => {
               const disabled =
+                !generationAllowed ||
                 (card.targetKind === "product" && !products.length) ||
                 (card.targetKind === "category" && !categories.length);
 
@@ -640,7 +708,7 @@ export default async function AIVisualAssetsDashboard({
                           <form action={regenerateAIVisualAsset}>
                             <input name="storeId" type="hidden" value={activeStore.id} />
                             <input name="requestId" type="hidden" value={job.requestId} />
-                            <Button type="submit" variant="secondary">
+                            <Button disabled={!generationAllowed} type="submit" variant="secondary">
                               Regenerate
                             </Button>
                           </form>
@@ -682,7 +750,7 @@ export default async function AIVisualAssetsDashboard({
                           <form action={retryAIVisualJob}>
                             <input name="storeId" type="hidden" value={activeStore.id} />
                             <input name="requestId" type="hidden" value={job.requestId} />
-                            <Button type="submit" variant="secondary">
+                            <Button disabled={!generationAllowed} type="submit" variant="secondary">
                               Retry failed job
                             </Button>
                           </form>

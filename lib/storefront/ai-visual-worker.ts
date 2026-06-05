@@ -7,6 +7,7 @@ import {
   createGeneratedAssetReference,
   uploadGeneratedAssetToR2
 } from "@/lib/storefront/ai-visual-storage";
+import { trackAIVisualJobStatus } from "@/lib/storefront/ai-visual-usage";
 import {
   aiVisualQueueFromStoreData,
   claimAIVisualGenerationJob,
@@ -129,10 +130,14 @@ async function persistWorkerJob({
   supabase: SupabaseServerClient;
   workspaceId: string;
 }) {
+  const nextStoreData = trackAIVisualJobStatus({
+    job,
+    storeData: upsertAIVisualQueueJob({ job, storeData })
+  });
   const { error } = await supabase
     .from("stores" as never)
     .update({
-      store_data: upsertAIVisualQueueJob({ job, storeData }),
+      store_data: nextStoreData,
       updated_at: new Date().toISOString()
     } as never)
     .eq("id" as never, job.storeId as never)
@@ -158,6 +163,7 @@ async function persistRecoveredStaleJobs({
 
   for (const job of jobs) {
     nextStoreData = upsertAIVisualQueueJob({ job, storeData: nextStoreData });
+    nextStoreData = trackAIVisualJobStatus({ job, storeData: nextStoreData });
   }
 
   const { error } = await supabase
@@ -341,9 +347,12 @@ export async function processPendingAIVisualAssetJob({
     };
   }
 
-  const claimedStoreData = upsertAIVisualQueueJob({
+  const claimedStoreData = trackAIVisualJobStatus({
     job: claimedJob,
-    storeData
+    storeData: upsertAIVisualQueueJob({
+      job: claimedJob,
+      storeData
+    })
   });
   const { data: claimRows, error: claimError } = await supabase
     .from("stores" as never)
