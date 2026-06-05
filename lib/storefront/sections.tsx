@@ -70,9 +70,8 @@ import {
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
 import {
-  generatedVisualAssetForTarget,
   resolveProductImageSlots,
-  resolveVisualAssetSlot
+  resolveVisualAssetSlotWithGenerated
 } from "@/lib/storefront/visual-assets";
 import {
   summarizeFlagshipProductGrid,
@@ -355,26 +354,18 @@ function productPrimaryImage(product: StoreTenantContext["preview"]["products"][
   return product.imageUrl || productGalleryUrls(product.gallery)[0] || null;
 }
 
-function productImageSlots(product: StoreTenantContext["preview"]["products"][number]) {
+function productImageSlots(
+  product: StoreTenantContext["preview"]["products"][number],
+  context: StoreTenantContext
+) {
   return resolveProductImageSlots({
     gallery: product.gallery,
+    generatedVisualAssets: context.preview.generatedVisualAssets,
     generatedPrimary: product.aiVisualAsset,
     primary: product.imageUrl,
+    storeId: context.preview.store.id,
+    targetId: product.id,
     title: product.title
-  });
-}
-
-function generatedHeroDesktopAsset(context: StoreTenantContext) {
-  return generatedVisualAssetForTarget({
-    generatedVisualAssets: context.preview.generatedVisualAssets,
-    slot: "hero.desktop",
-    targetId: `${context.preview.store.id}-hero.desktop`,
-    targetType: "banner"
-  }) ?? generatedVisualAssetForTarget({
-    generatedVisualAssets: context.preview.generatedVisualAssets,
-    slot: "hero.desktop",
-    targetId: "template",
-    targetType: "banner"
   });
 }
 
@@ -1136,7 +1127,7 @@ async function ProductGridSection({ context, section, selectedCurrency }: Sectio
                 }
               >
                 {section.products.map((product) => {
-            const imageSlots = productImageSlots(product);
+            const imageSlots = productImageSlots(product, context);
             const galleryImages = imageSlots.gallery.filter((asset) => asset.url);
             const currency = selectedCurrency ?? context.preview.store.currencySettings.defaultCurrency;
             const detailsHref = publicProductHref(context.preview.store.slug, product);
@@ -1627,7 +1618,8 @@ function HeroSection({ context, section }: { context: StoreTenantContext; sectio
     config,
     fallbackSubtitle: theme.heroSubtitle || (context.settings.description ?? ""),
     fallbackTitle: theme.heroTitle || context.settings.title,
-    generatedDesktopAsset: generatedHeroDesktopAsset(context),
+    generatedVisualAssets: context.preview.generatedVisualAssets,
+    storeId: context.preview.store.id,
     themeSettings: theme
   });
   const title = heroSlots.title;
@@ -1849,7 +1841,9 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
                 accentColor: context.theme.colorPalette.accent,
                 cardStyle: section.config.categoryCardStyle ?? section.config.cardStyle,
                 category,
-                fallbackIcon: Icon
+                fallbackIcon: Icon,
+                generatedVisualAssets: context.preview.generatedVisualAssets,
+                storeId: context.preview.store.id
               });
 
               return (
@@ -1899,7 +1893,9 @@ function CategoriesSection({ context, section }: { context: StoreTenantContext; 
                   name,
                   visual: null
                 },
-                fallbackIcon: Icon
+                fallbackIcon: Icon,
+                generatedVisualAssets: context.preview.generatedVisualAssets,
+                storeId: context.preview.store.id
               });
 
               return (
@@ -2219,7 +2215,7 @@ function FeaturedCollectionSection({ context, section }: SectionRenderProps) {
         {products.length ? (
           <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => {
-                  const imageSlots = productImageSlots(product);
+                  const imageSlots = productImageSlots(product, context);
 
               return (
                 <Link
@@ -2360,7 +2356,7 @@ function TrustBadgesSection({ context, section }: SectionRenderProps) {
   );
 }
 
-function promotionalSlotItems(section: StoreSection) {
+function promotionalSlotItems(section: StoreSection, context: StoreTenantContext) {
   const rawItems = Array.isArray(section.config.promotions)
     ? section.config.promotions
     : Array.isArray(section.config.items)
@@ -2382,10 +2378,13 @@ function promotionalSlotItems(section: StoreSection) {
               : "marketing.announcement";
 
       return {
-        bannerAsset: resolveVisualAssetSlot({
+        bannerAsset: resolveVisualAssetSlotWithGenerated({
           alt: title || eyebrow || `Promotion banner ${index + 1}`,
-          candidates: [item.bannerAsset, item.banner, item.bannerUrl, item.image, item.imageUrl],
-          slot
+          generatedVisualAssets: context.preview.generatedVisualAssets,
+          sectionCandidates: [item.bannerAsset, item.banner, item.bannerUrl, item.image, item.imageUrl],
+          slot,
+          storeId: context.preview.store.id,
+          targetId: textValue(item.id ?? item.assetId) || `${context.preview.store.id}-${slot}`
         }),
         body: textValue(item.body ?? item.subtitle),
         ctaHref: textValue(item.ctaHref ?? item.ctaLink),
@@ -2408,7 +2407,7 @@ function PromotionalBlocksSection({ context, section }: SectionRenderProps) {
         <VisualSlotPanel eyebrow="Promotions" subtitle={subtitle} title={title}>
           <PromotionStrips
             ctaHref={ctaHref}
-            items={promotionalSlotItems(section)}
+            items={promotionalSlotItems(section, context)}
             theme={context.theme.colorPalette}
           />
         </VisualSlotPanel>

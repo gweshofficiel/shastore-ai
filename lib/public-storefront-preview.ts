@@ -12,8 +12,8 @@ import { normalizeStoreCurrencySettings, type StoreCurrencySettings } from "@/li
 import { normalizeStoreLanguageSettings, type StoreLanguageSettings } from "@/lib/store-languages";
 import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/store-theme";
 import {
-  generatedVisualAssetForTarget,
   generatedVisualAssetsFromStoreData,
+  resolveGeneratedVisualAssetForSlot,
   type GeneratedVisualAssetStore,
   type VisualAssetReference
 } from "@/lib/storefront/visual-assets";
@@ -493,43 +493,28 @@ async function getStoreDataForPreview(client: SupabaseClient, storeId: string) {
 
 function withGeneratedVisualAssets(preview: PublicStorefrontPreview, storeData: unknown): PublicStorefrontPreview {
   const generatedVisualAssets = generatedVisualAssetsFromStoreData(storeData);
-  const heroAsset = generatedVisualAssetForTarget({
-    generatedVisualAssets,
-    slot: "hero.desktop",
-    targetId: `${preview.store.id}-hero.desktop`,
-    targetType: "banner"
-  }) ?? generatedVisualAssetForTarget({
-    generatedVisualAssets,
-    slot: "hero.desktop",
-    targetId: "template",
-    targetType: "banner"
-  });
 
   return {
     ...preview,
     categories: preview.categories.map((category) => ({
       ...category,
-      aiVisualAsset: generatedVisualAssetForTarget({
+      aiVisualAsset: resolveGeneratedVisualAssetForSlot({
         generatedVisualAssets,
         slot: "category.image",
-        targetId: category.id,
-        targetType: "category"
+        storeId: preview.store.id,
+        targetId: category.id
       }) ?? category.aiVisualAsset ?? null
     })),
     generatedVisualAssets,
     products: preview.products.map((product) => ({
       ...product,
-      aiVisualAsset: generatedVisualAssetForTarget({
+      aiVisualAsset: resolveGeneratedVisualAssetForSlot({
         generatedVisualAssets,
         slot: "product.primary",
-        targetId: product.id,
-        targetType: "product"
+        storeId: preview.store.id,
+        targetId: product.id
       }) ?? product.aiVisualAsset ?? null
-    })),
-    themeSettings: {
-      ...preview.themeSettings,
-      bannerImageUrl: heroAsset?.url ?? heroAsset?.publicUrl ?? preview.themeSettings.bannerImageUrl
-    }
+    }))
   };
 }
 
@@ -759,11 +744,11 @@ async function loadStoreModePublicPreview(slug: string) {
     .order("sort_order", { ascending: true });
   const generatedVisualAssets = generatedVisualAssetsFromStoreData(store.store_data);
   const savedCategories = ((categories ?? []) as Array<Record<string, unknown>>).map((category) => ({
-    aiVisualAsset: generatedVisualAssetForTarget({
+    aiVisualAsset: resolveGeneratedVisualAssetForSlot({
       generatedVisualAssets,
       slot: "category.image",
-      targetId: String(category.id ?? ""),
-      targetType: "category"
+      storeId: store.id,
+      targetId: String(category.id ?? "")
     }),
     description: textValue(category.description) || null,
     id: String(category.id ?? ""),
@@ -814,11 +799,11 @@ async function loadStoreModePublicPreview(slug: string) {
   }
   const salesSummaryByProduct = await loadProductSalesSummaries(client, store.id, productIds);
   const savedProducts = ((products ?? []) as Array<Record<string, unknown>>).map((product) => ({
-    aiVisualAsset: generatedVisualAssetForTarget({
+    aiVisualAsset: resolveGeneratedVisualAssetForSlot({
       generatedVisualAssets,
       slot: "product.primary",
-      targetId: String(product.id ?? ""),
-      targetType: "product"
+      storeId: store.id,
+      targetId: String(product.id ?? "")
     }),
     categoryId: typeof product.category_id === "string" ? product.category_id : null,
     categoryName:

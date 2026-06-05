@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   resolveCategoryImageSlots,
   resolveHeroBannerSlots,
+  type GeneratedVisualAssetStore,
   type ResolvedVisualAsset,
   type VisualAssetSource
 } from "@/lib/storefront/visual-assets";
@@ -105,26 +106,27 @@ export function resolveHeroVisualSlots({
   config,
   fallbackSubtitle,
   fallbackTitle,
-  generatedDesktopAsset,
+  generatedVisualAssets,
+  storeId,
   themeSettings
 }: {
   config: Record<string, unknown>;
   fallbackSubtitle: string;
   fallbackTitle: string;
-  generatedDesktopAsset?: unknown;
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
+  storeId?: string | null;
   themeSettings: StoreThemeSettings;
 }): HeroVisualSlots {
   const visual = configRecord(config.visual);
   const title = stringValue(config.title ?? visual.title, fallbackTitle);
-  const desktopCandidate =
+  const desktopSectionCandidate =
     config.desktopBannerAsset ??
     visual.desktopBannerAsset ??
     config.desktopBannerUrl ??
     config.desktopBanner ??
     visual.desktopBannerUrl ??
     visual.desktopBanner ??
-    config.bannerImageUrl ??
-    themeSettings.bannerImageUrl;
+    config.bannerImageUrl;
   const mobileCandidate =
     config.mobileBannerAsset ??
     visual.mobileBannerAsset ??
@@ -134,8 +136,12 @@ export function resolveHeroVisualSlots({
     visual.mobileBanner;
   const bannerSlots = resolveHeroBannerSlots({
     ctaOverlay: config.ctaOverlay ?? visual.ctaOverlay ?? visual.overlayAsset,
-    desktop: generatedDesktopAsset ?? desktopCandidate,
+    desktop: desktopSectionCandidate,
+    generatedVisualAssets,
     mobile: mobileCandidate,
+    storeId,
+    targetId: storeId ? `${storeId}-hero.desktop` : null,
+    themeDesktop: themeSettings.bannerImageUrl,
     title
   });
 
@@ -157,7 +163,9 @@ export function resolveCategoryVisualSlot({
   accentColor,
   cardStyle,
   category,
-  fallbackIcon
+  fallbackIcon,
+  generatedVisualAssets,
+  storeId
 }: {
   accentColor: string;
   cardStyle?: unknown;
@@ -166,18 +174,24 @@ export function resolveCategoryVisualSlot({
     asset?: unknown;
     aiVisualAsset?: unknown;
     cardStyle?: string | null;
+    id?: string | null;
     imageUrl?: string | null;
     name: string;
     visual?: unknown;
   };
   fallbackIcon: LucideIcon;
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
+  storeId?: string | null;
 }): CategoryVisualSlot {
   const visual = configRecord(category.visual);
   const imageSlots = resolveCategoryImageSlots({
     banner: visual.bannerImage ?? visual.bannerImageUrl ?? visual.categoryBannerImage ?? visual.categoryBannerImageUrl,
+    generatedVisualAssets,
     icon: visual.iconAsset ?? visual.iconImage ?? visual.iconImageUrl,
     image: category.aiVisualAsset ?? category.imageUrl ?? visual.imageAsset ?? visual.imageUrl ?? visual.generatedImageUrl,
-    name: category.name
+    name: category.name,
+    storeId,
+    targetId: category.id ?? null
   });
 
   return {

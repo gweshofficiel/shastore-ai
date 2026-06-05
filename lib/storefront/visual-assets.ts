@@ -70,6 +70,13 @@ export type GeneratedVisualAssetStore = Partial<
   Record<GeneratedVisualAssetTargetType, Record<string, Partial<Record<VisualAssetSlot, VisualAssetReference>>>>
 >;
 
+export type GeneratedVisualAssetSlotInput = {
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
+  slot: VisualAssetSlot;
+  storeId?: string | null;
+  targetId?: string | null;
+};
+
 export type MarketingBannerSlots = {
   announcement: ResolvedVisualAsset;
   collection: ResolvedVisualAsset;
@@ -247,6 +254,77 @@ export function generatedVisualAssetForTarget({
   return generatedVisualAssets[targetType]?.[targetId]?.[slot] ?? null;
 }
 
+function generatedVisualTargetTypesForSlot(slot: VisualAssetSlot): GeneratedVisualAssetTargetType[] {
+  if (slot.startsWith("product.")) {
+    return ["product"];
+  }
+
+  if (slot.startsWith("category.")) {
+    return ["category"];
+  }
+
+  if (slot === "marketing.collection") {
+    return ["collection", "banner"];
+  }
+
+  return ["banner"];
+}
+
+function generatedVisualTargetIdsForSlot({
+  slot,
+  storeId,
+  targetId
+}: Omit<GeneratedVisualAssetSlotInput, "generatedVisualAssets">) {
+  return Array.from(new Set([
+    targetId ?? null,
+    storeId ? `${storeId}-${slot}` : null,
+    slot,
+    "template"
+  ].filter((value): value is string => Boolean(value))));
+}
+
+export function resolveGeneratedVisualAssetForSlot({
+  generatedVisualAssets,
+  slot,
+  storeId,
+  targetId
+}: GeneratedVisualAssetSlotInput): VisualAssetReference | null {
+  if (!generatedVisualAssets) {
+    return null;
+  }
+
+  const targetTypes = generatedVisualTargetTypesForSlot(slot);
+  const targetIds = generatedVisualTargetIdsForSlot({ slot, storeId, targetId });
+
+  for (const targetType of targetTypes) {
+    for (const id of targetIds) {
+      const asset = generatedVisualAssets[targetType]?.[id]?.[slot];
+
+      if (asset) {
+        return asset;
+      }
+    }
+  }
+
+  for (const targetType of targetTypes) {
+    const targetGroup = generatedVisualAssets[targetType];
+
+    if (!targetGroup || targetType === "product" || targetType === "category") {
+      continue;
+    }
+
+    for (const slots of Object.values(targetGroup)) {
+      const asset = slots[slot];
+
+      if (asset) {
+        return asset;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function resolveVisualAssetSlot({
   alt,
   candidates,
@@ -271,6 +349,43 @@ export function resolveVisualAssetSlot({
   };
 }
 
+export function resolveVisualAssetSlotWithGenerated({
+  alt,
+  catalogCandidates = [],
+  fallbackCandidates = [],
+  generatedVisualAssets,
+  sectionCandidates = [],
+  slot,
+  storeId,
+  targetId,
+  themeCandidates = []
+}: GeneratedVisualAssetSlotInput & {
+  alt: string;
+  catalogCandidates?: unknown[];
+  fallbackCandidates?: unknown[];
+  sectionCandidates?: unknown[];
+  themeCandidates?: unknown[];
+}): ResolvedVisualAsset {
+  const generatedAsset = resolveGeneratedVisualAssetForSlot({
+    generatedVisualAssets,
+    slot,
+    storeId,
+    targetId
+  });
+
+  return resolveVisualAssetSlot({
+    alt,
+    candidates: [
+      generatedAsset,
+      ...themeCandidates,
+      ...sectionCandidates,
+      ...catalogCandidates,
+      ...fallbackCandidates
+    ],
+    slot
+  });
+}
+
 export function productGalleryAssetReferences(gallery: unknown[]) {
   return gallery.map(visualAssetReference).filter((asset): asset is VisualAssetReference => Boolean(asset));
 }
@@ -278,21 +393,31 @@ export function productGalleryAssetReferences(gallery: unknown[]) {
 export function resolveProductImageSlots({
   fallback,
   gallery,
+  generatedVisualAssets,
   generatedPrimary,
   primary,
+  storeId,
+  targetId,
   title
 }: {
   fallback?: unknown;
   gallery?: unknown[];
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
   generatedPrimary?: unknown;
   primary?: unknown;
+  storeId?: string | null;
+  targetId?: string | null;
   title: string;
 }): ProductImageSlots {
   const galleryAssets = productGalleryAssetReferences(gallery ?? []);
-  const primaryAsset = resolveVisualAssetSlot({
+  const primaryAsset = resolveVisualAssetSlotWithGenerated({
     alt: title,
-    candidates: [generatedPrimary, primary, ...galleryAssets],
-    slot: "product.primary"
+    catalogCandidates: [primary, ...galleryAssets],
+    generatedVisualAssets,
+    sectionCandidates: [generatedPrimary],
+    slot: "product.primary",
+    storeId,
+    targetId
   });
 
   return {
@@ -314,63 +439,131 @@ export function resolveProductImageSlots({
 
 export function resolveCategoryImageSlots({
   banner,
+  generatedVisualAssets,
   icon,
   image,
-  name
+  name,
+  storeId,
+  targetId
 }: {
   banner?: unknown;
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
   icon?: unknown;
   image?: unknown;
   name: string;
+  storeId?: string | null;
+  targetId?: string | null;
 }): CategoryImageSlots {
   return {
-    banner: resolveVisualAssetSlot({ alt: `${name} banner`, candidates: [banner, image], slot: "category.banner" }),
+    banner: resolveVisualAssetSlotWithGenerated({
+      alt: `${name} banner`,
+      catalogCandidates: [banner, image],
+      generatedVisualAssets,
+      slot: "category.banner",
+      storeId,
+      targetId
+    }),
     icon: resolveVisualAssetSlot({ alt: `${name} icon`, candidates: [icon], slot: "category.icon" }),
-    image: resolveVisualAssetSlot({ alt: name, candidates: [image, banner], slot: "category.image" })
+    image: resolveVisualAssetSlotWithGenerated({
+      alt: name,
+      catalogCandidates: [image, banner],
+      generatedVisualAssets,
+      slot: "category.image",
+      storeId,
+      targetId
+    })
   };
 }
 
 export function resolveHeroBannerSlots({
   ctaOverlay,
   desktop,
+  generatedVisualAssets,
   mobile,
+  storeId,
+  targetId,
+  themeDesktop,
+  themeMobile,
   title
 }: {
   ctaOverlay?: unknown;
   desktop?: unknown;
+  generatedVisualAssets?: GeneratedVisualAssetStore | null;
   mobile?: unknown;
+  storeId?: string | null;
+  targetId?: string | null;
+  themeDesktop?: unknown;
+  themeMobile?: unknown;
   title: string;
 }): HeroBannerSlots {
-  const desktopAsset = resolveVisualAssetSlot({ alt: title, candidates: [desktop, mobile], slot: "hero.desktop" });
+  const desktopAsset = resolveVisualAssetSlotWithGenerated({
+    alt: title,
+    generatedVisualAssets,
+    themeCandidates: [themeDesktop],
+    sectionCandidates: [desktop, mobile],
+    slot: "hero.desktop",
+    storeId,
+    targetId
+  });
 
   return {
-    ctaOverlay: resolveVisualAssetSlot({ alt: `${title} CTA overlay`, candidates: [ctaOverlay], slot: "hero.ctaOverlay" }),
+    ctaOverlay: resolveVisualAssetSlotWithGenerated({
+      alt: `${title} CTA overlay`,
+      generatedVisualAssets,
+      sectionCandidates: [ctaOverlay],
+      slot: "hero.ctaOverlay",
+      storeId,
+      targetId
+    }),
     desktop: desktopAsset,
-    mobile: resolveVisualAssetSlot({ alt: `${title} mobile`, candidates: [mobile, desktop], slot: "hero.mobile" })
+    mobile: resolveVisualAssetSlotWithGenerated({
+      alt: `${title} mobile`,
+      generatedVisualAssets,
+      themeCandidates: [themeMobile, themeDesktop],
+      sectionCandidates: [mobile, desktop],
+      slot: "hero.mobile",
+      storeId,
+      targetId
+    })
   };
 }
 
-export function resolveMarketingBannerSlots(config: Record<string, unknown>): MarketingBannerSlots {
+export function resolveMarketingBannerSlots(
+  config: Record<string, unknown>,
+  input: Omit<GeneratedVisualAssetSlotInput, "slot"> = {}
+): MarketingBannerSlots {
   return {
-    announcement: resolveVisualAssetSlot({
+    announcement: resolveVisualAssetSlotWithGenerated({
       alt: "Announcement banner",
-      candidates: [config.announcementBanner, config.announcementBannerUrl],
-      slot: "marketing.announcement"
+      generatedVisualAssets: input.generatedVisualAssets,
+      sectionCandidates: [config.announcementBanner, config.announcementBannerUrl],
+      slot: "marketing.announcement",
+      storeId: input.storeId,
+      targetId: input.targetId
     }),
-    collection: resolveVisualAssetSlot({
+    collection: resolveVisualAssetSlotWithGenerated({
       alt: "Collection banner",
-      candidates: [config.collectionBanner, config.collectionBannerUrl],
-      slot: "marketing.collection"
+      generatedVisualAssets: input.generatedVisualAssets,
+      sectionCandidates: [config.collectionBanner, config.collectionBannerUrl],
+      slot: "marketing.collection",
+      storeId: input.storeId,
+      targetId: input.targetId
     }),
-    flashSale: resolveVisualAssetSlot({
+    flashSale: resolveVisualAssetSlotWithGenerated({
       alt: "Flash sale banner",
-      candidates: [config.flashSaleBanner, config.flashSaleBannerUrl],
-      slot: "marketing.flashSale"
+      generatedVisualAssets: input.generatedVisualAssets,
+      sectionCandidates: [config.flashSaleBanner, config.flashSaleBannerUrl],
+      slot: "marketing.flashSale",
+      storeId: input.storeId,
+      targetId: input.targetId
     }),
-    seasonalSale: resolveVisualAssetSlot({
+    seasonalSale: resolveVisualAssetSlotWithGenerated({
       alt: "Seasonal sale banner",
-      candidates: [config.seasonalSaleBanner, config.seasonalSaleBannerUrl],
-      slot: "marketing.seasonalSale"
+      generatedVisualAssets: input.generatedVisualAssets,
+      sectionCandidates: [config.seasonalSaleBanner, config.seasonalSaleBannerUrl],
+      slot: "marketing.seasonalSale",
+      storeId: input.storeId,
+      targetId: input.targetId
     })
   };
 }

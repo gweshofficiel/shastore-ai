@@ -178,8 +178,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
   };
   const categoryImageSlots = resolveCategoryImageSlots({
     banner: category.aiVisualAsset ?? category.imageUrl,
+    generatedVisualAssets: preview.generatedVisualAssets,
     image: category.aiVisualAsset ?? category.imageUrl,
-    name: category.name
+    name: category.name,
+    storeId: preview.store.id,
+    targetId: category.id
   });
   const categoryHeroBackground = categoryImageSlots.banner.url
     ? undefined
@@ -272,8 +275,11 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                   const currency = product.currency || preview.store.currency;
                   const imageSlots = resolveProductImageSlots({
                     gallery: product.gallery,
+                    generatedVisualAssets: preview.generatedVisualAssets,
                     generatedPrimary: product.aiVisualAsset,
                     primary: product.imageUrl,
+                    storeId: preview.store.id,
+                    targetId: product.id,
                     title: product.title
                   });
 
