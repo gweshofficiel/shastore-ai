@@ -672,6 +672,21 @@ export async function requestAIVisualAssetGenerationAction(
   }
 
   const queue = aiVisualQueueFromStoreData(storeData);
+  const target: AIVisualBulkTarget = {
+    entityId,
+    entityTitle,
+    slot,
+    targetType: targetTypeForBulkSlot(slot)
+  };
+
+  if (hasActiveVisualJobForBulkTarget({ queue, target })) {
+    return {
+      ...defaultState,
+      error: "An active AI visual job already exists for this slot and target.",
+      status: "failed"
+    };
+  }
+
   const dispatch = dispatchAIVisualGenerationJob(queue.pausedAt
     ? {
         ...queuedJob,
@@ -1219,7 +1234,23 @@ export async function regenerateAIVisualAssetJobAction(
     };
   }
 
-  const queuePaused = Boolean(aiVisualQueueFromStoreData(context.storeData).pausedAt);
+  const queuePaused = Boolean(queue.pausedAt);
+  const target: AIVisualBulkTarget = {
+    entityId: sourceJob.request.entityId,
+    entityTitle: sourceJob.request.entityTitle,
+    slot: sourceJob.request.slot,
+    targetType: sourceJob.attachTarget.type
+  };
+
+  if (hasActiveVisualJobForBulkTarget({ queue, target })) {
+    return {
+      ...defaultState,
+      error: "An active AI visual job already exists for this slot and target.",
+      requestId,
+      status: "failed"
+    };
+  }
+
   const dispatch = dispatchAIVisualGenerationJob(queuePaused
     ? {
         ...queuedJob,

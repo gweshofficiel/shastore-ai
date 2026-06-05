@@ -497,8 +497,8 @@ export function updateGeneratedVisualAssetApproval({
     ? entityAssets[slot] as VisualAssetReference
     : {};
   const nextAsset: VisualAssetReference = {
-    ...asset,
     ...existingAsset,
+    ...asset,
     approvalStatus: status,
     approvedAt: status === "approved" ? timestamp : existingAsset.approvedAt ?? null,
     disabledAt: status === "disabled" ? timestamp : existingAsset.disabledAt ?? null,

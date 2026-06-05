@@ -32,6 +32,7 @@ import {
 } from "@/lib/storefront/ai-visual-queue";
 import type { VisualAssetSlot } from "@/lib/storefront/visual-assets";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
@@ -345,6 +346,7 @@ async function getAIVisualAssetsDashboardData(
     };
   }
 
+  const auditClient = createAdminClient() ?? supabase;
   const [storeResult, productsResult, categoriesResult, auditResult] = await Promise.all([
     supabase
       .from("stores" as never)
@@ -366,7 +368,7 @@ async function getAIVisualAssetsDashboardData(
       .eq("workspace_id" as never, workspaceId as never)
       .order("name", { ascending: true })
       .limit(25),
-    supabase
+    auditClient
       .from("store_audit_logs" as never)
       .select("id, action, actor_user_id, metadata, store_id, created_at")
       .eq("store_id" as never, activeStore.id as never)
