@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  generateFullAIVisualPackageAction,
   regenerateAIVisualAssetJobAction,
   requestAIVisualAssetGenerationAction,
   triggerAIVisualAssetWorkerAction,
@@ -83,6 +84,12 @@ async function queueAIVisualAssetGeneration(formData: FormData) {
   "use server";
 
   await requestAIVisualAssetGenerationAction(undefined, formData);
+}
+
+async function queueFullAIVisualPackage(formData: FormData) {
+  "use server";
+
+  await generateFullAIVisualPackageAction(undefined, formData);
 }
 
 async function processAIVisualAssetJob(formData: FormData) {
@@ -405,15 +412,29 @@ export default async function AIVisualAssetsDashboard({
       {activeStore ? (
         <>
           <Card className={providerReady ? "border-emerald-100 bg-emerald-50" : "border-amber-100 bg-amber-50"}>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-              Provider status
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              {providerReady ? "Provider configured" : "Provider not configured"}
-            </h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-              Current provider: {providerConfig.provider}. R2 storage: {providerConfig.r2Configured ? "configured" : "not configured"}. API keys stay server-side and are never rendered in this panel.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Provider status
+                </p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
+                  {providerReady ? "Provider configured" : "Provider not configured"}
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-muted">
+                  Current provider: {providerConfig.provider}. R2 storage: {providerConfig.r2Configured ? "configured" : "not configured"}. API keys stay server-side and are never rendered in this panel.
+                </p>
+              </div>
+              <form action={queueFullAIVisualPackage} className="grid gap-2">
+                <input name="storeId" type="hidden" value={activeStore.id} />
+                <input name="templateId" type="hidden" value={activeStore.template_id ?? ""} />
+                <Button type="submit">
+                  Generate full visual package
+                </Button>
+                <p className="max-w-xs text-xs font-bold leading-5 text-slate-500">
+                  Queues up to 12 shared-runtime visuals, skipping approved assets and active jobs.
+                </p>
+              </form>
+            </div>
           </Card>
 
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">

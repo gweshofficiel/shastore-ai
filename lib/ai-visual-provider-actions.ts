@@ -18,8 +18,17 @@ import {
 } from "@/lib/storefront/ai-visual-queue";
 import { updateGeneratedVisualAssetApproval } from "@/lib/storefront/ai-visual-storage";
 import { processPendingAIVisualAssetJob } from "@/lib/storefront/ai-visual-worker";
-import { sharedTemplateVisualAssetSlots } from "@/lib/storefront/template-blueprints";
-import type { VisualAssetApprovalStatus, VisualAssetSlot } from "@/lib/storefront/visual-assets";
+import {
+  getTemplateBlueprintForTemplate,
+  sharedTemplateVisualAssetSlots
+} from "@/lib/storefront/template-blueprints";
+import {
+  generatedVisualAssetsFromStoreData,
+  visualAssetApprovalStatus,
+  type GeneratedVisualAssetTargetType,
+  type VisualAssetApprovalStatus,
+  type VisualAssetSlot
+} from "@/lib/storefront/visual-assets";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
 import { createClient } from "@/lib/supabase/server";
@@ -48,6 +57,18 @@ export type AIVisualApprovalActionState = {
   status: "idle" | "approved" | "rejected" | "disabled" | "failed";
 };
 
+export type AIVisualBulkPackageActionState = {
+  error: string | null;
+  maxJobs: number;
+  ok: boolean;
+  queued: number;
+  requestIds: string[];
+  skippedApproved: number;
+  skippedActive: number;
+  skippedUnsupported: number;
+  status: "idle" | "queued" | "no_targets" | "failed";
+};
+
 type ReviewableVisualApprovalStatus = Exclude<VisualAssetApprovalStatus, "generated">;
 
 type AuthorizedAIVisualStoreContext =
@@ -61,6 +82,7 @@ type AuthorizedAIVisualStoreContext =
       storeData: Record<string, unknown>;
       storeName: string;
       storeSlug: string | null;
+      storeTemplateId: string | null;
       supabase: Awaited<ReturnType<typeof createClient>>;
       userId: string;
       workspaceId: string;
@@ -87,6 +109,22 @@ const defaultApprovalState: AIVisualApprovalActionState = {
   error: null,
   ok: false,
   requestId: null,
+  status: "idle"
+};
+
+const AI_VISUAL_BULK_MAX_JOBS = 12;
+const AI_VISUAL_BULK_CATEGORY_LIMIT = 4;
+const AI_VISUAL_BULK_PRODUCT_LIMIT = 5;
+
+const defaultBulkPackageState: AIVisualBulkPackageActionState = {
+  error: null,
+  maxJobs: AI_VISUAL_BULK_MAX_JOBS,
+  ok: false,
+  queued: 0,
+  requestIds: [],
+  skippedActive: 0,
+  skippedApproved: 0,
+  skippedUnsupported: 0,
   status: "idle"
 };
 
@@ -229,7 +267,7 @@ async function loadAuthorizedAIVisualStore({
 
   const { data: storeRow, error: storeError } = await supabase
     .from("stores" as never)
-    .select("id, name, slug, store_name, store_data")
+    .select("id, name, slug, store_name, store_data, template_id")
     .eq("id" as never, storeId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
@@ -238,7 +276,13 @@ async function loadAuthorizedAIVisualStore({
     return { error: storeError?.message ?? "Store not found.", ok: false };
   }
 
-  const storeRecord = storeRow as { name?: unknown; slug?: unknown; store_data?: unknown; store_name?: unknown };
+  const storeRecord = storeRow as {
+    name?: unknown;
+    slug?: unknown;
+    store_data?: unknown;
+    store_name?: unknown;
+    template_id?: unknown;
+  };
 
   return {
     error: null,
@@ -246,6 +290,7 @@ async function loadAuthorizedAIVisualStore({
     storeData: asStoreData(storeRecord.store_data),
     storeName: textValue(storeRecord.store_name, 180) || textValue(storeRecord.name, 180) || "Store",
     storeSlug: textValue(storeRecord.slug, 180) || null,
+    storeTemplateId: textValue(storeRecord.template_id, 120) || null,
     supabase,
     userId: user.id,
     workspaceId
@@ -265,6 +310,86 @@ function attachedAssetIdForJob(storeData: Record<string, unknown>, job: AIVisual
     : {};
 
   return textValue(asset.assetId, 240);
+}
+
+type AIVisualBulkTarget = {
+  entityId: string | null;
+  entityTitle: string;
+  slot: VisualAssetSlot;
+  targetType: GeneratedVisualAssetTargetType;
+};
+
+function targetTypeForBulkSlot(slot: VisualAssetSlot): GeneratedVisualAssetTargetType {
+  if (slot.startsWith("product.")) {
+    return "product";
+  }
+
+  if (slot.startsWith("category.")) {
+    return "category";
+  }
+
+  if (slot === "marketing.collection") {
+    return "collection";
+  }
+
+  return "banner";
+}
+
+function activeGeneratedAssetForBulkTarget({
+  storeData,
+  target
+}: {
+  storeData: Record<string, unknown>;
+  target: AIVisualBulkTarget;
+}) {
+  const generatedVisualAssets = generatedVisualAssetsFromStoreData(storeData);
+  const targetGroup = generatedVisualAssets[target.targetType];
+  const entityKey = target.entityId ?? "template";
+
+  return targetGroup?.[entityKey]?.[target.slot] ?? null;
+}
+
+function hasApprovedVisualForBulkTarget({
+  queue,
+  storeData,
+  target
+}: {
+  queue: ReturnType<typeof aiVisualQueueFromStoreData>;
+  storeData: Record<string, unknown>;
+  target: AIVisualBulkTarget;
+}) {
+  const activeAsset = activeGeneratedAssetForBulkTarget({ storeData, target });
+
+  if (activeAsset && visualAssetApprovalStatus(activeAsset) === "approved") {
+    return true;
+  }
+
+  return Object.values(queue.jobs).some((job) => (
+    job.slot === target.slot &&
+    job.attachTarget.type === target.targetType &&
+    (job.attachTarget.entityId ?? "template") === (target.entityId ?? "template") &&
+    job.result?.asset &&
+    visualAssetApprovalStatus(job.result.asset) === "approved"
+  ));
+}
+
+function hasActiveVisualJobForBulkTarget({
+  queue,
+  target
+}: {
+  queue: ReturnType<typeof aiVisualQueueFromStoreData>;
+  target: AIVisualBulkTarget;
+}) {
+  return Object.values(queue.jobs).some((job) => (
+    (job.status === "pending" || job.status === "processing") &&
+    job.slot === target.slot &&
+    job.attachTarget.type === target.targetType &&
+    (job.attachTarget.entityId ?? "template") === (target.entityId ?? "template")
+  ));
+}
+
+function bulkTemplateTargetId(storeId: string, slot: VisualAssetSlot) {
+  return `${storeId}-${slot}`;
 }
 
 export async function requestAIVisualAssetGenerationAction(
@@ -411,6 +536,235 @@ export async function requestAIVisualAssetGenerationAction(
     providerStatus: pendingJob.providerStatus,
     requestId: request.requestId,
     status: "pending"
+  };
+}
+
+export async function generateFullAIVisualPackageAction(
+  _prevState: AIVisualBulkPackageActionState = defaultBulkPackageState,
+  formData: FormData
+): Promise<AIVisualBulkPackageActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+  const formTemplateId = textValue(formData.get("templateId"), 120) || null;
+
+  if (!storeId) {
+    return {
+      ...defaultBulkPackageState,
+      error: "Store is required to generate a full visual package.",
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultBulkPackageState,
+      error: context.error,
+      status: "failed"
+    };
+  }
+
+  const templateId = context.storeTemplateId ?? formTemplateId;
+  const blueprint = getTemplateBlueprintForTemplate(templateId);
+  const supportedSlots = new Set(blueprint.visualAssetSlots);
+  const requestedTemplateSlots: VisualAssetSlot[] = [
+    "hero.desktop",
+    "category.image",
+    "product.primary",
+    "marketing.collection",
+    "marketing.announcement",
+    "marketing.flashSale",
+    "marketing.seasonalSale"
+  ];
+  const unsupportedSlotCount = requestedTemplateSlots.filter((slot) => !supportedSlots.has(slot)).length;
+  const [productsResult, categoriesResult] = await Promise.all([
+    supportedSlots.has("product.primary")
+      ? context.supabase
+          .from("store_products" as never)
+          .select("id, title, name")
+          .eq("store_id" as never, storeId as never)
+          .eq("workspace_id" as never, context.workspaceId as never)
+          .order("created_at", { ascending: false })
+          .limit(AI_VISUAL_BULK_PRODUCT_LIMIT)
+      : Promise.resolve({ data: [], error: null }),
+    supportedSlots.has("category.image")
+      ? context.supabase
+          .from("store_categories" as never)
+          .select("id, name")
+          .eq("store_id" as never, storeId as never)
+          .eq("workspace_id" as never, context.workspaceId as never)
+          .order("name", { ascending: true })
+          .limit(AI_VISUAL_BULK_CATEGORY_LIMIT)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (productsResult.error || categoriesResult.error) {
+    return {
+      ...defaultBulkPackageState,
+      error: productsResult.error?.message ?? categoriesResult.error?.message ?? "Bulk visual targets could not be loaded.",
+      status: "failed"
+    };
+  }
+
+  const targets: AIVisualBulkTarget[] = [];
+
+  if (supportedSlots.has("hero.desktop")) {
+    targets.push({
+      entityId: bulkTemplateTargetId(storeId, "hero.desktop"),
+      entityTitle: `${context.storeName} hero banner`,
+      slot: "hero.desktop",
+      targetType: "banner"
+    });
+  }
+
+  for (const category of (categoriesResult.data ?? []) as Array<Record<string, unknown>>) {
+    const id = textValue(category.id, 120);
+    const name = textValue(category.name, 180);
+
+    if (id && name) {
+      targets.push({
+        entityId: id,
+        entityTitle: name,
+        slot: "category.image",
+        targetType: "category"
+      });
+    }
+  }
+
+  for (const product of (productsResult.data ?? []) as Array<Record<string, unknown>>) {
+    const id = textValue(product.id, 120);
+    const title = textValue(product.title, 180) || textValue(product.name, 180);
+
+    if (id && title) {
+      targets.push({
+        entityId: id,
+        entityTitle: title,
+        slot: "product.primary",
+        targetType: "product"
+      });
+    }
+  }
+
+  for (const slot of ["marketing.collection", "marketing.announcement", "marketing.flashSale", "marketing.seasonalSale"] as VisualAssetSlot[]) {
+    if (supportedSlots.has(slot)) {
+      targets.push({
+        entityId: bulkTemplateTargetId(storeId, slot),
+        entityTitle: `${context.storeName} ${slot.replace("marketing.", "").replace(/([A-Z])/g, " $1").toLowerCase()} banner`,
+        slot,
+        targetType: targetTypeForBulkSlot(slot)
+      });
+    }
+  }
+
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+  const provider = getAIVisualProviderAdapter();
+  const bulkPackageId = `ai-visual-bulk-${storeId}-${Date.now()}`;
+  let nextStoreData = context.storeData;
+  let skippedActive = 0;
+  let skippedApproved = 0;
+  const requestIds: string[] = [];
+
+  for (const target of targets) {
+    if (requestIds.length >= AI_VISUAL_BULK_MAX_JOBS) {
+      break;
+    }
+
+    if (hasApprovedVisualForBulkTarget({ queue, storeData: nextStoreData, target })) {
+      skippedApproved += 1;
+      continue;
+    }
+
+    if (hasActiveVisualJobForBulkTarget({ queue, target })) {
+      skippedActive += 1;
+      continue;
+    }
+
+    const promptContext = await buildAIVisualPromptContext({
+      entityId: target.entityId,
+      entityTitle: target.entityTitle,
+      slot: target.slot,
+      storeId,
+      storeName: context.storeName,
+      supabase: context.supabase,
+      workspaceId: context.workspaceId
+    });
+    const request = createAIVisualAssetRequest({
+      entityId: target.entityId,
+      entityTitle: target.entityTitle,
+      kind: requestKindForVisualAssetSlot(target.slot),
+      metadata: {
+        bulkPackageId,
+        bulkPackageIndex: requestIds.length,
+        source: "bulk_package_action",
+        templateBlueprintId: blueprint.id,
+        workspaceId: context.workspaceId
+      },
+      promptContext,
+      requestedByUserId: context.userId,
+      requestId: `${bulkPackageId}-${requestIds.length + 1}-${target.slot.replace(/\./g, "-")}`,
+      slot: target.slot,
+      storeId,
+      templateId
+    });
+    const pendingJob = provider.createPendingJob(request);
+    const providerPlan = planAIVisualAssetProviderRequest(request);
+    const queuedJob = createAIVisualGenerationJob({
+      jobId: pendingJob.jobId,
+      provider: pendingJob.provider,
+      providerPlan,
+      providerStatus: pendingJob.providerStatus,
+      request,
+      workspaceId: context.workspaceId
+    });
+    const dispatch = dispatchAIVisualGenerationJob(queuedJob);
+    nextStoreData = upsertAIVisualQueueJob({
+      job: dispatch.job,
+      storeData: nextStoreData
+    });
+    requestIds.push(request.requestId);
+  }
+
+  if (!requestIds.length) {
+    return {
+      ...defaultBulkPackageState,
+      ok: true,
+      skippedActive,
+      skippedApproved,
+      skippedUnsupported: unsupportedSlotCount,
+      status: "no_targets"
+    };
+  }
+
+  const { error } = await context.supabase
+    .from("stores" as never)
+    .update({
+      store_data: nextStoreData,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, storeId as never)
+    .eq("workspace_id" as never, context.workspaceId as never);
+
+  if (error) {
+    return {
+      ...defaultBulkPackageState,
+      error: error.message,
+      status: "failed"
+    };
+  }
+
+  revalidatePath(`/dashboard/stores/${storeId}`);
+  revalidatePath("/dashboard/ai-visual-assets");
+
+  return {
+    error: null,
+    maxJobs: AI_VISUAL_BULK_MAX_JOBS,
+    ok: true,
+    queued: requestIds.length,
+    requestIds,
+    skippedActive,
+    skippedApproved,
+    skippedUnsupported: unsupportedSlotCount,
+    status: "queued"
   };
 }
 
