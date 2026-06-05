@@ -151,7 +151,8 @@ export function createAIVisualAssetRequest(input: AIVisualAssetRequestInput): AI
   const blueprint = promptBlueprintForAssetSlot(input.slot);
   const promptText = renderAIVisualPrompt({
     blueprint,
-    context: input.promptContext ?? {}
+    context: input.promptContext ?? {},
+    slot: input.slot
   });
 
   return {

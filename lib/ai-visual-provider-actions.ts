@@ -7,6 +7,7 @@ import {
   requestKindForVisualAssetSlot,
   type AIVisualAssetRequest
 } from "@/lib/storefront/ai-visual-assets";
+import type { AIVisualPromptContext } from "@/lib/storefront/ai-visual-prompts";
 import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider";
 import {
   createAIVisualGenerationJob,
@@ -64,6 +65,87 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asStoreData(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
+}
+
+async function buildAIVisualPromptContext({
+  entityId,
+  entityTitle,
+  slot,
+  storeId,
+  storeName,
+  supabase,
+  workspaceId
+}: {
+  entityId: string | null;
+  entityTitle: string;
+  slot: VisualAssetSlot;
+  storeId: string;
+  storeName: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string;
+}): Promise<AIVisualPromptContext> {
+  const baseContext: AIVisualPromptContext = {
+    brandName: storeName,
+    categoryName: entityTitle,
+    collectionName: entityTitle,
+    marketingTheme: entityTitle,
+    productName: entityTitle,
+    slotType: slot,
+    storeName
+  };
+
+  if (slot.startsWith("product.") && entityId) {
+    const { data: product } = await supabase
+      .from("store_products" as never)
+      .select("id, title, name, description, category_id")
+      .eq("id" as never, entityId as never)
+      .eq("store_id" as never, storeId as never)
+      .eq("workspace_id" as never, workspaceId as never)
+      .maybeSingle();
+    const productRow: Record<string, unknown> = isRecord(product) ? product : {};
+    const categoryId = textValue(productRow.category_id, 80) || null;
+    let productCategory = "";
+
+    if (categoryId) {
+      const { data: category } = await supabase
+        .from("store_categories" as never)
+        .select("name")
+        .eq("id" as never, categoryId as never)
+        .eq("store_id" as never, storeId as never)
+        .eq("workspace_id" as never, workspaceId as never)
+        .maybeSingle();
+      const categoryRow: Record<string, unknown> = isRecord(category) ? category : {};
+      productCategory = textValue(categoryRow.name, 120);
+    }
+
+    return {
+      ...baseContext,
+      categoryName: productCategory || baseContext.categoryName,
+      productCategory: productCategory || baseContext.categoryName,
+      productDescription: textValue(productRow.description, 500),
+      productName: textValue(productRow.title, 180) || textValue(productRow.name, 180) || entityTitle
+    };
+  }
+
+  if (slot.startsWith("category.") && entityId) {
+    const { data: category } = await supabase
+      .from("store_categories" as never)
+      .select("id, name, description")
+      .eq("id" as never, entityId as never)
+      .eq("store_id" as never, storeId as never)
+      .eq("workspace_id" as never, workspaceId as never)
+      .maybeSingle();
+    const categoryRow: Record<string, unknown> = isRecord(category) ? category : {};
+
+    return {
+      ...baseContext,
+      categoryDescription: textValue(categoryRow.description, 500),
+      categoryName: textValue(categoryRow.name, 180) || entityTitle,
+      productCategory: textValue(categoryRow.name, 180) || entityTitle
+    };
+  }
+
+  return baseContext;
 }
 
 function requestedSlot(value: unknown): VisualAssetSlot | null {
@@ -133,7 +215,7 @@ export async function requestAIVisualAssetGenerationAction(
 
   const { data: storeRow, error: storeError } = await supabase
     .from("stores" as never)
-    .select("id, store_data")
+    .select("id, name, store_name, store_data")
     .eq("id" as never, storeId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
@@ -146,6 +228,18 @@ export async function requestAIVisualAssetGenerationAction(
     };
   }
 
+  const storeRecord = storeRow as { name?: unknown; store_data?: unknown; store_name?: unknown };
+  const storeName = textValue(storeRecord.store_name, 180) || textValue(storeRecord.name, 180) || entityTitle;
+  const promptContext = await buildAIVisualPromptContext({
+    entityId,
+    entityTitle,
+    slot,
+    storeId,
+    storeName,
+    supabase,
+    workspaceId
+  });
+
   const request = createAIVisualAssetRequest({
     entityId,
     entityTitle,
@@ -154,6 +248,7 @@ export async function requestAIVisualAssetGenerationAction(
       source: "server_action",
       workspaceId
     },
+    promptContext,
     requestedByUserId: user.id,
     slot,
     storeId,
@@ -162,7 +257,7 @@ export async function requestAIVisualAssetGenerationAction(
   const provider = getAIVisualProviderAdapter();
   const pendingJob = provider.createPendingJob(request);
   const providerPlan = planAIVisualAssetProviderRequest(request);
-  const storeData = asStoreData((storeRow as { store_data?: unknown }).store_data);
+  const storeData = asStoreData(storeRecord.store_data);
   const queuedJob = createAIVisualGenerationJob({
     jobId: pendingJob.jobId,
     provider: pendingJob.provider,

@@ -10,11 +10,16 @@ export type AIVisualPromptBlueprintId =
 export type AIVisualPromptVariable =
   | "brandName"
   | "categoryName"
+  | "categoryDescription"
   | "collectionName"
   | "colorPalette"
   | "industry"
   | "marketingTheme"
+  | "productCategory"
+  | "productDescription"
   | "productName"
+  | "slotType"
+  | "storeName"
   | "style"
   | "targetAudience"
   | "visualMood";
@@ -35,7 +40,19 @@ const defaultNegativePrompt = [
   "No logos unless provided by the merchant.",
   "No copyrighted characters, brand marks, or celebrity likenesses.",
   "No checkout UI, payment details, private information, or misleading medical claims.",
-  "No text-heavy layouts; keep any text area clean for runtime copy overlays."
+  "No illustration, cartoon, vector art, icon, flat drawing, mascot, symbolic placeholder, or fake UI.",
+  "No unreadable fake text, random letters, watermarks, labels, badges, or text-heavy layouts unless explicit merchant copy is provided.",
+  "No abstract-only graphics; the image must show real ecommerce subjects with believable materials and textures."
+].join(" ");
+
+const realismStyleGuide = [
+  "Photorealistic ecommerce visual.",
+  "Real product photography, not illustration.",
+  "Premium ecommerce catalog quality.",
+  "Professional studio lighting with realistic shadows.",
+  "Real materials, realistic textures, natural reflections, and believable depth of field.",
+  "Clean commercial background suitable for a modern online store.",
+  "High-resolution, sharp, polished, conversion-focused composition."
 ].join(" ");
 
 export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
@@ -45,9 +62,9 @@ export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
     id: "ecommerce-product-photo",
     negativePrompt: defaultNegativePrompt,
     promptTemplate:
-      "Create a clean ecommerce product photo for {{productName}} in the {{industry}} industry. Use a {{style}} visual style, {{colorPalette}} palette, premium lighting, clear product focus, and a simple commerce-ready background.",
+      "Create a realistic ecommerce product photograph of {{productName}}. Product category: {{productCategory}}. Product details: {{productDescription}}. Store: {{storeName}}. Industry: {{industry}}. Use {{style}} styling and a {{colorPalette}} palette.",
     title: "Ecommerce product photo",
-    variables: ["productName", "industry", "style", "colorPalette"]
+    variables: ["productName", "productCategory", "productDescription", "storeName", "industry", "style", "colorPalette"]
   },
   {
     defaultSlot: "category.image",
@@ -55,9 +72,9 @@ export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
     id: "clean-category-visual",
     negativePrompt: defaultNegativePrompt,
     promptTemplate:
-      "Create a clean category visual for {{categoryName}}. Match a {{style}} storefront for {{targetAudience}}, use {{colorPalette}} colors, and keep the composition simple enough for category card cropping.",
+      "Create a realistic ecommerce category image for {{categoryName}}. Category details: {{categoryDescription}}. Store: {{storeName}}. Match a {{style}} storefront for {{targetAudience}}, use {{colorPalette}} colors, and show real products that clearly belong to this category.",
     title: "Clean category visual",
-    variables: ["categoryName", "style", "targetAudience", "colorPalette"]
+    variables: ["categoryName", "categoryDescription", "storeName", "style", "targetAudience", "colorPalette"]
   },
   {
     defaultSlot: "hero.desktop",
@@ -65,9 +82,9 @@ export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
     id: "premium-hero-banner",
     negativePrompt: defaultNegativePrompt,
     promptTemplate:
-      "Create a premium ecommerce hero banner for {{brandName}}. Industry: {{industry}}. Mood: {{visualMood}}. Style: {{style}}. Leave generous negative space for headline and CTA overlay, with a polished {{colorPalette}} palette.",
+      "Create a realistic premium ecommerce hero banner for {{brandName}} / {{storeName}}. Industry: {{industry}}. Mood: {{visualMood}}. Style: {{style}}. Feature a believable commercial lifestyle or product scene with generous negative space for runtime headline and CTA overlay, using a polished {{colorPalette}} palette.",
     title: "Premium hero banner",
-    variables: ["brandName", "industry", "visualMood", "style", "colorPalette"]
+    variables: ["brandName", "storeName", "industry", "visualMood", "style", "colorPalette"]
   },
   {
     defaultSlot: "marketing.seasonalSale",
@@ -75,9 +92,9 @@ export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
     id: "seasonal-promotion-banner",
     negativePrompt: defaultNegativePrompt,
     promptTemplate:
-      "Create a seasonal ecommerce promotion banner for {{brandName}}. Campaign theme: {{marketingTheme}}. Industry: {{industry}}. Use {{style}} styling, {{colorPalette}} colors, and clear space for runtime promo copy.",
+      "Create a realistic ecommerce promotion banner for {{brandName}} / {{storeName}}. Campaign theme: {{marketingTheme}}. Industry: {{industry}}. Use {{style}} styling, {{colorPalette}} colors, realistic sale products, and clear space for runtime promo copy.",
     title: "Seasonal promotion banner",
-    variables: ["brandName", "marketingTheme", "industry", "style", "colorPalette"]
+    variables: ["brandName", "storeName", "marketingTheme", "industry", "style", "colorPalette"]
   },
   {
     defaultSlot: "marketing.collection",
@@ -85,14 +102,42 @@ export const aiVisualPromptBlueprintRegistry: AIVisualPromptBlueprint[] = [
     id: "collection-banner",
     negativePrompt: defaultNegativePrompt,
     promptTemplate:
-      "Create an ecommerce collection banner for {{collectionName}} by {{brandName}}. Use {{style}} styling for {{targetAudience}}, a {{colorPalette}} palette, and a clean composition suitable for responsive storefront banners.",
+      "Create a realistic ecommerce collection banner for {{collectionName}} by {{brandName}} / {{storeName}}. Use {{style}} styling for {{targetAudience}}, a {{colorPalette}} palette, and real products arranged in a clean responsive storefront banner composition.",
     title: "Collection banner",
-    variables: ["collectionName", "brandName", "style", "targetAudience", "colorPalette"]
+    variables: ["collectionName", "brandName", "storeName", "style", "targetAudience", "colorPalette"]
   }
 ];
 
 function textValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function promptFallback(key: AIVisualPromptVariable, context: AIVisualPromptContext) {
+  const storeName = textValue(context.storeName ?? context.brandName, "the store");
+  const subject = textValue(
+    context.productName ?? context.categoryName ?? context.collectionName ?? context.marketingTheme,
+    "the ecommerce subject"
+  );
+
+  const fallbacks: Record<AIVisualPromptVariable, string> = {
+    brandName: storeName,
+    categoryDescription: `real products and styling that clearly match ${subject}`,
+    categoryName: subject,
+    collectionName: subject,
+    colorPalette: "clean premium ecommerce color palette",
+    industry: "ecommerce",
+    marketingTheme: "premium ecommerce campaign",
+    productCategory: textValue(context.categoryName, "the relevant product category"),
+    productDescription: `realistic product details inferred from ${subject}`,
+    productName: subject,
+    slotType: "storefront visual slot",
+    storeName,
+    style: "premium commercial",
+    targetAudience: "online shoppers",
+    visualMood: "premium, inviting, commercial"
+  };
+
+  return fallbacks[key];
 }
 
 export function getAIVisualPromptBlueprint(id: AIVisualPromptBlueprintId) {
@@ -121,13 +166,42 @@ export function promptBlueprintForAssetSlot(slot: VisualAssetSlot): AIVisualProm
 
 export function renderAIVisualPrompt({
   blueprint,
-  context
+  context,
+  slot
 }: {
   blueprint: AIVisualPromptBlueprint;
   context: AIVisualPromptContext;
+  slot?: VisualAssetSlot;
 }) {
-  return blueprint.promptTemplate.replace(/\{\{(\w+)\}\}/g, (_match, key: AIVisualPromptVariable) =>
-    textValue(context[key], `[${key}]`)
+  const contextualPrompt = blueprint.promptTemplate.replace(/\{\{(\w+)\}\}/g, (_match, key: AIVisualPromptVariable) =>
+    textValue(context[key], promptFallback(key, context))
   );
+
+  return [
+    contextualPrompt,
+    realismStyleGuide,
+    slotRealismDirection(slot ?? blueprint.defaultSlot),
+    "The image must look like a real photographed ecommerce asset for the actual subject, not a generic placeholder."
+  ].filter(Boolean).join("\n\n");
+}
+
+function slotRealismDirection(slot: VisualAssetSlot) {
+  if (slot.startsWith("product.")) {
+    return "Product primary image direction: show the real product as the hero subject, centered and clear, with realistic proportions, packaging/material details when relevant, commercial studio lighting, and no fake labels or invented brand marks.";
+  }
+
+  if (slot.startsWith("category.")) {
+    return "Category image direction: show a small set of real products that match the category name and description. Avoid single symbolic objects unless the category truly requires it. Make it suitable for category cards and landing pages.";
+  }
+
+  if (slot.startsWith("hero.")) {
+    return "Hero banner direction: create a wide realistic commercial ecommerce scene with product/lifestyle styling and clean negative space for site copy overlays. Do not render text inside the image.";
+  }
+
+  if (slot.startsWith("marketing.")) {
+    return "Promotion/banner direction: create a realistic sale or campaign product scene with commercial merchandising energy, but no rendered promo text, fake discounts, random typography, or UI elements.";
+  }
+
+  return "Visual direction: realistic ecommerce photography, clean composition, and subject-specific commercial styling.";
 }
 
