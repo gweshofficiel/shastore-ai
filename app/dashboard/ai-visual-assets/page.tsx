@@ -20,6 +20,10 @@ import {
   resolveAIVisualEntitlementPlan,
   type AIVisualUsageSummary
 } from "@/lib/storefront/ai-visual-usage";
+import {
+  aiVisualAuditLogEntryFromRow,
+  type AIVisualAuditLogEntry
+} from "@/lib/storefront/ai-visual-audit";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import {
   aiVisualQueueFromStoreData,
@@ -47,6 +51,7 @@ type CategoryTarget = {
 
 type AIVisualAssetsDashboardData = {
   activeStore: UserStoreRow | null;
+  activity: AIVisualAuditLogEntry[];
   categories: CategoryTarget[];
   error: string | null;
   jobs: AIVisualGenerationJob[];
@@ -211,6 +216,32 @@ function completedAssetApprovalStatus(job: AIVisualGenerationJob) {
       : null;
 }
 
+function auditActionLabel(actionType: AIVisualAuditLogEntry["actionType"]) {
+  return actionType
+    .replace("ai_visual.", "")
+    .replaceAll("_", " ");
+}
+
+function auditStatusClass(status: string) {
+  if (status === "completed" || status === "approved") {
+    return "bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "failed" || status === "rejected" || status === "cancelled") {
+    return "bg-red-50 text-red-700";
+  }
+
+  if (status === "disabled") {
+    return "bg-slate-100 text-slate-700";
+  }
+
+  if (status === "processing") {
+    return "bg-blue-50 text-blue-700";
+  }
+
+  return "bg-amber-50 text-amber-700";
+}
+
 async function getAIVisualAssetsDashboardData(
   selectedStoreId?: string
 ): Promise<AIVisualAssetsDashboardData> {
@@ -223,6 +254,7 @@ async function getAIVisualAssetsDashboardData(
   if (userError || !user) {
     return {
       activeStore: null,
+      activity: [],
       categories: [],
       error: "Sign in to manage AI visual assets.",
       jobs: [],
@@ -244,6 +276,7 @@ async function getAIVisualAssetsDashboardData(
   if (selection.activeWorkspaceRole !== "owner" && selection.activeWorkspaceRole !== "admin") {
     return {
       activeStore: null,
+      activity: [],
       categories: [],
       error: "Only workspace owners and admins can access AI visual generation controls.",
       jobs: [],
@@ -263,6 +296,7 @@ async function getAIVisualAssetsDashboardData(
   if (storesError) {
     return {
       activeStore: null,
+      activity: [],
       categories: [],
       error: "Stores could not be loaded. Please try again.",
       jobs: [],
@@ -278,6 +312,7 @@ async function getAIVisualAssetsDashboardData(
   if (!activeStore) {
     return {
       activeStore: null,
+      activity: [],
       categories: [],
       error: null,
       jobs: [],
@@ -299,6 +334,7 @@ async function getAIVisualAssetsDashboardData(
   if (!access.allowed) {
     return {
       activeStore,
+      activity: [],
       categories: [],
       error: access.reason,
       jobs: [],
@@ -309,7 +345,7 @@ async function getAIVisualAssetsDashboardData(
     };
   }
 
-  const [storeResult, productsResult, categoriesResult] = await Promise.all([
+  const [storeResult, productsResult, categoriesResult, auditResult] = await Promise.all([
     supabase
       .from("stores" as never)
       .select("id, store_data")
@@ -329,12 +365,20 @@ async function getAIVisualAssetsDashboardData(
       .eq("store_id" as never, activeStore.id as never)
       .eq("workspace_id" as never, workspaceId as never)
       .order("name", { ascending: true })
-      .limit(25)
+      .limit(25),
+    supabase
+      .from("store_audit_logs" as never)
+      .select("id, action, actor_user_id, metadata, store_id, created_at")
+      .eq("store_id" as never, activeStore.id as never)
+      .like("action" as never, "ai_visual.%")
+      .order("created_at", { ascending: false })
+      .limit(10)
   ]);
 
   if (storeResult.error || !storeResult.data) {
     return {
       activeStore,
+      activity: [],
       categories: [],
       error: storeResult.error?.message ?? "Store AI visual data could not be loaded.",
       jobs: [],
@@ -354,6 +398,11 @@ async function getAIVisualAssetsDashboardData(
 
   return {
     activeStore,
+    activity: auditResult.error
+      ? []
+      : ((auditResult.data ?? []) as unknown[])
+          .map(aiVisualAuditLogEntryFromRow)
+          .filter((entry): entry is AIVisualAuditLogEntry => Boolean(entry)),
     categories: (categoriesResult.data ?? []) as unknown as CategoryTarget[],
     error: productsResult.error || categoriesResult.error
       ? "Targets could not be fully loaded. You can still review existing jobs."
@@ -455,7 +504,7 @@ export default async function AIVisualAssetsDashboard({
   searchParams: Promise<{ storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
+  const { activeStore, activity, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
   const generationAllowed = providerReady && usageSummary.remainingDailyAllowance > 0 && (
@@ -605,6 +654,56 @@ export default async function AIVisualAssetsDashboard({
               <p>Hero banner: {aiVisualCreditRules.heroBanner} credits</p>
               <p>Promo banner: {aiVisualCreditRules.promoBanner} credits</p>
               <p>Bulk package: estimated from selected slots</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Recent activity
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-ink">
+                  AI visual audit trail
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                  Latest 10 safe metadata events from the store audit log. Provider responses and secrets are never shown here.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3">
+              {activity.length ? activity.map((entry) => (
+                <div className="grid gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_auto]" key={`${entry.actionType}-${entry.requestId}-${entry.createdAt}`}>
+                  <div>
+                    <p className="text-sm font-black capitalize text-ink">
+                      {auditActionLabel(entry.actionType)}
+                    </p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                      {entry.assetType || "visual asset"} · {entry.targetType || "target"}
+                    </p>
+                    <p className="mt-2 break-all text-xs font-semibold text-slate-500">
+                      Actor: {entry.actorUserId ?? "system"} · Provider: {entry.provider || "unknown"}
+                    </p>
+                    {entry.errorMessage ? (
+                      <p className="mt-2 rounded-2xl bg-red-50 p-2 text-xs font-bold text-red-700">
+                        {entry.errorMessage}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="grid content-start gap-2 text-left md:text-right">
+                    <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${auditStatusClass(entry.status)}`}>
+                      {entry.status || "recorded"}
+                    </span>
+                    <p className="text-xs font-bold text-slate-500">
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
+                  No AI visual audit activity has been recorded for this store yet.
+                </div>
+              )}
             </div>
           </Card>
 

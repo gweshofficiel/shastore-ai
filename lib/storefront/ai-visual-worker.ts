@@ -7,6 +7,7 @@ import {
   createGeneratedAssetReference,
   uploadGeneratedAssetToR2
 } from "@/lib/storefront/ai-visual-storage";
+import { recordAIVisualAuditLogSafe } from "@/lib/storefront/ai-visual-audit";
 import { trackAIVisualJobStatus } from "@/lib/storefront/ai-visual-usage";
 import {
   aiVisualQueueFromStoreData,
@@ -147,12 +148,14 @@ async function persistWorkerJob({
 }
 
 async function persistRecoveredStaleJobs({
+  actorUserId,
   jobs,
   storeData,
   supabase,
   storeId,
   workspaceId
 }: {
+  actorUserId: string | null;
   jobs: AIVisualGenerationJob[];
   storeData: Record<string, unknown>;
   supabase: SupabaseServerClient;
@@ -175,6 +178,18 @@ async function persistRecoveredStaleJobs({
     .eq("id" as never, storeId as never)
     .eq("workspace_id" as never, workspaceId as never);
 
+  if (!error) {
+    for (const job of jobs) {
+      await recordAIVisualAuditLogSafe({
+        actionType: "ai_visual.job_failed",
+        actorUserId,
+        errorMessage: job.error,
+        job,
+        supabase
+      });
+    }
+  }
+
   return { error, storeData: nextStoreData };
 }
 
@@ -184,6 +199,7 @@ function revalidateAIVisualDashboardPaths(storeId: string) {
 }
 
 async function finalizeFailedWorkerJob({
+  actorUserId,
   error,
   job,
   stepKey,
@@ -192,6 +208,7 @@ async function finalizeFailedWorkerJob({
   workspaceId,
   storeId
 }: {
+  actorUserId: string | null;
   error: string;
   job: AIVisualGenerationJob;
   stepKey: "generate" | "upload" | "attach" | "publish";
@@ -215,6 +232,16 @@ async function finalizeFailedWorkerJob({
     storeData,
     supabase,
     workspaceId
+  });
+
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_failed",
+    actorUserId,
+    errorMessage: persistError
+      ? `${failedJob.error} (persist: ${persistError.message})`
+      : failedJob.error,
+    job: failedJob,
+    supabase
   });
 
   if (persistError) {
@@ -286,6 +313,7 @@ export async function processPendingAIVisualAssetJob({
   if (staleRecovery.recovered.length > 0) {
     queue = { ...queue, jobs: staleRecovery.jobs };
     const recoveryPersist = await persistRecoveredStaleJobs({
+      actorUserId: requestedByUserId,
       jobs: staleRecovery.recovered,
       storeData,
       storeId,
@@ -374,6 +402,12 @@ export async function processPendingAIVisualAssetJob({
     };
   }
 
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_processed",
+    actorUserId: requestedByUserId,
+    job: claimedJob,
+    supabase
+  });
   safeWorkerLog("info", "AI visual worker claimed job.", claimedJob);
 
   let workingJob = claimedJob;
@@ -389,6 +423,7 @@ export async function processPendingAIVisualAssetJob({
 
     if (providerResult.error || providerResult.status === "skipped" || !providerResult.output) {
       return finalizeFailedWorkerJob({
+        actorUserId: requestedByUserId,
         error: providerResult.error ?? "AI visual provider did not return a generated asset.",
         job: claimedJob,
         stepKey: "generate",
@@ -415,6 +450,7 @@ export async function processPendingAIVisualAssetJob({
 
     if (uploadResult.error || !uploadResult.output?.publicUrl) {
       return finalizeFailedWorkerJob({
+        actorUserId: requestedByUserId,
         error: uploadResult.error ?? "Generated asset upload did not return a public URL.",
         job: updateAIVisualWorkerStep({
           job: workingJob,
@@ -470,6 +506,7 @@ export async function processPendingAIVisualAssetJob({
 
     if (persistError) {
       return finalizeFailedWorkerJob({
+        actorUserId: requestedByUserId,
         error: `Job completed locally but failed to persist: ${persistError.message}`,
         job: completedJob,
         stepKey: "publish",
@@ -480,6 +517,12 @@ export async function processPendingAIVisualAssetJob({
       });
     }
 
+    await recordAIVisualAuditLogSafe({
+      actionType: "ai_visual.job_completed",
+      actorUserId: requestedByUserId,
+      job: completedJob,
+      supabase
+    });
     revalidateAIVisualDashboardPaths(storeId);
     safeWorkerLog("info", "AI visual worker completed job.", completedJob);
 
@@ -493,6 +536,7 @@ export async function processPendingAIVisualAssetJob({
     const message = error instanceof Error ? error.message : "Unexpected AI visual worker error.";
 
     return finalizeFailedWorkerJob({
+      actorUserId: requestedByUserId,
       error: `AI visual worker execution failed: ${message}`,
       job: workingJob,
       stepKey: workingJob.workerSteps.find((step) => step.status === "processing")?.key ?? "generate",

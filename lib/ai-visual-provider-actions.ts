@@ -20,6 +20,10 @@ import {
   trackAIVisualJobRetry,
   trackAIVisualJobStatus
 } from "@/lib/storefront/ai-visual-usage";
+import {
+  recordAIVisualAuditLogSafe,
+  type AIVisualAuditAction
+} from "@/lib/storefront/ai-visual-audit";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import {
   aiVisualQueueFromStoreData,
@@ -703,6 +707,13 @@ export async function requestAIVisualAssetGenerationAction(
     };
   }
 
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_queued",
+    actorUserId: user.id,
+    job: dispatch.job,
+    supabase
+  });
+
   revalidatePath(`/dashboard/stores/${storeId}`);
   revalidatePath("/dashboard/ai-visual-assets");
 
@@ -855,6 +866,7 @@ export async function generateFullAIVisualPackageAction(
   let skippedActive = 0;
   let skippedApproved = 0;
   const requestIds: string[] = [];
+  const queuedAuditJobs: AIVisualGenerationJob[] = [];
 
   for (const target of targets) {
     if (requestIds.length >= Math.min(AI_VISUAL_BULK_MAX_JOBS, context.entitlement.maxBulkJobsPerClick, readiness.remaining)) {
@@ -938,6 +950,7 @@ export async function generateFullAIVisualPackageAction(
       })
     });
     requestIds.push(request.requestId);
+    queuedAuditJobs.push(dispatch.job);
   }
 
   if (!requestIds.length) {
@@ -966,6 +979,15 @@ export async function generateFullAIVisualPackageAction(
       error: error.message,
       status: "failed"
     };
+  }
+
+  for (const job of queuedAuditJobs) {
+    await recordAIVisualAuditLogSafe({
+      actionType: "ai_visual.job_queued",
+      actorUserId: context.userId,
+      job,
+      supabase: context.supabase
+    });
   }
 
   revalidatePath(`/dashboard/stores/${storeId}`);
@@ -1072,6 +1094,23 @@ export async function updateAIVisualAssetApprovalAction(
       status: "failed"
     };
   }
+
+  const approvalAuditActions: Record<ReviewableVisualApprovalStatus, AIVisualAuditAction> = {
+    approved: "ai_visual.visual_approved",
+    disabled: "ai_visual.visual_disabled",
+    rejected: "ai_visual.visual_rejected"
+  };
+  const approvalAuditAction = approvalAuditActions[approvalStatus];
+  await recordAIVisualAuditLogSafe({
+    actionType: approvalAuditAction,
+    actorUserId: context.userId,
+    extraMetadata: {
+      approvalStatus
+    },
+    job: reviewedJob,
+    status: approvalStatus,
+    supabase: context.supabase
+  });
 
   revalidatePath(`/dashboard/stores/${storeId}`);
   revalidatePath("/dashboard/ai-visual-assets");
@@ -1215,6 +1254,26 @@ export async function regenerateAIVisualAssetJobAction(
       status: "failed"
     };
   }
+
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.visual_regenerated",
+    actorUserId: context.userId,
+    extraMetadata: {
+      regeneratedRequestId
+    },
+    job: sourceJob,
+    status: sourceJob.status,
+    supabase: context.supabase
+  });
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_queued",
+    actorUserId: context.userId,
+    extraMetadata: {
+      regeneratedFromRequestId: sourceJob.requestId
+    },
+    job: dispatch.job,
+    supabase: context.supabase
+  });
 
   revalidatePath(`/dashboard/stores/${storeId}`);
   revalidatePath("/dashboard/ai-visual-assets");
@@ -1488,6 +1547,14 @@ export async function cancelPendingAIVisualJobAction(
     };
   }
 
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_cancelled",
+    actorUserId: context.userId,
+    errorMessage: cancelledJob.error,
+    job: cancelledJob,
+    supabase: context.supabase
+  });
+
   return {
     ...defaultQueueControlState,
     jobId: cancelledJob.jobId,
@@ -1595,6 +1662,13 @@ export async function retryFailedAIVisualJobAction(
       status: "failed"
     };
   }
+
+  await recordAIVisualAuditLogSafe({
+    actionType: "ai_visual.job_retried",
+    actorUserId: context.userId,
+    job: retriedJob,
+    supabase: context.supabase
+  });
 
   return {
     ...defaultQueueControlState,

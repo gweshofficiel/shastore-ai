@@ -2,6 +2,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type StoreAuditAction =
+  | "ai_visual.job_cancelled"
+  | "ai_visual.job_completed"
+  | "ai_visual.job_failed"
+  | "ai_visual.job_processed"
+  | "ai_visual.job_queued"
+  | "ai_visual.job_retried"
+  | "ai_visual.visual_approved"
+  | "ai_visual.visual_disabled"
+  | "ai_visual.visual_regenerated"
+  | "ai_visual.visual_rejected"
   | "domain_connected"
   | "ownership_transfer_blocked"
   | "ownership_transfer_completed"
