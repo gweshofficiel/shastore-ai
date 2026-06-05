@@ -400,6 +400,108 @@ function TemplateInstallOnboardingChecklist({
   );
 }
 
+function StoreDemoContentReplacementTools({
+  showTemplateInstalledNotice,
+  storeId
+}: {
+  showTemplateInstalledNotice: boolean;
+  storeId: string;
+}) {
+  const encodedStoreId = encodeURIComponent(storeId);
+  const tools = [
+    {
+      description: "Edit names, prices, descriptions, inventory, variants, and visibility before going live.",
+      href: `/dashboard/products?storeId=${encodedStoreId}`,
+      label: "Replace demo products"
+    },
+    {
+      description: "Review category names, descriptions, images, ordering, and active status.",
+      href: `/dashboard/categories?storeId=${encodedStoreId}`,
+      label: "Replace demo categories"
+    },
+    {
+      description: "Upload final media or generate AI visuals without deleting existing demo images first.",
+      href: `/dashboard/ai-visual-assets?storeId=${encodedStoreId}`,
+      label: "Replace demo images"
+    },
+    {
+      description: "Edit custom pages, publish reviewed pages, or archive pages you do not need.",
+      href: `/dashboard/pages?storeId=${encodedStoreId}`,
+      label: "Replace demo pages"
+    },
+    {
+      description: "Update support email, phone, WhatsApp, address, business hours, and social profiles.",
+      href: `/dashboard/stores/${encodedStoreId}#store-settings`,
+      label: "Replace demo contact info"
+    },
+    {
+      description: "Review privacy, terms, refund, returns, and shipping policy copy before publishing.",
+      href: `/dashboard/legal-pages?storeId=${encodedStoreId}`,
+      label: "Replace demo legal pages"
+    }
+  ];
+
+  return (
+    <Card className="border-amber-100 bg-amber-50 p-5 lg:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-600">
+            Demo content replacement
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+            Replace template demo content safely
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-amber-900">
+            {showTemplateInstalledNotice
+              ? "This store has a template package installed. Demo rows stay available until you edit, hide, archive, or replace them from their dashboard."
+              : "Use these tools to review template-style content without deleting or overwriting owner data automatically."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {["Demo content", "Needs review", "Real content"].map((label) => (
+            <span
+              className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-amber-800"
+              key={label}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {tools.map((tool) => (
+          <div className="rounded-3xl border border-white/80 bg-white p-4 shadow-sm" key={tool.label}>
+            <p className="text-sm font-black text-ink">{tool.label}</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-muted">{tool.description}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ButtonLink href={tool.href} variant="secondary">
+                Edit item
+              </ButtonLink>
+              <ButtonLink href={tool.href} variant="secondary">
+                Replace item
+              </ButtonLink>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-3 rounded-3xl border border-amber-200 bg-white/70 p-4 md:grid-cols-2">
+        <div>
+          <p className="text-sm font-black text-ink">Keep demo item</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-muted">
+            Leave a demo record unchanged if it is useful as placeholder content. No action is required.
+          </p>
+        </div>
+        <div>
+          <p className="text-sm font-black text-ink">Hide demo item</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-muted">
+            Use the existing draft, unpublish, archive, or visibility controls on each dashboard instead of deleting data automatically.
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
   return value ? value.replace(/_/g, " ") : fallback;
 }
@@ -4513,6 +4615,19 @@ export default async function StoreDraftPage({
     terms_of_service?: string | null;
     timezone?: string | null;
   };
+  const normalStoreData = isRecord(store.store_data) ? store.store_data : {};
+  const templateInstallations = isRecord(normalStoreData.templatePackageInstallations)
+    ? normalStoreData.templatePackageInstallations
+    : {};
+  const hasTemplatePackageInstall = Object.values(templateInstallations).some((installation) => {
+    if (!isRecord(installation)) {
+      return false;
+    }
+
+    const status = installation.status;
+    return status === "installed" || status === "installing" || status === "partially_installed";
+  });
+  const showDemoReplacementTools = query.created === "template" || hasTemplatePackageInstall;
   const dnsTarget = process.env.HOSTINSH_DNS_TARGET || "cname.shastore.ai";
   const domainStatus = publication?.domain_status ?? "pending";
   const storeAccess = await getStoreAccessForUser(supabase, user.id, store);
@@ -4644,6 +4759,12 @@ export default async function StoreDraftPage({
         <TemplateInstallOnboardingChecklist
           storeId={store.id}
           storeSlug={publication?.slug ?? store.slug}
+        />
+      ) : null}
+      {showDemoReplacementTools ? (
+        <StoreDemoContentReplacementTools
+          showTemplateInstalledNotice={hasTemplatePackageInstall}
+          storeId={store.id}
         />
       ) : null}
       {query.theme === "saved" ? (
