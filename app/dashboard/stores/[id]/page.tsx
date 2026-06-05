@@ -298,6 +298,108 @@ const catalogStatusMessages: Record<string, string> = {
   "product-updated": "Product updated and public storefront cache refreshed."
 };
 
+function TemplateInstallOnboardingChecklist({
+  storeId,
+  storeSlug
+}: {
+  storeId: string;
+  storeSlug?: string | null;
+}) {
+  const encodedStoreId = encodeURIComponent(storeId);
+  const setupItems = [
+    {
+      description: "Set the public store name, brand text, and logo before launch.",
+      href: `/dashboard/stores/${encodedStoreId}#store-settings`,
+      label: "Update store name and logo"
+    },
+    {
+      description: "Check template products, pricing, inventory, variants, and visibility.",
+      href: `/dashboard/products?storeId=${encodedStoreId}`,
+      label: "Review demo products"
+    },
+    {
+      description: "Upload product/category media or generate approved AI visuals.",
+      href: `/dashboard/ai-visual-assets?storeId=${encodedStoreId}`,
+      label: "Replace demo images / generate AI images"
+    },
+    {
+      description: "Add support email, phone, WhatsApp, address, hours, and social links.",
+      href: `/dashboard/stores/${encodedStoreId}#store-settings`,
+      label: "Configure contact information"
+    },
+    {
+      description: "Review shipping methods, rates, zones, and fulfillment notes.",
+      href: "/dashboard/shipping",
+      label: "Configure shipping"
+    },
+    {
+      description: "Connect payment providers and enable accepted checkout methods.",
+      href: `/dashboard/payments?storeId=${encodedStoreId}`,
+      label: "Configure payment methods"
+    },
+    {
+      description: "Confirm privacy, terms, refund, returns, and shipping policy copy.",
+      href: `/dashboard/legal-pages?storeId=${encodedStoreId}`,
+      label: "Review legal pages"
+    },
+    {
+      description: "Open the storefront or review the live preview snapshot before publishing.",
+      href: storeSlug ? `/store/${encodeURIComponent(storeSlug)}` : `/dashboard/stores/${encodedStoreId}#storefront-preview`,
+      label: "Preview storefront"
+    },
+    {
+      description: "Publish when setup is complete and the launch checks look right.",
+      href: `/dashboard/stores/${encodedStoreId}#publication`,
+      label: "Publish store"
+    }
+  ];
+
+  return (
+    <Card className="border-indigo-100 bg-indigo-50 p-5 lg:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-indigo-500">
+            Store setup checklist
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+            Your template is installed. Customize these next.
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-indigo-900">
+            This checklist is template-agnostic and does not block access. Progress is not persisted yet, so use it as a launch guide and continue whenever you are ready.
+          </p>
+        </div>
+        <ButtonLink href={`/dashboard/stores/${encodedStoreId}`} variant="secondary">
+          Continue later
+        </ButtonLink>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {setupItems.map((item, index) => (
+          <a
+            className="group rounded-3xl border border-white/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
+            href={item.href}
+            key={item.label}
+            target={item.href.startsWith("/store/") ? "_blank" : undefined}
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-black text-indigo-700">
+                {index + 1}
+              </span>
+              <div>
+                <p className="text-sm font-black text-ink group-hover:text-indigo-700">
+                  {item.label}
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-muted">
+                  {item.description}
+                </p>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
   return value ? value.replace(/_/g, " ") : fallback;
 }
@@ -4510,6 +4612,40 @@ export default async function StoreDraftPage({
           <p className="text-sm font-bold text-red-700">{query.error}</p>
         </Card>
       ) : null}
+      {query.created === "template" && (query.templateInstall === "installed" || query.templateInstall === "skipped") ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-800">
+            Store created from template. The template package is ready.
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-emerald-700">
+            Manage Store is open now. Use the onboarding checklist below to replace demo content, preview the storefront, and publish when ready.
+          </p>
+        </Card>
+      ) : query.created === "template" && query.templateInstall ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-900">
+            Store created, but the template package finished with status: {query.templateInstall.replace(/_/g, " ")}.
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+            You can continue managing the store, or retry by creating a new store from the same template.
+          </p>
+          {query.templateId ? (
+            <ButtonLink
+              className="mt-4"
+              href={`/dashboard/stores/new?templateId=${encodeURIComponent(query.templateId)}`}
+              variant="secondary"
+            >
+              Retry from template
+            </ButtonLink>
+          ) : null}
+        </Card>
+      ) : null}
+      {query.created === "template" && (query.templateInstall === "installed" || query.templateInstall === "skipped") ? (
+        <TemplateInstallOnboardingChecklist
+          storeId={store.id}
+          storeSlug={publication?.slug ?? store.slug}
+        />
+      ) : null}
       {query.theme === "saved" ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
@@ -4621,7 +4757,7 @@ export default async function StoreDraftPage({
         </Card>
       ) : null}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
-        <Card className="p-5 lg:p-6">
+        <Card className="p-5 lg:p-6" id="storefront-preview">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
             Store draft
           </p>
@@ -4894,7 +5030,7 @@ export default async function StoreDraftPage({
           </div>
         </form>
       </Card>
-      <Card className="p-5 lg:p-6">
+      <Card className="p-5 lg:p-6" id="publication">
         <div className="flex flex-col gap-2">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
             Publishing and domains
