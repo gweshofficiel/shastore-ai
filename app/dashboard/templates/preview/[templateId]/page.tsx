@@ -1,18 +1,29 @@
 import { notFound } from "next/navigation";
-import { DemoStorePreview } from "@/components/templates/demo-store-preview";
-import { getStoreTemplate } from "@/lib/template-studio/library";
+import { ProductionTemplatePreview } from "@/components/templates/production-template-preview";
+import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 
 export default async function SellerTemplatePreviewPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ templateId: string }>;
+  searchParams: Promise<{ device?: string }>;
 }) {
   const { templateId } = await params;
-  const template = getStoreTemplate(templateId);
+  const query = await searchParams;
+  const template = await getProductionStoreTemplate(templateId);
+  const device = query.device === "mobile" || query.device === "tablet" ? query.device : "desktop";
 
-  if (!template) {
+  if (!template || (template.id !== templateId && template.slug !== templateId)) {
     notFound();
   }
 
-  return <DemoStorePreview backHref="/dashboard/templates" template={template} />;
+  return (
+    <ProductionTemplatePreview
+      backHref="/dashboard/templates"
+      createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${device}`}
+      device={device}
+      template={template}
+    />
+  );
 }

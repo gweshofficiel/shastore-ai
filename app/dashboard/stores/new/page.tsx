@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Button } from "@/components/ui/button";
+import { CreateStoreSubmitButton } from "@/components/templates/create-store-submit-button";
+import { ProductionTemplateLibraryCard } from "@/components/templates/production-template-preview";
 import { Card } from "@/components/ui/card";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import {
@@ -9,18 +10,10 @@ import {
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createStoreFromTemplateAction } from "@/lib/store-actions";
 import { getTemplateLibrary, type StoreTemplateRecord } from "@/lib/storefront/template-library";
+import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 
 function formatLimit(value: number | null) {
   return value === null ? "Unlimited" : value.toLocaleString();
-}
-
-function templateBadges(template: StoreTemplateRecord) {
-  return [
-    template.is_official ? "Official" : null,
-    template.is_recommended ? "Recommended" : null,
-    template.category_key === "multi-purpose" ? "Multi-purpose" : null,
-    template.package_enabled ? "Ready-to-use" : null
-  ].filter((badge): badge is string => Boolean(badge));
 }
 
 export default async function NewStorePage({
@@ -110,10 +103,11 @@ export default async function NewStorePage({
 
               <div className="grid gap-4 md:grid-cols-2">
                 {templates.map((template) => (
-                  <TemplateCard
-                    device={selectedDevice}
+                  <ProductionTemplateLibraryCard
+                    createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(selectedDevice)}`}
                     isSelected={selectedTemplate?.id === template.id}
                     key={template.id}
+                    previewHref={`/dashboard/templates/preview/${encodeURIComponent(template.id)}?device=${encodeURIComponent(selectedDevice)}`}
                     template={template}
                   />
                 ))}
@@ -148,9 +142,10 @@ export default async function NewStorePage({
                   </p>
                   <form action={createStoreFromTemplateAction} className="mt-5">
                     <input name="templateId" type="hidden" value={selectedTemplate.id} />
-                    <Button className="w-full" type="submit">
-                      Apply template and create store
-                    </Button>
+                    <CreateStoreSubmitButton
+                      className="w-full"
+                      pendingLabel="Creating store and installing package..."
+                    />
                   </form>
                 </Card>
               ) : null}
@@ -188,54 +183,6 @@ function TemplateVisual({ template }: { template: StoreTemplateRecord }) {
   );
 }
 
-function TemplateCard({
-  device,
-  isSelected,
-  template
-}: {
-  device: string;
-  isSelected: boolean;
-  template: StoreTemplateRecord;
-}) {
-  const previewHref = `/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(device)}`;
-
-  return (
-    <Card className={`grid gap-4 p-4 ${isSelected ? "ring-2 ring-slate-950" : ""}`}>
-      <TemplateVisual template={template} />
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-          {template.category_key}
-        </p>
-        <h3 className="mt-1 text-xl font-black tracking-[-0.03em] text-ink">{template.name}</h3>
-        {templateBadges(template).length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {templateBadges(template).map((badge) => (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.14em] text-slate-700" key={badge}>
-                {badge}
-              </span>
-            ))}
-          </div>
-        ) : null}
-        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-muted">
-          {template.preview_summary ?? template.description ?? "Storefront template"}
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <a
-          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-ink transition hover:border-slate-300 hover:bg-slate-50"
-          href={previewHref}
-        >
-          Preview
-        </a>
-        <form action={createStoreFromTemplateAction}>
-          <input name="templateId" type="hidden" value={template.id} />
-          <Button type="submit">Apply</Button>
-        </form>
-      </div>
-    </Card>
-  );
-}
-
 function TemplatePreviewPanel({
   device,
   template
@@ -243,6 +190,7 @@ function TemplatePreviewPanel({
   device: string;
   template: StoreTemplateRecord;
 }) {
+  const summary = templatePreviewSummary(template);
   const widths: Record<string, string> = {
     desktop: "w-full",
     mobile: "mx-auto w-[220px]",
@@ -269,8 +217,20 @@ function TemplatePreviewPanel({
         <div className={`${widths[device] ?? widths.desktop} overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-xl`}>
           <TemplateVisual template={template} />
           <div className="grid gap-3 p-4">
-            <div className="h-3 w-2/3 rounded-full bg-slate-200" />
-            <div className="h-3 w-1/2 rounded-full bg-slate-100" />
+            <div className="grid grid-cols-2 gap-2 text-[0.65rem] font-black uppercase tracking-[0.12em] text-slate-500">
+              <span className="rounded-xl bg-slate-100 px-3 py-2">
+                {summary.productCount || "Pending"} products
+              </span>
+              <span className="rounded-xl bg-slate-100 px-3 py-2">
+                {summary.categoryCount || "Pending"} categories
+              </span>
+              <span className="rounded-xl bg-slate-100 px-3 py-2">
+                {summary.homepageSectionCount} sections
+              </span>
+              <span className="rounded-xl bg-slate-100 px-3 py-2">
+                {summary.hasAIVisualSupport ? "AI visuals" : "Visual ready"}
+              </span>
+            </div>
             <div className={device === "mobile" ? "grid gap-2" : "grid grid-cols-3 gap-2"}>
               {[0, 1, 2].map((item) => (
                 <div className="h-20 rounded-2xl bg-slate-100" key={item} />
@@ -280,7 +240,7 @@ function TemplatePreviewPanel({
         </div>
       </div>
       <p className="text-sm font-semibold leading-6 text-muted">
-        Preview is structural only. Real products, logo, contact, languages, currencies, navigation, theme, domains, and SEO are configured after creation in Manage Store.
+        Package counts come from the shared template package registry when available. Store name, logo, contact, languages, currencies, navigation, domains, and SEO are configured after creation in Manage Store.
       </p>
     </div>
   );

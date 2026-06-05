@@ -23,6 +23,10 @@ import {
   applyWorkspaceStoreTemplate
 } from "@/lib/template-application-actions";
 import { getTemplateLibrary, validateTemplateSchema, type StoreTemplateRecord } from "@/lib/storefront/template-library";
+import {
+  templateLibraryBadges,
+  templatePreviewSummary
+} from "@/lib/storefront/template-preview-summary";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
 import { createClient } from "@/lib/supabase/server";
@@ -95,12 +99,7 @@ const statusMessages: Record<string, string> = {
 };
 
 function templateBadges(template: StoreTemplateRecord) {
-  return [
-    template.is_official ? "Official" : null,
-    template.is_recommended ? "Recommended" : null,
-    template.category_key === "multi-purpose" ? "Multi-purpose" : null,
-    template.package_enabled ? "Ready-to-use" : null
-  ].filter((badge): badge is string => Boolean(badge));
+  return templateLibraryBadges(template);
 }
 
 function appliedTemplateId(editorState: unknown) {
@@ -888,6 +887,7 @@ export default async function TemplatesPage({
         {templates.map((template) => {
           const draft = validateTemplateSchema(template.layout_schema).schema;
           const isApplied = appliedTemplate === template.id;
+          const summary = templatePreviewSummary(template);
 
           return (
             <Card className="overflow-hidden p-0" key={template.id}>
@@ -945,6 +945,40 @@ export default async function TemplatesPage({
                     </div>
                   ) : null}
                 </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Demo products
+                    </p>
+                    <p className="mt-1 text-lg font-black text-ink">
+                      {summary.productCount || "Pending"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Demo categories
+                    </p>
+                    <p className="mt-1 text-lg font-black text-ink">
+                      {summary.categoryCount || "Pending"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Package
+                    </p>
+                    <p className="mt-1 text-lg font-black text-ink">
+                      {summary.hasPackage ? `v${summary.packageVersion}` : "Template only"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      AI visuals
+                    </p>
+                    <p className="mt-1 text-lg font-black text-ink">
+                      {summary.hasAIVisualSupport ? `${summary.aiVisualSlotCount} slots` : "Pending"}
+                    </p>
+                  </div>
+                </div>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {["Desktop", "Tablet", "Mobile"].map((mode) => (
                     <div
@@ -964,6 +998,20 @@ export default async function TemplatesPage({
                     {draft.sections.length === 1 ? "" : "s"}, isolated theme settings, color presets,
                     and future-ready AI/multilingual template metadata.
                   </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <a
+                    className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-ink transition hover:border-slate-300 hover:bg-slate-50"
+                    href={`/dashboard/templates/preview/${encodeURIComponent(template.id)}`}
+                  >
+                    Preview template
+                  </a>
+                  <a
+                    className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-bold text-white transition hover:bg-slate-800"
+                    href={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}`}
+                  >
+                    Create store
+                  </a>
                 </div>
                 <form action={applyWorkspaceStoreTemplate} className="grid gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
                   <input name="storeId" type="hidden" value={selectedWorkspaceStoreId} />
