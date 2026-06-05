@@ -2,8 +2,10 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  regenerateAIVisualAssetJobAction,
   requestAIVisualAssetGenerationAction,
-  triggerAIVisualAssetWorkerAction
+  triggerAIVisualAssetWorkerAction,
+  updateAIVisualAssetApprovalAction
 } from "@/lib/ai-visual-provider-actions";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
 import {
@@ -89,6 +91,18 @@ async function processAIVisualAssetJob(formData: FormData) {
   await triggerAIVisualAssetWorkerAction(undefined, formData);
 }
 
+async function reviewAIVisualAsset(formData: FormData) {
+  "use server";
+
+  await updateAIVisualAssetApprovalAction(undefined, formData);
+}
+
+async function regenerateAIVisualAsset(formData: FormData) {
+  "use server";
+
+  await regenerateAIVisualAssetJobAction(undefined, formData);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -111,6 +125,15 @@ function completedAssetUrl(job: AIVisualGenerationJob) {
 
 function completedAssetStorageKey(job: AIVisualGenerationJob) {
   return job.result?.asset?.storageKey || job.result?.asset?.r2Key || null;
+}
+
+function completedAssetApprovalStatus(job: AIVisualGenerationJob) {
+  const status = job.result?.asset?.approvalStatus;
+  return status === "approved" || status === "rejected" || status === "disabled" || status === "generated"
+    ? status
+    : job.status === "completed"
+      ? "generated"
+      : null;
 }
 
 async function getAIVisualAssetsDashboardData(
@@ -446,6 +469,7 @@ export default async function AIVisualAssetsDashboard({
               <div className="mt-5 grid gap-3">
                 {jobs.length ? jobs.map((job) => {
                   const assetUrl = completedAssetUrl(job);
+                  const approvalStatus = completedAssetApprovalStatus(job);
                   const storageKey = completedAssetStorageKey(job);
 
                   return (
@@ -482,7 +506,47 @@ export default async function AIVisualAssetsDashboard({
                                 Storage key: {storageKey}
                               </p>
                             ) : null}
+                            {approvalStatus ? (
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                                Approval: {approvalStatus}
+                              </p>
+                            ) : null}
                           </div>
+                        </div>
+                      ) : null}
+                      {job.status === "completed" && assetUrl ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <form action={reviewAIVisualAsset}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <input name="approvalStatus" type="hidden" value="approved" />
+                            <Button type="submit" variant="secondary">
+                              Approve visual
+                            </Button>
+                          </form>
+                          <form action={reviewAIVisualAsset}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <input name="approvalStatus" type="hidden" value="rejected" />
+                            <Button type="submit" variant="secondary">
+                              Reject visual
+                            </Button>
+                          </form>
+                          <form action={reviewAIVisualAsset}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <input name="approvalStatus" type="hidden" value="disabled" />
+                            <Button type="submit" variant="secondary">
+                              Disable visual
+                            </Button>
+                          </form>
+                          <form action={regenerateAIVisualAsset}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <Button type="submit" variant="secondary">
+                              Regenerate
+                            </Button>
+                          </form>
                         </div>
                       ) : null}
                       <div className="mt-4 grid gap-2 text-sm font-semibold text-muted md:grid-cols-2">

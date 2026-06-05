@@ -430,7 +430,7 @@ export async function processPendingAIVisualAssetJob({
     });
     workingStoreData = attachment.storeData;
     const completedJob = transitionAIVisualJobStatus({
-      asset: attachment.asset,
+      asset,
       job: updateAIVisualWorkerStep({
         job: updateAIVisualWorkerStep({
           job: workingJob,
@@ -440,7 +440,7 @@ export async function processPendingAIVisualAssetJob({
         key: "publish",
         status: "completed"
       }),
-      publicUrl: attachment.asset.publicUrl ?? uploadResult.output.publicUrl ?? null,
+      publicUrl: asset.publicUrl ?? uploadResult.output.publicUrl ?? null,
       status: "completed"
     });
     const persistError = await persistWorkerJob({

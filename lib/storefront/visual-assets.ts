@@ -1,5 +1,7 @@
 export type VisualAssetSource = "uploaded" | "r2" | "ai-generated" | "ai-ready" | "external" | "fallback";
 
+export type VisualAssetApprovalStatus = "generated" | "approved" | "rejected" | "disabled";
+
 export type VisualAssetSlot =
   | "product.primary"
   | "product.gallery"
@@ -19,9 +21,12 @@ export type VisualAssetSlot =
 export type VisualAssetReference = {
   alt?: string | null;
   aspectRatio?: string | null;
+  approvalStatus?: VisualAssetApprovalStatus | string | null;
+  approvedAt?: string | null;
   assetId?: string | null;
   assetType?: string | null;
   bucket?: string | null;
+  disabledAt?: string | null;
   fitMode?: VisualAssetFitMode | string | null;
   generatedAt?: string | null;
   height?: number | null;
@@ -30,6 +35,7 @@ export type VisualAssetReference = {
   provider?: string | null;
   publicUrl?: string | null;
   r2Key?: string | null;
+  rejectedAt?: string | null;
   source?: VisualAssetSource | string | null;
   storageKey?: string | null;
   targetId?: string | null;
@@ -118,6 +124,12 @@ const sourceAliases: Record<string, VisualAssetSource> = {
   external_url: "external",
   upload: "uploaded"
 };
+
+function normalizeApprovalStatus(value: unknown): VisualAssetApprovalStatus | null {
+  return value === "generated" || value === "approved" || value === "rejected" || value === "disabled"
+    ? value
+    : null;
+}
 
 const defaultSlotSizing: VisualAssetSlotSizing = {
   aspectRatio: "1:1",
@@ -360,9 +372,12 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
   return {
     alt: stringValue(value.alt) || null,
     aspectRatio: stringValue(value.aspectRatio) || null,
+    approvalStatus: normalizeApprovalStatus(value.approvalStatus ?? value.status) ?? null,
+    approvedAt: stringValue(value.approvedAt) || null,
     assetId,
     assetType: stringValue(value.assetType) || null,
     bucket: stringValue(value.bucket) || null,
+    disabledAt: stringValue(value.disabledAt) || null,
     fitMode,
     generatedAt: stringValue(value.generatedAt) || null,
     height: numberValue(value.height),
@@ -371,6 +386,7 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
     provider: stringValue(value.provider) || null,
     publicUrl,
     r2Key,
+    rejectedAt: stringValue(value.rejectedAt) || null,
     source: normalizeVisualAssetSource(value.source, url ?? publicUrl),
     storageKey: r2Key,
     targetId: stringValue(value.targetId) || null,
@@ -378,6 +394,15 @@ export function visualAssetReference(value: unknown): VisualAssetReference | nul
     url: url ?? publicUrl,
     width: numberValue(value.width)
   };
+}
+
+export function visualAssetApprovalStatus(value: unknown): VisualAssetApprovalStatus {
+  const reference = visualAssetReference(value);
+  return normalizeApprovalStatus(reference?.approvalStatus) ?? "generated";
+}
+
+export function isApprovedGeneratedVisualAsset(value: unknown) {
+  return visualAssetApprovalStatus(value) === "approved";
 }
 
 export function generatedVisualAssetsFromStoreData(value: unknown): GeneratedVisualAssetStore {
@@ -488,7 +513,7 @@ export function resolveGeneratedVisualAssetForSlot({
     for (const id of targetIds) {
       const asset = generatedVisualAssets[targetType]?.[id]?.[slot];
 
-      if (asset) {
+      if (asset && isApprovedGeneratedVisualAsset(asset)) {
         return asset;
       }
     }
@@ -504,7 +529,7 @@ export function resolveGeneratedVisualAssetForSlot({
     for (const slots of Object.values(targetGroup)) {
       const asset = slots[slot];
 
-      if (asset) {
+      if (asset && isApprovedGeneratedVisualAsset(asset)) {
         return asset;
       }
     }

@@ -7,6 +7,7 @@ import type {
   AIVisualGenerationJob
 } from "@/lib/storefront/ai-visual-queue";
 import type {
+  VisualAssetApprovalStatus,
   VisualAssetReference,
   VisualAssetSlot
 } from "@/lib/storefront/visual-assets";
@@ -302,6 +303,7 @@ export function createGeneratedAssetReference({
   return {
     alt: job.request.entityTitle,
     aspectRatio: storage.aspectRatio,
+    approvalStatus: "generated",
     assetId: job.requestId,
     assetType: generatedAssetTypeForSlot(job.slot),
     bucket: storage.bucket,
@@ -458,6 +460,62 @@ export function attachGeneratedVisualAsset({
           [entityKey]: {
             ...entityAssets,
             [slot]: asset
+          }
+        }
+      }
+    }
+  };
+}
+
+export function updateGeneratedVisualAssetApproval({
+  asset,
+  status,
+  storeData,
+  targetId,
+  targetType,
+  slot
+}: {
+  asset: VisualAssetReference;
+  status: VisualAssetApprovalStatus;
+  storeData: Record<string, unknown>;
+  targetId: string | null;
+  targetType: AIVisualAttachTargetType;
+  slot: VisualAssetSlot;
+}) {
+  const timestamp = new Date().toISOString();
+  const generatedVisualAssets = isRecord(storeData.generatedVisualAssets)
+    ? storeData.generatedVisualAssets
+    : {};
+  const targetGroup = isRecord(generatedVisualAssets[targetType])
+    ? generatedVisualAssets[targetType] as Record<string, unknown>
+    : {};
+  const entityKey = targetId ?? "template";
+  const entityAssets = isRecord(targetGroup[entityKey])
+    ? targetGroup[entityKey] as Record<string, unknown>
+    : {};
+  const existingAsset = isRecord(entityAssets[slot])
+    ? entityAssets[slot] as VisualAssetReference
+    : {};
+  const nextAsset: VisualAssetReference = {
+    ...asset,
+    ...existingAsset,
+    approvalStatus: status,
+    approvedAt: status === "approved" ? timestamp : existingAsset.approvedAt ?? null,
+    disabledAt: status === "disabled" ? timestamp : existingAsset.disabledAt ?? null,
+    rejectedAt: status === "rejected" ? timestamp : existingAsset.rejectedAt ?? null
+  };
+
+  return {
+    asset: nextAsset,
+    storeData: {
+      ...storeData,
+      generatedVisualAssets: {
+        ...generatedVisualAssets,
+        [targetType]: {
+          ...targetGroup,
+          [entityKey]: {
+            ...entityAssets,
+            [slot]: nextAsset
           }
         }
       }
