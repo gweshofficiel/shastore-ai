@@ -12,12 +12,15 @@ import { getAIVisualProviderAdapter, getAIVisualProviderRuntimeConfig } from "@/
 import {
   canCreateAIVisualJobs,
   canRetryAIVisualJob,
-  reserveAIVisualCreditsHook,
   estimatedCreditsForAIVisualJob,
+  reserveAIVisualCreditsHook,
+  resolveAIVisualEntitlementPlan,
+  type AIVisualPlanEntitlement,
   trackAIVisualJobCreated,
   trackAIVisualJobRetry,
   trackAIVisualJobStatus
 } from "@/lib/storefront/ai-visual-usage";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import {
   aiVisualQueueFromStoreData,
   createAIVisualGenerationJob,
@@ -98,6 +101,7 @@ type AuthorizedAIVisualStoreContext =
     }
   | {
       error: null;
+      entitlement: AIVisualPlanEntitlement;
       ok: true;
       storeData: Record<string, unknown>;
       storeName: string;
@@ -278,6 +282,11 @@ async function loadAuthorizedAIVisualStore({
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const workspaceId = selection.activeWorkspaceId;
+  const subscriptionAccess = await getUserSubscriptionAccessForClient(supabase, user.id);
+  const entitlement = resolveAIVisualEntitlementPlan({
+    planId: subscriptionAccess.plan.id,
+    status: subscriptionAccess.status
+  });
 
   if (selection.activeWorkspaceRole !== "owner" && selection.activeWorkspaceRole !== "admin") {
     return { error: "Only workspace owners and admins can manage AI visual assets.", ok: false };
@@ -316,6 +325,7 @@ async function loadAuthorizedAIVisualStore({
 
   return {
     error: null,
+    entitlement,
     ok: true,
     storeData: asStoreData(storeRecord.store_data),
     storeName: textValue(storeRecord.store_name, 180) || textValue(storeRecord.name, 180) || "Store",
@@ -422,7 +432,19 @@ function bulkTemplateTargetId(storeId: string, slot: VisualAssetSlot) {
   return `${storeId}-${slot}`;
 }
 
-function aiVisualGenerationReadiness(storeData: Record<string, unknown>, requestedJobs = 1, estimatedCredits = 0) {
+function aiVisualGenerationReadiness({
+  entitlement,
+  estimatedCredits = 0,
+  mode = "single",
+  requestedJobs = 1,
+  storeData
+}: {
+  entitlement: AIVisualPlanEntitlement;
+  estimatedCredits?: number;
+  mode?: "single" | "bulk" | "regenerate";
+  requestedJobs?: number;
+  storeData: Record<string, unknown>;
+}) {
   const providerConfig = getAIVisualProviderRuntimeConfig();
 
   if (providerConfig.status !== "configured") {
@@ -435,7 +457,23 @@ function aiVisualGenerationReadiness(storeData: Record<string, unknown>, request
     };
   }
 
-  const limit = canCreateAIVisualJobs(storeData, requestedJobs, estimatedCredits);
+  if (mode === "bulk" && !entitlement.bulkPackageAvailable) {
+    return {
+      allowed: false,
+      message: `${entitlement.name} plan does not include AI visual bulk packages. ${entitlement.upgradeHint ?? "Upgrade to unlock bulk generation."}`,
+      remaining: 0
+    };
+  }
+
+  if (mode === "regenerate" && !entitlement.regenerateAvailable) {
+    return {
+      allowed: false,
+      message: `${entitlement.name} plan does not include AI visual regeneration. ${entitlement.upgradeHint ?? "Upgrade to unlock regeneration."}`,
+      remaining: 0
+    };
+  }
+
+  const limit = canCreateAIVisualJobs(storeData, requestedJobs, estimatedCredits, entitlement);
 
   if (!limit.allowed) {
     return limit;
@@ -531,6 +569,11 @@ export async function requestAIVisualAssetGenerationAction(
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const workspaceId = selection.activeWorkspaceId;
+  const subscriptionAccess = await getUserSubscriptionAccessForClient(supabase, user.id);
+  const entitlement = resolveAIVisualEntitlementPlan({
+    planId: subscriptionAccess.plan.id,
+    status: subscriptionAccess.status
+  });
 
   if (selection.activeWorkspaceRole !== "owner" && selection.activeWorkspaceRole !== "admin") {
     return {
@@ -609,7 +652,12 @@ export async function requestAIVisualAssetGenerationAction(
     request,
     workspaceId
   });
-  const readiness = aiVisualGenerationReadiness(storeData, 1, estimatedCreditsForAIVisualJob(queuedJob));
+  const readiness = aiVisualGenerationReadiness({
+    entitlement,
+    estimatedCredits: estimatedCreditsForAIVisualJob(queuedJob),
+    requestedJobs: 1,
+    storeData
+  });
 
   if (!readiness.allowed) {
     return {
@@ -786,7 +834,12 @@ export async function generateFullAIVisualPackageAction(
   }
 
   const queue = aiVisualQueueFromStoreData(context.storeData);
-  const readiness = aiVisualGenerationReadiness(context.storeData, 0);
+  const readiness = aiVisualGenerationReadiness({
+    entitlement: context.entitlement,
+    mode: "bulk",
+    requestedJobs: 0,
+    storeData: context.storeData
+  });
 
   if (!readiness.allowed) {
     return {
@@ -804,7 +857,7 @@ export async function generateFullAIVisualPackageAction(
   const requestIds: string[] = [];
 
   for (const target of targets) {
-    if (requestIds.length >= Math.min(AI_VISUAL_BULK_MAX_JOBS, readiness.remaining)) {
+    if (requestIds.length >= Math.min(AI_VISUAL_BULK_MAX_JOBS, context.entitlement.maxBulkJobsPerClick, readiness.remaining)) {
       break;
     }
 
@@ -855,7 +908,13 @@ export async function generateFullAIVisualPackageAction(
       request,
       workspaceId: context.workspaceId
     });
-    const targetReadiness = aiVisualGenerationReadiness(nextStoreData, 1, estimatedCreditsForAIVisualJob(queuedJob));
+    const targetReadiness = aiVisualGenerationReadiness({
+      entitlement: context.entitlement,
+      estimatedCredits: estimatedCreditsForAIVisualJob(queuedJob),
+      mode: "bulk",
+      requestedJobs: 1,
+      storeData: nextStoreData
+    });
 
     if (!targetReadiness.allowed) {
       break;
@@ -914,7 +973,7 @@ export async function generateFullAIVisualPackageAction(
 
   return {
     error: null,
-    maxJobs: AI_VISUAL_BULK_MAX_JOBS,
+    maxJobs: Math.min(AI_VISUAL_BULK_MAX_JOBS, context.entitlement.maxBulkJobsPerClick),
     ok: true,
     queued: requestIds.length,
     requestIds,
@@ -1104,7 +1163,13 @@ export async function regenerateAIVisualAssetJobAction(
     request,
     workspaceId: context.workspaceId
   });
-  const readiness = aiVisualGenerationReadiness(context.storeData, 1, estimatedCreditsForAIVisualJob(queuedJob));
+  const readiness = aiVisualGenerationReadiness({
+    entitlement: context.entitlement,
+    estimatedCredits: estimatedCreditsForAIVisualJob(queuedJob),
+    mode: "regenerate",
+    requestedJobs: 1,
+    storeData: context.storeData
+  });
 
   if (!readiness.allowed) {
     return {
@@ -1471,7 +1536,12 @@ export async function retryFailedAIVisualJobAction(
     };
   }
 
-  const readiness = aiVisualGenerationReadiness(context.storeData, 1, estimatedCreditsForAIVisualJob(job));
+  const readiness = aiVisualGenerationReadiness({
+    entitlement: context.entitlement,
+    estimatedCredits: estimatedCreditsForAIVisualJob(job),
+    requestedJobs: 1,
+    storeData: context.storeData
+  });
 
   if (!readiness.allowed) {
     return {

@@ -49,6 +49,7 @@ export type AIVisualCreditState = {
 };
 
 export type AIVisualUsageSummary = {
+  bulkPackageAvailable: boolean;
   cancelledToday: number;
   completedToday: number;
   creditsActive: boolean;
@@ -56,10 +57,39 @@ export type AIVisualUsageSummary = {
   creditsReserved: number;
   dailyLimit: number;
   failedToday: number;
+  maxBulkJobsPerClick: number;
+  monthlyLimit: number;
+  planId: AIVisualEntitlementPlanId;
+  planName: string;
+  priorityProcessing: boolean;
+  regenerateAvailable: boolean;
   remainingDailyAllowance: number;
+  remainingMonthlyAllowance: number;
   retryLimit: number;
   todayJobs: number;
   totalGeneratedAssets: number;
+  upgradeHint: string | null;
+};
+
+export type AIVisualEntitlementPlanId =
+  | "free"
+  | "trial"
+  | "basic"
+  | "pro"
+  | "business"
+  | "enterprise"
+  | "unknown";
+
+export type AIVisualPlanEntitlement = {
+  bulkPackageAvailable: boolean;
+  dailyImageLimit: number;
+  id: AIVisualEntitlementPlanId;
+  maxBulkJobsPerClick: number;
+  monthlyImageLimit: number;
+  name: string;
+  priorityProcessing: boolean;
+  regenerateAvailable: boolean;
+  upgradeHint: string | null;
 };
 
 export const AI_VISUAL_DAILY_JOB_LIMIT = 30;
@@ -72,6 +102,86 @@ export const aiVisualCreditRules = {
   productImage: 1,
   promoBanner: 2
 } as const;
+
+export const aiVisualPlanEntitlementRules: Record<AIVisualEntitlementPlanId, AIVisualPlanEntitlement> = {
+  basic: {
+    bulkPackageAvailable: true,
+    dailyImageLimit: 12,
+    id: "basic",
+    maxBulkJobsPerClick: 6,
+    monthlyImageLimit: 150,
+    name: "Basic",
+    priorityProcessing: false,
+    regenerateAvailable: true,
+    upgradeHint: "Upgrade to Pro for larger bulk packages and priority processing."
+  },
+  business: {
+    bulkPackageAvailable: true,
+    dailyImageLimit: 50,
+    id: "business",
+    maxBulkJobsPerClick: 15,
+    monthlyImageLimit: 1000,
+    name: "Business",
+    priorityProcessing: true,
+    regenerateAvailable: true,
+    upgradeHint: "Enterprise AI visual limits can be configured later."
+  },
+  enterprise: {
+    bulkPackageAvailable: true,
+    dailyImageLimit: 200,
+    id: "enterprise",
+    maxBulkJobsPerClick: 30,
+    monthlyImageLimit: 5000,
+    name: "Enterprise",
+    priorityProcessing: true,
+    regenerateAvailable: true,
+    upgradeHint: null
+  },
+  free: {
+    bulkPackageAvailable: false,
+    dailyImageLimit: 3,
+    id: "free",
+    maxBulkJobsPerClick: 1,
+    monthlyImageLimit: 20,
+    name: "Free",
+    priorityProcessing: false,
+    regenerateAvailable: false,
+    upgradeHint: "Upgrade to Basic to unlock bulk packages and regenerations."
+  },
+  pro: {
+    bulkPackageAvailable: true,
+    dailyImageLimit: 25,
+    id: "pro",
+    maxBulkJobsPerClick: 12,
+    monthlyImageLimit: 500,
+    name: "Pro",
+    priorityProcessing: true,
+    regenerateAvailable: true,
+    upgradeHint: "Upgrade to Business for higher monthly AI visual limits."
+  },
+  trial: {
+    bulkPackageAvailable: false,
+    dailyImageLimit: 5,
+    id: "trial",
+    maxBulkJobsPerClick: 2,
+    monthlyImageLimit: 30,
+    name: "Trial",
+    priorityProcessing: false,
+    regenerateAvailable: false,
+    upgradeHint: "Choose a paid plan to unlock bulk packages and regenerations."
+  },
+  unknown: {
+    bulkPackageAvailable: false,
+    dailyImageLimit: 2,
+    id: "unknown",
+    maxBulkJobsPerClick: 1,
+    monthlyImageLimit: 10,
+    name: "Limited",
+    priorityProcessing: false,
+    regenerateAvailable: false,
+    upgradeHint: "Upgrade or refresh billing status to unlock AI visual generation limits."
+  }
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -89,8 +199,50 @@ function todayKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+function monthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
 function sameUtcDay(value: string | null | undefined, day = todayKey()) {
   return typeof value === "string" && value.slice(0, 10) === day;
+}
+
+function sameUtcMonth(value: string | null | undefined, month = monthKey()) {
+  return typeof value === "string" && value.slice(0, 7) === month;
+}
+
+export function resolveAIVisualEntitlementPlan({
+  planId,
+  status
+}: {
+  planId?: string | null;
+  status?: string | null;
+} = {}): AIVisualPlanEntitlement {
+  if (status === "trialing") {
+    return aiVisualPlanEntitlementRules.trial;
+  }
+
+  if (planId === "starter" || planId === "basic") {
+    return aiVisualPlanEntitlementRules.basic;
+  }
+
+  if (planId === "pro") {
+    return aiVisualPlanEntitlementRules.pro;
+  }
+
+  if (planId === "agency" || planId === "business") {
+    return aiVisualPlanEntitlementRules.business;
+  }
+
+  if (planId === "enterprise") {
+    return aiVisualPlanEntitlementRules.enterprise;
+  }
+
+  if (planId === "free") {
+    return aiVisualPlanEntitlementRules.free;
+  }
+
+  return aiVisualPlanEntitlementRules.unknown;
 }
 
 export function estimatedCreditsForAIVisualJob(job: Pick<AIVisualGenerationJob, "kind">) {
@@ -194,48 +346,52 @@ export function aiVisualUsageFromStoreData(value: unknown): AIVisualUsageState {
   };
 }
 
-export function aiVisualUsageSummary(storeData: unknown): AIVisualUsageSummary {
+export function aiVisualUsageSummary(
+  storeData: unknown,
+  entitlement: AIVisualPlanEntitlement = aiVisualPlanEntitlementRules.unknown
+): AIVisualUsageSummary {
   const usage = aiVisualUsageFromStoreData(storeData);
   const credits = aiVisualCreditsFromStoreData(storeData);
   const events = Object.values(usage.events);
   const today = todayKey();
+  const month = monthKey();
   const todayEvents = events.filter((event) => sameUtcDay(event.createdAt, today));
+  const monthEvents = events.filter((event) => sameUtcMonth(event.createdAt, month));
+  const dailyLimit = entitlement.dailyImageLimit;
+  const monthlyLimit = entitlement.monthlyImageLimit;
 
   return {
+    bulkPackageAvailable: entitlement.bulkPackageAvailable,
     cancelledToday: todayEvents.filter((event) => event.status === "cancelled").length,
     completedToday: todayEvents.filter((event) => event.status === "completed").length,
     creditsActive: credits.active,
     creditsAvailable: credits.availableCredits,
     creditsReserved: credits.reservedCredits,
-    dailyLimit: usage.dailyLimit,
+    dailyLimit,
     failedToday: todayEvents.filter((event) => event.status === "failed").length,
-    remainingDailyAllowance: Math.max(0, usage.dailyLimit - todayEvents.length),
+    maxBulkJobsPerClick: entitlement.maxBulkJobsPerClick,
+    monthlyLimit,
+    planId: entitlement.id,
+    planName: entitlement.name,
+    priorityProcessing: entitlement.priorityProcessing,
+    regenerateAvailable: entitlement.regenerateAvailable,
+    remainingDailyAllowance: Math.max(0, dailyLimit - todayEvents.length),
+    remainingMonthlyAllowance: Math.max(0, monthlyLimit - monthEvents.length),
     retryLimit: usage.retryLimit,
     todayJobs: todayEvents.length,
-    totalGeneratedAssets: events.filter((event) => event.status === "completed").length
+    totalGeneratedAssets: events.filter((event) => event.status === "completed").length,
+    upgradeHint: entitlement.upgradeHint
   };
 }
 
-export function canCreateAIVisualJobs(storeData: unknown, requestedJobs = 1, estimatedCredits = 0) {
+export function canCreateAIVisualJobs(
+  storeData: unknown,
+  requestedJobs = 1,
+  estimatedCredits = 0,
+  entitlement: AIVisualPlanEntitlement = aiVisualPlanEntitlementRules.unknown
+) {
   const credits = aiVisualCreditsFromStoreData(storeData);
-
-  if (credits.active) {
-    if ((credits.availableCredits ?? 0) < estimatedCredits) {
-      return {
-        allowed: false,
-        message: `Not enough AI visual credits. ${estimatedCredits} credits required, ${credits.availableCredits ?? 0} available.`,
-        remaining: 0
-      };
-    }
-
-    return {
-      allowed: true,
-      message: null,
-      remaining: Number.MAX_SAFE_INTEGER
-    };
-  }
-
-  const summary = aiVisualUsageSummary(storeData);
+  const summary = aiVisualUsageSummary(storeData, entitlement);
 
   if (summary.remainingDailyAllowance < requestedJobs) {
     return {
@@ -245,10 +401,28 @@ export function canCreateAIVisualJobs(storeData: unknown, requestedJobs = 1, est
     };
   }
 
+  if (summary.remainingMonthlyAllowance < requestedJobs) {
+    return {
+      allowed: false,
+      message: `${summary.planName} monthly AI visual limit reached. Upgrade to increase your monthly allowance.`,
+      remaining: summary.remainingDailyAllowance
+    };
+  }
+
+  if (credits.active && (credits.availableCredits ?? 0) < estimatedCredits) {
+    return {
+      allowed: false,
+      message: `Not enough AI visual credits. ${estimatedCredits} credits required, ${credits.availableCredits ?? 0} available.`,
+      remaining: 0
+    };
+  }
+
   return {
     allowed: true,
     message: null,
-    remaining: summary.remainingDailyAllowance
+    remaining: credits.active
+      ? Math.min(summary.remainingDailyAllowance, summary.remainingMonthlyAllowance)
+      : summary.remainingDailyAllowance
   };
 }
 

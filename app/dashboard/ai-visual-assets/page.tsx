@@ -17,8 +17,10 @@ import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-pro
 import {
   aiVisualCreditRules,
   aiVisualUsageSummary,
+  resolveAIVisualEntitlementPlan,
   type AIVisualUsageSummary
 } from "@/lib/storefront/ai-visual-usage";
+import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import {
   aiVisualQueueFromStoreData,
   type AIVisualGenerationJob,
@@ -55,17 +57,26 @@ type AIVisualAssetsDashboardData = {
 };
 
 const emptyUsageSummary: AIVisualUsageSummary = {
+  bulkPackageAvailable: false,
   cancelledToday: 0,
   completedToday: 0,
   creditsActive: false,
   creditsAvailable: null,
   creditsReserved: 0,
-  dailyLimit: 30,
+  dailyLimit: 2,
   failedToday: 0,
-  remainingDailyAllowance: 30,
+  maxBulkJobsPerClick: 1,
+  monthlyLimit: 10,
+  planId: "unknown",
+  planName: "Limited",
+  priorityProcessing: false,
+  regenerateAvailable: false,
+  remainingDailyAllowance: 2,
+  remainingMonthlyAllowance: 10,
   retryLimit: 2,
   todayJobs: 0,
-  totalGeneratedAssets: 0
+  totalGeneratedAssets: 0,
+  upgradeHint: "Upgrade or refresh billing status to unlock AI visual generation limits."
 };
 
 const statusClasses: Record<AIVisualJobLifecycleStatus, string> = {
@@ -224,6 +235,11 @@ async function getAIVisualAssetsDashboardData(
 
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const workspaceId = selection.activeWorkspaceId;
+  const subscriptionAccess = await getUserSubscriptionAccessForClient(supabase, user.id);
+  const entitlement = resolveAIVisualEntitlementPlan({
+    planId: subscriptionAccess.plan.id,
+    status: subscriptionAccess.status
+  });
 
   if (selection.activeWorkspaceRole !== "owner" && selection.activeWorkspaceRole !== "admin") {
     return {
@@ -346,7 +362,7 @@ async function getAIVisualAssetsDashboardData(
     products: (productsResult.data ?? []) as unknown as ProductTarget[],
     queuePaused: Boolean(queue.pausedAt),
     stores,
-    usageSummary: aiVisualUsageSummary(storeData)
+    usageSummary: aiVisualUsageSummary(storeData, entitlement)
   };
 }
 
@@ -442,11 +458,12 @@ export default async function AIVisualAssetsDashboard({
   const { activeStore, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
-  const generationAllowed = providerReady && (
+  const generationAllowed = providerReady && usageSummary.remainingDailyAllowance > 0 && (
     usageSummary.creditsActive
       ? (usageSummary.creditsAvailable ?? 0) > 0
       : usageSummary.remainingDailyAllowance > 0
-  );
+  ) && usageSummary.remainingMonthlyAllowance > 0;
+  const bulkGenerationAllowed = generationAllowed && usageSummary.bulkPackageAvailable;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -503,11 +520,11 @@ export default async function AIVisualAssetsDashboard({
               <form action={queueFullAIVisualPackage} className="grid gap-2">
                 <input name="storeId" type="hidden" value={activeStore.id} />
                 <input name="templateId" type="hidden" value={activeStore.template_id ?? ""} />
-                <Button disabled={!generationAllowed} type="submit">
+                <Button disabled={!bulkGenerationAllowed} type="submit">
                   Generate full visual package
                 </Button>
                 <p className="max-w-xs text-xs font-bold leading-5 text-slate-500">
-                  Queues up to 12 shared-runtime visuals, skipping approved assets and active jobs.
+                  Queues up to {usageSummary.maxBulkJobsPerClick} shared-runtime visuals, skipping approved assets and active jobs.
                 </p>
               </form>
             </div>
@@ -525,6 +542,18 @@ export default async function AIVisualAssetsDashboard({
             </Card>
           ) : null}
 
+          {providerReady && usageSummary.remainingMonthlyAllowance <= 0 ? (
+            <Card className="border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {usageSummary.planName} monthly AI visual limit reached. Upgrade to increase your monthly allowance.
+            </Card>
+          ) : null}
+
+          {providerReady && !usageSummary.bulkPackageAvailable ? (
+            <Card className="border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+              Bulk packages are locked on the {usageSummary.planName} plan. {usageSummary.upgradeHint}
+            </Card>
+          ) : null}
+
           {providerReady && usageSummary.creditsActive && (usageSummary.creditsAvailable ?? 0) <= 0 ? (
             <Card className="border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
               Not enough AI visual credits available. Future billing credits can refill this balance.
@@ -538,7 +567,7 @@ export default async function AIVisualAssetsDashboard({
                   Usage today
                 </p>
                 <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-ink">
-                  {usageSummary.remainingDailyAllowance} of {usageSummary.dailyLimit} jobs remaining
+                  {usageSummary.planName} AI visual plan
                 </h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-muted">
                   {usageSummary.creditsActive
@@ -548,23 +577,28 @@ export default async function AIVisualAssetsDashboard({
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm font-bold text-muted sm:grid-cols-4">
                 <div className="rounded-2xl bg-slate-50 p-3">
-                  <p className="text-xl font-black text-ink">{usageSummary.todayJobs}</p>
-                  <p>Today jobs</p>
+                  <p className="text-xl font-black text-ink">{usageSummary.remainingDailyAllowance}</p>
+                  <p>Daily left / {usageSummary.dailyLimit}</p>
                 </div>
                 <div className="rounded-2xl bg-emerald-50 p-3">
-                  <p className="text-xl font-black text-emerald-700">{usageSummary.completedToday}</p>
-                  <p>Completed</p>
+                  <p className="text-xl font-black text-emerald-700">{usageSummary.remainingMonthlyAllowance}</p>
+                  <p>Monthly left / {usageSummary.monthlyLimit}</p>
                 </div>
                 <div className="rounded-2xl bg-red-50 p-3">
-                  <p className="text-xl font-black text-red-700">{usageSummary.failedToday}</p>
-                  <p>Failed</p>
+                  <p className="text-xl font-black text-red-700">{usageSummary.bulkPackageAvailable ? "Yes" : "No"}</p>
+                  <p>Bulk package</p>
                 </div>
                 <div className="rounded-2xl bg-blue-50 p-3">
-                  <p className="text-xl font-black text-blue-700">{usageSummary.totalGeneratedAssets}</p>
-                  <p>Total assets</p>
+                  <p className="text-xl font-black text-blue-700">{usageSummary.priorityProcessing ? "Yes" : "No"}</p>
+                  <p>Priority</p>
                 </div>
               </div>
             </div>
+            {usageSummary.upgradeHint ? (
+              <p className="mt-4 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">
+                {usageSummary.upgradeHint}
+              </p>
+            ) : null}
             <div className="mt-4 grid gap-2 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500 sm:grid-cols-2 lg:grid-cols-5">
               <p>Product image: {aiVisualCreditRules.productImage} credit</p>
               <p>Category image: {aiVisualCreditRules.categoryImage} credit</p>
@@ -734,7 +768,7 @@ export default async function AIVisualAssetsDashboard({
                           <form action={regenerateAIVisualAsset}>
                             <input name="storeId" type="hidden" value={activeStore.id} />
                             <input name="requestId" type="hidden" value={job.requestId} />
-                            <Button disabled={!generationAllowed} type="submit" variant="secondary">
+                            <Button disabled={!generationAllowed || !usageSummary.regenerateAvailable} type="submit" variant="secondary">
                               Regenerate
                             </Button>
                           </form>
