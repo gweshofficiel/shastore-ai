@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Headphones, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { CategoryVisualImage } from "@/components/storefront/category-visual-image";
 import {
   resolveCategoryImageSlots,
   resolveHeroBannerSlots,
@@ -271,7 +272,15 @@ export function CategoryVisualMedia({
   const Icon = slot.icon;
 
   if (slot.imageUrl) {
-    return <img alt={categoryName} className={`${className} w-full object-cover`} src={slot.imageUrl} />;
+    return (
+      <CategoryVisualImage
+        accentColor={slot.accentColor}
+        categoryName={categoryName}
+        className={className}
+        imageUrl={slot.imageUrl}
+        theme={theme}
+      />
+    );
   }
 
   if (slot.cardStyle === "icon-led") {

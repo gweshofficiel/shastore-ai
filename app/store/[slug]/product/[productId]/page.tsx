@@ -103,6 +103,28 @@ function absolutePublicUrl(value: string | null) {
   return getPublicUrl(value);
 }
 
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function visualAssetUrl(value: unknown) {
+  const record = recordValue(value);
+
+  return typeof record.url === "string" && record.url.trim()
+    ? record.url.trim()
+    : typeof record.publicUrl === "string" && record.publicUrl.trim()
+      ? record.publicUrl.trim()
+      : typeof record.imageUrl === "string" && record.imageUrl.trim()
+        ? record.imageUrl.trim()
+        : null;
+}
+
+function productVisualSeoImage(product: PublicStorefrontProduct) {
+  return product.ogImageUrl || visualAssetUrl(product.aiVisualAsset) || product.imageUrl;
+}
+
 function numericProductPrice(price: number | string | null) {
   const numericPrice = typeof price === "number" ? price : Number(price ?? NaN);
   return Number.isFinite(numericPrice) && numericPrice >= 0 ? numericPrice : null;
@@ -144,7 +166,7 @@ function productJsonLd({
   storeTitle: string;
   url: string;
 }) {
-  const image = absolutePublicUrl(product.ogImageUrl || product.imageUrl);
+  const image = absolutePublicUrl(productVisualSeoImage(product));
   const price = numericProductPrice(product.price);
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
@@ -342,7 +364,7 @@ export async function generateMetadata({
     });
   const ogTitle = product.ogTitle || title;
   const ogDescription = product.ogDescription || description;
-  const ogImage = absolutePublicUrl(product.ogImageUrl || product.imageUrl || seoSettings.defaultOgImageUrl);
+  const ogImage = absolutePublicUrl(productVisualSeoImage(product) || seoSettings.defaultOgImageUrl);
   const canonicalUrl = productCanonicalUrl(preview.store.slug, product);
 
   return {

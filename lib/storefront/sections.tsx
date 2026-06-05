@@ -70,6 +70,7 @@ import {
   isPublicCategoryTitle
 } from "@/lib/storefront/catalog-sections";
 import {
+  resolveMarketingBannerSlots,
   resolveProductImageSlots,
   resolveVisualAssetSlotWithGenerated
 } from "@/lib/storefront/visual-assets";
@@ -539,14 +540,43 @@ const flagshipMainNavLinks = [
   { href: "", label: "Home" },
   { href: "#categories", label: "Shop" },
   { href: "#products", label: "Products" },
-  { href: "#pages", label: "Pages" },
-  { href: "blog", label: "Blog" },
-  { href: "faq", label: "FAQ" },
-  { href: "about", label: "About Us" },
-  { href: "contact", label: "Contact Us" },
   { href: "#deals", label: "Deals" },
   { href: "#top-selling", label: "Top Selling" }
 ];
+
+function flagshipPublishedNavLinks(
+  slug: string,
+  {
+    hasPublishedAbout = false,
+    hasPublishedBlogArticles = false,
+    hasPublishedFaqs = false
+  }: {
+    hasPublishedAbout?: boolean;
+    hasPublishedBlogArticles?: boolean;
+    hasPublishedFaqs?: boolean;
+  }
+) {
+  const links = flagshipMainNavLinks.map((link) => ({
+    href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
+    label: link.label
+  }));
+
+  if (hasPublishedBlogArticles) {
+    links.splice(3, 0, { href: `/store/${slug}/blog`, label: "Blog" });
+  }
+
+  if (hasPublishedFaqs) {
+    links.splice(hasPublishedBlogArticles ? 4 : 3, 0, { href: `/store/${slug}/faq`, label: "FAQ" });
+  }
+
+  if (hasPublishedAbout) {
+    links.push({ href: `/store/${slug}/about`, label: "About Us" });
+  }
+
+  links.push({ href: `/store/${slug}/contact`, label: "Contact Us" });
+
+  return links;
+}
 
 function isFlagshipTemplate(context: StoreTenantContext) {
   return templateConfig(context).key === "shastore-flagship-premium";
@@ -1281,6 +1311,7 @@ type SectionRenderProps = {
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
+  searchQuery?: string;
   section: StoreSection;
   selectedCurrency?: StoreCurrencyCode;
 };
@@ -1317,7 +1348,14 @@ function uniqueStorefrontNavLinks(links: StorefrontNavLink[]) {
   return unique;
 }
 
-function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps) {
+function FlagshipNavbarSection({
+  context,
+  hasPublishedAbout = false,
+  hasPublishedBlogArticles = false,
+  hasPublishedFaqs = false,
+  headerNavigation,
+  searchQuery = ""
+}: SectionRenderProps) {
   const slug = context.preview.store.slug;
   const logoUrl = context.theme.logo.url || context.preview.themeSettings.logoUrl || null;
   const storeDescription = context.preview.store.description || "Premium Store";
@@ -1329,11 +1367,15 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
         label: category.name
       }))
     : flagshipCategoryPlaceholders.map((category) => ({ icon: category.icon, href: "#categories", label: category.label }));
-  const flagshipNavLinks = flagshipMainNavLinks.map((link) => ({
-    href: link.href.startsWith("#") ? link.href : `/store/${slug}${link.href ? `/${link.href}` : ""}`,
-    label: link.label
-  }));
-  const navLinks = uniqueStorefrontNavLinks(flagshipNavLinks);
+  const navLinks = uniqueStorefrontNavLinks(
+    headerNavigation?.links.length
+      ? headerNavigation.links
+      : flagshipPublishedNavLinks(slug, {
+          hasPublishedAbout,
+          hasPublishedBlogArticles,
+          hasPublishedFaqs
+        })
+  );
   const iconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200";
   const darkIconLinkClassName = "relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800";
   const iconCountClassName = "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950";
@@ -1396,6 +1438,7 @@ function FlagshipNavbarSection({ context, headerNavigation }: SectionRenderProps
             <Search className="ml-4 mt-3 h-5 w-5 text-slate-400" />
             <input
               className="min-w-0 flex-1 bg-transparent px-3 text-sm font-bold text-ink outline-none"
+              defaultValue={searchQuery}
               name="q"
               placeholder="Search products, brands, categories..."
             />
@@ -1461,6 +1504,7 @@ function NavbarSection({
   hasPublishedBlogArticles = false,
   hasPublishedFaqs = false,
   headerNavigation,
+  searchQuery = "",
   section
 }: SectionRenderProps) {
   const theme = context.preview.themeSettings;
@@ -1487,7 +1531,17 @@ function NavbarSection({
       ]);
 
   if (config.key === "shastore-flagship-premium") {
-    return <FlagshipNavbarSection context={context} headerNavigation={headerNavigation} section={section} />;
+    return (
+      <FlagshipNavbarSection
+        context={context}
+        hasPublishedAbout={hasPublishedAbout}
+        hasPublishedBlogArticles={hasPublishedBlogArticles}
+        hasPublishedFaqs={hasPublishedFaqs}
+        headerNavigation={headerNavigation}
+        searchQuery={searchQuery}
+        section={section}
+      />
+    );
   }
 
   return (
@@ -1963,10 +2017,10 @@ function TestimonialsSection({ context, section }: { context: StoreTenantContext
         ) : config.key === "shastore-flagship-premium" ? (
           <div className="grid gap-4 md:grid-cols-4">
             {[
-              ["10K+", "Shoppers served"],
-              ["500+", "Brands ready"],
-              ["24/7", "Support ready"],
-              ["4.9", "Average rating"]
+              ["Reviews", "Ready for customer reviews"],
+              ["Brands", "Ready for brand highlights"],
+              ["Support", "Support channels connected"],
+              ["Ratings", "Ratings appear after first review"]
             ].map(([value, label]) => (
               <div className="rounded-[2rem] border border-slate-200 bg-white p-6 text-center shadow-sm" key={label}>
                 <p className="text-4xl font-black tracking-[-0.05em] text-ink" style={headingStyle()}>{value}</p>
@@ -2362,8 +2416,19 @@ function promotionalSlotItems(section: StoreSection, context: StoreTenantContext
     : Array.isArray(section.config.items)
       ? section.config.items
       : [];
+  const generatedBanners = resolveMarketingBannerSlots(section.config, {
+    generatedVisualAssets: context.preview.generatedVisualAssets,
+    storeId: context.preview.store.id,
+    targetId: context.preview.store.id
+  });
+  const defaultBannerAssets = [
+    generatedBanners.announcement,
+    generatedBanners.flashSale,
+    generatedBanners.seasonalSale,
+    generatedBanners.collection
+  ];
 
-  return rawItems
+  const items = rawItems
     .filter(isRecord)
     .map((item, index) => {
       const eyebrow = textValue(item.eyebrow);
@@ -2394,6 +2459,15 @@ function promotionalSlotItems(section: StoreSection, context: StoreTenantContext
       };
     })
     .filter((item) => item.title || item.body || item.eyebrow);
+
+  if (items.length) {
+    return items;
+  }
+
+  return defaultPromotionStrips().map((item, index) => ({
+    ...item,
+    bannerAsset: defaultBannerAssets[index] ?? undefined
+  }));
 }
 
 function PromotionalBlocksSection({ context, section }: SectionRenderProps) {
@@ -2658,6 +2732,7 @@ export function SectionRenderer({
   publishedAbout = null,
   publishedArticles = [],
   publishedFaqs = [],
+  searchQuery = "",
   section,
   selectedCurrency
 }: {
@@ -2670,6 +2745,7 @@ export function SectionRenderer({
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
+  searchQuery?: string;
   section: StoreSection;
   selectedCurrency?: StoreCurrencyCode;
 }) {
@@ -2690,6 +2766,7 @@ export function SectionRenderer({
       publishedAbout={publishedAbout}
       publishedArticles={publishedArticles}
       publishedFaqs={publishedFaqs}
+      searchQuery={searchQuery}
       section={section}
       selectedCurrency={selectedCurrency}
     />
@@ -2709,6 +2786,7 @@ export async function DynamicSectionLoader({
   publishedAbout = null,
   publishedArticles = [],
   publishedFaqs = [],
+  searchQuery = "",
   selectedCurrency
 }: {
   beforeFooter?: ReactNode;
@@ -2723,6 +2801,7 @@ export async function DynamicSectionLoader({
   publishedAbout?: PublicStoreAboutPage | null;
   publishedArticles?: PublicStoreBlogArticle[];
   publishedFaqs?: PublicStoreFaq[];
+  searchQuery?: string;
   selectedCurrency?: StoreCurrencyCode;
 }) {
   const layout = homepageLayout?.configured
@@ -2769,6 +2848,7 @@ export async function DynamicSectionLoader({
           publishedAbout={publishedAbout}
           publishedArticles={publishedArticles}
           publishedFaqs={publishedFaqs}
+          searchQuery={searchQuery}
           section={section}
           selectedCurrency={selectedCurrency}
         />
@@ -2786,6 +2866,7 @@ export async function DynamicSectionLoader({
           publishedAbout={publishedAbout}
           publishedArticles={publishedArticles}
           publishedFaqs={publishedFaqs}
+          searchQuery={searchQuery}
           section={section}
           selectedCurrency={selectedCurrency}
         />

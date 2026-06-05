@@ -6,7 +6,6 @@ import { ProductBadges } from "@/components/storefront/product-badges";
 import { ProductQuickView } from "@/components/storefront/product-quick-view";
 import { ProductSalesProof } from "@/components/storefront/product-sales-proof";
 import { ProductStockUrgency } from "@/components/storefront/product-stock-urgency";
-import { PremiumVisualFallback } from "@/components/storefront/visual-slots";
 import { AddToCartButton, CartNavLink } from "@/components/storefront/public-store-cart";
 import { WishlistButton, WishlistNavLink } from "@/components/storefront/public-store-wishlist";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
@@ -55,6 +54,24 @@ function resolveCategory(
   return categories.find((category) => category.id === decodedCategory || category.slug === decodedCategory);
 }
 
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function visualAssetUrl(value: unknown) {
+  const record = recordValue(value);
+
+  return typeof record.url === "string" && record.url.trim()
+    ? record.url.trim()
+    : typeof record.publicUrl === "string" && record.publicUrl.trim()
+      ? record.publicUrl.trim()
+      : typeof record.imageUrl === "string" && record.imageUrl.trim()
+        ? record.imageUrl.trim()
+        : null;
+}
+
 export async function generateMetadata({
   params
 }: CategoryPageProps): Promise<Metadata> {
@@ -84,7 +101,7 @@ export async function generateMetadata({
     `Shop ${category.name} products from ${preview.store.title}, powered by SHASTORE AI.`;
   const ogTitle = category.ogTitle || title;
   const ogDescription = category.ogDescription || description;
-  const ogImage = category.ogImageUrl || category.imageUrl;
+  const ogImage = category.ogImageUrl || visualAssetUrl(category.aiVisualAsset) || category.imageUrl;
 
   return {
     alternates: category.canonicalUrl ? { canonical: category.canonicalUrl } : undefined,
@@ -346,20 +363,19 @@ export default async function PublicCategoryPage({ params }: CategoryPageProps) 
                 })}
               </div>
             ) : (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {[0, 1, 2, 3, 4, 5].map((item) => (
-                  <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm" key={item}>
-                    <PremiumVisualFallback
-                      accentLabel={`Category product visual ${item + 1}`}
-                      className="aspect-square rounded-[1.5rem]"
-                      theme={visualTheme}
-                    />
-                    <div className="grid gap-3 p-5">
-                      <div className="h-3 w-2/3 rounded-full bg-slate-200" />
-                      <div className="h-3 w-1/2 rounded-full bg-slate-100" />
-                    </div>
-                  </div>
-                ))}
+              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
+                <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
+                  No products in this category yet
+                </h2>
+                <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-muted">
+                  Products assigned to {category.name} will appear here once they are published.
+                </p>
+                <Link
+                  className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-black text-white"
+                  href={`/store/${preview.store.slug}`}
+                >
+                  Browse all products
+                </Link>
               </div>
             )}
           </section>

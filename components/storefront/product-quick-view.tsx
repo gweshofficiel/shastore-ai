@@ -112,7 +112,10 @@ export function ProductQuickView({
   const selectedVariant =
     product.variants.find((variant) => variant.id === selectedVariantId) ?? null;
   const activePrice = selectedVariant?.priceOverride ?? product.price;
-  const activePriceLabel = selectedVariant?.priceOverride ? null : product.priceLabel;
+  const activePriceLabel =
+    selectedVariant?.priceOverride !== null && selectedVariant?.priceOverride !== undefined
+      ? null
+      : product.priceLabel;
   const imageSlots = useMemo(
     () => resolveProductImageSlots({
       gallery: product.gallery,

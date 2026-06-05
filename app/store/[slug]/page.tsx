@@ -450,15 +450,16 @@ export default async function PublicStorePage({
     preview.products.length > 0 &&
     products.length === 0 &&
     (isFlagshipPremium ? hasSearchQuery : discovery.active);
-  const homepageContext = isFlagshipPremium
-    ? {
-        ...context,
-        preview: {
-          ...preview,
-          products: preview.products
+  const homepageContext =
+    isFlagshipPremium && !hasSearchQuery
+      ? {
+          ...context,
+          preview: {
+            ...preview,
+            products: preview.products
+          }
         }
-      }
-    : filteredContext;
+      : filteredContext;
 
   summarizeFlagshipPageProducts(store.slug, preview.products, homepageContext.preview.products);
   const selectedCurrency = selectedCurrencyFromValue(query.currency, store.currencySettings);
@@ -983,6 +984,7 @@ export default async function PublicStorePage({
         publishedAbout={publishedAbout}
         publishedArticles={publishedArticles}
         publishedFaqs={publishedFaqs}
+        searchQuery={cleanQueryValue(query.q, 120)}
         selectedCurrency={selectedCurrency}
       />
       {isFlagshipPremium ? null : (
