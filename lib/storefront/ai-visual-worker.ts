@@ -268,6 +268,15 @@ export async function processPendingAIVisualAssetJob({
   let queue = aiVisualQueueFromStoreData(storeData);
   const staleRecovery = recoverStaleProcessingJobs(queue.jobs);
 
+  if (queue.pausedAt) {
+    return {
+      error: "AI visual queue is paused. Resume the queue before processing jobs.",
+      job: null,
+      requestId,
+      status: "no_pending_job"
+    };
+  }
+
   if (staleRecovery.recovered.length > 0) {
     queue = { ...queue, jobs: staleRecovery.jobs };
     const recoveryPersist = await persistRecoveredStaleJobs({

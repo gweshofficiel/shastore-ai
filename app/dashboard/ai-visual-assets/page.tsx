@@ -2,9 +2,14 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  cancelPendingAIVisualJobAction,
   generateFullAIVisualPackageAction,
+  pauseAIVisualQueueAction,
+  processAIVisualAssetBatchAction,
   regenerateAIVisualAssetJobAction,
   requestAIVisualAssetGenerationAction,
+  resumeAIVisualQueueAction,
+  retryFailedAIVisualJobAction,
   triggerAIVisualAssetWorkerAction,
   updateAIVisualAssetApprovalAction
 } from "@/lib/ai-visual-provider-actions";
@@ -39,6 +44,7 @@ type AIVisualAssetsDashboardData = {
   error: string | null;
   jobs: AIVisualGenerationJob[];
   products: ProductTarget[];
+  queuePaused: boolean;
   stores: UserStoreRow[];
 };
 
@@ -46,6 +52,7 @@ const statusClasses: Record<AIVisualJobLifecycleStatus, string> = {
   cancelled: "bg-slate-100 text-slate-700",
   completed: "bg-emerald-50 text-emerald-700",
   failed: "bg-red-50 text-red-700",
+  paused: "bg-violet-50 text-violet-700",
   pending: "bg-amber-50 text-amber-700",
   processing: "bg-blue-50 text-blue-700"
 };
@@ -96,6 +103,36 @@ async function processAIVisualAssetJob(formData: FormData) {
   "use server";
 
   await triggerAIVisualAssetWorkerAction(undefined, formData);
+}
+
+async function processAIVisualAssetBatch(formData: FormData) {
+  "use server";
+
+  await processAIVisualAssetBatchAction(undefined, formData);
+}
+
+async function pauseAIVisualQueue(formData: FormData) {
+  "use server";
+
+  await pauseAIVisualQueueAction(undefined, formData);
+}
+
+async function resumeAIVisualQueue(formData: FormData) {
+  "use server";
+
+  await resumeAIVisualQueueAction(undefined, formData);
+}
+
+async function cancelAIVisualJob(formData: FormData) {
+  "use server";
+
+  await cancelPendingAIVisualJobAction(undefined, formData);
+}
+
+async function retryAIVisualJob(formData: FormData) {
+  "use server";
+
+  await retryFailedAIVisualJobAction(undefined, formData);
 }
 
 async function reviewAIVisualAsset(formData: FormData) {
@@ -159,6 +196,7 @@ async function getAIVisualAssetsDashboardData(
       error: "Sign in to manage AI visual assets.",
       jobs: [],
       products: [],
+      queuePaused: false,
       stores: []
     };
   }
@@ -173,6 +211,7 @@ async function getAIVisualAssetsDashboardData(
       error: "Only workspace owners and admins can access AI visual generation controls.",
       jobs: [],
       products: [],
+      queuePaused: false,
       stores: []
     };
   }
@@ -190,6 +229,7 @@ async function getAIVisualAssetsDashboardData(
       error: "Stores could not be loaded. Please try again.",
       jobs: [],
       products: [],
+      queuePaused: false,
       stores: []
     };
   }
@@ -203,6 +243,7 @@ async function getAIVisualAssetsDashboardData(
       error: null,
       jobs: [],
       products: [],
+      queuePaused: false,
       stores
     };
   }
@@ -222,6 +263,7 @@ async function getAIVisualAssetsDashboardData(
       error: access.reason,
       jobs: [],
       products: [],
+      queuePaused: false,
       stores
     };
   }
@@ -256,6 +298,7 @@ async function getAIVisualAssetsDashboardData(
       error: storeResult.error?.message ?? "Store AI visual data could not be loaded.",
       jobs: [],
       products: [],
+      queuePaused: false,
       stores
     };
   }
@@ -275,6 +318,7 @@ async function getAIVisualAssetsDashboardData(
       : null,
     jobs,
     products: (productsResult.data ?? []) as unknown as ProductTarget[],
+    queuePaused: Boolean(queue.pausedAt),
     stores
   };
 }
@@ -368,7 +412,7 @@ export default async function AIVisualAssetsDashboard({
   searchParams: Promise<{ storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, categories, error, jobs, products, stores } = await getAIVisualAssetsDashboardData(query.storeId);
+  const { activeStore, categories, error, jobs, products, queuePaused, stores } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
 
@@ -481,11 +525,43 @@ export default async function AIVisualAssetsDashboard({
                     AI visual jobs
                   </h2>
                 </div>
-                <form action={processAIVisualAssetJob}>
-                  <input name="storeId" type="hidden" value={activeStore.id} />
-                  <Button type="submit">Process next pending</Button>
-                </form>
+                <div className="flex flex-wrap gap-2">
+                  <form action={processAIVisualAssetBatch}>
+                    <input name="storeId" type="hidden" value={activeStore.id} />
+                    <input name="limit" type="hidden" value="1" />
+                    <Button disabled={queuePaused} type="submit">
+                      Process next job
+                    </Button>
+                  </form>
+                  <form action={processAIVisualAssetBatch}>
+                    <input name="storeId" type="hidden" value={activeStore.id} />
+                    <input name="limit" type="hidden" value="3" />
+                    <Button disabled={queuePaused} type="submit" variant="secondary">
+                      Process next 3 jobs
+                    </Button>
+                  </form>
+                  {queuePaused ? (
+                    <form action={resumeAIVisualQueue}>
+                      <input name="storeId" type="hidden" value={activeStore.id} />
+                      <Button type="submit" variant="secondary">
+                        Resume queue
+                      </Button>
+                    </form>
+                  ) : (
+                    <form action={pauseAIVisualQueue}>
+                      <input name="storeId" type="hidden" value={activeStore.id} />
+                      <Button type="submit" variant="secondary">
+                        Pause queue
+                      </Button>
+                    </form>
+                  )}
+                </div>
               </div>
+              {queuePaused ? (
+                <p className="mt-3 rounded-2xl bg-violet-50 p-3 text-sm font-bold text-violet-700">
+                  Queue is paused. Pending jobs are held until you resume processing.
+                </p>
+              ) : null}
 
               <div className="mt-5 grid gap-3">
                 {jobs.length ? jobs.map((job) => {
@@ -583,15 +659,35 @@ export default async function AIVisualAssetsDashboard({
                           {job.error}
                         </p>
                       ) : null}
-                      {job.status === "pending" ? (
-                        <form action={processAIVisualAssetJob} className="mt-4">
-                          <input name="storeId" type="hidden" value={activeStore.id} />
-                          <input name="requestId" type="hidden" value={job.requestId} />
-                          <Button type="submit" variant="secondary">
-                            Process this job
-                          </Button>
-                        </form>
-                      ) : null}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {job.status === "pending" ? (
+                          <form action={processAIVisualAssetJob}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <Button disabled={queuePaused} type="submit" variant="secondary">
+                              Process this job
+                            </Button>
+                          </form>
+                        ) : null}
+                        {job.status === "pending" || job.status === "paused" ? (
+                          <form action={cancelAIVisualJob}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <Button type="submit" variant="secondary">
+                              Cancel pending job
+                            </Button>
+                          </form>
+                        ) : null}
+                        {job.status === "failed" ? (
+                          <form action={retryAIVisualJob}>
+                            <input name="storeId" type="hidden" value={activeStore.id} />
+                            <input name="requestId" type="hidden" value={job.requestId} />
+                            <Button type="submit" variant="secondary">
+                              Retry failed job
+                            </Button>
+                          </form>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 }) : (
@@ -607,11 +703,12 @@ export default async function AIVisualAssetsDashboard({
                 Safety
               </p>
               <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-ink">
-                Manual controls only
+                Safe worker controls
               </h2>
               <div className="mt-4 grid gap-3 text-sm font-semibold leading-6 text-muted">
                 <p>Jobs are created only by owner/admin form submission.</p>
-                <p>The worker runs only when manually triggered from this panel.</p>
+                <p>The worker runs only when manually triggered from this panel, capped at 3 jobs per click.</p>
+                <p>Paused queues hold pending jobs until resumed. Completed jobs are never processed again.</p>
                 <p>Provider and R2 keys are read only by server-side modules.</p>
                 <p>All templates share the same queue, worker, storage, and resolver pipeline.</p>
               </div>

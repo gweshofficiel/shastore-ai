@@ -12,7 +12,7 @@ import type {
   VisualAssetSlot
 } from "@/lib/storefront/visual-assets";
 
-export type AIVisualJobLifecycleStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+export type AIVisualJobLifecycleStatus = "pending" | "processing" | "completed" | "failed" | "cancelled" | "paused";
 
 export type AIVisualWorkerStepKey = "generate" | "upload" | "attach" | "publish";
 
@@ -68,6 +68,8 @@ export type AIVisualGenerationJob = {
 
 export type AIVisualQueueState = {
   jobs: Record<string, AIVisualGenerationJob>;
+  pausedAt: string | null;
+  pausedByUserId: string | null;
   schemaVersion: 1;
   updatedAt: string;
 };
@@ -346,7 +348,7 @@ export function updateAIVisualWorkerStep({
 }
 
 export function dispatchAIVisualGenerationJob(job: AIVisualGenerationJob): AIVisualDispatchResult {
-  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled" || job.status === "paused") {
     return {
       job,
       nextStep: null,
@@ -393,6 +395,8 @@ export function aiVisualQueueFromStoreData(value: unknown): AIVisualQueueState {
 
   return {
     jobs: jobs as Record<string, AIVisualGenerationJob>,
+    pausedAt: typeof queue.pausedAt === "string" ? queue.pausedAt : null,
+    pausedByUserId: typeof queue.pausedByUserId === "string" ? queue.pausedByUserId : null,
     schemaVersion: 1,
     updatedAt: typeof queue.updatedAt === "string" ? queue.updatedAt : nowIso()
   };
@@ -411,6 +415,8 @@ export function upsertAIVisualQueueJob({
       ...queue.jobs,
       [job.requestId]: job
     },
+    pausedAt: queue.pausedAt,
+    pausedByUserId: queue.pausedByUserId,
     schemaVersion: 1,
     updatedAt: nowIso()
   };

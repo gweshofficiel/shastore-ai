@@ -12,7 +12,9 @@ import { getAIVisualProviderAdapter } from "@/lib/storefront/ai-visual-provider"
 import {
   aiVisualQueueFromStoreData,
   createAIVisualGenerationJob,
+  createAIVisualWorkerSteps,
   dispatchAIVisualGenerationJob,
+  transitionAIVisualJobStatus,
   type AIVisualGenerationJob,
   upsertAIVisualQueueJob
 } from "@/lib/storefront/ai-visual-queue";
@@ -69,6 +71,15 @@ export type AIVisualBulkPackageActionState = {
   status: "idle" | "queued" | "no_targets" | "failed";
 };
 
+export type AIVisualQueueControlActionState = {
+  error: string | null;
+  jobId: string | null;
+  ok: boolean;
+  processed: number;
+  requestId: string | null;
+  status: "idle" | "paused" | "resumed" | "cancelled" | "retried" | "processed" | "failed";
+};
+
 type ReviewableVisualApprovalStatus = Exclude<VisualAssetApprovalStatus, "generated">;
 
 type AuthorizedAIVisualStoreContext =
@@ -115,6 +126,7 @@ const defaultApprovalState: AIVisualApprovalActionState = {
 const AI_VISUAL_BULK_MAX_JOBS = 12;
 const AI_VISUAL_BULK_CATEGORY_LIMIT = 4;
 const AI_VISUAL_BULK_PRODUCT_LIMIT = 5;
+const AI_VISUAL_MAX_PROCESS_PER_CLICK = 3;
 
 const defaultBulkPackageState: AIVisualBulkPackageActionState = {
   error: null,
@@ -125,6 +137,15 @@ const defaultBulkPackageState: AIVisualBulkPackageActionState = {
   skippedActive: 0,
   skippedApproved: 0,
   skippedUnsupported: 0,
+  status: "idle"
+};
+
+const defaultQueueControlState: AIVisualQueueControlActionState = {
+  error: null,
+  jobId: null,
+  ok: false,
+  processed: 0,
+  requestId: null,
   status: "idle"
 };
 
@@ -381,7 +402,7 @@ function hasActiveVisualJobForBulkTarget({
   target: AIVisualBulkTarget;
 }) {
   return Object.values(queue.jobs).some((job) => (
-    (job.status === "pending" || job.status === "processing") &&
+    (job.status === "pending" || job.status === "processing" || job.status === "paused") &&
     job.slot === target.slot &&
     job.attachTarget.type === target.targetType &&
     (job.attachTarget.entityId ?? "template") === (target.entityId ?? "template")
@@ -390,6 +411,56 @@ function hasActiveVisualJobForBulkTarget({
 
 function bulkTemplateTargetId(storeId: string, slot: VisualAssetSlot) {
   return `${storeId}-${slot}`;
+}
+
+function queueStoreData({
+  jobs,
+  pausedAt,
+  pausedByUserId,
+  storeData
+}: {
+  jobs: Record<string, AIVisualGenerationJob>;
+  pausedAt: string | null;
+  pausedByUserId: string | null;
+  storeData: Record<string, unknown>;
+}) {
+  return {
+    ...storeData,
+    aiVisualAssetJobs: jobs,
+    aiVisualAssetQueue: {
+      jobs,
+      pausedAt,
+      pausedByUserId,
+      schemaVersion: 1,
+      updatedAt: new Date().toISOString()
+    }
+  };
+}
+
+async function persistAIVisualQueueStoreData({
+  context,
+  storeData,
+  storeId
+}: {
+  context: Extract<AuthorizedAIVisualStoreContext, { ok: true }>;
+  storeData: Record<string, unknown>;
+  storeId: string;
+}) {
+  const { error } = await context.supabase
+    .from("stores" as never)
+    .update({
+      store_data: storeData,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, storeId as never)
+    .eq("workspace_id" as never, context.workspaceId as never);
+
+  if (!error) {
+    revalidatePath(`/dashboard/stores/${storeId}`);
+    revalidatePath("/dashboard/ai-visual-assets");
+  }
+
+  return error;
 }
 
 export async function requestAIVisualAssetGenerationAction(
@@ -495,6 +566,7 @@ export async function requestAIVisualAssetGenerationAction(
   const pendingJob = provider.createPendingJob(request);
   const providerPlan = planAIVisualAssetProviderRequest(request);
   const storeData = asStoreData(storeRecord.store_data);
+  const queue = aiVisualQueueFromStoreData(storeData);
   const queuedJob = createAIVisualGenerationJob({
     jobId: pendingJob.jobId,
     provider: pendingJob.provider,
@@ -503,7 +575,12 @@ export async function requestAIVisualAssetGenerationAction(
     request,
     workspaceId
   });
-  const dispatch = dispatchAIVisualGenerationJob(queuedJob);
+  const dispatch = dispatchAIVisualGenerationJob(queue.pausedAt
+    ? {
+        ...queuedJob,
+        status: "paused"
+      }
+    : queuedJob);
   const nextStoreData = upsertAIVisualQueueJob({
     job: dispatch.job,
     storeData
@@ -716,7 +793,12 @@ export async function generateFullAIVisualPackageAction(
       request,
       workspaceId: context.workspaceId
     });
-    const dispatch = dispatchAIVisualGenerationJob(queuedJob);
+    const dispatch = dispatchAIVisualGenerationJob(queue.pausedAt
+      ? {
+          ...queuedJob,
+          status: "paused"
+        }
+      : queuedJob);
     nextStoreData = upsertAIVisualQueueJob({
       job: dispatch.job,
       storeData: nextStoreData
@@ -947,7 +1029,13 @@ export async function regenerateAIVisualAssetJobAction(
     request,
     workspaceId: context.workspaceId
   });
-  const dispatch = dispatchAIVisualGenerationJob(queuedJob);
+  const queuePaused = Boolean(aiVisualQueueFromStoreData(context.storeData).pausedAt);
+  const dispatch = dispatchAIVisualGenerationJob(queuePaused
+    ? {
+        ...queuedJob,
+        status: "paused"
+      }
+    : queuedJob);
   const nextStoreData = upsertAIVisualQueueJob({
     job: dispatch.job,
     storeData: context.storeData
@@ -980,6 +1068,336 @@ export async function regenerateAIVisualAssetJobAction(
     providerStatus: pendingJob.providerStatus,
     requestId: regeneratedRequestId,
     status: "pending"
+  };
+}
+
+export async function processAIVisualAssetBatchAction(
+  _prevState: AIVisualQueueControlActionState = defaultQueueControlState,
+  formData: FormData
+): Promise<AIVisualQueueControlActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+  const requestedLimit = Number(formData.get("limit"));
+  const limit = Math.min(
+    AI_VISUAL_MAX_PROCESS_PER_CLICK,
+    Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.floor(requestedLimit) : 1
+  );
+
+  if (!storeId) {
+    return {
+      ...defaultQueueControlState,
+      error: "Store is required to process AI visual jobs.",
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultQueueControlState,
+      error: context.error,
+      status: "failed"
+    };
+  }
+
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+
+  if (queue.pausedAt) {
+    return {
+      ...defaultQueueControlState,
+      error: "AI visual queue is paused. Resume the queue before processing jobs.",
+      status: "failed"
+    };
+  }
+
+  let processed = 0;
+  let lastResult: Awaited<ReturnType<typeof processPendingAIVisualAssetJob>> | null = null;
+
+  for (let index = 0; index < limit; index += 1) {
+    const result = await processPendingAIVisualAssetJob({
+      requestedByUserId: context.userId,
+      requestId: null,
+      storeId,
+      supabase: context.supabase,
+      workspaceId: context.workspaceId
+    });
+    lastResult = result;
+
+    if (result.status !== "completed") {
+      break;
+    }
+
+    processed += 1;
+  }
+
+  return {
+    error: lastResult?.status === "completed" || processed > 0 ? null : lastResult?.error ?? "No pending AI visual jobs found.",
+    jobId: lastResult?.job?.jobId ?? null,
+    ok: processed > 0,
+    processed,
+    requestId: lastResult?.requestId ?? null,
+    status: processed > 0 ? "processed" : "failed"
+  };
+}
+
+export async function pauseAIVisualQueueAction(
+  _prevState: AIVisualQueueControlActionState = defaultQueueControlState,
+  formData: FormData
+): Promise<AIVisualQueueControlActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+
+  if (!storeId) {
+    return {
+      ...defaultQueueControlState,
+      error: "Store is required to pause the AI visual queue.",
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultQueueControlState,
+      error: context.error,
+      status: "failed"
+    };
+  }
+
+  const timestamp = new Date().toISOString();
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+  const jobs = Object.fromEntries(Object.entries(queue.jobs).map(([requestId, job]) => [
+    requestId,
+    job.status === "pending"
+      ? {
+          ...job,
+          status: "paused" as const,
+          updatedAt: timestamp
+        }
+      : job
+  ])) as Record<string, AIVisualGenerationJob>;
+  const nextStoreData = queueStoreData({
+    jobs,
+    pausedAt: timestamp,
+    pausedByUserId: context.userId,
+    storeData: context.storeData
+  });
+  const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
+
+  if (error) {
+    return {
+      ...defaultQueueControlState,
+      error: error.message,
+      status: "failed"
+    };
+  }
+
+  return {
+    ...defaultQueueControlState,
+    ok: true,
+    status: "paused"
+  };
+}
+
+export async function resumeAIVisualQueueAction(
+  _prevState: AIVisualQueueControlActionState = defaultQueueControlState,
+  formData: FormData
+): Promise<AIVisualQueueControlActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+
+  if (!storeId) {
+    return {
+      ...defaultQueueControlState,
+      error: "Store is required to resume the AI visual queue.",
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultQueueControlState,
+      error: context.error,
+      status: "failed"
+    };
+  }
+
+  const timestamp = new Date().toISOString();
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+  const jobs = Object.fromEntries(Object.entries(queue.jobs).map(([requestId, job]) => [
+    requestId,
+    job.status === "paused"
+      ? {
+          ...job,
+          status: "pending" as const,
+          updatedAt: timestamp
+        }
+      : job
+  ])) as Record<string, AIVisualGenerationJob>;
+  const nextStoreData = queueStoreData({
+    jobs,
+    pausedAt: null,
+    pausedByUserId: null,
+    storeData: context.storeData
+  });
+  const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
+
+  if (error) {
+    return {
+      ...defaultQueueControlState,
+      error: error.message,
+      status: "failed"
+    };
+  }
+
+  return {
+    ...defaultQueueControlState,
+    ok: true,
+    status: "resumed"
+  };
+}
+
+export async function cancelPendingAIVisualJobAction(
+  _prevState: AIVisualQueueControlActionState = defaultQueueControlState,
+  formData: FormData
+): Promise<AIVisualQueueControlActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+  const requestId = textValue(formData.get("requestId"), 240);
+
+  if (!storeId || !requestId) {
+    return {
+      ...defaultQueueControlState,
+      error: "Store and request are required to cancel an AI visual job.",
+      requestId: requestId || null,
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultQueueControlState,
+      error: context.error,
+      requestId,
+      status: "failed"
+    };
+  }
+
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+  const job = queue.jobs[requestId];
+
+  if (!job || (job.status !== "pending" && job.status !== "paused")) {
+    return {
+      ...defaultQueueControlState,
+      error: "Only pending or paused AI visual jobs can be cancelled.",
+      requestId,
+      status: "failed"
+    };
+  }
+
+  const cancelledJob = transitionAIVisualJobStatus({
+    error: "AI visual job cancelled by store owner/admin.",
+    job,
+    status: "cancelled"
+  });
+  const nextStoreData = upsertAIVisualQueueJob({
+    job: cancelledJob,
+    storeData: context.storeData
+  });
+  const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
+
+  if (error) {
+    return {
+      ...defaultQueueControlState,
+      error: error.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
+  return {
+    ...defaultQueueControlState,
+    jobId: cancelledJob.jobId,
+    ok: true,
+    requestId,
+    status: "cancelled"
+  };
+}
+
+export async function retryFailedAIVisualJobAction(
+  _prevState: AIVisualQueueControlActionState = defaultQueueControlState,
+  formData: FormData
+): Promise<AIVisualQueueControlActionState> {
+  const storeId = textValue(formData.get("storeId"), 80);
+  const requestId = textValue(formData.get("requestId"), 240);
+
+  if (!storeId || !requestId) {
+    return {
+      ...defaultQueueControlState,
+      error: "Store and request are required to retry an AI visual job.",
+      requestId: requestId || null,
+      status: "failed"
+    };
+  }
+
+  const context = await loadAuthorizedAIVisualStore({ storeId });
+
+  if (!context.ok) {
+    return {
+      ...defaultQueueControlState,
+      error: context.error,
+      requestId,
+      status: "failed"
+    };
+  }
+
+  const queue = aiVisualQueueFromStoreData(context.storeData);
+  const job = queue.jobs[requestId];
+
+  if (!job || job.status !== "failed") {
+    return {
+      ...defaultQueueControlState,
+      error: "Only failed AI visual jobs can be retried.",
+      requestId,
+      status: "failed"
+    };
+  }
+
+  const retriedJob: AIVisualGenerationJob = {
+    ...job,
+    attempts: 0,
+    claimedAt: null,
+    claimedBy: null,
+    completedAt: null,
+    error: null,
+    result: null,
+    status: queue.pausedAt ? "paused" : "pending",
+    updatedAt: new Date().toISOString(),
+    workerSteps: createAIVisualWorkerSteps()
+  };
+  const nextStoreData = upsertAIVisualQueueJob({
+    job: retriedJob,
+    storeData: context.storeData
+  });
+  const error = await persistAIVisualQueueStoreData({ context, storeData: nextStoreData, storeId });
+
+  if (error) {
+    return {
+      ...defaultQueueControlState,
+      error: error.message,
+      requestId,
+      status: "failed"
+    };
+  }
+
+  return {
+    ...defaultQueueControlState,
+    jobId: retriedJob.jobId,
+    ok: true,
+    requestId,
+    status: "retried"
   };
 }
 
