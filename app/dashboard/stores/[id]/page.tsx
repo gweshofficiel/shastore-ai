@@ -118,6 +118,11 @@ import {
   publishOwnedStorefront,
   unpublishOwnedStorefront
 } from "@/lib/store-publishing-actions";
+import {
+  applySafeTemplateUpdateAction,
+  checkTemplateUpdateAction,
+  previewTemplateUpdateAction
+} from "@/lib/template-update-actions";
 import { loadBuyerStoreManagementSnapshot } from "@/lib/buyer-store-dashboard";
 import {
   canUseCustomDomains,
@@ -155,6 +160,11 @@ import {
   resolveInstalledTemplatePackageMetadata,
   type TemplatePackageVersionMetadata
 } from "@/lib/storefront/template-packages";
+import {
+  getTemplateUpdatePlan,
+  templateUpdateStatusLabel,
+  type TemplateUpdatePlan
+} from "@/lib/storefront/template-update-system";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -624,12 +634,28 @@ function formatTemplateInstallDate(value: string | null) {
 }
 
 function StoreTemplateVersionPanel({
+  actionsBlocked,
   metadata,
+  showPreview,
+  storeId,
+  templateUpdate,
   templateName
 }: {
+  actionsBlocked: boolean;
   metadata: TemplatePackageVersionMetadata;
+  showPreview: boolean;
+  storeId: string;
+  templateUpdate: TemplateUpdatePlan;
   templateName: string;
 }) {
+  const statusLabel = templateUpdateStatusLabel(templateUpdate.status);
+  const statusClass =
+    templateUpdate.status === "update_available"
+      ? "bg-amber-100 text-amber-800"
+      : templateUpdate.status === "legacy_unversioned"
+        ? "bg-slate-100 text-slate-700"
+        : "bg-emerald-100 text-emerald-700";
+
   return (
     <Card className="border-slate-200 bg-white p-5 lg:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -644,10 +670,27 @@ function StoreTemplateVersionPanel({
             This store keeps its installed template package version in store data.
             Future package updates can be compared without automatically reinstalling or changing this store.
           </p>
+          <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass}`}>
+            {statusLabel}
+          </span>
         </div>
-        <ButtonLink href="/dashboard/templates" variant="secondary">
-          View templates
-        </ButtonLink>
+        <div className="flex flex-wrap gap-2">
+          <form action={checkTemplateUpdateAction}>
+            <input name="storeId" type="hidden" value={storeId} />
+            <Button type="submit" variant="secondary">
+              Check update
+            </Button>
+          </form>
+          <form action={previewTemplateUpdateAction}>
+            <input name="storeId" type="hidden" value={storeId} />
+            <Button disabled={templateUpdate.status !== "update_available"} type="submit" variant="secondary">
+              Preview update
+            </Button>
+          </form>
+          <ButtonLink href="/dashboard/templates" variant="secondary">
+            View templates
+          </ButtonLink>
+        </div>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
@@ -684,6 +727,70 @@ function StoreTemplateVersionPanel({
           </p>
         </div>
       </div>
+      <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-4">
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Latest registry version
+            </p>
+            <p className="mt-2 text-lg font-black text-ink">
+              {templateUpdate.latestVersion ? `v${templateUpdate.latestVersion}` : "No versioned package"}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-muted">
+              {templateUpdate.latestPackage?.id ?? "No compatible package found"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Safe update behavior
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Applies package metadata only today. Future update targets remain restricted to shared runtime defaults and non-destructive template metadata.
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Apply update
+            </p>
+            <form action={applySafeTemplateUpdateAction} className="mt-2">
+              <input name="storeId" type="hidden" value={storeId} />
+              <Button
+                disabled={actionsBlocked || templateUpdate.status !== "update_available"}
+                type="submit"
+              >
+                Apply safe update
+              </Button>
+            </form>
+            <p className="mt-2 text-xs font-semibold leading-5 text-muted">
+              Owner catalog, content, checkout, visuals, legal, contact, and domains are not overwritten.
+            </p>
+          </div>
+        </div>
+      </div>
+      {showPreview || templateUpdate.status === "update_available" ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+              Safe update preview
+            </p>
+            <ul className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-emerald-800">
+              {templateUpdate.safeUpdateTargets.map((target) => (
+                <li key={target}>Will update: {target}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">
+              Protected owner data
+            </p>
+            <ul className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-amber-900">
+              {templateUpdate.protectedOwnerData.map((target) => (
+                <li key={target}>Will not touch: {target}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -809,6 +916,7 @@ export default async function StoreDraftPage({
     publishValidation?: string;
     templateId?: string;
     templateInstall?: string;
+    templateUpdate?: string;
   }>;
 }) {
   const { id } = await params;
@@ -4807,6 +4915,10 @@ export default async function StoreDraftPage({
     normalStoreData,
     String(store.template_id ?? "legacy-store")
   );
+  const templateUpdatePlan = getTemplateUpdatePlan({
+    fallbackTemplateId: String(store.template_id ?? "legacy-store"),
+    storeData: normalStoreData
+  });
   const currentTemplate = await getProductionStoreTemplate(templateVersionMetadata.templateId);
   const currentTemplateMatches =
     currentTemplate?.id === templateVersionMetadata.templateId ||
@@ -4940,6 +5052,43 @@ export default async function StoreDraftPage({
           </p>
         </Card>
       ) : null}
+      {query.templateUpdate === "applied" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-800">
+            Safe template update applied. Only template package metadata and update history were changed.
+          </p>
+        </Card>
+      ) : query.templateUpdate === "preview" ? (
+        <Card className="border-blue-200 bg-blue-50 p-5">
+          <p className="text-sm font-bold text-blue-800">
+            Safe update preview is shown below. No store data was modified.
+          </p>
+        </Card>
+      ) : query.templateUpdate === "available" ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-900">
+            Template update available. Preview it before applying the safe metadata update.
+          </p>
+        </Card>
+      ) : query.templateUpdate === "up_to_date" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-800">
+            Template package is up to date.
+          </p>
+        </Card>
+      ) : query.templateUpdate === "legacy_unversioned" ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-bold text-slate-700">
+            This store is legacy/unversioned. It remains safe and will not be updated automatically.
+          </p>
+        </Card>
+      ) : query.templateUpdate === "failed" || query.templateUpdate === "not-authorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">
+            Template update could not be applied. Please try again.
+          </p>
+        </Card>
+      ) : null}
       {query.created === "template" && (query.templateInstall === "installed" || query.templateInstall === "skipped") ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-800">
@@ -4975,7 +5124,11 @@ export default async function StoreDraftPage({
         />
       ) : null}
       <StoreTemplateVersionPanel
+        actionsBlocked={protectedActionsBlocked}
         metadata={templateVersionMetadata}
+        showPreview={query.templateUpdate === "preview"}
+        storeId={store.id}
+        templateUpdate={templateUpdatePlan}
         templateName={currentTemplateName}
       />
       {showDemoReplacementTools ? (
