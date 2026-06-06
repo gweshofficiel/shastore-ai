@@ -32,6 +32,11 @@ import {
   domainExtensionCatalog,
   topDomainExtensions
 } from "@/lib/domains/extension-catalog";
+import {
+  isReservedSubdomain,
+  isValidHostname,
+  normalizeSubdomain
+} from "@/lib/domains/utils";
 import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
 import { formatDomainMoney } from "@/lib/domains/domain-pricing";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
@@ -269,7 +274,6 @@ export default async function DomainsPage({
   const activeStoreId = data.activeStore?.id ?? "";
   const hasSelectedStore = Boolean(data.activeStore);
   const defaultStoreSlug = data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
-  const defaultStoreUrl = defaultStoreSlug ? `/store/${defaultStoreSlug}` : "/store/[store-slug]";
   const domainUpgrade = access
     ? getRecommendedUpgrade({
         blockedFeature: "custom_domains",
@@ -299,17 +303,39 @@ export default async function DomainsPage({
     selectedExtensions
   });
   const hasDomainSearch = Boolean(domainSearch.trim() || idnSearch.trim());
-  const currentSubdomain =
-    data.domains.find((domain) => domain.domain_type === "subdomain")?.hostname ??
-    (defaultStoreSlug ? `${defaultStoreSlug}.${data.domainBase}` : `store-name.${data.domainBase}`);
+  const savedSubdomain = data.domains.find((domain) => domain.domain_type === "subdomain");
+  const savedSubdomainActive = savedSubdomain?.status === "active";
+  const baseStoreSubdomain =
+    normalizeSubdomain(savedSubdomain?.subdomain ?? defaultStoreSlug) ||
+    normalizeSubdomain(activeStoreId);
+  const preferredSubdomain =
+    normalizeSubdomain(data.availability.subdomain ?? baseStoreSubdomain) ||
+    baseStoreSubdomain;
+  const derivedSubdomainHostname = baseStoreSubdomain
+    ? `${baseStoreSubdomain}.${data.domainBase}`
+    : `store-name.${data.domainBase}`;
+  const derivedSubdomainValid =
+    hasSelectedStore &&
+    baseStoreSubdomain.length >= 3 &&
+    !isReservedSubdomain(baseStoreSubdomain) &&
+    isValidHostname(derivedSubdomainHostname);
+  const currentSubdomain = savedSubdomain?.hostname ?? derivedSubdomainHostname;
   const subdomainStatus =
-    data.availability.checked
-      ? data.availability.status ?? "invalid"
-      : data.domains.some((domain) => domain.domain_type === "subdomain" && domain.status === "active")
-        ? "active"
-        : hasSelectedStore
+    savedSubdomainActive
+      ? "active"
+      : data.availability.checked
+        ? data.availability.status === "available"
           ? "available"
-          : "pending";
+          : data.availability.status === "reserved"
+            ? "reserved"
+            : "invalid"
+        : derivedSubdomainValid
+          ? "available"
+          : hasSelectedStore
+            ? "invalid"
+            : "pending";
+  const subdomainReady =
+    hasSelectedStore && (savedSubdomainActive || derivedSubdomainValid);
   const selectedDomainLine =
     selectedDomainName
       ? commercePreview.pricing.lines.find((line) => line.domainName === selectedDomainName) ?? null
@@ -359,8 +385,13 @@ export default async function DomainsPage({
           <div className="mt-5 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
             Selected store{" "}
             <span className="block font-black text-ink">
-              {data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? "Select a store first"}
+              {data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? "No store selected"}
             </span>
+            {data.activeStore ? (
+              <span className="mt-1 block text-xs font-bold text-muted">
+                Slug: {data.activeStore.internal_slug ?? data.activeStore.id}
+              </span>
+            ) : null}
           </div>
           {data.stores.length ? (
             <form className="mt-6">
@@ -385,7 +416,7 @@ export default async function DomainsPage({
             </form>
           ) : (
             <p className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
-              Select a store first.
+              Create a store before connecting domains.
             </p>
           )}
         </Card>
@@ -424,7 +455,7 @@ export default async function DomainsPage({
             Step 1 · Default storefront URL
           </p>
           <h2 className="mt-3 break-all text-2xl font-black tracking-[-0.03em] text-ink">
-            {defaultStoreUrl}
+            {currentSubdomain}
           </h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
             The default storefront route remains active while domain search, checkout, DNS, and SSL are prepared.
@@ -463,10 +494,10 @@ export default async function DomainsPage({
             <p className="mt-2 text-sm leading-6 text-muted">
               {hasSelectedStore ? (
                 <>
-                  Current free default store URL: <strong>{currentSubdomain}</strong>. Edit the preferred subdomain here without starting a paid domain purchase.
+                  Current free default store URL: <strong>{currentSubdomain}</strong>. This required SHASTORE subdomain is free and independent from custom domain search.
                 </>
               ) : (
-                "Select a store first."
+                "Create a store before connecting domains."
               )}
             </p>
           </div>
@@ -477,7 +508,7 @@ export default async function DomainsPage({
           <form className="mt-6 grid gap-4">
             <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
-              defaultValue={data.availability.subdomain ?? ""}
+              defaultValue={preferredSubdomain}
               id="checkSubdomain"
               label="Check subdomain availability"
               name="checkSubdomain"
@@ -506,7 +537,7 @@ export default async function DomainsPage({
           <form action={createStoreSubdomain} className="mt-6 grid gap-4 border-t border-slate-100 pt-6">
             <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
-              defaultValue={data.availability.subdomain ?? ""}
+              defaultValue={preferredSubdomain}
               id="storeSubdomain"
               label="Preferred subdomain"
               name="subdomain"
@@ -514,7 +545,7 @@ export default async function DomainsPage({
               required
             />
             <Button className="w-fit" disabled={!data.activeStore || !data.ready} type="submit">
-              Set subdomain
+              Save SHASTORE subdomain
             </Button>
           </form>
           <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
@@ -532,7 +563,7 @@ export default async function DomainsPage({
           </div>
         </div>
       </Card>
-      {hasSelectedStore ? (
+      {subdomainReady ? (
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -543,7 +574,7 @@ export default async function DomainsPage({
               Search Custom Domain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Choose a standard domain search or IDN search, then select extensions to calculate a preview.
+              Your free SHASTORE subdomain is ready. You can now search for a custom domain if you want.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
@@ -648,11 +679,13 @@ export default async function DomainsPage({
             Search Custom Domain
           </h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-            Select a store first.
+            {hasSelectedStore
+              ? "Save a valid free SHASTORE subdomain before searching for a custom domain."
+              : "Create a store before connecting domains."}
           </p>
         </Card>
       )}
-      {hasSelectedStore && hasDomainSearch ? (
+      {subdomainReady && hasDomainSearch ? (
         <>
           <Card className="p-6 lg:p-8">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
