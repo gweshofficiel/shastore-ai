@@ -13,7 +13,7 @@ import {
   prepareDomainOrderDraft,
   prepareDomainRegistrationWorkflow,
   preparePrimaryDomainRouting,
-  prepareProfessionalEmailMailboxDraft,
+  prepareProfessionalEmailOrderDraft,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -44,6 +44,10 @@ import {
 } from "@/lib/domains/utils";
 import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
 import { formatDomainMoney } from "@/lib/domains/domain-pricing";
+import {
+  includedProfessionalEmailMailboxAllowance,
+  professionalEmailMailboxPlans
+} from "@/lib/domains/professional-email";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 
@@ -68,6 +72,8 @@ const statusMessages: Record<string, string> = {
   "professional-email-domain-required": "Select a prepared domain before creating an email draft.",
   "professional-email-draft-failed": "Professional email draft could not be prepared.",
   "professional-email-draft-prepared": "Professional email draft prepared. No mailbox has been created yet.",
+  "professional-email-order-draft-failed": "Professional email order draft could not be prepared.",
+  "professional-email-order-draft-prepared": "Professional email order draft prepared. No mailbox has been created yet.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
   "limit-reached": "Your current plan has reached its domain limit.",
@@ -94,6 +100,7 @@ const successStatuses = new Set([
   "domain-registration-workflow-prepared",
   "domain-primary-routing-prepared",
   "professional-email-draft-prepared",
+  "professional-email-order-draft-prepared",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -390,6 +397,9 @@ export default async function DomainsPage({
       ...(primaryDomain?.hostname ? [primaryDomain.hostname] : [])
     ])
   ).filter((domain) => domain && domain.includes("."));
+  const professionalEmailAllowance = includedProfessionalEmailMailboxAllowance(
+    access?.plan.id ?? "free"
+  );
   const subdomainStatus =
     savedSubdomainActive
       ? "active"
@@ -1438,7 +1448,7 @@ export default async function DomainsPage({
         </div>
 
         {professionalEmailDomains.length ? (
-          <form action={prepareProfessionalEmailMailboxDraft} className="mt-6 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <form action={prepareProfessionalEmailOrderDraft} className="mt-6 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <input name="storeId" type="hidden" value={activeStoreId} />
             <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="professionalEmailDomain">
               <span>Domain</span>
@@ -1468,11 +1478,63 @@ export default async function DomainsPage({
                 <option value="sales">sales@domain.com</option>
               </select>
             </label>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {professionalEmailMailboxPlans.map((plan, index) => (
+                <label
+                  className="grid cursor-pointer gap-3 rounded-3xl border border-slate-200 bg-white p-4 text-sm"
+                  key={plan.id}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      className="mt-1 h-4 w-4 rounded border-slate-300"
+                      defaultChecked={index === 0}
+                      name="mailboxPlan"
+                      type="radio"
+                      value={plan.id}
+                    />
+                    <span>
+                      <span className="block font-black text-ink">{plan.label}</span>
+                      <span className="mt-1 block font-semibold text-muted">
+                        {plan.storagePlaceholder}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="grid gap-2 rounded-2xl bg-slate-50 p-3 font-semibold text-muted">
+                    <span className="flex justify-between gap-3">
+                      <span>Monthly price</span>
+                      <span className="font-black text-ink">{formatDomainMoney(plan.monthlyPriceCents)}</span>
+                    </span>
+                    <span className="flex justify-between gap-3">
+                      <span>Yearly price</span>
+                      <span className="font-black text-ink">{formatDomainMoney(plan.yearlyPriceCents)}</span>
+                    </span>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-white p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Included mailbox allowance
+                </p>
+                <p className="mt-1 text-sm font-black text-ink">
+                  {professionalEmailAllowance.toLocaleString()} mailbox{professionalEmailAllowance === 1 ? "" : "es"}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Customer due
+                </p>
+                <p className="mt-1 text-sm font-semibold text-muted">
+                  Uses included allowance when available; otherwise the selected monthly placeholder price is due later.
+                </p>
+              </div>
+            </div>
             <Button className="w-full sm:w-fit" type="submit">
-              Prepare email draft
+              Prepare email order
             </Button>
             <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-              No real mailbox is created yet. Email activation will be connected later.
+              No real mailbox is created, no charge is made, and email activation will be connected later.
             </p>
           </form>
         ) : (
@@ -1485,16 +1547,16 @@ export default async function DomainsPage({
         )}
 
         <div className="mt-6 grid gap-3">
-          {data.professionalEmailMailboxDrafts.length ? (
-            data.professionalEmailMailboxDrafts.map((draft) => (
+          {data.professionalEmailOrderDrafts.length ? (
+            data.professionalEmailOrderDrafts.map((draft) => (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={draft.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                      Mailbox draft
+                      Email order draft
                     </p>
                     <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
-                      {draft.emailAddress}
+                      {draft.mailboxAddress}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-muted">
                       {draft.domain} · {new Date(draft.createdAt).toLocaleString()}
@@ -1502,27 +1564,43 @@ export default async function DomainsPage({
                   </div>
                   <StatusBadge label="Email" value={draft.status} />
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-2xl bg-white p-3">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                      Mailbox type
+                      Mailbox plan
                     </p>
-                    <p className="mt-1 text-sm font-black text-ink">{draft.mailboxType}</p>
+                    <p className="mt-1 text-sm font-black text-ink">{draft.mailboxPlan.label}</p>
                   </div>
                   <div className="rounded-2xl bg-white p-3">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                       Storage
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-muted">{draft.storagePlaceholder}</p>
+                    <p className="mt-1 text-sm font-semibold text-muted">{draft.mailboxPlan.storagePlaceholder}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Price
+                    </p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.price.monthlyCents)} / month</p>
+                    <p className="mt-1 text-xs font-semibold text-muted">{formatDomainMoney(draft.price.yearlyCents)} / year</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Customer due
+                    </p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.customerDueCents)}</p>
+                    <p className="mt-1 text-xs font-semibold text-muted">
+                      Allowance used: {draft.allowanceUsed}
+                    </p>
                   </div>
                 </div>
               </div>
             ))
           ) : (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
-              <p className="font-bold text-ink">No professional email drafts yet.</p>
+              <p className="font-bold text-ink">No professional email order drafts yet.</p>
               <p className="mt-1 leading-6">
-                Prepare a mailbox draft after selecting a store and domain.
+                Choose a domain, mailbox address, and mailbox plan to prepare a safe email order draft.
               </p>
             </div>
           )}

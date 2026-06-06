@@ -27,10 +27,13 @@ import {
 import {
   professionalEmailAddress,
   professionalEmailFutureHooks,
+  getProfessionalEmailMailboxPlan,
+  includedProfessionalEmailMailboxAllowance,
   professionalEmailMailboxTypes,
   professionalEmailStoragePlaceholder,
   type ProfessionalEmailMailboxDraft,
-  type ProfessionalEmailMailboxType
+  type ProfessionalEmailMailboxType,
+  type ProfessionalEmailOrderDraft
 } from "@/lib/domains/professional-email";
 import {
   buildDomainPaymentPreparation,
@@ -186,6 +189,8 @@ type DomainPrimaryRoutingPreparationRecord = DomainRoutingPreparation & {
 
 type ProfessionalEmailMailboxDraftRecord = ProfessionalEmailMailboxDraft;
 
+type ProfessionalEmailOrderDraftRecord = ProfessionalEmailOrderDraft;
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -230,6 +235,10 @@ function cleanMailboxType(value: FormDataEntryValue | null): ProfessionalEmailMa
   return professionalEmailMailboxTypes.includes(value as ProfessionalEmailMailboxType)
     ? (value as ProfessionalEmailMailboxType)
     : null;
+}
+
+function cleanMailboxPlanId(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 async function writeDomainStoreDataRecord({
@@ -618,6 +627,68 @@ async function writeProfessionalEmailMailboxDraft({
       storeId
     });
     domainsRedirect(storeId, "professional-email-draft-failed");
+  }
+}
+
+async function writeProfessionalEmailOrderDraft({
+  draft,
+  storeId,
+  supabase
+}: {
+  draft: ProfessionalEmailOrderDraftRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] email order draft load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "professional-email-order-draft-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const professionalEmailOrderDrafts = isRecord(storeData.professionalEmailOrderDrafts)
+    ? storeData.professionalEmailOrderDrafts
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        professionalEmailOrderDrafts: {
+          ...professionalEmailOrderDrafts,
+          [draft.id]: draft
+        },
+        professionalEmailOrderDraftSummary: {
+          createMailbox: "reserved",
+          latestDraftId: draft.id,
+          latestStatus: draft.status,
+          latestUpdatedAt: now,
+          renewMailbox: "reserved",
+          resetPassword: "reserved",
+          setupDnsRecords: "reserved",
+          suspendMailbox: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] email order draft write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "professional-email-order-draft-failed");
   }
 }
 
@@ -1493,6 +1564,123 @@ export async function prepareProfessionalEmailMailboxDraft(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "professional-email-draft-prepared");
+}
+
+export async function prepareProfessionalEmailOrderDraft(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const domain = cleanPreviewDomain(formData.get("domain"));
+  const mailboxType = cleanMailboxType(formData.get("mailboxType"));
+  const mailboxPlan = getProfessionalEmailMailboxPlan(cleanMailboxPlanId(formData.get("mailboxPlan")));
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (!domain || !mailboxType || !mailboxPlan || !domain.includes(".")) {
+    domainsRedirect(storeId, "professional-email-domain-required");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    domainsRedirect(storeId, "professional-email-order-draft-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainPrimaryRoutingPreparations = isRecord(storeData.domainPrimaryRoutingPreparations)
+    ? Object.values(storeData.domainPrimaryRoutingPreparations)
+    : [];
+  const domainRegistrationWorkflows = isRecord(storeData.domainRegistrationWorkflows)
+    ? Object.values(storeData.domainRegistrationWorkflows)
+    : [];
+  const domainOrderDrafts = isRecord(storeData.domainOrderDrafts)
+    ? Object.values(storeData.domainOrderDrafts)
+    : [];
+  let knownDomain = [
+    ...domainPrimaryRoutingPreparations,
+    ...domainRegistrationWorkflows,
+    ...domainOrderDrafts
+  ].some((value) => {
+    if (!isRecord(value)) {
+      return false;
+    }
+
+    return value.primaryDomain === domain || value.domain === domain || value.selectedDomain === domain;
+  });
+
+  if (!knownDomain) {
+    const { data: existingDomain } = await supabase
+      .from("store_domains" as never)
+      .select("hostname")
+      .eq("store_instance_id", storeId)
+      .eq("hostname", domain)
+      .maybeSingle();
+    knownDomain = Boolean(existingDomain);
+  }
+
+  if (!knownDomain) {
+    domainsRedirect(storeId, "professional-email-domain-required");
+  }
+
+  const access = await getCurrentUserSubscriptionAccess();
+  const plan = access?.plan ?? getBillingPlan("free");
+  const includedAllowance = includedProfessionalEmailMailboxAllowance(plan.id);
+  const professionalEmailOrderDrafts = isRecord(storeData.professionalEmailOrderDrafts)
+    ? Object.values(storeData.professionalEmailOrderDrafts)
+    : [];
+  const existingAllowanceUse = professionalEmailOrderDrafts.filter(
+    (value) => isRecord(value) && value.allowanceUsed === 1
+  ).length;
+  const allowanceUsed = existingAllowanceUse < includedAllowance ? 1 : 0;
+  const customerDue = allowanceUsed ? 0 : mailboxPlan.monthlyPriceCents;
+
+  const draft: ProfessionalEmailOrderDraftRecord = {
+    allowanceUsed,
+    createdAt: new Date().toISOString(),
+    customerDue,
+    customerDueCents: customerDue,
+    domain,
+    futureHookPoints: professionalEmailFutureHooks(),
+    id: randomUUID(),
+    mailboxAddress: professionalEmailAddress({ domain, mailboxType }),
+    mailboxPlan,
+    price: {
+      monthlyCents: mailboxPlan.monthlyPriceCents,
+      yearlyCents: mailboxPlan.yearlyPriceCents
+    },
+    status: "draft",
+    storeId
+  };
+
+  await writeProfessionalEmailOrderDraft({
+    draft,
+    storeId,
+    supabase
+  });
+
+  await recordStoreAuditLogSafe({
+    action: "professional_email_order_draft_prepared",
+    actorUserId: userId,
+    metadata: {
+      allowanceUsed: draft.allowanceUsed,
+      customerDueCents: draft.customerDueCents,
+      mailboxPlan: draft.mailboxPlan.id,
+      source: "store_data_professional_email_order_drafts",
+      status: draft.status
+    },
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "professional-email-order-draft-prepared");
 }
 
 export async function setPrimaryDomain(formData: FormData) {

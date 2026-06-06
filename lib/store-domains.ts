@@ -38,10 +38,12 @@ import type {
 } from "@/lib/domains/domain-routing";
 import {
   professionalEmailFutureHooks,
+  getProfessionalEmailMailboxPlan,
   professionalEmailMailboxTypes,
   type ProfessionalEmailMailboxDraft,
   type ProfessionalEmailMailboxStatus,
-  type ProfessionalEmailMailboxType
+  type ProfessionalEmailMailboxType,
+  type ProfessionalEmailOrderDraft
 } from "@/lib/domains/professional-email";
 
 export type ClaimedStoreForDomains = {
@@ -186,6 +188,7 @@ export type StoreDomainsDashboardData = {
   logs: StoreDomainVerificationLog[];
   hostinshHooks: HostinshHookResult[];
   professionalEmailMailboxDrafts: ProfessionalEmailMailboxDraft[];
+  professionalEmailOrderDrafts: ProfessionalEmailOrderDraft[];
   provisioning: Record<string, DomainProvisioningInstruction>;
   reservedSubdomains: string[];
   ready: boolean;
@@ -661,6 +664,70 @@ function parseProfessionalEmailMailboxDrafts(storeData: unknown) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+function parseProfessionalEmailOrderDraft(value: unknown): ProfessionalEmailOrderDraft | null {
+  if (!isRecord(value) || value.status !== "draft") {
+    return null;
+  }
+
+  const mailboxPlanRecord = isRecord(value.mailboxPlan) ? value.mailboxPlan : {};
+  const mailboxPlan =
+    typeof mailboxPlanRecord.id === "string"
+      ? getProfessionalEmailMailboxPlan(mailboxPlanRecord.id)
+      : null;
+  const price = isRecord(value.price) ? value.price : {};
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.storeId !== "string" ||
+    typeof value.domain !== "string" ||
+    typeof value.mailboxAddress !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.allowanceUsed !== "number" ||
+    typeof value.customerDueCents !== "number" ||
+    !mailboxPlan
+  ) {
+    return null;
+  }
+
+  const customerDue =
+    typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
+
+  return {
+    allowanceUsed: value.allowanceUsed,
+    createdAt: value.createdAt,
+    customerDue,
+    customerDueCents: value.customerDueCents,
+    domain: value.domain,
+    futureHookPoints: professionalEmailFutureHooks(),
+    id: value.id,
+    mailboxAddress: value.mailboxAddress,
+    mailboxPlan,
+    price: {
+      monthlyCents:
+        typeof price.monthlyCents === "number"
+          ? price.monthlyCents
+          : mailboxPlan.monthlyPriceCents,
+      yearlyCents:
+        typeof price.yearlyCents === "number"
+          ? price.yearlyCents
+          : mailboxPlan.yearlyPriceCents
+    },
+    status: "draft",
+    storeId: value.storeId
+  };
+}
+
+function parseProfessionalEmailOrderDrafts(storeData: unknown) {
+  if (!isRecord(storeData) || !isRecord(storeData.professionalEmailOrderDrafts)) {
+    return [];
+  }
+
+  return Object.values(storeData.professionalEmailOrderDrafts)
+    .map(parseProfessionalEmailOrderDraft)
+    .filter((draft): draft is ProfessionalEmailOrderDraft => Boolean(draft))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 function connectedDomainStatusForWorkflow({
   isPrimary,
   workflow
@@ -885,6 +952,7 @@ export async function getStoreDomainsDashboardData(
       logs: [],
       hostinshHooks: [],
       professionalEmailMailboxDrafts: [],
+      professionalEmailOrderDrafts: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -917,6 +985,7 @@ export async function getStoreDomainsDashboardData(
       logs: [],
       hostinshHooks: [],
       professionalEmailMailboxDrafts: [],
+      professionalEmailOrderDrafts: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -950,6 +1019,7 @@ export async function getStoreDomainsDashboardData(
       logs: [],
       hostinshHooks: [],
       professionalEmailMailboxDrafts: [],
+      professionalEmailOrderDrafts: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -996,6 +1066,7 @@ export async function getStoreDomainsDashboardData(
   const domainRegistrationWorkflows = parseDomainRegistrationWorkflows(storeData);
   const domainRoutingPreparations = parseDomainRoutingPreparations(storeData);
   const professionalEmailMailboxDrafts = parseProfessionalEmailMailboxDrafts(storeData);
+  const professionalEmailOrderDrafts = parseProfessionalEmailOrderDrafts(storeData);
 
   return {
     activeStore,
@@ -1020,6 +1091,7 @@ export async function getStoreDomainsDashboardData(
     logs: logsResult.error ? [] : ((logsResult.data ?? []) as StoreDomainVerificationLog[]),
     hostinshHooks,
     professionalEmailMailboxDrafts,
+    professionalEmailOrderDrafts,
     provisioning: Object.fromEntries(
       domains.map((domain) => [domain.id, buildProvisioning(domain)])
     ),

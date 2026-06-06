@@ -17,6 +17,7 @@ export type StoreAuditAction =
   | "domain_primary_routing_prepared"
   | "domain_registration_workflow_prepared"
   | "professional_email_draft_prepared"
+  | "professional_email_order_draft_prepared"
   | "ownership_transfer_blocked"
   | "ownership_transfer_completed"
   | "ownership_transfer_requested"
