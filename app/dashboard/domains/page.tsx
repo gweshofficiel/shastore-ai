@@ -9,7 +9,6 @@ import {
   attachCustomDomain,
   createStoreSubdomain,
   markStoreDomainVerificationPending,
-  prepareDomainOrderDraft,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -77,12 +76,15 @@ const successStatuses = new Set([
 
 const badgeStyles: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
+  available: "bg-emerald-50 text-emerald-700",
   draft: "bg-amber-50 text-amber-700",
   failed: "bg-red-50 text-red-700",
+  invalid: "bg-red-50 text-red-700",
   not_configured: "bg-slate-100 text-muted",
   pending: "bg-amber-50 text-amber-700",
   ready: "bg-emerald-50 text-emerald-700",
   revoked: "bg-red-50 text-red-700",
+  reserved: "bg-amber-50 text-amber-700",
   verified: "bg-emerald-50 text-emerald-700",
   verifying: "bg-blue-50 text-blue-700"
 };
@@ -265,6 +267,7 @@ export default async function DomainsPage({
   ]);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
   const activeStoreId = data.activeStore?.id ?? "";
+  const hasSelectedStore = Boolean(data.activeStore);
   const defaultStoreSlug = data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
   const defaultStoreUrl = defaultStoreSlug ? `/store/${defaultStoreSlug}` : "/store/[store-slug]";
   const domainUpgrade = access
@@ -301,26 +304,22 @@ export default async function DomainsPage({
     (defaultStoreSlug ? `${defaultStoreSlug}.${data.domainBase}` : `store-name.${data.domainBase}`);
   const subdomainStatus =
     data.availability.checked
-      ? data.availability.status === "available"
-        ? "available"
-        : "blocked"
+      ? data.availability.status ?? "invalid"
       : data.domains.some((domain) => domain.domain_type === "subdomain" && domain.status === "active")
         ? "active"
-        : "available";
+        : hasSelectedStore
+          ? "available"
+          : "pending";
   const selectedDomainLine =
-    commercePreview.pricing.lines.find((line) => line.domainName === selectedDomainName) ??
-    commercePreview.pricing.lines[0] ??
-    null;
+    selectedDomainName
+      ? commercePreview.pricing.lines.find((line) => line.domainName === selectedDomainName) ?? null
+      : null;
   const selectedDomainCredit = selectedDomainLine
     ? calculateDomainLineCreditQuote({
         domainPriceCents: selectedDomainLine.priceCents,
         plan: access?.plan ?? getBillingPlan("free")
       })
     : null;
-  const selectedPlanPlusDomainDueCents =
-    (access?.plan.priceCents ?? getBillingPlan("free").priceCents) +
-    (selectedDomainCredit?.customerDueCents ?? 0);
-
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
@@ -347,13 +346,22 @@ export default async function DomainsPage({
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
             <Globe2 className="h-5 w-5 text-ink" />
           </div>
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Step 1
+          </p>
           <h2 className="mt-5 text-2xl font-black tracking-[-0.03em] text-ink">
-            Select store
+            Select Store
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             Domains are scoped to claimed buyer-owned stores. Existing public
             storefront routes keep working while hostnames are prepared.
           </p>
+          <div className="mt-5 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
+            Selected store{" "}
+            <span className="block font-black text-ink">
+              {data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? "Select a store first"}
+            </span>
+          </div>
           {data.stores.length ? (
             <form className="mt-6">
               <label className="grid min-w-0 gap-2 text-sm font-semibold text-ink" htmlFor="storeId">
@@ -377,13 +385,13 @@ export default async function DomainsPage({
             </form>
           ) : (
             <p className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
-              Claim a store before connecting domains.
+              Select a store first.
             </p>
           )}
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Store plan
+            Step 1 · Store plan
           </p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
             {commercePreview.credit.planName} · {commercePreview.credit.planPrice}
@@ -413,7 +421,7 @@ export default async function DomainsPage({
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Default SHASTORE URL
+            Step 1 · Default storefront URL
           </p>
           <h2 className="mt-3 break-all text-2xl font-black tracking-[-0.03em] text-ink">
             {defaultStoreUrl}
@@ -426,35 +434,6 @@ export default async function DomainsPage({
             <StatusBadge label="Custom DNS" value={primaryDomain?.dns_status ?? "not_configured"} />
             <StatusBadge label="SSL" value={primaryDomain?.ssl_status ?? "not_configured"} />
           </div>
-        </Card>
-        <Card className="p-6 lg:p-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
-            <ShieldCheck className="h-5 w-5 text-emerald-700" />
-          </div>
-          <h2 className="mt-5 text-2xl font-black tracking-[-0.03em] text-ink">
-            Primary domain
-          </h2>
-          {primaryDomain ? (
-            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-2xl font-black tracking-[-0.04em] text-ink">
-                {primaryDomain.hostname}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <StatusBadge label="Status" value={primaryDomain.status ?? primaryDomain.verification_status} />
-                <StatusBadge label="DNS" value={primaryDomain.verification_status} />
-                <StatusBadge label="SSL" value={primaryDomain.ssl_status} />
-              </div>
-              <p className="mt-4 text-sm leading-6 text-muted">
-                Active custom domains resolve this host to the correct public store while
-                default SHASTORE URLs continue to work.
-              </p>
-            </div>
-          ) : (
-            <p className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
-              No primary domain yet. Set a SHASTORE subdomain or mark a custom
-              domain as primary.
-            </p>
-          )}
         </Card>
       </div>
       {(params.domains === "limit-reached" || domainLimitReached || !customDomainsAvailable) && access ? (
@@ -482,7 +461,13 @@ export default async function DomainsPage({
               SHASTORE subdomain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Current default subdomain: <strong>{currentSubdomain}</strong>. Edit the preferred subdomain before connecting a custom domain.
+              {hasSelectedStore ? (
+                <>
+                  Current free default store URL: <strong>{currentSubdomain}</strong>. Edit the preferred subdomain here without starting a paid domain purchase.
+                </>
+              ) : (
+                "Select a store first."
+              )}
             </p>
           </div>
           <StatusBadge label="Subdomain" value={subdomainStatus} />
@@ -539,7 +524,7 @@ export default async function DomainsPage({
             <p className="mt-2 text-sm leading-6 text-muted">
               {data.reservedSubdomains
                 .filter((name) =>
-                  ["admin", "app", "dashboard", "docs", "help", "mail", "root", "shastore", "support", "www"].includes(name)
+                  ["admin", "api", "app", "dashboard", "docs", "help", "mail", "root", "shastore", "support", "www"].includes(name)
                 )
                 .join(", ")}
             </p>
@@ -547,6 +532,7 @@ export default async function DomainsPage({
           </div>
         </div>
       </Card>
+      {hasSelectedStore ? (
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -554,7 +540,7 @@ export default async function DomainsPage({
               Step 3
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Search for a domain
+              Search Custom Domain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               Choose a standard domain search or IDN search, then select extensions to calculate a preview.
@@ -653,7 +639,20 @@ export default async function DomainsPage({
           </Button>
         </form>
       </Card>
-      {hasDomainSearch ? (
+      ) : (
+        <Card className="border-dashed border-slate-300 bg-slate-50 p-6 lg:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Step 3
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+            Search Custom Domain
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            Select a store first.
+          </p>
+        </Card>
+      )}
+      {hasSelectedStore && hasDomainSearch ? (
         <>
           <Card className="p-6 lg:p-8">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -740,6 +739,7 @@ export default async function DomainsPage({
               })}
             </div>
           </Card>
+          {selectedDomainLine && selectedDomainCredit ? (
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -748,9 +748,7 @@ export default async function DomainsPage({
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
                 Selected domain checkout preview
               </h2>
-              {selectedDomainLine && selectedDomainCredit ? (
-                <>
-                  <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
+              <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
                       <span>Selected store</span>
                       <span className="font-black text-ink">
@@ -782,29 +780,13 @@ export default async function DomainsPage({
                       <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.creditUsedCents)}</span>
                     </div>
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                      <span>Customer pays now</span>
+                      <span>Extra amount due</span>
                       <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.customerDueCents)}</span>
-                    </div>
-                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                      <span>Future subscription value preview</span>
-                      <span className="font-black text-ink">{formatDomainMoney(selectedPlanPlusDomainDueCents)}</span>
                     </div>
                   </div>
                   <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                    Preview only. No purchase yet. No charge yet. Included credit logic will be confirmed during the future checkout integration.
+                    Preview only. No payment, charge, or registration happens yet.
                   </p>
-                  <form action={prepareDomainOrderDraft} className="mt-4">
-                    <input name="storeId" type="hidden" value={activeStoreId} />
-                    <input name="selectedDomain" type="hidden" value={selectedDomainLine.domainName} />
-                    <input name="extension" type="hidden" value={selectedDomainLine.extension} />
-                    <Button type="submit">Prepare domain order</Button>
-                  </form>
-                </>
-              ) : (
-                <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
-                  Select a domain result to preview checkout.
-                </p>
-              )}
             </Card>
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -824,8 +806,46 @@ export default async function DomainsPage({
               </p>
             </Card>
           </div>
+          ) : null}
         </>
       ) : null}
+      <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
+        <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">
+          Advanced domain diagnostics
+        </summary>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Technical records, routing checks, prepared drafts, and future service placeholders are hidden here for troubleshooting.
+        </p>
+        <div className="mt-6 grid gap-6">
+      <Card className="p-6 lg:p-8">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
+          <ShieldCheck className="h-5 w-5 text-emerald-700" />
+        </div>
+        <h2 className="mt-5 text-2xl font-black tracking-[-0.03em] text-ink">
+          Primary domain
+        </h2>
+        {primaryDomain ? (
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <p className="text-2xl font-black tracking-[-0.04em] text-ink">
+              {primaryDomain.hostname}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusBadge label="Status" value={primaryDomain.status ?? primaryDomain.verification_status} />
+              <StatusBadge label="DNS" value={primaryDomain.verification_status} />
+              <StatusBadge label="SSL" value={primaryDomain.ssl_status} />
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted">
+              Active custom domains resolve this host to the correct public store while
+              default SHASTORE URLs continue to work.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
+            No primary domain yet. Set a SHASTORE subdomain or mark a custom
+            domain as primary.
+          </p>
+        )}
+      </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -1145,21 +1165,28 @@ export default async function DomainsPage({
           </span>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {data.hostinshHooks.map((hook) => (
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={hook.hook}>
+          {[
+            "Availability refresh",
+            "Domain checkout",
+            "Email package checkout",
+            "Included credit redemption"
+          ].map((label) => (
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={label}>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                {hook.hook.replace(/_/g, " ")}
+                {label}
               </p>
               <p className="mt-2 text-sm font-black text-ink">
-                {hook.configured ? "Service settings detected" : "Service settings not configured"}
+                Service settings pending
               </p>
               <p className="mt-2 text-xs font-semibold leading-5 text-muted">
-                {hook.message}
+                Future purchase service hook is reserved. No external call or customer charge is performed.
               </p>
             </div>
           ))}
         </div>
       </Card>
+        </div>
+      </details>
     </div>
   );
 }
