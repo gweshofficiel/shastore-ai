@@ -9,12 +9,42 @@ type AnyRecord = Record<string, unknown>;
 export type AdminUser = {
   id: string;
   email: string;
+  fullName: string | null;
   plan: string;
+  planId: string;
   status: string;
+  accountStatus: string;
+  governanceStatus: "suspended" | null;
   createdAt: string | null;
+  lastLoginAt: string | null;
+  workspaceCount: number;
   storesCount: number;
   landingsCount: number;
   ordersCount: number;
+  recentActivity: Array<{
+    createdAt: string;
+    label: string;
+  }>;
+  stores: Array<{
+    createdAt: string;
+    id: string;
+    name: string;
+    status: string;
+  }>;
+  subscription: {
+    cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: string | null;
+    currentPeriodStart: string | null;
+    planId: string;
+    planName: string;
+    status: string;
+  };
+  workspaces: Array<{
+    createdAt: string | null;
+    id: string;
+    role: string;
+    status: string;
+  }>;
 };
 
 export type AdminUserDetail = AdminUser & {
@@ -174,6 +204,10 @@ function asRecords(data: unknown): AnyRecord[] {
   return Array.isArray(data) ? (data as AnyRecord[]) : [];
 }
 
+function isRecord(value: unknown): value is AnyRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function text(value: unknown, fallback = "") {
   return typeof value === "string" && value ? value : fallback;
 }
@@ -236,6 +270,25 @@ function emailMap(users: Array<{ id: string; email: string }>) {
   return new Map(users.map((user) => [user.id, user.email]));
 }
 
+function dateValue(value: unknown) {
+  const timestamp = Date.parse(text(value));
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function userGovernanceStatus(value: unknown): "suspended" | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const governance = value.adminGovernance;
+
+  if (!isRecord(governance)) {
+    return null;
+  }
+
+  return text(governance.status) === "suspended" ? "suspended" : null;
+}
+
 async function safeSelect(
   supabase: SupabaseClient<Database>,
   table: string,
@@ -258,24 +311,38 @@ async function safeCount(supabase: SupabaseClient<Database>, table: string) {
 
 export async function getAdminUsersBase() {
   const { supabase, serviceRoleConfigured } = await getAdminClient();
-  let users: Array<{ id: string; email: string; createdAt: string | null }> = [];
+  let users: Array<{
+    createdAt: string | null;
+    email: string;
+    fullName: string | null;
+    id: string;
+    lastLoginAt: string | null;
+  }> = [];
 
   if (serviceRoleConfigured) {
     const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
     users =
-      data.users?.map((user) => ({
-        createdAt: user.created_at ?? null,
-        email: user.email ?? "No email",
-        id: user.id
-      })) ?? [];
+      data.users?.map((user) => {
+        const metadata = isRecord(user.user_metadata) ? user.user_metadata : {};
+
+        return {
+          createdAt: user.created_at ?? null,
+          email: user.email ?? "No email",
+          fullName: text(metadata.full_name) || text(metadata.name) || null,
+          id: user.id,
+          lastLoginAt: user.last_sign_in_at ?? null
+        };
+      }) ?? [];
   }
 
   if (!users.length) {
-    const profiles = await safeSelect(supabase, "profiles", "id, email, created_at");
+    const profiles = await safeSelect(supabase, "profiles", "id, email, full_name, created_at");
     users = profiles.map((profile) => ({
       createdAt: text(profile.created_at, "") || null,
       email: text(profile.email, "No email"),
-      id: text(profile.id)
+      fullName: text(profile.full_name) || null,
+      id: text(profile.id),
+      lastLoginAt: null
     }));
   }
 
@@ -308,29 +375,108 @@ export async function getAdminOverview() {
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
   const { supabase, users } = await getAdminUsersBase();
-  const [stores, landings, orders, subscriptions] = await Promise.all([
-    safeSelect(supabase, "stores", "user_id, owner_user_id"),
+  const [stores, landings, orders, subscriptions, workspaceMembers, accountProfiles, billingEvents] = await Promise.all([
+    safeSelect(supabase, "stores", "id, user_id, owner_user_id, workspace_id, name, store_name, status, created_at"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_orders", "user_id"),
-    safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status")
+    safeSelect(
+      supabase,
+      "user_subscriptions",
+      "user_id, plan_id, status, current_period_start, current_period_end, cancel_at_period_end, limits_snapshot"
+    ),
+    safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status, created_at"),
+    safeSelect(supabase, "account_profiles", "user_id, display_name, account_id, account_type"),
+    safeSelect(supabase, "billing_events", "user_id, event_type, processed_at, created_at")
   ]);
   const storeCounts = countStoresByOwner(stores);
   const landingCounts = countBy(landings, "user_id");
   const orderCounts = countBy(orders, "user_id");
   const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
+  const accountProfilesByUser = new Map(
+    accountProfiles
+      .filter((profile) => text(profile.account_type, "user") === "user")
+      .map((profile) => [text(profile.user_id), profile])
+  );
+  const workspacesByUser = new Map<string, AnyRecord[]>();
+  for (const member of workspaceMembers) {
+    const userId = text(member.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    workspacesByUser.set(userId, [...(workspacesByUser.get(userId) ?? []), member]);
+  }
+  const activityByUser = new Map<string, AnyRecord[]>();
+  for (const event of billingEvents) {
+    const userId = text(event.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), event]);
+  }
 
   return users.map((user) => {
     const subscription = subscriptionsByUser.get(user.id);
     const plan = getBillingPlan(text(subscription?.plan_id, "free"));
+    const governanceStatus = userGovernanceStatus(subscription?.limits_snapshot);
+    const subscriptionStatus = text(subscription?.status, "active");
+    const profile = accountProfilesByUser.get(user.id);
+    const workspaces = workspacesByUser.get(user.id) ?? [];
+    const workspaceIds = new Set(workspaces.map((workspace) => text(workspace.workspace_id)).filter(Boolean));
+    const accountStatus = governanceStatus ?? (subscriptionStatus === "incomplete" ? "suspended" : subscriptionStatus);
+    const userStores = stores
+      .filter((store) => ownerUserId(store) === user.id)
+      .map((store) => ({
+        createdAt: text(store.created_at),
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        status: text(store.status, "draft")
+      }));
+
     return {
+      accountStatus,
       createdAt: user.createdAt,
       email: user.email,
+      fullName: user.fullName ?? (text(profile?.display_name) || null),
+      governanceStatus,
       id: user.id,
       landingsCount: landingCounts.get(user.id) ?? 0,
+      lastLoginAt: user.lastLoginAt,
       ordersCount: orderCounts.get(user.id) ?? 0,
       plan: plan.name,
-      status: text(subscription?.status, "active"),
-      storesCount: storeCounts.get(user.id) ?? 0
+      planId: plan.id,
+      recentActivity: (activityByUser.get(user.id) ?? [])
+        .sort(
+          (left, right) =>
+            dateValue(right.processed_at ?? right.created_at) -
+            dateValue(left.processed_at ?? left.created_at)
+        )
+        .slice(0, 5)
+        .map((event) => ({
+          createdAt: text(event.processed_at) || text(event.created_at),
+          label: text(event.event_type, "billing_event")
+        })),
+      status: subscriptionStatus,
+      stores: userStores,
+      storesCount: storeCounts.get(user.id) ?? 0,
+      subscription: {
+        cancelAtPeriodEnd: subscription?.cancel_at_period_end === true,
+        currentPeriodEnd: text(subscription?.current_period_end) || null,
+        currentPeriodStart: text(subscription?.current_period_start) || null,
+        planId: plan.id,
+        planName: plan.name,
+        status: subscriptionStatus
+      },
+      workspaceCount: workspaceIds.size,
+      workspaces: workspaces.map((workspace) => ({
+        createdAt: text(workspace.created_at) || null,
+        id: text(workspace.workspace_id),
+        role: text(workspace.role, "member"),
+        status: text(workspace.status, "active")
+      }))
     };
   });
 }
