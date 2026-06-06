@@ -18,15 +18,13 @@ async function updateUserSubscriptionStatus(userId: string, status: "active" | "
     throw new Error("Service-role admin access is required for user status changes.");
   }
 
-  const { data: existing } = await admin
+  const { data } = await admin
     .from("user_subscriptions" as never)
     .select("plan_id")
     .eq("user_id" as never, userId as never)
     .maybeSingle();
-  const planId =
-    typeof (existing as { plan_id?: unknown } | null)?.plan_id === "string"
-      ? ((existing as { plan_id: string }).plan_id)
-      : "free";
+  const existing = data as { plan_id: string | null } | null;
+  const planId = existing?.plan_id ?? "free";
   const plan = getBillingPlan(planId);
 
   await admin.from("user_subscriptions" as never).upsert(

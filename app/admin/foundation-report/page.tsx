@@ -10,8 +10,22 @@ import { getAdminOverview, getAdminPlatformHealth, getAdminUsers } from "@/lib/a
 
 type FoundationStatus = "missing" | "partial" | "ready";
 
+type AdminHref =
+  | "/admin"
+  | "/admin/users"
+  | "/admin/subscriptions"
+  | "/admin/foundation-report"
+  | "/admin/sellers"
+  | "/admin/resellers"
+  | "/admin/reports"
+  | "/admin/support"
+  | "/admin/security"
+  | "/admin/moderation"
+  | "/admin/settings"
+  | "/admin/stores";
+
 type FoundationModule = {
-  href?: string;
+  href?: AdminHref;
   name: string;
   notes: string;
   status: FoundationStatus;
@@ -140,9 +154,11 @@ export default async function AdminFoundationReportPage() {
   const ready = modules.filter((module) => module.status === "ready");
   const partial = modules.filter((module) => module.status === "partial");
   const missing = modules.filter((module) => module.status === "missing");
-  const navHrefs = new Set(adminNavItems.map((item) => item.href));
-  const expectedNavModules = modules.filter((module) => module.href);
-  const navigationGaps = expectedNavModules.filter((module) => module.href && !navHrefs.has(module.href));
+  const navHrefs = new Set<AdminHref>(adminNavItems.map((item) => item.href as AdminHref));
+  const expectedNavModules = modules.filter(
+    (module): module is FoundationModule & { href: AdminHref } => Boolean(module.href)
+  );
+  const navigationGaps = expectedNavModules.filter((module) => !navHrefs.has(module.href));
 
   return (
     <div className="grid gap-6 lg:gap-8">

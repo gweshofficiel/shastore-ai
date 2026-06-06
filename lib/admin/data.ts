@@ -34,16 +34,44 @@ export type AdminUserDetail = AdminUser & {
   }>;
 };
 
-type AdminStore = {
+export type AdminStoreHealthKey =
+  | "domain_not_connected"
+  | "missing_legal_pages"
+  | "missing_products"
+  | "no_payment_method"
+  | "no_shipping_settings"
+  | "publish_blocked"
+  | "publish_ready";
+
+export type AdminStore = {
   id: string;
+  slug: string | null;
+  workspaceId: string | null;
+  ownerId: string | null;
   ownerEmail: string;
   name: string;
   status: string;
+  storeStatus: string;
+  plan: string;
+  publicationStatus: string;
   template: string;
   publishedUrl: string | null;
   createdAt: string;
+  productsCount: number;
   ordersCount: number;
+  revenue: number;
   viewsCount: number;
+  health: Array<{
+    key: AdminStoreHealthKey;
+    label: string;
+    status: "blocked" | "ready" | "warning";
+  }>;
+  workspaceMembers: Array<{
+    email: string;
+    role: string;
+    status: string;
+    userId: string;
+  }>;
 };
 
 type AdminLanding = {
@@ -168,6 +196,22 @@ function countBy(records: AnyRecord[], key: string) {
 
 function ownerUserId(record: AnyRecord) {
   return text(record.owner_user_id) || text(record.user_id);
+}
+
+function governanceStatus(storeData: unknown, fallback: string) {
+  if (!storeData || typeof storeData !== "object" || Array.isArray(storeData)) {
+    return fallback;
+  }
+
+  const governance = (storeData as Record<string, unknown>).adminGovernance;
+
+  if (!governance || typeof governance !== "object" || Array.isArray(governance)) {
+    return fallback;
+  }
+
+  const status = text((governance as AnyRecord).status);
+
+  return status === "suspended" || status === "under_review" ? status : fallback;
 }
 
 function countStoresByOwner(records: AnyRecord[]) {
@@ -336,33 +380,176 @@ export async function getAdminUserDetail(userId: string): Promise<AdminUserDetai
 export async function getAdminStores(): Promise<AdminStore[]> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [stores, publications, orders, events] = await Promise.all([
-    safeSelect(supabase, "stores", "id, user_id, name, status, template_id, created_at"),
-    safeSelect(supabase, "published_stores", "store_id, slug, url, status"),
-    safeSelect(supabase, "commerce_orders", "source_id, source_type"),
-    safeSelect(supabase, "analytics_events", "source_id, source_type, event_type")
+  const [
+    stores,
+    publications,
+    commerceOrders,
+    storeOrders,
+    events,
+    products,
+    paymentMethods,
+    providerConnections,
+    shippingProfiles,
+    shippingZones,
+    shippingMethods,
+    legalPages,
+    storeDomains,
+    subscriptions,
+    workspaceMembers
+  ] = await Promise.all([
+    safeSelect(
+      supabase,
+      "stores",
+      "id, user_id, owner_user_id, workspace_id, name, store_name, slug, status, store_data, template_id, created_at, delivery_enabled, pickup_enabled, delivery_notes"
+    ),
+    safeSelect(supabase, "published_stores", "store_id, slug, url, status, custom_domain"),
+    safeSelect(supabase, "commerce_orders", "source_id, source_type, total_amount, total"),
+    safeSelect(supabase, "store_orders", "store_id, total, total_amount"),
+    safeSelect(supabase, "analytics_events", "source_id, source_type, event_type"),
+    safeSelect(supabase, "store_products", "store_id, status"),
+    safeSelect(supabase, "store_payment_methods", "store_id, is_enabled"),
+    safeSelect(supabase, "store_payment_provider_connections", "store_id, connection_status, charges_enabled, paypal_status"),
+    safeSelect(supabase, "shipping_profiles", "store_id"),
+    safeSelect(supabase, "shipping_zones", "store_id, enabled"),
+    safeSelect(supabase, "shipping_methods", "store_id, enabled"),
+    safeSelect(supabase, "store_pages", "store_id, page_type, status"),
+    safeSelect(supabase, "store_domains", "store_id, hostname, status, verification_status"),
+    safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status"),
+    safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status")
   ]);
   const publicationByStore = new Map(publications.map((row) => [text(row.store_id), row]));
-  const storeOrders = orders.filter((order) => order.source_type === "store");
+  const commerceStoreOrders = commerceOrders.filter((order) => order.source_type === "store");
   const storeViews = events.filter(
     (event) => event.source_type === "store" && event.event_type === "page_view"
   );
-  const orderCounts = countBy(storeOrders, "source_id");
+  const commerceOrderCounts = countBy(commerceStoreOrders, "source_id");
+  const directOrderCounts = countBy(storeOrders, "store_id");
   const viewCounts = countBy(storeViews, "source_id");
+  const productCounts = countBy(products, "store_id");
+  const subscriptionByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
+  const membersByWorkspace = new Map<string, AnyRecord[]>();
+  for (const member of workspaceMembers) {
+    const workspaceId = text(member.workspace_id);
+    if (!workspaceId) {
+      continue;
+    }
+    membersByWorkspace.set(workspaceId, [...(membersByWorkspace.get(workspaceId) ?? []), member]);
+  }
 
   return stores.map((store) => {
     const publication = publicationByStore.get(text(store.id));
+    const ownerId = ownerUserId(store);
+    const workspaceId = text(store.workspace_id) || null;
     const url = text(publication?.url) || (text(publication?.slug) ? `/store/${text(publication?.slug)}` : null);
+    const storeId = text(store.id);
+    const storeProducts = products.filter((product) => text(product.store_id) === storeId);
+    const activeProductCount = storeProducts.filter((product) => text(product.status) === "active").length;
+    const storePaymentMethods = paymentMethods.filter((method) => text(method.store_id) === storeId);
+    const storeProviderConnections = providerConnections.filter((connection) => text(connection.store_id) === storeId);
+    const hasPaymentMethod =
+      storePaymentMethods.some((method) => method.is_enabled === true) ||
+      storeProviderConnections.some(
+        (connection) =>
+          text(connection.connection_status) === "connected" ||
+          connection.charges_enabled === true ||
+          text(connection.paypal_status) === "connected"
+      );
+    const hasShipping =
+      store.delivery_enabled === true ||
+      store.pickup_enabled === true ||
+      text(store.delivery_notes).length > 0 ||
+      shippingProfiles.some((profile) => text(profile.store_id) === storeId) ||
+      shippingZones.some((zone) => text(zone.store_id) === storeId && zone.enabled !== false) ||
+      shippingMethods.some((method) => text(method.store_id) === storeId && method.enabled !== false);
+    const requiredLegalPages = new Set(["privacy", "returns", "shipping", "terms"]);
+    for (const page of legalPages) {
+      if (text(page.store_id) === storeId && text(page.status) !== "archived") {
+        requiredLegalPages.delete(text(page.page_type));
+      }
+    }
+    const hasCustomDomain =
+      text(publication?.custom_domain).length > 0 ||
+      storeDomains.some(
+        (domain) =>
+          text(domain.store_id) === storeId &&
+          (text(domain.status) === "verified" || text(domain.verification_status) === "verified")
+      );
+    const orderCount = (commerceOrderCounts.get(storeId) ?? 0) + (directOrderCounts.get(storeId) ?? 0);
+    const storeRevenue =
+      sumBy(commerceStoreOrders.filter((order) => text(order.source_id) === storeId), "total_amount") ||
+      sumBy(commerceStoreOrders.filter((order) => text(order.source_id) === storeId), "total");
+    const directRevenue =
+      sumBy(storeOrders.filter((order) => text(order.store_id) === storeId), "total_amount") ||
+      sumBy(storeOrders.filter((order) => text(order.store_id) === storeId), "total");
+    const blockingHealth = [
+      activeProductCount ? null : "missing_products",
+      hasPaymentMethod ? null : "no_payment_method",
+      hasShipping ? null : "no_shipping_settings",
+      requiredLegalPages.size ? "missing_legal_pages" : null
+    ].filter(Boolean);
+    const health: AdminStore["health"] = [
+      {
+        key: "missing_products",
+        label: activeProductCount ? "Products ready" : "Missing products",
+        status: activeProductCount ? "ready" : "blocked"
+      },
+      {
+        key: "no_payment_method",
+        label: hasPaymentMethod ? "Payment configured" : "No payment method",
+        status: hasPaymentMethod ? "ready" : "blocked"
+      },
+      {
+        key: "no_shipping_settings",
+        label: hasShipping ? "Shipping configured" : "No shipping settings",
+        status: hasShipping ? "ready" : "blocked"
+      },
+      {
+        key: "missing_legal_pages",
+        label: requiredLegalPages.size ? "Missing legal pages" : "Legal pages ready",
+        status: requiredLegalPages.size ? "blocked" : "ready"
+      },
+      {
+        key: "domain_not_connected",
+        label: hasCustomDomain ? "Domain connected" : "Domain not connected",
+        status: hasCustomDomain ? "ready" : "warning"
+      },
+      {
+        key: blockingHealth.length ? "publish_blocked" : "publish_ready",
+        label: blockingHealth.length ? "Publish blocked" : "Publish ready",
+        status: blockingHealth.length ? "blocked" : "ready"
+      }
+    ];
+    const subscription = subscriptionByUser.get(ownerId);
+    const plan = getBillingPlan(text(subscription?.plan_id, "free"));
+    const workspaceMemberRows = workspaceId ? membersByWorkspace.get(workspaceId) ?? [] : [];
+    const storeStatus = text(store.status, "draft");
+    const adminStatus = governanceStatus(store.store_data, storeStatus);
+
     return {
       createdAt: text(store.created_at),
-      id: text(store.id),
-      name: text(store.name, "Untitled store"),
-      ordersCount: orderCounts.get(text(store.id)) ?? 0,
-      ownerEmail: owners.get(text(store.user_id)) ?? text(store.user_id, "Unknown owner"),
+      health,
+      id: storeId,
+      name: text(store.store_name, text(store.name, "Untitled store")),
+      ordersCount: orderCount,
+      ownerEmail: owners.get(ownerId) ?? text(ownerId, "Unknown owner"),
+      ownerId: ownerId || null,
+      plan: plan.name,
+      productsCount: productCounts.get(storeId) ?? 0,
+      publicationStatus: text(publication?.status, "not_published"),
       publishedUrl: url,
-      status: text(publication?.status, text(store.status, "draft")),
+      revenue: storeRevenue + directRevenue,
+      slug: text(store.slug) || text(publication?.slug) || null,
+      status: adminStatus,
+      storeStatus,
       template: text(store.template_id, "default"),
-      viewsCount: viewCounts.get(text(store.id)) ?? 0
+      viewsCount: viewCounts.get(storeId) ?? 0,
+      workspaceId,
+      workspaceMembers: workspaceMemberRows.map((member) => ({
+        email: owners.get(text(member.user_id)) ?? text(member.user_id, "Unknown member"),
+        role: text(member.role, "member"),
+        status: text(member.status, "active"),
+        userId: text(member.user_id)
+      }))
     };
   });
 }
