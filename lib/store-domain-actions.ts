@@ -99,6 +99,30 @@ type DomainOrderDraftRecord = {
   storeName: string;
 };
 
+type DomainCheckoutPreviewRecord = {
+  createdAt: string;
+  customerDue: number;
+  customerDueCents: number;
+  domain: string;
+  domainOrderDraftId: string;
+  domainPrice: number;
+  domainPriceCents: number;
+  futureHookPoints: {
+    attachDomainToStore: "reserved";
+    domainRegistrationAfterPayment: "reserved";
+    nowPaymentsDomainPayment: "reserved";
+    paymentFailureCallback: "reserved";
+    paymentSuccessCallback: "reserved";
+    sslProvisioningAfterRegistration: "reserved";
+    stripeDomainPayment: "reserved";
+  };
+  id: string;
+  planCreditUsed: number;
+  planCreditUsedCents: number;
+  status: "checkout_preview";
+  storeId: string;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -259,6 +283,71 @@ async function writeDomainOrderDraft({
       storeId
     });
     domainsRedirect(storeId, "domain-order-draft-failed");
+  }
+}
+
+async function writeDomainCheckoutPreview({
+  preview,
+  storeId,
+  supabase
+}: {
+  preview: DomainCheckoutPreviewRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] checkout preview load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-checkout-preview-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainCheckoutPreviews = isRecord(storeData.domainCheckoutPreviews)
+    ? storeData.domainCheckoutPreviews
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        domainCheckoutPreviews: {
+          ...domainCheckoutPreviews,
+          [preview.id]: preview
+        },
+        domainCheckoutPreviewSummary: {
+          latestPreviewId: preview.id,
+          latestDraftId: preview.domainOrderDraftId,
+          latestStatus: preview.status,
+          latestUpdatedAt: now,
+          stripeDomainPayment: "reserved",
+          nowPaymentsDomainPayment: "reserved",
+          paymentSuccessCallback: "reserved",
+          paymentFailureCallback: "reserved",
+          domainRegistrationAfterPayment: "reserved",
+          attachDomainToStore: "reserved",
+          sslProvisioningAfterRegistration: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] checkout preview write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-checkout-preview-failed");
   }
 }
 
@@ -742,6 +831,99 @@ export async function prepareDomainOrderDraft(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "domain-order-draft-prepared");
+}
+
+export async function prepareDomainCheckoutPreview(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const draftId = cleanText(formData.get("draftId"), 80);
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (!draftId) {
+    domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    domainsRedirect(storeId, "domain-checkout-preview-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainOrderDrafts = isRecord(storeData.domainOrderDrafts)
+    ? storeData.domainOrderDrafts
+    : {};
+  const draft = domainOrderDrafts[draftId];
+
+  if (!isRecord(draft) || draft.status !== "draft" || draft.storeId !== storeId) {
+    domainsRedirect(storeId, "domain-not-found");
+  }
+
+  const domain = typeof draft.selectedDomain === "string" ? draft.selectedDomain : "";
+  const domainPrice =
+    typeof draft.domainPrice === "number"
+      ? draft.domainPrice
+      : typeof draft.domainPriceCents === "number"
+        ? draft.domainPriceCents
+        : 0;
+  const planCreditUsed =
+    typeof draft.creditUsed === "number"
+      ? draft.creditUsed
+      : typeof draft.creditUsedCents === "number"
+        ? draft.creditUsedCents
+        : 0;
+  const customerDue =
+    typeof draft.customerDue === "number"
+      ? draft.customerDue
+      : typeof draft.customerDueCents === "number"
+        ? draft.customerDueCents
+        : 0;
+
+  if (!domain || domainPrice < 0 || planCreditUsed < 0 || customerDue < 0) {
+    domainsRedirect(storeId, "domain-checkout-preview-failed");
+  }
+
+  const preview: DomainCheckoutPreviewRecord = {
+    createdAt: new Date().toISOString(),
+    customerDue,
+    customerDueCents: customerDue,
+    domain,
+    domainOrderDraftId: draftId,
+    domainPrice,
+    domainPriceCents: domainPrice,
+    futureHookPoints: {
+      attachDomainToStore: "reserved",
+      domainRegistrationAfterPayment: "reserved",
+      nowPaymentsDomainPayment: "reserved",
+      paymentFailureCallback: "reserved",
+      paymentSuccessCallback: "reserved",
+      sslProvisioningAfterRegistration: "reserved",
+      stripeDomainPayment: "reserved"
+    },
+    id: randomUUID(),
+    planCreditUsed,
+    planCreditUsedCents: planCreditUsed,
+    status: "checkout_preview",
+    storeId
+  };
+
+  await writeDomainCheckoutPreview({
+    preview,
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-checkout-preview-prepared");
 }
 
 export async function setPrimaryDomain(formData: FormData) {

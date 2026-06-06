@@ -94,6 +94,21 @@ export type DomainOrderDraft = {
   storeName: string;
 };
 
+export type DomainCheckoutPreview = {
+  createdAt: string;
+  customerDue: number;
+  customerDueCents: number;
+  domain: string;
+  domainOrderDraftId: string;
+  domainPrice: number;
+  domainPriceCents: number;
+  id: string;
+  planCreditUsed: number;
+  planCreditUsedCents: number;
+  status: "checkout_preview";
+  storeId: string;
+};
+
 export type DomainAvailability = {
   checked: boolean;
   hostname: string | null;
@@ -112,6 +127,7 @@ export type DomainProvisioningInstruction = {
 export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
   availability: DomainAvailability;
+  domainCheckoutPreviews: DomainCheckoutPreview[];
   domains: StoreDomainRecord[];
   domainOrderDrafts: DomainOrderDraft[];
   domainBase: string;
@@ -263,6 +279,58 @@ function parseDomainOrderDrafts(storeData: unknown) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+function parseDomainCheckoutPreview(value: unknown): DomainCheckoutPreview | null {
+  if (!isRecord(value) || value.status !== "checkout_preview") {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.storeId !== "string" ||
+    typeof value.domain !== "string" ||
+    typeof value.domainOrderDraftId !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.domainPriceCents !== "number" ||
+    typeof value.planCreditUsedCents !== "number" ||
+    typeof value.customerDueCents !== "number"
+  ) {
+    return null;
+  }
+
+  const domainPrice =
+    typeof value.domainPrice === "number" ? value.domainPrice : value.domainPriceCents;
+  const planCreditUsed =
+    typeof value.planCreditUsed === "number" ? value.planCreditUsed : value.planCreditUsedCents;
+  const customerDue =
+    typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
+
+  return {
+    createdAt: value.createdAt,
+    customerDue,
+    customerDueCents: value.customerDueCents,
+    domain: value.domain,
+    domainOrderDraftId: value.domainOrderDraftId,
+    domainPrice,
+    domainPriceCents: value.domainPriceCents,
+    id: value.id,
+    planCreditUsed,
+    planCreditUsedCents: value.planCreditUsedCents,
+    status: "checkout_preview",
+    storeId: value.storeId
+  };
+}
+
+function parseDomainCheckoutPreviews(storeData: unknown) {
+  if (!isRecord(storeData) || !isRecord(storeData.domainCheckoutPreviews)) {
+    return [];
+  }
+
+  return Object.values(storeData.domainCheckoutPreviews)
+    .map(parseDomainCheckoutPreview)
+    .filter((preview): preview is DomainCheckoutPreview => Boolean(preview))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 function storeSlugForDomains(store: UserStoreRow) {
   return normalizeSubdomain(store.slug ?? store.store_name ?? store.name ?? store.id) || store.id;
 }
@@ -372,6 +440,7 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      domainCheckoutPreviews: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -399,6 +468,7 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      domainCheckoutPreviews: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -427,6 +497,7 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      domainCheckoutPreviews: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -477,6 +548,7 @@ export async function getStoreDomainsDashboardData(
   return {
     activeStore,
     availability: await checkSubdomainAvailability(supabase, availabilitySubdomain),
+    domainCheckoutPreviews: parseDomainCheckoutPreviews(storeData),
     domains,
     domainOrderDrafts: parseDomainOrderDrafts(storeData),
     domainBase: getDomainBase(),

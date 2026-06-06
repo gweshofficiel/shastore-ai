@@ -9,6 +9,7 @@ import {
   attachCustomDomain,
   createStoreSubdomain,
   markStoreDomainVerificationPending,
+  prepareDomainCheckoutPreview,
   prepareDomainOrderDraft,
   removeDomain,
   setPrimaryDomain
@@ -49,6 +50,8 @@ const statusMessages: Record<string, string> = {
   "delete-failed": "Domain record could not be deleted.",
   "domain-not-found": "Domain record was not found for this store.",
   "domain-activated": "Verified domain activated for this store.",
+  "domain-checkout-preview-failed": "Domain checkout preview could not be prepared.",
+  "domain-checkout-preview-prepared": "Checkout preview prepared. Payment integration will be connected later.",
   "domain-deleted": "Domain record deleted.",
   "domain-order-draft-failed": "Domain order draft could not be prepared.",
   "domain-order-draft-prepared": "Draft prepared. Awaiting payment / future activation.",
@@ -74,6 +77,7 @@ const successStatuses = new Set([
   "custom-domain-saved",
   "domain-deleted",
   "domain-activated",
+  "domain-checkout-preview-prepared",
   "domain-order-draft-prepared",
   "primary-updated",
   "subdomain-saved",
@@ -83,6 +87,7 @@ const successStatuses = new Set([
 const badgeStyles: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   available: "bg-emerald-50 text-emerald-700",
+  checkout_preview: "bg-blue-50 text-blue-700",
   draft: "bg-amber-50 text-amber-700",
   failed: "bg-red-50 text-red-700",
   invalid: "bg-red-50 text-red-700",
@@ -949,6 +954,15 @@ export default async function DomainsPage({
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
                   No payment, registration, or external service call happens yet.
                 </p>
+                <form action={prepareDomainCheckoutPreview} className="mt-4">
+                  <input name="storeId" type="hidden" value={draft.storeId} />
+                  <input name="draftId" type="hidden" value={draft.id} />
+                  <Button type="submit" variant={draft.paymentPreparation.amountDueNowCents > 0 ? "primary" : "secondary"}>
+                    {draft.paymentPreparation.amountDueNowCents > 0
+                      ? "Continue to payment preview"
+                      : "Continue with included credit"}
+                  </Button>
+                </form>
               </div>
             ))
           ) : (
@@ -960,6 +974,48 @@ export default async function DomainsPage({
             </div>
           )}
         </div>
+        {data.domainCheckoutPreviews.length ? (
+          <div className="mt-6 grid gap-3">
+            <h3 className="text-lg font-black tracking-[-0.02em] text-ink">
+              Checkout previews
+            </h3>
+            {data.domainCheckoutPreviews.map((preview) => (
+              <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4" key={preview.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">
+                      Payment preview
+                    </p>
+                    <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
+                      {preview.domain}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-muted">
+                      {new Date(preview.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <StatusBadge label="Status" value={preview.status} />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain price</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(preview.domainPriceCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Plan credit used</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(preview.planCreditUsedCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Customer due</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(preview.customerDueCents)}</p>
+                  </div>
+                </div>
+                <p className="mt-4 rounded-2xl border border-blue-100 bg-white p-3 text-sm font-bold text-blue-900">
+                  Payment integration will be connected later. No payment has been made yet.
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </Card>
       <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
         <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">
