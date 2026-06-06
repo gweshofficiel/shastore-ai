@@ -141,6 +141,44 @@ export type AdminSeller = {
   }>;
 };
 
+export type AdminReseller = {
+  userId: string;
+  email: string;
+  fullName: string | null;
+  status: "active" | "suspended" | "pending_verification" | "verified";
+  governanceStatus: "active" | "suspended" | "pending_review";
+  verificationStatus: "pending_verification" | "verified";
+  createdAt: string | null;
+  storesCreated: number;
+  storesSold: number;
+  customersReferred: number;
+  commissionsPlaceholder: string;
+  profile: {
+    displayName: string | null;
+    id: string | null;
+    isPublished: boolean;
+    slug: string | null;
+  };
+  ownedStores: Array<{
+    createdAt: string;
+    id: string;
+    name: string;
+    slug: string | null;
+    status: string;
+  }>;
+  transferredStores: Array<{
+    buyerEmail: string | null;
+    id: string;
+    name: string;
+    status: string;
+    transferredAt: string | null;
+  }>;
+  commissionSummary: {
+    note: string;
+    total: number;
+  };
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -340,6 +378,28 @@ function adminGovernanceStatus(value: unknown): "suspended" | "under_review" | n
   const status = text(governance.status);
 
   return status === "suspended" || status === "under_review" ? status : null;
+}
+
+function resellerGovernance(value: unknown): {
+  governanceStatus: AdminReseller["governanceStatus"];
+  verificationStatus: AdminReseller["verificationStatus"];
+} {
+  if (!isRecord(value) || !isRecord(value.adminGovernance)) {
+    return {
+      governanceStatus: "active",
+      verificationStatus: "pending_verification"
+    };
+  }
+
+  const governance = value.adminGovernance;
+  const status = text(governance.status);
+  const verificationStatus = text(governance.verificationStatus);
+
+  return {
+    governanceStatus:
+      status === "suspended" ? "suspended" : status === "pending_review" ? "pending_review" : "active",
+    verificationStatus: verificationStatus === "verified" ? "verified" : "pending_verification"
+  };
 }
 
 async function safeSelect(
@@ -885,6 +945,163 @@ export async function getAdminSellers(): Promise<AdminSeller[]> {
         status: subscriptionStatus
       },
       userId: sellerId
+    };
+  });
+}
+
+export async function getAdminResellers(): Promise<AdminReseller[]> {
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const namesByUser = new Map(users.map((user) => [user.id, user.fullName]));
+  const createdByUser = new Map(users.map((user) => [user.id, user.createdAt]));
+  const [
+    resellerProfiles,
+    accountProfiles,
+    stores,
+    subscriptions,
+    purchaseRequests,
+    provisionedStores,
+    storeTransfers
+  ] = await Promise.all([
+    safeSelect(
+      supabase,
+      "reseller_profiles",
+      "id, user_id, slug, display_name, is_published, created_at"
+    ),
+    safeSelect(supabase, "account_profiles", "user_id, account_type, display_name, created_at"),
+    safeSelect(
+      supabase,
+      "stores",
+      "id, user_id, owner_user_id, name, store_name, slug, status, store_data, created_at"
+    ),
+    safeSelect(supabase, "user_subscriptions", "user_id, status, limits_snapshot"),
+    safeSelect(supabase, "store_purchase_requests", "id, reseller_id, buyer_email, request_status, created_at"),
+    safeSelect(
+      supabase,
+      "provisioned_stores",
+      "id, reseller_id, buyer_email, provisioned_store_name, provisioning_status, ownership_status, created_at"
+    ),
+    safeSelect(supabase, "store_transfers", "id, reseller_id, buyer_email, transfer_status, transferred_at, created_at")
+  ]);
+  const profileById = new Map(resellerProfiles.map((profile) => [text(profile.id), profile]));
+  const profilesByUser = new Map(resellerProfiles.map((profile) => [text(profile.user_id), profile]));
+  const accountProfilesByUser = new Map(
+    accountProfiles
+      .filter((profile) => text(profile.account_type) === "reseller")
+      .map((profile) => [text(profile.user_id), profile])
+  );
+  const resellerIds = new Set<string>();
+
+  for (const profile of resellerProfiles) {
+    const userId = text(profile.user_id);
+
+    if (userId) {
+      resellerIds.add(userId);
+    }
+  }
+
+  for (const profile of accountProfilesByUser.keys()) {
+    if (profile) {
+      resellerIds.add(profile);
+    }
+  }
+
+  for (const request of purchaseRequests) {
+    const profile = profileById.get(text(request.reseller_id));
+    const userId = text(profile?.user_id);
+
+    if (userId) {
+      resellerIds.add(userId);
+    }
+  }
+
+  const storesByOwner = new Map<string, AnyRecord[]>();
+  for (const store of stores) {
+    const ownerId = ownerUserId(store);
+
+    if (!ownerId) {
+      continue;
+    }
+
+    storesByOwner.set(ownerId, [...(storesByOwner.get(ownerId) ?? []), store]);
+  }
+
+  const subscriptionsByUser = new Map(subscriptions.map((subscription) => [text(subscription.user_id), subscription]));
+
+  return [...resellerIds].map((userId) => {
+    const profile = profilesByUser.get(userId);
+    const accountProfile = accountProfilesByUser.get(userId);
+    const resellerProfileId = text(profile?.id);
+    const governance = resellerGovernance(subscriptionsByUser.get(userId)?.limits_snapshot);
+    const ownedStores = storesByOwner.get(userId) ?? [];
+    const resellerRequests = purchaseRequests.filter((request) => text(request.reseller_id) === resellerProfileId);
+    const resellerProvisionedStores = provisionedStores.filter(
+      (store) => text(store.reseller_id) === resellerProfileId
+    );
+    const resellerTransfers = storeTransfers.filter((transfer) => text(transfer.reseller_id) === resellerProfileId);
+    const referredCustomers = new Set(
+      resellerRequests
+        .map((request) => text(request.buyer_email).toLowerCase())
+        .filter(Boolean)
+    );
+    const transferredStores = [
+      ...resellerProvisionedStores.map((store) => ({
+        buyerEmail: text(store.buyer_email) || null,
+        id: text(store.id),
+        name: text(store.provisioned_store_name, "Provisioned store"),
+        status: text(store.provisioning_status, text(store.ownership_status, "draft")),
+        transferredAt: null
+      })),
+      ...resellerTransfers.map((transfer) => ({
+        buyerEmail: text(transfer.buyer_email) || null,
+        id: text(transfer.id),
+        name: "Store transfer",
+        status: text(transfer.transfer_status, "preparing"),
+        transferredAt: text(transfer.transferred_at) || null
+      }))
+    ];
+    const storesSold = Math.max(
+      resellerRequests.filter((request) => text(request.request_status) === "delivered").length,
+      resellerProvisionedStores.filter((store) => text(store.provisioning_status) === "delivered").length,
+      resellerTransfers.filter((transfer) => text(transfer.transferred_at)).length
+    );
+    const status: AdminReseller["status"] =
+      governance.governanceStatus === "suspended"
+        ? "suspended"
+        : governance.verificationStatus === "verified"
+          ? "verified"
+          : "pending_verification";
+
+    return {
+      commissionSummary: {
+        note: "Commission payouts are not implemented in this phase.",
+        total: 0
+      },
+      commissionsPlaceholder: "Coming later",
+      createdAt: text(profile?.created_at) || text(accountProfile?.created_at) || (createdByUser.get(userId) ?? null),
+      customersReferred: referredCustomers.size,
+      email: owners.get(userId) ?? text(userId, "Unknown reseller"),
+      fullName: namesByUser.get(userId) ?? (text(accountProfile?.display_name) || text(profile?.display_name) || null),
+      governanceStatus: governance.governanceStatus,
+      ownedStores: ownedStores.map((store) => ({
+        createdAt: text(store.created_at),
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        slug: text(store.slug) || null,
+        status: governanceStatus(store.store_data, text(store.status, "draft"))
+      })),
+      profile: {
+        displayName: text(profile?.display_name) || text(accountProfile?.display_name) || null,
+        id: resellerProfileId || null,
+        isPublished: profile?.is_published === true,
+        slug: text(profile?.slug) || null
+      },
+      status,
+      storesCreated: ownedStores.length + resellerProvisionedStores.length,
+      storesSold,
+      transferredStores,
+      userId,
+      verificationStatus: governance.verificationStatus
     };
   });
 }
