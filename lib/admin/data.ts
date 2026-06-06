@@ -104,6 +104,43 @@ export type AdminStore = {
   }>;
 };
 
+export type AdminSeller = {
+  userId: string;
+  email: string;
+  fullName: string | null;
+  status: "active" | "suspended" | "under_review";
+  plan: string;
+  planId: string;
+  storesOwned: number;
+  publishedStores: number;
+  productsCount: number;
+  ordersCount: number;
+  customersCount: number;
+  revenue: number;
+  governanceStatus: "active" | "suspended" | "under_review";
+  subscription: {
+    planId: string;
+    planName: string;
+    status: string;
+  };
+  stores: Array<{
+    createdAt: string;
+    id: string;
+    name: string;
+    slug: string | null;
+    status: string;
+  }>;
+  recentOrders: Array<{
+    createdAt: string;
+    currency: string;
+    id: string;
+    source: string;
+    status: string;
+    storeId: string;
+    total: number;
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -287,6 +324,22 @@ function userGovernanceStatus(value: unknown): "suspended" | null {
   }
 
   return text(governance.status) === "suspended" ? "suspended" : null;
+}
+
+function adminGovernanceStatus(value: unknown): "suspended" | "under_review" | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const governance = value.adminGovernance;
+
+  if (!isRecord(governance)) {
+    return null;
+  }
+
+  const status = text(governance.status);
+
+  return status === "suspended" || status === "under_review" ? status : null;
 }
 
 async function safeSelect(
@@ -696,6 +749,142 @@ export async function getAdminStores(): Promise<AdminStore[]> {
         status: text(member.status, "active"),
         userId: text(member.user_id)
       }))
+    };
+  });
+}
+
+export async function getAdminSellers(): Promise<AdminSeller[]> {
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const namesByUser = new Map(users.map((user) => [user.id, user.fullName]));
+  const [
+    stores,
+    publications,
+    products,
+    commerceOrders,
+    storeOrders,
+    storeCustomers,
+    commerceCustomers,
+    subscriptions
+  ] = await Promise.all([
+    safeSelect(
+      supabase,
+      "stores",
+      "id, user_id, owner_user_id, name, store_name, slug, status, store_data, created_at"
+    ),
+    safeSelect(supabase, "published_stores", "store_id, status"),
+    safeSelect(supabase, "store_products", "store_id"),
+    safeSelect(
+      supabase,
+      "commerce_orders",
+      "id, user_id, source_id, source_type, status, total_amount, total, currency, created_at"
+    ),
+    safeSelect(
+      supabase,
+      "store_orders",
+      "id, store_id, owner_user_id, user_id, status, total_amount, total, currency, created_at"
+    ),
+    safeSelect(supabase, "customers", "id, store_id"),
+    safeSelect(supabase, "commerce_customers", "id, user_id"),
+    safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status, limits_snapshot")
+  ]);
+  const sellerIds = new Set(stores.map(ownerUserId).filter(Boolean));
+  const storesBySeller = new Map<string, AnyRecord[]>();
+
+  for (const store of stores) {
+    const sellerId = ownerUserId(store);
+
+    if (!sellerId) {
+      continue;
+    }
+
+    storesBySeller.set(sellerId, [...(storesBySeller.get(sellerId) ?? []), store]);
+  }
+
+  const publicationsByStore = new Map(publications.map((publication) => [text(publication.store_id), publication]));
+  const productsByStore = countBy(products, "store_id");
+  const storeCustomersByStore = countBy(storeCustomers, "store_id");
+  const commerceCustomersByUser = countBy(commerceCustomers, "user_id");
+  const subscriptionByUser = new Map(subscriptions.map((subscription) => [text(subscription.user_id), subscription]));
+
+  return [...sellerIds].map((sellerId) => {
+    const sellerStores = storesBySeller.get(sellerId) ?? [];
+    const storeIds = new Set(sellerStores.map((store) => text(store.id)).filter(Boolean));
+    const subscription = subscriptionByUser.get(sellerId);
+    const plan = getBillingPlan(text(subscription?.plan_id, "free"));
+    const sellerGovernance = adminGovernanceStatus(subscription?.limits_snapshot);
+    const storeGovernance = sellerStores
+      .map((store) => adminGovernanceStatus(store.store_data))
+      .find((status) => status === "suspended" || status === "under_review");
+    const subscriptionStatus = text(subscription?.status, "active");
+    const sellerStatus =
+      sellerGovernance ??
+      storeGovernance ??
+      (subscriptionStatus === "incomplete" ? "suspended" : "active");
+    const sellerCommerceOrders = commerceOrders.filter(
+      (order) =>
+        (order.source_type === "store" && storeIds.has(text(order.source_id))) ||
+        text(order.user_id) === sellerId
+    );
+    const sellerStoreOrders = storeOrders.filter(
+      (order) => storeIds.has(text(order.store_id)) || text(order.owner_user_id) === sellerId
+    );
+    const recentOrders = [
+      ...sellerCommerceOrders.map((order) => ({
+        createdAt: text(order.created_at),
+        currency: text(order.currency, "USD"),
+        id: text(order.id),
+        source: text(order.source_type, "commerce"),
+        status: text(order.status, "new"),
+        storeId: text(order.source_id),
+        total: numberValue(order.total_amount) || numberValue(order.total)
+      })),
+      ...sellerStoreOrders.map((order) => ({
+        createdAt: text(order.created_at),
+        currency: text(order.currency, "USD"),
+        id: text(order.id),
+        source: "store_order",
+        status: text(order.status, "new"),
+        storeId: text(order.store_id),
+        total: numberValue(order.total_amount) || numberValue(order.total)
+      }))
+    ]
+      .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
+      .slice(0, 5);
+
+    return {
+      customersCount:
+        [...storeIds].reduce((total, storeId) => total + (storeCustomersByStore.get(storeId) ?? 0), 0) +
+        (commerceCustomersByUser.get(sellerId) ?? 0),
+      email: owners.get(sellerId) ?? text(sellerId, "Unknown seller"),
+      fullName: namesByUser.get(sellerId) ?? null,
+      governanceStatus: sellerStatus,
+      ordersCount: sellerCommerceOrders.length + sellerStoreOrders.length,
+      plan: plan.name,
+      planId: plan.id,
+      productsCount: [...storeIds].reduce((total, storeId) => total + (productsByStore.get(storeId) ?? 0), 0),
+      publishedStores: sellerStores.filter(
+        (store) => text(publicationsByStore.get(text(store.id))?.status) === "published"
+      ).length,
+      recentOrders,
+      revenue:
+        (sumBy(sellerCommerceOrders, "total_amount") || sumBy(sellerCommerceOrders, "total")) +
+        (sumBy(sellerStoreOrders, "total_amount") || sumBy(sellerStoreOrders, "total")),
+      status: sellerStatus,
+      stores: sellerStores.map((store) => ({
+        createdAt: text(store.created_at),
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        slug: text(store.slug) || null,
+        status: governanceStatus(store.store_data, text(store.status, "draft"))
+      })),
+      storesOwned: sellerStores.length,
+      subscription: {
+        planId: plan.id,
+        planName: plan.name,
+        status: subscriptionStatus
+      },
+      userId: sellerId
     };
   });
 }
