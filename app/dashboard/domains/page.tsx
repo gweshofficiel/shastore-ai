@@ -13,6 +13,7 @@ import {
   prepareDomainOrderDraft,
   prepareDomainRegistrationWorkflow,
   preparePrimaryDomainRouting,
+  prepareProfessionalEmailMailboxDraft,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -64,6 +65,9 @@ const statusMessages: Record<string, string> = {
   "domain-primary-routing-not-ready": "DNS must be verified and SSL must be active before preparing a primary domain.",
   "domain-primary-routing-prepared": "Primary domain routing prepared. Default SHASTORE URL remains active.",
   "duplicate-domain": "That domain is already connected to another store.",
+  "professional-email-domain-required": "Select a prepared domain before creating an email draft.",
+  "professional-email-draft-failed": "Professional email draft could not be prepared.",
+  "professional-email-draft-prepared": "Professional email draft prepared. No mailbox has been created yet.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
   "limit-reached": "Your current plan has reached its domain limit.",
@@ -89,6 +93,7 @@ const successStatuses = new Set([
   "domain-order-draft-prepared",
   "domain-registration-workflow-prepared",
   "domain-primary-routing-prepared",
+  "professional-email-draft-prepared",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -378,6 +383,13 @@ export default async function DomainsPage({
     isValidHostname(derivedSubdomainHostname);
   const currentSubdomain = savedSubdomain?.hostname ?? derivedSubdomainHostname;
   const latestRoutingPreparation = data.domainRoutingPreparations[0] ?? null;
+  const professionalEmailDomains = Array.from(
+    new Set([
+      ...data.connectedDomains.map((domain) => domain.domain),
+      ...data.domainRoutingPreparations.map((preparation) => preparation.primaryDomain),
+      ...(primaryDomain?.hostname ? [primaryDomain.hostname] : [])
+    ])
+  ).filter((domain) => domain && domain.includes("."));
   const subdomainStatus =
     savedSubdomainActive
       ? "active"
@@ -1387,6 +1399,134 @@ export default async function DomainsPage({
         <p className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-900">
           Routing is not changed yet. The fallback SHASTORE URL stays active for this store.
         </p>
+      </Card>
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Professional email
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              Business Email Planning
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Prepare mailbox drafts for your selected store and domain. This does not create real inboxes yet.
+            </p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-800">
+            Draft only
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Selected store
+            </p>
+            <p className="mt-1 break-all text-sm font-black text-ink">
+              {selectedStoreName || "No store selected"}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Available domain
+            </p>
+            <p className="mt-1 break-all text-sm font-black text-ink">
+              {professionalEmailDomains[0] ?? "Select or prepare a domain first"}
+            </p>
+          </div>
+        </div>
+
+        {professionalEmailDomains.length ? (
+          <form action={prepareProfessionalEmailMailboxDraft} className="mt-6 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <input name="storeId" type="hidden" value={activeStoreId} />
+            <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="professionalEmailDomain">
+              <span>Domain</span>
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                id="professionalEmailDomain"
+                name="domain"
+                required
+              >
+                {professionalEmailDomains.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-ink" htmlFor="mailboxType">
+              <span>Mailbox</span>
+              <select
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-ink shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
+                id="mailboxType"
+                name="mailboxType"
+                required
+              >
+                <option value="info">info@domain.com</option>
+                <option value="support">support@domain.com</option>
+                <option value="sales">sales@domain.com</option>
+              </select>
+            </label>
+            <Button className="w-full sm:w-fit" type="submit">
+              Prepare email draft
+            </Button>
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+              No real mailbox is created yet. Email activation will be connected later.
+            </p>
+          </form>
+        ) : (
+          <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+            <p className="font-bold text-ink">Select a domain before planning email.</p>
+            <p className="mt-1 leading-6">
+              Search and prepare a custom domain first, then return here to draft info, support, or sales mailboxes.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-3">
+          {data.professionalEmailMailboxDrafts.length ? (
+            data.professionalEmailMailboxDrafts.map((draft) => (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={draft.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Mailbox draft
+                    </p>
+                    <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
+                      {draft.emailAddress}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-muted">
+                      {draft.domain} · {new Date(draft.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <StatusBadge label="Email" value={draft.status} />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Mailbox type
+                    </p>
+                    <p className="mt-1 text-sm font-black text-ink">{draft.mailboxType}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Storage
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-muted">{draft.storagePlaceholder}</p>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+              <p className="font-bold text-ink">No professional email drafts yet.</p>
+              <p className="mt-1 leading-6">
+                Prepare a mailbox draft after selecting a store and domain.
+              </p>
+            </div>
+          )}
+        </div>
       </Card>
       <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
         <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">

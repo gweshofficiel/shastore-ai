@@ -25,6 +25,14 @@ import {
   type DomainRoutingPreparation
 } from "@/lib/domains/domain-routing";
 import {
+  professionalEmailAddress,
+  professionalEmailFutureHooks,
+  professionalEmailMailboxTypes,
+  professionalEmailStoragePlaceholder,
+  type ProfessionalEmailMailboxDraft,
+  type ProfessionalEmailMailboxType
+} from "@/lib/domains/professional-email";
+import {
   buildDomainPaymentPreparation,
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
@@ -176,6 +184,8 @@ type DomainPrimaryRoutingPreparationRecord = DomainRoutingPreparation & {
   status: "primary_routing_prepared";
 };
 
+type ProfessionalEmailMailboxDraftRecord = ProfessionalEmailMailboxDraft;
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -210,6 +220,16 @@ function createDomainVerificationToken() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function cleanMailboxType(value: FormDataEntryValue | null): ProfessionalEmailMailboxType | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return professionalEmailMailboxTypes.includes(value as ProfessionalEmailMailboxType)
+    ? (value as ProfessionalEmailMailboxType)
+    : null;
 }
 
 async function writeDomainStoreDataRecord({
@@ -536,6 +556,68 @@ async function writeDomainPrimaryRoutingPreparation({
       storeId
     });
     domainsRedirect(storeId, "domain-primary-routing-failed");
+  }
+}
+
+async function writeProfessionalEmailMailboxDraft({
+  draft,
+  storeId,
+  supabase
+}: {
+  draft: ProfessionalEmailMailboxDraftRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] email draft load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "professional-email-draft-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const professionalEmailMailboxDrafts = isRecord(storeData.professionalEmailMailboxDrafts)
+    ? storeData.professionalEmailMailboxDrafts
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        professionalEmailMailboxDrafts: {
+          ...professionalEmailMailboxDrafts,
+          [draft.id]: draft
+        },
+        professionalEmailDraftSummary: {
+          checkDomainOwnership: "reserved",
+          createMailbox: "reserved",
+          latestDraftId: draft.id,
+          latestStatus: draft.status,
+          latestUpdatedAt: now,
+          renewMailbox: "reserved",
+          resetPassword: "reserved",
+          suspendMailbox: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] email draft write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "professional-email-draft-failed");
   }
 }
 
@@ -1315,6 +1397,102 @@ export async function preparePrimaryDomainRouting(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "domain-primary-routing-prepared");
+}
+
+export async function prepareProfessionalEmailMailboxDraft(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const domain = cleanPreviewDomain(formData.get("domain"));
+  const mailboxType = cleanMailboxType(formData.get("mailboxType"));
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (!domain || !mailboxType || !domain.includes(".")) {
+    domainsRedirect(storeId, "professional-email-domain-required");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    domainsRedirect(storeId, "professional-email-draft-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainPrimaryRoutingPreparations = isRecord(storeData.domainPrimaryRoutingPreparations)
+    ? Object.values(storeData.domainPrimaryRoutingPreparations)
+    : [];
+  const domainRegistrationWorkflows = isRecord(storeData.domainRegistrationWorkflows)
+    ? Object.values(storeData.domainRegistrationWorkflows)
+    : [];
+  const domainOrderDrafts = isRecord(storeData.domainOrderDrafts)
+    ? Object.values(storeData.domainOrderDrafts)
+    : [];
+  let knownDomain = [
+    ...domainPrimaryRoutingPreparations,
+    ...domainRegistrationWorkflows,
+    ...domainOrderDrafts
+  ].some((value) => {
+    if (!isRecord(value)) {
+      return false;
+    }
+
+    return value.primaryDomain === domain || value.domain === domain || value.selectedDomain === domain;
+  });
+
+  if (!knownDomain) {
+    const { data: existingDomain } = await supabase
+      .from("store_domains" as never)
+      .select("hostname")
+      .eq("store_instance_id", storeId)
+      .eq("hostname", domain)
+      .maybeSingle();
+    knownDomain = Boolean(existingDomain);
+  }
+
+  if (!knownDomain) {
+    domainsRedirect(storeId, "professional-email-domain-required");
+  }
+
+  const draft: ProfessionalEmailMailboxDraftRecord = {
+    createdAt: new Date().toISOString(),
+    domain,
+    emailAddress: professionalEmailAddress({ domain, mailboxType }),
+    futureHookPoints: professionalEmailFutureHooks(),
+    id: randomUUID(),
+    mailboxType,
+    status: "draft",
+    storagePlaceholder: professionalEmailStoragePlaceholder(mailboxType),
+    storeId
+  };
+
+  await writeProfessionalEmailMailboxDraft({
+    draft,
+    storeId,
+    supabase
+  });
+
+  await recordStoreAuditLogSafe({
+    action: "professional_email_draft_prepared",
+    actorUserId: userId,
+    metadata: {
+      mailboxType: draft.mailboxType,
+      source: "store_data_professional_email_mailbox_drafts",
+      status: draft.status
+    },
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "professional-email-draft-prepared");
 }
 
 export async function setPrimaryDomain(formData: FormData) {
