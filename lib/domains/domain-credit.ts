@@ -10,6 +10,10 @@ export type DomainCreditQuote = {
   planPrice: string;
 };
 
+export type DomainLineCreditQuote = DomainCreditQuote & {
+  domainPriceCents: number;
+};
+
 export const includedDomainCreditByPlan: Record<SubscriptionPlanId, number> = {
   agency: 5000,
   free: 0,
@@ -34,6 +38,27 @@ export function calculateDomainCreditQuote({
   return {
     creditUsedCents,
     customerDueCents: Math.max(pricing.subtotalCents - creditUsedCents, 0),
+    includedCreditCents,
+    planId: plan.id,
+    planName: plan.name,
+    planPrice: plan.price
+  };
+}
+
+export function calculateDomainLineCreditQuote({
+  domainPriceCents,
+  plan
+}: {
+  domainPriceCents: number;
+  plan: BillingPlan;
+}): DomainLineCreditQuote {
+  const includedCreditCents = includedDomainCreditForPlan(plan);
+  const creditUsedCents = Math.min(domainPriceCents, includedCreditCents);
+
+  return {
+    creditUsedCents,
+    customerDueCents: Math.max(domainPriceCents - creditUsedCents, 0),
+    domainPriceCents,
     includedCreditCents,
     planId: plan.id,
     planName: plan.name,

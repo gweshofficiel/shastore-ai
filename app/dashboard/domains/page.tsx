@@ -32,6 +32,7 @@ import {
   domainExtensionCatalog,
   topDomainExtensions
 } from "@/lib/domains/extension-catalog";
+import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
 import { formatDomainMoney } from "@/lib/domains/domain-pricing";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
@@ -129,6 +130,7 @@ function queryValues(value: string | string[] | undefined) {
 function domainsSearchHref(params: {
   domainSearch?: string;
   idnSearch?: string;
+  selectedDomain?: string;
   selectAll?: boolean;
   showAll?: boolean;
   storeId?: string;
@@ -151,11 +153,57 @@ function domainsSearchHref(params: {
     search.set("viewMoreExtensions", "true");
   }
 
+  if (params.selectedDomain) {
+    search.set("selectedDomain", params.selectedDomain);
+  }
+
   const extensions = params.selectAll ? allDomainExtensions() : defaultDomainExtensions();
 
   for (const extension of extensions) {
     search.append("extensions", extension);
   }
+
+  return `/dashboard/domains?${search.toString()}`;
+}
+
+function selectedDomainHref({
+  domainName,
+  domainSearch,
+  extensions,
+  idnSearch,
+  showAll,
+  storeId
+}: {
+  domainName: string;
+  domainSearch: string;
+  extensions: string[];
+  idnSearch: string;
+  showAll: boolean;
+  storeId: string;
+}) {
+  const search = new URLSearchParams();
+
+  if (storeId) {
+    search.set("storeId", storeId);
+  }
+
+  if (domainSearch) {
+    search.set("domainSearch", domainSearch);
+  }
+
+  if (idnSearch) {
+    search.set("idnSearch", idnSearch);
+  }
+
+  if (showAll) {
+    search.set("viewMoreExtensions", "true");
+  }
+
+  for (const extension of extensions) {
+    search.append("extensions", extension);
+  }
+
+  search.set("selectedDomain", domainName);
 
   return `/dashboard/domains?${search.toString()}`;
 }
@@ -169,6 +217,7 @@ export default async function DomainsPage({
     domains?: string;
     extensions?: string | string[];
     idnSearch?: string;
+    selectedDomain?: string;
     storeId?: string;
     viewMoreExtensions?: string;
   }>;
@@ -229,6 +278,7 @@ export default async function DomainsPage({
   const customDomainsAvailable = access ? canUseCustomDomains(access) : false;
   const domainSearch = queryValue(params.domainSearch);
   const idnSearch = queryValue(params.idnSearch);
+  const selectedDomainName = queryValue(params.selectedDomain);
   const selectedExtensions = queryValues(params.extensions);
   const showAllExtensions = params.viewMoreExtensions === "true";
   const visibleExtensions = showAllExtensions
@@ -252,8 +302,19 @@ export default async function DomainsPage({
       : data.domains.some((domain) => domain.domain_type === "subdomain" && domain.status === "active")
         ? "active"
         : "available";
-  const planPlusDomainDueCents =
-    (access?.plan.priceCents ?? getBillingPlan("free").priceCents) + commercePreview.credit.customerDueCents;
+  const selectedDomainLine =
+    commercePreview.pricing.lines.find((line) => line.domainName === selectedDomainName) ??
+    commercePreview.pricing.lines[0] ??
+    null;
+  const selectedDomainCredit = selectedDomainLine
+    ? calculateDomainLineCreditQuote({
+        domainPriceCents: selectedDomainLine.priceCents,
+        plan: access?.plan ?? getBillingPlan("free")
+      })
+    : null;
+  const selectedPlanPlusDomainDueCents =
+    (access?.plan.priceCents ?? getBillingPlan("free").priceCents) +
+    (selectedDomainCredit?.customerDueCents ?? 0);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -597,44 +658,81 @@ export default async function DomainsPage({
               Results and pricing preview
             </h2>
             <div className="mt-5 grid gap-3">
-              {commercePreview.pricing.lines.map((line) => (
-                <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6" key={line.domainName}>
-                  <div className="md:col-span-2">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain name</p>
-                    <p className="mt-1 break-all text-sm font-black text-ink">{line.domainName}</p>
+              {commercePreview.pricing.lines.map((line) => {
+                const lineCredit = calculateDomainLineCreditQuote({
+                  domainPriceCents: line.priceCents,
+                  plan: access?.plan ?? getBillingPlan("free")
+                });
+                const selected = selectedDomainLine?.domainName === line.domainName;
+
+                return (
+                  <div
+                    className={`grid gap-4 rounded-3xl border p-4 ${
+                      selected ? "border-ink bg-white" : "border-slate-200 bg-slate-50"
+                    }`}
+                    key={line.domainName}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Full domain name
+                        </p>
+                        <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
+                          {line.domainName}
+                        </p>
+                      </div>
+                      <ButtonLink
+                        href={selectedDomainHref({
+                          domainName: line.domainName,
+                          domainSearch,
+                          extensions: commercePreview.selectedExtensions,
+                          idnSearch,
+                          showAll: showAllExtensions,
+                          storeId: activeStoreId
+                        })}
+                        variant={selected ? "primary" : "secondary"}
+                      >
+                        {selected ? "Selected" : "Select domain"}
+                      </ButtonLink>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Extension</p>
+                        <p className="mt-1 text-sm font-black text-ink">{line.extension}</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
+                        <p className="mt-1 text-sm font-black text-amber-700">Preview placeholder</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain price</p>
+                        <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(line.priceCents)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Extra due</p>
+                        <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(lineCredit.customerDueCents)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Included credit</p>
+                        <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(lineCredit.includedCreditCents)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Credit used</p>
+                        <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(lineCredit.creditUsedCents)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3 lg:col-span-2">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Renewal note</p>
+                        <p className="mt-1 text-sm font-semibold text-muted">
+                          Renewal pricing will be confirmed when live availability and checkout are enabled.
+                        </p>
+                      </div>
+                    </div>
+                    <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                      Preview only. No purchase yet. No charge yet.
+                    </p>
                   </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Extension</p>
-                    <p className="mt-1 text-sm font-black text-ink">{line.extension}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
-                    <p className="mt-1 text-sm font-black text-amber-700">Placeholder</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Real-time price</p>
-                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(line.priceCents)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Due</p>
-                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(Math.max(line.priceCents - commercePreview.credit.creditUsedCents, 0))}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              <div className="rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
-                Plan credit <span className="block font-black text-ink">{formatDomainMoney(commercePreview.credit.includedCreditCents)}</span>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
-                Credit used <span className="block font-black text-ink">{formatDomainMoney(commercePreview.credit.creditUsedCents)}</span>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
-                Customer due <span className="block font-black text-ink">{formatDomainMoney(commercePreview.credit.customerDueCents)}</span>
-              </div>
-              <div className="rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                Continue to checkout placeholder
-              </div>
+                );
+              })}
             </div>
           </Card>
           <div className="grid gap-6 xl:grid-cols-2">
@@ -643,30 +741,59 @@ export default async function DomainsPage({
                 Step 5
               </p>
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-                Purchase summary
+                Selected domain checkout preview
               </h2>
-              <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
-                <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                  <span>Plan price</span>
-                  <span className="font-black text-ink">{commercePreview.credit.planPrice}</span>
-                </div>
-                <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                  <span>Included credit</span>
-                  <span className="font-black text-ink">{formatDomainMoney(commercePreview.credit.includedCreditCents)}</span>
-                </div>
-                <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                  <span>Selected domain price</span>
-                  <span className="font-black text-ink">{formatDomainMoney(commercePreview.pricing.subtotalCents)}</span>
-                </div>
-                <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                  <span>Extra amount due</span>
-                  <span className="font-black text-ink">{formatDomainMoney(commercePreview.credit.customerDueCents)}</span>
-                </div>
-                <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
-                  <span>Future plan + domain due preview</span>
-                  <span className="font-black text-ink">{formatDomainMoney(planPlusDomainDueCents)}</span>
-                </div>
-              </div>
+              {selectedDomainLine && selectedDomainCredit ? (
+                <>
+                  <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Selected store</span>
+                      <span className="font-black text-ink">
+                        {data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? "Selected store"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Selected domain</span>
+                      <span className="break-all font-black text-ink">{selectedDomainLine.domainName}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Plan name</span>
+                      <span className="font-black text-ink">{selectedDomainCredit.planName}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Plan monthly price</span>
+                      <span className="font-black text-ink">{selectedDomainCredit.planPrice}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Included domain credit</span>
+                      <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.includedCreditCents)}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Domain price</span>
+                      <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.domainPriceCents)}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Credit used</span>
+                      <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.creditUsedCents)}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Customer pays now</span>
+                      <span className="font-black text-ink">{formatDomainMoney(selectedDomainCredit.customerDueCents)}</span>
+                    </div>
+                    <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+                      <span>Future subscription value preview</span>
+                      <span className="font-black text-ink">{formatDomainMoney(selectedPlanPlusDomainDueCents)}</span>
+                    </div>
+                  </div>
+                  <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                    Preview only. No purchase yet. No charge yet. Included credit logic will be confirmed during the future checkout integration.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
+                  Select a domain result to preview checkout.
+                </p>
+              )}
             </Card>
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
