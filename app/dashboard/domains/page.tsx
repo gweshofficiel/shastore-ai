@@ -900,13 +900,13 @@ export default async function DomainsPage({
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Step 5
+                Selected domain
               </p>
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-                Checkout Preview
+                Checkout Summary Preview
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Confirm the selected domain, plan credit, and any extra amount due. This prepares a draft only.
+                Confirm the selected domain, plan credit, and any extra amount due before preparing the checkout draft below.
               </p>
               <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
@@ -957,13 +957,13 @@ export default async function DomainsPage({
             </Card>
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                Step 6
+                Next steps
               </p>
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-                Registration / DNS / SSL Timeline
+                Registration / DNS / SSL Preview
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                After future payment or included-credit confirmation, the domain moves through registration, DNS setup, SSL activation, and connection to the store.
+                After a checkout preview is prepared, the timeline below shows registration, DNS setup, SSL activation, and connection to the store.
               </p>
               <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
                 <p className="rounded-2xl bg-slate-50 p-3">Domain selected for {data.activeStore?.store_name ?? "selected store"}.</p>
