@@ -11,6 +11,7 @@ import {
   markStoreDomainVerificationPending,
   prepareDomainCheckoutPreview,
   prepareDomainOrderDraft,
+  prepareDomainRegistrationWorkflow,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -55,6 +56,9 @@ const statusMessages: Record<string, string> = {
   "domain-deleted": "Domain record deleted.",
   "domain-order-draft-failed": "Domain order draft could not be prepared.",
   "domain-order-draft-prepared": "Draft prepared. Awaiting payment / future activation.",
+  "domain-registration-awaiting-payment": "Payment confirmation is required before registration can be prepared.",
+  "domain-registration-workflow-failed": "Domain registration workflow could not be prepared.",
+  "domain-registration-workflow-prepared": "Domain registration workflow prepared. No domain has been registered yet.",
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
@@ -79,6 +83,7 @@ const successStatuses = new Set([
   "domain-activated",
   "domain-checkout-preview-prepared",
   "domain-order-draft-prepared",
+  "domain-registration-workflow-prepared",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -96,6 +101,14 @@ const badgeStyles: Record<string, string> = {
   ready: "bg-emerald-50 text-emerald-700",
   revoked: "bg-red-50 text-red-700",
   reserved: "bg-amber-50 text-amber-700",
+  ready_for_registration: "bg-emerald-50 text-emerald-700",
+  registration_pending: "bg-amber-50 text-amber-700",
+  registration_processing: "bg-blue-50 text-blue-700",
+  registration_completed: "bg-emerald-50 text-emerald-700",
+  registration_failed: "bg-red-50 text-red-700",
+  awaiting_dns: "bg-amber-50 text-amber-700",
+  ssl_pending: "bg-blue-50 text-blue-700",
+  ssl_active: "bg-emerald-50 text-emerald-700",
   verified: "bg-emerald-50 text-emerald-700",
   verifying: "bg-blue-50 text-blue-700"
 };
@@ -147,6 +160,18 @@ function queryValues(value: string | string[] | undefined) {
 
 function paymentPreparationLabel(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function timelineStateClasses(state: "complete" | "current" | "pending") {
+  if (state === "complete") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (state === "current") {
+    return "border-blue-200 bg-blue-50 text-blue-800";
+  }
+
+  return "border-slate-200 bg-white text-muted";
 }
 
 function domainsSearchHref(params: {
@@ -281,6 +306,12 @@ export default async function DomainsPage({
     getStoreDomainsDashboardData(params.storeId, params.checkSubdomain)
   ]);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
+  const registrationWorkflowByPreviewId = new Map(
+    data.domainRegistrationWorkflows.map((workflow) => [
+      workflow.domainCheckoutPreviewId,
+      workflow
+    ])
+  );
   const activeStoreId = data.activeStore?.id ?? "";
   const hasSelectedStore = Boolean(data.activeStore);
   const defaultStoreSlug = data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
@@ -979,7 +1010,53 @@ export default async function DomainsPage({
             <h3 className="text-lg font-black tracking-[-0.02em] text-ink">
               Checkout previews
             </h3>
-            {data.domainCheckoutPreviews.map((preview) => (
+            {data.domainCheckoutPreviews.map((preview) => {
+              const workflow = registrationWorkflowByPreviewId.get(preview.id);
+              const paymentConfirmed = preview.customerDueCents === 0 || Boolean(workflow);
+              const registrationMoved =
+                workflow?.status === "awaiting_dns" ||
+                workflow?.status === "ssl_pending" ||
+                workflow?.status === "ssl_active" ||
+                workflow?.status === "registration_completed";
+              const timeline = [
+                { label: "Domain selected", state: "complete" as const },
+                {
+                  label: "Payment/credit confirmed",
+                  state: paymentConfirmed ? ("complete" as const) : ("current" as const)
+                },
+                {
+                  label: "Registration pending",
+                  state: workflow
+                    ? registrationMoved
+                      ? ("complete" as const)
+                      : ("current" as const)
+                    : ("pending" as const)
+                },
+                {
+                  label: "DNS setup",
+                  state:
+                    workflow?.status === "awaiting_dns"
+                      ? ("current" as const)
+                      : workflow?.status === "ssl_pending" || workflow?.status === "ssl_active"
+                        ? ("complete" as const)
+                        : ("pending" as const)
+                },
+                {
+                  label: "SSL activation",
+                  state:
+                    workflow?.status === "ssl_pending"
+                      ? ("current" as const)
+                      : workflow?.status === "ssl_active"
+                        ? ("complete" as const)
+                        : ("pending" as const)
+                },
+                {
+                  label: "Connected to store",
+                  state: workflow?.status === "ssl_active" ? ("current" as const) : ("pending" as const)
+                }
+              ];
+
+              return (
               <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4" key={preview.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1012,8 +1089,52 @@ export default async function DomainsPage({
                 <p className="mt-4 rounded-2xl border border-blue-100 bg-white p-3 text-sm font-bold text-blue-900">
                   Payment integration will be connected later. No payment has been made yet.
                 </p>
+                <div className="mt-4 rounded-3xl border border-blue-100 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Registration timeline
+                      </p>
+                      <p className="mt-1 text-sm font-semibold leading-6 text-muted">
+                        This timeline is a preparation workflow only. No real domain registration starts here.
+                      </p>
+                    </div>
+                    {workflow ? <StatusBadge label="Registration" value={workflow.status} /> : null}
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {timeline.map((step) => (
+                      <div
+                        className={`rounded-2xl border p-3 text-sm font-bold ${timelineStateClasses(step.state)}`}
+                        key={step.label}
+                      >
+                        {step.label}
+                      </div>
+                    ))}
+                  </div>
+                  {workflow ? (
+                    <p className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
+                      Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders.
+                    </p>
+                  ) : preview.customerDueCents === 0 ? (
+                    <form action={prepareDomainRegistrationWorkflow} className="mt-4">
+                      <input name="storeId" type="hidden" value={preview.storeId} />
+                      <input name="checkoutPreviewId" type="hidden" value={preview.id} />
+                      <Button type="submit">Prepare registration</Button>
+                    </form>
+                  ) : (
+                    <div className="mt-4">
+                      <Button disabled type="button" variant="secondary">
+                        Prepare registration
+                      </Button>
+                      <p className="mt-2 text-sm font-semibold text-muted">
+                        Registration can be prepared after future payment confirmation.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </Card>

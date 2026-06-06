@@ -109,6 +109,31 @@ export type DomainCheckoutPreview = {
   storeId: string;
 };
 
+export type DomainRegistrationWorkflowStatus =
+  | "ready_for_registration"
+  | "registration_pending"
+  | "registration_processing"
+  | "registration_completed"
+  | "registration_failed"
+  | "awaiting_dns"
+  | "ssl_pending"
+  | "ssl_active";
+
+export type DomainRegistrationWorkflow = {
+  createdAt: string;
+  customerDue: number;
+  customerDueCents: number;
+  domain: string;
+  domainCheckoutPreviewId: string;
+  domainOrderDraftId: string;
+  id: string;
+  paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  status: DomainRegistrationWorkflowStatus;
+  statuses: DomainRegistrationWorkflowStatus[];
+  storeId: string;
+  updatedAt: string;
+};
+
 export type DomainAvailability = {
   checked: boolean;
   hostname: string | null;
@@ -128,6 +153,7 @@ export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
   availability: DomainAvailability;
   domainCheckoutPreviews: DomainCheckoutPreview[];
+  domainRegistrationWorkflows: DomainRegistrationWorkflow[];
   domains: StoreDomainRecord[];
   domainOrderDrafts: DomainOrderDraft[];
   domainBase: string;
@@ -331,6 +357,81 @@ function parseDomainCheckoutPreviews(storeData: unknown) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const domainRegistrationWorkflowStatuses: DomainRegistrationWorkflowStatus[] = [
+  "ready_for_registration",
+  "registration_pending",
+  "registration_processing",
+  "registration_completed",
+  "registration_failed",
+  "awaiting_dns",
+  "ssl_pending",
+  "ssl_active"
+];
+
+function isDomainRegistrationWorkflowStatus(
+  value: unknown
+): value is DomainRegistrationWorkflowStatus {
+  return (
+    typeof value === "string" &&
+    domainRegistrationWorkflowStatuses.includes(value as DomainRegistrationWorkflowStatus)
+  );
+}
+
+function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWorkflow | null {
+  if (!isRecord(value) || !isDomainRegistrationWorkflowStatus(value.status)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.storeId !== "string" ||
+    typeof value.domain !== "string" ||
+    typeof value.domainCheckoutPreviewId !== "string" ||
+    typeof value.domainOrderDraftId !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    typeof value.customerDueCents !== "number"
+  ) {
+    return null;
+  }
+
+  const customerDue =
+    typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
+  const paymentConfirmationStatus =
+    value.paymentConfirmationStatus === "future_payment_confirmed"
+      ? "future_payment_confirmed"
+      : "covered_by_credit";
+  const statuses = Array.isArray(value.statuses)
+    ? value.statuses.filter(isDomainRegistrationWorkflowStatus)
+    : domainRegistrationWorkflowStatuses;
+
+  return {
+    createdAt: value.createdAt,
+    customerDue,
+    customerDueCents: value.customerDueCents,
+    domain: value.domain,
+    domainCheckoutPreviewId: value.domainCheckoutPreviewId,
+    domainOrderDraftId: value.domainOrderDraftId,
+    id: value.id,
+    paymentConfirmationStatus,
+    status: value.status,
+    statuses: statuses.length ? statuses : domainRegistrationWorkflowStatuses,
+    storeId: value.storeId,
+    updatedAt: value.updatedAt
+  };
+}
+
+function parseDomainRegistrationWorkflows(storeData: unknown) {
+  if (!isRecord(storeData) || !isRecord(storeData.domainRegistrationWorkflows)) {
+    return [];
+  }
+
+  return Object.values(storeData.domainRegistrationWorkflows)
+    .map(parseDomainRegistrationWorkflow)
+    .filter((workflow): workflow is DomainRegistrationWorkflow => Boolean(workflow))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 function storeSlugForDomains(store: UserStoreRow) {
   return normalizeSubdomain(store.slug ?? store.store_name ?? store.name ?? store.id) || store.id;
 }
@@ -441,6 +542,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domainCheckoutPreviews: [],
+      domainRegistrationWorkflows: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -469,6 +571,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domainCheckoutPreviews: [],
+      domainRegistrationWorkflows: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -498,6 +601,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domainCheckoutPreviews: [],
+      domainRegistrationWorkflows: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -549,6 +653,7 @@ export async function getStoreDomainsDashboardData(
     activeStore,
     availability: await checkSubdomainAvailability(supabase, availabilitySubdomain),
     domainCheckoutPreviews: parseDomainCheckoutPreviews(storeData),
+    domainRegistrationWorkflows: parseDomainRegistrationWorkflows(storeData),
     domains,
     domainOrderDrafts: parseDomainOrderDrafts(storeData),
     domainBase: getDomainBase(),

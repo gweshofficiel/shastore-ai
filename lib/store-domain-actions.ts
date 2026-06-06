@@ -123,6 +123,39 @@ type DomainCheckoutPreviewRecord = {
   storeId: string;
 };
 
+type DomainRegistrationWorkflowStatus =
+  | "ready_for_registration"
+  | "registration_pending"
+  | "registration_processing"
+  | "registration_completed"
+  | "registration_failed"
+  | "awaiting_dns"
+  | "ssl_pending"
+  | "ssl_active";
+
+type DomainRegistrationWorkflowRecord = {
+  createdAt: string;
+  customerDue: number;
+  customerDueCents: number;
+  domain: string;
+  domainCheckoutPreviewId: string;
+  domainOrderDraftId: string;
+  futureHookPoints: {
+    callDomainProviderRegistration: "reserved";
+    createDnsRecords: "reserved";
+    markDomainAsPrimary: "reserved";
+    saveProviderOrderId: "reserved";
+    startSslProvisioning: "reserved";
+    verifyDomain: "reserved";
+  };
+  id: string;
+  paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  status: DomainRegistrationWorkflowStatus;
+  statuses: DomainRegistrationWorkflowStatus[];
+  storeId: string;
+  updatedAt: string;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -348,6 +381,69 @@ async function writeDomainCheckoutPreview({
       storeId
     });
     domainsRedirect(storeId, "domain-checkout-preview-failed");
+  }
+}
+
+async function writeDomainRegistrationWorkflow({
+  storeId,
+  supabase,
+  workflow
+}: {
+  storeId: string;
+  supabase: SupabaseClient;
+  workflow: DomainRegistrationWorkflowRecord;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] registration workflow load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainRegistrationWorkflows = isRecord(storeData.domainRegistrationWorkflows)
+    ? storeData.domainRegistrationWorkflows
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        domainRegistrationWorkflows: {
+          ...domainRegistrationWorkflows,
+          [workflow.id]: workflow
+        },
+        domainRegistrationWorkflowSummary: {
+          latestPreviewId: workflow.domainCheckoutPreviewId,
+          latestStatus: workflow.status,
+          latestUpdatedAt: now,
+          callDomainProviderRegistration: "reserved",
+          saveProviderOrderId: "reserved",
+          createDnsRecords: "reserved",
+          verifyDomain: "reserved",
+          startSslProvisioning: "reserved",
+          markDomainAsPrimary: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] registration workflow write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
   }
 }
 
@@ -924,6 +1020,119 @@ export async function prepareDomainCheckoutPreview(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "domain-checkout-preview-prepared");
+}
+
+export async function prepareDomainRegistrationWorkflow(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const checkoutPreviewId = cleanText(formData.get("checkoutPreviewId"), 80);
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (!checkoutPreviewId) {
+    domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainCheckoutPreviews = isRecord(storeData.domainCheckoutPreviews)
+    ? storeData.domainCheckoutPreviews
+    : {};
+  const preview = domainCheckoutPreviews[checkoutPreviewId];
+
+  if (!isRecord(preview) || preview.status !== "checkout_preview" || preview.storeId !== storeId) {
+    domainsRedirect(storeId, "domain-not-found");
+  }
+
+  const domain = typeof preview.domain === "string" ? preview.domain : "";
+  const domainOrderDraftId =
+    typeof preview.domainOrderDraftId === "string" ? preview.domainOrderDraftId : "";
+  const customerDue =
+    typeof preview.customerDue === "number"
+      ? preview.customerDue
+      : typeof preview.customerDueCents === "number"
+        ? preview.customerDueCents
+        : 0;
+  const futurePaymentConfirmed =
+    preview.paymentConfirmationStatus === "payment_confirmed" || preview.paymentConfirmed === true;
+  const coveredByCredit = customerDue === 0;
+
+  if (!domain || !domainOrderDraftId || customerDue < 0) {
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+
+  if (!coveredByCredit && !futurePaymentConfirmed) {
+    domainsRedirect(storeId, "domain-registration-awaiting-payment");
+  }
+
+  const createdAt = new Date().toISOString();
+  const workflow: DomainRegistrationWorkflowRecord = {
+    createdAt,
+    customerDue,
+    customerDueCents: customerDue,
+    domain,
+    domainCheckoutPreviewId: checkoutPreviewId,
+    domainOrderDraftId,
+    futureHookPoints: {
+      callDomainProviderRegistration: "reserved",
+      createDnsRecords: "reserved",
+      markDomainAsPrimary: "reserved",
+      saveProviderOrderId: "reserved",
+      startSslProvisioning: "reserved",
+      verifyDomain: "reserved"
+    },
+    id: randomUUID(),
+    paymentConfirmationStatus: coveredByCredit ? "covered_by_credit" : "future_payment_confirmed",
+    status: "ready_for_registration",
+    statuses: [
+      "ready_for_registration",
+      "registration_pending",
+      "registration_processing",
+      "registration_completed",
+      "registration_failed",
+      "awaiting_dns",
+      "ssl_pending",
+      "ssl_active"
+    ],
+    storeId,
+    updatedAt: createdAt
+  };
+
+  await writeDomainRegistrationWorkflow({
+    storeId,
+    supabase,
+    workflow
+  });
+
+  await recordStoreAuditLogSafe({
+    action: "domain_registration_workflow_prepared",
+    actorUserId: userId,
+    metadata: {
+      checkoutPreviewStatus: preview.status,
+      customerDueCents: customerDue,
+      paymentConfirmationStatus: workflow.paymentConfirmationStatus,
+      source: "store_data_domain_registration_workflows",
+      status: workflow.status
+    },
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-registration-workflow-prepared");
 }
 
 export async function setPrimaryDomain(formData: FormData) {
