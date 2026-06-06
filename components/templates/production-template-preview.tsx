@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { SelectTemplateLink } from "@/components/templates/select-template-link";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -61,11 +62,13 @@ export function ProductionTemplateLibraryCard({
   createHref,
   isSelected = false,
   previewHref,
+  selectedAction,
   template
 }: {
   createHref: string;
   isSelected?: boolean;
   previewHref: string;
+  selectedAction?: ReactNode;
   template: StoreTemplateRecord;
 }) {
   const templatePackage = templatePackageForRecord(template);
@@ -114,9 +117,13 @@ export function ProductionTemplateLibraryCard({
         <ButtonLink href={previewHref} variant="secondary">
           Preview
         </ButtonLink>
-        <SelectTemplateLink href={createHref}>
-          Select template
-        </SelectTemplateLink>
+        {isSelected && selectedAction ? (
+          selectedAction
+        ) : (
+          <SelectTemplateLink href={createHref}>
+            Select template
+          </SelectTemplateLink>
+        )}
       </div>
     </Card>
   );

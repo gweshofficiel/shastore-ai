@@ -17,6 +17,28 @@ function formatLimit(value: number | null) {
   return value === null ? "Unlimited" : value.toLocaleString();
 }
 
+function TemplateCreateForm({
+  className = "",
+  creationKey,
+  templateId
+}: {
+  className?: string;
+  creationKey: string;
+  templateId: string;
+}) {
+  return (
+    <form action={createStoreFromTemplateAction} className={className}>
+      <input name="templateCreationKey" type="hidden" value={creationKey} />
+      <input name="templateId" type="hidden" value={templateId} />
+      <CreateStoreSubmitButton
+        className="w-full"
+        label="Create store and install template"
+        pendingLabel="Creating store..."
+      />
+    </form>
+  );
+}
+
 export default async function NewStorePage({
   searchParams
 }: {
@@ -117,16 +139,51 @@ export default async function NewStorePage({
                 </p>
               </Card>
 
+              {selectedTemplate ? (
+                <Card className="sticky top-4 z-10 border-slate-950 bg-white p-5 shadow-xl">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                    Selected template
+                  </p>
+                  <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                    <div>
+                      <h2 className="text-2xl font-black tracking-[-0.04em] text-ink">
+                        {selectedTemplate.name}
+                      </h2>
+                      <p className="mt-1 text-sm font-semibold leading-6 text-muted">
+                        Confirm to create the store, install the template package, and open Manage Store.
+                      </p>
+                    </div>
+                    <TemplateCreateForm
+                      className="min-w-64"
+                      creationKey={creationKey}
+                      templateId={selectedTemplate.id}
+                    />
+                  </div>
+                </Card>
+              ) : null}
+
               <div className="grid gap-4 md:grid-cols-2">
-                {templates.map((template) => (
-                  <ProductionTemplateLibraryCard
-                    createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(selectedDevice)}#apply-template-create-store`}
-                    isSelected={selectedTemplate?.id === template.id}
-                    key={template.id}
-                    previewHref={`/dashboard/templates/preview/${encodeURIComponent(template.id)}?device=${encodeURIComponent(selectedDevice)}`}
-                    template={template}
-                  />
-                ))}
+                {templates.map((template) => {
+                  const isSelected = selectedTemplate?.id === template.id;
+
+                  return (
+                    <ProductionTemplateLibraryCard
+                      createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(selectedDevice)}#apply-template-create-store`}
+                      isSelected={isSelected}
+                      key={template.id}
+                      previewHref={`/dashboard/templates/preview/${encodeURIComponent(template.id)}?device=${encodeURIComponent(selectedDevice)}`}
+                      selectedAction={
+                        isSelected ? (
+                          <TemplateCreateForm
+                            creationKey={creationKey}
+                            templateId={template.id}
+                          />
+                        ) : null
+                      }
+                      template={template}
+                    />
+                  );
+                })}
               </div>
             </section>
 
@@ -160,15 +217,11 @@ export default async function NewStorePage({
                   <p className="mt-2 text-sm font-semibold leading-6 text-muted">
                     Selected template: <span className="font-black text-ink">{selectedTemplate.name}</span>. SHASTORE will create the store, install the template package once, and redirect to Manage Store.
                   </p>
-                  <form action={createStoreFromTemplateAction} className="mt-5">
-                    <input name="templateCreationKey" type="hidden" value={creationKey} />
-                    <input name="templateId" type="hidden" value={selectedTemplate.id} />
-                    <CreateStoreSubmitButton
-                      className="w-full"
-                      label="Create store and install template"
-                      pendingLabel="Creating store... Installing template..."
-                    />
-                  </form>
+                  <TemplateCreateForm
+                    className="mt-5"
+                    creationKey={creationKey}
+                    templateId={selectedTemplate.id}
+                  />
                 </Card>
               ) : null}
             </aside>
