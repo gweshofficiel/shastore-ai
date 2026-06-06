@@ -120,7 +120,7 @@ export default async function NewStorePage({
               <div className="grid gap-4 md:grid-cols-2">
                 {templates.map((template) => (
                   <ProductionTemplateLibraryCard
-                    createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(selectedDevice)}`}
+                    createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${encodeURIComponent(selectedDevice)}#apply-template-create-store`}
                     isSelected={selectedTemplate?.id === template.id}
                     key={template.id}
                     previewHref={`/dashboard/templates/preview/${encodeURIComponent(template.id)}?device=${encodeURIComponent(selectedDevice)}`}
@@ -146,7 +146,11 @@ export default async function NewStorePage({
               </Card>
 
               {selectedTemplate ? (
-                <Card className="p-5">
+                <Card
+                  className="scroll-mt-6 p-5 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                  id="apply-template-create-store"
+                  tabIndex={-1}
+                >
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
                     Step 3 + 4
                   </p>

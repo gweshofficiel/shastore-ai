@@ -1008,9 +1008,9 @@ export default async function TemplatesPage({
                   </a>
                   <a
                     className="inline-flex h-11 items-center justify-center rounded-full bg-ink px-5 text-sm font-bold text-white transition hover:bg-slate-800"
-                    href={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}`}
+                    href={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}#apply-template-create-store`}
                   >
-                    Create store
+                    Select template
                   </a>
                 </div>
                 <form action={applyWorkspaceStoreTemplate} className="grid gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">

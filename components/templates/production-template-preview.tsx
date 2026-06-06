@@ -114,7 +114,7 @@ export function ProductionTemplateLibraryCard({
           Preview
         </ButtonLink>
         <ButtonLink href={createHref}>
-          Create store
+          Select template
         </ButtonLink>
       </div>
     </Card>
