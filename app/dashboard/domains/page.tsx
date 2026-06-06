@@ -407,7 +407,7 @@ export default async function DomainsPage({
   return (
     <div className="grid gap-6 lg:gap-8">
       <PageHeader
-        description="Production-safe domain foundation for buyer-owned stores: SHASTORE subdomains, future custom domains, verification state, and hostname resolution."
+        description="Manage the free SHASTORE URL for each store, preview optional custom domains, and prepare DNS, SSL, and primary-domain steps safely before live integrations are enabled."
         title="Store Domains"
       />
       {!data.ready ? (
@@ -437,8 +437,9 @@ export default async function DomainsPage({
             Select Store
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Domains are scoped to claimed buyer-owned stores. Existing public
-            storefront routes keep working while hostnames are prepared.
+            Choose the store you want to manage. Each store keeps its own domain
+            drafts, checkout previews, DNS instructions, and primary-domain
+            preparation.
           </p>
           <div className="mt-5 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
             Selected store{" "}
@@ -473,9 +474,15 @@ export default async function DomainsPage({
               </Button>
             </form>
           ) : (
-            <p className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
-              Create a store before connecting domains.
-            </p>
+            <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-muted">
+              <p className="font-bold text-ink">No stores yet.</p>
+              <p className="mt-1 leading-6">
+                Create a store first, then return here to add its free SHASTORE URL and optional custom domains.
+              </p>
+              <ButtonLink className="mt-4 w-full justify-center sm:w-fit" href="/dashboard/stores/new">
+                Create store
+              </ButtonLink>
+            </div>
           )}
           {data.stores.length ? (
             <div className="mt-5 grid gap-3">
@@ -499,11 +506,14 @@ export default async function DomainsPage({
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Step 1 · Store plan
+            Store plan
           </p>
           <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
             {commercePreview.credit.planName} · {commercePreview.credit.planPrice}
           </h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Your plan may include domain credit. The pricing preview shows how much credit is used before any extra amount is due.
+          </p>
           <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
             <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
               <span>Custom domain quota</span>
@@ -529,7 +539,7 @@ export default async function DomainsPage({
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-            Step 1 · Default storefront URL
+            Default storefront URL
           </p>
           <h2 className="mt-3 break-all text-2xl font-black tracking-[-0.03em] text-ink">
             {currentSubdomain}
@@ -566,7 +576,7 @@ export default async function DomainsPage({
               Step 2
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              SHASTORE subdomain
+              Free SHASTORE Subdomain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               {hasSelectedStore ? (
@@ -582,7 +592,7 @@ export default async function DomainsPage({
         </div>
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
           <div>
-          <form className="mt-6 grid gap-4">
+          <form className="grid gap-4">
             <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
               defaultValue={preferredSubdomain}
@@ -591,7 +601,7 @@ export default async function DomainsPage({
               name="checkSubdomain"
               placeholder="my-brand"
             />
-            <Button className="w-fit" disabled={!data.activeStore || !data.ready} type="submit" variant="secondary">
+            <Button className="w-full sm:w-fit" disabled={!data.activeStore || !data.ready} type="submit" variant="secondary">
               Check availability
             </Button>
           </form>
@@ -611,7 +621,7 @@ export default async function DomainsPage({
           ) : null}
           </div>
           <div>
-          <form action={createStoreSubdomain} className="mt-6 grid gap-4 border-t border-slate-100 pt-6">
+          <form action={createStoreSubdomain} className="grid gap-4 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0">
             <input name="storeId" type="hidden" value={activeStoreId} />
             <Input
               defaultValue={preferredSubdomain}
@@ -621,7 +631,7 @@ export default async function DomainsPage({
               placeholder="my-brand"
               required
             />
-            <Button className="w-fit" disabled={!data.activeStore || !data.ready} type="submit">
+            <Button className="w-full sm:w-fit" disabled={!data.activeStore || !data.ready} type="submit">
               Save SHASTORE subdomain
             </Button>
           </form>
@@ -632,7 +642,7 @@ export default async function DomainsPage({
             <p className="mt-2 text-sm leading-6 text-muted">
               {data.reservedSubdomains
                 .filter((name) =>
-                  ["admin", "api", "app", "dashboard", "docs", "help", "mail", "root", "shastore", "support", "www"].includes(name)
+                  ["admin", "app", "dashboard", "docs", "help", "mail", "root", "shastore", "support", "www"].includes(name)
                 )
                 .join(", ")}
             </p>
@@ -651,7 +661,7 @@ export default async function DomainsPage({
               Search Custom Domain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Your free SHASTORE subdomain is ready. You can now search for a custom domain if you want.
+              Custom domains are optional. Search a name to preview availability, plan credit, and any extra amount due before checkout is connected.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
@@ -742,8 +752,8 @@ export default async function DomainsPage({
               ))}
             </div>
           </div>
-          <Button className="w-fit" type="submit">
-            Calculate/Search
+          <Button className="w-full sm:w-fit" type="submit">
+            Search domains
           </Button>
         </form>
       </Card>
@@ -760,6 +770,19 @@ export default async function DomainsPage({
           </p>
         </Card>
       )}
+      {subdomainReady && !hasDomainSearch ? (
+        <Card className="border-dashed border-slate-300 bg-slate-50 p-6 lg:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Step 4
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+            Results & Pricing
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            Search a custom domain in Step 3 to see pricing, included plan credit, and the checkout preview.
+          </p>
+        </Card>
+      ) : null}
       {subdomainReady && hasDomainSearch ? (
         <>
           <Card className="p-6 lg:p-8">
@@ -767,8 +790,11 @@ export default async function DomainsPage({
               Step 4
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Results and pricing preview
+              Results & Pricing
             </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Review each result before selecting one. Plan credit is applied in the preview only, and no payment or registration happens here.
+            </p>
             <div className="mt-5 grid gap-3">
               {commercePreview.pricing.lines.map((line) => {
                 const lineCredit = calculateDomainLineCreditQuote({
@@ -854,8 +880,11 @@ export default async function DomainsPage({
                 Step 5
               </p>
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-                Selected domain checkout preview
+                Checkout Preview
               </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Confirm the selected domain, plan credit, and any extra amount due. This prepares a draft only.
+              </p>
               <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
                       <span>Selected store</span>
@@ -900,7 +929,7 @@ export default async function DomainsPage({
                     <input name="storeName" type="hidden" value={selectedStoreName} />
                     <input name="selectedDomain" type="hidden" value={selectedDomainLine.domainName} />
                     <input name="extension" type="hidden" value={selectedDomainLine.extension} />
-                    <Button type="submit">Prepare domain order</Button>
+                    <Button className="w-full sm:w-fit" type="submit">Prepare domain order</Button>
                   </form>
             </Card>
             <Card className="p-6 lg:p-8">
@@ -908,13 +937,16 @@ export default async function DomainsPage({
                 Step 6
               </p>
               <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-                After purchase placeholder
+                Registration / DNS / SSL Timeline
               </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                After future payment or included-credit confirmation, the domain moves through registration, DNS setup, SSL activation, and connection to the store.
+              </p>
               <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
-                <p className="rounded-2xl bg-slate-50 p-3">Auto connect selected domain to {data.activeStore?.store_name ?? "selected store"}.</p>
-                <p className="rounded-2xl bg-slate-50 p-3">Show DNS instructions after checkout is ready.</p>
-                <p className="rounded-2xl bg-slate-50 p-3">SSL provisioning status starts as pending.</p>
-                <p className="rounded-2xl bg-slate-50 p-3">Primary domain status remains unchanged until verified.</p>
+                <p className="rounded-2xl bg-slate-50 p-3">Domain selected for {data.activeStore?.store_name ?? "selected store"}.</p>
+                <p className="rounded-2xl bg-slate-50 p-3">Payment or included credit must be confirmed before registration can proceed.</p>
+                <p className="rounded-2xl bg-slate-50 p-3">DNS instructions and SSL status appear as safe placeholders first.</p>
+                <p className="rounded-2xl bg-slate-50 p-3">Primary domain routing is prepared only after DNS is verified and SSL is active.</p>
               </div>
               <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
                 Preview only: no payment session, domain registration, external lookup, or charge is created.
@@ -928,17 +960,17 @@ export default async function DomainsPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Domain order draft
+              Step 5
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Prepared custom domain orders
+              Checkout Preview
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              This is a preparation step. No domain has been purchased yet.
+              Review prepared domain drafts and continue to a safe checkout preview. No payment, charge, or registration happens in this step.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-800">
-            Draft only
+            No payment yet
           </span>
         </div>
         <div className="mt-5 grid gap-3">
@@ -1003,7 +1035,7 @@ export default async function DomainsPage({
                 <form action={prepareDomainCheckoutPreview} className="mt-4">
                   <input name="storeId" type="hidden" value={draft.storeId} />
                   <input name="draftId" type="hidden" value={draft.id} />
-                  <Button type="submit" variant={draft.paymentPreparation.amountDueNowCents > 0 ? "primary" : "secondary"}>
+                  <Button className="w-full sm:w-fit" type="submit" variant={draft.paymentPreparation.amountDueNowCents > 0 ? "primary" : "secondary"}>
                     {draft.paymentPreparation.amountDueNowCents > 0
                       ? "Continue to payment preview"
                       : "Continue with included credit"}
@@ -1013,18 +1045,24 @@ export default async function DomainsPage({
             ))
           ) : (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
-              <p className="font-bold text-ink">No domain order draft yet.</p>
+              <p className="font-bold text-ink">No checkout preview drafts yet.</p>
               <p className="mt-1 leading-6">
-                Select a domain from search results, then prepare an order draft from the checkout preview.
+                Search and select a custom domain, then prepare an order draft to see the checkout preview.
               </p>
             </div>
           )}
         </div>
         {data.domainCheckoutPreviews.length ? (
           <div className="mt-6 grid gap-3">
-            <h3 className="text-lg font-black tracking-[-0.02em] text-ink">
-              Checkout previews
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Step 6
+            </p>
+            <h3 className="mt-2 text-xl font-black tracking-[-0.02em] text-ink">
+              Registration / DNS / SSL Timeline
             </h3>
+            <p className="text-sm leading-6 text-muted">
+              These cards show the future path after payment or included credit is confirmed. DNS and SSL remain placeholders until live automation is connected.
+            </p>
             {data.domainCheckoutPreviews.map((preview) => {
               const workflow = registrationWorkflowByPreviewId.get(preview.id);
               const paymentConfirmed = preview.customerDueCents === 0 || Boolean(workflow);
@@ -1215,32 +1253,42 @@ export default async function DomainsPage({
               );
             })}
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Step 6
+            </p>
+            <p className="mt-2 font-bold text-ink">Registration / DNS / SSL timeline is not started yet.</p>
+            <p className="mt-1 leading-6">
+              Continue a prepared draft to checkout preview first. Then the safe registration, DNS, and SSL placeholders appear here.
+            </p>
+          </div>
+        )}
       </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Connected domains
+              Step 7
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Primary domain and routing preparation
+              Connected Domains & Primary Domain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               Default SHASTORE URL remains active while custom domain routing is prepared.
             </p>
           </div>
           <span className="rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-800">
-            Preparation only
+            Routing preview
           </span>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl bg-slate-50 p-3">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-              Selected store id
+              Selected store
             </p>
-            <p className="mt-1 break-all text-sm font-black text-ink">{activeStoreId || "No store selected"}</p>
+            <p className="mt-1 break-all text-sm font-black text-ink">{selectedStoreName || "No store selected"}</p>
           </div>
           <div className="rounded-2xl bg-slate-50 p-3">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1293,9 +1341,9 @@ export default async function DomainsPage({
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl bg-white p-3">
                       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                        Store runtime
+                        Store
                       </p>
-                      <p className="mt-1 break-all text-sm font-black text-ink">{connectedDomain.storeId}</p>
+                      <p className="mt-1 break-all text-sm font-black text-ink">{selectedStoreName || "Selected store"}</p>
                     </div>
                     <div className="rounded-2xl bg-white p-3">
                       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -1317,7 +1365,7 @@ export default async function DomainsPage({
                       <input name="storeId" type="hidden" value={connectedDomain.storeId} />
                       <input name="workflowId" type="hidden" value={workflow.id} />
                       <input name="fallbackShastoreSubdomain" type="hidden" value={currentSubdomain} />
-                      <Button type="submit">Set as primary domain</Button>
+                      <Button className="w-full sm:w-fit" type="submit">Set as primary domain</Button>
                     </form>
                   ) : (
                     <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
@@ -1345,7 +1393,7 @@ export default async function DomainsPage({
           Advanced domain diagnostics
         </summary>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Technical records, routing checks, prepared drafts, and future service placeholders are hidden here for troubleshooting.
+          Detailed records, verification history, and troubleshooting views stay collapsed here unless you need them.
         </p>
         <div className="mt-6 grid gap-6">
       <Card className="p-6 lg:p-8">
