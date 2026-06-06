@@ -12,6 +12,7 @@ import {
   prepareDomainCheckoutPreview,
   prepareDomainOrderDraft,
   prepareDomainRegistrationWorkflow,
+  preparePrimaryDomainRouting,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -59,6 +60,9 @@ const statusMessages: Record<string, string> = {
   "domain-registration-awaiting-payment": "Payment confirmation is required before registration can be prepared.",
   "domain-registration-workflow-failed": "Domain registration workflow could not be prepared.",
   "domain-registration-workflow-prepared": "Domain registration workflow prepared. No domain has been registered yet.",
+  "domain-primary-routing-failed": "Primary domain routing preparation could not be saved.",
+  "domain-primary-routing-not-ready": "DNS must be verified and SSL must be active before preparing a primary domain.",
+  "domain-primary-routing-prepared": "Primary domain routing prepared. Default SHASTORE URL remains active.",
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
@@ -84,6 +88,7 @@ const successStatuses = new Set([
   "domain-checkout-preview-prepared",
   "domain-order-draft-prepared",
   "domain-registration-workflow-prepared",
+  "domain-primary-routing-prepared",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -91,14 +96,20 @@ const successStatuses = new Set([
 
 const badgeStyles: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
+  awaiting_payment: "bg-amber-50 text-amber-700",
   available: "bg-emerald-50 text-emerald-700",
   checkout_preview: "bg-blue-50 text-blue-700",
+  connected: "bg-emerald-50 text-emerald-700",
   draft: "bg-amber-50 text-amber-700",
+  dns_pending: "bg-amber-50 text-amber-700",
+  dns_verified: "bg-emerald-50 text-emerald-700",
   failed: "bg-red-50 text-red-700",
   invalid: "bg-red-50 text-red-700",
   not_started: "bg-slate-100 text-muted",
   not_configured: "bg-slate-100 text-muted",
   pending: "bg-amber-50 text-amber-700",
+  preparation_only: "bg-blue-50 text-blue-700",
+  primary: "bg-emerald-50 text-emerald-700",
   ready: "bg-emerald-50 text-emerald-700",
   revoked: "bg-red-50 text-red-700",
   reserved: "bg-amber-50 text-amber-700",
@@ -366,6 +377,7 @@ export default async function DomainsPage({
     !isReservedSubdomain(baseStoreSubdomain) &&
     isValidHostname(derivedSubdomainHostname);
   const currentSubdomain = savedSubdomain?.hostname ?? derivedSubdomainHostname;
+  const latestRoutingPreparation = data.domainRoutingPreparations[0] ?? null;
   const subdomainStatus =
     savedSubdomainActive
       ? "active"
@@ -1204,6 +1216,129 @@ export default async function DomainsPage({
             })}
           </div>
         ) : null}
+      </Card>
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Connected domains
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              Primary domain and routing preparation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Default SHASTORE URL remains active while custom domain routing is prepared.
+            </p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-800">
+            Preparation only
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Selected store id
+            </p>
+            <p className="mt-1 break-all text-sm font-black text-ink">{activeStoreId || "No store selected"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Primary domain
+            </p>
+            <p className="mt-1 break-all text-sm font-black text-ink">
+              {latestRoutingPreparation?.primaryDomain ?? primaryDomain?.hostname ?? "Not prepared yet"}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Fallback SHASTORE URL
+            </p>
+            <p className="mt-1 break-all text-sm font-black text-ink">{currentSubdomain}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Routing status
+            </p>
+            <p className="mt-1 text-sm font-black text-ink">
+              {latestRoutingPreparation ? paymentPreparationLabel(latestRoutingPreparation.routingStatus) : "Preparation not started"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {data.connectedDomains.length ? (
+            data.connectedDomains.map((connectedDomain) => {
+              const workflow = data.domainRegistrationWorkflows.find(
+                (item) => item.id === connectedDomain.sourceId
+              );
+
+              return (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={connectedDomain.domain}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Domain
+                      </p>
+                      <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
+                        {connectedDomain.domain}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge label="Status" value={connectedDomain.status} />
+                      <StatusBadge label="DNS" value={connectedDomain.dnsStatus} />
+                      <StatusBadge label="SSL" value={connectedDomain.sslStatus} />
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Store runtime
+                      </p>
+                      <p className="mt-1 break-all text-sm font-black text-ink">{connectedDomain.storeId}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Primary eligible
+                      </p>
+                      <p className="mt-1 text-sm font-black text-ink">
+                        {connectedDomain.canPreparePrimary ? "Yes" : "Not yet"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Fallback active
+                      </p>
+                      <p className="mt-1 break-all text-sm font-black text-ink">{currentSubdomain}</p>
+                    </div>
+                  </div>
+                  {connectedDomain.canPreparePrimary && workflow ? (
+                    <form action={preparePrimaryDomainRouting} className="mt-4">
+                      <input name="storeId" type="hidden" value={connectedDomain.storeId} />
+                      <input name="workflowId" type="hidden" value={workflow.id} />
+                      <input name="fallbackShastoreSubdomain" type="hidden" value={currentSubdomain} />
+                      <Button type="submit">Set as primary domain</Button>
+                    </form>
+                  ) : (
+                    <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                      Set as primary domain becomes available after DNS is verified and SSL is active.
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+              <p className="font-bold text-ink">No connected domain preparation yet.</p>
+              <p className="mt-1 leading-6">
+                Prepare registration, DNS, and SSL placeholders before selecting a primary domain.
+              </p>
+            </div>
+          )}
+        </div>
+        <p className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-900">
+          Routing is not changed yet. The fallback SHASTORE URL stays active for this store.
+        </p>
       </Card>
       <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
         <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">

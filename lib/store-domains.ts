@@ -31,6 +31,11 @@ import {
   type DomainSslSetup,
   type DomainSslStatus
 } from "@/lib/domains/domain-dns-ssl";
+import type {
+  ConnectedDomainStatus,
+  ConnectedDomainSummary,
+  DomainRoutingPreparation
+} from "@/lib/domains/domain-routing";
 
 export type ClaimedStoreForDomains = {
   id: string;
@@ -163,8 +168,10 @@ export type DomainProvisioningInstruction = {
 export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
   availability: DomainAvailability;
+  connectedDomains: ConnectedDomainSummary[];
   domainCheckoutPreviews: DomainCheckoutPreview[];
   domainRegistrationWorkflows: DomainRegistrationWorkflow[];
+  domainRoutingPreparations: DomainRoutingPreparation[];
   domains: StoreDomainRecord[];
   domainOrderDrafts: DomainOrderDraft[];
   domainBase: string;
@@ -537,6 +544,154 @@ function parseDomainRegistrationWorkflows(storeData: unknown) {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+function parseDomainRoutingPreparation(value: unknown): DomainRoutingPreparation | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.selectedStoreId !== "string" ||
+    typeof value.primaryDomain !== "string" ||
+    typeof value.fallbackShastoreSubdomain !== "string" ||
+    typeof value.createdAt !== "string" ||
+    value.routingStatus !== "preparation_only"
+  ) {
+    return null;
+  }
+
+  return {
+    createdAt: value.createdAt,
+    fallbackShastoreSubdomain: value.fallbackShastoreSubdomain,
+    futureHookPoints: {
+      addDomainToDeploymentPlatform: "reserved",
+      attachDomainToStoreRuntime: "reserved",
+      keepFallbackUrlActive: "reserved",
+      redirectDefaultSubdomainToPrimaryDomain: "reserved",
+      verifyDomainOwnership: "reserved"
+    },
+    id: value.id,
+    primaryDomain: value.primaryDomain,
+    routingStatus: "preparation_only",
+    selectedStoreId: value.selectedStoreId
+  };
+}
+
+function parseDomainRoutingPreparations(storeData: unknown) {
+  if (!isRecord(storeData) || !isRecord(storeData.domainPrimaryRoutingPreparations)) {
+    return [];
+  }
+
+  return Object.values(storeData.domainPrimaryRoutingPreparations)
+    .map(parseDomainRoutingPreparation)
+    .filter((preparation): preparation is DomainRoutingPreparation => Boolean(preparation))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function connectedDomainStatusForWorkflow({
+  isPrimary,
+  workflow
+}: {
+  isPrimary: boolean;
+  workflow: DomainRegistrationWorkflow;
+}): ConnectedDomainStatus {
+  if (isPrimary) {
+    return "primary";
+  }
+
+  if (workflow.dnsSetup.status === "verified" && workflow.sslSetup.status === "ssl_active") {
+    return "connected";
+  }
+
+  if (workflow.sslSetup.status === "ssl_active") {
+    return "ssl_active";
+  }
+
+  if (workflow.sslSetup.status === "ssl_pending" || workflow.sslSetup.status === "ssl_provisioning") {
+    return "ssl_pending";
+  }
+
+  if (workflow.dnsSetup.status === "verified") {
+    return "dns_verified";
+  }
+
+  if (workflow.dnsSetup.status === "pending" || workflow.dnsSetup.status === "not_started") {
+    return "dns_pending";
+  }
+
+  return "ready_for_registration";
+}
+
+function buildConnectedDomainSummaries({
+  checkoutPreviews,
+  drafts,
+  routingPreparations,
+  storeId,
+  workflows
+}: {
+  checkoutPreviews: DomainCheckoutPreview[];
+  drafts: DomainOrderDraft[];
+  routingPreparations: DomainRoutingPreparation[];
+  storeId: string;
+  workflows: DomainRegistrationWorkflow[];
+}): ConnectedDomainSummary[] {
+  const primaryDomains = new Set(routingPreparations.map((preparation) => preparation.primaryDomain));
+  const connectedDomains = new Map<string, ConnectedDomainSummary>();
+
+  for (const draft of drafts) {
+    connectedDomains.set(draft.selectedDomain, {
+      canPreparePrimary: false,
+      dnsStatus: "not_started",
+      domain: draft.selectedDomain,
+      isPrimary: false,
+      sourceId: draft.id,
+      sslStatus: "ssl_pending",
+      status: "draft",
+      storeId
+    });
+  }
+
+  for (const preview of checkoutPreviews) {
+    connectedDomains.set(preview.domain, {
+      canPreparePrimary: false,
+      dnsStatus: "not_started",
+      domain: preview.domain,
+      isPrimary: false,
+      sourceId: preview.id,
+      sslStatus: "ssl_pending",
+      status: preview.customerDueCents > 0 ? "awaiting_payment" : "ready_for_registration",
+      storeId
+    });
+  }
+
+  for (const workflow of workflows) {
+    const isPrimary = primaryDomains.has(workflow.domain);
+    const canPreparePrimary =
+      workflow.dnsSetup.status === "verified" &&
+      workflow.sslSetup.status === "ssl_active" &&
+      !isPrimary;
+
+    connectedDomains.set(workflow.domain, {
+      canPreparePrimary,
+      dnsStatus: workflow.dnsSetup.status,
+      domain: workflow.domain,
+      isPrimary,
+      sourceId: workflow.id,
+      sslStatus: workflow.sslSetup.status,
+      status: connectedDomainStatusForWorkflow({ isPrimary, workflow }),
+      storeId
+    });
+  }
+
+  return Array.from(connectedDomains.values()).sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) {
+      return a.isPrimary ? -1 : 1;
+    }
+
+    return a.domain.localeCompare(b.domain);
+  });
+}
+
 function storeSlugForDomains(store: UserStoreRow) {
   return normalizeSubdomain(store.slug ?? store.store_name ?? store.name ?? store.id) || store.id;
 }
@@ -646,8 +801,10 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      connectedDomains: [],
       domainCheckoutPreviews: [],
       domainRegistrationWorkflows: [],
+      domainRoutingPreparations: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -675,8 +832,10 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      connectedDomains: [],
       domainCheckoutPreviews: [],
       domainRegistrationWorkflows: [],
+      domainRoutingPreparations: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -705,8 +864,10 @@ export async function getStoreDomainsDashboardData(
     return {
       activeStore: null,
       availability: emptyAvailability(),
+      connectedDomains: [],
       domainCheckoutPreviews: [],
       domainRegistrationWorkflows: [],
+      domainRoutingPreparations: [],
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
@@ -754,13 +915,26 @@ export async function getStoreDomainsDashboardData(
     : {};
   const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
 
+  const domainCheckoutPreviews = parseDomainCheckoutPreviews(storeData);
+  const domainOrderDrafts = parseDomainOrderDrafts(storeData);
+  const domainRegistrationWorkflows = parseDomainRegistrationWorkflows(storeData);
+  const domainRoutingPreparations = parseDomainRoutingPreparations(storeData);
+
   return {
     activeStore,
     availability: await checkSubdomainAvailability(supabase, availabilitySubdomain),
-    domainCheckoutPreviews: parseDomainCheckoutPreviews(storeData),
-    domainRegistrationWorkflows: parseDomainRegistrationWorkflows(storeData),
+    connectedDomains: buildConnectedDomainSummaries({
+      checkoutPreviews: domainCheckoutPreviews,
+      drafts: domainOrderDrafts,
+      routingPreparations: domainRoutingPreparations,
+      storeId: activeStore.id,
+      workflows: domainRegistrationWorkflows
+    }),
+    domainCheckoutPreviews,
+    domainRegistrationWorkflows,
+    domainRoutingPreparations,
     domains,
-    domainOrderDrafts: parseDomainOrderDrafts(storeData),
+    domainOrderDrafts,
     domainBase: getDomainBase(),
     error:
       domainsResult.error && !isMissingStoreDomainsTable(domainsResult.error)

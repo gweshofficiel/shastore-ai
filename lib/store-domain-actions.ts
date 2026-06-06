@@ -21,6 +21,10 @@ import {
   type DomainSslSetup
 } from "@/lib/domains/domain-dns-ssl";
 import {
+  buildDomainRoutingPreparation,
+  type DomainRoutingPreparation
+} from "@/lib/domains/domain-routing";
+import {
   buildDomainPaymentPreparation,
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
@@ -165,6 +169,11 @@ type DomainRegistrationWorkflowRecord = {
   statuses: DomainRegistrationWorkflowStatus[];
   storeId: string;
   updatedAt: string;
+};
+
+type DomainPrimaryRoutingPreparationRecord = DomainRoutingPreparation & {
+  domainRegistrationWorkflowId: string;
+  status: "primary_routing_prepared";
 };
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
@@ -461,6 +470,72 @@ async function writeDomainRegistrationWorkflow({
       storeId
     });
     domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+}
+
+async function writeDomainPrimaryRoutingPreparation({
+  preparation,
+  storeId,
+  supabase
+}: {
+  preparation: DomainPrimaryRoutingPreparationRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] primary routing preparation load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-primary-routing-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainPrimaryRoutingPreparations = isRecord(storeData.domainPrimaryRoutingPreparations)
+    ? storeData.domainPrimaryRoutingPreparations
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        domainPrimaryRoutingPreparations: {
+          ...domainPrimaryRoutingPreparations,
+          [preparation.id]: preparation
+        },
+        domainRoutingPreparationSummary: {
+          fallbackShastoreSubdomain: preparation.fallbackShastoreSubdomain,
+          latestPreparationId: preparation.id,
+          latestStatus: preparation.status,
+          latestUpdatedAt: now,
+          primaryDomain: preparation.primaryDomain,
+          routingStatus: preparation.routingStatus,
+          selectedStoreId: preparation.selectedStoreId,
+          addDomainToDeploymentPlatform: "reserved",
+          verifyDomainOwnership: "reserved",
+          attachDomainToStoreRuntime: "reserved",
+          redirectDefaultSubdomainToPrimaryDomain: "reserved",
+          keepFallbackUrlActive: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] primary routing preparation write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-primary-routing-failed");
   }
 }
 
@@ -1160,6 +1235,86 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
 
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "domain-registration-workflow-prepared");
+}
+
+export async function preparePrimaryDomainRouting(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const workflowId = cleanText(formData.get("workflowId"), 80);
+  const fallbackShastoreSubdomain = cleanPreviewDomain(formData.get("fallbackShastoreSubdomain"));
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (!workflowId) {
+    domainsRedirect(storeId, "missing-domain");
+  }
+
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    domainsRedirect(storeId, "domain-primary-routing-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainRegistrationWorkflows = isRecord(storeData.domainRegistrationWorkflows)
+    ? storeData.domainRegistrationWorkflows
+    : {};
+  const workflow = domainRegistrationWorkflows[workflowId];
+
+  if (!isRecord(workflow) || workflow.storeId !== storeId || typeof workflow.domain !== "string") {
+    domainsRedirect(storeId, "domain-not-found");
+  }
+
+  const dnsSetup = isRecord(workflow.dnsSetup) ? workflow.dnsSetup : {};
+  const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
+  const dnsVerified = dnsSetup.status === "verified";
+  const sslActive = sslSetup.status === "ssl_active";
+
+  if (!dnsVerified || !sslActive) {
+    domainsRedirect(storeId, "domain-primary-routing-not-ready");
+  }
+
+  const preparation: DomainPrimaryRoutingPreparationRecord = {
+    ...buildDomainRoutingPreparation({
+      fallbackShastoreSubdomain,
+      id: randomUUID(),
+      primaryDomain: workflow.domain,
+      selectedStoreId: storeId
+    }),
+    domainRegistrationWorkflowId: workflowId,
+    status: "primary_routing_prepared"
+  };
+
+  await writeDomainPrimaryRoutingPreparation({
+    preparation,
+    storeId,
+    supabase
+  });
+
+  await recordStoreAuditLogSafe({
+    action: "domain_primary_routing_prepared",
+    actorUserId: userId,
+    metadata: {
+      dnsStatus: dnsSetup.status,
+      routingStatus: preparation.routingStatus,
+      source: "store_data_domain_primary_routing_preparations",
+      sslStatus: sslSetup.status,
+      status: preparation.status
+    },
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-primary-routing-prepared");
 }
 
 export async function setPrimaryDomain(formData: FormData) {

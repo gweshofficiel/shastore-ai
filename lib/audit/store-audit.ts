@@ -14,6 +14,7 @@ export type StoreAuditAction =
   | "ai_visual.visual_rejected"
   | "domain_connected"
   | "domain_order_draft_prepared"
+  | "domain_primary_routing_prepared"
   | "domain_registration_workflow_prepared"
   | "ownership_transfer_blocked"
   | "ownership_transfer_completed"
