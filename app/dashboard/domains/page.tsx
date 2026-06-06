@@ -150,6 +150,8 @@ export default async function DomainsPage({
   ]);
   const primaryDomain = data.domains.find((domain) => domain.is_primary);
   const activeStoreId = data.activeStore?.id ?? "";
+  const defaultStoreSlug = data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
+  const defaultStoreUrl = defaultStoreSlug ? `/store/${defaultStoreSlug}` : "/store/[store-slug]";
   const domainUpgrade = access
     ? getRecommendedUpgrade({
         blockedFeature: "custom_domains",
@@ -269,6 +271,23 @@ export default async function DomainsPage({
             </p>
           )}
         </Card>
+        <Card className="p-6 lg:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Default SHASTORE URL
+          </p>
+          <h2 className="mt-3 break-all text-2xl font-black tracking-[-0.03em] text-ink">
+            {defaultStoreUrl}
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            The default storefront route remains available while custom domains are pending,
+            verifying, or waiting for SSL provisioning.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatusBadge label="Default URL" value="active" />
+            <StatusBadge label="Custom DNS" value={primaryDomain?.dns_status ?? "not_configured"} />
+            <StatusBadge label="SSL" value={primaryDomain?.ssl_status ?? "not_configured"} />
+          </div>
+        </Card>
         {access ? (
           <Card className="p-6 lg:p-8">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -287,6 +306,38 @@ export default async function DomainsPage({
           </Card>
         ) : null}
       </div>
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
+              HOSTINSH reseller API hooks
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              These hooks reserve the integration points for future domain search,
+              domain purchase, email purchase, and reseller balance checks. They do not
+              call HOSTINSH and do not charge customers yet.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            Placeholder only
+          </span>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {data.hostinshHooks.map((hook) => (
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={hook.hook}>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                {hook.hook.replace(/_/g, " ")}
+              </p>
+              <p className="mt-2 text-sm font-black text-ink">
+                {hook.configured ? "Credentials detected" : "Not configured"}
+              </p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-muted">
+                {hook.message}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Card>
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="p-6 lg:p-8">
           <h2 className="text-xl font-black tracking-[-0.02em] text-ink">

@@ -6,6 +6,13 @@ export type HostinshDnsCheck = {
   message: string;
 };
 
+export type HostinshHookResult = {
+  configured: boolean;
+  hook: "domain_purchase" | "domain_search" | "email_purchase" | "reseller_balance";
+  message: string;
+  status: "placeholder";
+};
+
 export function getDomainBase() {
   return process.env.NEXT_PUBLIC_SHASTORE_DOMAIN || "shastore.ai";
 }
@@ -49,6 +56,32 @@ export async function verifyDomainWithHostinsh(
     message: "HOSTINSH API adapter is ready. Live DNS verification can be enabled when credentials and endpoint details are finalized."
   };
 }
+
+function placeholderHook(hook: HostinshHookResult["hook"]): HostinshHookResult {
+  return {
+    configured: Boolean(process.env.HOSTINSH_API_KEY),
+    hook,
+    message: "HOSTINSH reseller API hook is reserved for future activation. No external API call or customer charge is performed.",
+    status: "placeholder"
+  };
+}
+
+export async function searchHostinshDomain() {
+  return placeholderHook("domain_search");
+}
+
+export async function purchaseHostinshDomain() {
+  return placeholderHook("domain_purchase");
+}
+
+export async function purchaseHostinshEmail() {
+  return placeholderHook("email_purchase");
+}
+
+export async function checkHostinshResellerBalance() {
+  return placeholderHook("reseller_balance");
+}
+
 export type DomainProvisioningPlan = {
   hostname: string;
   subdomain: string;

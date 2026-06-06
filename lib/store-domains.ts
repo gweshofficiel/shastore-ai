@@ -1,7 +1,12 @@
 import {
   buildDnsVerification,
+  checkHostinshResellerBalance,
   getDefaultDnsTarget,
-  getDomainBase
+  getDomainBase,
+  purchaseHostinshDomain,
+  purchaseHostinshEmail,
+  searchHostinshDomain,
+  type HostinshHookResult
 } from "@/lib/domains/hostinsh";
 import {
   buildFreeHostname,
@@ -73,6 +78,7 @@ export type StoreDomainsDashboardData = {
   domainBase: string;
   error: string | null;
   logs: StoreDomainVerificationLog[];
+  hostinshHooks: HostinshHookResult[];
   provisioning: Record<string, DomainProvisioningInstruction>;
   reservedSubdomains: string[];
   ready: boolean;
@@ -199,6 +205,7 @@ export async function getStoreDomainsDashboardData(
       domainBase: getDomainBase(),
       error: null,
       logs: [],
+      hostinshHooks: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -218,6 +225,7 @@ export async function getStoreDomainsDashboardData(
       domainBase: getDomainBase(),
       error: "Unable to load claimed buyer stores for domain management.",
       logs: [],
+      hostinshHooks: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -242,6 +250,7 @@ export async function getStoreDomainsDashboardData(
       domainBase: getDomainBase(),
       error: null,
       logs: [],
+      hostinshHooks: [],
       provisioning: {},
       reservedSubdomains: getReservedSubdomains(),
       ready: true,
@@ -267,6 +276,12 @@ export async function getStoreDomainsDashboardData(
         .order("checked_at", { ascending: false })
         .limit(12)
     : { data: [], error: null };
+  const hostinshHooks = await Promise.all([
+    searchHostinshDomain(),
+    purchaseHostinshDomain(),
+    purchaseHostinshEmail(),
+    checkHostinshResellerBalance()
+  ]);
 
   return {
     activeStore,
@@ -278,6 +293,7 @@ export async function getStoreDomainsDashboardData(
         ? "Unable to load domains for this store."
         : null,
     logs: logsResult.error ? [] : ((logsResult.data ?? []) as StoreDomainVerificationLog[]),
+    hostinshHooks,
     provisioning: Object.fromEntries(
       domains.map((domain) => [domain.id, buildProvisioning(domain)])
     ),

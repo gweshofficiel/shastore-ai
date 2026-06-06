@@ -30,6 +30,20 @@ type ClaimedStoreRow = {
 
 type DomainLifecycleStatus = "pending" | "verifying" | "verified" | "active" | "failed";
 
+type DomainStoreDataRecord = {
+  cnameTarget: string;
+  connectedAt: string | null;
+  dnsStatus: string;
+  domainType: "custom" | "subdomain";
+  hostname: string;
+  isPrimary: boolean;
+  packageSource: "store-domain-actions";
+  sslStatus: string;
+  status: string;
+  updatedAt: string;
+  verificationStatus: string;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -44,6 +58,101 @@ function domainsRedirect(storeId: string, status: string): never {
 
 function createDomainVerificationToken() {
   return randomUUID().replace(/-/g, "");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+async function writeDomainStoreDataRecord({
+  record,
+  storeId,
+  supabase
+}: {
+  record: DomainStoreDataRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] store_data domain mirror skipped", {
+      message: loadError.message,
+      storeId
+    });
+    return;
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainConnectionRecords = isRecord(storeData.domainConnectionRecords)
+    ? storeData.domainConnectionRecords
+    : {};
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        domainConnectionRecords: {
+          ...domainConnectionRecords,
+          [record.hostname]: record
+        },
+        domainConnectionSummary: {
+          defaultUrlActive: true,
+          hostinshHooksReady: Boolean(process.env.HOSTINSH_API_KEY),
+          lastUpdatedAt: record.updatedAt,
+          sslProvisioningMode: "placeholder"
+        }
+      },
+      updated_at: record.updatedAt
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] store_data domain mirror failed", {
+      message: error.message,
+      storeId
+    });
+  }
+}
+
+async function mirrorDomainToStoreData({
+  connectedAt = null,
+  dnsStatus,
+  domainType,
+  hostname,
+  isPrimary,
+  sslStatus,
+  status,
+  storeId,
+  supabase,
+  verificationStatus
+}: Omit<DomainStoreDataRecord, "cnameTarget" | "connectedAt" | "packageSource" | "updatedAt"> & {
+  connectedAt?: string | null;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  await writeDomainStoreDataRecord({
+    record: {
+      cnameTarget: getDefaultDnsTarget(),
+      connectedAt,
+      dnsStatus,
+      domainType,
+      hostname,
+      isPrimary,
+      packageSource: "store-domain-actions",
+      sslStatus,
+      status,
+      updatedAt: new Date().toISOString(),
+      verificationStatus
+    },
+    storeId,
+    supabase
+  });
 }
 
 async function recordDomainVerificationLog({
@@ -249,6 +358,19 @@ export async function createStoreSubdomain(formData: FormData) {
     });
   }
 
+  await mirrorDomainToStoreData({
+    connectedAt: new Date().toISOString(),
+    dnsStatus: "verified",
+    domainType: "subdomain",
+    hostname,
+    isPrimary: true,
+    sslStatus: "active",
+    status: "active",
+    storeId,
+    supabase,
+    verificationStatus: "verified"
+  });
+
   await recordStoreAuditLogSafe({
     action: "domain_connected",
     actorUserId: userId,
@@ -336,6 +458,18 @@ export async function attachCustomDomain(formData: FormData) {
     storeId,
     supabase,
     userId
+  });
+
+  await mirrorDomainToStoreData({
+    dnsStatus: "pending",
+    domainType: "custom",
+    hostname,
+    isPrimary: makePrimary,
+    sslStatus: "pending",
+    status: "pending",
+    storeId,
+    supabase,
+    verificationStatus: "pending"
   });
 
   await recordStoreAuditLogSafe({
@@ -461,6 +595,18 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
     userId
   });
 
+  await mirrorDomainToStoreData({
+    dnsStatus: "pending",
+    domainType: (domain as { domain_type?: string | null }).domain_type === "subdomain" ? "subdomain" : "custom",
+    hostname: (domain as { hostname: string }).hostname,
+    isPrimary: false,
+    sslStatus: "pending",
+    status: "verifying",
+    storeId,
+    supabase,
+    verificationStatus: "pending"
+  });
+
   revalidatePath("/dashboard/domains");
   domainsRedirect(storeId, "verification-pending");
 }
@@ -527,6 +673,19 @@ export async function activateVerifiedStoreDomain(formData: FormData) {
     storeId,
     supabase,
     userId
+  });
+
+  await mirrorDomainToStoreData({
+    connectedAt: new Date().toISOString(),
+    dnsStatus: "verified",
+    domainType: "custom",
+    hostname: domainRow.hostname,
+    isPrimary: true,
+    sslStatus: domainRow.ssl_status === "ready" ? "active" : (domainRow.ssl_status ?? "active"),
+    status: "active",
+    storeId,
+    supabase,
+    verificationStatus: "verified"
   });
 
   revalidatePath("/dashboard/domains");
