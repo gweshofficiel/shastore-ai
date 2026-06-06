@@ -15,7 +15,9 @@ import {
   isValidHostname,
   normalizeSubdomain
 } from "@/lib/domains/utils";
+import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 export type ClaimedStoreForDomains = {
   id: string;
@@ -192,6 +194,29 @@ function parseDomainOrderDrafts(storeData: unknown) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+function storeSlugForDomains(store: UserStoreRow) {
+  return normalizeSubdomain(store.slug ?? store.store_name ?? store.name ?? store.id) || store.id;
+}
+
+function draftStoreToDomainStore(store: UserStoreRow): ClaimedStoreForDomains {
+  return {
+    access_role: "owner",
+    id: store.id,
+    internal_slug: storeSlugForDomains(store),
+    store_name: store.store_name ?? store.name ?? storeSlugForDomains(store)
+  };
+}
+
+function mergeDomainStores(stores: ClaimedStoreForDomains[]) {
+  const merged = new Map<string, ClaimedStoreForDomains>();
+
+  for (const store of stores) {
+    merged.set(store.id, store);
+  }
+
+  return Array.from(merged.values());
+}
+
 async function checkSubdomainAvailability(
   supabase: Awaited<ReturnType<typeof createClient>>,
   value?: string
@@ -291,18 +316,24 @@ export async function getStoreDomainsDashboardData(
     };
   }
 
-  const { data: storesData, error: storesError } = await supabase.rpc(
-    "get_claimed_store_instances_for_current_user" as never
+  const [{ data: storesData, error: storesError }, workspaceSelection] = await Promise.all([
+    supabase.rpc("get_claimed_store_instances_for_current_user" as never),
+    getActiveWorkspaceForUser({ supabase, userId: user.id })
+  ]);
+  const draftStoresResult = await fetchStoresForAuthUser(
+    supabase,
+    user.id,
+    workspaceSelection.activeWorkspaceId
   );
 
-  if (storesError) {
+  if (storesError && draftStoresResult.error) {
     return {
       activeStore: null,
       availability: emptyAvailability(),
       domains: [],
       domainOrderDrafts: [],
       domainBase: getDomainBase(),
-      error: "Unable to load claimed buyer stores for domain management.",
+      error: "Unable to load buyer stores for domain management.",
       logs: [],
       hostinshHooks: [],
       provisioning: {},
@@ -312,12 +343,14 @@ export async function getStoreDomainsDashboardData(
     };
   }
 
-  const stores = Array.isArray(storesData)
+  const claimedStores = Array.isArray(storesData)
     ? ((storesData as ClaimedStoreForDomains[]).filter(
         (store) =>
           !store.access_role || store.access_role === "owner" || store.access_role === "admin"
       ) ?? [])
     : [];
+  const draftStores = draftStoresResult.stores.map(draftStoreToDomainStore);
+  const stores = mergeDomainStores([...claimedStores, ...draftStores]);
   const activeStore =
     stores.find((store) => store.id === requestedStoreId) ?? stores[0] ?? null;
 

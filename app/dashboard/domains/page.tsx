@@ -274,6 +274,8 @@ export default async function DomainsPage({
   const activeStoreId = data.activeStore?.id ?? "";
   const hasSelectedStore = Boolean(data.activeStore);
   const defaultStoreSlug = data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
+  const selectedStoreName =
+    data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? data.activeStore?.id ?? "";
   const domainUpgrade = access
     ? getRecommendedUpgrade({
         blockedFeature: "custom_domains",
@@ -385,7 +387,7 @@ export default async function DomainsPage({
           <div className="mt-5 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-muted">
             Selected store{" "}
             <span className="block font-black text-ink">
-              {data.activeStore?.store_name ?? data.activeStore?.internal_slug ?? "No store selected"}
+              {selectedStoreName || "Create a store before connecting domains"}
             </span>
             {data.activeStore ? (
               <span className="mt-1 block text-xs font-bold text-muted">
@@ -405,7 +407,7 @@ export default async function DomainsPage({
                 >
                   {data.stores.map((store) => (
                     <option key={store.id} value={store.id}>
-                      {store.store_name ?? store.internal_slug ?? store.id}
+                      {store.store_name ?? store.internal_slug ?? store.id} · {store.internal_slug ?? store.id}.{data.domainBase}
                     </option>
                   ))}
                 </select>
@@ -419,6 +421,25 @@ export default async function DomainsPage({
               Create a store before connecting domains.
             </p>
           )}
+          {data.stores.length ? (
+            <div className="mt-5 grid gap-3">
+              {data.stores.map((store) => {
+                const slug = store.internal_slug ?? store.id;
+                const selected = store.id === activeStoreId;
+
+                return (
+                  <ButtonLink
+                    className="justify-start text-left"
+                    href={`/dashboard/domains?storeId=${encodeURIComponent(store.id)}`}
+                    key={store.id}
+                    variant={selected ? "primary" : "secondary"}
+                  >
+                    {store.store_name ?? slug} · {slug}.{data.domainBase}
+                  </ButtonLink>
+                );
+              })}
+            </div>
+          ) : null}
         </Card>
         <Card className="p-6 lg:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -494,7 +515,7 @@ export default async function DomainsPage({
             <p className="mt-2 text-sm leading-6 text-muted">
               {hasSelectedStore ? (
                 <>
-                  Current free default store URL: <strong>{currentSubdomain}</strong>. This required SHASTORE subdomain is free and independent from custom domain search.
+                  Selected store: <strong>{selectedStoreName}</strong>. Current free default store URL: <strong>{currentSubdomain}</strong>. This required SHASTORE subdomain is free and independent from custom domain search.
                 </>
               ) : (
                 "Create a store before connecting domains."
@@ -679,9 +700,7 @@ export default async function DomainsPage({
             Search Custom Domain
           </h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-            {hasSelectedStore
-              ? "Save a valid free SHASTORE subdomain before searching for a custom domain."
-              : "Create a store before connecting domains."}
+            Select a store and confirm its SHASTORE subdomain first.
           </p>
         </Card>
       )}

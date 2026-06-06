@@ -23,6 +23,7 @@ import {
   normalizeSubdomain
 } from "@/lib/domains/utils";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -30,6 +31,7 @@ type ClaimedStoreRow = {
   access_role?: string | null;
   id: string;
   owner_user_id?: string | null;
+  workspace_id?: string | null;
 };
 
 type DomainLifecycleStatus = "pending" | "verifying" | "verified" | "active" | "failed";
@@ -298,22 +300,44 @@ async function recordDomainVerificationLog({
   }
 }
 
-async function getClaimedStore(supabase: SupabaseClient, storeId: string) {
+async function getClaimedStore(supabase: SupabaseClient, storeId: string, userId: string) {
   const { data, error } = await supabase.rpc(
     "get_claimed_store_instances_for_current_user" as never
   );
 
-  if (error || !Array.isArray(data)) {
-    return null;
+  if (!error && Array.isArray(data)) {
+    const claimedStore =
+      (data as ClaimedStoreRow[]).find(
+        (store) =>
+          store.id === storeId &&
+          (!store.access_role || store.access_role === "owner" || store.access_role === "admin")
+      ) ?? null;
+
+    if (claimedStore) {
+      return claimedStore;
+    }
   }
 
-  return (
-    (data as ClaimedStoreRow[]).find(
-      (store) =>
-        store.id === storeId &&
-        (!store.access_role || store.access_role === "owner" || store.access_role === "admin")
-    ) ?? null
-  );
+  const workspaceSelection = await getActiveWorkspaceForUser({ supabase, userId });
+  const { data: store } = await supabase
+    .from("stores" as never)
+    .select("id, owner_user_id, workspace_id")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+  const storeRow = isRecord(store) ? (store as ClaimedStoreRow) : null;
+
+  if (
+    storeRow &&
+    (storeRow.owner_user_id === userId ||
+      storeRow.workspace_id === workspaceSelection.activeWorkspaceId)
+  ) {
+    return {
+      ...storeRow,
+      access_role: "owner"
+    };
+  }
+
+  return null;
 }
 
 async function requireClaimedStore(formData: FormData) {
@@ -343,7 +367,7 @@ async function requireClaimedStore(formData: FormData) {
     domainsRedirect(storeId, "not-authorized");
   }
 
-  const claimedStore = await getClaimedStore(supabase, storeId);
+  const claimedStore = await getClaimedStore(supabase, storeId, user.id);
 
   if (!claimedStore) {
     domainsRedirect(storeId, "not-authorized");
