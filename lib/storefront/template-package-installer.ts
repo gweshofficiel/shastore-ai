@@ -100,6 +100,15 @@ async function writeInstallationRecord({
   };
   const nextStoreData = {
     ...storeData,
+    installedTemplatePackage: {
+      installedAt: record.installedAt ?? record.completedAt ?? record.startedAt,
+      installedBy: record.installedBy,
+      packageId: record.packageId,
+      packageSource: record.packageSource,
+      packageVersion: record.packageVersion,
+      status: record.status,
+      templateId: record.templateId
+    },
     templatePackageInstallations: installations
   };
 
@@ -907,7 +916,10 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
 
   const startingRecord: TemplatePackageInstallationRecord = {
     completedAt: null,
+    installedAt: null,
+    installedBy: input.userId,
     packageId: input.templatePackage.id,
+    packageSource: "template-package-registry",
     packageVersion: input.templatePackage.version,
     startedAt,
     status: "installing",
@@ -962,9 +974,13 @@ export async function installTemplatePackage(input: InstallerInput & { templateP
   })));
 
   const status = packageStatusFromSteps(steps);
+  const completedAt = new Date().toISOString();
   const record: TemplatePackageInstallationRecord = {
-    completedAt: new Date().toISOString(),
+    completedAt,
+    installedAt: completedAt,
+    installedBy: input.userId,
     packageId: input.templatePackage.id,
+    packageSource: "template-package-registry",
     packageVersion: input.templatePackage.version,
     startedAt,
     status,

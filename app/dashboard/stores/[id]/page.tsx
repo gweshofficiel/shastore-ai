@@ -141,12 +141,20 @@ import {
   createSimulatedGeneratedStoreSchema,
   getAIWorkerRetryPlan
 } from "@/lib/storefront/ai-worker";
-import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/template-library";
+import {
+  getProductionStoreTemplate,
+  getTemplateLibrary,
+  mapTemplateToBuilderDraft
+} from "@/lib/storefront/template-library";
 import {
   validateStorePublishReadiness,
   type PublishReadinessItem,
   type PublishReadinessResult
 } from "@/lib/storefront/publish-readiness";
+import {
+  resolveInstalledTemplatePackageMetadata,
+  type TemplatePackageVersionMetadata
+} from "@/lib/storefront/template-packages";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -598,6 +606,83 @@ function StorePublishValidationPanel({
           title="Ready items"
           tone="ready"
         />
+      </div>
+    </Card>
+  );
+}
+
+function formatTemplateInstallDate(value: string | null) {
+  if (!value) {
+    return "Legacy/unversioned";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function StoreTemplateVersionPanel({
+  metadata,
+  templateName
+}: {
+  metadata: TemplatePackageVersionMetadata;
+  templateName: string;
+}) {
+  return (
+    <Card className="border-slate-200 bg-white p-5 lg:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Template package
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
+            {templateName}
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            This store keeps its installed template package version in store data.
+            Future package updates can be compared without automatically reinstalling or changing this store.
+          </p>
+        </div>
+        <ButtonLink href="/dashboard/templates" variant="secondary">
+          View templates
+        </ButtonLink>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Installed version
+          </p>
+          <p className="mt-2 text-lg font-black text-ink">
+            {metadata.packageVersion ? `v${metadata.packageVersion}` : "Legacy/unversioned"}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            {metadata.packageId ?? "No package install record"}
+          </p>
+        </div>
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Installed date
+          </p>
+          <p className="mt-2 text-lg font-black text-ink">
+            {formatTemplateInstallDate(metadata.installedAt)}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            {metadata.isLegacy ? "Existing store fallback" : metadata.status.replace(/_/g, " ")}
+          </p>
+        </div>
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Source
+          </p>
+          <p className="mt-2 text-lg font-black text-ink">
+            {metadata.packageSource.replace(/-/g, " ")}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-muted">
+            Template ID: {metadata.templateId}
+          </p>
+        </div>
       </div>
     </Card>
   );
@@ -4718,6 +4803,17 @@ export default async function StoreDraftPage({
     timezone?: string | null;
   };
   const normalStoreData = isRecord(store.store_data) ? store.store_data : {};
+  const templateVersionMetadata = resolveInstalledTemplatePackageMetadata(
+    normalStoreData,
+    String(store.template_id ?? "legacy-store")
+  );
+  const currentTemplate = await getProductionStoreTemplate(templateVersionMetadata.templateId);
+  const currentTemplateMatches =
+    currentTemplate?.id === templateVersionMetadata.templateId ||
+    currentTemplate?.slug === templateVersionMetadata.templateId;
+  const currentTemplateName = currentTemplateMatches
+    ? currentTemplate.name
+    : String(store.template_id ?? templateVersionMetadata.templateId);
   const templateInstallations = isRecord(normalStoreData.templatePackageInstallations)
     ? normalStoreData.templatePackageInstallations
     : {};
@@ -4878,6 +4974,10 @@ export default async function StoreDraftPage({
           storeSlug={publication?.slug ?? store.slug}
         />
       ) : null}
+      <StoreTemplateVersionPanel
+        metadata={templateVersionMetadata}
+        templateName={currentTemplateName}
+      />
       {showDemoReplacementTools ? (
         <StoreDemoContentReplacementTools
           showTemplateInstalledNotice={hasTemplatePackageInstall}

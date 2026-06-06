@@ -152,9 +152,25 @@ export type TemplatePackage = {
   visualSlots?: Record<string, unknown>;
 };
 
+export type TemplatePackageSource = "legacy/unversioned" | "template-package-registry";
+
+export type TemplatePackageVersionMetadata = {
+  installedAt: string | null;
+  installedBy: string | null;
+  isLegacy: boolean;
+  packageId: string | null;
+  packageSource: TemplatePackageSource | string;
+  packageVersion: number | null;
+  status: TemplatePackageStatus | "legacy/unversioned" | "skipped" | string;
+  templateId: string;
+};
+
 export type TemplatePackageInstallationRecord = {
   completedAt: string | null;
+  installedAt: string | null;
+  installedBy: string | null;
   packageId: string;
+  packageSource: TemplatePackageSource | string;
   packageVersion: number;
   startedAt: string;
   status: TemplatePackageStatus;
@@ -166,6 +182,85 @@ export type TemplatePackageInstallationRecord = {
   }>;
   templateId: string;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function templatePackageVersionMetadataFromRecord(
+  value: unknown,
+  fallbackTemplateId: string
+): TemplatePackageVersionMetadata | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const templateId = textValue(value.templateId) ?? fallbackTemplateId;
+  const packageId = textValue(value.packageId);
+  const packageVersion = numberValue(value.packageVersion);
+
+  if (!packageId && !packageVersion && !textValue(value.status)) {
+    return null;
+  }
+
+  return {
+    installedAt: textValue(value.installedAt) ?? textValue(value.completedAt) ?? textValue(value.startedAt),
+    installedBy: textValue(value.installedBy),
+    isLegacy: false,
+    packageId,
+    packageSource: textValue(value.packageSource) ?? "template-package-registry",
+    packageVersion,
+    status: textValue(value.status) ?? "installed",
+    templateId
+  };
+}
+
+export function resolveInstalledTemplatePackageMetadata(
+  storeData: unknown,
+  fallbackTemplateId: string
+): TemplatePackageVersionMetadata {
+  const data = isRecord(storeData) ? storeData : {};
+  const current = templatePackageVersionMetadataFromRecord(
+    data.installedTemplatePackage,
+    fallbackTemplateId
+  );
+
+  if (current) {
+    return current;
+  }
+
+  const installations = isRecord(data.templatePackageInstallations)
+    ? data.templatePackageInstallations
+    : {};
+  const records = Object.values(installations)
+    .map((record) => templatePackageVersionMetadataFromRecord(record, fallbackTemplateId))
+    .filter((record): record is TemplatePackageVersionMetadata => Boolean(record));
+  const matchingRecord =
+    records.find((record) => record.templateId === fallbackTemplateId) ?? records[0] ?? null;
+
+  if (matchingRecord) {
+    return matchingRecord;
+  }
+
+  return {
+    installedAt: null,
+    installedBy: null,
+    isLegacy: true,
+    packageId: null,
+    packageSource: "legacy/unversioned",
+    packageVersion: null,
+    status: "legacy/unversioned",
+    templateId: fallbackTemplateId
+  };
+}
 
 const flagshipPremiumPackage: TemplatePackage = {
   blueprintId: "multi-purpose",
