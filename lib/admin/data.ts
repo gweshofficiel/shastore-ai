@@ -219,14 +219,22 @@ type AdminSubscription = {
   plan: string;
   planId: string;
   status: string;
+  billingProvider: string;
+  billingReview: boolean;
+  createdAt: string | null;
+  failedPayments: number;
   landingsUsed: number;
   landingLimit: string;
+  manualOverrideActive: boolean;
+  nextBillingDate: string | null;
+  previousPlanId: string | null;
   storesUsed: number;
   storeLimit: string;
   domainsUsed: number;
   domainLimit: string;
   publishedStoresUsed: number;
   ordersUsed: number;
+  warningBadges: Array<"limit_exceeded" | "manual_override_active" | "payment_failed" | "subscription_cancelled">;
 };
 
 type AdminAnalytics = {
@@ -1184,13 +1192,19 @@ export async function getAdminCustomers(): Promise<AdminCustomer[]> {
 
 export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
   const { supabase, users } = await getAdminUsersBase();
-  const [subscriptions, stores, publishedStores, landings, domains, orders] = await Promise.all([
-    safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status"),
+  const [subscriptions, stores, publishedStores, landings, domains, orders, invoices, billingEvents] = await Promise.all([
+    safeSelect(
+      supabase,
+      "user_subscriptions",
+      "user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, current_period_end, cancel_at_period_end, created_at, limits_snapshot"
+    ),
     safeSelect(supabase, "stores", "user_id, owner_user_id"),
     safeSelect(supabase, "published_stores", "user_id, status"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_domain_publications", "user_id"),
-    safeSelect(supabase, "commerce_orders", "user_id")
+    safeSelect(supabase, "commerce_orders", "user_id"),
+    safeSelect(supabase, "invoices", "user_id, provider, status, created_at"),
+    safeSelect(supabase, "billing_events", "user_id, provider, event_type, created_at, processed_at")
   ]);
   const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
   const storeCounts = countStoresByOwner(stores);
@@ -1201,24 +1215,78 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
     publishedStores.filter((row) => row.status === "published"),
     "user_id"
   );
+  const invoicesByUser = new Map<string, AnyRecord[]>();
+  for (const invoice of invoices) {
+    const userId = text(invoice.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    invoicesByUser.set(userId, [...(invoicesByUser.get(userId) ?? []), invoice]);
+  }
+  const billingEventsByUser = new Map<string, AnyRecord[]>();
+  for (const event of billingEvents) {
+    const userId = text(event.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    billingEventsByUser.set(userId, [...(billingEventsByUser.get(userId) ?? []), event]);
+  }
 
   return users.map((user) => {
     const subscription = subscriptionsByUser.get(user.id);
     const plan = getBillingPlan(text(subscription?.plan_id, "free"));
+    const metadata = isRecord(subscription?.limits_snapshot) ? subscription.limits_snapshot : {};
+    const adminBilling = isRecord(metadata.adminBilling) ? metadata.adminBilling : {};
+    const userInvoices = invoicesByUser.get(user.id) ?? [];
+    const userEvents = billingEventsByUser.get(user.id) ?? [];
+    const failedPayments =
+      userInvoices.filter((invoice) => ["failed", "uncollectible", "void"].includes(text(invoice.status))).length +
+      userEvents.filter((event) => text(event.event_type).toLowerCase().includes("payment_failed")).length;
+    const billingProvider =
+      text(userInvoices[0]?.provider) ||
+      text(userEvents[0]?.provider) ||
+      (text(subscription?.stripe_subscription_id) || text(subscription?.stripe_customer_id) ? "stripe" : "manual");
+    const storesUsed = storeCounts.get(user.id) ?? 0;
+    const domainsUsed = domainCounts.get(user.id) ?? 0;
+    const limitExceeded =
+      (plan.storeLimit !== null && storesUsed > plan.storeLimit) ||
+      (plan.domainLimit !== null && domainsUsed > plan.domainLimit);
+    const status = text(subscription?.status, "active");
+    const manualOverrideActive = adminBilling.manualOverrideActive === true;
+    const billingReview = adminBilling.reviewStatus === "review";
+    const warningBadges: AdminSubscription["warningBadges"] = [
+      failedPayments > 0 ? "payment_failed" : null,
+      status === "canceled" || status === "cancelled" ? "subscription_cancelled" : null,
+      limitExceeded ? "limit_exceeded" : null,
+      manualOverrideActive ? "manual_override_active" : null
+    ].filter(Boolean) as AdminSubscription["warningBadges"];
+
     return {
+      billingProvider,
+      billingReview,
+      createdAt: text(subscription?.created_at) || user.createdAt,
       email: user.email,
+      failedPayments,
       domainLimit: plan.domainLimit === null ? "Unlimited" : String(plan.domainLimit),
-      domainsUsed: domainCounts.get(user.id) ?? 0,
+      domainsUsed,
       landingLimit: plan.landingLimit === null ? "Unlimited" : String(plan.landingLimit),
       landingsUsed: landingCounts.get(user.id) ?? 0,
+      manualOverrideActive,
+      nextBillingDate: text(subscription?.current_period_end) || null,
       ordersUsed: orderCounts.get(user.id) ?? 0,
       plan: plan.name,
       planId: plan.id,
+      previousPlanId: text(adminBilling.previousPlanId) || null,
       publishedStoresUsed: publishedCounts.get(user.id) ?? 0,
-      status: text(subscription?.status, "active"),
+      status,
       storeLimit: plan.storeLimit === null ? "Unlimited" : String(plan.storeLimit),
-      storesUsed: storeCounts.get(user.id) ?? 0,
-      userId: user.id
+      storesUsed,
+      userId: user.id,
+      warningBadges
     };
   });
 }
