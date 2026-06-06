@@ -215,6 +215,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/languages", label: "Languages", icon: "settings", permission: "settings.edit" },
   { href: "/dashboard/currencies", label: "Currencies", icon: "payments", permission: "settings.edit" },
   { href: "/dashboard/security", label: "Security Center", icon: "settings", permission: "settings.edit" },
+  { href: "/dashboard/marketing", label: "Marketing", icon: "pages", permission: "can_edit_stores", anyPermissions: ["can_edit_stores", "orders.view", "settings.edit", "can_view_notifications"] },
   { href: "/dashboard/popups-announcements", label: "Popups & Announcements", icon: "pages", permission: "can_edit_stores" },
   { href: "/dashboard/pages", label: "Pages", icon: "pages", permission: "pages.view" },
   { href: "/dashboard/about", label: "About Us", icon: "pages", permission: "pages.view" },
