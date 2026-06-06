@@ -310,47 +310,52 @@ function TemplateInstallOnboardingChecklist({
     {
       description: "Set the public store name, brand text, and logo before launch.",
       href: `/dashboard/stores/${encodedStoreId}#store-settings`,
-      label: "Update store name and logo"
+      label: "Store name/logo configured"
     },
     {
       description: "Check template products, pricing, inventory, variants, and visibility.",
       href: `/dashboard/products?storeId=${encodedStoreId}`,
-      label: "Review demo products"
+      label: "Demo products reviewed"
     },
     {
       description: "Upload product/category media or generate approved AI visuals.",
       href: `/dashboard/ai-visual-assets?storeId=${encodedStoreId}`,
-      label: "Replace demo images / generate AI images"
+      label: "Demo images replaced or approved"
     },
     {
       description: "Add support email, phone, WhatsApp, address, hours, and social links.",
       href: `/dashboard/stores/${encodedStoreId}#store-settings`,
-      label: "Configure contact information"
+      label: "Contact information configured"
     },
     {
       description: "Review shipping methods, rates, zones, and fulfillment notes.",
       href: "/dashboard/shipping",
-      label: "Configure shipping"
+      label: "Shipping configured"
     },
     {
       description: "Connect payment providers and enable accepted checkout methods.",
       href: `/dashboard/payments?storeId=${encodedStoreId}`,
-      label: "Configure payment methods"
+      label: "Payment method configured"
     },
     {
       description: "Confirm privacy, terms, refund, returns, and shipping policy copy.",
       href: `/dashboard/legal-pages?storeId=${encodedStoreId}`,
-      label: "Review legal pages"
+      label: "Legal pages reviewed"
     },
     {
       description: "Open the storefront or review the live preview snapshot before publishing.",
       href: storeSlug ? `/store/${encodeURIComponent(storeSlug)}` : `/dashboard/stores/${encodedStoreId}#storefront-preview`,
-      label: "Preview storefront"
+      label: "Storefront preview checked"
+    },
+    {
+      description: "Use the default storefront route or connect a custom domain when ready.",
+      href: `/dashboard/stores/${encodedStoreId}#domains`,
+      label: "Domain connected or default domain ready"
     },
     {
       description: "Publish when setup is complete and the launch checks look right.",
       href: `/dashboard/stores/${encodedStoreId}#publication`,
-      label: "Publish store"
+      label: "Store ready to publish"
     }
   ];
 
@@ -359,10 +364,10 @@ function TemplateInstallOnboardingChecklist({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-indigo-500">
-            Store setup checklist
+            Publish readiness checklist
           </p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-            Your template is installed. Customize these next.
+            Your template is installed. Review these before publishing.
           </h2>
           <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-indigo-900">
             This checklist is template-agnostic and does not block access. Progress is not persisted yet, so use it as a launch guide and continue whenever you are ready.
@@ -5548,7 +5553,7 @@ export default async function StoreDraftPage({
         </div>
       </Card>
 
-      <Card className="p-5 lg:p-6">
+      <Card className="p-5 lg:p-6" id="domains">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
