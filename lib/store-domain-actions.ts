@@ -27,8 +27,10 @@ import {
 import {
   professionalEmailAddress,
   professionalEmailFutureHooks,
+  buildProfessionalEmailDnsSetup,
   getProfessionalEmailMailboxPlan,
   includedProfessionalEmailMailboxAllowance,
+  professionalEmailActivationStatuses,
   professionalEmailMailboxTypes,
   professionalEmailStoragePlaceholder,
   type ProfessionalEmailMailboxDraft,
@@ -669,13 +671,20 @@ async function writeProfessionalEmailOrderDraft({
           [draft.id]: draft
         },
         professionalEmailOrderDraftSummary: {
+          activateMailbox: "reserved",
           createMailbox: "reserved",
           latestDraftId: draft.id,
+          latestDnsStatus: draft.emailDnsSetup.status,
           latestStatus: draft.status,
           latestUpdatedAt: now,
           renewMailbox: "reserved",
+          resendSetupInstructions: "reserved",
           resetPassword: "reserved",
           setupDnsRecords: "reserved",
+          verifyDkim: "reserved",
+          verifyDmarc: "reserved",
+          verifyMx: "reserved",
+          verifySpf: "reserved",
           suspendMailbox: "reserved"
         }
       },
@@ -1642,11 +1651,14 @@ export async function prepareProfessionalEmailOrderDraft(formData: FormData) {
   const customerDue = allowanceUsed ? 0 : mailboxPlan.monthlyPriceCents;
 
   const draft: ProfessionalEmailOrderDraftRecord = {
+    activationStatus: customerDue > 0 ? "awaiting_payment" : "ready_for_activation",
+    activationStatuses: professionalEmailActivationStatuses,
     allowanceUsed,
     createdAt: new Date().toISOString(),
     customerDue,
     customerDueCents: customerDue,
     domain,
+    emailDnsSetup: buildProfessionalEmailDnsSetup(domain),
     futureHookPoints: professionalEmailFutureHooks(),
     id: randomUUID(),
     mailboxAddress: professionalEmailAddress({ domain, mailboxType }),

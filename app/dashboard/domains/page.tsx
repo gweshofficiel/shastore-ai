@@ -123,6 +123,7 @@ const badgeStyles: Record<string, string> = {
   preparation_only: "bg-blue-50 text-blue-700",
   primary: "bg-emerald-50 text-emerald-700",
   ready: "bg-emerald-50 text-emerald-700",
+  ready_for_activation: "bg-emerald-50 text-emerald-700",
   revoked: "bg-red-50 text-red-700",
   reserved: "bg-amber-50 text-amber-700",
   ready_for_registration: "bg-emerald-50 text-emerald-700",
@@ -1420,7 +1421,7 @@ export default async function DomainsPage({
               Business Email Planning
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Prepare mailbox drafts for your selected store and domain. This does not create real inboxes yet.
+              Prepare mailbox order drafts and email DNS instructions for your selected store and domain. This does not create real inboxes yet.
             </p>
           </div>
           <span className="rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-800">
@@ -1534,7 +1535,7 @@ export default async function DomainsPage({
               Prepare email order
             </Button>
             <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-              No real mailbox is created, no charge is made, and email activation will be connected later.
+              No real mailbox is created, no charge is made, and email DNS verification will be connected later.
             </p>
           </form>
         ) : (
@@ -1562,7 +1563,10 @@ export default async function DomainsPage({
                       {draft.domain} · {new Date(draft.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  <StatusBadge label="Email" value={draft.status} />
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge label="Order" value={draft.status} />
+                    <StatusBadge label="Activation" value={draft.activationStatus} />
+                  </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-2xl bg-white p-3">
@@ -1593,6 +1597,58 @@ export default async function DomainsPage({
                       Allowance used: {draft.allowanceUsed}
                     </p>
                   </div>
+                </div>
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Email DNS setup
+                      </p>
+                      <p className="mt-1 break-all text-lg font-black tracking-[-0.02em] text-ink">
+                        {draft.emailDnsSetup.domain}
+                      </p>
+                    </div>
+                    <StatusBadge label="DNS" value={draft.emailDnsSetup.status} />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {draft.emailDnsSetup.records.map((record) => (
+                      <div className="rounded-2xl bg-slate-50 p-3" key={`${draft.id}-${record.type}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-black text-ink">{record.type} record placeholder</p>
+                          <StatusBadge label="Record" value={record.status} />
+                        </div>
+                        <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-2">
+                          <p>
+                            Host <span className="block break-all font-black text-ink">{record.host}</span>
+                          </p>
+                          <p>
+                            Value <span className="block break-all font-black text-ink">{record.value}</span>
+                          </p>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-muted">{record.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {draft.activationStatuses.map((status) => (
+                      <div
+                        className={`rounded-2xl border p-3 text-sm font-bold ${timelineStateClasses(
+                          status === draft.activationStatus
+                            ? "current"
+                            : draft.activationStatuses.indexOf(status) <
+                                draft.activationStatuses.indexOf(draft.activationStatus)
+                              ? "complete"
+                              : "pending"
+                        )}`}
+                        key={`${draft.id}-${status}`}
+                      >
+                        {paymentPreparationLabel(status)}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                    DNS verification and mailbox activation are not running yet. These records are placeholders for the future email activation flow.
+                  </p>
                 </div>
               </div>
             ))

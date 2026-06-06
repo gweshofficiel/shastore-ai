@@ -38,8 +38,15 @@ import type {
 } from "@/lib/domains/domain-routing";
 import {
   professionalEmailFutureHooks,
+  buildProfessionalEmailDnsSetup,
   getProfessionalEmailMailboxPlan,
+  professionalEmailActivationStatuses,
   professionalEmailMailboxTypes,
+  type ProfessionalEmailActivationStatus,
+  type ProfessionalEmailDnsRecord,
+  type ProfessionalEmailDnsRecordStatus,
+  type ProfessionalEmailDnsRecordType,
+  type ProfessionalEmailDnsSetup,
   type ProfessionalEmailMailboxDraft,
   type ProfessionalEmailMailboxStatus,
   type ProfessionalEmailMailboxType,
@@ -664,6 +671,88 @@ function parseProfessionalEmailMailboxDrafts(storeData: unknown) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const professionalEmailDnsRecordStatuses: ProfessionalEmailDnsRecordStatus[] = [
+  "pending",
+  "verified",
+  "failed"
+];
+
+const professionalEmailDnsRecordTypes: ProfessionalEmailDnsRecordType[] = [
+  "MX",
+  "SPF",
+  "DKIM",
+  "DMARC"
+];
+
+function isProfessionalEmailActivationStatus(value: unknown): value is ProfessionalEmailActivationStatus {
+  return (
+    typeof value === "string" &&
+    professionalEmailActivationStatuses.includes(value as ProfessionalEmailActivationStatus)
+  );
+}
+
+function isProfessionalEmailDnsRecordStatus(value: unknown): value is ProfessionalEmailDnsRecordStatus {
+  return (
+    typeof value === "string" &&
+    professionalEmailDnsRecordStatuses.includes(value as ProfessionalEmailDnsRecordStatus)
+  );
+}
+
+function isProfessionalEmailDnsRecordType(value: unknown): value is ProfessionalEmailDnsRecordType {
+  return (
+    typeof value === "string" &&
+    professionalEmailDnsRecordTypes.includes(value as ProfessionalEmailDnsRecordType)
+  );
+}
+
+function parseProfessionalEmailDnsRecord(value: unknown): ProfessionalEmailDnsRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.host !== "string" ||
+    typeof value.value !== "string" ||
+    typeof value.note !== "string" ||
+    !isProfessionalEmailDnsRecordStatus(value.status) ||
+    !isProfessionalEmailDnsRecordType(value.type)
+  ) {
+    return null;
+  }
+
+  return {
+    host: value.host,
+    note: value.note,
+    status: value.status,
+    type: value.type,
+    value: value.value
+  };
+}
+
+function parseProfessionalEmailDnsSetup(value: unknown, domain: string): ProfessionalEmailDnsSetup {
+  const fallback = buildProfessionalEmailDnsSetup(domain);
+
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  const records = Array.isArray(value.records)
+    ? value.records
+        .map(parseProfessionalEmailDnsRecord)
+        .filter((record): record is ProfessionalEmailDnsRecord => Boolean(record))
+    : fallback.records;
+  const status =
+    value.status === "dns_verified" || value.status === "failed" || value.status === "dns_pending"
+      ? value.status
+      : fallback.status;
+
+  return {
+    domain: typeof value.domain === "string" ? value.domain : domain,
+    records: records.length ? records : fallback.records,
+    status
+  };
+}
+
 function parseProfessionalEmailOrderDraft(value: unknown): ProfessionalEmailOrderDraft | null {
   if (!isRecord(value) || value.status !== "draft") {
     return null;
@@ -691,13 +780,25 @@ function parseProfessionalEmailOrderDraft(value: unknown): ProfessionalEmailOrde
 
   const customerDue =
     typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
+  const activationStatus = isProfessionalEmailActivationStatus(value.activationStatus)
+    ? value.activationStatus
+    : customerDue > 0
+      ? "awaiting_payment"
+      : "ready_for_activation";
+  const activationStatuses = Array.isArray(value.activationStatuses)
+    ? value.activationStatuses.filter(isProfessionalEmailActivationStatus)
+    : professionalEmailActivationStatuses;
+  const emailDnsSetup = parseProfessionalEmailDnsSetup(value.emailDnsSetup, value.domain);
 
   return {
+    activationStatus,
+    activationStatuses: activationStatuses.length ? activationStatuses : professionalEmailActivationStatuses,
     allowanceUsed: value.allowanceUsed,
     createdAt: value.createdAt,
     customerDue,
     customerDueCents: value.customerDueCents,
     domain: value.domain,
+    emailDnsSetup,
     futureHookPoints: professionalEmailFutureHooks(),
     id: value.id,
     mailboxAddress: value.mailboxAddress,

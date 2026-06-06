@@ -4,13 +4,46 @@ export type ProfessionalEmailMailboxStatus = "draft" | "pending" | "active" | "f
 
 export type ProfessionalEmailMailboxPlanId = "starter_mailbox" | "business_mailbox" | "team_mailbox";
 
+export type ProfessionalEmailActivationStatus =
+  | "draft"
+  | "awaiting_payment"
+  | "ready_for_activation"
+  | "dns_pending"
+  | "dns_verified"
+  | "active"
+  | "failed";
+
+export type ProfessionalEmailDnsRecordStatus = "pending" | "verified" | "failed";
+
+export type ProfessionalEmailDnsRecordType = "MX" | "SPF" | "DKIM" | "DMARC";
+
 export type ProfessionalEmailFutureHooks = {
   checkDomainOwnership: "reserved";
   createMailbox: "reserved";
   setupDnsRecords: "reserved";
+  verifyDkim: "reserved";
+  verifyDmarc: "reserved";
+  verifyMx: "reserved";
+  verifySpf: "reserved";
+  activateMailbox: "reserved";
+  resendSetupInstructions: "reserved";
   renewMailbox: "reserved";
   resetPassword: "reserved";
   suspendMailbox: "reserved";
+};
+
+export type ProfessionalEmailDnsRecord = {
+  host: string;
+  note: string;
+  status: ProfessionalEmailDnsRecordStatus;
+  type: ProfessionalEmailDnsRecordType;
+  value: string;
+};
+
+export type ProfessionalEmailDnsSetup = {
+  domain: string;
+  records: ProfessionalEmailDnsRecord[];
+  status: "dns_pending" | "dns_verified" | "failed";
 };
 
 export type ProfessionalEmailMailboxPlan = {
@@ -34,11 +67,14 @@ export type ProfessionalEmailMailboxDraft = {
 };
 
 export type ProfessionalEmailOrderDraft = {
+  activationStatus: ProfessionalEmailActivationStatus;
+  activationStatuses: ProfessionalEmailActivationStatus[];
   allowanceUsed: number;
   createdAt: string;
   customerDue: number;
   customerDueCents: number;
   domain: string;
+  emailDnsSetup: ProfessionalEmailDnsSetup;
   futureHookPoints: ProfessionalEmailFutureHooks;
   id: string;
   mailboxAddress: string;
@@ -83,12 +119,65 @@ export const professionalEmailMailboxPlans: ProfessionalEmailMailboxPlan[] = [
 
 export function professionalEmailFutureHooks(): ProfessionalEmailFutureHooks {
   return {
+    activateMailbox: "reserved",
     checkDomainOwnership: "reserved",
     createMailbox: "reserved",
+    resendSetupInstructions: "reserved",
     setupDnsRecords: "reserved",
+    verifyDkim: "reserved",
+    verifyDmarc: "reserved",
+    verifyMx: "reserved",
+    verifySpf: "reserved",
     renewMailbox: "reserved",
     resetPassword: "reserved",
     suspendMailbox: "reserved"
+  };
+}
+
+export const professionalEmailActivationStatuses: ProfessionalEmailActivationStatus[] = [
+  "draft",
+  "awaiting_payment",
+  "ready_for_activation",
+  "dns_pending",
+  "dns_verified",
+  "active",
+  "failed"
+];
+
+export function buildProfessionalEmailDnsSetup(domain: string): ProfessionalEmailDnsSetup {
+  return {
+    domain,
+    records: [
+      {
+        host: "@",
+        note: "Routes inbound mail for this domain after mailbox activation is connected.",
+        status: "pending",
+        type: "MX",
+        value: "mail.shastore.email"
+      },
+      {
+        host: "@",
+        note: "Helps receiving mail systems recognize approved outbound mail.",
+        status: "pending",
+        type: "SPF",
+        value: "v=spf1 include:shastore.email ~all"
+      },
+      {
+        host: `shastore._domainkey.${domain}`,
+        note: "Reserved signing record for future authenticated outbound mail.",
+        status: "pending",
+        type: "DKIM",
+        value: "pending"
+      },
+      {
+        host: `_dmarc.${domain}`,
+        note: "Reserved policy record for future domain mail protection.",
+        status: "pending",
+        type: "DMARC",
+        value: "v=DMARC1; p=none"
+      }
+    ],
+    status: "dns_pending"
   };
 }
 
