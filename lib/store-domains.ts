@@ -22,6 +22,15 @@ import {
   buildDomainPaymentPreparation,
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
+import {
+  buildDomainDnsSetup,
+  buildDomainSslSetup,
+  type DomainDnsRecordInstruction,
+  type DomainDnsSetup,
+  type DomainDnsSetupStatus,
+  type DomainSslSetup,
+  type DomainSslStatus
+} from "@/lib/domains/domain-dns-ssl";
 
 export type ClaimedStoreForDomains = {
   id: string;
@@ -123,11 +132,13 @@ export type DomainRegistrationWorkflow = {
   createdAt: string;
   customerDue: number;
   customerDueCents: number;
+  dnsSetup: DomainDnsSetup;
   domain: string;
   domainCheckoutPreviewId: string;
   domainOrderDraftId: string;
   id: string;
   paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  sslSetup: DomainSslSetup;
   status: DomainRegistrationWorkflowStatus;
   statuses: DomainRegistrationWorkflowStatus[];
   storeId: string;
@@ -368,6 +379,96 @@ const domainRegistrationWorkflowStatuses: DomainRegistrationWorkflowStatus[] = [
   "ssl_active"
 ];
 
+const domainDnsSetupStatuses: DomainDnsSetupStatus[] = [
+  "not_started",
+  "pending",
+  "verified",
+  "failed"
+];
+
+const domainSslStatuses: DomainSslStatus[] = [
+  "ssl_pending",
+  "ssl_provisioning",
+  "ssl_active",
+  "ssl_failed"
+];
+
+function isDomainDnsSetupStatus(value: unknown): value is DomainDnsSetupStatus {
+  return (
+    typeof value === "string" &&
+    domainDnsSetupStatuses.includes(value as DomainDnsSetupStatus)
+  );
+}
+
+function isDomainSslStatus(value: unknown): value is DomainSslStatus {
+  return typeof value === "string" && domainSslStatuses.includes(value as DomainSslStatus);
+}
+
+function parseDomainDnsRecordInstruction(value: unknown): DomainDnsRecordInstruction | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    (value.type !== "CNAME" && value.type !== "A" && value.type !== "TXT") ||
+    typeof value.host !== "string" ||
+    typeof value.value !== "string" ||
+    typeof value.note !== "string" ||
+    typeof value.required !== "boolean" ||
+    !isDomainDnsSetupStatus(value.status)
+  ) {
+    return null;
+  }
+
+  return {
+    host: value.host,
+    note: value.note,
+    required: value.required,
+    status: value.status,
+    type: value.type,
+    value: value.value
+  };
+}
+
+function parseDomainDnsSetup(value: unknown, domain: string, targetStore: string): DomainDnsSetup {
+  const fallback = buildDomainDnsSetup({
+    domain,
+    targetStore,
+    verificationToken: "pending"
+  });
+
+  if (!isRecord(value) || !isDomainDnsSetupStatus(value.status)) {
+    return fallback;
+  }
+
+  const records = Array.isArray(value.records)
+    ? value.records
+        .map(parseDomainDnsRecordInstruction)
+        .filter((record): record is DomainDnsRecordInstruction => Boolean(record))
+    : fallback.records;
+
+  return {
+    domain: typeof value.domain === "string" ? value.domain : domain,
+    records: records.length ? records : fallback.records,
+    status: value.status,
+    targetStore: typeof value.targetStore === "string" ? value.targetStore : targetStore
+  };
+}
+
+function parseDomainSslSetup(value: unknown, domain: string): DomainSslSetup {
+  if (!isRecord(value) || !isDomainSslStatus(value.status)) {
+    return buildDomainSslSetup({
+      targetDomain: domain
+    });
+  }
+
+  return {
+    requestedAt: typeof value.requestedAt === "string" ? value.requestedAt : null,
+    status: value.status,
+    targetDomain: typeof value.targetDomain === "string" ? value.targetDomain : domain
+  };
+}
+
 function isDomainRegistrationWorkflowStatus(
   value: unknown
 ): value is DomainRegistrationWorkflowStatus {
@@ -404,16 +505,20 @@ function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWork
   const statuses = Array.isArray(value.statuses)
     ? value.statuses.filter(isDomainRegistrationWorkflowStatus)
     : domainRegistrationWorkflowStatuses;
+  const dnsSetup = parseDomainDnsSetup(value.dnsSetup, value.domain, "Selected store");
+  const sslSetup = parseDomainSslSetup(value.sslSetup, value.domain);
 
   return {
     createdAt: value.createdAt,
     customerDue,
     customerDueCents: value.customerDueCents,
+    dnsSetup,
     domain: value.domain,
     domainCheckoutPreviewId: value.domainCheckoutPreviewId,
     domainOrderDraftId: value.domainOrderDraftId,
     id: value.id,
     paymentConfirmationStatus,
+    sslSetup,
     status: value.status,
     statuses: statuses.length ? statuses : domainRegistrationWorkflowStatuses,
     storeId: value.storeId,

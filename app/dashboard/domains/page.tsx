@@ -96,6 +96,7 @@ const badgeStyles: Record<string, string> = {
   draft: "bg-amber-50 text-amber-700",
   failed: "bg-red-50 text-red-700",
   invalid: "bg-red-50 text-red-700",
+  not_started: "bg-slate-100 text-muted",
   not_configured: "bg-slate-100 text-muted",
   pending: "bg-amber-50 text-amber-700",
   ready: "bg-emerald-50 text-emerald-700",
@@ -108,7 +109,9 @@ const badgeStyles: Record<string, string> = {
   registration_failed: "bg-red-50 text-red-700",
   awaiting_dns: "bg-amber-50 text-amber-700",
   ssl_pending: "bg-blue-50 text-blue-700",
+  ssl_provisioning: "bg-blue-50 text-blue-700",
   ssl_active: "bg-emerald-50 text-emerald-700",
+  ssl_failed: "bg-red-50 text-red-700",
   verified: "bg-emerald-50 text-emerald-700",
   verifying: "bg-blue-50 text-blue-700"
 };
@@ -1112,13 +1115,77 @@ export default async function DomainsPage({
                     ))}
                   </div>
                   {workflow ? (
-                    <p className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
-                      Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders.
-                    </p>
+                    <div className="mt-4 grid gap-4">
+                      <p className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
+                        Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders.
+                      </p>
+                      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                              DNS setup instructions
+                            </p>
+                            <p className="mt-1 break-all text-lg font-black tracking-[-0.02em] text-ink">
+                              {workflow.dnsSetup.domain}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-muted">
+                              Target store: {workflow.dnsSetup.targetStore}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <StatusBadge label="DNS" value={workflow.dnsSetup.status} />
+                            <StatusBadge label="SSL" value={workflow.sslSetup.status} />
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                          {workflow.dnsSetup.records.map((record) => (
+                            <div className="rounded-2xl bg-white p-3" key={`${record.type}-${record.host}`}>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-black text-ink">
+                                  {record.type} record {record.required ? "required" : "placeholder"}
+                                </p>
+                                <StatusBadge label="Record" value={record.status} />
+                              </div>
+                              <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-2">
+                                <p>
+                                  Host <span className="block break-all font-black text-ink">{record.host}</span>
+                                </p>
+                                <p>
+                                  Value <span className="block break-all font-black text-ink">{record.value}</span>
+                                </p>
+                              </div>
+                              <p className="mt-3 text-sm leading-6 text-muted">{record.note}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl bg-white p-3">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                              Verification status
+                            </p>
+                            <p className="mt-1 text-sm font-black text-ink">
+                              {paymentPreparationLabel(workflow.dnsSetup.status)}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-white p-3">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                              SSL status
+                            </p>
+                            <p className="mt-1 text-sm font-black text-ink">
+                              {paymentPreparationLabel(workflow.sslSetup.status)}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                          DNS verification and SSL activation are not running yet. These instructions are placeholders for the future connection workflow.
+                        </p>
+                      </div>
+                    </div>
                   ) : preview.customerDueCents === 0 ? (
                     <form action={prepareDomainRegistrationWorkflow} className="mt-4">
                       <input name="storeId" type="hidden" value={preview.storeId} />
                       <input name="checkoutPreviewId" type="hidden" value={preview.id} />
+                      <input name="targetStore" type="hidden" value={selectedStoreName || "Selected store"} />
                       <Button type="submit">Prepare registration</Button>
                     </form>
                   ) : (

@@ -13,6 +13,14 @@ import { getBillingPlan } from "@/lib/billing/plans";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
 import {
+  buildDomainDnsSetup,
+  buildDomainSslSetup,
+  domainDnsSslFutureHooks,
+  type DomainDnsSetup,
+  type DomainDnsSslFutureHooks,
+  type DomainSslSetup
+} from "@/lib/domains/domain-dns-ssl";
+import {
   buildDomainPaymentPreparation,
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
@@ -137,6 +145,8 @@ type DomainRegistrationWorkflowRecord = {
   createdAt: string;
   customerDue: number;
   customerDueCents: number;
+  dnsSetup: DomainDnsSetup;
+  dnsSslFutureHookPoints: DomainDnsSslFutureHooks;
   domain: string;
   domainCheckoutPreviewId: string;
   domainOrderDraftId: string;
@@ -150,6 +160,7 @@ type DomainRegistrationWorkflowRecord = {
   };
   id: string;
   paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  sslSetup: DomainSslSetup;
   status: DomainRegistrationWorkflowStatus;
   statuses: DomainRegistrationWorkflowStatus[];
   storeId: string;
@@ -424,6 +435,8 @@ async function writeDomainRegistrationWorkflow({
         },
         domainRegistrationWorkflowSummary: {
           latestPreviewId: workflow.domainCheckoutPreviewId,
+          latestDnsStatus: workflow.dnsSetup.status,
+          latestSslStatus: workflow.sslSetup.status,
           latestStatus: workflow.status,
           latestUpdatedAt: now,
           callDomainProviderRegistration: "reserved",
@@ -431,7 +444,11 @@ async function writeDomainRegistrationWorkflow({
           createDnsRecords: "reserved",
           verifyDomain: "reserved",
           startSslProvisioning: "reserved",
-          markDomainAsPrimary: "reserved"
+          markDomainAsPrimary: "reserved",
+          verifyDns: "reserved",
+          requestSsl: "reserved",
+          checkSslStatus: "reserved",
+          markDomainAsConnected: "reserved"
         }
       },
       updated_at: now
@@ -1025,6 +1042,7 @@ export async function prepareDomainCheckoutPreview(formData: FormData) {
 export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const checkoutPreviewId = cleanText(formData.get("checkoutPreviewId"), 80);
+  const targetStore = cleanText(formData.get("targetStore"), 160) || "Selected store";
 
   try {
     await assertStoreMutationAllowed(supabase, userId, { id: storeId });
@@ -1083,6 +1101,12 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
     createdAt,
     customerDue,
     customerDueCents: customerDue,
+    dnsSetup: buildDomainDnsSetup({
+      domain,
+      targetStore,
+      verificationToken: `shastore-${createDomainVerificationToken().slice(0, 24)}`
+    }),
+    dnsSslFutureHookPoints: domainDnsSslFutureHooks(),
     domain,
     domainCheckoutPreviewId: checkoutPreviewId,
     domainOrderDraftId,
@@ -1096,6 +1120,9 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
     },
     id: randomUUID(),
     paymentConfirmationStatus: coveredByCredit ? "covered_by_credit" : "future_payment_confirmed",
+    sslSetup: buildDomainSslSetup({
+      targetDomain: domain
+    }),
     status: "ready_for_registration",
     statuses: [
       "ready_for_registration",
