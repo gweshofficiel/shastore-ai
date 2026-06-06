@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { AdminNavLink } from "@/components/admin/admin-nav-link";
 
-const navItems = [
+export const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
+  { href: "/admin/foundation-report", label: "Foundation Report", icon: "reports" },
   { href: "/admin/users", label: "Users", icon: "users" },
   { href: "/admin/sellers", label: "Sellers", icon: "sellers" },
   { href: "/admin/resellers", label: "Resellers", icon: "resellers" },
@@ -30,7 +31,7 @@ export function AdminSidebar() {
           </div>
         </div>
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:max-h-[calc(100vh-17rem)] lg:overflow-y-auto lg:pb-1">
-          {navItems.map((item) => (
+          {adminNavItems.map((item) => (
             <AdminNavLink
               href={item.href}
               icon={item.icon}

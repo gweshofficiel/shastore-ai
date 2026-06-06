@@ -1,4 +1,11 @@
 import { Card } from "@/components/ui/card";
+import {
+  AdminBadge,
+  AdminHeader,
+  AdminStatGrid,
+  AdminTable,
+  formatAdminDate
+} from "@/components/admin/admin-control";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -16,6 +23,17 @@ type SupportTicketRow = {
   technical_snapshot?: Record<string, unknown> | null;
   ticket_number: string;
   updated_at: string;
+  user_id: string | null;
+  workspace_id: string | null;
+};
+
+type MonitoringEventRow = {
+  created_at: string;
+  entity_type: string;
+  event_status: string;
+  event_type: string;
+  id: string;
+  store_id: string | null;
   user_id: string | null;
   workspace_id: string | null;
 };
@@ -44,36 +62,58 @@ function statusClass(status: string) {
 export default async function AdminSupportPage() {
   await getAdminAccess();
   const admin = createAdminClient();
-  const { data, error } = admin
-    ? await admin
+  const [{ data, error }, monitoringResult] = admin
+    ? await Promise.all([
+        admin
         .from("support_tickets" as never)
         .select("id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, message, technical_snapshot, created_at, updated_at")
         .order("created_at" as never, { ascending: false } as never)
-        .limit(200)
-    : { data: [], error: new Error("Admin client unavailable") };
+        .limit(200),
+        admin
+          .from("monitoring_events" as never)
+          .select("id, workspace_id, store_id, user_id, event_type, event_status, entity_type, created_at")
+          .order("created_at" as never, { ascending: false } as never)
+          .limit(100)
+      ])
+    : [
+        { data: [], error: new Error("Admin client unavailable") },
+        { data: [], error: new Error("Admin client unavailable") }
+      ];
   const tickets = ((data ?? []) as unknown as SupportTicketRow[]);
+  const monitoringEvents = ((monitoringResult.data ?? []) as unknown as MonitoringEventRow[]);
+  const errorEvents = monitoringEvents.filter(
+    (event) =>
+      event.event_status === "failed" ||
+      event.event_type.toLowerCase().includes("error") ||
+      event.event_type.toLowerCase().includes("failed")
+  );
+  const openTickets = tickets.filter(
+    (ticket) => ticket.status !== "resolved" && ticket.status !== "closed"
+  ).length;
 
   return (
-    <div className="grid gap-6">
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-          Platform Support
-        </p>
-        <h1 className="mt-2 text-4xl font-black tracking-[-0.06em] text-slate-950">
-          Support Tickets
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Review support escalations created from Monitoring events with full internal technical snapshots.
-        </p>
-      </div>
+    <div className="grid gap-6 lg:gap-8">
+      <AdminHeader
+        description="Review support escalations, monitoring events, and error signals from real platform records."
+        title="Support"
+      />
 
-      {error ? (
+      {error || monitoringResult.error ? (
         <Card className="border-red-200 bg-red-50 p-5">
           <p className="text-sm font-black text-red-800">
-            Support tickets could not be loaded.
+            Support or monitoring events could not be loaded.
           </p>
         </Card>
       ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Tickets", value: tickets.length },
+          { label: "Open tickets", value: openTickets },
+          { label: "Monitoring events", value: monitoringEvents.length },
+          { label: "Error events", value: errorEvents.length }
+        ]}
+      />
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-slate-100">
@@ -119,7 +159,7 @@ export default async function AdminSupportPage() {
                 </details>
 
                 <p className="rounded-2xl bg-white p-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Status management placeholder
+                  Status management reserved for the next support operations phase
                 </p>
               </div>
             ))
@@ -130,6 +170,31 @@ export default async function AdminSupportPage() {
           )}
         </div>
       </Card>
+
+      <AdminTable
+        empty={!monitoringEvents.length ? "No monitoring events recorded yet." : null}
+        headers={["Event", "Status", "Entity", "Scope", "Created"]}
+      >
+        {monitoringEvents.slice(0, 25).map((event) => (
+          <tr key={event.id}>
+            <td className="px-5 py-4 font-bold text-slate-950">{event.event_type}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={event.event_status === "failed" ? "red" : "slate"}>
+                {event.event_status}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{event.entity_type}</td>
+            <td className="px-5 py-4 text-slate-500">
+              <div className="grid gap-1">
+                <span>Workspace: {event.workspace_id ?? "n/a"}</span>
+                <span>Store: {event.store_id ?? "n/a"}</span>
+                <span>User: {event.user_id ?? "anonymous"}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.created_at)}</td>
+          </tr>
+        ))}
+      </AdminTable>
     </div>
   );
 }

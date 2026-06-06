@@ -9,12 +9,13 @@ import {
   accountProfileUnavailableMessage,
   getOrCreateAccountProfile
 } from "@/lib/account-profiles";
-import { getAdminAnalytics, getAdminOverview } from "@/lib/admin/data";
+import { getAdminAnalytics, getAdminOverview, getAdminPlatformHealth } from "@/lib/admin/data";
 
 export default async function AdminOverviewPage() {
-  const [overview, analytics, account] = await Promise.all([
+  const [overview, analytics, health, account] = await Promise.all([
     getAdminOverview(),
     getAdminAnalytics(),
+    getAdminPlatformHealth(),
     getOrCreateAccountProfile("admin")
   ]);
 
@@ -34,7 +35,8 @@ export default async function AdminOverviewPage() {
           { label: "Customers", value: overview.customers },
           { label: "Revenue estimate", value: formatAdminMoney(overview.revenueEstimate) },
           { label: "Visitors", value: overview.visitors },
-          { label: "Conversions", value: overview.conversions }
+          { label: "Conversion rate", value: `${analytics.conversionRate}%` },
+          { label: "Platform health", value: health.label }
         ]}
       />
       <AdminTable headers={["Signal", "Value", "Context"]}>
@@ -59,6 +61,13 @@ export default async function AdminOverviewPage() {
           </td>
           <td className="px-5 py-4 text-slate-500">
             Product views and order product snapshots.
+          </td>
+        </tr>
+        <tr>
+          <td className="px-5 py-4 font-bold text-slate-950">Platform health</td>
+          <td className="px-5 py-4 text-slate-600">{health.label}</td>
+          <td className="px-5 py-4 text-slate-500">
+            {health.failedMonitoringEvents} failed monitoring events, {health.openSupportTickets} open support tickets, and {health.recentSecurityEvents} recent security events.
           </td>
         </tr>
       </AdminTable>

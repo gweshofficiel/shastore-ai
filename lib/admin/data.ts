@@ -6,7 +6,7 @@ import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
 
-type AdminUser = {
+export type AdminUser = {
   id: string;
   email: string;
   plan: string;
@@ -15,6 +15,23 @@ type AdminUser = {
   storesCount: number;
   landingsCount: number;
   ordersCount: number;
+};
+
+export type AdminUserDetail = AdminUser & {
+  recentOrders: Array<{
+    createdAt: string;
+    currency: string;
+    id: string;
+    sourceType: string;
+    status: string;
+    total: number;
+  }>;
+  stores: Array<{
+    createdAt: string;
+    id: string;
+    name: string;
+    status: string;
+  }>;
 };
 
 type AdminStore = {
@@ -91,6 +108,13 @@ type AdminAnalytics = {
   topProducts: Array<{ label: string; count: number }>;
 };
 
+export type AdminPlatformHealth = {
+  failedMonitoringEvents: number;
+  label: "Needs review" | "Stable";
+  openSupportTickets: number;
+  recentSecurityEvents: number;
+};
+
 async function getAdminClient(): Promise<{
   supabase: SupabaseClient<Database>;
   serviceRoleConfigured: boolean;
@@ -139,6 +163,24 @@ function countBy(records: AnyRecord[], key: string) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }
+  return counts;
+}
+
+function ownerUserId(record: AnyRecord) {
+  return text(record.owner_user_id) || text(record.user_id);
+}
+
+function countStoresByOwner(records: AnyRecord[]) {
+  const counts = new Map<string, number>();
+
+  for (const record of records) {
+    const ownerId = ownerUserId(record);
+
+    if (ownerId) {
+      counts.set(ownerId, (counts.get(ownerId) ?? 0) + 1);
+    }
+  }
+
   return counts;
 }
 
@@ -198,8 +240,8 @@ export async function getAdminUsersBase() {
 
 export async function getAdminOverview() {
   const { supabase } = await getAdminClient();
-  const [users, stores, landings, orders, customers, analytics] = await Promise.all([
-    safeCount(supabase, "profiles"),
+  const [{ users }, stores, landings, orders, customers, analytics] = await Promise.all([
+    getAdminUsersBase(),
     safeCount(supabase, "stores"),
     safeCount(supabase, "landing_pages"),
     safeSelect(supabase, "commerce_orders", "id, total_amount, total, status"),
@@ -215,7 +257,7 @@ export async function getAdminOverview() {
     orders: orders.length,
     revenueEstimate,
     stores,
-    users,
+    users: users.length,
     visitors: analytics.visitors
   };
 }
@@ -223,12 +265,12 @@ export async function getAdminOverview() {
 export async function getAdminUsers(): Promise<AdminUser[]> {
   const { supabase, users } = await getAdminUsersBase();
   const [stores, landings, orders, subscriptions] = await Promise.all([
-    safeSelect(supabase, "stores", "user_id"),
+    safeSelect(supabase, "stores", "user_id, owner_user_id"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_orders", "user_id"),
     safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status")
   ]);
-  const storeCounts = countBy(stores, "user_id");
+  const storeCounts = countStoresByOwner(stores);
   const landingCounts = countBy(landings, "user_id");
   const orderCounts = countBy(orders, "user_id");
   const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
@@ -247,6 +289,48 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
       storesCount: storeCounts.get(user.id) ?? 0
     };
   });
+}
+
+export async function getAdminUserDetail(userId: string): Promise<AdminUserDetail | null> {
+  const users = await getAdminUsers();
+  const user = users.find((candidate) => candidate.id === userId);
+
+  if (!user) {
+    return null;
+  }
+
+  const { supabase } = await getAdminClient();
+  const [stores, orders] = await Promise.all([
+    safeSelect(supabase, "stores", "id, user_id, owner_user_id, name, store_name, status, created_at"),
+    safeSelect(
+      supabase,
+      "commerce_orders",
+      "id, user_id, source_type, status, total_amount, total, currency, created_at"
+    )
+  ]);
+
+  return {
+    ...user,
+    recentOrders: orders
+      .filter((order) => text(order.user_id) === userId)
+      .slice(0, 10)
+      .map((order) => ({
+        createdAt: text(order.created_at),
+        currency: text(order.currency, "USD"),
+        id: text(order.id),
+        sourceType: text(order.source_type, "unknown"),
+        status: text(order.status, "new"),
+        total: numberValue(order.total_amount) || numberValue(order.total)
+      })),
+    stores: stores
+      .filter((store) => ownerUserId(store) === userId)
+      .map((store) => ({
+        createdAt: text(store.created_at),
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        status: text(store.status, "draft")
+      }))
+  };
 }
 
 export async function getAdminStores(): Promise<AdminStore[]> {
@@ -363,14 +447,14 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
   const { supabase, users } = await getAdminUsersBase();
   const [subscriptions, stores, publishedStores, landings, domains, orders] = await Promise.all([
     safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status"),
-    safeSelect(supabase, "stores", "user_id"),
+    safeSelect(supabase, "stores", "user_id, owner_user_id"),
     safeSelect(supabase, "published_stores", "user_id, status"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_domain_publications", "user_id"),
     safeSelect(supabase, "commerce_orders", "user_id")
   ]);
   const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
-  const storeCounts = countBy(stores, "user_id");
+  const storeCounts = countStoresByOwner(stores);
   const landingCounts = countBy(landings, "user_id");
   const domainCounts = countBy(domains, "user_id");
   const orderCounts = countBy(orders, "user_id");
@@ -461,5 +545,31 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
       .slice(0, 5),
     visitors,
     whatsappClicks: events.filter((event) => event.event_type === "whatsapp_click").length
+  };
+}
+
+export async function getAdminPlatformHealth(): Promise<AdminPlatformHealth> {
+  const { supabase } = await getAdminClient();
+  const [monitoringEvents, securityEvents, supportTickets] = await Promise.all([
+    safeSelect(supabase, "monitoring_events", "event_status, event_type"),
+    safeSelect(supabase, "security_audit_logs", "action"),
+    safeSelect(supabase, "support_tickets", "status")
+  ]);
+  const failedMonitoringEvents = monitoringEvents.filter(
+    (event) =>
+      text(event.event_status) === "failed" ||
+      text(event.event_type).toLowerCase().includes("error") ||
+      text(event.event_type).toLowerCase().includes("failed")
+  ).length;
+  const openSupportTickets = supportTickets.filter((ticket) => {
+    const status = text(ticket.status).toLowerCase();
+    return status !== "resolved" && status !== "closed";
+  }).length;
+
+  return {
+    failedMonitoringEvents,
+    label: failedMonitoringEvents || openSupportTickets ? "Needs review" : "Stable",
+    openSupportTickets,
+    recentSecurityEvents: securityEvents.length
   };
 }

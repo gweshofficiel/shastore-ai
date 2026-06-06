@@ -45,6 +45,7 @@ export default async function AdminSecurityPage() {
     : { data: null, error: new Error("Admin client unavailable.") };
   const logs = ((data ?? []) as unknown as SecurityAuditLogRow[]);
   const deniedCount = logs.filter((log) => log.action.includes("denied")).length;
+  const loginCount = logs.filter((log) => log.action.includes("login")).length;
   const rateLimitCount = logs.filter((log) => log.action.includes("rate_limit")).length;
   const uniqueUsers = new Set(logs.map((log) => log.user_id).filter(Boolean)).size;
 
@@ -57,6 +58,7 @@ export default async function AdminSecurityPage() {
       <AdminStatGrid
         stats={[
           { label: "Recent events", value: logs.length },
+          { label: "Login events", value: loginCount },
           { label: "Denied attempts", value: deniedCount },
           { label: "Rate limit events", value: rateLimitCount },
           { label: "Users observed", value: uniqueUsers }
