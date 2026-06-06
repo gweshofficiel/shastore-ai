@@ -56,14 +56,14 @@ export default async function NewStorePage({
       <div className="grid gap-6">
         {databaseError ? (
           <Card className="border-red-200 bg-red-50 p-5">
-            <p className="text-sm font-bold text-red-700">Database error: {databaseError}</p>
+            <p className="text-sm font-bold text-red-700">Store creation failed: {databaseError}</p>
             <p className="mt-2 text-sm font-semibold leading-6 text-red-700">
               No store was created. You can retry with the selected template or choose a different template.
             </p>
             {selectedTemplate ? (
               <a
                 className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-red-700 px-4 text-sm font-black text-white transition hover:bg-red-800"
-                href={`/dashboard/stores/new?templateId=${encodeURIComponent(selectedTemplate.id)}&device=${encodeURIComponent(selectedDevice)}`}
+                href={`/dashboard/stores/new?templateId=${encodeURIComponent(selectedTemplate.id)}&device=${encodeURIComponent(selectedDevice)}#apply-template-create-store`}
               >
                 Retry store creation
               </a>
@@ -152,20 +152,21 @@ export default async function NewStorePage({
                   tabIndex={-1}
                 >
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                    Step 3 + 4
+                    Step 3
                   </p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">
-                    Apply and create store
+                    Create your store from this template
                   </h2>
                   <p className="mt-2 text-sm font-semibold leading-6 text-muted">
-                    SHASTORE will create a draft store with this template and open Manage Store.
+                    Selected template: <span className="font-black text-ink">{selectedTemplate.name}</span>. SHASTORE will create the store, install the template package once, and redirect to Manage Store.
                   </p>
                   <form action={createStoreFromTemplateAction} className="mt-5">
                     <input name="templateCreationKey" type="hidden" value={creationKey} />
                     <input name="templateId" type="hidden" value={selectedTemplate.id} />
                     <CreateStoreSubmitButton
                       className="w-full"
-                      pendingLabel="Creating store and installing package..."
+                      label="Create store and install template"
+                      pendingLabel="Creating store... Installing template..."
                     />
                   </form>
                 </Card>

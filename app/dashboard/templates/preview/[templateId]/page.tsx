@@ -21,7 +21,7 @@ export default async function SellerTemplatePreviewPage({
   return (
     <ProductionTemplatePreview
       backHref="/dashboard/templates"
-      createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${device}`}
+      createHref={`/dashboard/stores/new?templateId=${encodeURIComponent(template.id)}&device=${device}#apply-template-create-store`}
       device={device}
       template={template}
     />

@@ -1017,10 +1017,10 @@ export default async function TemplatesPage({
                   <input name="storeId" type="hidden" value={selectedWorkspaceStoreId} />
                   <input name="templateId" type="hidden" value={template.id} />
                   <Button disabled={!selectedWorkspaceStoreId} type="submit">
-                    Apply template to workspace store
+                    Apply to existing store draft
                   </Button>
                   <p className="text-xs font-semibold leading-5 text-blue-800">
-                    Saves template, theme color, font style, layout style, and JSON settings only for the selected store.
+                    Updates the selected existing store draft only. New stores are created from the Create Store page.
                   </p>
                 </form>
                 <details className="rounded-2xl border border-slate-200 bg-white p-3">

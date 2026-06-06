@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SelectTemplateLink } from "@/components/templates/select-template-link";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -113,9 +114,9 @@ export function ProductionTemplateLibraryCard({
         <ButtonLink href={previewHref} variant="secondary">
           Preview
         </ButtonLink>
-        <ButtonLink href={createHref}>
+        <SelectTemplateLink href={createHref}>
           Select template
-        </ButtonLink>
+        </SelectTemplateLink>
       </div>
     </Card>
   );
@@ -338,7 +339,7 @@ export function ProductionTemplatePreview({
               </div>
             ) : null}
           </div>
-          <ButtonLink href={createHref}>Choose template</ButtonLink>
+          <ButtonLink href={createHref}>Select template</ButtonLink>
         </section>
 
         <PackageSummaryGrid template={template} />
