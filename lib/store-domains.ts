@@ -56,6 +56,24 @@ export type StoreDomainVerificationLog = {
   store_domain_id: string | null;
 };
 
+export type DomainOrderDraft = {
+  createdAt: string;
+  creditUsedCents: number;
+  customerDueCents: number;
+  domainPriceCents: number;
+  extension: string;
+  id: string;
+  includedDomainCreditCents: number;
+  planMonthlyPrice: string;
+  selectedDomain: string;
+  selectedPlan: {
+    id: string;
+    name: string;
+  };
+  status: "draft";
+  storeId: string;
+};
+
 export type DomainAvailability = {
   checked: boolean;
   hostname: string | null;
@@ -75,6 +93,7 @@ export type StoreDomainsDashboardData = {
   activeStore: ClaimedStoreForDomains | null;
   availability: DomainAvailability;
   domains: StoreDomainRecord[];
+  domainOrderDrafts: DomainOrderDraft[];
   domainBase: string;
   error: string | null;
   logs: StoreDomainVerificationLog[];
@@ -113,6 +132,64 @@ function emptyAvailability(): DomainAvailability {
     status: null,
     subdomain: null
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function parseDomainOrderDraft(value: unknown): DomainOrderDraft | null {
+  if (!isRecord(value) || value.status !== "draft") {
+    return null;
+  }
+
+  const selectedPlan = isRecord(value.selectedPlan) ? value.selectedPlan : {};
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.storeId !== "string" ||
+    typeof value.selectedDomain !== "string" ||
+    typeof value.extension !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.planMonthlyPrice !== "string" ||
+    typeof selectedPlan.id !== "string" ||
+    typeof selectedPlan.name !== "string" ||
+    typeof value.includedDomainCreditCents !== "number" ||
+    typeof value.domainPriceCents !== "number" ||
+    typeof value.creditUsedCents !== "number" ||
+    typeof value.customerDueCents !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    createdAt: value.createdAt,
+    creditUsedCents: value.creditUsedCents,
+    customerDueCents: value.customerDueCents,
+    domainPriceCents: value.domainPriceCents,
+    extension: value.extension,
+    id: value.id,
+    includedDomainCreditCents: value.includedDomainCreditCents,
+    planMonthlyPrice: value.planMonthlyPrice,
+    selectedDomain: value.selectedDomain,
+    selectedPlan: {
+      id: selectedPlan.id,
+      name: selectedPlan.name
+    },
+    status: "draft",
+    storeId: value.storeId
+  };
+}
+
+function parseDomainOrderDrafts(storeData: unknown) {
+  if (!isRecord(storeData) || !isRecord(storeData.domainOrderDrafts)) {
+    return [];
+  }
+
+  return Object.values(storeData.domainOrderDrafts)
+    .map(parseDomainOrderDraft)
+    .filter((draft): draft is DomainOrderDraft => Boolean(draft))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 async function checkSubdomainAvailability(
@@ -202,6 +279,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domains: [],
+      domainOrderDrafts: [],
       domainBase: getDomainBase(),
       error: null,
       logs: [],
@@ -222,6 +300,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domains: [],
+      domainOrderDrafts: [],
       domainBase: getDomainBase(),
       error: "Unable to load claimed buyer stores for domain management.",
       logs: [],
@@ -247,6 +326,7 @@ export async function getStoreDomainsDashboardData(
       activeStore: null,
       availability: emptyAvailability(),
       domains: [],
+      domainOrderDrafts: [],
       domainBase: getDomainBase(),
       error: null,
       logs: [],
@@ -282,11 +362,21 @@ export async function getStoreDomainsDashboardData(
     purchaseHostinshEmail(),
     checkHostinshResellerBalance()
   ]);
+  const storeDataResult = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, activeStore.id as never)
+    .maybeSingle();
+  const storeRow: Record<string, unknown> = isRecord(storeDataResult.data)
+    ? storeDataResult.data
+    : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
 
   return {
     activeStore,
     availability: await checkSubdomainAvailability(supabase, availabilitySubdomain),
     domains,
+    domainOrderDrafts: parseDomainOrderDrafts(storeData),
     domainBase: getDomainBase(),
     error:
       domainsResult.error && !isMissingStoreDomainsTable(domainsResult.error)

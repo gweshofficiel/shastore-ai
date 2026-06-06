@@ -13,6 +13,7 @@ export type StoreAuditAction =
   | "ai_visual.visual_regenerated"
   | "ai_visual.visual_rejected"
   | "domain_connected"
+  | "domain_order_draft_prepared"
   | "ownership_transfer_blocked"
   | "ownership_transfer_completed"
   | "ownership_transfer_requested"

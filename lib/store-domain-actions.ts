@@ -4,11 +4,15 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordStoreAuditLogSafe } from "@/lib/audit/store-audit";
+import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
 import {
   assertCanConnectCustomDomain,
   assertCanUseExistingCustomDomain
 } from "@/lib/billing/domain-access";
+import { getBillingPlan } from "@/lib/billing/plans";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
+import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
+import { getDomainExtension, normalizeDomainExtension } from "@/lib/domains/extension-catalog";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getDefaultDnsTarget, getDomainBase } from "@/lib/domains/hostinsh";
 import {
@@ -44,6 +48,31 @@ type DomainStoreDataRecord = {
   verificationStatus: string;
 };
 
+type DomainOrderDraftRecord = {
+  createdAt: string;
+  creditUsedCents: number;
+  customerDueCents: number;
+  domainPriceCents: number;
+  extension: string;
+  futureHookPoints: {
+    autoConnectAfterPurchase: "reserved";
+    availabilityRefresh: "reserved";
+    paymentSession: "reserved";
+    registrationRequest: "reserved";
+    sslProvisioningAfterConnection: "reserved";
+  };
+  id: string;
+  includedDomainCreditCents: number;
+  planMonthlyPrice: string;
+  selectedDomain: string;
+  selectedPlan: {
+    id: string;
+    name: string;
+  };
+  status: "draft";
+  storeId: string;
+};
+
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   if (typeof value !== "string") {
     return "";
@@ -54,6 +83,22 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
 
 function domainsRedirect(storeId: string, status: string): never {
   redirect(`/dashboard/domains?storeId=${encodeURIComponent(storeId)}&domains=${encodeURIComponent(status)}`);
+}
+
+function cleanPreviewDomain(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "")
+    .replace(/\s+/g, "-")
+    .replace(/(^\.|\.$)+/g, "")
+    .slice(0, 253);
 }
 
 function createDomainVerificationToken() {
@@ -117,6 +162,68 @@ async function writeDomainStoreDataRecord({
       message: error.message,
       storeId
     });
+  }
+}
+
+async function writeDomainOrderDraft({
+  draft,
+  storeId,
+  supabase
+}: {
+  draft: DomainOrderDraftRecord;
+  storeId: string;
+  supabase: SupabaseClient;
+}) {
+  const { data, error: loadError } = await supabase
+    .from("stores" as never)
+    .select("store_data")
+    .eq("id" as never, storeId as never)
+    .maybeSingle();
+
+  if (loadError) {
+    console.warn("[store-domains] domain order draft load failed", {
+      message: loadError.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-order-draft-failed");
+  }
+
+  const storeRow: Record<string, unknown> = isRecord(data) ? data : {};
+  const storeData = isRecord(storeRow.store_data) ? storeRow.store_data : {};
+  const domainOrderDrafts = isRecord(storeData.domainOrderDrafts)
+    ? storeData.domainOrderDrafts
+    : {};
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("stores" as never)
+    .update({
+      store_data: {
+        ...storeData,
+        domainOrderDrafts: {
+          ...domainOrderDrafts,
+          [draft.id]: draft
+        },
+        domainOrderPreparationSummary: {
+          latestDraftId: draft.id,
+          latestStatus: "draft",
+          latestUpdatedAt: now,
+          paymentSession: "reserved",
+          availabilityRefresh: "reserved",
+          registrationRequest: "reserved",
+          autoConnectAfterPurchase: "reserved",
+          sslProvisioningAfterConnection: "reserved"
+        }
+      },
+      updated_at: now
+    } as never)
+    .eq("id" as never, storeId as never);
+
+  if (error) {
+    console.warn("[store-domains] domain order draft write failed", {
+      message: error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-order-draft-failed");
   }
 }
 
@@ -487,6 +594,82 @@ export async function attachCustomDomain(formData: FormData) {
   domainsRedirect(storeId, "custom-domain-saved");
 }
 
+export async function prepareDomainOrderDraft(formData: FormData) {
+  const { storeId, supabase, userId } = await requireClaimedStore(formData);
+  const selectedDomain = cleanPreviewDomain(formData.get("selectedDomain"));
+  const extension = normalizeDomainExtension(cleanText(formData.get("extension"), 40));
+  const extensionCatalogItem = getDomainExtension(extension);
+
+  try {
+    await assertStoreMutationAllowed(supabase, userId, { id: storeId });
+  } catch {
+    domainsRedirect(storeId, "store-locked");
+  }
+
+  if (
+    !selectedDomain ||
+    !extensionCatalogItem ||
+    !selectedDomain.includes(".") ||
+    !selectedDomain.endsWith(extensionCatalogItem.extension)
+  ) {
+    domainsRedirect(storeId, "invalid-domain");
+  }
+
+  const access = await getCurrentUserSubscriptionAccess();
+  const plan = access?.plan ?? getBillingPlan("free");
+  const credit = calculateDomainLineCreditQuote({
+    domainPriceCents: extensionCatalogItem.registrationPriceCents,
+    plan
+  });
+  const createdAt = new Date().toISOString();
+  const draft: DomainOrderDraftRecord = {
+    createdAt,
+    creditUsedCents: credit.creditUsedCents,
+    customerDueCents: credit.customerDueCents,
+    domainPriceCents: credit.domainPriceCents,
+    extension: extensionCatalogItem.extension,
+    futureHookPoints: {
+      autoConnectAfterPurchase: "reserved",
+      availabilityRefresh: "reserved",
+      paymentSession: "reserved",
+      registrationRequest: "reserved",
+      sslProvisioningAfterConnection: "reserved"
+    },
+    id: randomUUID(),
+    includedDomainCreditCents: credit.includedCreditCents,
+    planMonthlyPrice: credit.planPrice,
+    selectedDomain,
+    selectedPlan: {
+      id: credit.planId,
+      name: credit.planName
+    },
+    status: "draft",
+    storeId
+  };
+
+  await writeDomainOrderDraft({
+    draft,
+    storeId,
+    supabase
+  });
+
+  await recordStoreAuditLogSafe({
+    action: "domain_order_draft_prepared",
+    actorUserId: userId,
+    metadata: {
+      customerDueCents: draft.customerDueCents,
+      extension: draft.extension,
+      source: "store_data_domain_order_drafts",
+      status: draft.status
+    },
+    storeId,
+    supabase
+  });
+
+  revalidatePath("/dashboard/domains");
+  domainsRedirect(storeId, "domain-order-draft-prepared");
+}
+
 export async function setPrimaryDomain(formData: FormData) {
   const { storeId, supabase, userId } = await requireClaimedStore(formData);
   const domainId = cleanText(formData.get("domainId"), 80);
@@ -569,7 +752,7 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
     .update({
       error_message: process.env.HOSTINSH_API_KEY
         ? null
-        : "DNS verification is waiting for HOSTINSH API credentials. Add the CNAME and TXT records shown in the dashboard.",
+        : "DNS verification is waiting for service settings. Add the CNAME and TXT records shown in the dashboard.",
       last_checked_at: new Date().toISOString(),
       dns_status: "pending",
       ssl_status: "pending",
@@ -588,7 +771,7 @@ export async function markStoreDomainVerificationPending(formData: FormData) {
     hostname: (domain as { hostname: string }).hostname,
     message: process.env.HOSTINSH_API_KEY
       ? "Domain verification was queued."
-      : "Verification is pending because HOSTINSH API credentials are not configured.",
+      : "Verification is pending because service settings are not configured.",
     status: "verifying",
     storeId,
     supabase,

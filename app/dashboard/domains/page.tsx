@@ -9,6 +9,7 @@ import {
   attachCustomDomain,
   createStoreSubdomain,
   markStoreDomainVerificationPending,
+  prepareDomainOrderDraft,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -44,6 +45,8 @@ const statusMessages: Record<string, string> = {
   "domain-not-found": "Domain record was not found for this store.",
   "domain-activated": "Verified domain activated for this store.",
   "domain-deleted": "Domain record deleted.",
+  "domain-order-draft-failed": "Domain order draft could not be prepared.",
+  "domain-order-draft-prepared": "Draft prepared. Awaiting payment / future activation.",
   "duplicate-domain": "That domain is already connected to another store.",
   "invalid-domain": "Enter a valid custom hostname, for example shop.example.com.",
   "invalid-subdomain": "Choose a subdomain with at least 3 valid characters.",
@@ -66,6 +69,7 @@ const successStatuses = new Set([
   "custom-domain-saved",
   "domain-deleted",
   "domain-activated",
+  "domain-order-draft-prepared",
   "primary-updated",
   "subdomain-saved",
   "verification-pending"
@@ -73,6 +77,7 @@ const successStatuses = new Set([
 
 const badgeStyles: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
+  draft: "bg-amber-50 text-amber-700",
   failed: "bg-red-50 text-red-700",
   not_configured: "bg-slate-100 text-muted",
   pending: "bg-amber-50 text-amber-700",
@@ -788,6 +793,12 @@ export default async function DomainsPage({
                   <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
                     Preview only. No purchase yet. No charge yet. Included credit logic will be confirmed during the future checkout integration.
                   </p>
+                  <form action={prepareDomainOrderDraft} className="mt-4">
+                    <input name="storeId" type="hidden" value={activeStoreId} />
+                    <input name="selectedDomain" type="hidden" value={selectedDomainLine.domainName} />
+                    <input name="extension" type="hidden" value={selectedDomainLine.extension} />
+                    <Button type="submit">Prepare domain order</Button>
+                  </form>
                 </>
               ) : (
                 <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
@@ -815,6 +826,100 @@ export default async function DomainsPage({
           </div>
         </>
       ) : null}
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Domain order preparation
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              Prepared order drafts
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              This is a preparation step. No domain has been purchased yet.
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-800">
+            Awaiting payment / future activation
+          </span>
+        </div>
+        <div className="mt-5 grid gap-3">
+          {data.domainOrderDrafts.length ? (
+            data.domainOrderDrafts.map((draft) => (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={draft.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                      Draft prepared
+                    </p>
+                    <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
+                      {draft.selectedDomain}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-muted">
+                      {new Date(draft.createdAt).toLocaleString()} · {draft.extension}
+                    </p>
+                  </div>
+                  <StatusBadge label="Status" value={draft.status} />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Plan</p>
+                    <p className="mt-1 text-sm font-black text-ink">{draft.selectedPlan.name}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Monthly price</p>
+                    <p className="mt-1 text-sm font-black text-ink">{draft.planMonthlyPrice}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Included credit</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.includedDomainCreditCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain price</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.domainPriceCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Credit used</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.creditUsedCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Customer due</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.customerDueCents)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-amber-50 p-3 sm:col-span-2">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Owner status</p>
+                    <p className="mt-1 text-sm font-black text-amber-900">
+                      Draft prepared · Awaiting payment / future activation
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                  No purchase yet. No charge yet. No registration yet.
+                </p>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
+              <p className="font-bold text-ink">No prepared domain order drafts yet.</p>
+              <p className="mt-1 leading-6">
+                Select a domain from search results, then prepare an order draft from the checkout preview.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Future checkout steps
+          </p>
+          <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-2 lg:grid-cols-5">
+            <p className="rounded-2xl bg-slate-50 p-3">Payment session</p>
+            <p className="rounded-2xl bg-slate-50 p-3">Availability refresh</p>
+            <p className="rounded-2xl bg-slate-50 p-3">Registration request</p>
+            <p className="rounded-2xl bg-slate-50 p-3">Auto connect after purchase</p>
+            <p className="rounded-2xl bg-slate-50 p-3">SSL provisioning after connection</p>
+          </div>
+        </div>
+      </Card>
       <Card className="p-6 lg:p-8">
         <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
           Connect an existing custom domain
