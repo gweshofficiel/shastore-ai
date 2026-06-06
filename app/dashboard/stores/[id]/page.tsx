@@ -142,6 +142,11 @@ import {
   getAIWorkerRetryPlan
 } from "@/lib/storefront/ai-worker";
 import { getTemplateLibrary, mapTemplateToBuilderDraft } from "@/lib/storefront/template-library";
+import {
+  validateStorePublishReadiness,
+  type PublishReadinessItem,
+  type PublishReadinessResult
+} from "@/lib/storefront/publish-readiness";
 import { aiWorkflowSteps, workflowStatusLabel } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
@@ -507,6 +512,97 @@ function StoreDemoContentReplacementTools({
   );
 }
 
+function PublishReadinessList({
+  emptyLabel,
+  items,
+  tone,
+  title
+}: {
+  emptyLabel: string;
+  items: PublishReadinessItem[];
+  tone: "blocked" | "ready" | "warning";
+  title: string;
+}) {
+  const toneClass = {
+    blocked: "border-red-100 bg-red-50 text-red-800",
+    ready: "border-emerald-100 bg-emerald-50 text-emerald-800",
+    warning: "border-amber-100 bg-amber-50 text-amber-900"
+  }[tone];
+
+  return (
+    <div className={`rounded-3xl border p-4 ${toneClass}`}>
+      <p className="text-xs font-black uppercase tracking-[0.18em]">{title}</p>
+      <div className="mt-3 grid gap-3">
+        {items.length ? (
+          items.map((item) => (
+            <div className="rounded-2xl bg-white/75 p-3" key={item.key}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-black">{item.label}</p>
+                  <p className="mt-1 text-xs font-semibold leading-5">{item.description}</p>
+                </div>
+                <ButtonLink href={item.fixHref} variant="secondary">
+                  Fix now
+                </ButtonLink>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-2xl bg-white/75 p-3 text-sm font-bold">{emptyLabel}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StorePublishValidationPanel({
+  readiness,
+  showBlockedNotice
+}: {
+  readiness: PublishReadinessResult;
+  showBlockedNotice: boolean;
+}) {
+  const isBlocked = readiness.blockingIssues.length > 0;
+
+  return (
+    <Card className={`p-5 lg:p-6 ${isBlocked ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+      <div className="flex flex-col gap-2">
+        <p className={`text-xs font-black uppercase tracking-[0.22em] ${isBlocked ? "text-red-700" : "text-emerald-700"}`}>
+          Publish validation
+        </p>
+        <h2 className="text-2xl font-black tracking-[-0.04em] text-ink">
+          {isBlocked ? "Publishing is blocked until critical setup is complete." : "Critical publish checks are ready."}
+        </h2>
+        <p className={`text-sm font-semibold leading-6 ${isBlocked ? "text-red-800" : "text-emerald-800"}`}>
+          {showBlockedNotice
+            ? "The publish attempt was stopped. Fix the blocking issues below, then publish again."
+            : "Preview remains available. Warnings are recommended fixes and do not block publishing."}
+        </p>
+      </div>
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        <PublishReadinessList
+          emptyLabel="No blocking issues."
+          items={readiness.blockingIssues}
+          title="Blocking issues"
+          tone="blocked"
+        />
+        <PublishReadinessList
+          emptyLabel="No warnings."
+          items={readiness.warnings}
+          title="Warnings"
+          tone="warning"
+        />
+        <PublishReadinessList
+          emptyLabel="Ready items will appear here."
+          items={readiness.readyItems}
+          title="Ready items"
+          tone="ready"
+        />
+      </div>
+    </Card>
+  );
+}
+
 function formatOwnedStatus(value: string | null | undefined, fallback = "not connected") {
   return value ? value.replace(/_/g, " ") : fallback;
 }
@@ -625,6 +721,7 @@ export default async function StoreDraftPage({
     catalog?: string;
     domain?: string;
     packageId?: string;
+    publishValidation?: string;
     templateId?: string;
     templateInstall?: string;
   }>;
@@ -4645,6 +4742,14 @@ export default async function StoreDraftPage({
   const customDomainsBlocked =
     !canUseCustomDomains(storeAccess.subscription) ||
     (storeAccess.subscription.usage.domainLimit !== null && (remainingDomainQuota ?? 0) <= 0);
+  const publishReadiness = await validateStorePublishReadiness({
+    storeId: store.id,
+    supabase,
+    workspaceId
+  });
+  const publishBlocked = publishReadiness.blockingIssues.length > 0;
+  const showPublishValidationPanel =
+    query.publishValidation === "blocked" || publication?.status !== "published";
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -4732,6 +4837,13 @@ export default async function StoreDraftPage({
           <p className="text-sm font-bold text-red-700">{query.error}</p>
         </Card>
       ) : null}
+      {query.publishValidation === "blocked" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-700">
+            Store publish blocked. Complete the critical setup items below, then try again.
+          </p>
+        </Card>
+      ) : null}
       {query.created === "template" && (query.templateInstall === "installed" || query.templateInstall === "skipped") ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-800">
@@ -4770,6 +4882,12 @@ export default async function StoreDraftPage({
         <StoreDemoContentReplacementTools
           showTemplateInstalledNotice={hasTemplatePackageInstall}
           storeId={store.id}
+        />
+      ) : null}
+      {showPublishValidationPanel ? (
+        <StorePublishValidationPanel
+          readiness={publishReadiness}
+          showBlockedNotice={query.publishValidation === "blocked"}
         />
       ) : null}
       {query.theme === "saved" ? (
@@ -4949,9 +5067,14 @@ export default async function StoreDraftPage({
             ) : (
               <form action={publishStoreDraft}>
                 <input name="storeId" type="hidden" value={store.id} />
-                <Button disabled={protectedActionsBlocked} type="submit">
+                <Button disabled={protectedActionsBlocked || publishBlocked} type="submit">
                   {publication?.status === "unpublished" ? "Republish store" : "Publish store"}
                 </Button>
+                {publishBlocked ? (
+                  <p className="mt-2 text-xs font-bold leading-5 text-red-700">
+                    Complete blocking publish validation items before publishing. Preview remains available.
+                  </p>
+                ) : null}
               </form>
             )}
             <ButtonLink href="/dashboard/stores/new" variant="secondary">

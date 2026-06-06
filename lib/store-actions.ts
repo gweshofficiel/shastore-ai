@@ -29,6 +29,7 @@ import { defaultStoreThemeSettings, normalizeStoreThemeSettings } from "@/lib/st
 import { defaultStoreTemplateId } from "@/lib/store-templates";
 import { installTemplatePackageForTemplate } from "@/lib/storefront/template-package-installer";
 import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
+import { validateStorePublishReadiness } from "@/lib/storefront/publish-readiness";
 import type { StoreThemeSettings } from "@/types/storefront";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildStoreSlug, resolveUniqueStoreSlug } from "@/lib/stores/slug";
@@ -2609,47 +2610,17 @@ export async function publishStoreDraft(formData: FormData) {
     redirectWithStoreError(detailPath, "Store name is required before publishing.");
   }
 
+  const readiness = await validateStorePublishReadiness({
+    storeId: store.id,
+    supabase,
+    workspaceId
+  });
+
+  if (readiness.blockingIssues.length) {
+    redirect(`${detailPath}?publishValidation=blocked`);
+  }
+
   const slug = await persistStoreSlug(supabase, store.id, storeName, store.slug);
-
-  const [{ data: categories, error: categoriesError }, { data: products, error: productsError }] =
-    await Promise.all([
-      supabase
-        .from("store_categories")
-        .select("id")
-        .eq("store_id", store.id)
-        .eq("workspace_id" as never, workspaceId as never),
-      supabase
-        .from("store_products")
-        .select("id")
-        .eq("store_id", store.id)
-        .eq("workspace_id" as never, workspaceId as never)
-    ]);
-
-  if (categoriesError) {
-    redirectWithStoreError(detailPath, formatStoreActionError(categoriesError));
-  }
-
-  if (productsError) {
-    redirectWithStoreError(detailPath, formatStoreActionError(productsError));
-  }
-
-  const templateId = String(store.template_id || defaultStoreTemplateId);
-  const categoryRequiredForPublish = templateId !== "shastore-flagship-premium";
-  const productRequiredForPublish = templateId !== "shastore-flagship-premium";
-
-  if (categoryRequiredForPublish && !categories?.length) {
-    redirectWithStoreError(
-      detailPath,
-      "Add at least one category before publishing this store."
-    );
-  }
-
-  if (productRequiredForPublish && !products?.length) {
-    redirectWithStoreError(
-      detailPath,
-      "Add at least one product before publishing this store."
-    );
-  }
   const { data: rawPublication, error: publicationLookupError } = await supabase
     .from("published_stores")
     .select("*")
