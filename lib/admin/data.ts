@@ -179,6 +179,45 @@ export type AdminReseller = {
   };
 };
 
+export type AdminPaymentProviderControl = {
+  providers: Array<{
+    configurationStatus: "configured" | "missing" | "partial";
+    enabledStatus: "disabled" | "enabled" | "placeholder_disabled" | "under_review";
+    environmentMode: "live" | "test" | "sandbox" | "placeholder";
+    healthStatus: "healthy" | "missing_config" | "needs_review" | "warning";
+    key: string;
+    lastEvent: string | null;
+    name: string;
+    warnings: Array<"live_mode_not_verified" | "provider_not_configured" | "test_mode" | "webhook_missing">;
+    webhookStatus: "configured" | "missing" | "not_applicable" | "placeholder";
+  }>;
+  storePaymentAdoption: {
+    codStores: number;
+    manualStores: number;
+    missingPaymentMethodStores: number;
+    paypalStores: number;
+    stripeStores: number;
+    totalStores: number;
+  };
+  paymentSetupRisks: Array<{
+    id: string;
+    name: string;
+    ownerEmail: string;
+    reason: string;
+    slug: string | null;
+  }>;
+  webhookMonitoring: {
+    failedEvents: number;
+    recentEvents: Array<{
+      createdAt: string;
+      eventStatus: string;
+      eventType: string;
+      provider: string;
+    }>;
+    totalEvents: number;
+  };
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -1289,6 +1328,261 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
       warningBadges
     };
   });
+}
+
+function envConfigured(names: string[]) {
+  return names.some((name) => Boolean(process.env[name]));
+}
+
+function providerMode(providerKey: string): AdminPaymentProviderControl["providers"][number]["environmentMode"] {
+  if (providerKey === "paypal") {
+    return process.env.PAYPAL_ENVIRONMENT === "live" ? "live" : "sandbox";
+  }
+
+  if (providerKey === "stripe") {
+    return process.env.NODE_ENV === "production" ? "live" : "test";
+  }
+
+  return "placeholder";
+}
+
+function providerWarningList({
+  configured,
+  mode,
+  webhookConfigured
+}: {
+  configured: boolean;
+  mode: AdminPaymentProviderControl["providers"][number]["environmentMode"];
+  webhookConfigured: boolean | null;
+}) {
+  const warnings: AdminPaymentProviderControl["providers"][number]["warnings"] = [];
+
+  if (!configured) {
+    warnings.push("provider_not_configured");
+  }
+
+  if (webhookConfigured === false) {
+    warnings.push("webhook_missing");
+  }
+
+  if (mode === "test" || mode === "sandbox") {
+    warnings.push("test_mode");
+  }
+
+  if (mode === "live" && webhookConfigured !== true) {
+    warnings.push("live_mode_not_verified");
+  }
+
+  return warnings;
+}
+
+export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProviderControl> {
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const [
+    stores,
+    methods,
+    connections,
+    monitoringEvents,
+    billingEvents
+  ] = await Promise.all([
+    safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug"),
+    safeSelect(supabase, "store_payment_methods", "store_id, method, is_enabled"),
+    safeSelect(supabase, "store_payment_provider_connections", "store_id, provider, connection_status, config_status, charges_enabled, paypal_status"),
+    safeSelect(
+      supabase,
+      "monitoring_events",
+      "event_type, event_status, entity_type, metadata, created_at",
+      500
+    ),
+    safeSelect(supabase, "billing_events", "event_type, provider, payload, processed_at, created_at", 500)
+  ]);
+  const paymentProviderEvents = monitoringEvents.filter((event) => {
+    const eventType = text(event.event_type).toLowerCase();
+    const entityType = text(event.entity_type).toLowerCase();
+
+    return entityType.includes("payment") || eventType.includes("payment") || eventType.includes("webhook");
+  });
+  const billingWebhookEvents = billingEvents.filter((event) => {
+    const eventType = text(event.event_type).toLowerCase();
+
+    return eventType.includes("webhook") || eventType.includes("invoice") || eventType.includes("payment");
+  });
+  const recentEvents = [
+    ...paymentProviderEvents.map((event) => ({
+      createdAt: text(event.created_at),
+      eventStatus: text(event.event_status, "info"),
+      eventType: text(event.event_type, "payment_event"),
+      provider: text(isRecord(event.metadata) ? event.metadata.provider : null, "store")
+    })),
+    ...billingWebhookEvents.map((event) => ({
+      createdAt: text(event.processed_at) || text(event.created_at),
+      eventStatus: text(event.event_type).toLowerCase().includes("failed") ? "failed" : "success",
+      eventType: text(event.event_type, "billing_event"),
+      provider: text(event.provider, "billing")
+    }))
+  ].sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt));
+  const controlEvents = billingEvents
+    .filter((event) => text(event.event_type).startsWith("admin_payment_provider_"))
+    .sort((left, right) => dateValue(right.processed_at ?? right.created_at) - dateValue(left.processed_at ?? left.created_at));
+  const latestControlByProvider = new Map<string, AnyRecord>();
+  for (const event of controlEvents) {
+    const payload = isRecord(event.payload) ? event.payload : {};
+    const providerKey = text(payload.providerKey);
+
+    if (providerKey && !latestControlByProvider.has(providerKey)) {
+      latestControlByProvider.set(providerKey, event);
+    }
+  }
+  const providerDefinitions = [
+    {
+      key: "stripe",
+      name: "Stripe",
+      configured: envConfigured(["PLATFORM_BILLING_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY", "STORE_PAYMENTS_STRIPE_SECRET_KEY", "STRIPE_CONNECT_SECRET_KEY"]),
+      webhookConfigured: envConfigured(["PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"])
+    },
+    {
+      key: "nowpayments",
+      name: "NOWPayments",
+      configured: envConfigured(["NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"]),
+      webhookConfigured: envConfigured(["NOWPAYMENTS_IPN_SECRET"])
+    },
+    {
+      key: "paypal",
+      name: "PayPal",
+      configured: envConfigured(["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PARTNER_MERCHANT_ID"]),
+      webhookConfigured: null
+    },
+    {
+      key: "youcan_pay",
+      name: "YouCan Pay",
+      configured: envConfigured(["YOUCAN_PAY_API_KEY", "YOUCAN_PAY_SECRET_KEY"]),
+      webhookConfigured: null
+    },
+    {
+      key: "bank_transfer",
+      name: "Bank Transfer",
+      configured: true,
+      webhookConfigured: null
+    },
+    {
+      key: "manual_payments",
+      name: "Manual Payments",
+      configured: true,
+      webhookConfigured: null
+    }
+  ];
+  const providers: AdminPaymentProviderControl["providers"] = providerDefinitions.map((provider) => {
+    const mode = providerMode(provider.key);
+    const warnings = providerWarningList({
+      configured: provider.configured,
+      mode,
+      webhookConfigured: provider.webhookConfigured
+    });
+    const controlEvent = latestControlByProvider.get(provider.key);
+    const controlType = text(controlEvent?.event_type);
+    const enabledStatus =
+      controlType === "admin_payment_provider_mark_review"
+        ? "under_review"
+        : controlType === "admin_payment_provider_disable"
+          ? "placeholder_disabled"
+          : provider.configured
+            ? "enabled"
+            : "disabled";
+    const providerEvents = recentEvents.filter((event) => event.provider === provider.key || event.provider === provider.name.toLowerCase());
+    const hasFailures = providerEvents.some((event) => event.eventStatus === "failed");
+
+    return {
+      configurationStatus: provider.configured ? "configured" : "missing",
+      enabledStatus,
+      environmentMode: mode,
+      healthStatus:
+        enabledStatus === "under_review"
+          ? "needs_review"
+          : !provider.configured
+            ? "missing_config"
+            : hasFailures || warnings.length
+              ? "warning"
+              : "healthy",
+      key: provider.key,
+      lastEvent: providerEvents[0]?.eventType ?? null,
+      name: provider.name,
+      warnings,
+      webhookStatus:
+        provider.webhookConfigured === null
+          ? "not_applicable"
+          : provider.webhookConfigured
+            ? "configured"
+            : "missing"
+    };
+  });
+  const enabledMethods = methods.filter((method) => method.is_enabled === true);
+  const stripeStores = new Set(
+    connections
+      .filter(
+        (connection) =>
+          text(connection.provider) === "stripe" &&
+          (text(connection.connection_status) === "connected" || connection.charges_enabled === true)
+      )
+      .map((connection) => text(connection.store_id))
+      .filter(Boolean)
+  );
+  const paypalStores = new Set(
+    connections
+      .filter(
+        (connection) =>
+          text(connection.provider) === "paypal" &&
+          (text(connection.connection_status) === "connected" || text(connection.paypal_status) === "connected")
+      )
+      .map((connection) => text(connection.store_id))
+      .filter(Boolean)
+  );
+  const codStores = new Set(
+    enabledMethods
+      .filter((method) => text(method.method) === "cod")
+      .map((method) => text(method.store_id))
+      .filter(Boolean)
+  );
+  const manualStores = new Set(
+    enabledMethods
+      .filter((method) => ["cod", "whatsapp"].includes(text(method.method)))
+      .map((method) => text(method.store_id))
+      .filter(Boolean)
+  );
+  const storesWithPayment = new Set([
+    ...stripeStores,
+    ...paypalStores,
+    ...manualStores,
+    ...enabledMethods.map((method) => text(method.store_id)).filter(Boolean)
+  ]);
+  const paymentSetupRisks = stores
+    .filter((store) => !storesWithPayment.has(text(store.id)))
+    .slice(0, 25)
+    .map((store) => ({
+      id: text(store.id),
+      name: text(store.store_name, text(store.name, "Untitled store")),
+      ownerEmail: owners.get(ownerUserId(store)) ?? text(ownerUserId(store), "Unknown owner"),
+      reason: "No enabled payment method or connected provider found.",
+      slug: text(store.slug) || null
+    }));
+
+  return {
+    paymentSetupRisks,
+    providers,
+    storePaymentAdoption: {
+      codStores: codStores.size,
+      manualStores: manualStores.size,
+      missingPaymentMethodStores: paymentSetupRisks.length,
+      paypalStores: paypalStores.size,
+      stripeStores: stripeStores.size,
+      totalStores: stores.length
+    },
+    webhookMonitoring: {
+      failedEvents: recentEvents.filter((event) => event.eventStatus === "failed").length,
+      recentEvents: recentEvents.slice(0, 20),
+      totalEvents: recentEvents.length
+    }
+  };
 }
 
 export async function getAdminAnalytics(): Promise<AdminAnalytics> {

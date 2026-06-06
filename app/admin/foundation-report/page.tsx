@@ -14,6 +14,7 @@ type AdminHref =
   | "/admin"
   | "/admin/users"
   | "/admin/subscriptions"
+  | "/admin/billing/payment-providers"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -85,6 +86,12 @@ const modules: FoundationModule[] = [
     name: "Settings",
     notes: "Admin access settings exist; broader operational controls remain future work.",
     status: "partial"
+  },
+  {
+    href: "/admin/billing/payment-providers",
+    name: "Payment Providers",
+    notes: "Admin monitoring foundation exists for provider configuration, store payment adoption, webhook events, and safe placeholder controls.",
+    status: "ready"
   },
   {
     name: "Billing Center",
