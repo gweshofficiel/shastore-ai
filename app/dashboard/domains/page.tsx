@@ -3,7 +3,7 @@ import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import {
   activateVerifiedStoreDomain,
   attachCustomDomain,
@@ -17,11 +17,23 @@ import {
   storeDomainsMigrationMessage
 } from "@/lib/store-domains";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
+import { getBillingPlan } from "@/lib/billing/plans";
 import {
   canUseCustomDomains,
   getRemainingDomainQuota
 } from "@/lib/billing/domain-access";
 import { getRecommendedUpgrade } from "@/lib/billing/upgrade";
+import {
+  allDomainExtensions,
+  buildDomainCommercePreview,
+  defaultDomainExtensions,
+  domainCheckoutHookPoints
+} from "@/lib/domains/domain-commerce";
+import {
+  domainExtensionCatalog,
+  topDomainExtensions
+} from "@/lib/domains/extension-catalog";
+import { formatDomainMoney } from "@/lib/domains/domain-pricing";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
 
@@ -107,10 +119,60 @@ function Toast({ status }: { status: string }) {
 
 export const dynamic = "force-dynamic";
 
+function queryValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function queryValues(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value : value ? [value] : [];
+}
+
+function domainsSearchHref(params: {
+  domainSearch?: string;
+  idnSearch?: string;
+  selectAll?: boolean;
+  showAll?: boolean;
+  storeId?: string;
+}) {
+  const search = new URLSearchParams();
+
+  if (params.storeId) {
+    search.set("storeId", params.storeId);
+  }
+
+  if (params.domainSearch) {
+    search.set("domainSearch", params.domainSearch);
+  }
+
+  if (params.idnSearch) {
+    search.set("idnSearch", params.idnSearch);
+  }
+
+  if (params.showAll) {
+    search.set("viewMoreExtensions", "true");
+  }
+
+  const extensions = params.selectAll ? allDomainExtensions() : defaultDomainExtensions();
+
+  for (const extension of extensions) {
+    search.append("extensions", extension);
+  }
+
+  return `/dashboard/domains?${search.toString()}`;
+}
+
 export default async function DomainsPage({
   searchParams
 }: {
-  searchParams: Promise<{ checkSubdomain?: string; domains?: string; storeId?: string }>;
+  searchParams: Promise<{
+    checkSubdomain?: string;
+    domainSearch?: string;
+    domains?: string;
+    extensions?: string | string[];
+    idnSearch?: string;
+    storeId?: string;
+    viewMoreExtensions?: string;
+  }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -166,6 +228,19 @@ export default async function DomainsPage({
     access?.usage.domainLimit !== null &&
     (remainingDomainQuota ?? 0) <= 0;
   const customDomainsAvailable = access ? canUseCustomDomains(access) : false;
+  const domainSearch = queryValue(params.domainSearch);
+  const idnSearch = queryValue(params.idnSearch);
+  const selectedExtensions = queryValues(params.extensions);
+  const showAllExtensions = params.viewMoreExtensions === "true";
+  const visibleExtensions = showAllExtensions
+    ? domainExtensionCatalog
+    : domainExtensionCatalog.filter((extension) => extension.featured);
+  const commercePreview = buildDomainCommercePreview({
+    idnSearchTerm: idnSearch,
+    plan: access?.plan ?? getBillingPlan("free"),
+    searchTerm: domainSearch,
+    selectedExtensions
+  });
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -203,6 +278,170 @@ export default async function DomainsPage({
           <p className="text-sm font-bold text-red-700">{data.error}</p>
         </Card>
       ) : null}
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Domain commerce preview
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              Search domains and estimate checkout
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Search, select extensions, and preview included credit before checkout.
+              No availability lookup, purchase, domain creation, or charge happens here.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            Preview only
+          </span>
+        </div>
+        <form className="mt-6 grid gap-5">
+          <input name="storeId" type="hidden" value={activeStoreId} />
+          {showAllExtensions ? <input name="viewMoreExtensions" type="hidden" value="true" /> : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              defaultValue={domainSearch}
+              id="domainSearch"
+              label="Domain Search"
+              name="domainSearch"
+              placeholder="yourbrand"
+            />
+            <Input
+              defaultValue={idnSearch}
+              id="idnSearch"
+              label="IDN Search"
+              name="idnSearch"
+              placeholder="café-store"
+            />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-ink">Top Extensions</p>
+                <p className="mt-1 text-xs font-semibold text-muted">
+                  Featured: {topDomainExtensions.join(", ")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ButtonLink
+                  href={domainsSearchHref({
+                    domainSearch,
+                    idnSearch,
+                    showAll: true,
+                    storeId: activeStoreId
+                  })}
+                  variant="secondary"
+                >
+                  View More
+                </ButtonLink>
+                <ButtonLink
+                  href={domainsSearchHref({
+                    domainSearch,
+                    idnSearch,
+                    selectAll: true,
+                    showAll: true,
+                    storeId: activeStoreId
+                  })}
+                  variant="secondary"
+                >
+                  Select All
+                </ButtonLink>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {visibleExtensions.map((extension) => (
+                <label
+                  className="flex cursor-pointer items-start gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                  key={extension.extension}
+                >
+                  <input
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                    defaultChecked={commercePreview.selectedExtensions.includes(extension.extension)}
+                    name="extensions"
+                    type="checkbox"
+                    value={extension.extension}
+                  />
+                  <span>
+                    <span className="block text-sm font-black text-ink">{extension.extension}</span>
+                    <span className="mt-1 block text-xs font-semibold text-muted">
+                      {extension.label} · {formatDomainMoney(extension.registrationPriceCents)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button className="w-fit" type="submit">
+            Calculate preview
+          </Button>
+        </form>
+      </Card>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="p-6 lg:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Purchase summary
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+            {formatDomainMoney(commercePreview.pricing.subtotalCents)}
+          </h2>
+          <div className="mt-5 grid gap-3">
+            {commercePreview.pricing.lines.length ? (
+              commercePreview.pricing.lines.map((line) => (
+                <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3" key={line.domainName}>
+                  <span className="break-all text-sm font-bold text-ink">{line.domainName}</span>
+                  <span className="text-sm font-black text-ink">{formatDomainMoney(line.priceCents)}</span>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-muted">
+                Enter a domain search term to calculate selected extensions.
+              </p>
+            )}
+          </div>
+        </Card>
+        <Card className="p-6 lg:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Checkout preparation
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+            Customer due: {formatDomainMoney(commercePreview.credit.customerDueCents)}
+          </h2>
+          <div className="mt-5 grid gap-3 text-sm font-semibold text-muted">
+            <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+              <span>Current plan</span>
+              <span className="font-black text-ink">
+                {commercePreview.credit.planName} · {commercePreview.credit.planPrice}
+              </span>
+            </div>
+            <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+              <span>Included domain credit</span>
+              <span className="font-black text-ink">
+                {formatDomainMoney(commercePreview.credit.includedCreditCents)}
+              </span>
+            </div>
+            <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
+              <span>Credit used</span>
+              <span className="font-black text-ink">
+                {formatDomainMoney(commercePreview.credit.creditUsedCents)}
+              </span>
+            </div>
+          </div>
+          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+            Checkout is preview-only. No payment session, domain registration, or email purchase is created.
+          </p>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Future checkout hooks
+            </p>
+            <ul className="mt-3 grid gap-2 text-xs font-semibold leading-5 text-muted">
+              {domainCheckoutHookPoints().map((hook) => (
+                <li key={hook}>{hook}</li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      </div>
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="p-6 lg:p-8">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
@@ -310,12 +549,12 @@ export default async function DomainsPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-black tracking-[-0.02em] text-ink">
-              HOSTINSH reseller API hooks
+              Future purchase service hooks
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              These hooks reserve the integration points for future domain search,
-              domain purchase, email purchase, and reseller balance checks. They do not
-              call HOSTINSH and do not charge customers yet.
+              These hooks reserve integration points for future domain search,
+              domain purchase, email purchase, and credit checks. They do not call
+              external services and do not charge customers yet.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
@@ -329,7 +568,7 @@ export default async function DomainsPage({
                 {hook.hook.replace(/_/g, " ")}
               </p>
               <p className="mt-2 text-sm font-black text-ink">
-                {hook.configured ? "Credentials detected" : "Not configured"}
+                {hook.configured ? "Service settings detected" : "Service settings not configured"}
               </p>
               <p className="mt-2 text-xs font-semibold leading-5 text-muted">
                 {hook.message}

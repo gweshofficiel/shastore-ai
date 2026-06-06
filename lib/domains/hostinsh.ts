@@ -61,7 +61,7 @@ function placeholderHook(hook: HostinshHookResult["hook"]): HostinshHookResult {
   return {
     configured: Boolean(process.env.HOSTINSH_API_KEY),
     hook,
-    message: "HOSTINSH reseller API hook is reserved for future activation. No external API call or customer charge is performed.",
+    message: "Future purchase service hook is reserved. No external call or customer charge is performed.",
     status: "placeholder"
   };
 }
