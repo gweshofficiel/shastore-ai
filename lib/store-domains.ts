@@ -18,6 +18,10 @@ import {
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
+import {
+  buildDomainPaymentPreparation,
+  type DomainPaymentPreparationStatus
+} from "@/lib/domains/domain-payment-preparation";
 
 export type ClaimedStoreForDomains = {
   id: string;
@@ -71,6 +75,15 @@ export type DomainOrderDraft = {
   includedDomainCredit: number;
   includedDomainCreditCents: number;
   planMonthlyPrice: string;
+  paymentPreparation: {
+    amountDueNowCents: number;
+    nextStep: DomainPaymentPreparationStatus;
+    paymentRequired: boolean;
+    primaryStatus: DomainPaymentPreparationStatus;
+    statuses: DomainPaymentPreparationStatus[];
+  };
+  paymentPreparationStatus: DomainPaymentPreparationStatus;
+  platformBalanceSafetyStatus: "blocked_until_platform_balance_check";
   selectedDomain: string;
   selectedPlan: {
     id: string;
@@ -182,6 +195,32 @@ function parseDomainOrderDraft(value: unknown): DomainOrderDraft | null {
     typeof value.creditUsed === "number" ? value.creditUsed : value.creditUsedCents;
   const customerDue =
     typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
+  const fallbackPaymentPreparation = buildDomainPaymentPreparation(customerDue);
+  const paymentPreparation = isRecord(value.paymentPreparation)
+    ? {
+        amountDueNowCents:
+          typeof value.paymentPreparation.amountDueNowCents === "number"
+            ? value.paymentPreparation.amountDueNowCents
+            : fallbackPaymentPreparation.amountDueNowCents,
+        nextStep:
+          typeof value.paymentPreparation.nextStep === "string"
+            ? (value.paymentPreparation.nextStep as DomainPaymentPreparationStatus)
+            : fallbackPaymentPreparation.nextStep,
+        paymentRequired:
+          typeof value.paymentPreparation.paymentRequired === "boolean"
+            ? value.paymentPreparation.paymentRequired
+            : fallbackPaymentPreparation.paymentRequired,
+        primaryStatus:
+          typeof value.paymentPreparation.primaryStatus === "string"
+            ? (value.paymentPreparation.primaryStatus as DomainPaymentPreparationStatus)
+            : fallbackPaymentPreparation.primaryStatus,
+        statuses: Array.isArray(value.paymentPreparation.statuses)
+          ? (value.paymentPreparation.statuses.filter(
+              (status): status is DomainPaymentPreparationStatus => typeof status === "string"
+            ))
+          : fallbackPaymentPreparation.statuses
+      }
+    : fallbackPaymentPreparation;
 
   return {
     createdAt: value.createdAt,
@@ -196,6 +235,12 @@ function parseDomainOrderDraft(value: unknown): DomainOrderDraft | null {
     includedDomainCredit,
     includedDomainCreditCents: value.includedDomainCreditCents,
     planMonthlyPrice: value.planMonthlyPrice,
+    paymentPreparation,
+    paymentPreparationStatus:
+      typeof value.paymentPreparationStatus === "string"
+        ? (value.paymentPreparationStatus as DomainPaymentPreparationStatus)
+        : paymentPreparation.primaryStatus,
+    platformBalanceSafetyStatus: "blocked_until_platform_balance_check",
     selectedDomain: value.selectedDomain,
     selectedPlan: {
       id: selectedPlan.id,

@@ -140,6 +140,10 @@ function queryValues(value: string | string[] | undefined) {
   return Array.isArray(value) ? value : value ? [value] : [];
 }
 
+function paymentPreparationLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
 function domainsSearchHref(params: {
   domainSearch?: string;
   idnSearch?: string;
@@ -926,18 +930,24 @@ export default async function DomainsPage({
                     <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.creditUsedCents)}</p>
                   </div>
                   <div className="rounded-2xl bg-white p-3">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Customer due</p>
-                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.customerDueCents)}</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Amount due now</p>
+                    <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(draft.paymentPreparation.amountDueNowCents)}</p>
                   </div>
-                  <div className="rounded-2xl bg-amber-50 p-3 sm:col-span-2">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Owner status</p>
-                    <p className="mt-1 text-sm font-black text-amber-900">
-                      Draft prepared · Awaiting payment / future activation
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Payment preparation</p>
+                    <p className="mt-1 text-sm font-black text-ink">
+                      {paymentPreparationLabel(draft.paymentPreparationStatus)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Next step</p>
+                    <p className="mt-1 text-sm font-black text-ink">
+                      {paymentPreparationLabel(draft.paymentPreparation.nextStep)}
                     </p>
                   </div>
                 </div>
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                  No purchase yet. No charge yet. No registration yet.
+                  No payment, registration, or external service call happens yet.
                 </p>
               </div>
             ))

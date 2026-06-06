@@ -12,6 +12,10 @@ import {
 import { getBillingPlan } from "@/lib/billing/plans";
 import { assertStoreMutationAllowed } from "@/lib/billing/store-access";
 import { calculateDomainLineCreditQuote } from "@/lib/domains/domain-credit";
+import {
+  buildDomainPaymentPreparation,
+  type DomainPaymentPreparationStatus
+} from "@/lib/domains/domain-payment-preparation";
 import { getDomainExtension, normalizeDomainExtension } from "@/lib/domains/extension-catalog";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getDefaultDnsTarget, getDomainBase } from "@/lib/domains/hostinsh";
@@ -62,14 +66,29 @@ type DomainOrderDraftRecord = {
   futureHookPoints: {
     autoConnectAfterPurchase: "reserved";
     availabilityRefresh: "reserved";
+    attachDomainToStore: "reserved";
+    checkPlatformBalance: "reserved";
+    confirmPayment: "reserved";
+    createPaymentSession: "reserved";
     paymentSession: "reserved";
+    registerDomain: "reserved";
     registrationRequest: "reserved";
+    startSslProvisioning: "reserved";
     sslProvisioningAfterConnection: "reserved";
   };
   id: string;
   includedDomainCredit: number;
   includedDomainCreditCents: number;
   planMonthlyPrice: string;
+  paymentPreparation: {
+    amountDueNowCents: number;
+    nextStep: DomainPaymentPreparationStatus;
+    paymentRequired: boolean;
+    primaryStatus: DomainPaymentPreparationStatus;
+    statuses: DomainPaymentPreparationStatus[];
+  };
+  paymentPreparationStatus: DomainPaymentPreparationStatus;
+  platformBalanceSafetyStatus: "blocked_until_platform_balance_check";
   selectedDomain: string;
   selectedPlan: {
     id: string;
@@ -214,10 +233,19 @@ async function writeDomainOrderDraft({
           latestDraftId: draft.id,
           latestStatus: "draft",
           latestUpdatedAt: now,
-          paymentSession: "reserved",
+          paymentPreparationStatus: draft.paymentPreparationStatus,
+          nextStep: draft.paymentPreparation.nextStep,
+          platformBalanceSafetyStatus: draft.platformBalanceSafetyStatus,
+          createPaymentSession: "reserved",
+          confirmPayment: "reserved",
+          checkPlatformBalance: "reserved",
+          registerDomain: "reserved",
+          attachDomainToStore: "reserved",
+          startSslProvisioning: "reserved",
           availabilityRefresh: "reserved",
           registrationRequest: "reserved",
           autoConnectAfterPurchase: "reserved",
+          paymentSession: "reserved",
           sslProvisioningAfterConnection: "reserved"
         }
       },
@@ -651,6 +679,7 @@ export async function prepareDomainOrderDraft(formData: FormData) {
     domainPriceCents: extensionCatalogItem.registrationPriceCents,
     plan
   });
+  const paymentPreparation = buildDomainPaymentPreparation(credit.customerDueCents);
   const createdAt = new Date().toISOString();
   const draft: DomainOrderDraftRecord = {
     createdAt,
@@ -664,14 +693,23 @@ export async function prepareDomainOrderDraft(formData: FormData) {
     futureHookPoints: {
       autoConnectAfterPurchase: "reserved",
       availabilityRefresh: "reserved",
+      attachDomainToStore: "reserved",
+      checkPlatformBalance: "reserved",
+      confirmPayment: "reserved",
+      createPaymentSession: "reserved",
       paymentSession: "reserved",
+      registerDomain: "reserved",
       registrationRequest: "reserved",
+      startSslProvisioning: "reserved",
       sslProvisioningAfterConnection: "reserved"
     },
     id: randomUUID(),
     includedDomainCredit: credit.includedCreditCents,
     includedDomainCreditCents: credit.includedCreditCents,
     planMonthlyPrice: credit.planPrice,
+    paymentPreparation,
+    paymentPreparationStatus: paymentPreparation.primaryStatus,
+    platformBalanceSafetyStatus: "blocked_until_platform_balance_check",
     selectedDomain,
     selectedPlan: {
       id: credit.planId,
@@ -694,6 +732,7 @@ export async function prepareDomainOrderDraft(formData: FormData) {
     metadata: {
       customerDueCents: draft.customerDueCents,
       extension: draft.extension,
+      paymentPreparationStatus: draft.paymentPreparationStatus,
       source: "store_data_domain_order_drafts",
       status: draft.status
     },
