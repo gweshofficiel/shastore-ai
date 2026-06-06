@@ -9,6 +9,7 @@ import {
   attachCustomDomain,
   createStoreSubdomain,
   markStoreDomainVerificationPending,
+  prepareDomainOrderDraft,
   removeDomain,
   setPrimaryDomain
 } from "@/lib/store-domain-actions";
@@ -839,6 +840,13 @@ export default async function DomainsPage({
                   <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
                     Preview only. No payment, charge, or registration happens yet.
                   </p>
+                  <form action={prepareDomainOrderDraft} className="mt-4">
+                    <input name="storeId" type="hidden" value={activeStoreId} />
+                    <input name="storeName" type="hidden" value={selectedStoreName} />
+                    <input name="selectedDomain" type="hidden" value={selectedDomainLine.domainName} />
+                    <input name="extension" type="hidden" value={selectedDomainLine.extension} />
+                    <Button type="submit">Prepare domain order</Button>
+                  </form>
             </Card>
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -861,58 +869,21 @@ export default async function DomainsPage({
           ) : null}
         </>
       ) : null}
-      <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
-        <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">
-          Advanced domain diagnostics
-        </summary>
-        <p className="mt-2 text-sm leading-6 text-muted">
-          Technical records, routing checks, prepared drafts, and future service placeholders are hidden here for troubleshooting.
-        </p>
-        <div className="mt-6 grid gap-6">
-      <Card className="p-6 lg:p-8">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
-          <ShieldCheck className="h-5 w-5 text-emerald-700" />
-        </div>
-        <h2 className="mt-5 text-2xl font-black tracking-[-0.03em] text-ink">
-          Primary domain
-        </h2>
-        {primaryDomain ? (
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-2xl font-black tracking-[-0.04em] text-ink">
-              {primaryDomain.hostname}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StatusBadge label="Status" value={primaryDomain.status ?? primaryDomain.verification_status} />
-              <StatusBadge label="DNS" value={primaryDomain.verification_status} />
-              <StatusBadge label="SSL" value={primaryDomain.ssl_status} />
-            </div>
-            <p className="mt-4 text-sm leading-6 text-muted">
-              Active custom domains resolve this host to the correct public store while
-              default SHASTORE URLs continue to work.
-            </p>
-          </div>
-        ) : (
-          <p className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
-            No primary domain yet. Set a SHASTORE subdomain or mark a custom
-            domain as primary.
-          </p>
-        )}
-      </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-              Domain order preparation
+              Domain order draft
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
-              Prepared order drafts
+              Prepared custom domain orders
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               This is a preparation step. No domain has been purchased yet.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-800">
-            Awaiting payment / future activation
+            Draft only
           </span>
         </div>
         <div className="mt-5 grid gap-3">
@@ -928,7 +899,7 @@ export default async function DomainsPage({
                       {draft.selectedDomain}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-muted">
-                      {new Date(draft.createdAt).toLocaleString()} · {draft.extension}
+                      {draft.storeName} · {new Date(draft.createdAt).toLocaleString()} · {draft.extension}
                     </p>
                   </div>
                   <StatusBadge label="Status" value={draft.status} />
@@ -972,25 +943,50 @@ export default async function DomainsPage({
             ))
           ) : (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-muted">
-              <p className="font-bold text-ink">No prepared domain order drafts yet.</p>
+              <p className="font-bold text-ink">No domain order draft yet.</p>
               <p className="mt-1 leading-6">
                 Select a domain from search results, then prepare an order draft from the checkout preview.
               </p>
             </div>
           )}
         </div>
-        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-            Future checkout steps
-          </p>
-          <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-2 lg:grid-cols-5">
-            <p className="rounded-2xl bg-slate-50 p-3">Payment session</p>
-            <p className="rounded-2xl bg-slate-50 p-3">Availability refresh</p>
-            <p className="rounded-2xl bg-slate-50 p-3">Registration request</p>
-            <p className="rounded-2xl bg-slate-50 p-3">Auto connect after purchase</p>
-            <p className="rounded-2xl bg-slate-50 p-3">SSL provisioning after connection</p>
-          </div>
+      </Card>
+      <details className="rounded-[2rem] border border-slate-200 bg-white p-6 lg:p-8">
+        <summary className="cursor-pointer text-xl font-black tracking-[-0.02em] text-ink">
+          Advanced domain diagnostics
+        </summary>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Technical records, routing checks, prepared drafts, and future service placeholders are hidden here for troubleshooting.
+        </p>
+        <div className="mt-6 grid gap-6">
+      <Card className="p-6 lg:p-8">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
+          <ShieldCheck className="h-5 w-5 text-emerald-700" />
         </div>
+        <h2 className="mt-5 text-2xl font-black tracking-[-0.03em] text-ink">
+          Primary domain
+        </h2>
+        {primaryDomain ? (
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <p className="text-2xl font-black tracking-[-0.04em] text-ink">
+              {primaryDomain.hostname}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusBadge label="Status" value={primaryDomain.status ?? primaryDomain.verification_status} />
+              <StatusBadge label="DNS" value={primaryDomain.verification_status} />
+              <StatusBadge label="SSL" value={primaryDomain.ssl_status} />
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted">
+              Active custom domains resolve this host to the correct public store while
+              default SHASTORE URLs continue to work.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-muted">
+            No primary domain yet. Set a SHASTORE subdomain or mark a custom
+            domain as primary.
+          </p>
+        )}
       </Card>
       <Card className="p-6 lg:p-8">
         <h2 className="text-xl font-black tracking-[-0.02em] text-ink">

@@ -52,8 +52,11 @@ type DomainStoreDataRecord = {
 
 type DomainOrderDraftRecord = {
   createdAt: string;
+  creditUsed: number;
   creditUsedCents: number;
+  customerDue: number;
   customerDueCents: number;
+  domainPrice: number;
   domainPriceCents: number;
   extension: string;
   futureHookPoints: {
@@ -64,6 +67,7 @@ type DomainOrderDraftRecord = {
     sslProvisioningAfterConnection: "reserved";
   };
   id: string;
+  includedDomainCredit: number;
   includedDomainCreditCents: number;
   planMonthlyPrice: string;
   selectedDomain: string;
@@ -73,6 +77,7 @@ type DomainOrderDraftRecord = {
   };
   status: "draft";
   storeId: string;
+  storeName: string;
 };
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
@@ -623,6 +628,7 @@ export async function prepareDomainOrderDraft(formData: FormData) {
   const selectedDomain = cleanPreviewDomain(formData.get("selectedDomain"));
   const extension = normalizeDomainExtension(cleanText(formData.get("extension"), 40));
   const extensionCatalogItem = getDomainExtension(extension);
+  const storeName = cleanText(formData.get("storeName"), 160) || "Selected store";
 
   try {
     await assertStoreMutationAllowed(supabase, userId, { id: storeId });
@@ -648,8 +654,11 @@ export async function prepareDomainOrderDraft(formData: FormData) {
   const createdAt = new Date().toISOString();
   const draft: DomainOrderDraftRecord = {
     createdAt,
+    creditUsed: credit.creditUsedCents,
     creditUsedCents: credit.creditUsedCents,
+    customerDue: credit.customerDueCents,
     customerDueCents: credit.customerDueCents,
+    domainPrice: credit.domainPriceCents,
     domainPriceCents: credit.domainPriceCents,
     extension: extensionCatalogItem.extension,
     futureHookPoints: {
@@ -660,6 +669,7 @@ export async function prepareDomainOrderDraft(formData: FormData) {
       sslProvisioningAfterConnection: "reserved"
     },
     id: randomUUID(),
+    includedDomainCredit: credit.includedCreditCents,
     includedDomainCreditCents: credit.includedCreditCents,
     planMonthlyPrice: credit.planPrice,
     selectedDomain,
@@ -668,7 +678,8 @@ export async function prepareDomainOrderDraft(formData: FormData) {
       name: credit.planName
     },
     status: "draft",
-    storeId
+    storeId,
+    storeName
   };
 
   await writeDomainOrderDraft({

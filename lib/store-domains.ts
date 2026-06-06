@@ -60,11 +60,15 @@ export type StoreDomainVerificationLog = {
 
 export type DomainOrderDraft = {
   createdAt: string;
+  creditUsed: number;
   creditUsedCents: number;
+  customerDue: number;
   customerDueCents: number;
+  domainPrice: number;
   domainPriceCents: number;
   extension: string;
   id: string;
+  includedDomainCredit: number;
   includedDomainCreditCents: number;
   planMonthlyPrice: string;
   selectedDomain: string;
@@ -74,6 +78,7 @@ export type DomainOrderDraft = {
   };
   status: "draft";
   storeId: string;
+  storeName: string;
 };
 
 export type DomainAvailability = {
@@ -163,14 +168,32 @@ function parseDomainOrderDraft(value: unknown): DomainOrderDraft | null {
   ) {
     return null;
   }
+  const storeName =
+    typeof value.storeName === "string" && value.storeName.trim()
+      ? value.storeName
+      : "Selected store";
+  const includedDomainCredit =
+    typeof value.includedDomainCredit === "number"
+      ? value.includedDomainCredit
+      : value.includedDomainCreditCents;
+  const domainPrice =
+    typeof value.domainPrice === "number" ? value.domainPrice : value.domainPriceCents;
+  const creditUsed =
+    typeof value.creditUsed === "number" ? value.creditUsed : value.creditUsedCents;
+  const customerDue =
+    typeof value.customerDue === "number" ? value.customerDue : value.customerDueCents;
 
   return {
     createdAt: value.createdAt,
+    creditUsed,
     creditUsedCents: value.creditUsedCents,
+    customerDue,
     customerDueCents: value.customerDueCents,
+    domainPrice,
     domainPriceCents: value.domainPriceCents,
     extension: value.extension,
     id: value.id,
+    includedDomainCredit,
     includedDomainCreditCents: value.includedDomainCreditCents,
     planMonthlyPrice: value.planMonthlyPrice,
     selectedDomain: value.selectedDomain,
@@ -179,7 +202,8 @@ function parseDomainOrderDraft(value: unknown): DomainOrderDraft | null {
       name: selectedPlan.name
     },
     status: "draft",
-    storeId: value.storeId
+    storeId: value.storeId,
+    storeName
   };
 }
 
