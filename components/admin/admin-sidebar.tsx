@@ -20,6 +20,7 @@ export const adminNavItems = [
   { href: "/admin/marketing", label: "Marketing", icon: "analytics" },
   { href: "/admin/email", label: "Email", icon: "analytics" },
   { href: "/admin/notifications", label: "Notifications", icon: "analytics" },
+  { href: "/admin/seo", label: "SEO", icon: "analytics" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
   { href: "/admin/support", label: "Support", icon: "support" },
   { href: "/admin/security", label: "Security", icon: "security" },

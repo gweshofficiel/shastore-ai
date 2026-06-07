@@ -652,6 +652,52 @@ export type AdminNotificationControl = {
   }>;
 };
 
+export type AdminSEOControl = {
+  analyticsReadiness: Array<{
+    name: string;
+    note: string;
+    status: "configured" | "missing" | "placeholder";
+  }>;
+  futureHooks: string[];
+  overview: {
+    canonicalReady: number;
+    indexedPagesPlaceholder: string;
+    languageReady: number;
+    missingMetaDescriptions: number;
+    missingMetaTitles: number;
+    robotsStatus: "ready" | "warning";
+    sitemapStatus: "ready" | "warning";
+    structuredDataStatus: "placeholder" | "ready";
+  };
+  pages: Array<{
+    canonicalStatus: "missing" | "ready";
+    languageStatus: "placeholder" | "ready";
+    lastUpdated: string | null;
+    metaDescriptionStatus: "missing" | "ready";
+    metaTitleStatus: "missing" | "ready";
+    openGraphStatus: "placeholder" | "ready";
+    page: string;
+    slug: string;
+  }>;
+  robots: {
+    allowedPaths: string[];
+    blockedPaths: string[];
+    environmentWarning: string;
+    status: "ready" | "warning";
+  };
+  sitemap: {
+    excludedRoutes: string[];
+    includedRoutes: string[];
+    lastGenerated: string;
+    status: "ready" | "warning";
+  };
+  structuredData: Array<{
+    name: string;
+    note: string;
+    status: "placeholder" | "ready";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -3915,6 +3961,115 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
       { count: typeCounts.get("support") ?? 0, key: "support", label: "Support" },
       { count: typeCounts.get("system_health") ?? 0, key: "system_health", label: "System health" }
     ]
+  };
+}
+
+export async function getAdminSEOControl(): Promise<AdminSEOControl> {
+  const platformWebsite = await getAdminPlatformWebsiteControl();
+  const pages: AdminSEOControl["pages"] = platformWebsite.pages.map((page) => {
+    const metaTitleStatus = page.metaTitle.trim() ? "ready" : "missing";
+    const metaDescriptionStatus = page.metaDescription.trim() ? "ready" : "missing";
+    const canonicalStatus = page.canonical.trim() ? "ready" : "missing";
+    const openGraphStatus = page.openGraph.trim() && !page.openGraph.toLowerCase().includes("placeholder")
+      ? "ready"
+      : "placeholder";
+    const languageStatus = page.languages.some((language) => language.status === "ready") ? "ready" : "placeholder";
+
+    return {
+      canonicalStatus,
+      languageStatus,
+      lastUpdated: page.lastUpdated,
+      metaDescriptionStatus,
+      metaTitleStatus,
+      openGraphStatus,
+      page: page.title,
+      slug: page.slug
+    };
+  });
+  const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
+  const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];
+  const isProduction = process.env.NODE_ENV === "production";
+  const sitemapStatus = includedRoutes.length ? "ready" : "warning";
+  const robotsStatus = blockedPaths.includes("/admin/") && blockedPaths.includes("/api/") ? "ready" : "warning";
+  const structuredData: AdminSEOControl["structuredData"] = [
+    {
+      name: "Organization schema",
+      note: "Platform organization schema is represented by root metadata and reserved for JSON-LD hardening.",
+      status: "ready"
+    },
+    {
+      name: "Website schema",
+      note: "Root platform website metadata is ready; explicit Website JSON-LD remains a future enhancement.",
+      status: "ready"
+    },
+    {
+      name: "Breadcrumb schema",
+      note: "Reserved for public platform and store route breadcrumbs.",
+      status: "placeholder"
+    },
+    {
+      name: "Product schema placeholder",
+      note: "Store product structured data belongs to Store Owner SEO and storefront runtime.",
+      status: "placeholder"
+    },
+    {
+      name: "FAQ schema placeholder",
+      note: "Reserved for platform FAQ and store FAQ pages without duplicating Store Owner SEO.",
+      status: "placeholder"
+    }
+  ];
+
+  return {
+    analyticsReadiness: [
+      {
+        name: "Google Analytics placeholder",
+        note: "Platform GA readiness placeholder only. Store Owner analytics remain separate.",
+        status: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ? "configured" : "placeholder"
+      },
+      {
+        name: "Search Console placeholder",
+        note: "Search Console verification and indexing data are not connected in this phase.",
+        status: "placeholder"
+      },
+      {
+        name: "Indexing warnings placeholder",
+        note: isProduction ? "Production indexing warnings can attach here." : "Non-production environment should be reviewed before indexing.",
+        status: isProduction ? "placeholder" : "missing"
+      }
+    ],
+    futureHooks: [
+      "SEO editor",
+      "AI SEO generator",
+      "Sitemap regeneration",
+      "Search Console integration",
+      "SEO audit export"
+    ],
+    overview: {
+      canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
+      indexedPagesPlaceholder: "Search Console not connected",
+      languageReady: pages.filter((page) => page.languageStatus === "ready").length,
+      missingMetaDescriptions: pages.filter((page) => page.metaDescriptionStatus === "missing").length,
+      missingMetaTitles: pages.filter((page) => page.metaTitleStatus === "missing").length,
+      robotsStatus,
+      sitemapStatus,
+      structuredDataStatus: structuredData.every((item) => item.status === "ready") ? "ready" : "placeholder"
+    },
+    pages,
+    robots: {
+      allowedPaths: ["/", "/l/", "/store/"],
+      blockedPaths,
+      environmentWarning: isProduction
+        ? "Production robots allow public routes and block admin/dashboard/private routes."
+        : "Non-production environment: confirm deployment URL and indexing before launch.",
+      status: robotsStatus
+    },
+    sitemap: {
+      excludedRoutes: ["/admin/*", "/api/*", "/dashboard/*", "/store/*/account", "/store/*/cart", "/store/*/checkout", "/store/*/order/*"],
+      includedRoutes,
+      lastGenerated: "Generated dynamically by app/sitemap.ts",
+      status: sitemapStatus
+    },
+    structuredData
   };
 }
 
