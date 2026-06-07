@@ -22,6 +22,7 @@ type AdminHref =
   | "/admin/platform-theme"
   | "/admin/templates"
   | "/admin/marketplace"
+  | "/admin/marketing"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -140,6 +141,12 @@ const modules: FoundationModule[] = [
     href: "/admin/marketplace",
     name: "Marketplace",
     notes: "Admin management foundation exists for template, theme, plugin, app, and service marketplace preparation with approval workflow placeholders and no payments or installs.",
+    status: "ready"
+  },
+  {
+    href: "/admin/marketing",
+    name: "Marketing & Promotion",
+    notes: "Admin management foundation exists for platform coupons, promotions, gift codes, referrals, affiliates, and campaigns with safe placeholders only. Store Owner marketing remains separate.",
     status: "ready"
   },
   {

@@ -511,6 +511,53 @@ export type AdminMarketplaceControl = {
   }>;
 };
 
+export type AdminPlatformMarketingControl = {
+  campaigns: Array<{
+    endDate: string | null;
+    id: string;
+    name: string;
+    revenueImpact: number;
+    section: "Affiliate program" | "Campaigns" | "Gift codes" | "Platform coupons" | "Platform promotions" | "Referral program";
+    startDate: string | null;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    targetAudience: string;
+    type: "affiliate" | "campaign" | "coupon" | "gift_code" | "promotion" | "referral";
+    usage: number;
+  }>;
+  coupons: Array<{
+    amount: string;
+    code: string;
+    discountType: "fixed" | "percentage" | "plan_credit";
+    planEligibility: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    usageLimit: string;
+  }>;
+  futureHooks: string[];
+  giftCodes: Array<{
+    code: string;
+    creditAmount: number;
+    planCredit: string;
+    redemptionStatus: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+  }>;
+  overview: {
+    activeSections: number;
+    archivedSections: number;
+    draftSections: number;
+    expiredSections: number;
+    pausedSections: number;
+    totalSections: number;
+  };
+  referralAffiliates: Array<{
+    commission: number;
+    payoutStatus: string;
+    referredUsers: number;
+    referrer: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    type: "affiliate" | "referral";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -3083,6 +3130,194 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       name,
       status: name === "Template Marketplace" ? "ready" : "placeholder"
     }))
+  };
+}
+
+export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformMarketingControl> {
+  const { supabase } = await getAdminUsersBase();
+  const monitoringEvents = await safeSelect(
+    supabase,
+    "monitoring_events",
+    "event_type, event_status, entity_type, metadata, created_at",
+    500
+  );
+  const marketingEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_platform_marketing_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestEventByCampaign = new Map<string, AnyRecord>();
+
+  for (const event of marketingEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const campaignId = text(metadata.campaign_id);
+
+    if (campaignId && !latestEventByCampaign.has(campaignId)) {
+      latestEventByCampaign.set(campaignId, event);
+    }
+  }
+
+  function campaignStatus(
+    campaignId: string,
+    fallback: AdminPlatformMarketingControl["campaigns"][number]["status"]
+  ): AdminPlatformMarketingControl["campaigns"][number]["status"] {
+    const eventType = text(latestEventByCampaign.get(campaignId)?.event_type);
+
+    if (eventType === "admin_platform_marketing_activate_campaign") {
+      return "active";
+    }
+
+    if (eventType === "admin_platform_marketing_archive_campaign") {
+      return "archived";
+    }
+
+    if (eventType === "admin_platform_marketing_create_draft") {
+      return "draft";
+    }
+
+    if (eventType === "admin_platform_marketing_pause_campaign") {
+      return "paused";
+    }
+
+    return fallback;
+  }
+
+  const campaigns: AdminPlatformMarketingControl["campaigns"] = [
+    {
+      endDate: null,
+      id: "platform-coupon:welcome-plan-credit",
+      name: "Welcome Plan Credit",
+      revenueImpact: 0,
+      section: "Platform coupons",
+      startDate: null,
+      status: campaignStatus("platform-coupon:welcome-plan-credit", "draft"),
+      targetAudience: "New SHASTORE platform subscribers",
+      type: "coupon",
+      usage: 0
+    },
+    {
+      endDate: null,
+      id: "platform-promotion:annual-upgrade",
+      name: "Annual Upgrade Promotion",
+      revenueImpact: 0,
+      section: "Platform promotions",
+      startDate: null,
+      status: campaignStatus("platform-promotion:annual-upgrade", "draft"),
+      targetAudience: "Monthly plan customers",
+      type: "promotion",
+      usage: 0
+    },
+    {
+      endDate: null,
+      id: "gift-code:launch-credit",
+      name: "Launch Credit Gift Code",
+      revenueImpact: 0,
+      section: "Gift codes",
+      startDate: null,
+      status: campaignStatus("gift-code:launch-credit", "draft"),
+      targetAudience: "Selected launch partners",
+      type: "gift_code",
+      usage: 0
+    },
+    {
+      endDate: null,
+      id: "referral:owner-invite",
+      name: "Store Owner Referral Foundation",
+      revenueImpact: 0,
+      section: "Referral program",
+      startDate: null,
+      status: campaignStatus("referral:owner-invite", "draft"),
+      targetAudience: "Existing store owners",
+      type: "referral",
+      usage: 0
+    },
+    {
+      endDate: null,
+      id: "affiliate:creator-partners",
+      name: "Creator Affiliate Foundation",
+      revenueImpact: 0,
+      section: "Affiliate program",
+      startDate: null,
+      status: campaignStatus("affiliate:creator-partners", "draft"),
+      targetAudience: "Creators, agencies, and future reseller partners",
+      type: "affiliate",
+      usage: 0
+    },
+    {
+      endDate: null,
+      id: "campaign:platform-announcements",
+      name: "Platform Announcement Campaign",
+      revenueImpact: 0,
+      section: "Campaigns",
+      startDate: null,
+      status: campaignStatus("campaign:platform-announcements", "paused"),
+      targetAudience: "All SHASTORE platform users",
+      type: "campaign",
+      usage: 0
+    }
+  ];
+
+  return {
+    campaigns,
+    coupons: [
+      {
+        amount: "10%",
+        code: "PLATFORM-WELCOME",
+        discountType: "percentage",
+        planEligibility: "Starter, Growth, Pro",
+        status: campaignStatus("platform-coupon:welcome-plan-credit", "draft"),
+        usageLimit: "Placeholder limit"
+      },
+      {
+        amount: "1 month credit",
+        code: "PLAN-CREDIT-DRAFT",
+        discountType: "plan_credit",
+        planEligibility: "Growth, Pro",
+        status: campaignStatus("platform-promotion:annual-upgrade", "draft"),
+        usageLimit: "Internal review only"
+      }
+    ],
+    futureHooks: [
+      "Platform coupon redemption",
+      "Plan discount application",
+      "Affiliate tracking",
+      "Payout system",
+      "Campaign email sending",
+      "Campaign analytics"
+    ],
+    giftCodes: [
+      {
+        code: "GIFT-LAUNCH-CREDIT",
+        creditAmount: 0,
+        planCredit: "Platform subscription credit placeholder",
+        redemptionStatus: "No redemption engine connected",
+        status: campaignStatus("gift-code:launch-credit", "draft")
+      }
+    ],
+    overview: {
+      activeSections: campaigns.filter((campaign) => campaign.status === "active").length,
+      archivedSections: campaigns.filter((campaign) => campaign.status === "archived").length,
+      draftSections: campaigns.filter((campaign) => campaign.status === "draft").length,
+      expiredSections: campaigns.filter((campaign) => campaign.status === "expired").length,
+      pausedSections: campaigns.filter((campaign) => campaign.status === "paused").length,
+      totalSections: campaigns.length
+    },
+    referralAffiliates: [
+      {
+        commission: 0,
+        payoutStatus: "No payout system connected",
+        referredUsers: 0,
+        referrer: "Store Owner Referral Foundation",
+        status: campaignStatus("referral:owner-invite", "draft"),
+        type: "referral"
+      },
+      {
+        commission: 0,
+        payoutStatus: "Placeholder only",
+        referredUsers: 0,
+        referrer: "Creator Affiliate Foundation",
+        status: campaignStatus("affiliate:creator-partners", "draft"),
+        type: "affiliate"
+      }
+    ]
   };
 }
 
