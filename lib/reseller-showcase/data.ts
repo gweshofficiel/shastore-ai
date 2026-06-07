@@ -135,6 +135,48 @@ export type ResellerTemplateInventoryData = {
   usedTemplates: number;
 };
 
+export type ResellerAnalyticsRange = "30d" | "7d" | "all" | "month" | "today";
+
+export type ResellerAnalyticsMetric = {
+  key: string;
+  label: string;
+  note: string;
+  value: string | number;
+};
+
+export type ResellerAnalyticsRow = {
+  category: string;
+  clicks: number;
+  itemType: "listing" | "template" | "visibility";
+  name: string;
+  status: string;
+  views: number;
+};
+
+export type ResellerAnalyticsData = {
+  bestCategories: ResellerAnalyticsRow[];
+  emptyStates: string[];
+  filters: Array<{
+    href: string;
+    isActive: boolean;
+    label: string;
+    value: ResellerAnalyticsRange;
+  }>;
+  futureHooks: string[];
+  leadPerformance: ResellerAnalyticsMetric[];
+  listingPerformance: ResellerAnalyticsMetric[];
+  overview: ResellerAnalyticsMetric[];
+  profile: ResellerProfile | null;
+  profilePerformance: ResellerAnalyticsMetric[];
+  range: ResellerAnalyticsRange;
+  ready: boolean;
+  templatePerformance: ResellerAnalyticsMetric[];
+  topListings: ResellerAnalyticsRow[];
+  topTemplates: ResellerAnalyticsRow[];
+  visibilityImpact: ResellerAnalyticsRow[];
+  visibilityPerformance: ResellerAnalyticsMetric[];
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -337,6 +379,57 @@ function isTemplateListing(item: ResellerShowcaseItem) {
 
 function isPublicMarketplaceStatus(status: ResellerShowcaseItem["status"]) {
   return publicMarketplaceStatuses.includes(status);
+}
+
+function normalizeAnalyticsRange(value: string | null | undefined): ResellerAnalyticsRange {
+  if (value === "today" || value === "7d" || value === "30d" || value === "month" || value === "all") {
+    return value;
+  }
+
+  return "30d";
+}
+
+function analyticsStatusLabel(status: ResellerShowcaseItem["status"]) {
+  if (status === "published" || status === "public") {
+    return "Public";
+  }
+
+  if (status === "featured_ready") {
+    return "Featured-ready";
+  }
+
+  if (status === "boosted_placeholder") {
+    return "Boosted placeholder";
+  }
+
+  if (status === "hidden" || status === "unpublished") {
+    return "Hidden";
+  }
+
+  if (status === "private") {
+    return "Private";
+  }
+
+  if (status === "under_review") {
+    return "Under review";
+  }
+
+  return "Draft";
+}
+
+function analyticsRow(item: ResellerShowcaseItem, itemType: ResellerAnalyticsRow["itemType"]): ResellerAnalyticsRow {
+  return {
+    category: item.category ?? "Uncategorized",
+    clicks: 0,
+    itemType,
+    name: item.title,
+    status: analyticsStatusLabel(item.status),
+    views: 0
+  };
+}
+
+function analyticsMetric(key: string, label: string, value: string | number, note: string): ResellerAnalyticsMetric {
+  return { key, label, note, value };
 }
 
 function normalizeReviewStatus(value: unknown): ResellerReviewStatus {
@@ -820,6 +913,141 @@ export async function getResellerTemplateInventoryData(): Promise<ResellerTempla
   const statuses = ((data ?? []) as unknown as Array<{ status?: string }>).map((row) => row.status ?? "draft");
 
   return buildResellerTemplateInventoryData(statuses);
+}
+
+export async function getResellerAnalyticsData(
+  rangeValue?: string | null
+): Promise<ResellerAnalyticsData> {
+  const range = normalizeAnalyticsRange(rangeValue);
+  const dashboard = await getResellerDashboardData();
+  const items = dashboard.items;
+  const templateItems = items.filter(isTemplateListing);
+  const listingItems = items.filter((item) => !isTemplateListing(item));
+  const publicItems = items.filter((item) => isPublicMarketplaceStatus(item.status));
+  const hiddenItems = items.filter((item) => item.status === "hidden" || item.status === "unpublished");
+  const privateItems = items.filter((item) => item.status === "private");
+  const underReviewItems = items.filter((item) => item.status === "under_review");
+  const featuredReadyItems = items.filter((item) => item.status === "featured_ready");
+  const boostedItems = items.filter((item) => item.status === "boosted_placeholder");
+  const categories = new Map<string, number>();
+
+  items.forEach((item) => {
+    const category = item.category ?? "Uncategorized";
+    categories.set(category, (categories.get(category) ?? 0) + 1);
+  });
+
+  return {
+    bestCategories: Array.from(categories.entries()).map(([category, count]) => ({
+      category,
+      clicks: 0,
+      itemType: "visibility",
+      name: category,
+      status: `${count} marketplace item${count === 1 ? "" : "s"}`,
+      views: 0
+    })),
+    emptyStates: [
+      "No profile views yet.",
+      "No listing views yet.",
+      "No template views yet.",
+      "No leads yet."
+    ],
+    filters: [
+      { href: "/reseller/dashboard/analytics?range=today", isActive: range === "today", label: "Today", value: "today" },
+      { href: "/reseller/dashboard/analytics?range=7d", isActive: range === "7d", label: "7 days", value: "7d" },
+      { href: "/reseller/dashboard/analytics?range=30d", isActive: range === "30d", label: "30 days", value: "30d" },
+      { href: "/reseller/dashboard/analytics?range=month", isActive: range === "month", label: "Month", value: "month" },
+      { href: "/reseller/dashboard/analytics?range=all", isActive: range === "all", label: "All time", value: "all" }
+    ],
+    futureHooks: [
+      "Real view tracking",
+      "Click tracking",
+      "Lead tracking",
+      "Conversion tracking",
+      "Marketplace ranking analytics",
+      "Export analytics report"
+    ],
+    leadPerformance: [
+      analyticsMetric("leads", "Leads", 0, "Placeholder until lead tracking is connected."),
+      analyticsMetric("contact_clicks", "Contact clicks", 0, "No buyer email or phone details are shown."),
+      analyticsMetric("conversion_rate", "Conversion rate", "0%", "No fake sales or commission data is generated.")
+    ],
+    listingPerformance: [
+      analyticsMetric("total_listings", "Store listings", listingItems.length, "Existing non-template reseller listings."),
+      analyticsMetric("public_listings", "Public listings", listingItems.filter((item) => isPublicMarketplaceStatus(item.status)).length, "Visible on public profile when profile is published."),
+      analyticsMetric("listing_views", "Listing views", 0, "Placeholder until marketplace listing view tracking is added.")
+    ],
+    overview: [
+      analyticsMetric("profile_views", "Profile views", 0, "Placeholder aggregate only."),
+      analyticsMetric("listing_views", "Listing views", 0, "Placeholder aggregate only."),
+      analyticsMetric("template_views", "Template views", 0, "Placeholder aggregate only."),
+      analyticsMetric("contact_clicks", "Contact clicks", 0, "Placeholder aggregate only."),
+      analyticsMetric("leads", "Leads", 0, "Placeholder aggregate only."),
+      analyticsMetric("conversion_rate", "Conversion rate", "0%", "Placeholder aggregate only.")
+    ],
+    profile: dashboard.profile,
+    profilePerformance: [
+      analyticsMetric("profile_status", "Profile status", dashboard.profile?.is_published ? "Live" : "Draft", "Profile visibility only."),
+      analyticsMetric("public_items", "Public items", publicItems.length, "Public, featured-ready, boosted placeholder, and legacy published items."),
+      analyticsMetric("profile_views", "Profile views", 0, "Placeholder until public profile view tracking is added.")
+    ],
+    range,
+    ready: dashboard.ready,
+    templatePerformance: [
+      analyticsMetric("templates", "Templates", templateItems.length, "Template-backed marketplace items."),
+      analyticsMetric("public_templates", "Public templates", templateItems.filter((item) => isPublicMarketplaceStatus(item.status)).length, "Template items visible publicly."),
+      analyticsMetric("template_views", "Template views", 0, "Placeholder until template view tracking is added.")
+    ],
+    topListings: listingItems.slice(0, 6).map((item) => analyticsRow(item, "listing")),
+    topTemplates: templateItems.slice(0, 6).map((item) => analyticsRow(item, "template")),
+    visibilityImpact: [
+      {
+        category: "Visibility",
+        clicks: 0,
+        itemType: "visibility",
+        name: "Public",
+        status: `${publicItems.length} items`,
+        views: 0
+      },
+      {
+        category: "Visibility",
+        clicks: 0,
+        itemType: "visibility",
+        name: "Hidden",
+        status: `${hiddenItems.length} items`,
+        views: 0
+      },
+      {
+        category: "Visibility",
+        clicks: 0,
+        itemType: "visibility",
+        name: "Private",
+        status: `${privateItems.length} items`,
+        views: 0
+      },
+      {
+        category: "Visibility",
+        clicks: 0,
+        itemType: "visibility",
+        name: "Under review",
+        status: `${underReviewItems.length} items`,
+        views: 0
+      },
+      {
+        category: "Visibility",
+        clicks: 0,
+        itemType: "visibility",
+        name: "Featured/boosted placeholder",
+        status: `${featuredReadyItems.length + boostedItems.length} items`,
+        views: 0
+      }
+    ],
+    visibilityPerformance: [
+      analyticsMetric("public", "Public", publicItems.length, "Items eligible for public profile display."),
+      analyticsMetric("hidden_private", "Hidden/private", hiddenItems.length + privateItems.length, "Items kept out of public profile."),
+      analyticsMetric("under_review", "Under review", underReviewItems.length, "Internal-only moderation placeholder."),
+      analyticsMetric("featured_boosted", "Featured/boosted", featuredReadyItems.length + boostedItems.length, "Boosted remains placeholder-only with no payment.")
+    ]
+  };
 }
 
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {
