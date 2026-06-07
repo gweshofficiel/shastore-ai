@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type {
   PublicResellerShowcase,
@@ -175,6 +176,56 @@ export type ResellerAnalyticsData = {
   topTemplates: ResellerAnalyticsRow[];
   visibilityImpact: ResellerAnalyticsRow[];
   visibilityPerformance: ResellerAnalyticsMetric[];
+};
+
+export type ResellerLeadStatus =
+  | "archived"
+  | "contacted"
+  | "interested"
+  | "lost"
+  | "negotiating"
+  | "new"
+  | "won_placeholder";
+
+export type ResellerLeadSource =
+  | "custom_buyer_request"
+  | "listing_inquiry"
+  | "public_profile_contact"
+  | "template_inquiry";
+
+export type ResellerLead = {
+  contactMasked: string;
+  createdAt: string | null;
+  id: string;
+  interestedItem: string;
+  itemType: "custom request" | "store" | "template";
+  lastActivity: string | null;
+  leadName: string;
+  nextAction: string;
+  notes: string;
+  requestedItem: string;
+  source: ResellerLeadSource;
+  status: ResellerLeadStatus;
+  timeline: string[];
+};
+
+export type ResellerLeadsData = {
+  emptyState: string;
+  futureHooks: string[];
+  leads: ResellerLead[];
+  selectedLead: ResellerLead | null;
+  sourceFoundation: Array<{
+    label: string;
+    value: ResellerLeadSource;
+  }>;
+  statusFoundation: ResellerLeadStatus[];
+  summary: {
+    activeLeads: number;
+    archivedLeads: number;
+    lostLeads: number;
+    totalLeads: number;
+    wonPlaceholders: number;
+  };
 };
 
 export type PublicResellerProfile = {
@@ -430,6 +481,87 @@ function analyticsRow(item: ResellerShowcaseItem, itemType: ResellerAnalyticsRow
 
 function analyticsMetric(key: string, label: string, value: string | number, note: string): ResellerAnalyticsMetric {
   return { key, label, note, value };
+}
+
+function normalizeLeadStatus(value: unknown): ResellerLeadStatus {
+  const status = textValue(value).toLowerCase();
+
+  if (
+    status === "archived" ||
+    status === "contacted" ||
+    status === "interested" ||
+    status === "lost" ||
+    status === "negotiating" ||
+    status === "new" ||
+    status === "won_placeholder"
+  ) {
+    return status;
+  }
+
+  return "new";
+}
+
+function normalizeLeadSource(value: unknown): ResellerLeadSource {
+  const source = textValue(value).toLowerCase();
+
+  if (
+    source === "custom_buyer_request" ||
+    source === "listing_inquiry" ||
+    source === "public_profile_contact" ||
+    source === "template_inquiry"
+  ) {
+    return source;
+  }
+
+  return "public_profile_contact";
+}
+
+function maskedContact(value: unknown) {
+  const text = textValue(value);
+
+  if (!text) {
+    return "Masked contact";
+  }
+
+  const [name, domain] = text.split("@");
+  if (domain && name) {
+    return `${name.slice(0, 2)}***@${domain}`;
+  }
+
+  return `${text.slice(0, 2)}***${text.slice(-2)}`;
+}
+
+function leadFromEvent(row: Record<string, unknown>, index: number): ResellerLead {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const status = normalizeLeadStatus(metadata.lead_status ?? metadata.status);
+  const source = normalizeLeadSource(metadata.lead_source ?? metadata.source_type);
+  const interestedItem = textValue(metadata.interested_item, "Lead interest placeholder");
+  const itemType = textValue(metadata.item_type, "custom request");
+
+  return {
+    contactMasked: maskedContact(metadata.contact_masked ?? metadata.contact_reference),
+    createdAt: textValue(row.created_at) || null,
+    id: textValue(metadata.lead_reference, textValue(row.id, `lead-${index}`)),
+    interestedItem,
+    itemType:
+      itemType === "store" || itemType === "template" || itemType === "custom request"
+        ? itemType
+        : "custom request",
+    lastActivity: textValue(row.created_at) || null,
+    leadName: textValue(metadata.lead_name, "Lead placeholder"),
+    nextAction: textValue(metadata.next_action, "Follow up placeholder"),
+    notes: textValue(metadata.notes, "No notes yet. Notes are placeholder-only in this phase."),
+    requestedItem: textValue(metadata.requested_item, interestedItem),
+    source,
+    status,
+    timeline: [
+      textValue(row.event_type, "lead_placeholder_event"),
+      "Messaging, conversion, order creation, and ownership transfer are future hooks only."
+    ]
+  };
 }
 
 function normalizeReviewStatus(value: unknown): ResellerReviewStatus {
@@ -1047,6 +1179,89 @@ export async function getResellerAnalyticsData(
       analyticsMetric("under_review", "Under review", underReviewItems.length, "Internal-only moderation placeholder."),
       analyticsMetric("featured_boosted", "Featured/boosted", featuredReadyItems.length + boostedItems.length, "Boosted remains placeholder-only with no payment.")
     ]
+  };
+}
+
+export async function getResellerLeadsData(): Promise<ResellerLeadsData> {
+  const user = await getDashboardUser();
+  const statusFoundation: ResellerLeadStatus[] = [
+    "new",
+    "interested",
+    "contacted",
+    "negotiating",
+    "won_placeholder",
+    "lost",
+    "archived"
+  ];
+
+  if (!user) {
+    return {
+      emptyState: "No leads yet. Future buyer inquiries will appear here as pre-sale interest records only.",
+      futureHooks: [
+        "Buyer inquiry form",
+        "Messaging center",
+        "Lead-to-order conversion",
+        "Verified buyer tracking",
+        "Custom store request",
+        "CRM export"
+      ],
+      leads: [],
+      selectedLead: null,
+      sourceFoundation: [
+        { label: "Public profile contact", value: "public_profile_contact" },
+        { label: "Listing inquiry", value: "listing_inquiry" },
+        { label: "Template inquiry", value: "template_inquiry" },
+        { label: "Custom buyer request", value: "custom_buyer_request" }
+      ],
+      statusFoundation,
+      summary: {
+        activeLeads: 0,
+        archivedLeads: 0,
+        lostLeads: 0,
+        totalLeads: 0,
+        wonPlaceholders: 0
+      }
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_leads")
+        .order("created_at", { ascending: false })
+        .limit(25)
+    : { data: [] };
+  const leads = ((data ?? []) as unknown as Record<string, unknown>[]).map(leadFromEvent);
+
+  return {
+    emptyState: "No leads yet. Future buyer inquiries will appear here as pre-sale interest records only.",
+    futureHooks: [
+      "Buyer inquiry form",
+      "Messaging center",
+      "Lead-to-order conversion",
+      "Verified buyer tracking",
+      "Custom store request",
+      "CRM export"
+    ],
+    leads,
+    selectedLead: leads[0] ?? null,
+    sourceFoundation: [
+      { label: "Public profile contact", value: "public_profile_contact" },
+      { label: "Listing inquiry", value: "listing_inquiry" },
+      { label: "Template inquiry", value: "template_inquiry" },
+      { label: "Custom buyer request", value: "custom_buyer_request" }
+    ],
+    statusFoundation,
+    summary: {
+      activeLeads: leads.filter((lead) => !["archived", "lost", "won_placeholder"].includes(lead.status)).length,
+      archivedLeads: leads.filter((lead) => lead.status === "archived").length,
+      lostLeads: leads.filter((lead) => lead.status === "lost").length,
+      totalLeads: leads.length,
+      wonPlaceholders: leads.filter((lead) => lead.status === "won_placeholder").length
+    }
   };
 }
 
