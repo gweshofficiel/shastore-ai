@@ -8,6 +8,7 @@ import {
 import {
   getResellerDashboardData,
   getResellerReputationData,
+  getResellerVerificationData,
   getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
@@ -19,11 +20,12 @@ export default async function PrivateResellerShowcasePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
-    getResellerReputationData()
+    getResellerReputationData(),
+    getResellerVerificationData()
   ]);
 
   return (
@@ -58,6 +60,27 @@ export default async function PrivateResellerShowcasePage({
           <div className="rounded-full bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">
             {reputation.progress}% toward {reputation.nextLevel}
           </div>
+        </div>
+      </Card>
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Verification badges
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {verification.overallStatus}
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Public profile badges show status only. Identity and business documents remain private.
+            </p>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/verification"
+          >
+            Manage verification
+          </Link>
         </div>
       </Card>
       <Card className="p-6 lg:p-8">

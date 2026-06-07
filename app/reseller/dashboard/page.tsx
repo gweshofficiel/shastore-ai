@@ -10,6 +10,7 @@ import {
 import {
   getResellerDashboardData,
   getResellerReputationData,
+  getResellerVerificationData,
   getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
@@ -25,11 +26,12 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation, account] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
     getResellerReputationData(),
+    getResellerVerificationData(),
     getOrCreateAccountProfile("reseller")
   ]);
 
@@ -58,6 +60,27 @@ export default async function PrivateResellerHomePage({
       <ResellerStatusAlerts query={query} />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Verification
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {verification.verifiedCount}/4 checks verified
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Public profiles show verification badge statuses only. Private documents and contact details stay hidden.
+            </p>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/verification"
+          >
+            Verification center
+          </Link>
+        </div>
+      </Card>
       <Card className="p-6 lg:p-8">
         <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr] lg:items-start">
           <div>

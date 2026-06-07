@@ -198,6 +198,11 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
                   <span className="rounded-full bg-white/15 px-3 py-2 text-xs font-bold text-white">
                     {profileData.reputation.trustScore} trust
                   </span>
+                  {profileData.verification.publicBadges.map((badge) => (
+                    <span className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/80" key={badge.kind}>
+                      {badge.label}: {badge.status}
+                    </span>
+                  ))}
                   {profileData.trustBadges.map((badge) => (
                     <span className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/80" key={badge}>
                       {badge}

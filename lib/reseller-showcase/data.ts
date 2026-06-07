@@ -69,6 +69,32 @@ export type ResellerReputation = {
   trustScore: ResellerTrustScore;
 };
 
+export type ResellerVerificationStatus = "expired" | "not_started" | "pending" | "rejected" | "verified";
+
+export type ResellerVerificationKind = "business" | "email" | "identity" | "phone";
+
+export type ResellerVerificationItem = {
+  description: string;
+  kind: ResellerVerificationKind;
+  publicLabel: string;
+  requirements: string[];
+  status: ResellerVerificationStatus;
+  title: string;
+};
+
+export type ResellerVerificationData = {
+  futureHooks: string[];
+  items: ResellerVerificationItem[];
+  overallStatus: ResellerVerificationStatus;
+  profile: ResellerProfile | null;
+  publicBadges: Array<{
+    kind: ResellerVerificationKind;
+    label: string;
+    status: ResellerVerificationStatus;
+  }>;
+  verifiedCount: number;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -86,6 +112,7 @@ export type PublicResellerProfile = {
   storeListings: ResellerShowcaseItem[];
   templateListings: ResellerShowcaseItem[];
   trustBadges: string[];
+  verification: ResellerVerificationData;
 };
 
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
@@ -463,6 +490,102 @@ function buildReputation({
   };
 }
 
+function verificationItems({
+  emailVerified,
+  hasBusinessProfile
+}: {
+  emailVerified: boolean;
+  hasBusinessProfile: boolean;
+}): ResellerVerificationItem[] {
+  return [
+    {
+      description: "Confirms the reseller account email. No email address is displayed publicly from this check.",
+      kind: "email",
+      publicLabel: "Email verification",
+      requirements: ["Confirm reseller account email"],
+      status: emailVerified ? "verified" : "not_started",
+      title: "Email"
+    },
+    {
+      description: "Future phone OTP verification placeholder. Phone number remains private unless separately configured for public contact.",
+      kind: "phone",
+      publicLabel: "Phone verification",
+      requirements: ["Future phone OTP workflow"],
+      status: "not_started",
+      title: "Phone"
+    },
+    {
+      description: "Future identity review placeholder. Identity documents are never public.",
+      kind: "identity",
+      publicLabel: "Identity verification",
+      requirements: ["Future identity document upload", "Future admin/KYC review"],
+      status: "not_started",
+      title: "Identity"
+    },
+    {
+      description: "Future business verification placeholder for reseller business legitimacy.",
+      kind: "business",
+      publicLabel: "Business verification",
+      requirements: ["Complete business settings", "Future business document upload"],
+      status: hasBusinessProfile ? "pending" : "not_started",
+      title: "Business"
+    }
+  ];
+}
+
+function buildVerificationData({
+  emailVerified = false,
+  hasBusinessProfile = false,
+  profile
+}: {
+  emailVerified?: boolean;
+  hasBusinessProfile?: boolean;
+  profile: ResellerProfile | null;
+}): ResellerVerificationData {
+  const items = verificationItems({ emailVerified, hasBusinessProfile });
+  const verifiedCount = items.filter((item) => item.status === "verified").length;
+  const overallStatus: ResellerVerificationStatus =
+    verifiedCount === items.length
+      ? "verified"
+      : items.some((item) => item.status === "pending")
+        ? "pending"
+        : "not_started";
+
+  return {
+    futureHooks: [
+      "Email verification workflow",
+      "Phone OTP workflow",
+      "Identity document upload",
+      "Business document upload",
+      "Admin review",
+      "Verification expiration",
+      "Verified seller badge"
+    ],
+    items,
+    overallStatus,
+    profile,
+    publicBadges: items.map((item) => ({
+      kind: item.kind,
+      label: item.publicLabel,
+      status: item.status
+    })),
+    verifiedCount
+  };
+}
+
+export async function getResellerVerificationData(): Promise<ResellerVerificationData> {
+  const [dashboard, user] = await Promise.all([
+    getResellerDashboardData(),
+    getDashboardUser()
+  ]);
+
+  return buildVerificationData({
+    emailVerified: Boolean(user?.email_confirmed_at),
+    hasBusinessProfile: Boolean(dashboard.profile),
+    profile: dashboard.profile
+  });
+}
+
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {
   if (!profileId) {
     return { ready: true, reviews: [] as ResellerReview[] };
@@ -546,6 +669,11 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
     storeListings,
     templateListings
   });
+  const verification = buildVerificationData({
+    emailVerified: false,
+    hasBusinessProfile: Boolean(showcase?.profile),
+    profile: showcase?.profile ?? null
+  });
 
   return {
     canonicalPath: `/resellers/${slug}`,
@@ -575,7 +703,8 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
     showcase,
     storeListings,
     templateListings,
-    trustBadges: ["Verified badge placeholder", "Trust score placeholder", "Response time placeholder"]
+    trustBadges: ["Verified badge placeholder", "Trust score placeholder", "Response time placeholder"],
+    verification
   };
 }
 
