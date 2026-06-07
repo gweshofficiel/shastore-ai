@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const resellerNavItems = [
   { href: "/reseller/dashboard", label: "Home" },
   { href: "/reseller/dashboard/showcase", label: "Showcase" },
-  { href: "/reseller/dashboard/stores", label: "Store Listings" },
+  { href: "/reseller/dashboard/listings", label: "Listings" },
   { href: "/reseller/dashboard/verification", label: "Verification" },
   { href: "/reseller/dashboard/orders", label: "Orders" },
   { href: "/reseller/dashboard/reviews", label: "Reviews" },

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { resellerInventoryPlanLimits, type ResellerInventoryPlan } from "@/lib/reseller-showcase/data";
 import { resellerShowcaseThemes } from "@/lib/reseller-showcase/themes";
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
@@ -88,6 +89,58 @@ function redirectWithError(message: string, returnTo = "/reseller/dashboard"): n
   redirect(withStatus(returnTo, "error", message));
 }
 
+function resellerPlanFromConfig(): ResellerInventoryPlan {
+  const configuredPlan = process.env.RESELLER_SUBSCRIPTION_PLAN ?? process.env.DEFAULT_RESELLER_PLAN;
+  const normalized = configuredPlan?.trim().toLowerCase();
+
+  if (normalized === "enterprise") {
+    return "Enterprise";
+  }
+
+  if (normalized === "agency") {
+    return "Agency";
+  }
+
+  if (normalized === "pro") {
+    return "Pro";
+  }
+
+  return "Starter";
+}
+
+async function assertInventoryAvailable({
+  profileId,
+  returnTo,
+  supabase,
+  userId
+}: {
+  profileId: string;
+  returnTo: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+}) {
+  const currentPlan = resellerPlanFromConfig();
+  const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
+  const { count, error } = await supabase
+    .from("reseller_showcase_items" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId)
+    .eq("user_id", userId);
+
+  if (error) {
+    redirectWithError("Inventory usage could not be checked. Try again before changing listings.", returnTo);
+  }
+
+  const usedStoreListings = count ?? 0;
+
+  if (usedStoreListings >= allowedStoreListings) {
+    redirectWithError(
+      `Inventory limit reached for the ${currentPlan} plan. Upgrade your reseller subscription to create or publish more listings.`,
+      returnTo
+    );
+  }
+}
+
 export async function saveResellerProfile(formData: FormData) {
   const { supabase, user } = await requireUser();
   const returnTo = safeReturnPath(formData.get("returnTo"));
@@ -170,6 +223,17 @@ export async function saveResellerShowcaseItem(formData: FormData) {
   const itemId = cleanText(formData.get("itemId"), 80);
   const slug = normalizeSlug(formData.get("itemSlug"), title);
   const sourceStoreId = cleanText(formData.get("sourceStoreId"), 80);
+  const publishNow = formBoolean(formData, "publishNow");
+
+  if (!itemId || publishNow) {
+    await assertInventoryAvailable({
+      profileId: profile.id,
+      returnTo,
+      supabase,
+      userId: user.id
+    });
+  }
+
   const { error } = await supabase.from("reseller_showcase_items" as never).upsert(
     {
       category: cleanText(formData.get("category"), 120),
@@ -183,7 +247,7 @@ export async function saveResellerShowcaseItem(formData: FormData) {
       slug,
       sort_order: Number(cleanText(formData.get("sortOrder"), 20) ?? 0) || 0,
       source_store_id: sourceStoreId || null,
-      status: formBoolean(formData, "publishNow") ? "published" : "draft",
+      status: publishNow ? "published" : "draft",
       thumbnail_url: cleanText(formData.get("thumbnailUrl"), 500),
       title,
       user_id: user.id
@@ -199,6 +263,7 @@ export async function saveResellerShowcaseItem(formData: FormData) {
   }
 
   revalidatePath("/reseller/dashboard");
+  revalidatePath("/reseller/dashboard/listings");
   revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
   revalidatePath(`/resellers/${profile.slug}`);
@@ -226,6 +291,15 @@ async function setResellerShowcaseItemStatus(
     redirectWithError("Showcase item could not be found.", returnTo);
   }
 
+  if (status === "published") {
+    await assertInventoryAvailable({
+      profileId: profile.id,
+      returnTo,
+      supabase,
+      userId: user.id
+    });
+  }
+
   const { error } = await supabase
     .from("reseller_showcase_items" as never)
     .update({ status } as never)
@@ -237,6 +311,7 @@ async function setResellerShowcaseItemStatus(
   }
 
   revalidatePath("/reseller/dashboard");
+  revalidatePath("/reseller/dashboard/listings");
   revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
   revalidatePath(`/resellers/${profile.slug}`);

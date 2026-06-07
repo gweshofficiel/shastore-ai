@@ -95,6 +95,27 @@ export type ResellerVerificationData = {
   verifiedCount: number;
 };
 
+export type ResellerInventoryPlan = "Agency" | "Enterprise" | "Pro" | "Starter";
+
+export type ResellerInventoryData = {
+  allowedStoreListings: number;
+  currentPlan: ResellerInventoryPlan;
+  draftListingsCount: number;
+  futureHooks: string[];
+  isAtLimit: boolean;
+  isNearLimit: boolean;
+  planLimits: Array<{
+    allowedStoreListings: number;
+    name: ResellerInventoryPlan;
+    note: string;
+  }>;
+  publishedListingsCount: number;
+  remainingStoreListings: number;
+  soldListingsCount: number;
+  upgradeHint: string | null;
+  usedStoreListings: number;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -113,6 +134,13 @@ export type PublicResellerProfile = {
   templateListings: ResellerShowcaseItem[];
   trustBadges: string[];
   verification: ResellerVerificationData;
+};
+
+export const resellerInventoryPlanLimits: Record<ResellerInventoryPlan, number> = {
+  Starter: 3,
+  Pro: 15,
+  Agency: 50,
+  Enterprise: 250
 };
 
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
@@ -573,6 +601,84 @@ function buildVerificationData({
   };
 }
 
+function resellerPlanFromConfig(): ResellerInventoryPlan {
+  const configuredPlan = process.env.RESELLER_SUBSCRIPTION_PLAN ?? process.env.DEFAULT_RESELLER_PLAN;
+  const normalized = configuredPlan?.trim().toLowerCase();
+
+  if (normalized === "enterprise") {
+    return "Enterprise";
+  }
+
+  if (normalized === "agency") {
+    return "Agency";
+  }
+
+  if (normalized === "pro") {
+    return "Pro";
+  }
+
+  return "Starter";
+}
+
+function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerInventoryData {
+  const currentPlan = resellerPlanFromConfig();
+  const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
+  const draftListingsCount = dashboard.items.filter((item) => item.status !== "published").length;
+  const publishedListingsCount = dashboard.items.filter((item) => item.status === "published").length;
+  const soldListingsCount = 0;
+  const usedStoreListings = draftListingsCount + publishedListingsCount + soldListingsCount;
+  const remainingStoreListings = Math.max(allowedStoreListings - usedStoreListings, 0);
+  const usageRatio = allowedStoreListings > 0 ? usedStoreListings / allowedStoreListings : 1;
+  const isAtLimit = remainingStoreListings === 0;
+  const isNearLimit = !isAtLimit && usageRatio >= 0.8;
+
+  return {
+    allowedStoreListings,
+    currentPlan,
+    draftListingsCount,
+    futureHooks: [
+      "Sale completed consumes inventory",
+      "Plan upgrade increases inventory",
+      "Plan downgrade validates current usage",
+      "Expired subscription freezes new listings",
+      "Sold listing count sync",
+      "Admin inventory override review"
+    ],
+    isAtLimit,
+    isNearLimit,
+    planLimits: [
+      {
+        allowedStoreListings: resellerInventoryPlanLimits.Starter,
+        name: "Starter",
+        note: "Entry inventory for testing reseller listings."
+      },
+      {
+        allowedStoreListings: resellerInventoryPlanLimits.Pro,
+        name: "Pro",
+        note: "Higher active inventory for growing resellers."
+      },
+      {
+        allowedStoreListings: resellerInventoryPlanLimits.Agency,
+        name: "Agency",
+        note: "Large catalog capacity for teams and studios."
+      },
+      {
+        allowedStoreListings: resellerInventoryPlanLimits.Enterprise,
+        name: "Enterprise",
+        note: "Custom high-volume inventory foundation."
+      }
+    ],
+    publishedListingsCount,
+    remainingStoreListings,
+    soldListingsCount,
+    upgradeHint:
+      isAtLimit || isNearLimit
+        ? "Upgrade your reseller subscription plan to unlock more ready store listings."
+        : null,
+    usedStoreListings
+  };
+}
+
 export async function getResellerVerificationData(): Promise<ResellerVerificationData> {
   const [dashboard, user] = await Promise.all([
     getResellerDashboardData(),
@@ -584,6 +690,12 @@ export async function getResellerVerificationData(): Promise<ResellerVerificatio
     hasBusinessProfile: Boolean(dashboard.profile),
     profile: dashboard.profile
   });
+}
+
+export async function getResellerInventoryData(): Promise<ResellerInventoryData> {
+  const dashboard = await getResellerDashboardData();
+
+  return buildResellerInventoryData(dashboard);
 }
 
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {

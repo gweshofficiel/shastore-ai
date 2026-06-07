@@ -10,7 +10,10 @@ import {
   saveResellerShowcaseItem,
   unpublishResellerShowcaseItem
 } from "@/lib/reseller-showcase/actions";
-import type { ResellerDashboardData } from "@/lib/reseller-showcase/data";
+import type {
+  ResellerDashboardData,
+  ResellerInventoryData
+} from "@/lib/reseller-showcase/data";
 import { resellerShowcaseThemes } from "@/lib/reseller-showcase/themes";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type {
@@ -108,6 +111,66 @@ export function ResellerOverviewCards({ data }: { data: ResellerDashboardData })
   );
 }
 
+export function ResellerInventoryCard({
+  inventory,
+  variant = "summary"
+}: {
+  inventory: ResellerInventoryData;
+  variant?: "full" | "summary";
+}) {
+  return (
+    <Card className="p-6 lg:p-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Store inventory
+          </p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+            {inventory.remainingStoreListings} remaining
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            {inventory.currentPlan} plan · {inventory.usedStoreListings}/{inventory.allowedStoreListings} listings used.
+          </p>
+          {inventory.upgradeHint ? (
+            <p className="mt-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+              {inventory.upgradeHint}
+            </p>
+          ) : null}
+        </div>
+        <Link
+          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+          href="/reseller/dashboard/subscription"
+        >
+          View plan
+        </Link>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Allowed</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.allowedStoreListings}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Published</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.publishedListingsCount}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Drafts</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.draftListingsCount}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Sold placeholder</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.soldListingsCount}</p>
+        </div>
+      </div>
+      {variant === "full" ? (
+        <div className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
+          Future sale completion will consume inventory. No fake sales, wallet, payout, or withdrawal flow is connected in this phase.
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 export function ResellerQuickActions({ profile }: { profile: ResellerProfile | null }) {
   return (
     <Card className="p-6 lg:p-8">
@@ -123,7 +186,7 @@ export function ResellerQuickActions({ profile }: { profile: ResellerProfile | n
         </Link>
         <Link
           className="inline-flex h-11 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
-          href="/reseller/dashboard/stores"
+          href="/reseller/dashboard/listings"
         >
           Manage listings
         </Link>
@@ -300,12 +363,16 @@ export function ResellerShowcaseProfileForm({
 }
 
 export function ResellerShowcaseItemForm({
+  inventory,
   returnPath,
   stores
 }: {
+  inventory?: ResellerInventoryData;
   returnPath: string;
   stores: ResellerDashboardData["stores"];
 }) {
+  const inventoryBlocked = inventory?.isAtLimit ?? false;
+
   return (
     <Card className="p-6 lg:p-8">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -316,6 +383,12 @@ export function ResellerShowcaseItemForm({
       </h2>
       <form action={saveResellerShowcaseItem} className="mt-5 grid gap-4">
         {returnTo(returnPath)}
+        {inventory ? (
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
+            {inventory.remainingStoreListings} of {inventory.allowedStoreListings} listings remain on the {inventory.currentPlan} plan.
+            {inventoryBlocked ? " Upgrade before creating or publishing another listing." : ""}
+          </div>
+        ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Input id="title" label="Title" name="title" placeholder="Luxury Fashion Store" required />
           <Input id="itemSlug" label="Listing slug" name="itemSlug" placeholder="luxury-fashion-store" />
@@ -364,7 +437,9 @@ export function ResellerShowcaseItemForm({
             <input name="publishNow" type="checkbox" />
             Publish immediately
           </label>
-          <Button type="submit">Save marketplace item</Button>
+          <Button disabled={inventoryBlocked} type="submit">
+            {inventoryBlocked ? "Inventory limit reached" : "Save marketplace item"}
+          </Button>
         </div>
         <div className="rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
           Future expansion points: ownership transfer, reseller sales, template duplication,

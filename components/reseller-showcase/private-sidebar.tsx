@@ -6,7 +6,7 @@ import { ResellerPrivateNavLink } from "@/components/reseller-showcase/private-n
 const navItems = [
   { href: "/reseller/dashboard", label: "Overview", icon: "overview" },
   { href: "/reseller/dashboard/showcase", label: "Showcase", icon: "showcase" },
-  { href: "/reseller/dashboard/stores", label: "Store Listings", icon: "stores" },
+  { href: "/reseller/dashboard/listings", label: "Listings", icon: "stores" },
   { href: "/reseller/dashboard/templates", label: "Templates", icon: "templates" },
   { href: "/reseller/dashboard/business", label: "Business Settings", icon: "business" },
   { href: "/reseller/dashboard/verification", label: "Verification", icon: "business" },

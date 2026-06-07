@@ -14,7 +14,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function PrivateResellerStoresPage({
+export default async function PrivateResellerListingsPage({
   searchParams
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
@@ -30,8 +30,8 @@ export default async function PrivateResellerStoresPage({
   return (
     <>
       <PageHeader
-        description="Create marketplace listings, link store drafts, publish or unpublish showcase products, and prepare future transfer flows."
-        title="Store Listings"
+        description="Inventory-aware reseller listing management. This route uses the same Store Listings engine and plan limits."
+        title="Listings"
       />
       {!data.ready ? (
         <Card className="border-blue-200 bg-blue-50 p-5">
@@ -42,19 +42,19 @@ export default async function PrivateResellerStoresPage({
       <ResellerInventoryCard inventory={inventory} variant="full" />
       <ResellerShowcaseItemForm
         inventory={inventory}
-        returnPath="/reseller/dashboard/stores"
+        returnPath="/reseller/dashboard/listings"
         stores={data.stores}
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <ResellerListingsGrid
           items={publishedItems}
-          returnPath="/reseller/dashboard/stores"
-          title="Published Stores"
+          returnPath="/reseller/dashboard/listings"
+          title="Published Listings"
         />
         <ResellerListingsGrid
           items={draftItems}
-          returnPath="/reseller/dashboard/stores"
-          title="Draft Stores"
+          returnPath="/reseller/dashboard/listings"
+          title="Draft Listings"
         />
       </div>
     </>

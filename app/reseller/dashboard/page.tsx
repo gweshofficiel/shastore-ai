@@ -3,12 +3,14 @@ import { AccountIdCard } from "@/components/account/account-id-card";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
+  ResellerInventoryCard,
   ResellerOverviewCards,
   ResellerQuickActions,
   ResellerStatusAlerts
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerInventoryData,
   getResellerReputationData,
   getResellerVerificationData,
   getResellerReviewsData,
@@ -26,12 +28,13 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation, verification, account] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification, inventory, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
     getResellerReputationData(),
     getResellerVerificationData(),
+    getResellerInventoryData(),
     getOrCreateAccountProfile("reseller")
   ]);
 
@@ -60,6 +63,7 @@ export default async function PrivateResellerHomePage({
       <ResellerStatusAlerts query={query} />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
+      <ResellerInventoryCard inventory={inventory} />
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
