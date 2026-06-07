@@ -78,7 +78,7 @@ export function ResellerOverviewCards({ data }: { data: ResellerDashboardData })
           {data.profile?.is_published ? "Live" : "Draft"}
         </p>
         <p className="mt-1 text-sm text-muted">
-          {data.profile ? `/reseller/${data.profile.slug}` : "Create your profile"}
+          {data.profile ? `/resellers/${data.profile.slug}` : "Create your profile"}
         </p>
       </Card>
       <Card className="p-5">
@@ -127,13 +127,13 @@ export function ResellerQuickActions({ profile }: { profile: ResellerProfile | n
         >
           Manage listings
         </Link>
-        {profile?.is_published ? (
+        {profile?.slug ? (
           <Link
             className="inline-flex h-11 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
-            href={`/reseller/${profile.slug}`}
+            href={`/resellers/${profile.slug}`}
             target="_blank"
           >
-            Preview public showcase
+            Preview public profile
           </Link>
         ) : null}
       </div>
@@ -234,13 +234,13 @@ export function ResellerShowcaseProfileForm({
           />
           Publish this reseller showcase publicly
         </label>
-        {profile?.is_published ? (
+        {profile?.slug ? (
           <Link
             className="mt-4 inline-flex h-11 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
-            href={`/reseller/${profile.slug}`}
+            href={`/resellers/${profile.slug}`}
             target="_blank"
           >
-            Preview public showcase
+            Preview public profile
           </Link>
         ) : null}
       </Card>

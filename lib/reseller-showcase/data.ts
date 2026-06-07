@@ -15,6 +15,22 @@ export type ResellerDashboardData = {
   themeSettings: ShowcaseThemeSettings | null;
 };
 
+export type PublicResellerProfile = {
+  canonicalPath: string;
+  contactLinkPlaceholder: string;
+  country: string;
+  futureHooks: string[];
+  languages: string[];
+  profileStatus: "not_available" | "published";
+  publicAccountCode: string;
+  ratingPlaceholder: string;
+  resellerLevelPlaceholder: string;
+  showcase: PublicResellerShowcase | null;
+  storeListings: ResellerShowcaseItem[];
+  templateListings: ResellerShowcaseItem[];
+  trustBadges: string[];
+};
+
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
   return (
@@ -130,6 +146,44 @@ export async function getPublicResellerShowcase(
     items: (items ?? []) as ResellerShowcaseItem[],
     profile,
     themeSettings: (themeSettings as ShowcaseThemeSettings | null) ?? null
+  };
+}
+
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function isTemplateListing(item: ResellerShowcaseItem) {
+  return stringList(item.preview_images).some((image) => image.startsWith("template:"));
+}
+
+export async function getPublicResellerProfile(slug: string): Promise<PublicResellerProfile> {
+  const showcase = await getPublicResellerShowcase(slug);
+  const items = showcase?.items ?? [];
+  const templateListings = items.filter(isTemplateListing);
+  const storeListings = items.filter((item) => !isTemplateListing(item));
+
+  return {
+    canonicalPath: `/resellers/${slug}`,
+    contactLinkPlaceholder: "#reseller-contact",
+    country: "Country placeholder",
+    futureHooks: [
+      "Public reviews",
+      "Reseller levels",
+      "Verified badges",
+      "Featured stores",
+      "Buyer contact request",
+      "Public marketplace search"
+    ],
+    languages: ["Language placeholder"],
+    profileStatus: showcase ? "published" : "not_available",
+    publicAccountCode: `RSL-${slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "PUBLIC"}`,
+    ratingPlaceholder: "No reviews yet",
+    resellerLevelPlaceholder: "Level placeholder",
+    showcase,
+    storeListings,
+    templateListings,
+    trustBadges: ["Verified badge placeholder", "Trust score placeholder", "Response time placeholder"]
   };
 }
 

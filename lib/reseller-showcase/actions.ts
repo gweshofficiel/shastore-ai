@@ -149,6 +149,7 @@ export async function saveResellerProfile(formData: FormData) {
   revalidatePath("/reseller/dashboard/showcase");
   revalidatePath("/reseller/dashboard/settings");
   revalidatePath(`/reseller/${slug}`);
+  revalidatePath(`/resellers/${slug}`);
   redirect(withStatus(returnTo, "saved", "profile"));
 }
 
@@ -200,6 +201,7 @@ export async function saveResellerShowcaseItem(formData: FormData) {
   revalidatePath("/reseller/dashboard");
   revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
+  revalidatePath(`/resellers/${profile.slug}`);
   redirect(withStatus(returnTo, "saved", "item"));
 }
 
@@ -237,5 +239,6 @@ async function setResellerShowcaseItemStatus(
   revalidatePath("/reseller/dashboard");
   revalidatePath("/reseller/dashboard/stores");
   revalidatePath(`/reseller/${profile.slug}`);
+  revalidatePath(`/resellers/${profile.slug}`);
   redirect(withStatus(returnTo, "saved", status));
 }

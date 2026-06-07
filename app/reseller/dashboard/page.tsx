@@ -33,13 +33,13 @@ export default async function PrivateResellerHomePage({
     <>
       <PageHeader
         action={
-          data.profile?.is_published ? (
+          data.profile?.slug ? (
             <Link
               className="inline-flex h-11 items-center justify-center rounded-full bg-violet-950 px-5 text-sm font-bold text-white"
-              href={`/reseller/${data.profile.slug}`}
+              href={`/resellers/${data.profile.slug}`}
               target="_blank"
             >
-              Public showcase
+              Public profile
             </Link>
           ) : null
         }
