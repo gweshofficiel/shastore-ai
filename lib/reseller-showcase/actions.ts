@@ -49,6 +49,12 @@ function parseList(value: FormDataEntryValue | null) {
     .slice(0, 12);
 }
 
+function isTemplateShowcaseRecord(row: { preview_images?: unknown }) {
+  return Array.isArray(row.preview_images)
+    ? row.preview_images.map((item) => String(item)).some((item) => item.startsWith("template:"))
+    : false;
+}
+
 async function requireUser() {
   const supabase = await createClient();
   const {
@@ -121,9 +127,9 @@ async function assertInventoryAvailable({
 }) {
   const currentPlan = resellerPlanFromConfig();
   const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("reseller_showcase_items" as never)
-    .select("id", { count: "exact", head: true })
+    .select("preview_images")
     .eq("profile_id", profileId)
     .eq("user_id", userId);
 
@@ -131,7 +137,9 @@ async function assertInventoryAvailable({
     redirectWithError("Inventory usage could not be checked. Try again before changing listings.", returnTo);
   }
 
-  const usedStoreListings = count ?? 0;
+  const usedStoreListings = ((data ?? []) as unknown as Array<{ preview_images?: unknown }>).filter(
+    (item) => !isTemplateShowcaseRecord(item)
+  ).length;
 
   if (usedStoreListings >= allowedStoreListings) {
     redirectWithError(

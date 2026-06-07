@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  resellerTemplateInventoryPlanLimits,
+  type ResellerInventoryPlan
+} from "@/lib/reseller-showcase/data";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type { StoreTemplate, TemplateCustomizationDefaults } from "@/lib/template-studio/types";
 
@@ -47,6 +51,89 @@ function withStatus(path: string, key: "error" | "saved", value: string) {
 
 function redirectWithError(message: string, returnTo: string): never {
   redirect(withStatus(returnTo, "error", message));
+}
+
+function resellerPlanFromConfig(): ResellerInventoryPlan {
+  const configuredPlan = process.env.RESELLER_SUBSCRIPTION_PLAN ?? process.env.DEFAULT_RESELLER_PLAN;
+  const normalized = configuredPlan?.trim().toLowerCase();
+
+  if (normalized === "enterprise") {
+    return "Enterprise";
+  }
+
+  if (normalized === "agency") {
+    return "Agency";
+  }
+
+  if (normalized === "pro") {
+    return "Pro";
+  }
+
+  return "Starter";
+}
+
+function isMissingTemplateDraftsTable(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST205" ||
+    error?.code === "PGRST204" ||
+    message.includes("template_drafts") ||
+    message.includes("could not find the table")
+  );
+}
+
+async function assertTemplateInventoryAvailable({
+  returnTo,
+  supabase,
+  templateKey,
+  userId
+}: {
+  returnTo: string;
+  supabase: SupabaseClient;
+  templateKey: string;
+  userId: string;
+}) {
+  if (!returnTo.startsWith("/reseller/dashboard")) {
+    return;
+  }
+
+  const existing = await supabase
+    .from("template_drafts" as never)
+    .select("id")
+    .eq("user_id", userId)
+    .eq("template_key", templateKey)
+    .maybeSingle();
+
+  if (existing.error && !isMissingTemplateDraftsTable(existing.error)) {
+    redirectWithError("Template inventory could not be checked. Try again before changing templates.", returnTo);
+  }
+
+  if (existing.data) {
+    return;
+  }
+
+  const currentPlan = resellerPlanFromConfig();
+  const allowedTemplates = resellerTemplateInventoryPlanLimits[currentPlan];
+  const { count, error } = await supabase
+    .from("template_drafts" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (error) {
+    redirectWithError(
+      isMissingTemplateDraftsTable(error)
+        ? "Template persistence is not ready yet. Apply the template persistence migration before creating reseller templates."
+        : "Template inventory usage could not be checked. Try again before changing templates.",
+      returnTo
+    );
+  }
+
+  if ((count ?? 0) >= allowedTemplates) {
+    redirectWithError(
+      `Template inventory limit reached for the ${currentPlan} plan. Upgrade your reseller subscription to create or publish more templates.`,
+      returnTo
+    );
+  }
 }
 
 function parseCustomization(
@@ -373,6 +460,12 @@ export async function saveTemplateDraft(formData: FormData) {
   const template = getActionTemplate(formData, returnTo);
   const customization = parseCustomization(formData.get("customization"), template);
   const { supabase, user } = await requireUser();
+  await assertTemplateInventoryAvailable({
+    returnTo,
+    supabase,
+    templateKey: template.id,
+    userId: user.id
+  });
   const profile = await getResellerProfileForUser(supabase, user.id);
   const { error } = await upsertDraft({
     customization,
@@ -396,6 +489,12 @@ export async function publishTemplate(formData: FormData) {
   const template = getActionTemplate(formData, returnTo);
   const customization = parseCustomization(formData.get("customization"), template);
   const { supabase, user } = await requireUser();
+  await assertTemplateInventoryAvailable({
+    returnTo,
+    supabase,
+    templateKey: template.id,
+    userId: user.id
+  });
   const profile = returnTo.startsWith("/reseller/dashboard")
     ? await getOrCreatePublishedProfile(supabase, user, customization)
     : await getResellerProfileForUser(supabase, user.id);
@@ -466,8 +565,11 @@ export async function publishTemplate(formData: FormData) {
   }
 
   revalidatePath(returnTo);
+  revalidatePath("/reseller/dashboard");
   revalidatePath("/reseller/dashboard/templates");
+  revalidatePath("/reseller/dashboard/listings");
   revalidatePath("/reseller/dashboard/stores");
+  revalidatePath("/reseller/dashboard/subscription");
 
   if (profile) {
     revalidatePath(`/reseller/${profile.slug}`);
@@ -548,6 +650,12 @@ export async function duplicateTemplate(formData: FormData) {
     .eq("template_key", template.id)
     .maybeSingle();
   const duplicateKey = `${template.id}-copy-${Date.now()}`;
+  await assertTemplateInventoryAvailable({
+    returnTo,
+    supabase,
+    templateKey: duplicateKey,
+    userId: user.id
+  });
   const { error } = await upsertDraft({
     customization,
     duplicatedFromDraftId: sourceDraft ? (sourceDraft as { id: string }).id : null,
@@ -571,6 +679,12 @@ export async function restoreTemplateDefaults(formData: FormData) {
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const template = getActionTemplate(formData, returnTo);
   const { supabase, user } = await requireUser();
+  await assertTemplateInventoryAvailable({
+    returnTo,
+    supabase,
+    templateKey: template.id,
+    userId: user.id
+  });
   const profile = await getResellerProfileForUser(supabase, user.id);
   const { error } = await upsertDraft({
     customization: template.defaultCustomization,

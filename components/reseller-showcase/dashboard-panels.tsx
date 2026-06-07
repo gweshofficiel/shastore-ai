@@ -12,7 +12,8 @@ import {
 } from "@/lib/reseller-showcase/actions";
 import type {
   ResellerDashboardData,
-  ResellerInventoryData
+  ResellerInventoryData,
+  ResellerTemplateInventoryData
 } from "@/lib/reseller-showcase/data";
 import { resellerShowcaseThemes } from "@/lib/reseller-showcase/themes";
 import { getStoreTemplate } from "@/lib/template-studio/library";
@@ -42,6 +43,12 @@ function itemStatusClass(status: ResellerShowcaseItem["status"]) {
   return "bg-slate-100 text-slate-600";
 }
 
+function isTemplateShowcaseItem(item: ResellerShowcaseItem) {
+  return Array.isArray(item.preview_images)
+    ? item.preview_images.map((image) => String(image)).some((image) => image.startsWith("template:"))
+    : false;
+}
+
 function returnTo(path: string) {
   return <input name="returnTo" type="hidden" value={path} />;
 }
@@ -68,8 +75,9 @@ export function ResellerStatusAlerts({
 }
 
 export function ResellerOverviewCards({ data }: { data: ResellerDashboardData }) {
-  const publishedItems = data.items.filter((item) => item.status === "published");
-  const draftItems = data.items.filter((item) => item.status !== "published");
+  const storeItems = data.items.filter((item) => !isTemplateShowcaseItem(item));
+  const publishedItems = storeItems.filter((item) => item.status === "published");
+  const draftItems = storeItems.filter((item) => item.status !== "published");
 
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -165,6 +173,66 @@ export function ResellerInventoryCard({
       {variant === "full" ? (
         <div className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
           Future sale completion will consume inventory. No fake sales, wallet, payout, or withdrawal flow is connected in this phase.
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+export function ResellerTemplateInventoryCard({
+  inventory,
+  variant = "summary"
+}: {
+  inventory: ResellerTemplateInventoryData;
+  variant?: "full" | "summary";
+}) {
+  return (
+    <Card className="p-6 lg:p-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Template inventory
+          </p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+            {inventory.remainingTemplates} remaining
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+            {inventory.currentPlan} plan · {inventory.usedTemplates}/{inventory.allowedTemplates} templates used.
+          </p>
+          {inventory.upgradeHint ? (
+            <p className="mt-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+              {inventory.upgradeHint}
+            </p>
+          ) : null}
+        </div>
+        <Link
+          className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+          href="/reseller/dashboard/subscription"
+        >
+          View plan
+        </Link>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Allowed</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.allowedTemplates}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Published</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.publishedTemplatesCount}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Drafts</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.draftTemplatesCount}</p>
+        </div>
+        <div className="rounded-3xl bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Sold placeholder</p>
+          <p className="mt-2 text-2xl font-black text-ink">{inventory.soldTemplatesCount}</p>
+        </div>
+      </div>
+      {variant === "full" ? (
+        <div className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900">
+          Future template sales can consume template inventory. Store listing inventory remains separate, and no wallet, payout, withdrawal, or fake sale flow is connected.
         </div>
       ) : null}
     </Card>

@@ -14,6 +14,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function isTemplateListing(item: { preview_images: unknown }) {
+  return Array.isArray(item.preview_images)
+    ? item.preview_images.map((image) => String(image)).some((image) => image.startsWith("template:"))
+    : false;
+}
+
 export default async function PrivateResellerListingsPage({
   searchParams
 }: {
@@ -24,8 +30,9 @@ export default async function PrivateResellerListingsPage({
     getResellerDashboardData(),
     getResellerInventoryData()
   ]);
-  const publishedItems = data.items.filter((item) => item.status === "published");
-  const draftItems = data.items.filter((item) => item.status !== "published");
+  const storeItems = data.items.filter((item) => !isTemplateListing(item));
+  const publishedItems = storeItems.filter((item) => item.status === "published");
+  const draftItems = storeItems.filter((item) => item.status !== "published");
 
   return (
     <>

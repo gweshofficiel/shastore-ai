@@ -1,14 +1,32 @@
 import { PageHeader } from "@/components/dashboard/page-header";
+import {
+  ResellerStatusAlerts,
+  ResellerTemplateInventoryCard
+} from "@/components/reseller-showcase/dashboard-panels";
 import { StoreTemplateCard } from "@/components/templates/store-template-card";
+import { getResellerTemplateInventoryData } from "@/lib/reseller-showcase/data";
 import { storeTemplateCategories, storeTemplates } from "@/lib/template-studio/library";
 
-export default function ResellerTemplatesPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ResellerTemplatesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ saved?: string; error?: string }>;
+}) {
+  const [query, inventory] = await Promise.all([
+    searchParams,
+    getResellerTemplateInventoryData()
+  ]);
+
   return (
     <div className="grid gap-8">
       <PageHeader
         description="Select a ready-made store template, customize it for a client in Studio, then prepare reseller showcase or marketplace publishing placeholders."
         title="Template Library"
       />
+      <ResellerStatusAlerts query={query} />
+      <ResellerTemplateInventoryCard inventory={inventory} variant="full" />
       <div className="grid gap-3 rounded-[2rem] border border-violet-100 bg-white/80 p-5 shadow-[0_18px_60px_-48px_rgba(76,29,149,0.45)] backdrop-blur">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
           Reseller Categories

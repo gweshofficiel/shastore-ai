@@ -6,12 +6,14 @@ import {
   ResellerInventoryCard,
   ResellerOverviewCards,
   ResellerQuickActions,
+  ResellerTemplateInventoryCard,
   ResellerStatusAlerts
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
   getResellerInventoryData,
   getResellerReputationData,
+  getResellerTemplateInventoryData,
   getResellerVerificationData,
   getResellerReviewsData,
   resellerMigrationMessage
@@ -28,13 +30,14 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation, verification, inventory, account] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification, inventory, templateInventory, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
     getResellerReputationData(),
     getResellerVerificationData(),
     getResellerInventoryData(),
+    getResellerTemplateInventoryData(),
     getOrCreateAccountProfile("reseller")
   ]);
 
@@ -64,6 +67,7 @@ export default async function PrivateResellerHomePage({
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
       <ResellerInventoryCard inventory={inventory} />
+      <ResellerTemplateInventoryCard inventory={templateInventory} />
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

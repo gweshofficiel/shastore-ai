@@ -116,6 +116,25 @@ export type ResellerInventoryData = {
   usedStoreListings: number;
 };
 
+export type ResellerTemplateInventoryData = {
+  allowedTemplates: number;
+  currentPlan: ResellerInventoryPlan;
+  draftTemplatesCount: number;
+  futureHooks: string[];
+  isAtLimit: boolean;
+  isNearLimit: boolean;
+  planLimits: Array<{
+    allowedTemplates: number;
+    name: ResellerInventoryPlan;
+    note: string;
+  }>;
+  publishedTemplatesCount: number;
+  remainingTemplates: number;
+  soldTemplatesCount: number;
+  upgradeHint: string | null;
+  usedTemplates: number;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -143,6 +162,13 @@ export const resellerInventoryPlanLimits: Record<ResellerInventoryPlan, number> 
   Enterprise: 250
 };
 
+export const resellerTemplateInventoryPlanLimits: Record<ResellerInventoryPlan, number> = {
+  Starter: 2,
+  Pro: 10,
+  Agency: 35,
+  Enterprise: 150
+};
+
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
   return (
@@ -160,6 +186,16 @@ function isMissingReviewsTable(error: { code?: string; message?: string } | null
     error?.code === "PGRST205" ||
     error?.code === "PGRST204" ||
     message.includes("reseller_reviews") ||
+    message.includes("could not find the table")
+  );
+}
+
+function isMissingTemplateDraftsTable(error: { code?: string; message?: string } | null) {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    error?.code === "PGRST205" ||
+    error?.code === "PGRST204" ||
+    message.includes("template_drafts") ||
     message.includes("could not find the table")
   );
 }
@@ -623,8 +659,9 @@ function resellerPlanFromConfig(): ResellerInventoryPlan {
 function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerInventoryData {
   const currentPlan = resellerPlanFromConfig();
   const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
-  const draftListingsCount = dashboard.items.filter((item) => item.status !== "published").length;
-  const publishedListingsCount = dashboard.items.filter((item) => item.status === "published").length;
+  const storeItems = dashboard.items.filter((item) => !isTemplateListing(item));
+  const draftListingsCount = storeItems.filter((item) => item.status !== "published").length;
+  const publishedListingsCount = storeItems.filter((item) => item.status === "published").length;
   const soldListingsCount = 0;
   const usedStoreListings = draftListingsCount + publishedListingsCount + soldListingsCount;
   const remainingStoreListings = Math.max(allowedStoreListings - usedStoreListings, 0);
@@ -679,6 +716,65 @@ function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerI
   };
 }
 
+function buildResellerTemplateInventoryData(statuses: string[]): ResellerTemplateInventoryData {
+  const currentPlan = resellerPlanFromConfig();
+  const allowedTemplates = resellerTemplateInventoryPlanLimits[currentPlan];
+  const publishedTemplatesCount = statuses.filter((status) => status === "published").length;
+  const draftTemplatesCount = statuses.filter((status) => status !== "published").length;
+  const soldTemplatesCount = 0;
+  const usedTemplates = publishedTemplatesCount + draftTemplatesCount + soldTemplatesCount;
+  const remainingTemplates = Math.max(allowedTemplates - usedTemplates, 0);
+  const usageRatio = allowedTemplates > 0 ? usedTemplates / allowedTemplates : 1;
+  const isAtLimit = remainingTemplates === 0;
+  const isNearLimit = !isAtLimit && usageRatio >= 0.8;
+
+  return {
+    allowedTemplates,
+    currentPlan,
+    draftTemplatesCount,
+    futureHooks: [
+      "Template sold consumes inventory",
+      "Plan upgrade increases template allowance",
+      "Plan downgrade validates template usage",
+      "Expired subscription freezes new template publishing",
+      "Template sale count sync",
+      "Admin template inventory review"
+    ],
+    isAtLimit,
+    isNearLimit,
+    planLimits: [
+      {
+        allowedTemplates: resellerTemplateInventoryPlanLimits.Starter,
+        name: "Starter",
+        note: "Small template catalog for early reseller testing."
+      },
+      {
+        allowedTemplates: resellerTemplateInventoryPlanLimits.Pro,
+        name: "Pro",
+        note: "Expanded template allowance for active resellers."
+      },
+      {
+        allowedTemplates: resellerTemplateInventoryPlanLimits.Agency,
+        name: "Agency",
+        note: "Larger template catalog capacity for studios."
+      },
+      {
+        allowedTemplates: resellerTemplateInventoryPlanLimits.Enterprise,
+        name: "Enterprise",
+        note: "Custom high-volume template inventory foundation."
+      }
+    ],
+    publishedTemplatesCount,
+    remainingTemplates,
+    soldTemplatesCount,
+    upgradeHint:
+      isAtLimit || isNearLimit
+        ? "Upgrade your reseller subscription plan to unlock more templates."
+        : null,
+    usedTemplates
+  };
+}
+
 export async function getResellerVerificationData(): Promise<ResellerVerificationData> {
   const [dashboard, user] = await Promise.all([
     getResellerDashboardData(),
@@ -696,6 +792,28 @@ export async function getResellerInventoryData(): Promise<ResellerInventoryData>
   const dashboard = await getResellerDashboardData();
 
   return buildResellerInventoryData(dashboard);
+}
+
+export async function getResellerTemplateInventoryData(): Promise<ResellerTemplateInventoryData> {
+  const supabase = await createClient();
+  const user = await getDashboardUser();
+
+  if (!user) {
+    return buildResellerTemplateInventoryData([]);
+  }
+
+  const { data, error } = await supabase
+    .from("template_drafts" as never)
+    .select("status")
+    .eq("user_id", user.id);
+
+  if (error) {
+    return buildResellerTemplateInventoryData(isMissingTemplateDraftsTable(error) ? [] : []);
+  }
+
+  const statuses = ((data ?? []) as unknown as Array<{ status?: string }>).map((row) => row.status ?? "draft");
+
+  return buildResellerTemplateInventoryData(statuses);
 }
 
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {
