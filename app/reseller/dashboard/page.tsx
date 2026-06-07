@@ -9,6 +9,7 @@ import {
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerReputationData,
   getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
@@ -24,10 +25,11 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, account] = await Promise.all([
+  const [query, data, reviewsData, reputation, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
+    getResellerReputationData(),
     getOrCreateAccountProfile("reseller")
   ]);
 
@@ -56,6 +58,35 @@ export default async function PrivateResellerHomePage({
       <ResellerStatusAlerts query={query} />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
+      <Card className="p-6 lg:p-8">
+        <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr] lg:items-start">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Reputation & Level
+            </p>
+            <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+              {reputation.currentLevel} reseller
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              {reputation.friendlyExplanation}
+            </p>
+            <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-violet-600" style={{ width: `${reputation.progress}%` }} />
+            </div>
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+              {reputation.progress}% toward {reputation.nextLevel}
+            </p>
+          </div>
+          <div className="grid gap-2 rounded-3xl bg-slate-50 p-4">
+            <p className="text-sm font-black text-ink">Missing requirements</p>
+            {reputation.missingRequirements.map((requirement) => (
+              <p className="rounded-2xl bg-white p-3 text-sm font-semibold text-muted" key={requirement}>
+                {requirement}
+              </p>
+            ))}
+          </div>
+        </div>
+      </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

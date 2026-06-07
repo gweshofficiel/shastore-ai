@@ -7,6 +7,7 @@ import {
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerReputationData,
   getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
@@ -18,10 +19,11 @@ export default async function PrivateResellerShowcasePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData] = await Promise.all([
+  const [query, data, reviewsData, reputation] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
-    getResellerReviewsData()
+    getResellerReviewsData(),
+    getResellerReputationData()
   ]);
 
   return (
@@ -40,6 +42,24 @@ export default async function PrivateResellerShowcasePage({
         profile={data.profile}
         returnPath="/reseller/dashboard/showcase"
       />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Public reputation
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {reputation.currentLevel} level · {reputation.trustScore} trust
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Public profile shows friendly level, trust, and metrics without exposing private scoring internals.
+            </p>
+          </div>
+          <div className="rounded-full bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">
+            {reputation.progress}% toward {reputation.nextLevel}
+          </div>
+        </div>
+      </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

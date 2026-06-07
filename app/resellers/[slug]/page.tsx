@@ -192,6 +192,12 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
                 </div>
                 <div className="grid gap-2 rounded-[2rem] border border-white/10 bg-white/10 p-4 backdrop-blur">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-white/50">Trust signals</p>
+                  <span className="rounded-full bg-white/15 px-3 py-2 text-xs font-bold text-white">
+                    {profileData.reputation.currentLevel} level
+                  </span>
+                  <span className="rounded-full bg-white/15 px-3 py-2 text-xs font-bold text-white">
+                    {profileData.reputation.trustScore} trust
+                  </span>
                   {profileData.trustBadges.map((badge) => (
                     <span className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/80" key={badge}>
                       {badge}
@@ -208,7 +214,8 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
         <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Level</p>
-            <p className="mt-3 text-2xl font-black text-slate-950">{profileData.resellerLevelPlaceholder}</p>
+            <p className="mt-3 text-2xl font-black text-slate-950">{profileData.reputation.currentLevel}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-500">Next: {profileData.reputation.nextLevel}</p>
           </div>
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Rating</p>
@@ -221,6 +228,34 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Templates</p>
             <p className="mt-3 text-2xl font-black text-slate-950">{profileData.templateListings.length}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 pb-8 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-5 rounded-[2rem] border border-slate-200 bg-white p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Reputation foundation</p>
+              <h2 className="text-3xl font-black tracking-[-0.04em] text-slate-950">
+                {profileData.reputation.currentLevel} reseller · {profileData.reputation.trustScore} trust
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">
+                {profileData.reputation.friendlyExplanation} Sales, response, completion, and dispute metrics are future placeholders.
+              </p>
+            </div>
+            <div className="rounded-3xl bg-slate-50 p-4 text-sm font-black text-slate-700">
+              {profileData.reputation.progress}% toward {profileData.reputation.nextLevel}
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {profileData.reputation.metrics.slice(0, 9).map((metric) => (
+              <div className="rounded-3xl bg-slate-50 p-4" key={metric.key}>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{metric.label}</p>
+                <p className="mt-2 text-xl font-black text-slate-950">{metric.value}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{metric.note}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

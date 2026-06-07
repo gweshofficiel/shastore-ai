@@ -1,6 +1,11 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
-import { getResellerReviewsData, resellerMigrationMessage, type ResellerReview } from "@/lib/reseller-showcase/data";
+import {
+  getResellerReputationData,
+  getResellerReviewsData,
+  resellerMigrationMessage,
+  type ResellerReview
+} from "@/lib/reseller-showcase/data";
 import {
   markResellerReviewReviewedPlaceholder,
   replyResellerReviewPlaceholder,
@@ -156,7 +161,11 @@ function ReviewSection({
 }
 
 export default async function ResellerReviewsPage({ searchParams }: ResellerReviewsPageProps) {
-  const [query, data] = await Promise.all([searchParams, getResellerReviewsData()]);
+  const [query, data, reputation] = await Promise.all([
+    searchParams,
+    getResellerReviewsData(),
+    getResellerReputationData()
+  ]);
   const returnTo = "/reseller/dashboard/reviews";
 
   return (
@@ -206,6 +215,25 @@ export default async function ResellerReviewsPage({ searchParams }: ResellerRevi
           <p className="mt-3 text-3xl font-black text-ink">{data.summary.rejectedReviews}</p>
         </Card>
       </div>
+
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Reputation impact
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {reputation.currentLevel} level · {reputation.trustScore} trust
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Approved reviews contribute to rating and level progress. Pending and rejected reviews do not appear publicly.
+            </p>
+          </div>
+          <div className="rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
+            {reputation.progress}% toward {reputation.nextLevel}
+          </div>
+        </div>
+      </Card>
 
       <ReviewSection
         empty="No latest reviews yet. Future buyer verified purchase reviews will appear here."

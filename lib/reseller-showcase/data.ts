@@ -46,6 +46,29 @@ export type ResellerReviewsData = {
   summary: ResellerReviewsSummary;
 };
 
+export type ResellerLevel = "Bronze" | "Silver" | "Gold" | "Platinum" | "Diamond";
+
+export type ResellerTrustScore = "low" | "medium" | "high" | "excellent";
+
+export type ResellerReputationMetric = {
+  key: string;
+  label: string;
+  note: string;
+  value: string | number;
+};
+
+export type ResellerReputation = {
+  accountAgeDays: number;
+  currentLevel: ResellerLevel;
+  friendlyExplanation: string;
+  futureHooks: string[];
+  missingRequirements: string[];
+  metrics: ResellerReputationMetric[];
+  nextLevel: ResellerLevel | "Max level";
+  progress: number;
+  trustScore: ResellerTrustScore;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -55,6 +78,7 @@ export type PublicResellerProfile = {
   profileStatus: "not_available" | "published";
   publicAccountCode: string;
   ratingPlaceholder: string;
+  reputation: ResellerReputation;
   reviews: ResellerReview[];
   reviewsSummary: ResellerReviewsSummary;
   resellerLevelPlaceholder: string;
@@ -205,6 +229,15 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function daysSince(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const elapsed = Date.now() - new Date(value).getTime();
+  return Math.max(0, Math.floor(elapsed / 86_400_000));
+}
+
 function isTemplateListing(item: ResellerShowcaseItem) {
   return stringList(item.preview_images).some((image) => image.startsWith("template:"));
 }
@@ -243,6 +276,190 @@ function reviewSummary(reviews: ResellerReview[]): ResellerReviewsSummary {
     rejectedReviews: reviews.filter((review) => review.status === "rejected").length,
     reviewCount: approved.length,
     totalReviews: reviews.length
+  };
+}
+
+const resellerLevelThresholds: Array<{
+  level: ResellerLevel;
+  minimumScore: number;
+  requirements: string[];
+}> = [
+  {
+    level: "Bronze",
+    minimumScore: 0,
+    requirements: ["Create a public profile", "Publish at least one listing when ready"]
+  },
+  {
+    level: "Silver",
+    minimumScore: 25,
+    requirements: ["Publish 3 listings", "Receive 2 approved reviews", "Keep rating near 4.0+"]
+  },
+  {
+    level: "Gold",
+    minimumScore: 50,
+    requirements: ["Publish 6 listings", "Receive 5 approved reviews", "Keep rating near 4.3+"]
+  },
+  {
+    level: "Platinum",
+    minimumScore: 75,
+    requirements: ["Publish 10 listings", "Receive 12 approved reviews", "Keep rating near 4.6+"]
+  },
+  {
+    level: "Diamond",
+    minimumScore: 95,
+    requirements: ["Sustain excellent reviews, reliability, and marketplace activity"]
+  }
+];
+
+function trustScoreFor(score: number): ResellerTrustScore {
+  if (score >= 85) {
+    return "excellent";
+  }
+
+  if (score >= 60) {
+    return "high";
+  }
+
+  if (score >= 30) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function reputationScore({
+  accountAgeDays,
+  averageRating,
+  publishedListings,
+  totalReviews
+}: {
+  accountAgeDays: number;
+  averageRating: number | null;
+  publishedListings: number;
+  totalReviews: number;
+}) {
+  const listingScore = Math.min(30, publishedListings * 5);
+  const reviewScore = Math.min(30, totalReviews * 4);
+  const ratingScore = averageRating ? Math.min(25, averageRating * 5) : 0;
+  const ageScore = Math.min(15, Math.floor(accountAgeDays / 7));
+
+  return Math.round(listingScore + reviewScore + ratingScore + ageScore);
+}
+
+function levelForScore(score: number) {
+  return resellerLevelThresholds.reduce((current, threshold) => {
+    return score >= threshold.minimumScore ? threshold : current;
+  }, resellerLevelThresholds[0]);
+}
+
+function nextLevelFor(level: ResellerLevel) {
+  const currentIndex = resellerLevelThresholds.findIndex((threshold) => threshold.level === level);
+  return resellerLevelThresholds[currentIndex + 1] ?? null;
+}
+
+function buildReputation({
+  profile,
+  reviewsSummary,
+  storeListings,
+  templateListings
+}: {
+  profile: ResellerProfile | null;
+  reviewsSummary: ResellerReviewsSummary;
+  storeListings: ResellerShowcaseItem[];
+  templateListings: ResellerShowcaseItem[];
+}): ResellerReputation {
+  const publishedListings = storeListings.length + templateListings.length;
+  const accountAgeDays = daysSince(profile?.created_at);
+  const score = reputationScore({
+    accountAgeDays,
+    averageRating: reviewsSummary.averageRating,
+    publishedListings,
+    totalReviews: reviewsSummary.approvedReviews
+  });
+  const level = levelForScore(score);
+  const nextLevel = nextLevelFor(level.level);
+  const nextMinimum = nextLevel?.minimumScore ?? 100;
+  const progress = nextLevel
+    ? Math.min(99, Math.round((score / nextMinimum) * 100))
+    : 100;
+  const missingRequirements = nextLevel
+    ? nextLevel.requirements
+    : ["Max foundation level reached. Future eligibility can include verified sales and dispute history."];
+
+  return {
+    accountAgeDays,
+    currentLevel: level.level,
+    friendlyExplanation:
+      publishedListings || reviewsSummary.approvedReviews
+        ? "Level is derived from safe activity signals like published listings, approved reviews, rating, and account age."
+        : "New reseller foundation. Start with a public profile and published listings to progress.",
+    futureHooks: [
+      "Auto level recalculation",
+      "Verified sales count",
+      "Review score weighting",
+      "Dispute penalty",
+      "Featured reseller eligibility"
+    ],
+    missingRequirements,
+    metrics: [
+      {
+        key: "stores_listed",
+        label: "Stores listed",
+        note: "Published public store listings only.",
+        value: storeListings.length
+      },
+      {
+        key: "stores_sold",
+        label: "Stores sold",
+        note: "Verified sales count is a future placeholder. No fake sales are created.",
+        value: "0 placeholder"
+      },
+      {
+        key: "templates_listed",
+        label: "Templates listed",
+        note: "Published public template listings only.",
+        value: templateListings.length
+      },
+      {
+        key: "average_rating",
+        label: "Average rating",
+        note: "Approved reviews only.",
+        value: reviewsSummary.averageRating ?? "No reviews yet"
+      },
+      {
+        key: "total_reviews",
+        label: "Total reviews",
+        note: "Approved public review count.",
+        value: reviewsSummary.approvedReviews
+      },
+      {
+        key: "response_rate",
+        label: "Response rate",
+        note: "Future buyer contact response metric placeholder.",
+        value: "Placeholder"
+      },
+      {
+        key: "completion_rate",
+        label: "Completion rate",
+        note: "Future verified delivery/completion metric placeholder.",
+        value: "Placeholder"
+      },
+      {
+        key: "dispute_rate",
+        label: "Dispute rate",
+        note: "Future dispute penalty metric placeholder.",
+        value: "Placeholder"
+      },
+      {
+        key: "account_age",
+        label: "Account age",
+        note: "Derived from reseller profile creation date.",
+        value: `${accountAgeDays} day${accountAgeDays === 1 ? "" : "s"}`
+      }
+    ],
+    nextLevel: nextLevel?.level ?? "Max level",
+    progress,
+    trustScore: trustScoreFor(score)
   };
 }
 
@@ -299,6 +516,23 @@ export async function getResellerReviewsData(): Promise<ResellerReviewsData> {
   };
 }
 
+export async function getResellerReputationData(): Promise<ResellerReputation> {
+  const [dashboard, reviewsData] = await Promise.all([
+    getResellerDashboardData(),
+    getResellerReviewsData()
+  ]);
+  const items = dashboard.items.filter((item) => item.status === "published");
+  const templateListings = items.filter(isTemplateListing);
+  const storeListings = items.filter((item) => !isTemplateListing(item));
+
+  return buildReputation({
+    profile: dashboard.profile,
+    reviewsSummary: reviewsData.summary,
+    storeListings,
+    templateListings
+  });
+}
+
 export async function getPublicResellerProfile(slug: string): Promise<PublicResellerProfile> {
   const showcase = await getPublicResellerShowcase(slug);
   const items = showcase?.items ?? [];
@@ -306,6 +540,12 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
   const storeListings = items.filter((item) => !isTemplateListing(item));
   const { reviews } = await getReviewsForProfile(showcase?.profile.id ?? null, true);
   const reviewsSummary = reviewSummary(reviews);
+  const reputation = buildReputation({
+    profile: showcase?.profile ?? null,
+    reviewsSummary,
+    storeListings,
+    templateListings
+  });
 
   return {
     canonicalPath: `/resellers/${slug}`,
@@ -317,15 +557,21 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
       "Verified badges",
       "Featured stores",
       "Buyer contact request",
-      "Public marketplace search"
+      "Public marketplace search",
+      "Auto level recalculation",
+      "Verified sales count",
+      "Review score weighting",
+      "Dispute penalty",
+      "Featured reseller eligibility"
     ],
     languages: ["Language placeholder"],
     profileStatus: showcase ? "published" : "not_available",
     publicAccountCode: `RSL-${slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "PUBLIC"}`,
     ratingPlaceholder: reviewsSummary.averageRating ? `${reviewsSummary.averageRating}/5` : "No reviews yet",
+    reputation,
     reviews,
     reviewsSummary,
-    resellerLevelPlaceholder: "Level placeholder",
+    resellerLevelPlaceholder: reputation.currentLevel,
     showcase,
     storeListings,
     templateListings,
