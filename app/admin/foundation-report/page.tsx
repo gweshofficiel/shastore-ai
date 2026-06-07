@@ -19,6 +19,7 @@ type AdminHref =
   | "/admin/integrations"
   | "/admin/ai"
   | "/admin/platform-website"
+  | "/admin/platform-theme"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -119,6 +120,12 @@ const modules: FoundationModule[] = [
     href: "/admin/platform-website",
     name: "Platform Website",
     notes: "Admin management foundation exists for SHASTORE public pages, landing readiness, SEO previews, multilingual placeholders, and safe page status controls.",
+    status: "ready"
+  },
+  {
+    href: "/admin/platform-theme",
+    name: "Platform Theme",
+    notes: "Admin management foundation exists for SHASTORE SaaS and public platform branding previews, RTL/LTR readiness, and safe placeholder branding actions.",
     status: "ready"
   },
   {

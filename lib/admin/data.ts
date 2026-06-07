@@ -397,6 +397,43 @@ export type AdminPlatformWebsiteControl = {
   };
 };
 
+export type AdminPlatformThemeControl = {
+  branding: {
+    accentColor: string;
+    darkMode: "placeholder";
+    favicon: string;
+    lightMode: "placeholder";
+    logo: string;
+    primaryColor: string;
+    secondaryColor: string;
+    typography: string;
+  };
+  futureHooks: string[];
+  previews: {
+    adminDashboard: Array<{
+      description: string;
+      label: string;
+      status: "placeholder" | "ready";
+    }>;
+    publicWebsite: Array<{
+      description: string;
+      label: string;
+      status: "placeholder" | "ready";
+    }>;
+  };
+  readiness: Array<{
+    direction: "LTR" | "RTL";
+    language: "Arabic" | "English" | "French";
+    status: "placeholder" | "ready";
+  }>;
+  sections: Array<{
+    description: string;
+    label: string;
+    status: "draft" | "placeholder" | "ready";
+    value: string;
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -2546,6 +2583,142 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
       totalPages: pages.length
     },
     pages
+  };
+}
+
+export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
+  const { supabase } = await getAdminUsersBase();
+  const monitoringEvents = await safeSelect(
+    supabase,
+    "monitoring_events",
+    "event_type, event_status, entity_type, metadata, created_at",
+    100
+  );
+  const latestThemeAction = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_platform_theme_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))[0];
+  const isDraftSaved = Boolean(latestThemeAction);
+  const branding: AdminPlatformThemeControl["branding"] = {
+    accentColor: "#f97316",
+    darkMode: "placeholder",
+    favicon: "Platform favicon placeholder",
+    lightMode: "placeholder",
+    logo: "SHASTORE AI",
+    primaryColor: "#0f172a",
+    secondaryColor: "#2563eb",
+    typography: "Inter / system sans"
+  };
+
+  return {
+    branding,
+    futureHooks: [
+      "Upload logo",
+      "Upload favicon",
+      "Theme preset manager",
+      "White-label platform branding",
+      "Reseller branding inheritance"
+    ],
+    previews: {
+      adminDashboard: [
+        {
+          description: "Sidebar preview uses platform admin navigation styling only.",
+          label: "Sidebar preview",
+          status: "ready"
+        },
+        {
+          description: "Card preview mirrors current Super Admin card surfaces.",
+          label: "Card preview",
+          status: "ready"
+        },
+        {
+          description: "Badge preview uses existing AdminBadge tones.",
+          label: "Badge preview",
+          status: "ready"
+        },
+        {
+          description: "Button preview is a placeholder for future admin button theming.",
+          label: "Button preview",
+          status: "placeholder"
+        }
+      ],
+      publicWebsite: [
+        {
+          description: "Navbar preview mirrors SHASTORE platform marketing navigation.",
+          label: "Navbar preview",
+          status: "ready"
+        },
+        {
+          description: "Hero preview shows platform public website direction, not a store template.",
+          label: "Hero preview",
+          status: "ready"
+        },
+        {
+          description: "Button preview uses platform CTA colors.",
+          label: "Button preview",
+          status: "ready"
+        },
+        {
+          description: "Footer preview is reserved until platform footer management is built.",
+          label: "Footer preview",
+          status: "placeholder"
+        }
+      ]
+    },
+    readiness: [
+      { direction: "RTL", language: "Arabic", status: "placeholder" },
+      { direction: "LTR", language: "English", status: "ready" },
+      { direction: "LTR", language: "French", status: "placeholder" }
+    ],
+    sections: [
+      {
+        description: "Text/logo mark for SHASTORE SaaS interface and public platform website.",
+        label: "Platform logo",
+        status: isDraftSaved ? "draft" : "ready",
+        value: branding.logo
+      },
+      {
+        description: "Favicon placeholder only; upload workflow is not connected yet.",
+        label: "Favicon",
+        status: "placeholder",
+        value: branding.favicon
+      },
+      {
+        description: "Primary platform brand color for admin/public chrome.",
+        label: "Primary color",
+        status: "ready",
+        value: branding.primaryColor
+      },
+      {
+        description: "Secondary platform brand color for links and supporting CTAs.",
+        label: "Secondary color",
+        status: "ready",
+        value: branding.secondaryColor
+      },
+      {
+        description: "Accent color reserved for highlights and marketing moments.",
+        label: "Accent color",
+        status: "ready",
+        value: branding.accentColor
+      },
+      {
+        description: "Platform typography stack for SaaS UI and marketing pages.",
+        label: "Typography",
+        status: "ready",
+        value: branding.typography
+      },
+      {
+        description: "Dark mode is reserved and does not change live UI yet.",
+        label: "Dark mode placeholder",
+        status: "placeholder",
+        value: branding.darkMode
+      },
+      {
+        description: "Light mode is the current platform baseline.",
+        label: "Light mode placeholder",
+        status: "placeholder",
+        value: branding.lightMode
+      }
+    ]
   };
 }
 
