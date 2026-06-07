@@ -6,6 +6,7 @@ import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
 import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
+import { summarizeUserAgent } from "@/lib/security/user-agent";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -743,6 +744,50 @@ export type AdminReportingControl = {
   }>;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
   sources: string[];
+};
+
+export type AdminAdvancedSecurityControl = {
+  events: Array<{
+    browser: string;
+    createdAt: string;
+    device: string;
+    eventType: string;
+    id: string;
+    ipMasked: string;
+    severity: "critical" | "high" | "low" | "medium";
+    status: "blocked" | "failed" | "recorded" | "reviewed" | "watching";
+    storeId: string | null;
+    summary: string;
+    userId: string | null;
+  }>;
+  futureHooks: string[];
+  overview: {
+    deniedAccessEvents: number;
+    failedLogins: number;
+    highRiskStores: number;
+    highRiskUsers: number;
+    rateLimitEvents: number;
+    suspiciousEvents: number;
+    totalLoginEvents: number;
+  };
+  riskScores: Array<{
+    count: number;
+    description: string;
+    level: "critical" | "high" | "low" | "medium";
+  }>;
+  sections: Array<{
+    name:
+      | "Abuse Detection"
+      | "Audit Logs"
+      | "Device Monitoring"
+      | "Fraud Detection"
+      | "IP Monitoring"
+      | "Login Monitoring"
+      | "Rate Limits"
+      | "Risk Score Engine";
+    note: string;
+    status: "monitoring" | "placeholder" | "review";
+  }>;
 };
 
 type AdminLanding = {
@@ -2009,6 +2054,42 @@ function maskedEmail(value: unknown) {
   const extension = domainParts.slice(1).join(".");
 
   return `${visibleLocal}${"*".repeat(Math.max(2, local.length - 2))}@${domainName.slice(0, 1)}***${extension ? `.${extension}` : ""}`;
+}
+
+function maskedIP(value: unknown) {
+  const raw = text(value);
+
+  if (!raw) {
+    return "IP not recorded";
+  }
+
+  if (raw.includes(":")) {
+    const parts = raw.split(":").filter(Boolean);
+    return `${parts.slice(0, 2).join(":")}:****`;
+  }
+
+  const parts = raw.split(".");
+
+  if (parts.length === 4) {
+    return `${parts[0]}.${parts[1]}.***.***`;
+  }
+
+  return "[masked-ip]";
+}
+
+function safeSecuritySummary(value: unknown) {
+  const raw = text(value, "").replace(/\s+/g, " ").trim();
+
+  if (!raw) {
+    return "No safe summary recorded.";
+  }
+
+  return raw
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-token]")
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .slice(0, 180);
 }
 
 function classifyAIError(value: string | null) {
@@ -4334,6 +4415,169 @@ export async function getAdminReportingControl(
       "getAdminMarketplaceControl",
       "getAdminPlatformHealth"
     ]
+  };
+}
+
+export async function getAdminAdvancedSecurityControl(): Promise<AdminAdvancedSecurityControl> {
+  const { supabase } = await getAdminClient();
+  const [securityLogs, adminEvents] = await Promise.all([
+    safeSelect(
+      supabase,
+      "security_audit_logs",
+      "id, workspace_id, store_id, user_id, action, reason, route, ip_address, user_agent, metadata, created_at",
+      500
+    ),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+  const reviewedIds = new Set(
+    adminEvents
+      .filter((event) => text(event.event_type) === "admin_security_mark_reviewed")
+      .map((event) => {
+        const metadata = isRecord(event.metadata) ? event.metadata : {};
+        return text(metadata.event_id);
+      })
+      .filter(Boolean)
+  );
+
+  function severityFor(log: AnyRecord): AdminAdvancedSecurityControl["events"][number]["severity"] {
+    const action = text(log.action).toLowerCase();
+    const reason = text(log.reason).toLowerCase();
+
+    if (action.includes("token") || reason.includes("token") || action.includes("fraud")) {
+      return "critical";
+    }
+
+    if (action.includes("denied") || action.includes("unauthorized") || action.includes("rate_limit") || reason.includes("abuse")) {
+      return "high";
+    }
+
+    if (action.includes("login") && (action.includes("failed") || reason.includes("failed"))) {
+      return "medium";
+    }
+
+    return "low";
+  }
+
+  function statusFor(
+    log: AnyRecord,
+    severity: AdminAdvancedSecurityControl["events"][number]["severity"]
+  ): AdminAdvancedSecurityControl["events"][number]["status"] {
+    const id = text(log.id);
+    const action = text(log.action).toLowerCase();
+
+    if (id && reviewedIds.has(id)) {
+      return "reviewed";
+    }
+
+    if (action.includes("denied") || action.includes("rate_limit") || action.includes("blocked")) {
+      return "blocked";
+    }
+
+    if (action.includes("failed")) {
+      return "failed";
+    }
+
+    return severity === "high" || severity === "critical" ? "watching" : "recorded";
+  }
+
+  const events = securityLogs
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))
+    .slice(0, 100)
+    .map((log) => {
+      const severity = severityFor(log);
+      const userAgent = text(log.user_agent);
+      const { browserLabel, deviceLabel } = summarizeUserAgent(userAgent);
+
+      return {
+        browser: browserLabel,
+        createdAt: text(log.created_at, new Date(0).toISOString()),
+        device: deviceLabel,
+        eventType: text(log.action, "security.event"),
+        id: text(log.id) || `security:${text(log.created_at)}`,
+        ipMasked: maskedIP(log.ip_address),
+        severity,
+        status: statusFor(log, severity),
+        storeId: text(log.store_id) || null,
+        summary: safeSecuritySummary(log.reason),
+        userId: text(log.user_id) || null
+      };
+    });
+  const highRiskUsers = new Set(
+    events.filter((event) => (event.severity === "high" || event.severity === "critical") && event.userId).map((event) => event.userId)
+  ).size;
+  const highRiskStores = new Set(
+    events.filter((event) => (event.severity === "high" || event.severity === "critical") && event.storeId).map((event) => event.storeId)
+  ).size;
+  const suspiciousEvents = events.filter((event) => event.severity === "high" || event.severity === "critical").length;
+  const sections: AdminAdvancedSecurityControl["sections"] = [
+    {
+      name: "Audit Logs",
+      note: "Uses existing security_audit_logs records without duplicating audit storage.",
+      status: "monitoring"
+    },
+    {
+      name: "Login Monitoring",
+      note: "Login success and failure events are summarized from security audit actions.",
+      status: "monitoring"
+    },
+    {
+      name: "IP Monitoring",
+      note: "IP addresses are masked before display.",
+      status: "monitoring"
+    },
+    {
+      name: "Device Monitoring",
+      note: "Browser/device labels are derived from user-agent summaries only.",
+      status: "monitoring"
+    },
+    {
+      name: "Abuse Detection",
+      note: "Unauthorized, denied, and repeated-action signals feed review status.",
+      status: suspiciousEvents ? "review" : "monitoring"
+    },
+    {
+      name: "Fraud Detection",
+      note: "Fraud rules engine is reserved; current phase monitors high-risk audit patterns.",
+      status: "placeholder"
+    },
+    {
+      name: "Rate Limits",
+      note: "Rate-limit exceeded events come from existing rate-limit audit logging.",
+      status: events.some((event) => event.eventType.includes("rate_limit")) ? "review" : "monitoring"
+    },
+    {
+      name: "Risk Score Engine",
+      note: "Risk levels are derived from event classification; no automated enforcement here.",
+      status: "placeholder"
+    }
+  ];
+
+  return {
+    events,
+    futureHooks: [
+      "Fraud rules engine",
+      "IP blocklist",
+      "Device fingerprinting",
+      "Automated abuse detection",
+      "Security alert notifications",
+      "Export audit logs"
+    ],
+    overview: {
+      deniedAccessEvents: events.filter((event) => event.eventType.toLowerCase().includes("denied")).length,
+      failedLogins: events.filter((event) => event.eventType.toLowerCase().includes("login") && event.status === "failed").length,
+      highRiskStores,
+      highRiskUsers,
+      rateLimitEvents: events.filter((event) => event.eventType.toLowerCase().includes("rate_limit")).length,
+      suspiciousEvents,
+      totalLoginEvents: events.filter((event) => event.eventType.toLowerCase().includes("login")).length
+    },
+    riskScores: [
+      { count: events.filter((event) => event.severity === "low").length, description: "Routine or informational audit events.", level: "low" },
+      { count: events.filter((event) => event.severity === "medium").length, description: "Failed login or moderate review signals.", level: "medium" },
+      { count: events.filter((event) => event.severity === "high").length, description: "Denied access, abuse, or rate-limit signals.", level: "high" },
+      { count: events.filter((event) => event.severity === "critical").length, description: "Token, fraud, or severe security signals.", level: "critical" }
+    ],
+    sections
   };
 }
 

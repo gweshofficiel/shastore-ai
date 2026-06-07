@@ -59,7 +59,7 @@ const modules: FoundationModule[] = [
   {
     href: "/admin/security",
     name: "Security",
-    notes: "Uses real security audit logs for login events, access denials, and rate limits.",
+    notes: "Advanced Security Center uses existing security audit logs for login, access denial, IP/device, rate-limit, abuse, fraud placeholder, and risk-score monitoring with safe governance actions.",
     status: "ready"
   },
   {
