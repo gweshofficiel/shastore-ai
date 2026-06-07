@@ -83,8 +83,8 @@ const modules: FoundationModule[] = [
   {
     href: "/admin/reports",
     name: "Reports",
-    notes: "Placeholder foundation exists; consolidated platform reporting remains future work.",
-    status: "partial"
+    notes: "Admin reporting foundation exists for revenue, stores, users, subscriptions, payments, AI, domains/email, marketplace, security, and operations using existing aggregate sources.",
+    status: "ready"
   },
   {
     href: "/admin/moderation",
