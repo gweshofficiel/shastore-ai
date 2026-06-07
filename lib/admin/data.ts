@@ -2,6 +2,8 @@ import { createClient as createServiceClient, type SupabaseClient } from "@supab
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createClient } from "@/lib/supabase/server";
+import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
+import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -307,6 +309,57 @@ export type AdminIntegrationsControl = {
     recentFailures: number;
     retryStatus: string;
     status: "configured" | "missing" | "placeholder";
+  }>;
+};
+
+export type AdminAIControl = {
+  failureMonitoring: Array<{
+    count: number;
+    label: string;
+    note: string;
+  }>;
+  futureHooks: string[];
+  jobs: Array<{
+    assetUrl: string | null;
+    completedAt: string | null;
+    costEstimate: number;
+    createdAt: string;
+    errorSummary: string | null;
+    id: string;
+    jobType: string;
+    ownerEmail: string;
+    provider: string;
+    status: string;
+    storeId: string | null;
+    storeName: string;
+  }>;
+  overview: {
+    completedJobs: number;
+    estimatedCost: number;
+    failedJobs: number;
+    pendingJobs: number;
+    processingJobs: number;
+    storesUsingAI: number;
+    topAssetTypes: string;
+    totalJobs: number;
+  };
+  providers: Array<{
+    configurationStatus: "configured" | "disabled" | "missing";
+    costTracking: string;
+    healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+    name: string;
+    provider: string;
+    secretStatus: "masked_configured" | "missing" | "no_secret_required";
+  }>;
+  storeUsage: Array<{
+    completed: number;
+    estimatedCost: number;
+    failed: number;
+    lastActivity: string | null;
+    ownerEmail: string;
+    storeId: string;
+    storeName: string;
+    totalJobs: number;
   }>;
 };
 
@@ -1522,6 +1575,58 @@ function integrationMode(providerKey: string): AdminIntegrationsControl["integra
   return "placeholder";
 }
 
+function aiVisualJobCost(job: AnyRecord) {
+  const providerPlan = isRecord(job.providerPlan) ? job.providerPlan : {};
+  const explicitCost = numberValue(providerPlan.estimatedCostUsd ?? providerPlan.estimatedCost);
+
+  if (explicitCost > 0) {
+    return explicitCost;
+  }
+
+  const kind = text(job.kind);
+
+  if (kind.includes("hero") || kind.includes("banner")) {
+    return 0.08;
+  }
+
+  return text(job.status) === "completed" ? 0.04 : 0;
+}
+
+function safeAIErrorSummary(value: unknown) {
+  const raw = text(value, "").replace(/\s+/g, " ").trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  return raw
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[redacted]")
+    .slice(0, 180);
+}
+
+function classifyAIError(value: string | null) {
+  const error = (value ?? "").toLowerCase();
+
+  if (!error) {
+    return "provider_errors";
+  }
+
+  if (error.includes("r2") || error.includes("storage") || error.includes("bucket") || error.includes("upload")) {
+    return "storage_errors";
+  }
+
+  if (error.includes("timeout") || error.includes("timed out")) {
+    return "timeout_errors";
+  }
+
+  if (error.includes("prompt") || error.includes("invalid") || error.includes("moderation")) {
+    return "invalid_prompt_errors";
+  }
+
+  return "provider_errors";
+}
+
 export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProviderControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
@@ -1986,6 +2091,228 @@ export async function getAdminIntegrationsControl(): Promise<AdminIntegrationsCo
       webhookFailures: webhooks.reduce((total, webhook) => total + webhook.recentFailures, 0)
     },
     webhooks
+  };
+}
+
+export async function getAdminAIControl(): Promise<AdminAIControl> {
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const [stores, legacyQueues, legacyResults, monitoringEvents] = await Promise.all([
+    safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug, store_data, created_at"),
+    safeSelect(
+      supabase,
+      "ai_generation_queue",
+      "id, store_instance_id, owner_user_id, workflow_state, queue_status, attempts, max_attempts, completed_at, failed_at, error_message, created_at, updated_at",
+      500
+    ),
+    safeSelect(
+      supabase,
+      "ai_generation_results",
+      "id, store_instance_id, owner_user_id, result_status, cost_estimate, metadata, created_at, updated_at",
+      500
+    ),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+  const storeById = new Map(stores.map((store) => [text(store.id), store]));
+  const jobs: AdminAIControl["jobs"] = [];
+
+  for (const store of stores) {
+    const storeId = text(store.id);
+    const queue = aiVisualQueueFromStoreData(store.store_data);
+    const ownerId = ownerUserId(store);
+    const ownerEmail = owners.get(ownerId) ?? text(ownerId, "Unknown owner");
+    const storeName = text(store.store_name, text(store.name, text(store.slug, "Untitled store")));
+
+    for (const job of Object.values(queue.jobs) as AnyRecord[]) {
+      const result = isRecord(job.result) ? job.result : {};
+      const asset = isRecord(result.asset) ? result.asset : {};
+      const errorSummary = safeAIErrorSummary(job.error);
+
+      jobs.push({
+        assetUrl: text(result.publicUrl) || text(asset.publicUrl) || text(asset.url) || null,
+        completedAt: text(job.completedAt) || null,
+        costEstimate: aiVisualJobCost(job),
+        createdAt: text(job.createdAt, text(store.created_at)),
+        errorSummary,
+        id: text(job.jobId, text(job.requestId, `${storeId}-ai-visual-job`)),
+        jobType: text(job.kind, text(job.slot, "ai_visual")),
+        ownerEmail,
+        provider: text(job.provider, "ai_visual_provider"),
+        status: text(job.status, "pending"),
+        storeId,
+        storeName
+      });
+    }
+  }
+
+  for (const queue of legacyQueues) {
+    const storeId = text(queue.store_instance_id);
+    const store = storeById.get(storeId);
+    const ownerId = text(queue.owner_user_id) || (store ? ownerUserId(store) : "");
+    const ownerEmail = owners.get(ownerId) ?? text(ownerId, "Unknown owner");
+    const status = text(queue.queue_status, text(queue.workflow_state, "waiting"));
+    const errorSummary = safeAIErrorSummary(queue.error_message);
+
+    jobs.push({
+      assetUrl: null,
+      completedAt: text(queue.completed_at) || text(queue.failed_at) || null,
+      costEstimate: 0,
+      createdAt: text(queue.created_at),
+      errorSummary,
+      id: text(queue.id),
+      jobType: text(queue.workflow_state, "store_generation"),
+      ownerEmail,
+      provider: "workflow_placeholder",
+      status,
+      storeId: storeId || null,
+      storeName: store ? text(store.store_name, text(store.name, "Untitled store")) : "AI workflow"
+    });
+  }
+
+  for (const result of legacyResults) {
+    const status = text(result.result_status);
+
+    if (status !== "failed" && status !== "succeeded") {
+      continue;
+    }
+
+    const storeId = text(result.store_instance_id);
+    const store = storeById.get(storeId);
+    const ownerId = text(result.owner_user_id) || (store ? ownerUserId(store) : "");
+    const ownerEmail = owners.get(ownerId) ?? text(ownerId, "Unknown owner");
+    const costEstimate = isRecord(result.cost_estimate)
+      ? numberValue(result.cost_estimate.totalUsd ?? result.cost_estimate.estimatedUsd ?? result.cost_estimate.total)
+      : 0;
+
+    jobs.push({
+      assetUrl: null,
+      completedAt: text(result.updated_at) || null,
+      costEstimate,
+      createdAt: text(result.created_at),
+      errorSummary: status === "failed" ? "Legacy AI generation result failed." : null,
+      id: text(result.id),
+      jobType: "legacy_ai_generation_result",
+      ownerEmail,
+      provider: "ai_result_placeholder",
+      status: status === "succeeded" ? "completed" : "failed",
+      storeId: storeId || null,
+      storeName: store ? text(store.store_name, text(store.name, "Untitled store")) : "AI result"
+    });
+  }
+
+  jobs.sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt));
+  const jobsByStore = new Map<string, AdminAIControl["storeUsage"][number]>();
+
+  for (const job of jobs) {
+    if (!job.storeId) {
+      continue;
+    }
+
+    const current = jobsByStore.get(job.storeId) ?? {
+      completed: 0,
+      estimatedCost: 0,
+      failed: 0,
+      lastActivity: null,
+      ownerEmail: job.ownerEmail,
+      storeId: job.storeId,
+      storeName: job.storeName,
+      totalJobs: 0
+    };
+
+    current.totalJobs += 1;
+    current.completed += job.status === "completed" || job.status === "succeeded" ? 1 : 0;
+    current.failed += job.status === "failed" ? 1 : 0;
+    current.estimatedCost += job.costEstimate;
+    current.lastActivity =
+      !current.lastActivity || dateValue(job.createdAt) > dateValue(current.lastActivity)
+        ? job.createdAt
+        : current.lastActivity;
+    jobsByStore.set(job.storeId, current);
+  }
+
+  const assetTypeCounts = countBy(jobs.map((job) => ({ jobType: job.jobType })), "jobType");
+  const topAssetTypes = [...assetTypeCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([assetType, count]) => `${assetType} (${count})`)
+    .join(", ") || "No AI assets yet";
+  const failureCounts = new Map<string, number>([
+    ["provider_errors", 0],
+    ["storage_errors", 0],
+    ["timeout_errors", 0],
+    ["invalid_prompt_errors", 0]
+  ]);
+
+  for (const job of jobs.filter((item) => item.status === "failed")) {
+    const key = classifyAIError(job.errorSummary);
+    failureCounts.set(key, (failureCounts.get(key) ?? 0) + 1);
+  }
+
+  for (const event of monitoringEvents) {
+    const eventType = text(event.event_type).toLowerCase();
+    const entityType = text(event.entity_type).toLowerCase();
+
+    if ((eventType.includes("ai") || entityType.includes("ai")) && text(event.event_status) === "failed") {
+      failureCounts.set("provider_errors", (failureCounts.get("provider_errors") ?? 0) + 1);
+    }
+  }
+
+  const runtime = getAIVisualProviderRuntimeConfig();
+  const openAIConfigured = runtime.apiKeyConfigured && runtime.status === "configured";
+
+  return {
+    failureMonitoring: [
+      { count: jobs.filter((job) => job.status === "failed").length, label: "Failed jobs", note: "Failed AI visual and legacy AI workflow jobs." },
+      { count: failureCounts.get("provider_errors") ?? 0, label: "Provider errors", note: "Provider or generic AI failures from safe metadata." },
+      { count: failureCounts.get("storage_errors") ?? 0, label: "Storage errors", note: "R2/storage/upload related failures." },
+      { count: failureCounts.get("timeout_errors") ?? 0, label: "Timeout errors", note: "Jobs that timed out or exceeded processing limits." },
+      { count: failureCounts.get("invalid_prompt_errors") ?? 0, label: "Invalid prompt/errors", note: "Prompt, moderation, or invalid request failures." }
+    ],
+    futureHooks: [
+      "Pause AI provider",
+      "Disable AI for store",
+      "Retry failed job",
+      "Export AI usage report",
+      "Cost limit enforcement"
+    ],
+    jobs: jobs.slice(0, 100),
+    overview: {
+      completedJobs: jobs.filter((job) => job.status === "completed" || job.status === "succeeded").length,
+      estimatedCost: jobs.reduce((total, job) => total + job.costEstimate, 0),
+      failedJobs: jobs.filter((job) => job.status === "failed").length,
+      pendingJobs: jobs.filter((job) => job.status === "pending" || job.status === "waiting").length,
+      processingJobs: jobs.filter((job) => job.status === "processing" || job.status === "active").length,
+      storesUsingAI: jobsByStore.size,
+      topAssetTypes,
+      totalJobs: jobs.length
+    },
+    providers: [
+      {
+        configurationStatus:
+          runtime.status === "disabled" ? "disabled" : openAIConfigured ? "configured" : "missing",
+        costTracking: "estimated_from_safe_job_metadata",
+        healthStatus:
+          runtime.status === "disabled"
+            ? "placeholder"
+            : openAIConfigured
+              ? "healthy"
+              : "missing_config",
+        name: "OpenAI",
+        provider: runtime.provider,
+        secretStatus: openAIConfigured ? "masked_configured" : "missing"
+      },
+      {
+        configurationStatus: "disabled",
+        costTracking: "future_provider_placeholder",
+        healthStatus: "placeholder",
+        name: "Future AI providers",
+        provider: "replicate/stability/custom",
+        secretStatus: "no_secret_required"
+      }
+    ],
+    storeUsage: [...jobsByStore.values()]
+      .sort((left, right) => right.totalJobs - left.totalJobs)
+      .slice(0, 50)
   };
 }
 

@@ -17,6 +17,7 @@ type AdminHref =
   | "/admin/billing/payment-providers"
   | "/admin/domains-hosting"
   | "/admin/integrations"
+  | "/admin/ai"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -108,14 +109,20 @@ const modules: FoundationModule[] = [
     status: "ready"
   },
   {
+    href: "/admin/ai",
+    name: "AI Control",
+    notes: "Admin monitoring foundation exists for AI visual jobs, provider status, store usage, failure monitoring, safe public asset links, and governance placeholders.",
+    status: "ready"
+  },
+  {
     name: "Billing Center",
     notes: "Dedicated billing operations center is not built yet; subscription controls remain separate.",
     status: "missing"
   },
   {
     name: "AI Center",
-    notes: "Dedicated AI operations center is not built yet.",
-    status: "missing"
+    notes: "AI Control Center is available for global monitoring; provider pausing, store-level AI disablement, failed-job retry, exports, and cost enforcement remain future work.",
+    status: "partial"
   },
   {
     name: "Domain Center",
