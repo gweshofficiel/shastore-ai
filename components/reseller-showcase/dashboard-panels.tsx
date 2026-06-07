@@ -10,6 +10,13 @@ import {
   saveResellerShowcaseItem,
   unpublishResellerShowcaseItem
 } from "@/lib/reseller-showcase/actions";
+import {
+  hideFromMarketplace,
+  markMarketplacePrivate,
+  publishToMarketplace,
+  requestBoostPlaceholder,
+  requestFeaturedPlaceholder
+} from "@/lib/reseller-showcase/visibility-actions";
 import type {
   ResellerDashboardData,
   ResellerInventoryData,
@@ -32,15 +39,59 @@ function asStringList(value: unknown) {
 }
 
 function itemStatusClass(status: ResellerShowcaseItem["status"]) {
-  if (status === "published") {
+  if (status === "published" || status === "public") {
     return "bg-emerald-100 text-emerald-700";
   }
 
-  if (status === "unpublished") {
+  if (status === "featured_ready") {
+    return "bg-violet-100 text-violet-700";
+  }
+
+  if (status === "boosted_placeholder") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  if (status === "under_review") {
     return "bg-amber-100 text-amber-700";
   }
 
+  if (status === "hidden" || status === "private" || status === "unpublished") {
+    return "bg-slate-200 text-slate-700";
+  }
+
   return "bg-slate-100 text-slate-600";
+}
+
+function marketplaceStatusLabel(status: ResellerShowcaseItem["status"]) {
+  if (status === "published" || status === "public") {
+    return "Public";
+  }
+
+  if (status === "hidden" || status === "unpublished") {
+    return "Hidden";
+  }
+
+  if (status === "private") {
+    return "Private";
+  }
+
+  if (status === "under_review") {
+    return "Under review";
+  }
+
+  if (status === "featured_ready") {
+    return "Featured-ready";
+  }
+
+  if (status === "boosted_placeholder") {
+    return "Boosted placeholder";
+  }
+
+  return "Draft";
+}
+
+function isPublicMarketplaceStatus(status: ResellerShowcaseItem["status"]) {
+  return ["boosted_placeholder", "featured_ready", "public", "published"].includes(status);
 }
 
 function isTemplateShowcaseItem(item: ResellerShowcaseItem) {
@@ -76,7 +127,7 @@ export function ResellerStatusAlerts({
 
 export function ResellerOverviewCards({ data }: { data: ResellerDashboardData }) {
   const storeItems = data.items.filter((item) => !isTemplateShowcaseItem(item));
-  const publishedItems = storeItems.filter((item) => item.status === "published");
+  const publishedItems = storeItems.filter((item) => isPublicMarketplaceStatus(item.status));
   const draftItems = storeItems.filter((item) => item.status !== "published");
 
   return (
@@ -576,7 +627,7 @@ function ShowcaseItemCard({
           <p className="mt-1 text-sm text-muted">{item.price_label ?? "Pricing on request"}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${itemStatusClass(item.status)}`}>
-          {item.status}
+          {marketplaceStatusLabel(item.status)}
         </span>
       </div>
       <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
@@ -595,7 +646,7 @@ function ShowcaseItemCard({
             Demo
           </Link>
         ) : null}
-        {item.status === "published" ? (
+        {isPublicMarketplaceStatus(item.status) ? (
           <form action={unpublishResellerShowcaseItem}>
             {returnTo(returnPath)}
             <input name="itemId" type="hidden" value={item.id} />
@@ -610,6 +661,52 @@ function ShowcaseItemCard({
             <Button type="submit">Publish</Button>
           </form>
         )}
+      </div>
+      <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+          Marketplace visibility
+        </p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+          Public, featured-ready, and boosted placeholder items can appear publicly. Hidden, private, draft, and under-review items stay internal.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <form action={publishToMarketplace}>
+            {returnTo(returnPath)}
+            <input name="itemId" type="hidden" value={item.id} />
+            <Button type="submit">Publish to marketplace</Button>
+          </form>
+          <form action={hideFromMarketplace}>
+            {returnTo(returnPath)}
+            <input name="itemId" type="hidden" value={item.id} />
+            <Button type="submit" variant="secondary">
+              Hide
+            </Button>
+          </form>
+          <form action={markMarketplacePrivate}>
+            {returnTo(returnPath)}
+            <input name="itemId" type="hidden" value={item.id} />
+            <Button type="submit" variant="secondary">
+              Mark private
+            </Button>
+          </form>
+          <form action={requestFeaturedPlaceholder}>
+            {returnTo(returnPath)}
+            <input name="itemId" type="hidden" value={item.id} />
+            <Button type="submit" variant="secondary">
+              Request featured
+            </Button>
+          </form>
+          <form action={requestBoostPlaceholder}>
+            {returnTo(returnPath)}
+            <input name="itemId" type="hidden" value={item.id} />
+            <Button type="submit" variant="secondary">
+              Boost placeholder
+            </Button>
+          </form>
+        </div>
+        <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+          Boosting is placeholder-only. No payment, wallet, payout, withdrawal, or fake sale is created.
+        </p>
       </div>
     </div>
   );

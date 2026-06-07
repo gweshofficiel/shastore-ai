@@ -255,7 +255,7 @@ export async function saveResellerShowcaseItem(formData: FormData) {
       slug,
       sort_order: Number(cleanText(formData.get("sortOrder"), 20) ?? 0) || 0,
       source_store_id: sourceStoreId || null,
-      status: publishNow ? "published" : "draft",
+      status: publishNow ? "public" : "draft",
       thumbnail_url: cleanText(formData.get("thumbnailUrl"), 500),
       title,
       user_id: user.id
@@ -279,16 +279,16 @@ export async function saveResellerShowcaseItem(formData: FormData) {
 }
 
 export async function publishResellerShowcaseItem(formData: FormData) {
-  await setResellerShowcaseItemStatus(formData, "published");
+  await setResellerShowcaseItemStatus(formData, "public");
 }
 
 export async function unpublishResellerShowcaseItem(formData: FormData) {
-  await setResellerShowcaseItemStatus(formData, "unpublished");
+  await setResellerShowcaseItemStatus(formData, "hidden");
 }
 
 async function setResellerShowcaseItemStatus(
   formData: FormData,
-  status: "published" | "unpublished"
+  status: "hidden" | "public"
 ) {
   const { supabase, user } = await requireUser();
   const returnTo = safeReturnPath(formData.get("returnTo"));
@@ -299,7 +299,7 @@ async function setResellerShowcaseItemStatus(
     redirectWithError("Showcase item could not be found.", returnTo);
   }
 
-  if (status === "published") {
+  if (status === "public") {
     await assertInventoryAvailable({
       profileId: profile.id,
       returnTo,

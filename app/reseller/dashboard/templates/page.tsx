@@ -1,10 +1,14 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import {
+  ResellerListingsGrid,
   ResellerStatusAlerts,
   ResellerTemplateInventoryCard
 } from "@/components/reseller-showcase/dashboard-panels";
 import { StoreTemplateCard } from "@/components/templates/store-template-card";
-import { getResellerTemplateInventoryData } from "@/lib/reseller-showcase/data";
+import {
+  getResellerDashboardData,
+  getResellerTemplateInventoryData
+} from "@/lib/reseller-showcase/data";
 import { storeTemplateCategories, storeTemplates } from "@/lib/template-studio/library";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +18,16 @@ export default async function ResellerTemplatesPage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, inventory] = await Promise.all([
+  const [query, inventory, dashboard] = await Promise.all([
     searchParams,
-    getResellerTemplateInventoryData()
+    getResellerTemplateInventoryData(),
+    getResellerDashboardData()
   ]);
+  const templateItems = dashboard.items.filter((item) =>
+    Array.isArray(item.preview_images)
+      ? item.preview_images.map((image) => String(image)).some((image) => image.startsWith("template:"))
+      : false
+  );
 
   return (
     <div className="grid gap-8">
@@ -27,6 +37,11 @@ export default async function ResellerTemplatesPage({
       />
       <ResellerStatusAlerts query={query} />
       <ResellerTemplateInventoryCard inventory={inventory} variant="full" />
+      <ResellerListingsGrid
+        items={templateItems}
+        returnPath="/reseller/dashboard/templates"
+        title="Template Marketplace Visibility"
+      />
       <div className="grid gap-3 rounded-[2rem] border border-violet-100 bg-white/80 p-5 shadow-[0_18px_60px_-48px_rgba(76,29,149,0.45)] backdrop-blur">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
           Reseller Categories

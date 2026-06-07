@@ -169,6 +169,8 @@ export const resellerTemplateInventoryPlanLimits: Record<ResellerInventoryPlan, 
   Enterprise: 150
 };
 
+const publicMarketplaceStatuses = ["boosted_placeholder", "featured_ready", "public", "published"];
+
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
   return (
@@ -290,7 +292,7 @@ export async function getPublicResellerShowcase(
       .from("reseller_showcase_items" as never)
       .select("*")
       .eq("profile_id", profile.id)
-      .eq("status", "published")
+      .in("status" as never, publicMarketplaceStatuses as never)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false }),
     supabase
@@ -331,6 +333,10 @@ function daysSince(value: string | null | undefined) {
 
 function isTemplateListing(item: ResellerShowcaseItem) {
   return stringList(item.preview_images).some((image) => image.startsWith("template:"));
+}
+
+function isPublicMarketplaceStatus(status: ResellerShowcaseItem["status"]) {
+  return publicMarketplaceStatuses.includes(status);
 }
 
 function normalizeReviewStatus(value: unknown): ResellerReviewStatus {
@@ -661,7 +667,7 @@ function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerI
   const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
   const storeItems = dashboard.items.filter((item) => !isTemplateListing(item));
   const draftListingsCount = storeItems.filter((item) => item.status !== "published").length;
-  const publishedListingsCount = storeItems.filter((item) => item.status === "published").length;
+  const publishedListingsCount = storeItems.filter((item) => isPublicMarketplaceStatus(item.status)).length;
   const soldListingsCount = 0;
   const usedStoreListings = draftListingsCount + publishedListingsCount + soldListingsCount;
   const remainingStoreListings = Math.max(allowedStoreListings - usedStoreListings, 0);

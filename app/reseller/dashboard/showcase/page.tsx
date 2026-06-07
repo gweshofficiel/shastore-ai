@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
+  ResellerListingsGrid,
   ResellerShowcaseProfileForm,
   ResellerStatusAlerts
 } from "@/components/reseller-showcase/dashboard-panels";
@@ -43,6 +44,11 @@ export default async function PrivateResellerShowcasePage({
       <ResellerShowcaseProfileForm
         profile={data.profile}
         returnPath="/reseller/dashboard/showcase"
+      />
+      <ResellerListingsGrid
+        items={data.items}
+        returnPath="/reseller/dashboard/showcase"
+        title="Marketplace Visibility Controls"
       />
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

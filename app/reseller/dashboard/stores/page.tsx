@@ -20,6 +20,10 @@ function isTemplateListing(item: { preview_images: unknown }) {
     : false;
 }
 
+function isPublicMarketplaceStatus(status: string) {
+  return ["boosted_placeholder", "featured_ready", "public", "published"].includes(status);
+}
+
 export default async function PrivateResellerStoresPage({
   searchParams
 }: {
@@ -31,8 +35,8 @@ export default async function PrivateResellerStoresPage({
     getResellerInventoryData()
   ]);
   const storeItems = data.items.filter((item) => !isTemplateListing(item));
-  const publishedItems = storeItems.filter((item) => item.status === "published");
-  const draftItems = storeItems.filter((item) => item.status !== "published");
+  const publishedItems = storeItems.filter((item) => isPublicMarketplaceStatus(item.status));
+  const draftItems = storeItems.filter((item) => !isPublicMarketplaceStatus(item.status));
 
   return (
     <>

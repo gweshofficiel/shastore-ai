@@ -30,7 +30,16 @@ export type ShowcaseThemeSettings = {
   updated_at: string;
 };
 
-export type ResellerShowcaseItemStatus = "draft" | "published" | "unpublished";
+export type ResellerShowcaseItemStatus =
+  | "boosted_placeholder"
+  | "draft"
+  | "featured_ready"
+  | "hidden"
+  | "private"
+  | "public"
+  | "published"
+  | "under_review"
+  | "unpublished";
 
 export type ResellerShowcaseItem = {
   id: string;

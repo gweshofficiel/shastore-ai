@@ -533,7 +533,7 @@ export async function publishTemplate(formData: FormData) {
           profile_id: profile.id,
           slug,
           sort_order: 0,
-          status: "published",
+          status: "public",
           thumbnail_url: null,
           title: customization.heroTitle || template.name,
           user_id: user.id
@@ -573,6 +573,7 @@ export async function publishTemplate(formData: FormData) {
 
   if (profile) {
     revalidatePath(`/reseller/${profile.slug}`);
+    revalidatePath(`/resellers/${profile.slug}`);
   }
 
   redirect(withStatus(returnTo, "saved", "published"));
@@ -602,7 +603,7 @@ export async function unpublishTemplate(formData: FormData) {
   if (profile) {
     const { data: item } = await supabase
       .from("reseller_showcase_items" as never)
-      .update({ status: "unpublished" } as never)
+      .update({ status: "hidden" } as never)
       .eq("profile_id", profile.id)
       .eq("slug", normalizeSlug(`template-${template.id}`))
       .eq("user_id", user.id)
@@ -632,6 +633,7 @@ export async function unpublishTemplate(formData: FormData) {
 
   if (profile) {
     revalidatePath(`/reseller/${profile.slug}`);
+    revalidatePath(`/resellers/${profile.slug}`);
   }
 
   redirect(withStatus(returnTo, "saved", "unpublished"));
