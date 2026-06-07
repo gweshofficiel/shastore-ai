@@ -1,4 +1,5 @@
 import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
+import { planLimitsConfig } from "@/lib/billing/plan-limits";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createClient } from "@/lib/supabase/server";
@@ -887,6 +888,94 @@ export type AdminInternalTeamControl = {
     key: string;
     name: string;
     permissionsSummary: string;
+  }>;
+};
+
+export type AdminPlatformSettingsControl = {
+  currencies: Array<{
+    code: "AED" | "EUR" | "MAD" | "SAR" | "USD";
+    isDefault: boolean;
+    name: string;
+    status: "enabled" | "placeholder_disabled";
+  }>;
+  defaultLimits: Array<{
+    description: string;
+    key: string;
+    value: string;
+  }>;
+  featureFlags: Array<{
+    key: string;
+    note: string;
+    status: "placeholder";
+  }>;
+  futureHooks: string[];
+  general: Array<{
+    key: string;
+    label: string;
+    note: string;
+    value: string;
+  }>;
+  languages: Array<{
+    code: "ar" | "en" | "fr";
+    direction: "LTR" | "RTL";
+    name: string;
+    readiness: "ready" | "placeholder";
+  }>;
+  legalPolicies: Array<{
+    name: string;
+    note: string;
+    status: "placeholder" | "ready";
+  }>;
+  maintenanceModes: Array<{
+    name: string;
+    note: string;
+    status: "off_placeholder";
+    warning: string;
+  }>;
+  overview: {
+    currencies: number;
+    defaultCurrency: string;
+    defaultLanguage: string;
+    languages: number;
+    maintenanceModes: number;
+    sections: number;
+    storeSettingsTouched: 0;
+  };
+  regionalSettings: Array<{
+    key: string;
+    label: string;
+    value: string;
+  }>;
+  safety: Array<{
+    name: string;
+    note: string;
+    status: "enforced";
+  }>;
+  sections: Array<{
+    name:
+      | "Currencies"
+      | "Default limits"
+      | "Feature flags placeholder"
+      | "General settings"
+      | "Languages"
+      | "Legal/platform policies"
+      | "Maintenance mode"
+      | "Regional settings"
+      | "Taxes"
+      | "Timezones";
+    note: string;
+    status: "placeholder" | "ready";
+  }>;
+  taxes: Array<{
+    key: string;
+    label: string;
+    note: string;
+    value: string;
+  }>;
+  timezones: Array<{
+    isDefault: boolean;
+    label: string;
+    value: string;
   }>;
 };
 
@@ -5145,6 +5234,263 @@ export async function getAdminInternalTeamControl(): Promise<AdminInternalTeamCo
     },
     permissionGroups: internalPermissionGroups,
     roles: internalTeamRoles
+  };
+}
+
+function formattedLimit(value: number | null | undefined) {
+  return value === null ? "Unlimited" : String(value ?? "Placeholder");
+}
+
+export async function getAdminPlatformSettingsControl(): Promise<AdminPlatformSettingsControl> {
+  await getAdminAccess();
+
+  const platformName = process.env.NEXT_PUBLIC_PLATFORM_NAME?.trim() || "SHASTORE";
+  const supportEmail = process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "support@shastore.local";
+  const defaultCountry = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY?.trim() || "MA";
+  const defaultTimezone = process.env.NEXT_PUBLIC_DEFAULT_TIMEZONE?.trim() || "UTC";
+  const defaultLanguage = process.env.NEXT_PUBLIC_DEFAULT_LANGUAGE?.trim() || "en";
+  const defaultCurrency = process.env.NEXT_PUBLIC_DEFAULT_CURRENCY?.trim().toUpperCase() || "USD";
+  const starterLimits = planLimitsConfig.starter;
+  const proLimits = planLimitsConfig.pro;
+
+  return {
+    currencies: [
+      { code: "USD", isDefault: defaultCurrency === "USD", name: "US Dollar", status: "enabled" },
+      { code: "EUR", isDefault: defaultCurrency === "EUR", name: "Euro", status: "placeholder_disabled" },
+      { code: "MAD", isDefault: defaultCurrency === "MAD", name: "Moroccan Dirham", status: "placeholder_disabled" },
+      { code: "AED", isDefault: defaultCurrency === "AED", name: "UAE Dirham", status: "placeholder_disabled" },
+      { code: "SAR", isDefault: defaultCurrency === "SAR", name: "Saudi Riyal", status: "placeholder_disabled" }
+    ],
+    defaultLimits: [
+      {
+        description: "Read-only reference from existing billing plan limits. No billing rewrite.",
+        key: "default_stores_per_plan",
+        value: `Starter ${formattedLimit(starterLimits.stores)} / Pro ${formattedLimit(proLimits.stores)}`
+      },
+      {
+        description: "Read-only reference from existing product limits.",
+        key: "default_products_per_plan",
+        value: `Starter ${formattedLimit(starterLimits.products)} / Pro ${formattedLimit(proLimits.products)}`
+      },
+      {
+        description: "Read-only reference from existing AI generation limits.",
+        key: "default_ai_credits",
+        value: `Starter ${formattedLimit(starterLimits.aiGenerations)} / Pro ${formattedLimit(proLimits.aiGenerations)}`
+      },
+      {
+        description: "Read-only reference from existing domain limits.",
+        key: "default_domain_credit",
+        value: `Starter ${formattedLimit(starterLimits.domains)} / Pro ${formattedLimit(proLimits.domains)}`
+      },
+      {
+        description: "Read-only reference from existing team member limits.",
+        key: "default_team_members",
+        value: `Starter ${formattedLimit(starterLimits.teamMembers)} / Pro ${formattedLimit(proLimits.teamMembers)}`
+      }
+    ],
+    featureFlags: [
+      {
+        key: "platform_feature_rollout",
+        note: "Future rollout control only. No feature gate changes are applied in this phase.",
+        status: "placeholder"
+      },
+      {
+        key: "marketplace_seller_access",
+        note: "Future marketplace seller access flag placeholder.",
+        status: "placeholder"
+      },
+      {
+        key: "maintenance_scheduling",
+        note: "Future scheduled maintenance flag placeholder.",
+        status: "placeholder"
+      },
+      {
+        key: "regional_tax_engine",
+        note: "Future tax rules engine flag placeholder.",
+        status: "placeholder"
+      }
+    ],
+    futureHooks: [
+      "Save global settings",
+      "Feature flag rollout",
+      "Regional defaults",
+      "Tax rules engine",
+      "Platform-wide maintenance scheduling",
+      "Export settings snapshot"
+    ],
+    general: [
+      {
+        key: "platform_name",
+        label: "Platform name",
+        note: "Display default only; Platform Theme remains separate.",
+        value: platformName
+      },
+      {
+        key: "support_email",
+        label: "Support email",
+        note: "Public support reference only; no mail provider secret is shown.",
+        value: supportEmail
+      },
+      {
+        key: "default_country",
+        label: "Default country",
+        note: "Global default for future onboarding only.",
+        value: defaultCountry
+      },
+      {
+        key: "default_timezone",
+        label: "Default timezone",
+        note: "Does not overwrite Store Owner timezone settings.",
+        value: defaultTimezone
+      },
+      {
+        key: "default_language",
+        label: "Default language",
+        note: "Does not overwrite Store Owner language settings.",
+        value: defaultLanguage
+      },
+      {
+        key: "default_currency",
+        label: "Default currency",
+        note: "Does not overwrite Store Owner currency settings.",
+        value: defaultCurrency
+      }
+    ],
+    languages: [
+      { code: "ar", direction: "RTL", name: "Arabic", readiness: "ready" },
+      { code: "en", direction: "LTR", name: "English", readiness: "ready" },
+      { code: "fr", direction: "LTR", name: "French", readiness: "placeholder" }
+    ],
+    legalPolicies: [
+      {
+        name: "Terms of Service",
+        note: "Platform policy reference placeholder for public website/legal pages.",
+        status: "placeholder"
+      },
+      {
+        name: "Privacy Policy",
+        note: "Platform policy reference placeholder, separate from Store Owner legal pages.",
+        status: "placeholder"
+      },
+      {
+        name: "Refund and billing policy",
+        note: "Platform billing policy reference only; billing logic remains unchanged.",
+        status: "placeholder"
+      },
+      {
+        name: "Acceptable use policy",
+        note: "Future moderation/security policy reference.",
+        status: "placeholder"
+      }
+    ],
+    maintenanceModes: [
+      {
+        name: "Platform maintenance",
+        note: "Placeholder only. No platform shutdown or redirect is enabled.",
+        status: "off_placeholder",
+        warning: "Future toggle must require confirmation and scheduling."
+      },
+      {
+        name: "Owner dashboard maintenance",
+        note: "Placeholder only. Store Owner dashboards remain available.",
+        status: "off_placeholder",
+        warning: "Future toggle must not block billing, support, or auth unexpectedly."
+      },
+      {
+        name: "Public website maintenance",
+        note: "Placeholder only. Public marketing pages remain available.",
+        status: "off_placeholder",
+        warning: "Future toggle must preserve legal/status access."
+      },
+      {
+        name: "Storefront maintenance",
+        note: "Placeholder only. Existing storefront runtime remains untouched.",
+        status: "off_placeholder",
+        warning: "Future toggle must not affect stores without explicit migration/rollout."
+      }
+    ],
+    overview: {
+      currencies: 5,
+      defaultCurrency,
+      defaultLanguage,
+      languages: 3,
+      maintenanceModes: 4,
+      sections: 10,
+      storeSettingsTouched: 0
+    },
+    regionalSettings: [
+      { key: "country", label: "Default country", value: defaultCountry },
+      { key: "timezone", label: "Default timezone", value: defaultTimezone },
+      { key: "language_direction", label: "RTL/LTR readiness", value: "Arabic RTL, English/French LTR" },
+      { key: "number_format", label: "Number format", value: "Future regional default placeholder" },
+      { key: "date_format", label: "Date format", value: "Future regional default placeholder" }
+    ],
+    safety: [
+      {
+        name: "Global defaults only",
+        note: "Settings shown here do not overwrite existing stores or Store Owner settings.",
+        status: "enforced"
+      },
+      {
+        name: "No immediate destructive toggle",
+        note: "Maintenance, feature flags, taxes, and limits are placeholder controls only.",
+        status: "enforced"
+      },
+      {
+        name: "Store Owner settings separation",
+        note: "Store-specific settings remain under dashboard routes and store records.",
+        status: "enforced"
+      },
+      {
+        name: "Platform Theme separation",
+        note: "Branding and theme publishing remain in /admin/platform-theme.",
+        status: "enforced"
+      },
+      {
+        name: "Billing separation",
+        note: "Plan limits are displayed as references only; billing enforcement is not modified.",
+        status: "enforced"
+      }
+    ],
+    sections: [
+      { name: "General settings", note: "Platform identity and default locale references.", status: "ready" },
+      { name: "Languages", note: "Arabic, English, French, and direction readiness.", status: "ready" },
+      { name: "Currencies", note: "Currency availability placeholders and default currency.", status: "ready" },
+      { name: "Timezones", note: "Default timezone references for future onboarding.", status: "ready" },
+      { name: "Taxes", note: "Tax settings are placeholders; Store Owner tax settings remain separate.", status: "placeholder" },
+      { name: "Default limits", note: "Read-only billing plan limit references.", status: "ready" },
+      { name: "Regional settings", note: "Regional defaults for future onboarding only.", status: "placeholder" },
+      { name: "Maintenance mode", note: "Non-destructive maintenance placeholders.", status: "placeholder" },
+      { name: "Legal/platform policies", note: "Platform policy references, separate from store legal pages.", status: "placeholder" },
+      { name: "Feature flags placeholder", note: "Future rollout controls with no live effect.", status: "placeholder" }
+    ],
+    taxes: [
+      {
+        key: "tax_enabled",
+        label: "Tax enabled",
+        note: "Placeholder only; Store Owner tax settings remain store-specific.",
+        value: "Off placeholder"
+      },
+      {
+        key: "default_tax_rate",
+        label: "Default tax rate",
+        note: "Future onboarding default only.",
+        value: "0% placeholder"
+      },
+      {
+        key: "regional_tax_mode",
+        label: "Regional tax mode",
+        note: "Future tax rules engine placeholder.",
+        value: "Manual placeholder"
+      }
+    ],
+    timezones: [
+      { isDefault: defaultTimezone === "UTC", label: "UTC", value: "UTC" },
+      { isDefault: defaultTimezone === "Africa/Casablanca", label: "Casablanca", value: "Africa/Casablanca" },
+      { isDefault: defaultTimezone === "Europe/Paris", label: "Paris", value: "Europe/Paris" },
+      { isDefault: defaultTimezone === "Asia/Dubai", label: "Dubai", value: "Asia/Dubai" },
+      { isDefault: defaultTimezone === "Asia/Riyadh", label: "Riyadh", value: "Asia/Riyadh" }
+    ]
   };
 }
 

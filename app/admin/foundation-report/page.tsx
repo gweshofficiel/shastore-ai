@@ -109,8 +109,8 @@ const modules: FoundationModule[] = [
   {
     href: "/admin/settings",
     name: "Settings",
-    notes: "Admin access settings exist; broader operational controls remain future work.",
-    status: "partial"
+    notes: "Platform Settings Center exists for global defaults, languages, currencies, timezones, taxes, default limits, maintenance placeholders, policy references, and feature flag placeholders without touching Store Owner settings.",
+    status: "ready"
   },
   {
     href: "/admin/billing/payment-providers",
