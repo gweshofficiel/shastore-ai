@@ -18,6 +18,7 @@ export const adminNavItems = [
   { href: "/admin/templates", label: "Templates", icon: "templates" },
   { href: "/admin/marketplace", label: "Marketplace", icon: "templates" },
   { href: "/admin/marketing", label: "Marketing", icon: "analytics" },
+  { href: "/admin/email", label: "Email", icon: "analytics" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
   { href: "/admin/support", label: "Support", icon: "support" },
   { href: "/admin/security", label: "Security", icon: "security" },

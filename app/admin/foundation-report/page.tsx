@@ -23,6 +23,7 @@ type AdminHref =
   | "/admin/templates"
   | "/admin/marketplace"
   | "/admin/marketing"
+  | "/admin/email"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -147,6 +148,12 @@ const modules: FoundationModule[] = [
     href: "/admin/marketing",
     name: "Marketing & Promotion",
     notes: "Admin management foundation exists for platform coupons, promotions, gift codes, referrals, affiliates, and campaigns with safe placeholders only. Store Owner marketing remains separate.",
+    status: "ready"
+  },
+  {
+    href: "/admin/email",
+    name: "Email Center",
+    notes: "Admin monitoring foundation exists for platform email provider status, transactional sections, templates, queues, failures, and campaign summaries with masked secrets and placeholder-only controls.",
     status: "ready"
   },
   {

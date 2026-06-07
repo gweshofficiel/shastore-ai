@@ -558,6 +558,60 @@ export type AdminPlatformMarketingControl = {
   }>;
 };
 
+export type AdminEmailControl = {
+  campaignMonitoring: Array<{
+    lastActivity: string | null;
+    name: string;
+    note: string;
+    status: "monitoring" | "placeholder";
+    total: number;
+  }>;
+  failedEmails: Array<{
+    createdAt: string;
+    emailType: string;
+    errorSummary: string;
+    id: string;
+    recipientMasked: string;
+  }>;
+  futureHooks: string[];
+  overview: {
+    activeTemplates: number;
+    failedEmails: number;
+    providersConfigured: number;
+    queuedEmails: number;
+    sentEmails: number;
+    totalTemplates: number;
+  };
+  providers: Array<{
+    configurationStatus: "configured" | "missing" | "partial";
+    healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+    name: string;
+    provider: "future" | "resend" | "smtp";
+    secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+  }>;
+  queue: {
+    cancelled: number;
+    failed: number;
+    queued: number;
+    retryPending: number;
+    sent: number;
+  };
+  templates: Array<{
+    category: "billing" | "domain_email_setup" | "order" | "security" | "support" | "welcome";
+    id: string;
+    language: "Arabic" | "English" | "French";
+    lastUpdated: string | null;
+    name: string;
+    status: "active" | "disabled" | "draft";
+  }>;
+  transactionalSections: Array<{
+    key: string;
+    name: string;
+    note: string;
+    status: "active" | "draft" | "placeholder";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -1798,6 +1852,30 @@ function safeAIErrorSummary(value: unknown) {
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
     .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[redacted]")
     .slice(0, 180);
+}
+
+function safeEmailSummary(value: unknown) {
+  return (
+    safeAIErrorSummary(value)
+      ?.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+      .slice(0, 180) ?? "No error summary recorded."
+  );
+}
+
+function maskedEmail(value: unknown) {
+  const raw = text(value);
+  const [local, domain] = raw.split("@");
+
+  if (!local || !domain) {
+    return raw ? "[masked-recipient]" : "Unknown recipient";
+  }
+
+  const visibleLocal = local.slice(0, 2);
+  const domainParts = domain.split(".");
+  const domainName = domainParts[0] ?? "";
+  const extension = domainParts.slice(1).join(".");
+
+  return `${visibleLocal}${"*".repeat(Math.max(2, local.length - 2))}@${domainName.slice(0, 1)}***${extension ? `.${extension}` : ""}`;
 }
 
 function classifyAIError(value: string | null) {
@@ -3316,6 +3394,237 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
         referrer: "Creator Affiliate Foundation",
         status: campaignStatus("affiliate:creator-partners", "draft"),
         type: "affiliate"
+      }
+    ]
+  };
+}
+
+export async function getAdminEmailControl(): Promise<AdminEmailControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [emailLogs, storeMarketingMessages, monitoringEvents] = await Promise.all([
+    safeSelect(
+      supabase,
+      "email_event_logs",
+      "id, recipient, subject, template_key, status, error_message, last_error, created_at",
+      500
+    ),
+    safeSelect(supabase, "store_marketing_messages", "id, type, status, updated_at, created_at", 500),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+  const adminEmailEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_email_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestEventByTemplate = new Map<string, AnyRecord>();
+
+  for (const event of adminEmailEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const templateId = text(metadata.template_id);
+
+    if (templateId && !latestEventByTemplate.has(templateId)) {
+      latestEventByTemplate.set(templateId, event);
+    }
+  }
+
+  function templateStatus(
+    templateId: string,
+    fallback: AdminEmailControl["templates"][number]["status"]
+  ): AdminEmailControl["templates"][number]["status"] {
+    const eventType = text(latestEventByTemplate.get(templateId)?.event_type);
+
+    if (eventType === "admin_email_disable_template") {
+      return "disabled";
+    }
+
+    return fallback;
+  }
+
+  const queue = {
+    cancelled: emailLogs.filter((log) => text(log.status) === "cancelled").length,
+    failed: emailLogs.filter((log) => text(log.status) === "failed").length,
+    queued: emailLogs.filter((log) => ["pending", "queued"].includes(text(log.status))).length,
+    retryPending: emailLogs.filter((log) => text(log.status) === "retry_pending").length,
+    sent: emailLogs.filter((log) => text(log.status) === "sent").length
+  };
+  const templates: AdminEmailControl["templates"] = [
+    {
+      category: "welcome",
+      id: "welcome:platform-user",
+      language: "English",
+      lastUpdated: null,
+      name: "Platform welcome email",
+      status: templateStatus("welcome:platform-user", "draft")
+    },
+    {
+      category: "billing",
+      id: "billing:subscription-activated",
+      language: "English",
+      lastUpdated: null,
+      name: "Subscription activated",
+      status: templateStatus("billing:subscription-activated", "active")
+    },
+    {
+      category: "billing",
+      id: "billing:payment-failed",
+      language: "English",
+      lastUpdated: null,
+      name: "Payment failed",
+      status: templateStatus("billing:payment-failed", "active")
+    },
+    {
+      category: "order",
+      id: "order:platform-receipt-placeholder",
+      language: "English",
+      lastUpdated: null,
+      name: "Platform order receipt placeholder",
+      status: templateStatus("order:platform-receipt-placeholder", "draft")
+    },
+    {
+      category: "domain_email_setup",
+      id: "domain-email:setup-instructions",
+      language: "English",
+      lastUpdated: null,
+      name: "Domain and email setup instructions",
+      status: templateStatus("domain-email:setup-instructions", "draft")
+    },
+    {
+      category: "support",
+      id: "support:ticket-update",
+      language: "English",
+      lastUpdated: null,
+      name: "Support ticket update",
+      status: templateStatus("support:ticket-update", "draft")
+    },
+    {
+      category: "security",
+      id: "security:account-alert",
+      language: "English",
+      lastUpdated: null,
+      name: "Security account alert",
+      status: templateStatus("security:account-alert", "draft")
+    }
+  ];
+  const failedEmails = emailLogs
+    .filter((log) => text(log.status) === "failed")
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))
+    .slice(0, 25)
+    .map((log) => ({
+      createdAt: text(log.created_at, new Date(0).toISOString()),
+      emailType: text(log.template_key) || text(log.subject, "Unknown email"),
+      errorSummary: safeEmailSummary(log.last_error || log.error_message),
+      id: text(log.id) || `failed-email:${text(log.created_at)}`,
+      recipientMasked: maskedEmail(log.recipient)
+    }));
+  const latestStoreMarketingActivity = storeMarketingMessages
+    .map((message) => text(message.updated_at) || text(message.created_at))
+    .filter(Boolean)
+    .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+  const providers: AdminEmailControl["providers"] = [
+    {
+      configurationStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+          ? envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+          : "missing",
+      healthStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
+        process.env.RESEND_API_KEY?.trim() &&
+        process.env.EMAIL_FROM?.trim()
+          ? "healthy"
+          : "missing_config",
+      name: "Resend",
+      provider: "resend",
+      secretStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+          : "missing"
+    },
+    {
+      configurationStatus: envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]),
+      healthStatus: envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]) === "configured" ? "warning" : "placeholder",
+      name: "SMTP placeholder",
+      provider: "smtp",
+      secretStatus: integrationSecretStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"])
+    },
+    {
+      configurationStatus: "missing",
+      healthStatus: "placeholder",
+      name: "Future providers placeholder",
+      provider: "future",
+      secretStatus: "no_secret_required"
+    }
+  ];
+
+  return {
+    campaignMonitoring: [
+      {
+        lastActivity: null,
+        name: "Platform campaigns",
+        note: "Platform campaign email sending is reserved for a future safe queue.",
+        status: "placeholder",
+        total: adminEmailEvents.filter((event) => text(event.event_type) === "admin_email_template_preview").length
+      },
+      {
+        lastActivity: latestStoreMarketingActivity,
+        name: "Store Owner campaigns summary",
+        note: "Read-only summary only. Store Owner campaigns are not edited in Super Admin Email Center.",
+        status: "monitoring",
+        total: storeMarketingMessages.length
+      }
+    ],
+    failedEmails,
+    futureHooks: [
+      "Edit template",
+      "Send test email",
+      "Retry failed email",
+      "Export email logs",
+      "Provider health check"
+    ],
+    overview: {
+      activeTemplates: templates.filter((template) => template.status === "active").length,
+      failedEmails: queue.failed,
+      providersConfigured: providers.filter((provider) => provider.configurationStatus === "configured").length,
+      queuedEmails: queue.queued + queue.retryPending,
+      sentEmails: queue.sent,
+      totalTemplates: templates.length
+    },
+    providers,
+    queue,
+    templates,
+    transactionalSections: [
+      {
+        key: "welcome",
+        name: "Welcome emails",
+        note: "Platform onboarding email foundation only.",
+        status: "draft"
+      },
+      {
+        key: "billing",
+        name: "Billing emails",
+        note: "Uses existing billing notification email templates when provider is configured.",
+        status: "active"
+      },
+      {
+        key: "order",
+        name: "Order emails",
+        note: "Store order emails remain managed by Store Owner email systems.",
+        status: "placeholder"
+      },
+      {
+        key: "domain_email_setup",
+        name: "Domain/email setup emails",
+        note: "Professional Email mailbox setup remains in Domains & Hosting.",
+        status: "draft"
+      },
+      {
+        key: "support",
+        name: "Support emails",
+        note: "Support notification email templates are reserved placeholders.",
+        status: "draft"
+      },
+      {
+        key: "security",
+        name: "Security emails",
+        note: "Security alert email templates are reserved placeholders.",
+        status: "draft"
       }
     ]
   };
