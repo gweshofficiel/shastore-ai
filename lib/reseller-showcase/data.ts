@@ -354,6 +354,42 @@ export type ResellerBuyerRequestsData = {
   statuses: ResellerBuyerRequestStatus[];
 };
 
+export type ResellerPreviewStatus =
+  | "disabled"
+  | "draft_preview"
+  | "enabled"
+  | "expired"
+  | "public_preview"
+  | "under_review";
+
+export type ResellerPreviewItemType = "showcase" | "store" | "template";
+
+export type ResellerPreviewItem = {
+  createdAt: string | null;
+  id: string;
+  itemName: string;
+  itemSlug: string;
+  itemType: ResellerPreviewItemType;
+  lastViewedPlaceholder: string;
+  previewUrl: string;
+  status: ResellerPreviewStatus;
+  visibility: string;
+};
+
+export type ResellerPreviewsData = {
+  emptyState: string;
+  futureHooks: string[];
+  previews: ResellerPreviewItem[];
+  safetyNotes: string[];
+  statuses: ResellerPreviewStatus[];
+  summary: {
+    disabled: number;
+    enabled: number;
+    publicPreview: number;
+    underReview: number;
+  };
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -389,6 +425,17 @@ export const resellerTemplateInventoryPlanLimits: Record<ResellerInventoryPlan, 
 };
 
 const publicMarketplaceStatuses = ["boosted_placeholder", "featured_ready", "public", "published"];
+
+export function buildResellerPreviewUrl(profileSlug: string | null | undefined, itemSlug: string) {
+  const safeProfileSlug = profileSlug?.trim() || "profile";
+  const safeItemSlug = itemSlug.trim() || "preview";
+
+  return `/resellers/${safeProfileSlug}?preview=${encodeURIComponent(safeItemSlug)}`;
+}
+
+export function isPreviewEnabledForPublicItem(item: ResellerShowcaseItem) {
+  return Boolean(item.demo_url) && publicMarketplaceStatuses.includes(item.status);
+}
 
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
   const message = (error?.message ?? "").toLowerCase();
@@ -607,6 +654,72 @@ function analyticsRow(item: ResellerShowcaseItem, itemType: ResellerAnalyticsRow
 
 function analyticsMetric(key: string, label: string, value: string | number, note: string): ResellerAnalyticsMetric {
   return { key, label, note, value };
+}
+
+function previewItemType(item: ResellerShowcaseItem): ResellerPreviewItemType {
+  if (isTemplateListing(item)) {
+    return "template";
+  }
+
+  if (item.source_store_id) {
+    return "store";
+  }
+
+  return "showcase";
+}
+
+function previewVisibilityLabel(status: ResellerShowcaseItem["status"]) {
+  if (isPublicMarketplaceStatus(status)) {
+    return "Public marketplace";
+  }
+
+  if (status === "private") {
+    return "Private draft";
+  }
+
+  if (status === "hidden" || status === "unpublished") {
+    return "Hidden";
+  }
+
+  if (status === "under_review") {
+    return "Under review";
+  }
+
+  return "Draft";
+}
+
+function previewStatusForItem(item: ResellerShowcaseItem): ResellerPreviewStatus {
+  if (item.status === "under_review") {
+    return "under_review";
+  }
+
+  if (!item.demo_url) {
+    return "disabled";
+  }
+
+  if (isPublicMarketplaceStatus(item.status)) {
+    return "public_preview";
+  }
+
+  if (item.status === "private" || item.status === "hidden" || item.status === "unpublished") {
+    return "draft_preview";
+  }
+
+  return "enabled";
+}
+
+function previewRowFromItem(item: ResellerShowcaseItem, profileSlug: string | null | undefined): ResellerPreviewItem {
+  return {
+    createdAt: item.created_at,
+    id: item.id,
+    itemName: item.title,
+    itemSlug: item.slug,
+    itemType: previewItemType(item),
+    lastViewedPlaceholder: "Preview view tracking is a future hook.",
+    previewUrl: buildResellerPreviewUrl(profileSlug, item.slug),
+    status: previewStatusForItem(item),
+    visibility: previewVisibilityLabel(item.status)
+  };
 }
 
 function normalizeLeadStatus(value: unknown): ResellerLeadStatus {
@@ -1733,6 +1846,45 @@ export async function getResellerBuyerRequestsData(): Promise<ResellerBuyerReque
     requests,
     selectedRequest: requests[0] ?? null,
     statuses
+  };
+}
+
+export async function getResellerPreviewsData(): Promise<ResellerPreviewsData> {
+  const dashboard = await getResellerDashboardData();
+  const previews = dashboard.items.map((item) => previewRowFromItem(item, dashboard.profile?.slug));
+  const statuses: ResellerPreviewStatus[] = [
+    "disabled",
+    "enabled",
+    "draft_preview",
+    "public_preview",
+    "expired",
+    "under_review"
+  ];
+
+  return {
+    emptyState: "No reseller preview items yet. Create store listings, templates, or showcase items to manage safe preview links.",
+    futureHooks: [
+      "Preview analytics",
+      "Expiring preview links",
+      "Password-protected preview",
+      "Buyer preview tracking",
+      "Preview-to-lead conversion",
+      "Preview-to-order conversion"
+    ],
+    previews,
+    safetyNotes: [
+      "Private drafts stay hidden from the public profile by default.",
+      "Public profile preview buttons require both a public marketplace status and an enabled preview marker.",
+      "Preview pages do not create checkout, purchase, ownership transfer, wallet, payout, withdrawal, commission, or fake sale flows.",
+      "Preview URLs are generated as safe reseller profile preview links and do not expose buyer/private owner data."
+    ],
+    statuses,
+    summary: {
+      disabled: previews.filter((preview) => preview.status === "disabled").length,
+      enabled: previews.filter((preview) => preview.status !== "disabled" && preview.status !== "expired").length,
+      publicPreview: previews.filter((preview) => preview.status === "public_preview").length,
+      underReview: previews.filter((preview) => preview.status === "under_review").length
+    }
   };
 }
 

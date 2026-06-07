@@ -1,7 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview";
-import { getPublicResellerProfile } from "@/lib/reseller-showcase/data";
+import {
+  buildResellerPreviewUrl,
+  getPublicResellerProfile,
+  isPreviewEnabledForPublicItem
+} from "@/lib/reseller-showcase/data";
 import { getResellerShowcaseTheme } from "@/lib/reseller-showcase/themes";
 import { getStoreTemplate } from "@/lib/template-studio/library";
 import type { ResellerShowcaseItem } from "@/lib/reseller-showcase/types";
@@ -53,13 +57,23 @@ function EmptyState({ label, note }: { label: string; note: string }) {
   );
 }
 
-function ListingCard({ item, type }: { item: ResellerShowcaseItem; type: "store" | "template" }) {
+function ListingCard({
+  item,
+  profileSlug,
+  type
+}: {
+  item: ResellerShowcaseItem;
+  profileSlug: string;
+  type: "store" | "template";
+}) {
   const features = stringList(item.features);
   const previewImages = stringList(item.preview_images);
   const templatePreviewId = previewImages
     .find((image) => image.startsWith("template:"))
     ?.replace("template:", "");
   const templatePreview = templatePreviewId ? getStoreTemplate(templatePreviewId) : null;
+  const canPreview = isPreviewEnabledForPublicItem(item);
+  const previewUrl = buildResellerPreviewUrl(profileSlug, item.slug);
 
   return (
     <article className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_-60px_rgba(15,23,42,0.8)]">
@@ -104,9 +118,9 @@ function ListingCard({ item, type }: { item: ResellerShowcaseItem; type: "store"
           </div>
         ) : null}
         <div className="flex flex-wrap gap-3">
-          {item.demo_url ? (
-            <Link className="inline-flex h-10 items-center rounded-full bg-slate-950 px-4 text-sm font-black text-white" href={item.demo_url}>
-              View demo
+          {canPreview ? (
+            <Link className="inline-flex h-10 items-center rounded-full bg-slate-950 px-4 text-sm font-black text-white" href={previewUrl}>
+              Preview
             </Link>
           ) : null}
           <span className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-slate-600">
@@ -311,7 +325,7 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
           {profileData.storeListings.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {profileData.storeListings.map((item) => (
-                <ListingCard item={item} key={item.id} type="store" />
+                <ListingCard item={item} key={item.id} profileSlug={profile.slug} type="store" />
               ))}
             </div>
           ) : (
@@ -329,7 +343,7 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
           {profileData.templateListings.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {profileData.templateListings.map((item) => (
-                <ListingCard item={item} key={item.id} type="template" />
+                <ListingCard item={item} key={item.id} profileSlug={profile.slug} type="template" />
               ))}
             </div>
           ) : (
