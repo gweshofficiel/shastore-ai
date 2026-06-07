@@ -5,6 +5,7 @@ import {
   buildResellerPreviewUrl,
   getPublicResellerProfile,
   isPreviewEnabledForPublicItem,
+  type ResellerCategory,
   type ResellerPortfolioItem
 } from "@/lib/reseller-showcase/data";
 import { getResellerShowcaseTheme } from "@/lib/reseller-showcase/themes";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 type PublicResellerProfilePageProps = {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ category?: string }>;
 };
 
 function stringList(value: unknown) {
@@ -176,6 +178,53 @@ function PortfolioCard({ item }: { item: ResellerPortfolioItem }) {
   );
 }
 
+function CategoryFilters({
+  categories,
+  selectedCategory,
+  slug
+}: {
+  categories: ResellerCategory[];
+  selectedCategory: ResellerCategory | null;
+  slug: string;
+}) {
+  return (
+    <section className="px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white p-6">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Category filters</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">Browse by niche</h2>
+          <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">
+            Public categories filter published stores, templates, and portfolio examples. Hidden/private categories are not shown.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className={`inline-flex h-10 items-center rounded-full px-4 text-sm font-black ${
+              selectedCategory ? "border border-slate-200 bg-white text-slate-700" : "bg-slate-950 text-white"
+            }`}
+            href={`/resellers/${slug}`}
+          >
+            All
+          </Link>
+          {categories.map((category) => (
+            <Link
+              className={`inline-flex h-10 items-center rounded-full px-4 text-sm font-black ${
+                selectedCategory?.slug === category.slug
+                  ? "bg-slate-950 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+              href={`/resellers/${slug}?category=${category.slug}`}
+              key={category.slug}
+            >
+              {category.name}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export async function generateMetadata({ params }: PublicResellerProfilePageProps): Promise<Metadata> {
   const { slug } = await params;
   const profile = await getPublicResellerProfile(slug);
@@ -199,9 +248,10 @@ export async function generateMetadata({ params }: PublicResellerProfilePageProp
   };
 }
 
-export default async function PublicResellerProfilePage({ params }: PublicResellerProfilePageProps) {
+export default async function PublicResellerProfilePage({ params, searchParams }: PublicResellerProfilePageProps) {
   const { slug } = await params;
-  const profileData = await getPublicResellerProfile(slug);
+  const query = searchParams ? await searchParams : {};
+  const profileData = await getPublicResellerProfile(slug, query.category);
   const showcase = profileData.showcase;
 
   if (!showcase) {
@@ -359,6 +409,12 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
           </div>
         </div>
       </section>
+
+      <CategoryFilters
+        categories={profileData.publicCategories}
+        selectedCategory={profileData.selectedCategory}
+        slug={profile.slug}
+      />
 
       <section className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-5">

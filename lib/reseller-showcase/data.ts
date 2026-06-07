@@ -428,6 +428,28 @@ export type ResellerPortfolioData = {
   }>;
 };
 
+export type ResellerCategoryVisibility = "hidden" | "private" | "public";
+
+export type ResellerCategory = {
+  description: string;
+  iconPlaceholder: string;
+  name: string;
+  slug: string;
+  usedByListingsCount: number;
+  usedByPortfolioCount: number;
+  usedByTemplatesCount: number;
+  visibility: ResellerCategoryVisibility;
+};
+
+export type ResellerCategoriesData = {
+  categories: ResellerCategory[];
+  emptyState: string;
+  futureHooks: string[];
+  publicCategories: ResellerCategory[];
+  selectedCategory: ResellerCategory | null;
+  visibilityOptions: ResellerCategoryVisibility[];
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -436,6 +458,8 @@ export type PublicResellerProfile = {
   languages: string[];
   profileStatus: "not_available" | "published";
   publicAccountCode: string;
+  publicCategories: ResellerCategory[];
+  selectedCategory: ResellerCategory | null;
   portfolioItems: ResellerPortfolioItem[];
   ratingPlaceholder: string;
   reputation: ResellerReputation;
@@ -474,6 +498,22 @@ export function buildResellerPreviewUrl(profileSlug: string | null | undefined, 
 
 export function isPreviewEnabledForPublicItem(item: ResellerShowcaseItem) {
   return Boolean(item.demo_url) && publicMarketplaceStatuses.includes(item.status);
+}
+
+export function resellerCategorySlug(value: string | null | undefined) {
+  const slug = (value ?? "general-store")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 80);
+
+  return slug || "general-store";
+}
+
+function resellerCategoryMatches(categorySlug: string | null | undefined, value: string | null | undefined) {
+  return resellerCategorySlug(value) === resellerCategorySlug(categorySlug);
 }
 
 function isMissingResellerTable(error: { code?: string; message?: string } | null) {
@@ -2076,6 +2116,153 @@ async function getPublicResellerPortfolioItems(userId: string | null | undefined
     .filter((item) => item.status === "published");
 }
 
+const resellerMarketplaceCategoryDefinitions = [
+  { description: "Fashion stores, apparel brands, boutiques, and accessories.", iconPlaceholder: "Fashion icon placeholder", name: "Fashion" },
+  { description: "Electronics, gadgets, devices, and tech storefronts.", iconPlaceholder: "Electronics icon placeholder", name: "Electronics" },
+  { description: "Beauty, cosmetics, skincare, wellness, and salon brands.", iconPlaceholder: "Beauty icon placeholder", name: "Beauty" },
+  { description: "Food, restaurants, cafes, grocery, and packaged products.", iconPlaceholder: "Food icon placeholder", name: "Food" },
+  { description: "Service businesses, agencies, consultants, and appointments.", iconPlaceholder: "Services icon placeholder", name: "Services" },
+  { description: "Digital products, downloads, courses, and software offers.", iconPlaceholder: "Digital products icon placeholder", name: "Digital Products" },
+  { description: "Home decor, furniture, interiors, and household products.", iconPlaceholder: "Home and furniture icon placeholder", name: "Home & Furniture" },
+  { description: "Fitness, gyms, coaching, supplements, and sports brands.", iconPlaceholder: "Fitness icon placeholder", name: "Fitness" },
+  { description: "Education, schools, courses, tutors, and learning products.", iconPlaceholder: "Education icon placeholder", name: "Education" },
+  { description: "Real estate listings, property services, and broker brands.", iconPlaceholder: "Real estate icon placeholder", name: "Real Estate" },
+  { description: "Travel, tourism, booking, hotels, and destination brands.", iconPlaceholder: "Travel icon placeholder", name: "Travel" },
+  { description: "Automotive, parts, rentals, dealerships, and vehicle services.", iconPlaceholder: "Automotive icon placeholder", name: "Automotive" },
+  { description: "Kids, baby products, toys, family, and parenting brands.", iconPlaceholder: "Kids and baby icon placeholder", name: "Kids & Baby" },
+  { description: "Jewelry, luxury accessories, handmade pieces, and gifts.", iconPlaceholder: "Jewelry icon placeholder", name: "Jewelry" },
+  { description: "General purpose stores and mixed-category catalogs.", iconPlaceholder: "General store icon placeholder", name: "General Store" }
+].map((category) => ({
+  ...category,
+  slug: resellerCategorySlug(category.name)
+}));
+
+function normalizeCategoryVisibility(value: unknown): ResellerCategoryVisibility {
+  const visibility = textValue(value).toLowerCase();
+
+  if (visibility === "hidden" || visibility === "private" || visibility === "public") {
+    return visibility;
+  }
+
+  return "public";
+}
+
+async function getCategoryVisibilityOverrides(userId: string | null | undefined) {
+  if (!userId) {
+    return new Map<string, ResellerCategoryVisibility>();
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("metadata, created_at")
+        .eq("user_id", userId)
+        .eq("entity_type", "reseller_categories")
+        .order("created_at", { ascending: false })
+        .limit(100)
+    : { data: [] };
+  const overrides = new Map<string, ResellerCategoryVisibility>();
+
+  ((data ?? []) as unknown as Array<{ metadata?: Record<string, unknown> }>).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {};
+    const slug = resellerCategorySlug(textValue(metadata.category_slug ?? metadata.slug));
+
+    if (!overrides.has(slug)) {
+      overrides.set(slug, normalizeCategoryVisibility(metadata.visibility));
+    }
+  });
+
+  return overrides;
+}
+
+function buildResellerCategories({
+  dashboardItems,
+  portfolioItems,
+  selectedCategorySlug,
+  visibilityOverrides
+}: {
+  dashboardItems: ResellerShowcaseItem[];
+  portfolioItems: ResellerPortfolioItem[];
+  selectedCategorySlug?: string | null;
+  visibilityOverrides: Map<string, ResellerCategoryVisibility>;
+}): ResellerCategoriesData {
+  const templateItems = dashboardItems.filter(isTemplateListing);
+  const listingItems = dashboardItems.filter((item) => !isTemplateListing(item));
+  const categories = resellerMarketplaceCategoryDefinitions.map((category) => {
+    const slug = category.slug;
+
+    return {
+      description: category.description,
+      iconPlaceholder: category.iconPlaceholder,
+      name: category.name,
+      slug,
+      usedByListingsCount: listingItems.filter((item) => resellerCategoryMatches(slug, item.category)).length,
+      usedByPortfolioCount: portfolioItems.filter((item) => resellerCategoryMatches(slug, item.categoryNiche)).length,
+      usedByTemplatesCount: templateItems.filter((item) => resellerCategoryMatches(slug, item.category)).length,
+      visibility: visibilityOverrides.get(slug) ?? "public"
+    };
+  });
+  const publicCategories = categories.filter((category) => category.visibility === "public");
+  const selectedCategory = selectedCategorySlug
+    ? publicCategories.find((category) => category.slug === resellerCategorySlug(selectedCategorySlug)) ?? null
+    : null;
+
+  return {
+    categories,
+    emptyState: "No reseller categories available yet. Default marketplace categories are shown as discovery metadata.",
+    futureHooks: [
+      "Marketplace search filters",
+      "Category SEO",
+      "Featured category pages",
+      "Category analytics",
+      "Category-based recommendations"
+    ],
+    publicCategories,
+    selectedCategory,
+    visibilityOptions: ["public", "private", "hidden"]
+  };
+}
+
+export async function getResellerCategoriesData(): Promise<ResellerCategoriesData> {
+  const user = await getDashboardUser();
+  const [dashboard, portfolioData, visibilityOverrides] = await Promise.all([
+    getResellerDashboardData(),
+    getResellerPortfolioData(),
+    getCategoryVisibilityOverrides(user?.id)
+  ]);
+
+  return buildResellerCategories({
+    dashboardItems: dashboard.items,
+    portfolioItems: portfolioData.items,
+    visibilityOverrides
+  });
+}
+
+async function getPublicResellerCategoriesData({
+  portfolioItems,
+  selectedCategorySlug,
+  showcaseItems,
+  userId
+}: {
+  portfolioItems: ResellerPortfolioItem[];
+  selectedCategorySlug?: string | null;
+  showcaseItems: ResellerShowcaseItem[];
+  userId: string | null | undefined;
+}) {
+  const visibilityOverrides = await getCategoryVisibilityOverrides(userId);
+
+  return buildResellerCategories({
+    dashboardItems: showcaseItems,
+    portfolioItems,
+    selectedCategorySlug,
+    visibilityOverrides
+  });
+}
+
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {
   if (!profileId) {
     return { ready: true, reviews: [] as ResellerReview[] };
@@ -2146,15 +2333,31 @@ export async function getResellerReputationData(): Promise<ResellerReputation> {
   });
 }
 
-export async function getPublicResellerProfile(slug: string): Promise<PublicResellerProfile> {
+export async function getPublicResellerProfile(
+  slug: string,
+  selectedCategorySlug?: string | null
+): Promise<PublicResellerProfile> {
   const showcase = await getPublicResellerShowcase(slug);
   const items = showcase?.items ?? [];
-  const templateListings = items.filter(isTemplateListing);
-  const storeListings = items.filter((item) => !isTemplateListing(item));
   const [{ reviews }, portfolioItems] = await Promise.all([
     getReviewsForProfile(showcase?.profile.id ?? null, true),
     getPublicResellerPortfolioItems(showcase?.profile.user_id)
   ]);
+  const categoriesData = await getPublicResellerCategoriesData({
+    portfolioItems,
+    selectedCategorySlug,
+    showcaseItems: items,
+    userId: showcase?.profile.user_id
+  });
+  const selectedCategory = categoriesData.selectedCategory;
+  const visibleItems = selectedCategory
+    ? items.filter((item) => resellerCategoryMatches(selectedCategory.slug, item.category))
+    : items;
+  const visiblePortfolioItems = selectedCategory
+    ? portfolioItems.filter((item) => resellerCategoryMatches(selectedCategory.slug, item.categoryNiche))
+    : portfolioItems;
+  const templateListings = visibleItems.filter(isTemplateListing);
+  const storeListings = visibleItems.filter((item) => !isTemplateListing(item));
   const reviewsSummary = reviewSummary(reviews);
   const reputation = buildReputation({
     profile: showcase?.profile ?? null,
@@ -2186,8 +2389,10 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
       "Featured reseller eligibility"
     ],
     languages: ["Language placeholder"],
-    portfolioItems,
+    portfolioItems: visiblePortfolioItems,
     profileStatus: showcase ? "published" : "not_available",
+    publicCategories: categoriesData.publicCategories,
+    selectedCategory,
     publicAccountCode: `RSL-${slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "PUBLIC"}`,
     ratingPlaceholder: reviewsSummary.averageRating ? `${reviewsSummary.averageRating}/5` : "No reviews yet",
     reputation,
