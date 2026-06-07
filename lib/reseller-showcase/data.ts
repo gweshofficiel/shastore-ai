@@ -390,6 +390,44 @@ export type ResellerPreviewsData = {
   };
 };
 
+export type ResellerPortfolioItemType =
+  | "brand_setup"
+  | "case_study"
+  | "completed_store_design"
+  | "landing_page"
+  | "redesign_project"
+  | "template_example";
+
+export type ResellerPortfolioStatus = "archived" | "draft" | "hidden" | "published" | "under_review";
+
+export type ResellerPortfolioItem = {
+  beforeAfterPlaceholder: string;
+  categoryNiche: string;
+  createdAt: string | null;
+  description: string;
+  id: string;
+  previewImagePlaceholder: string;
+  previewUrl: string;
+  publicVisibility: string;
+  status: ResellerPortfolioStatus;
+  title: string;
+  toolsServicesUsed: string[];
+  type: ResellerPortfolioItemType;
+};
+
+export type ResellerPortfolioData = {
+  emptyState: string;
+  futureHooks: string[];
+  items: ResellerPortfolioItem[];
+  publicItems: ResellerPortfolioItem[];
+  selectedItem: ResellerPortfolioItem | null;
+  statuses: ResellerPortfolioStatus[];
+  types: Array<{
+    label: string;
+    value: ResellerPortfolioItemType;
+  }>;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -398,6 +436,7 @@ export type PublicResellerProfile = {
   languages: string[];
   profileStatus: "not_available" | "published";
   publicAccountCode: string;
+  portfolioItems: ResellerPortfolioItem[];
   ratingPlaceholder: string;
   reputation: ResellerReputation;
   reviews: ResellerReview[];
@@ -719,6 +758,75 @@ function previewRowFromItem(item: ResellerShowcaseItem, profileSlug: string | nu
     previewUrl: buildResellerPreviewUrl(profileSlug, item.slug),
     status: previewStatusForItem(item),
     visibility: previewVisibilityLabel(item.status)
+  };
+}
+
+function normalizePortfolioType(value: unknown): ResellerPortfolioItemType {
+  const type = textValue(value).toLowerCase();
+
+  if (
+    type === "brand_setup" ||
+    type === "case_study" ||
+    type === "completed_store_design" ||
+    type === "landing_page" ||
+    type === "redesign_project" ||
+    type === "template_example"
+  ) {
+    return type;
+  }
+
+  return "completed_store_design";
+}
+
+function normalizePortfolioStatus(value: unknown): ResellerPortfolioStatus {
+  const status = textValue(value).toLowerCase();
+
+  if (
+    status === "archived" ||
+    status === "draft" ||
+    status === "hidden" ||
+    status === "published" ||
+    status === "under_review"
+  ) {
+    return status;
+  }
+
+  return "draft";
+}
+
+function portfolioItemFromEvent(row: Record<string, unknown>, index: number): ResellerPortfolioItem {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const tools = Array.isArray(metadata.tools_services_used)
+    ? metadata.tools_services_used.map((item) => String(item)).filter(Boolean).slice(0, 8)
+    : textValue(metadata.tools_services_used)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+  const status = normalizePortfolioStatus(metadata.portfolio_status ?? metadata.status);
+
+  return {
+    beforeAfterPlaceholder: textValue(
+      metadata.before_after_placeholder,
+      "Before/after gallery placeholder. No private client assets are exposed."
+    ),
+    categoryNiche: textValue(metadata.category_niche ?? metadata.niche, "Niche placeholder"),
+    createdAt: textValue(row.created_at) || null,
+    description: textValue(
+      metadata.description,
+      "Portfolio showcase placeholder. Client private data, buyer data, and unpublished stores are not exposed."
+    ),
+    id: textValue(metadata.portfolio_reference, textValue(row.id, `portfolio-${index}`)),
+    previewImagePlaceholder: textValue(metadata.preview_image_placeholder, "Portfolio preview image placeholder"),
+    previewUrl: textValue(metadata.preview_url, "#"),
+    publicVisibility: status === "published" ? "Visible on public profile" : "Private dashboard only",
+    status,
+    title: textValue(metadata.title, "Portfolio item placeholder"),
+    toolsServicesUsed: tools.length ? tools : ["Store design", "Template setup", "Brand polish"],
+    type: normalizePortfolioType(metadata.portfolio_type ?? metadata.type)
   };
 }
 
@@ -1888,6 +1996,86 @@ export async function getResellerPreviewsData(): Promise<ResellerPreviewsData> {
   };
 }
 
+const resellerPortfolioTypes: ResellerPortfolioData["types"] = [
+  { label: "Completed store design", value: "completed_store_design" },
+  { label: "Template example", value: "template_example" },
+  { label: "Redesign project", value: "redesign_project" },
+  { label: "Landing page", value: "landing_page" },
+  { label: "Brand setup", value: "brand_setup" },
+  { label: "Case study", value: "case_study" }
+];
+
+const resellerPortfolioStatuses: ResellerPortfolioStatus[] = [
+  "draft",
+  "published",
+  "hidden",
+  "under_review",
+  "archived"
+];
+
+function emptyPortfolioData(items: ResellerPortfolioItem[] = []): ResellerPortfolioData {
+  const publicItems = items.filter((item) => item.status === "published");
+
+  return {
+    emptyState: "No portfolio items yet. Create showcase-only examples to highlight previous work.",
+    futureHooks: [
+      "Portfolio media uploads",
+      "Before/after gallery",
+      "Case study builder",
+      "Portfolio SEO",
+      "Buyer inquiry from portfolio item"
+    ],
+    items,
+    publicItems,
+    selectedItem: items[0] ?? null,
+    statuses: resellerPortfolioStatuses,
+    types: resellerPortfolioTypes
+  };
+}
+
+export async function getResellerPortfolioData(): Promise<ResellerPortfolioData> {
+  const user = await getDashboardUser();
+
+  if (!user) {
+    return emptyPortfolioData();
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_portfolio")
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: [] };
+  const items = ((data ?? []) as unknown as Record<string, unknown>[]).map(portfolioItemFromEvent);
+
+  return emptyPortfolioData(items);
+}
+
+async function getPublicResellerPortfolioItems(userId: string | null | undefined) {
+  if (!userId) {
+    return [];
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", userId)
+        .eq("entity_type", "reseller_portfolio")
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: [] };
+
+  return ((data ?? []) as unknown as Record<string, unknown>[])
+    .map(portfolioItemFromEvent)
+    .filter((item) => item.status === "published");
+}
+
 async function getReviewsForProfile(profileId: string | null, approvedOnly: boolean) {
   if (!profileId) {
     return { ready: true, reviews: [] as ResellerReview[] };
@@ -1963,7 +2151,10 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
   const items = showcase?.items ?? [];
   const templateListings = items.filter(isTemplateListing);
   const storeListings = items.filter((item) => !isTemplateListing(item));
-  const { reviews } = await getReviewsForProfile(showcase?.profile.id ?? null, true);
+  const [{ reviews }, portfolioItems] = await Promise.all([
+    getReviewsForProfile(showcase?.profile.id ?? null, true),
+    getPublicResellerPortfolioItems(showcase?.profile.user_id)
+  ]);
   const reviewsSummary = reviewSummary(reviews);
   const reputation = buildReputation({
     profile: showcase?.profile ?? null,
@@ -1995,6 +2186,7 @@ export async function getPublicResellerProfile(slug: string): Promise<PublicRese
       "Featured reseller eligibility"
     ],
     languages: ["Language placeholder"],
+    portfolioItems,
     profileStatus: showcase ? "published" : "not_available",
     publicAccountCode: `RSL-${slug.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "PUBLIC"}`,
     ratingPlaceholder: reviewsSummary.averageRating ? `${reviewsSummary.averageRating}/5` : "No reviews yet",

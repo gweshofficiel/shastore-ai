@@ -4,7 +4,8 @@ import { TemplateHeroThumbnail } from "@/components/templates/demo-store-preview
 import {
   buildResellerPreviewUrl,
   getPublicResellerProfile,
-  isPreviewEnabledForPublicItem
+  isPreviewEnabledForPublicItem,
+  type ResellerPortfolioItem
 } from "@/lib/reseller-showcase/data";
 import { getResellerShowcaseTheme } from "@/lib/reseller-showcase/themes";
 import { getStoreTemplate } from "@/lib/template-studio/library";
@@ -125,6 +126,49 @@ function ListingCard({
           ) : null}
           <span className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-slate-600">
             {item.price_label ?? "Contact reseller"}
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function PortfolioCard({ item }: { item: ResellerPortfolioItem }) {
+  return (
+    <article className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_-60px_rgba(15,23,42,0.8)]">
+      <div className="flex h-44 items-center justify-center bg-slate-100">
+        <span className="px-5 text-center text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+          {item.previewImagePlaceholder}
+        </span>
+      </div>
+      <div className="grid gap-4 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              {item.type} · {item.categoryNiche}
+            </p>
+            <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950">{item.title}</h3>
+          </div>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+            Portfolio
+          </span>
+        </div>
+        <p className="text-sm font-semibold leading-6 text-slate-500">{item.description}</p>
+        <div className="flex flex-wrap gap-2">
+          {item.toolsServicesUsed.slice(0, 4).map((tool) => (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600" key={tool}>
+              {tool}
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {item.previewUrl && item.previewUrl !== "#" ? (
+            <Link className="inline-flex h-10 items-center rounded-full bg-slate-950 px-4 text-sm font-black text-white" href={item.previewUrl}>
+              Open preview
+            </Link>
+          ) : null}
+          <span className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-black text-slate-600">
+            Showcase only
           </span>
         </div>
       </div>
@@ -313,6 +357,27 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
               )}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-5">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-600">Portfolio showcase</p>
+            <h2 className="mt-2 text-4xl font-black tracking-[-0.05em] text-slate-950">Previous work and case studies</h2>
+            <p className="mt-2 max-w-2xl text-sm font-semibold leading-7 text-slate-500">
+              Published portfolio items are showcase-only. Draft, hidden, archived, and private client work is never shown publicly.
+            </p>
+          </div>
+          {profileData.portfolioItems.length ? (
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {profileData.portfolioItems.map((item) => (
+                <PortfolioCard item={item} key={item.id} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState label="No portfolio items yet" note="This reseller has not published public portfolio showcase items yet." />
+          )}
         </div>
       </section>
 
