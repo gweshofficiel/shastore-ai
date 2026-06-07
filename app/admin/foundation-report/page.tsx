@@ -24,6 +24,7 @@ type AdminHref =
   | "/admin/marketplace"
   | "/admin/marketing"
   | "/admin/email"
+  | "/admin/notifications"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -154,6 +155,12 @@ const modules: FoundationModule[] = [
     href: "/admin/email",
     name: "Email Center",
     notes: "Admin monitoring foundation exists for platform email provider status, transactional sections, templates, queues, failures, and campaign summaries with masked secrets and placeholder-only controls.",
+    status: "ready"
+  },
+  {
+    href: "/admin/notifications",
+    name: "Notification Center",
+    notes: "Admin monitoring foundation exists for in-app, email, SMS, WhatsApp, push, and system alert notification governance with masked recipients and placeholder-only controls.",
     status: "ready"
   },
   {

@@ -612,6 +612,46 @@ export type AdminEmailControl = {
   }>;
 };
 
+export type AdminNotificationControl = {
+  channels: Array<{
+    configuredStatus: "configured" | "missing" | "placeholder";
+    healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+    key: "email" | "in_app" | "push" | "sms" | "system_alerts" | "whatsapp";
+    name: string;
+    secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+  }>;
+  futureHooks: string[];
+  logs: Array<{
+    channel: "email" | "in_app" | "system_alert";
+    createdAt: string;
+    errorSummary: string | null;
+    id: string;
+    recipientMasked: string;
+    status: "cancelled" | "failed" | "queued" | "read" | "retry_pending" | "sent" | "unread";
+    storeOrUser: string;
+    type: string;
+  }>;
+  overview: {
+    failed: number;
+    queued: number;
+    reviewedFailures: number;
+    sent: number;
+    totalNotifications: number;
+    unread: number;
+  };
+  providerStatus: Array<{
+    configuredStatus: "configured" | "missing" | "placeholder";
+    healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+    provider: string;
+    secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+  }>;
+  types: Array<{
+    count: number;
+    key: "ai_visuals" | "billing" | "domains" | "email_setup" | "security" | "store_publishing" | "support" | "system_health";
+    label: string;
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -3626,6 +3666,254 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
         note: "Security alert email templates are reserved placeholders.",
         status: "draft"
       }
+    ]
+  };
+}
+
+export async function getAdminNotificationControl(): Promise<AdminNotificationControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [notifications, emailLogs, monitoringEvents] = await Promise.all([
+    safeSelect(supabase, "notifications", "id, user_id, workspace_id, store_id, type, title, status, read_at, created_at", 500),
+    safeSelect(
+      supabase,
+      "email_event_logs",
+      "id, recipient, template_key, status, error_message, last_error, created_at",
+      500
+    ),
+    safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, metadata, store_id, user_id, created_at", 500)
+  ]);
+  const adminReviewEvents = monitoringEvents.filter(
+    (event) => text(event.event_type) === "admin_notification_mark_reviewed"
+  );
+
+  function notificationTypeBucket(value: string): AdminNotificationControl["types"][number]["key"] {
+    const lower = value.toLowerCase();
+
+    if (lower.includes("billing") || lower.includes("payment") || lower.includes("subscription") || lower.includes("invoice")) {
+      return "billing";
+    }
+
+    if (lower.includes("security") || lower.includes("login") || lower.includes("access")) {
+      return "security";
+    }
+
+    if (lower.includes("domain")) {
+      return "domains";
+    }
+
+    if (lower.includes("email") || lower.includes("mailbox")) {
+      return "email_setup";
+    }
+
+    if (lower.includes("ai")) {
+      return "ai_visuals";
+    }
+
+    if (lower.includes("publish") || lower.includes("launch")) {
+      return "store_publishing";
+    }
+
+    if (lower.includes("support") || lower.includes("ticket")) {
+      return "support";
+    }
+
+    return "system_health";
+  }
+
+  function notificationStatus(value: unknown, readAt?: unknown): AdminNotificationControl["logs"][number]["status"] {
+    const status = text(value).toLowerCase();
+
+    if (status === "failed") {
+      return "failed";
+    }
+
+    if (status === "queued" || status === "pending") {
+      return "queued";
+    }
+
+    if (status === "retry_pending") {
+      return "retry_pending";
+    }
+
+    if (status === "cancelled" || status === "canceled") {
+      return "cancelled";
+    }
+
+    if (status === "sent") {
+      return "sent";
+    }
+
+    if (status === "read" || readAt) {
+      return "read";
+    }
+
+    return "unread";
+  }
+
+  const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => ({
+    channel: "in_app",
+    createdAt: text(notification.created_at, new Date(0).toISOString()),
+    errorSummary: null,
+    id: text(notification.id) || `notification:${text(notification.created_at)}`,
+    recipientMasked: text(notification.user_id)
+      ? `user:${text(notification.user_id).slice(0, 8)}...`
+      : text(notification.workspace_id)
+        ? `workspace:${text(notification.workspace_id).slice(0, 8)}...`
+        : "platform recipient",
+    status: notificationStatus(notification.status, notification.read_at),
+    storeOrUser:
+      text(notification.store_id) ||
+      text(notification.user_id) ||
+      text(notification.workspace_id) ||
+      "platform",
+    type: text(notification.type, "system")
+  }));
+  const emailChannelLogs: AdminNotificationControl["logs"] = emailLogs.map((log) => ({
+    channel: "email",
+    createdAt: text(log.created_at, new Date(0).toISOString()),
+    errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
+    id: text(log.id) || `email:${text(log.created_at)}`,
+    recipientMasked: maskedEmail(log.recipient),
+    status: notificationStatus(log.status),
+    storeOrUser: "email_event_logs",
+    type: text(log.template_key, "email")
+  }));
+  const systemAlertLogs: AdminNotificationControl["logs"] = monitoringEvents
+    .filter((event) => ["failed", "warning"].includes(text(event.event_status)))
+    .map((event) => {
+      const metadata = isRecord(event.metadata) ? event.metadata : {};
+
+      return {
+        channel: "system_alert" as const,
+        createdAt: text(event.created_at, new Date(0).toISOString()),
+        errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
+        id: text(event.id) || `monitoring:${text(event.created_at)}`,
+        recipientMasked: "platform admins",
+        status: text(event.event_status) === "failed" ? "failed" as const : "queued" as const,
+        storeOrUser: text(event.store_id) || text(event.user_id) || text(event.entity_type, "platform"),
+        type: text(event.event_type, "system_alert")
+      };
+    });
+  const logs = [...inAppLogs, ...emailChannelLogs, ...systemAlertLogs]
+    .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
+    .slice(0, 100);
+  const typeCounts = new Map<AdminNotificationControl["types"][number]["key"], number>();
+
+  for (const log of logs) {
+    const key = notificationTypeBucket(log.type);
+    typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
+  }
+
+  const channels: AdminNotificationControl["channels"] = [
+    {
+      configuredStatus: "configured",
+      healthStatus: "healthy",
+      key: "in_app",
+      name: "In-app",
+      secretStatus: "no_secret_required"
+    },
+    {
+      configuredStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
+        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured"
+          ? "configured"
+          : "missing",
+      healthStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
+        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured"
+          ? "healthy"
+          : "missing_config",
+      key: "email",
+      name: "Email",
+      secretStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+          : "missing"
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      key: "sms",
+      name: "SMS placeholder",
+      secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      key: "whatsapp",
+      name: "WhatsApp placeholder",
+      secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      key: "push",
+      name: "Push placeholder",
+      secretStatus: "no_secret_required"
+    },
+    {
+      configuredStatus: "configured",
+      healthStatus: monitoringEvents.some((event) => text(event.event_status) === "failed") ? "warning" : "healthy",
+      key: "system_alerts",
+      name: "System alerts",
+      secretStatus: "no_secret_required"
+    }
+  ];
+  const providerStatus: AdminNotificationControl["providerStatus"] = [
+    {
+      configuredStatus: channels.find((channel) => channel.key === "email")?.configuredStatus ?? "missing",
+      healthStatus: channels.find((channel) => channel.key === "email")?.healthStatus ?? "missing_config",
+      provider: "Email provider",
+      secretStatus: channels.find((channel) => channel.key === "email")?.secretStatus ?? "missing"
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      provider: "SMS provider",
+      secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      provider: "WhatsApp provider",
+      secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
+    },
+    {
+      configuredStatus: "placeholder",
+      healthStatus: "placeholder",
+      provider: "Push provider",
+      secretStatus: "no_secret_required"
+    }
+  ];
+
+  return {
+    channels,
+    futureHooks: [
+      "Retry failed notification",
+      "Configure channels",
+      "Send test notification",
+      "Export notification logs",
+      "Notification template editor"
+    ],
+    logs,
+    overview: {
+      failed: logs.filter((log) => log.status === "failed").length,
+      queued: logs.filter((log) => log.status === "queued" || log.status === "retry_pending").length,
+      reviewedFailures: adminReviewEvents.length,
+      sent: logs.filter((log) => log.status === "sent" || log.status === "read").length,
+      totalNotifications: logs.length,
+      unread: logs.filter((log) => log.status === "unread").length
+    },
+    providerStatus,
+    types: [
+      { count: typeCounts.get("billing") ?? 0, key: "billing", label: "Billing" },
+      { count: typeCounts.get("security") ?? 0, key: "security", label: "Security" },
+      { count: typeCounts.get("domains") ?? 0, key: "domains", label: "Domains" },
+      { count: typeCounts.get("email_setup") ?? 0, key: "email_setup", label: "Email setup" },
+      { count: typeCounts.get("ai_visuals") ?? 0, key: "ai_visuals", label: "AI visuals" },
+      { count: typeCounts.get("store_publishing") ?? 0, key: "store_publishing", label: "Store publishing" },
+      { count: typeCounts.get("support") ?? 0, key: "support", label: "Support" },
+      { count: typeCounts.get("system_health") ?? 0, key: "system_health", label: "System health" }
     ]
   };
 }
