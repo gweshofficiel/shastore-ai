@@ -10,6 +10,7 @@ const navItems = [
   { href: "/reseller/dashboard/templates", label: "Templates", icon: "templates" },
   { href: "/reseller/dashboard/business", label: "Business Settings", icon: "business" },
   { href: "/reseller/dashboard/orders", label: "Orders", icon: "orders" },
+  { href: "/reseller/dashboard/reviews", label: "Reviews", icon: "reports" },
   { href: "/reseller/dashboard/reports", label: "Reports", icon: "reports" },
   { href: "/reseller/dashboard/subscription", label: "Subscription", icon: "subscription" },
   { href: "/reseller/dashboard/earnings", label: "Earnings", icon: "earnings" },

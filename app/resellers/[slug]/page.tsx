@@ -300,12 +300,44 @@ export default async function PublicResellerProfilePage({ params }: PublicResell
 
       <section className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-5 rounded-[2rem] border border-slate-200 bg-white p-6" id="reseller-contact">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Reviews and contact</p>
-          <h2 className="text-3xl font-black tracking-[-0.04em] text-slate-950">No reviews yet</h2>
-          <p className="max-w-2xl text-sm font-semibold leading-7 text-slate-500">
-            Public reviews and buyer contact requests are reserved future hooks. No buyer data,
-            checkout, wallet, payout, or withdrawal flow is exposed on this profile.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Reviews and contact</p>
+              <h2 className="text-3xl font-black tracking-[-0.04em] text-slate-950">
+                {profileData.reviewsSummary.averageRating
+                  ? `${profileData.reviewsSummary.averageRating}/5 average rating`
+                  : "No reviews yet"}
+              </h2>
+            </div>
+            <p className="text-sm font-black text-slate-500">
+              {profileData.reviewsSummary.reviewCount} approved review{profileData.reviewsSummary.reviewCount === 1 ? "" : "s"}
+            </p>
+          </div>
+          {profileData.reviews.length ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {profileData.reviews.slice(0, 4).map((review) => (
+                <article className="rounded-3xl border border-slate-200 bg-slate-50 p-4" key={review.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-950">{review.buyerDisplayName}</p>
+                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                        Approved review
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                      {review.rating}/5
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{review.reviewText}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="max-w-2xl rounded-3xl bg-slate-50 p-4 text-sm font-semibold leading-7 text-slate-500">
+              No reviews yet. Only approved reseller reviews will appear publicly. Buyer email,
+              phone, internal review IDs, checkout data, wallet, payout, and withdrawal details are never shown here.
+            </p>
+          )}
         </div>
       </section>
 

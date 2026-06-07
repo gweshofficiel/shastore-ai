@@ -9,6 +9,7 @@ import {
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
 import {
@@ -23,9 +24,10 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, account] = await Promise.all([
+  const [query, data, reviewsData, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
+    getResellerReviewsData(),
     getOrCreateAccountProfile("reseller")
   ]);
 
@@ -54,6 +56,29 @@ export default async function PrivateResellerHomePage({
       <ResellerStatusAlerts query={query} />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Ratings & Reviews
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {reviewsData.summary.averageRating
+                ? `${reviewsData.summary.averageRating}/5 average rating`
+                : "No reviews yet"}
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              {reviewsData.summary.approvedReviews} approved, {reviewsData.summary.pendingReviews} pending, {reviewsData.summary.rejectedReviews} rejected.
+            </p>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/reviews"
+          >
+            Manage reviews
+          </Link>
+        </div>
+      </Card>
       <ResellerQuickActions profile={data.profile} />
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="p-6">

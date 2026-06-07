@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import {
@@ -6,6 +7,7 @@ import {
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerReviewsData,
   resellerMigrationMessage
 } from "@/lib/reseller-showcase/data";
 
@@ -16,7 +18,11 @@ export default async function PrivateResellerShowcasePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data] = await Promise.all([searchParams, getResellerDashboardData()]);
+  const [query, data, reviewsData] = await Promise.all([
+    searchParams,
+    getResellerDashboardData(),
+    getResellerReviewsData()
+  ]);
 
   return (
     <>
@@ -34,6 +40,29 @@ export default async function PrivateResellerShowcasePage({
         profile={data.profile}
         returnPath="/reseller/dashboard/showcase"
       />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Public reviews
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {reviewsData.summary.averageRating
+                ? `${reviewsData.summary.averageRating}/5 public rating`
+                : "No approved reviews yet"}
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Only approved reviews can appear on the public reseller profile.
+            </p>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/reviews"
+          >
+            Review center
+          </Link>
+        </div>
+      </Card>
     </>
   );
 }

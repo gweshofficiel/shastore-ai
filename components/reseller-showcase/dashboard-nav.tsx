@@ -9,6 +9,7 @@ const resellerNavItems = [
   { href: "/reseller/dashboard/showcase", label: "Showcase" },
   { href: "/reseller/dashboard/stores", label: "Store Listings" },
   { href: "/reseller/dashboard/orders", label: "Orders" },
+  { href: "/reseller/dashboard/reviews", label: "Reviews" },
   { href: "/reseller/dashboard/reports", label: "Reports" },
   { href: "/reseller/dashboard/subscription", label: "Subscription" },
   { href: "/reseller/dashboard/earnings", label: "Earnings" },
