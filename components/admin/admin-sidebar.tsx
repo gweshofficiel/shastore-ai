@@ -10,6 +10,7 @@ export const adminNavItems = [
   { href: "/admin/resellers", label: "Resellers", icon: "resellers" },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: "subscriptions" },
   { href: "/admin/billing/payment-providers", label: "Payment Providers", icon: "subscriptions" },
+  { href: "/admin/domains-hosting", label: "Domains & Hosting", icon: "domains" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
   { href: "/admin/support", label: "Support", icon: "support" },
   { href: "/admin/security", label: "Security", icon: "security" },

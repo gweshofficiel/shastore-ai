@@ -15,6 +15,7 @@ type AdminHref =
   | "/admin/users"
   | "/admin/subscriptions"
   | "/admin/billing/payment-providers"
+  | "/admin/domains-hosting"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -94,6 +95,12 @@ const modules: FoundationModule[] = [
     status: "ready"
   },
   {
+    href: "/admin/domains-hosting",
+    name: "Domain & Hosting",
+    notes: "Admin monitoring foundation exists for domain drafts, email mailbox drafts, DNS/SSL state, hosting placeholders, balance placeholders, and safe review controls.",
+    status: "ready"
+  },
+  {
     name: "Billing Center",
     notes: "Dedicated billing operations center is not built yet; subscription controls remain separate.",
     status: "missing"
@@ -105,8 +112,8 @@ const modules: FoundationModule[] = [
   },
   {
     name: "Domain Center",
-    notes: "Full domain operations center is not built yet; domain overview remains separate.",
-    status: "missing"
+    notes: "Domain and hosting control center is available for monitoring; real provider registration, mailbox creation, SSL issuance, and hosting provisioning remain future work.",
+    status: "partial"
   },
   {
     name: "Marketplace",

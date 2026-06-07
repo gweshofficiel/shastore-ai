@@ -218,6 +218,67 @@ export type AdminPaymentProviderControl = {
   };
 };
 
+export type AdminDomainsHostingControl = {
+  overview: {
+    connectedDomains: number;
+    dnsPending: number;
+    domainDrafts: number;
+    emailMailboxDrafts: number;
+    failedOperations: number;
+    pendingDomainOrders: number;
+    readyForRegistration: number;
+    sslPending: number;
+  };
+  domainOrders: Array<{
+    createdAt: string;
+    customerDueCents: number;
+    domain: string;
+    extension: string;
+    id: string;
+    nextStep: string;
+    ownerEmail: string;
+    planCreditUsedCents: number;
+    status: string;
+    storeId: string;
+    storeName: string;
+  }>;
+  emailOrders: Array<{
+    activationStatus: string;
+    createdAt: string;
+    dnsStatus: string;
+    domain: string;
+    id: string;
+    mailboxAddress: string;
+    mailboxPlan: string;
+    ownerEmail: string;
+    status: string;
+    storeId: string;
+    storeName: string;
+  }>;
+  sslStatuses: Array<{
+    dnsStatus: string;
+    domain: string;
+    id: string;
+    primaryDomainStatus: string;
+    sslStatus: string;
+    storeName: string;
+  }>;
+  providerHealth: Array<{
+    service: string;
+    status: "placeholder" | "ready" | "review";
+    note: string;
+  }>;
+  hostingPlaceholder: {
+    orders: string;
+    providerHook: string;
+    provisioning: string;
+  };
+  platformBalance: {
+    note: string;
+    status: string;
+  };
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -1376,6 +1437,18 @@ function providerWarningList({
   return warnings;
 }
 
+function recordsFromStoreData(storeData: unknown, key: string): AnyRecord[] {
+  if (!isRecord(storeData) || !isRecord(storeData[key])) {
+    return [];
+  }
+
+  return Object.values(storeData[key]).filter(isRecord);
+}
+
+function centsValue(value: unknown) {
+  return Math.max(0, Math.round(numberValue(value)));
+}
+
 export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProviderControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
@@ -1582,6 +1655,170 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       recentEvents: recentEvents.slice(0, 20),
       totalEvents: recentEvents.length
     }
+  };
+}
+
+export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHostingControl> {
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const [stores, storeDomains] = await Promise.all([
+    safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug, store_data, created_at"),
+    safeSelect(
+      supabase,
+      "store_domains",
+      "id, store_id, store_instance_id, owner_user_id, hostname, domain_type, status, verification_status, dns_status, ssl_status, is_primary, primary_domain, created_at"
+    )
+  ]);
+  const storeById = new Map(stores.map((store) => [text(store.id), store]));
+  const domainOrders: AdminDomainsHostingControl["domainOrders"] = [];
+  const emailOrders: AdminDomainsHostingControl["emailOrders"] = [];
+
+  for (const store of stores) {
+    const storeId = text(store.id);
+    const ownerId = ownerUserId(store);
+    const ownerEmail = owners.get(ownerId) ?? text(ownerId, "Unknown owner");
+    const storeName = text(store.store_name, text(store.name, "Untitled store"));
+    const storeData = store.store_data;
+
+    for (const draft of recordsFromStoreData(storeData, "domainOrderDrafts")) {
+      const domain = text(draft.selectedDomain);
+
+      domainOrders.push({
+        createdAt: text(draft.createdAt),
+        customerDueCents: centsValue(draft.customerDueCents ?? draft.customerDue),
+        domain,
+        extension: text(draft.extension, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
+        id: text(draft.id, `${storeId}-domain-draft-${domain}`),
+        nextStep: text(isRecord(draft.paymentPreparation) ? draft.paymentPreparation.nextStep : null, "Prepare payment or registration workflow"),
+        ownerEmail,
+        planCreditUsedCents: centsValue(draft.creditUsedCents ?? draft.creditUsed),
+        status: text(draft.status, "draft"),
+        storeId,
+        storeName
+      });
+    }
+
+    for (const workflow of recordsFromStoreData(storeData, "domainRegistrationWorkflows")) {
+      const domain = text(workflow.domain);
+      const dnsSetup = isRecord(workflow.dnsSetup) ? workflow.dnsSetup : {};
+      const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
+
+      domainOrders.push({
+        createdAt: text(workflow.createdAt),
+        customerDueCents: centsValue(workflow.customerDueCents ?? workflow.customerDue),
+        domain,
+        extension: domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown",
+        id: text(workflow.id, `${storeId}-domain-workflow-${domain}`),
+        nextStep: text(dnsSetup.status) === "verified" ? "Request SSL placeholder" : "Verify DNS placeholder",
+        ownerEmail,
+        planCreditUsedCents: 0,
+        status: text(workflow.status, "ready_for_registration"),
+        storeId,
+        storeName
+      });
+
+      if (text(sslSetup.status) || text(dnsSetup.status)) {
+        // Registration workflows also represent DNS/SSL placeholders before a store_domains row exists.
+      }
+    }
+
+    for (const draft of [
+      ...recordsFromStoreData(storeData, "professionalEmailMailboxDrafts"),
+      ...recordsFromStoreData(storeData, "professionalEmailOrderDrafts")
+    ]) {
+      const emailDnsSetup = isRecord(draft.emailDnsSetup) ? draft.emailDnsSetup : {};
+      const mailboxPlan = isRecord(draft.mailboxPlan) ? draft.mailboxPlan : {};
+
+      emailOrders.push({
+        activationStatus: text(draft.activationStatus, text(draft.status, "draft")),
+        createdAt: text(draft.createdAt),
+        dnsStatus: text(emailDnsSetup.status, "dns_pending"),
+        domain: text(draft.domain),
+        id: text(draft.id, `${storeId}-email-${text(draft.mailboxAddress, text(draft.emailAddress))}`),
+        mailboxAddress: text(draft.mailboxAddress, text(draft.emailAddress, "Not prepared")),
+        mailboxPlan: text(mailboxPlan.label, text(draft.mailboxType, "Mailbox draft")),
+        ownerEmail,
+        status: text(draft.status, "draft"),
+        storeId,
+        storeName
+      });
+    }
+  }
+
+  const sslStatuses: AdminDomainsHostingControl["sslStatuses"] = storeDomains.map((domain) => {
+    const store = storeById.get(text(domain.store_id)) ?? storeById.get(text(domain.store_instance_id));
+
+    return {
+      dnsStatus: text(domain.dns_status, text(domain.verification_status, "pending")),
+      domain: text(domain.hostname, text(domain.primary_domain, "Unknown domain")),
+      id: text(domain.id),
+      primaryDomainStatus: domain.is_primary === true ? "primary" : "secondary",
+      sslStatus: text(domain.ssl_status, "pending"),
+      storeName: store ? text(store.store_name, text(store.name, "Untitled store")) : "Unknown store"
+    };
+  });
+  const workflowSslStatuses = stores.flatMap((store) =>
+    recordsFromStoreData(store.store_data, "domainRegistrationWorkflows").map((workflow) => {
+      const dnsSetup = isRecord(workflow.dnsSetup) ? workflow.dnsSetup : {};
+      const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
+
+      return {
+        dnsStatus: text(dnsSetup.status, "not_started"),
+        domain: text(workflow.domain, "Pending domain"),
+        id: text(workflow.id, `${text(store.id)}-workflow-ssl`),
+        primaryDomainStatus: "workflow placeholder",
+        sslStatus: text(sslSetup.status, "ssl_pending"),
+        storeName: text(store.store_name, text(store.name, "Untitled store"))
+      };
+    })
+  );
+  const allSslStatuses = [...sslStatuses, ...workflowSslStatuses];
+  const failedDomainOperations = domainOrders.filter((order) => order.status.includes("failed")).length;
+  const failedEmailOperations = emailOrders.filter(
+    (order) => order.status.includes("failed") || order.activationStatus.includes("failed")
+  ).length;
+
+  return {
+    domainOrders,
+    emailOrders,
+    hostingPlaceholder: {
+      orders: "No hosting orders are provisioned in this phase.",
+      providerHook: "Hosting provider hook is reserved for future implementation.",
+      provisioning: "No real hosting provisioning runs from Super Admin."
+    },
+    overview: {
+      connectedDomains: storeDomains.filter(
+        (domain) =>
+          text(domain.status) === "active" ||
+          text(domain.verification_status) === "verified" ||
+          text(domain.dns_status) === "verified"
+      ).length,
+      dnsPending:
+        storeDomains.filter((domain) => ["pending", "verifying", "not_configured"].includes(text(domain.dns_status))).length +
+        workflowSslStatuses.filter((status) => status.dnsStatus !== "verified").length,
+      domainDrafts: stores.reduce(
+        (total, store) => total + recordsFromStoreData(store.store_data, "domainOrderDrafts").length,
+        0
+      ),
+      emailMailboxDrafts: emailOrders.length,
+      failedOperations: failedDomainOperations + failedEmailOperations + storeDomains.filter((domain) =>
+        [text(domain.status), text(domain.verification_status), text(domain.dns_status), text(domain.ssl_status)].includes("failed")
+      ).length,
+      pendingDomainOrders: domainOrders.filter((order) => order.status === "draft" || order.status.includes("pending")).length,
+      readyForRegistration: domainOrders.filter((order) => order.status === "ready_for_registration").length,
+      sslPending: allSslStatuses.filter((status) => !["active", "ssl_active", "ready"].includes(status.sslStatus)).length
+    },
+    platformBalance: {
+      note: "Internal Super Admin placeholder only. No provider balance API is connected.",
+      status: "blocked_until_future_provider_balance_check"
+    },
+    providerHealth: [
+      { service: "Domain service health", status: "placeholder", note: "No registrar API is called in this phase." },
+      { service: "Email service health", status: "placeholder", note: "Mailbox provider checks are reserved." },
+      { service: "SSL service health", status: "placeholder", note: "SSL issuance checks are placeholders only." },
+      { service: "Hosting service health", status: "placeholder", note: "Hosting provisioning is not implemented yet." }
+    ],
+    sslStatuses: allSslStatuses
   };
 }
 
