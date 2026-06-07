@@ -16,6 +16,7 @@ type AdminHref =
   | "/admin/subscriptions"
   | "/admin/billing/payment-providers"
   | "/admin/domains-hosting"
+  | "/admin/integrations"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -98,6 +99,12 @@ const modules: FoundationModule[] = [
     href: "/admin/domains-hosting",
     name: "Domain & Hosting",
     notes: "Admin monitoring foundation exists for domain drafts, email mailbox drafts, DNS/SSL state, hosting placeholders, balance placeholders, and safe review controls.",
+    status: "ready"
+  },
+  {
+    href: "/admin/integrations",
+    name: "Platform Integrations",
+    notes: "Central integration monitoring exists for AI, payments, domain/email/hosting, email sending, storage, SMS/WhatsApp, analytics, and webhook placeholders with masked secret status only.",
     status: "ready"
   },
   {

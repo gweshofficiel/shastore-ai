@@ -279,6 +279,37 @@ export type AdminDomainsHostingControl = {
   };
 };
 
+export type AdminIntegrationsControl = {
+  categories: string[];
+  futureHooks: string[];
+  integrations: Array<{
+    category: string;
+    configurationStatus: "configured" | "missing" | "partial";
+    enabledStatus: "disabled" | "enabled" | "under_review";
+    healthStatus: "healthy" | "missing_config" | "needs_review" | "placeholder" | "warning";
+    key: string;
+    lastChecked: string | null;
+    mode: "live" | "test" | "sandbox" | "placeholder";
+    name: string;
+    secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+  }>;
+  overview: {
+    configured: number;
+    missing: number;
+    partial: number;
+    total: number;
+    underReview: number;
+    webhookFailures: number;
+  };
+  webhooks: Array<{
+    name: string;
+    provider: string;
+    recentFailures: number;
+    retryStatus: string;
+    status: "configured" | "missing" | "placeholder";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -1449,6 +1480,48 @@ function centsValue(value: unknown) {
   return Math.max(0, Math.round(numberValue(value)));
 }
 
+function envConfigurationStatus(names: string[]): AdminIntegrationsControl["integrations"][number]["configurationStatus"] {
+  if (!names.length) {
+    return "configured";
+  }
+
+  const configuredCount = names.filter((name) => Boolean(process.env[name])).length;
+
+  if (configuredCount === names.length) {
+    return "configured";
+  }
+
+  return configuredCount > 0 ? "partial" : "missing";
+}
+
+function integrationSecretStatus(
+  names: string[]
+): AdminIntegrationsControl["integrations"][number]["secretStatus"] {
+  const status = envConfigurationStatus(names);
+
+  if (!names.length) {
+    return "no_secret_required";
+  }
+
+  if (status === "configured") {
+    return "masked_configured";
+  }
+
+  return status === "partial" ? "masked_partial" : "missing";
+}
+
+function integrationMode(providerKey: string): AdminIntegrationsControl["integrations"][number]["mode"] {
+  if (providerKey === "paypal") {
+    return process.env.PAYPAL_ENVIRONMENT === "live" ? "live" : "sandbox";
+  }
+
+  if (["openai", "stripe", "resend", "cloudflare_r2"].includes(providerKey)) {
+    return process.env.NODE_ENV === "production" ? "live" : "test";
+  }
+
+  return "placeholder";
+}
+
 export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProviderControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
@@ -1655,6 +1728,264 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       recentEvents: recentEvents.slice(0, 20),
       totalEvents: recentEvents.length
     }
+  };
+}
+
+export async function getAdminIntegrationsControl(): Promise<AdminIntegrationsControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [monitoringEvents, billingEvents] = await Promise.all([
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500),
+    safeSelect(supabase, "billing_events", "event_type, provider, payload, processed_at, created_at", 500)
+  ]);
+  const definitions: Array<{
+    category: string;
+    key: string;
+    name: string;
+    requiredEnv: string[];
+  }> = [
+    {
+      category: "AI Providers",
+      key: "openai",
+      name: "OpenAI",
+      requiredEnv: ["OPENAI_API_KEY"]
+    },
+    {
+      category: "Payment Providers",
+      key: "stripe",
+      name: "Stripe",
+      requiredEnv: ["PLATFORM_BILLING_STRIPE_SECRET_KEY", "PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET"]
+    },
+    {
+      category: "Payment Providers",
+      key: "nowpayments",
+      name: "NOWPayments",
+      requiredEnv: ["NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"]
+    },
+    {
+      category: "Payment Providers",
+      key: "paypal",
+      name: "PayPal",
+      requiredEnv: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PARTNER_MERCHANT_ID"]
+    },
+    {
+      category: "Payment Providers",
+      key: "youcan_pay",
+      name: "YouCan Pay",
+      requiredEnv: ["YOUCAN_PAY_API_KEY", "YOUCAN_PAY_SECRET_KEY"]
+    },
+    {
+      category: "Email Sending Providers",
+      key: "resend",
+      name: "Resend",
+      requiredEnv: ["RESEND_API_KEY", "EMAIL_FROM"]
+    },
+    {
+      category: "Storage Providers",
+      key: "cloudflare_r2",
+      name: "Cloudflare R2",
+      requiredEnv: [
+        "CLOUDFLARE_R2_ACCOUNT_ID",
+        "CLOUDFLARE_R2_ACCESS_KEY_ID",
+        "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+        "CLOUDFLARE_R2_BUCKET",
+        "CLOUDFLARE_R2_PUBLIC_URL"
+      ]
+    },
+    {
+      category: "Domain / Email / Hosting Providers",
+      key: "domain_service",
+      name: "Domain service",
+      requiredEnv: ["HOSTINSH_API_KEY"]
+    },
+    {
+      category: "Domain / Email / Hosting Providers",
+      key: "email_service",
+      name: "Email service",
+      requiredEnv: ["RESEND_API_KEY"]
+    },
+    {
+      category: "Domain / Email / Hosting Providers",
+      key: "hosting_service",
+      name: "Hosting service",
+      requiredEnv: []
+    },
+    {
+      category: "SMS / WhatsApp Providers",
+      key: "whatsapp",
+      name: "WhatsApp provider",
+      requiredEnv: ["WHATSAPP_BUSINESS_API_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]
+    },
+    {
+      category: "SMS / WhatsApp Providers",
+      key: "sms",
+      name: "SMS provider",
+      requiredEnv: ["SMS_PROVIDER_API_KEY"]
+    },
+    {
+      category: "Analytics Providers",
+      key: "analytics",
+      name: "Analytics provider",
+      requiredEnv: ["NEXT_PUBLIC_GA_ID", "NEXT_PUBLIC_META_PIXEL_ID"]
+    },
+    {
+      category: "Webhooks",
+      key: "platform_webhooks",
+      name: "Platform webhooks",
+      requiredEnv: ["STRIPE_WEBHOOK_SECRET", "PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET", "NOWPAYMENTS_IPN_SECRET"]
+    }
+  ];
+  const controlEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_integration_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestControlByIntegration = new Map<string, AnyRecord>();
+
+  for (const event of controlEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const integrationKey = text(metadata.integration_key);
+
+    if (integrationKey && !latestControlByIntegration.has(integrationKey)) {
+      latestControlByIntegration.set(integrationKey, event);
+    }
+  }
+
+  const providerEventDates = new Map<string, string>();
+  const providerFailures = new Map<string, number>();
+  const recordProviderSignal = ({
+    createdAt,
+    failed,
+    provider
+  }: {
+    createdAt: string;
+    failed: boolean;
+    provider: string;
+  }) => {
+    const key = provider.toLowerCase();
+
+    if (!key) {
+      return;
+    }
+
+    if (!providerEventDates.has(key) || dateValue(createdAt) > dateValue(providerEventDates.get(key))) {
+      providerEventDates.set(key, createdAt);
+    }
+
+    if (failed) {
+      providerFailures.set(key, (providerFailures.get(key) ?? 0) + 1);
+    }
+  };
+
+  for (const event of monitoringEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    recordProviderSignal({
+      createdAt: text(event.created_at),
+      failed: text(event.event_status) === "failed",
+      provider: text(metadata.provider, text(event.entity_type))
+    });
+  }
+
+  for (const event of billingEvents) {
+    recordProviderSignal({
+      createdAt: text(event.processed_at) || text(event.created_at),
+      failed: text(event.event_type).toLowerCase().includes("failed"),
+      provider: text(event.provider)
+    });
+  }
+
+  const integrations: AdminIntegrationsControl["integrations"] = definitions.map((definition) => {
+    const configurationStatus = envConfigurationStatus(definition.requiredEnv);
+    const controlEvent = latestControlByIntegration.get(definition.key);
+    const controlType = text(controlEvent?.event_type);
+    const providerLookupKeys = [
+      definition.key,
+      definition.name.toLowerCase(),
+      definition.key.replace(/_/g, "")
+    ];
+    const lastChecked =
+      text(controlEvent?.created_at) ||
+      providerLookupKeys.map((key) => providerEventDates.get(key)).find(Boolean) ||
+      null;
+    const hasFailures = providerLookupKeys.some((key) => (providerFailures.get(key) ?? 0) > 0);
+    const enabledStatus =
+      controlType === "admin_integration_mark_review"
+        ? "under_review"
+        : configurationStatus === "missing"
+          ? "disabled"
+          : "enabled";
+    const healthStatus =
+      enabledStatus === "under_review"
+        ? "needs_review"
+        : configurationStatus === "missing"
+          ? "missing_config"
+          : configurationStatus === "partial" || hasFailures
+            ? "warning"
+            : definition.requiredEnv.length
+              ? "healthy"
+              : "placeholder";
+
+    return {
+      category: definition.category,
+      configurationStatus,
+      enabledStatus,
+      healthStatus,
+      key: definition.key,
+      lastChecked,
+      mode: integrationMode(definition.key),
+      name: definition.name,
+      secretStatus: integrationSecretStatus(definition.requiredEnv)
+    };
+  });
+  const webhooks: AdminIntegrationsControl["webhooks"] = [
+    {
+      name: "Stripe billing webhook",
+      provider: "Stripe",
+      recentFailures: providerFailures.get("stripe") ?? 0,
+      retryStatus: "retry_placeholder_only",
+      status: envConfigured(["STRIPE_WEBHOOK_SECRET", "PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET"]) ? "configured" : "missing"
+    },
+    {
+      name: "NOWPayments IPN",
+      provider: "NOWPayments",
+      recentFailures: providerFailures.get("nowpayments") ?? 0,
+      retryStatus: "retry_placeholder_only",
+      status: envConfigured(["NOWPAYMENTS_IPN_SECRET"]) ? "configured" : "missing"
+    },
+    {
+      name: "Store payment webhooks",
+      provider: "Store payments",
+      recentFailures: providerFailures.get("store_payments") ?? 0,
+      retryStatus: "retry_placeholder_only",
+      status: "placeholder"
+    },
+    {
+      name: "Domain/email/hosting webhooks",
+      provider: "Domain & Hosting",
+      recentFailures: providerFailures.get("domain_service") ?? 0,
+      retryStatus: "retry_placeholder_only",
+      status: "placeholder"
+    }
+  ];
+  const categories = [...new Set(definitions.map((definition) => definition.category))];
+
+  return {
+    categories,
+    futureHooks: [
+      "Test connection",
+      "Rotate secret",
+      "Disable provider",
+      "Enable provider",
+      "Sync provider status",
+      "Export integration report"
+    ],
+    integrations,
+    overview: {
+      configured: integrations.filter((integration) => integration.configurationStatus === "configured").length,
+      missing: integrations.filter((integration) => integration.configurationStatus === "missing").length,
+      partial: integrations.filter((integration) => integration.configurationStatus === "partial").length,
+      total: integrations.length,
+      underReview: integrations.filter((integration) => integration.enabledStatus === "under_review").length,
+      webhookFailures: webhooks.reduce((total, webhook) => total + webhook.recentFailures, 0)
+    },
+    webhooks
   };
 }
 
