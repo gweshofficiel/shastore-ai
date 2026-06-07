@@ -481,6 +481,36 @@ export type AdminTemplateManagementControl = {
   };
 };
 
+export type AdminMarketplaceControl = {
+  futureHooks: string[];
+  items: Array<{
+    creator: string;
+    id: string;
+    installs: number;
+    lastUpdated: string | null;
+    name: string;
+    priceType: "free" | "paid" | "premium" | "subscription";
+    revenue: number;
+    section: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
+    status: "approved" | "archived" | "draft" | "pending_review" | "rejected";
+    type: "app" | "plugin" | "service" | "template" | "theme";
+    visibility: "internal" | "owner" | "public" | "reseller";
+  }>;
+  overview: {
+    approvedItems: number;
+    archivedItems: number;
+    draftItems: number;
+    pendingReviewItems: number;
+    rejectedItems: number;
+    totalItems: number;
+  };
+  sections: Array<{
+    itemCount: number;
+    name: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
+    status: "placeholder" | "ready";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -2891,6 +2921,168 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       ownerVisible: templates.filter((template) => template.visibility === "owner" || template.visibility === "marketplace").length,
       resellerVisible: templates.filter((template) => template.visibility === "reseller").length
     }
+  };
+}
+
+export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [templateControl, monitoringEvents] = await Promise.all([
+    getAdminTemplateManagementControl(),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+  const marketplaceEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_marketplace_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestEventByItem = new Map<string, AnyRecord>();
+
+  for (const event of marketplaceEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const itemId = text(metadata.item_id);
+
+    if (itemId && !latestEventByItem.has(itemId)) {
+      latestEventByItem.set(itemId, event);
+    }
+  }
+
+  function statusFromEvent(
+    itemId: string,
+    fallback: AdminMarketplaceControl["items"][number]["status"]
+  ): AdminMarketplaceControl["items"][number]["status"] {
+    const eventType = text(latestEventByItem.get(itemId)?.event_type);
+
+    if (eventType === "admin_marketplace_approve_item") {
+      return "approved";
+    }
+
+    if (eventType === "admin_marketplace_reject_item") {
+      return "rejected";
+    }
+
+    if (eventType === "admin_marketplace_mark_review") {
+      return "pending_review";
+    }
+
+    if (eventType === "admin_marketplace_archive_item") {
+      return "archived";
+    }
+
+    return fallback;
+  }
+
+  const templateItems: AdminMarketplaceControl["items"] = templateControl.templates.map((template) => {
+    const itemId = `template:${template.id}`;
+    const fallbackStatus =
+      template.status === "archived" ? "archived" : template.status === "active" ? "approved" : "draft";
+    const visibility =
+      template.visibility === "marketplace"
+        ? "public"
+        : template.visibility === "internal"
+          ? "internal"
+          : template.visibility === "reseller"
+            ? "reseller"
+            : "owner";
+
+    return {
+      creator: template.badges.official ? "SHASTORE official" : "Existing template library",
+      id: itemId,
+      installs: template.installedVersionCount,
+      lastUpdated: template.lastUpdated,
+      name: template.name,
+      priceType: template.badges.premium ? "premium" : "free",
+      revenue: 0,
+      section: "Template Marketplace",
+      status: statusFromEvent(itemId, fallbackStatus),
+      type: "template",
+      visibility
+    };
+  });
+  const placeholderItems: AdminMarketplaceControl["items"] = [
+    {
+      creator: "SHASTORE platform",
+      id: "theme:platform-brand-pack",
+      installs: 0,
+      lastUpdated: null,
+      name: "Platform Brand Theme Pack",
+      priceType: "premium",
+      revenue: 0,
+      section: "Theme Marketplace",
+      status: statusFromEvent("theme:platform-brand-pack", "draft"),
+      type: "theme",
+      visibility: "internal"
+    },
+    {
+      creator: "SHASTORE platform",
+      id: "plugin:loyalty-foundation",
+      installs: 0,
+      lastUpdated: null,
+      name: "Loyalty Plugin Foundation",
+      priceType: "subscription",
+      revenue: 0,
+      section: "Plugin Marketplace",
+      status: statusFromEvent("plugin:loyalty-foundation", "pending_review"),
+      type: "plugin",
+      visibility: "internal"
+    },
+    {
+      creator: "SHASTORE platform",
+      id: "app:analytics-connector",
+      installs: 0,
+      lastUpdated: null,
+      name: "Analytics Connector App",
+      priceType: "paid",
+      revenue: 0,
+      section: "App Marketplace",
+      status: statusFromEvent("app:analytics-connector", "draft"),
+      type: "app",
+      visibility: "internal"
+    },
+    {
+      creator: "SHASTORE services",
+      id: "service:store-launch-assistance",
+      installs: 0,
+      lastUpdated: null,
+      name: "Store Launch Assistance",
+      priceType: "paid",
+      revenue: 0,
+      section: "Service Marketplace",
+      status: statusFromEvent("service:store-launch-assistance", "draft"),
+      type: "service",
+      visibility: "internal"
+    }
+  ];
+  const items = [...templateItems, ...placeholderItems];
+  const sectionNames: AdminMarketplaceControl["sections"][number]["name"][] = [
+    "Template Marketplace",
+    "Theme Marketplace",
+    "Plugin Marketplace",
+    "App Marketplace",
+    "Service Marketplace"
+  ];
+
+  return {
+    futureHooks: [
+      "Creator accounts",
+      "Marketplace payouts",
+      "App/plugin installation",
+      "Template sales",
+      "Reseller-exclusive marketplace items",
+      "Reviews and ratings",
+      "Revenue sharing"
+    ],
+    items,
+    overview: {
+      approvedItems: items.filter((item) => item.status === "approved").length,
+      archivedItems: items.filter((item) => item.status === "archived").length,
+      draftItems: items.filter((item) => item.status === "draft").length,
+      pendingReviewItems: items.filter((item) => item.status === "pending_review").length,
+      rejectedItems: items.filter((item) => item.status === "rejected").length,
+      totalItems: items.length
+    },
+    sections: sectionNames.map((name) => ({
+      itemCount: items.filter((item) => item.section === name).length,
+      name,
+      status: name === "Template Marketplace" ? "ready" : "placeholder"
+    }))
   };
 }
 

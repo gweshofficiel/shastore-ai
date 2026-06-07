@@ -21,6 +21,7 @@ type AdminHref =
   | "/admin/platform-website"
   | "/admin/platform-theme"
   | "/admin/templates"
+  | "/admin/marketplace"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -133,6 +134,12 @@ const modules: FoundationModule[] = [
     href: "/admin/templates",
     name: "Templates",
     notes: "Admin management foundation exists over the existing template library and package registry with visibility controls, package summaries, version placeholders, and safe governance actions.",
+    status: "ready"
+  },
+  {
+    href: "/admin/marketplace",
+    name: "Marketplace",
+    notes: "Admin management foundation exists for template, theme, plugin, app, and service marketplace preparation with approval workflow placeholders and no payments or installs.",
     status: "ready"
   },
   {
