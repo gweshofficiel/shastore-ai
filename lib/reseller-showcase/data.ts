@@ -267,6 +267,48 @@ export type ResellerMessagesData = {
   selectedConversation: ResellerConversation | null;
 };
 
+export type ResellerNotificationCategory =
+  | "future_delivery_placeholder"
+  | "future_sale_placeholder"
+  | "lead_activity"
+  | "listing_updates"
+  | "marketplace_visibility"
+  | "new_message"
+  | "review_received"
+  | "subscription_status"
+  | "template_updates"
+  | "verification_status";
+
+export type ResellerNotificationStatus = "archived" | "read" | "unread";
+
+export type ResellerNotificationPriority = "high" | "low" | "normal";
+
+export type ResellerNotification = {
+  category: ResellerNotificationCategory;
+  createdAt: string | null;
+  id: string;
+  priority: ResellerNotificationPriority;
+  relatedItem: string;
+  status: ResellerNotificationStatus;
+  title: string;
+};
+
+export type ResellerNotificationsData = {
+  categories: Array<{
+    label: string;
+    value: ResellerNotificationCategory;
+  }>;
+  emptyState: string;
+  futureHooks: string[];
+  notifications: ResellerNotification[];
+  summary: {
+    archived: number;
+    highPriority: number;
+    thisWeek: number;
+    unread: number;
+  };
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -641,6 +683,64 @@ function conversationFromEvent(row: Record<string, unknown>, index: number): Res
       "Real-time chat, external notifications, attachments, orders, and ownership transfer are future hooks only."
     ],
     unreadCount: Math.max(0, numberValue(metadata.unread_count))
+  };
+}
+
+function normalizeNotificationCategory(value: unknown): ResellerNotificationCategory {
+  const category = textValue(value).toLowerCase();
+
+  if (
+    category === "future_delivery_placeholder" ||
+    category === "future_sale_placeholder" ||
+    category === "lead_activity" ||
+    category === "listing_updates" ||
+    category === "marketplace_visibility" ||
+    category === "new_message" ||
+    category === "review_received" ||
+    category === "subscription_status" ||
+    category === "template_updates" ||
+    category === "verification_status"
+  ) {
+    return category;
+  }
+
+  return "listing_updates";
+}
+
+function normalizeNotificationStatus(value: unknown): ResellerNotificationStatus {
+  const status = textValue(value).toLowerCase();
+
+  if (status === "archived" || status === "read" || status === "unread") {
+    return status;
+  }
+
+  return "unread";
+}
+
+function normalizeNotificationPriority(value: unknown): ResellerNotificationPriority {
+  const priority = textValue(value).toLowerCase();
+
+  if (priority === "high" || priority === "low" || priority === "normal") {
+    return priority;
+  }
+
+  return "normal";
+}
+
+function notificationFromEvent(row: Record<string, unknown>, index: number): ResellerNotification {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    category: normalizeNotificationCategory(metadata.notification_category ?? metadata.category),
+    createdAt: textValue(row.created_at) || null,
+    id: textValue(metadata.notification_reference, textValue(row.id, `notification-${index}`)),
+    priority: normalizeNotificationPriority(metadata.priority),
+    relatedItem: textValue(metadata.related_item, "Related item placeholder"),
+    status: normalizeNotificationStatus(metadata.notification_status ?? metadata.status),
+    title: textValue(metadata.title, "Reseller notification placeholder")
   };
 }
 
@@ -1402,6 +1502,68 @@ export async function getResellerMessagesData(): Promise<ResellerMessagesData> {
       { count: conversations.filter((conversation) => conversation.status === "archived").length, key: "archived", label: "Archived" }
     ],
     selectedConversation: conversations[0] ?? null
+  };
+}
+
+export async function getResellerNotificationsData(): Promise<ResellerNotificationsData> {
+  const user = await getDashboardUser();
+  const categories: ResellerNotificationsData["categories"] = [
+    { label: "Listing updates", value: "listing_updates" },
+    { label: "Template updates", value: "template_updates" },
+    { label: "Lead activity", value: "lead_activity" },
+    { label: "New message", value: "new_message" },
+    { label: "Review received", value: "review_received" },
+    { label: "Verification status", value: "verification_status" },
+    { label: "Subscription status", value: "subscription_status" },
+    { label: "Marketplace visibility", value: "marketplace_visibility" },
+    { label: "Future sale placeholder", value: "future_sale_placeholder" },
+    { label: "Future delivery placeholder", value: "future_delivery_placeholder" }
+  ];
+  const futureHooks = [
+    "Real notification creation from leads/messages/reviews",
+    "Email notification bridge",
+    "WhatsApp/SMS bridge",
+    "Push notifications",
+    "Notification preferences"
+  ];
+  const emptyState = "No reseller notifications yet. Future private platform alerts will appear here.";
+
+  if (!user) {
+    return {
+      categories,
+      emptyState,
+      futureHooks,
+      notifications: [],
+      summary: { archived: 0, highPriority: 0, thisWeek: 0, unread: 0 }
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_notifications")
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: [] };
+  const notifications = ((data ?? []) as unknown as Record<string, unknown>[]).map(notificationFromEvent);
+  const weekAgo = Date.now() - 7 * 86_400_000;
+
+  return {
+    categories,
+    emptyState,
+    futureHooks,
+    notifications,
+    summary: {
+      archived: notifications.filter((notification) => notification.status === "archived").length,
+      highPriority: notifications.filter((notification) => notification.priority === "high").length,
+      thisWeek: notifications.filter((notification) =>
+        notification.createdAt ? new Date(notification.createdAt).getTime() >= weekAgo : false
+      ).length,
+      unread: notifications.filter((notification) => notification.status === "unread").length
+    }
   };
 }
 
