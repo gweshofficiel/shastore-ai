@@ -26,6 +26,7 @@ type AdminHref =
   | "/admin/email"
   | "/admin/notifications"
   | "/admin/seo"
+  | "/admin/operations"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -84,6 +85,12 @@ const modules: FoundationModule[] = [
     href: "/admin/reports",
     name: "Reports",
     notes: "Admin reporting foundation exists for revenue, stores, users, subscriptions, payments, AI, domains/email, marketplace, security, and operations using existing aggregate sources.",
+    status: "ready"
+  },
+  {
+    href: "/admin/operations",
+    name: "Operations",
+    notes: "Platform Operations Center monitors queues, workers, cron placeholders, storage, database readiness, backups, disaster recovery, and system monitoring using existing logs and safe placeholder controls.",
     status: "ready"
   },
   {
@@ -187,13 +194,8 @@ const modules: FoundationModule[] = [
   },
   {
     name: "Marketplace",
-    notes: "Marketplace administration is not built yet.",
-    status: "missing"
-  },
-  {
-    name: "Operations",
-    notes: "Central operations command center is not built yet.",
-    status: "missing"
+    notes: "Marketplace administration is available for marketplace preparation; seller payouts, real installs, and external payments remain future work.",
+    status: "partial"
   }
 ];
 

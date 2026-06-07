@@ -22,6 +22,7 @@ export const adminNavItems = [
   { href: "/admin/notifications", label: "Notifications", icon: "analytics" },
   { href: "/admin/seo", label: "SEO", icon: "analytics" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
+  { href: "/admin/operations", label: "Operations", icon: "reports" },
   { href: "/admin/support", label: "Support", icon: "support" },
   { href: "/admin/security", label: "Security", icon: "security" },
   { href: "/admin/moderation", label: "Moderation", icon: "moderation" },

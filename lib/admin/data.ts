@@ -790,6 +790,66 @@ export type AdminAdvancedSecurityControl = {
   }>;
 };
 
+export type AdminOperationsControl = {
+  backupRecovery: Array<{
+    name: string;
+    note: string;
+    status: "placeholder" | "ready" | "review";
+  }>;
+  cronJobs: Array<{
+    lastRun: string | null;
+    name: string;
+    nextRun: string;
+    schedule: string;
+    status: "placeholder" | "ready" | "review";
+  }>;
+  databaseStorage: Array<{
+    metric: string;
+    note: string;
+    status: "configured" | "missing" | "placeholder" | "ready" | "review";
+    value: string;
+  }>;
+  futureHooks: string[];
+  overview: {
+    aiQueueHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
+    cronHealth: "healthy" | "needs_review" | "placeholder";
+    databaseHealth: "healthy" | "missing_config" | "needs_review";
+    domainEmailQueueHealth: "healthy" | "needs_review" | "placeholder";
+    emailQueueHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
+    queueHealth: "healthy" | "needs_review" | "placeholder";
+    storageHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
+    workerHealth: "healthy" | "needs_review" | "placeholder";
+  };
+  queues: Array<{
+    completed: number;
+    failed: number;
+    lastProcessed: string | null;
+    name: string;
+    pending: number;
+    processing: number;
+  }>;
+  sections: Array<{
+    name:
+      | "Backups"
+      | "Cron Jobs"
+      | "Database Health"
+      | "Disaster Recovery"
+      | "Queues"
+      | "Storage Health"
+      | "System Monitoring"
+      | "Workers";
+    note: string;
+    status: "monitoring" | "placeholder" | "review";
+  }>;
+  workers: Array<{
+    failures: number;
+    lastRun: string | null;
+    name: string;
+    nextRun: string;
+    status: "idle" | "placeholder" | "running" | "warning";
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -4578,6 +4638,270 @@ export async function getAdminAdvancedSecurityControl(): Promise<AdminAdvancedSe
       { count: events.filter((event) => event.severity === "critical").length, description: "Token, fraud, or severe security signals.", level: "critical" }
     ],
     sections
+  };
+}
+
+export async function getAdminOperationsControl(): Promise<AdminOperationsControl> {
+  const { supabase, serviceRoleConfigured } = await getAdminClient();
+  const [monitoringEvents, emailLogs, aiQueues, domainsHosting] = await Promise.all([
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500),
+    safeSelect(supabase, "email_event_logs", "id, status, sent_at, created_at, next_retry_at", 500),
+    safeSelect(
+      supabase,
+      "ai_generation_queue",
+      "id, workflow_state, queue_status, attempts, max_attempts, completed_at, failed_at, created_at, updated_at",
+      500
+    ),
+    getAdminDomainsHostingControl()
+  ]);
+  const monitoringFailures = monitoringEvents.filter((event) => {
+    const eventStatus = text(event.event_status).toLowerCase();
+    const eventType = text(event.event_type).toLowerCase();
+    return eventStatus === "failed" || eventType.includes("failed") || eventType.includes("error");
+  });
+  const latestMonitoring = monitoringEvents
+    .map((event) => text(event.created_at))
+    .filter(Boolean)
+    .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+
+  function latestDate(rows: AnyRecord[], keys: string[]) {
+    return rows
+      .flatMap((row) => keys.map((key) => text(row[key])).filter(Boolean))
+      .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+  }
+
+  const emailQueue = {
+    completed: emailLogs.filter((log) => text(log.status) === "sent").length,
+    failed: emailLogs.filter((log) => text(log.status) === "failed").length,
+    lastProcessed: latestDate(emailLogs, ["sent_at", "created_at"]),
+    name: "Email event queue",
+    pending: emailLogs.filter((log) => ["pending", "queued", "retry_pending"].includes(text(log.status))).length,
+    processing: emailLogs.filter((log) => text(log.status) === "processing").length
+  };
+  const aiQueue = {
+    completed: aiQueues.filter((queue) => ["succeeded", "completed", "ready"].includes(text(queue.queue_status, text(queue.workflow_state)))).length,
+    failed: aiQueues.filter((queue) => text(queue.queue_status) === "failed" || text(queue.workflow_state) === "failed").length,
+    lastProcessed: latestDate(aiQueues, ["completed_at", "failed_at", "updated_at", "created_at"]),
+    name: "AI generation queue",
+    pending: aiQueues.filter((queue) => ["queued", "waiting", "pending"].includes(text(queue.queue_status, text(queue.workflow_state)))).length,
+    processing: aiQueues.filter((queue) => ["running", "processing", "generating"].includes(text(queue.queue_status, text(queue.workflow_state)))).length
+  };
+  const domainEmailQueue = {
+    completed: domainsHosting.overview.connectedDomains,
+    failed: domainsHosting.overview.failedOperations,
+    lastProcessed:
+      [...domainsHosting.domainOrders, ...domainsHosting.emailOrders]
+        .map((order) => order.createdAt)
+        .filter(Boolean)
+        .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null,
+    name: "Domain/email workflow queue",
+    pending:
+      domainsHosting.overview.pendingDomainOrders +
+      domainsHosting.overview.dnsPending +
+      domainsHosting.overview.sslPending +
+      domainsHosting.overview.emailMailboxDrafts,
+    processing: domainsHosting.overview.readyForRegistration
+  };
+  const monitoringQueue = {
+    completed: monitoringEvents.filter((event) => ["info", "success", "recorded"].includes(text(event.event_status))).length,
+    failed: monitoringFailures.length,
+    lastProcessed: latestMonitoring,
+    name: "Monitoring event stream",
+    pending: monitoringEvents.filter((event) => ["warning", "retry_pending"].includes(text(event.event_status))).length,
+    processing: 0
+  };
+  const queues = [emailQueue, aiQueue, domainEmailQueue, monitoringQueue];
+  const r2Status = envConfigurationStatus([
+    "CLOUDFLARE_R2_ACCOUNT_ID",
+    "CLOUDFLARE_R2_ACCESS_KEY_ID",
+    "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_R2_BUCKET"
+  ]);
+  const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const queueHasFailures = queues.some((queue) => queue.failed > 0);
+  const workerFailures = aiQueue.failed + emailQueue.failed + domainEmailQueue.failed + monitoringFailures.length;
+  const aiWorkerStatus: AdminOperationsControl["workers"][number]["status"] =
+    aiQueue.processing > 0 ? "running" : aiQueue.failed > 0 ? "warning" : "idle";
+  const emailWorkerStatus: AdminOperationsControl["workers"][number]["status"] =
+    emailQueue.processing > 0 ? "running" : emailQueue.failed > 0 ? "warning" : "idle";
+
+  return {
+    backupRecovery: [
+      {
+        name: "Backup status",
+        note: "Supabase backup status is not queried in this phase.",
+        status: "placeholder"
+      },
+      {
+        name: "Last backup placeholder",
+        note: "Backup timestamp will attach when provider backup APIs are connected.",
+        status: "placeholder"
+      },
+      {
+        name: "Restore test placeholder",
+        note: "No restore is triggered from Super Admin Operations.",
+        status: "placeholder"
+      },
+      {
+        name: "Disaster recovery readiness",
+        note: "Runbook readiness placeholder only; no production reset or restore action exists.",
+        status: "review"
+      }
+    ],
+    cronJobs: [
+      {
+        lastRun: latestMonitoring,
+        name: "Billing sync monitor",
+        nextRun: "Placeholder schedule",
+        schedule: "Provider webhook driven",
+        status: "placeholder"
+      },
+      {
+        lastRun: emailQueue.lastProcessed,
+        name: "Email retry monitor",
+        nextRun: "Future cron placeholder",
+        schedule: "Manual/store-triggered queue today",
+        status: emailQueue.failed ? "review" : "placeholder"
+      },
+      {
+        lastRun: aiQueue.lastProcessed,
+        name: "AI queue monitor",
+        nextRun: "Future worker schedule",
+        schedule: "Worker/runtime driven",
+        status: aiQueue.failed ? "review" : "placeholder"
+      },
+      {
+        lastRun: domainEmailQueue.lastProcessed,
+        name: "Domain/email workflow monitor",
+        nextRun: "Future provider sync",
+        schedule: "Placeholder",
+        status: domainEmailQueue.failed ? "review" : "placeholder"
+      }
+    ],
+    databaseStorage: [
+      {
+        metric: "Supabase health",
+        note: "Presence check only. No destructive database operation is exposed.",
+        status: supabaseConfigured ? "configured" : "missing",
+        value: supabaseConfigured ? "Configured" : "Missing environment"
+      },
+      {
+        metric: "R2 storage health",
+        note: "Secret values remain hidden; only configuration status is shown.",
+        status: r2Status === "configured" ? "configured" : r2Status === "partial" ? "review" : "missing",
+        value: r2Status
+      },
+      {
+        metric: "Database size",
+        note: "Database size metrics require provider integration.",
+        status: "placeholder",
+        value: "Placeholder"
+      },
+      {
+        metric: "Storage usage",
+        note: "Storage usage metrics require provider integration.",
+        status: "placeholder",
+        value: "Placeholder"
+      },
+      {
+        metric: "Service role readiness",
+        note: "Status only; key is never displayed.",
+        status: serviceRoleConfigured ? "configured" : "missing",
+        value: serviceRoleConfigured ? "Configured" : "Missing"
+      }
+    ],
+    futureHooks: [
+      "Retry failed queue",
+      "Restart worker",
+      "Run cron manually",
+      "Trigger backup",
+      "Restore backup",
+      "Export logs",
+      "Incident notifications"
+    ],
+    overview: {
+      aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueues.length ? "healthy" : "placeholder",
+      cronHealth: monitoringFailures.length ? "needs_review" : "placeholder",
+      databaseHealth: supabaseConfigured ? "healthy" : "missing_config",
+      domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
+      emailQueueHealth: emailQueue.failed ? "needs_review" : emailLogs.length ? "healthy" : "placeholder",
+      queueHealth: queueHasFailures ? "needs_review" : "healthy",
+      storageHealth: r2Status === "configured" ? "healthy" : r2Status === "partial" ? "needs_review" : "missing_config",
+      workerHealth: workerFailures ? "needs_review" : "placeholder"
+    },
+    queues,
+    sections: [
+      {
+        name: "Queues",
+        note: "Aggregates existing email, AI, domain/email, and monitoring queues/log streams.",
+        status: queueHasFailures ? "review" : "monitoring"
+      },
+      {
+        name: "Workers",
+        note: "Worker status is inferred from existing queue activity. No worker restart is available.",
+        status: workerFailures ? "review" : "monitoring"
+      },
+      {
+        name: "Cron Jobs",
+        note: "Cron schedules are placeholders until scheduler integration is added.",
+        status: "placeholder"
+      },
+      {
+        name: "Storage Health",
+        note: "Supabase/R2 configuration status only; no storage operations run here.",
+        status: r2Status === "partial" ? "review" : "monitoring"
+      },
+      {
+        name: "Database Health",
+        note: "Environment and service-role readiness only; no direct database action.",
+        status: supabaseConfigured ? "monitoring" : "review"
+      },
+      {
+        name: "Backups",
+        note: "Backup status is a non-destructive placeholder.",
+        status: "placeholder"
+      },
+      {
+        name: "Disaster Recovery",
+        note: "Restore tests and disaster recovery runbooks are placeholders only.",
+        status: "placeholder"
+      },
+      {
+        name: "System Monitoring",
+        note: "Uses existing monitoring_events without duplicating monitoring storage.",
+        status: monitoringFailures.length ? "review" : "monitoring"
+      }
+    ],
+    workers: [
+      {
+        failures: aiQueue.failed,
+        lastRun: aiQueue.lastProcessed,
+        name: "AI visual/generation worker",
+        nextRun: "Runtime driven",
+        status: aiWorkerStatus
+      },
+      {
+        failures: emailQueue.failed,
+        lastRun: emailQueue.lastProcessed,
+        name: "Email delivery worker",
+        nextRun: "Queue driven",
+        status: emailWorkerStatus
+      },
+      {
+        failures: domainEmailQueue.failed,
+        lastRun: domainEmailQueue.lastProcessed,
+        name: "Domain/email provider worker placeholder",
+        nextRun: "Future provider sync",
+        status: domainEmailQueue.failed ? "warning" : "placeholder"
+      },
+      {
+        failures: monitoringFailures.length,
+        lastRun: latestMonitoring,
+        name: "Monitoring event processor",
+        nextRun: "Live event stream",
+        status: monitoringFailures.length ? "warning" : "idle"
+      }
+    ]
   };
 }
 
