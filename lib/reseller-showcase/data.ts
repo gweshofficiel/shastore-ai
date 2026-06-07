@@ -177,6 +177,46 @@ export type ResellerTemplateInventoryData = {
   usedTemplates: number;
 };
 
+export type ResellerPlanVisibilityLevel = "basic" | "featured_ready" | "priority" | "private";
+
+export type ResellerPlanDefinition = {
+  allowedPortfolioItems: number;
+  allowedStoreListings: number;
+  allowedTemplates: number;
+  featuredRequestAvailability: string;
+  marketplaceVisibilityLevel: ResellerPlanVisibilityLevel;
+  monthlyPricePlaceholder: string;
+  name: ResellerInventoryPlan;
+  publicProfileEnabled: boolean;
+  supportLevelPlaceholder: string;
+  teamMembersPlaceholder: number;
+};
+
+export type ResellerSubscriptionPlanEngineData = {
+  billingStatus: "active_placeholder" | "expired_placeholder" | "past_due_placeholder";
+  currentPlan: ResellerInventoryPlan;
+  downgradeWarningPlaceholder: string;
+  futureHooks: string[];
+  inventory: ResellerInventoryData;
+  planLimits: ResellerPlanDefinition[];
+  portfolio: {
+    allowedPortfolioItems: number;
+    isOverLimit: boolean;
+    remainingPortfolioItems: number;
+    usedPortfolioItems: number;
+  };
+  renewalDatePlaceholder: string;
+  templateInventory: ResellerTemplateInventoryData;
+  upgradeCtaPlaceholder: string;
+  enforcement: {
+    overListingLimit: boolean;
+    overPortfolioLimit: boolean;
+    overTemplateLimit: boolean;
+    subscriptionExpiredPlaceholder: boolean;
+    upgradeRequiredMessage: string | null;
+  };
+};
+
 export type ResellerAnalyticsRange = "30d" | "7d" | "all" | "month" | "today";
 
 export type ResellerAnalyticsMetric = {
@@ -526,6 +566,13 @@ export const resellerTemplateInventoryPlanLimits: Record<ResellerInventoryPlan, 
   Starter: 2,
   Pro: 10,
   Agency: 35,
+  Enterprise: 150
+};
+
+export const resellerPortfolioPlanLimits: Record<ResellerInventoryPlan, number> = {
+  Starter: 3,
+  Pro: 12,
+  Agency: 40,
   Enterprise: 150
 };
 
@@ -1876,6 +1923,115 @@ export async function getResellerTemplateInventoryData(): Promise<ResellerTempla
   const statuses = ((data ?? []) as unknown as Array<{ status?: string }>).map((row) => row.status ?? "draft");
 
   return buildResellerTemplateInventoryData(statuses);
+}
+
+const resellerSubscriptionPlanDefinitions: ResellerPlanDefinition[] = [
+  {
+    allowedPortfolioItems: resellerPortfolioPlanLimits.Starter,
+    allowedStoreListings: resellerInventoryPlanLimits.Starter,
+    allowedTemplates: resellerTemplateInventoryPlanLimits.Starter,
+    featuredRequestAvailability: "Not included",
+    marketplaceVisibilityLevel: "basic",
+    monthlyPricePlaceholder: "$19/mo placeholder",
+    name: "Starter",
+    publicProfileEnabled: true,
+    supportLevelPlaceholder: "Community support placeholder",
+    teamMembersPlaceholder: 1
+  },
+  {
+    allowedPortfolioItems: resellerPortfolioPlanLimits.Pro,
+    allowedStoreListings: resellerInventoryPlanLimits.Pro,
+    allowedTemplates: resellerTemplateInventoryPlanLimits.Pro,
+    featuredRequestAvailability: "Featured request placeholder",
+    marketplaceVisibilityLevel: "featured_ready",
+    monthlyPricePlaceholder: "$49/mo placeholder",
+    name: "Pro",
+    publicProfileEnabled: true,
+    supportLevelPlaceholder: "Priority email support placeholder",
+    teamMembersPlaceholder: 3
+  },
+  {
+    allowedPortfolioItems: resellerPortfolioPlanLimits.Agency,
+    allowedStoreListings: resellerInventoryPlanLimits.Agency,
+    allowedTemplates: resellerTemplateInventoryPlanLimits.Agency,
+    featuredRequestAvailability: "Featured + boost request placeholder",
+    marketplaceVisibilityLevel: "priority",
+    monthlyPricePlaceholder: "$149/mo placeholder",
+    name: "Agency",
+    publicProfileEnabled: true,
+    supportLevelPlaceholder: "Agency support placeholder",
+    teamMembersPlaceholder: 10
+  },
+  {
+    allowedPortfolioItems: resellerPortfolioPlanLimits.Enterprise,
+    allowedStoreListings: resellerInventoryPlanLimits.Enterprise,
+    allowedTemplates: resellerTemplateInventoryPlanLimits.Enterprise,
+    featuredRequestAvailability: "Custom marketplace program placeholder",
+    marketplaceVisibilityLevel: "priority",
+    monthlyPricePlaceholder: "Custom monthly placeholder",
+    name: "Enterprise",
+    publicProfileEnabled: true,
+    supportLevelPlaceholder: "Dedicated success placeholder",
+    teamMembersPlaceholder: 25
+  }
+];
+
+export async function getResellerSubscriptionPlanEngineData(): Promise<ResellerSubscriptionPlanEngineData> {
+  const [inventory, templateInventory, portfolioData] = await Promise.all([
+    getResellerInventoryData(),
+    getResellerTemplateInventoryData(),
+    getResellerPortfolioData()
+  ]);
+  const currentPlan = inventory.currentPlan;
+  const currentPlanDefinition =
+    resellerSubscriptionPlanDefinitions.find((plan) => plan.name === currentPlan) ??
+    resellerSubscriptionPlanDefinitions[0];
+  const usedPortfolioItems = portfolioData.items.length;
+  const allowedPortfolioItems = currentPlanDefinition.allowedPortfolioItems;
+  const remainingPortfolioItems = Math.max(allowedPortfolioItems - usedPortfolioItems, 0);
+  const overListingLimit = inventory.usedStoreListings > inventory.allowedStoreListings;
+  const overTemplateLimit = templateInventory.usedTemplates > templateInventory.allowedTemplates;
+  const overPortfolioLimit = usedPortfolioItems > allowedPortfolioItems;
+  const subscriptionExpiredPlaceholder = false;
+  const upgradeRequiredMessage =
+    overListingLimit || overTemplateLimit || overPortfolioLimit || subscriptionExpiredPlaceholder
+      ? "Upgrade or renew your reseller subscription placeholder to unlock additional marketplace capacity."
+      : null;
+
+  return {
+    billingStatus: "active_placeholder",
+    currentPlan,
+    downgradeWarningPlaceholder:
+      "Downgrading will require all listings, templates, and portfolio items to fit within the lower plan limits before enforcement is enabled.",
+    enforcement: {
+      overListingLimit,
+      overPortfolioLimit,
+      overTemplateLimit,
+      subscriptionExpiredPlaceholder,
+      upgradeRequiredMessage
+    },
+    futureHooks: [
+      "Stripe reseller subscription",
+      "NOWPayments reseller subscription",
+      "Plan upgrade",
+      "Plan downgrade",
+      "Expired subscription freeze",
+      "Renewal notifications",
+      "Invoice history"
+    ],
+    inventory,
+    planLimits: resellerSubscriptionPlanDefinitions,
+    portfolio: {
+      allowedPortfolioItems,
+      isOverLimit: overPortfolioLimit,
+      remainingPortfolioItems,
+      usedPortfolioItems
+    },
+    renewalDatePlaceholder: "Next renewal date placeholder",
+    templateInventory,
+    upgradeCtaPlaceholder:
+      "Upgrade CTA placeholder only. No payment, checkout, wallet, payout, withdrawal, commission, order, or ownership transfer is created."
+  };
 }
 
 export async function getResellerAnalyticsData(
