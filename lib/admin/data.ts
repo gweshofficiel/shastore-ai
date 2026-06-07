@@ -4,6 +4,8 @@ import { getAdminAccess } from "@/lib/admin-access";
 import { createClient } from "@/lib/supabase/server";
 import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
+import { getTemplateLibrary } from "@/lib/storefront/template-library";
+import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -432,6 +434,51 @@ export type AdminPlatformThemeControl = {
     status: "draft" | "placeholder" | "ready";
     value: string;
   }>;
+};
+
+export type AdminTemplateManagementControl = {
+  futureHooks: string[];
+  overview: {
+    activeTemplates: number;
+    archivedTemplates: number;
+    draftTemplates: number;
+    officialTemplates: number;
+    resellerVisibleTemplates: number;
+    totalTemplates: number;
+  };
+  templates: Array<{
+    badges: {
+      official: boolean;
+      premium: boolean;
+      recommended: boolean;
+    };
+    category: string;
+    createdAt: string | null;
+    domainEmailReadiness: "placeholder" | "ready";
+    id: string;
+    industry: string;
+    installedVersionCount: number;
+    lastUpdated: string | null;
+    name: string;
+    packageSummary: {
+      aiVisualSupport: boolean;
+      blogCount: number;
+      categoriesCount: number;
+      faqCount: number;
+      pagesCount: number;
+      productsCount: number;
+    };
+    packageVersion: number | null;
+    previewHref: string;
+    status: "active" | "archived" | "draft";
+    updateAvailable: "placeholder";
+    visibility: "internal" | "marketplace" | "owner" | "reseller";
+  }>;
+  visibility: {
+    hiddenInternal: number;
+    ownerVisible: number;
+    resellerVisible: number;
+  };
 };
 
 type AdminLanding = {
@@ -2719,6 +2766,131 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
         value: branding.lightMode
       }
     ]
+  };
+}
+
+export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [library, stores, monitoringEvents] = await Promise.all([
+    getTemplateLibrary(),
+    safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+  const templateEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_template_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestEventsByTemplate = new Map<string, AnyRecord[]>();
+
+  for (const event of templateEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const templateId = text(metadata.template_id);
+
+    if (!templateId) {
+      continue;
+    }
+
+    latestEventsByTemplate.set(templateId, [...(latestEventsByTemplate.get(templateId) ?? []), event]);
+  }
+
+  const installedVersionsByTemplate = new Map<string, Set<string>>();
+
+  for (const store of stores) {
+    const storeData = isRecord(store.store_data) ? store.store_data : {};
+    const installed = isRecord(storeData.installedTemplatePackage) ? storeData.installedTemplatePackage : {};
+    const installedTemplateId = text(installed.templateId, text(store.template_id));
+    const version = text(installed.packageVersion, text(installed.packageId, "legacy"));
+
+    if (installedTemplateId) {
+      const versions = installedVersionsByTemplate.get(installedTemplateId) ?? new Set<string>();
+      versions.add(version);
+      installedVersionsByTemplate.set(installedTemplateId, versions);
+    }
+  }
+
+  const templates: AdminTemplateManagementControl["templates"] = library.templates.map((template) => {
+    const summary = templatePreviewSummary(template);
+    const events = latestEventsByTemplate.get(template.id) ?? [];
+    const latestStatusEvent = events.find((event) =>
+      ["admin_template_activate", "admin_template_archive"].includes(text(event.event_type))
+    );
+    const latestVisibilityEvent = events.find((event) => text(event.event_type) === "admin_template_set_visibility");
+    const latestOfficialEvent = events.find((event) => text(event.event_type) === "admin_template_mark_official");
+    const latestRecommendedEvent = events.find((event) => text(event.event_type) === "admin_template_mark_recommended");
+    const visibilityMetadata = isRecord(latestVisibilityEvent?.metadata) ? latestVisibilityEvent.metadata : {};
+    const status =
+      text(latestStatusEvent?.event_type) === "admin_template_archive"
+        ? "archived"
+        : template.is_active
+          ? "active"
+          : "draft";
+    const visibility = ((): AdminTemplateManagementControl["templates"][number]["visibility"] => {
+      const requested = text(visibilityMetadata.visibility);
+
+      if (requested === "owner" || requested === "reseller" || requested === "marketplace" || requested === "internal") {
+        return requested;
+      }
+
+      if (status === "archived") {
+        return "internal";
+      }
+
+      return template.is_official ? "marketplace" : "owner";
+    })();
+    const official = template.is_official || Boolean(latestOfficialEvent);
+    const recommended = template.is_recommended || Boolean(latestRecommendedEvent);
+
+    return {
+      badges: {
+        official,
+        premium: summary.hasPackage || summary.hasAIVisualSupport || template.package_enabled,
+        recommended
+      },
+      category: text(template.category_key, text(template.category, "general")),
+      createdAt: null,
+      domainEmailReadiness: summary.hasPackage ? "ready" : "placeholder",
+      id: template.id,
+      industry: text(template.industry, text(template.niche_category, "general")),
+      installedVersionCount: installedVersionsByTemplate.get(template.id)?.size ?? 0,
+      lastUpdated: text(events[0]?.created_at) || null,
+      name: template.name,
+      packageSummary: {
+        aiVisualSupport: summary.hasAIVisualSupport,
+        blogCount: summary.blogArticleCount,
+        categoriesCount: summary.categoryCount,
+        faqCount: summary.faqCount,
+        pagesCount: summary.customPageCount + summary.legalPageCount + summary.homepageSectionCount,
+        productsCount: summary.productCount
+      },
+      packageVersion: summary.packageVersion ?? template.package_version ?? null,
+      previewHref: `/templates/preview/${encodeURIComponent(template.id)}`,
+      status,
+      updateAvailable: "placeholder",
+      visibility
+    };
+  });
+
+  return {
+    futureHooks: [
+      "Create new template",
+      "Upload template preview",
+      "Approve marketplace template",
+      "Publish template update",
+      "Reseller exclusive templates"
+    ],
+    overview: {
+      activeTemplates: templates.filter((template) => template.status === "active").length,
+      archivedTemplates: templates.filter((template) => template.status === "archived").length,
+      draftTemplates: templates.filter((template) => template.status === "draft").length,
+      officialTemplates: templates.filter((template) => template.badges.official).length,
+      resellerVisibleTemplates: templates.filter((template) => template.visibility === "reseller").length,
+      totalTemplates: templates.length
+    },
+    templates,
+    visibility: {
+      hiddenInternal: templates.filter((template) => template.visibility === "internal").length,
+      ownerVisible: templates.filter((template) => template.visibility === "owner" || template.visibility === "marketplace").length,
+      resellerVisible: templates.filter((template) => template.visibility === "reseller").length
+    }
   };
 }
 
