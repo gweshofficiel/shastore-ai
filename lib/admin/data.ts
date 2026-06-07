@@ -850,6 +850,46 @@ export type AdminOperationsControl = {
   }>;
 };
 
+export type AdminInternalTeamControl = {
+  accessSafety: Array<{
+    name: string;
+    note: string;
+    status: "enforced" | "placeholder";
+  }>;
+  futureHooks: string[];
+  members: Array<{
+    assignedArea: string;
+    createdAt: string | null;
+    email: string;
+    id: string;
+    lastActiveAt: string | null;
+    name: string;
+    permissionsSummary: string;
+    role: string;
+    status: "active" | "invited_placeholder" | "restored_placeholder" | "suspended_placeholder";
+  }>;
+  overview: {
+    activeStaff: number;
+    finalSuperAdminProtected: "enforced";
+    permissionGroups: number;
+    placeholderInvites: number;
+    roles: number;
+    suspendedPlaceholders: number;
+  };
+  permissionGroups: Array<{
+    description: string;
+    key: string;
+    label: string;
+  }>;
+  roles: Array<{
+    accessLevel: "full" | "limited" | "read_only" | "specialized";
+    assignedArea: string;
+    key: string;
+    name: string;
+    permissionsSummary: string;
+  }>;
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -4902,6 +4942,209 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
         status: monitoringFailures.length ? "warning" : "idle"
       }
     ]
+  };
+}
+
+function configuredInternalAdminEmails() {
+  return (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const internalTeamRoles: AdminInternalTeamControl["roles"] = [
+  {
+    accessLevel: "full",
+    assignedArea: "Platform governance",
+    key: "super_admin",
+    name: "Super Admin",
+    permissionsSummary: "All Super Admin areas, access safety, and internal staff governance."
+  },
+  {
+    accessLevel: "limited",
+    assignedArea: "Platform administration",
+    key: "admin",
+    name: "Admin",
+    permissionsSummary: "Users, stores, support, marketplace, reports, and non-sensitive settings."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Support",
+    key: "support_agent",
+    name: "Support Agent",
+    permissionsSummary: "Support tickets, customer issue triage, and read-only user/store context."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Moderation",
+    key: "moderator",
+    name: "Moderator",
+    permissionsSummary: "Marketplace, content review, abuse queues, and moderation placeholders."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Billing",
+    key: "finance_manager",
+    name: "Finance Manager",
+    permissionsSummary: "Billing, subscriptions, payment provider monitoring, invoices, and reports."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Security",
+    key: "security_analyst",
+    name: "Security Analyst",
+    permissionsSummary: "Security Center, audit events, fraud/abuse monitoring, and risk review."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Operations",
+    key: "developer_operator",
+    name: "Developer / Operator",
+    permissionsSummary: "Operations, integrations, AI/provider diagnostics, queues, and runtime monitoring."
+  },
+  {
+    accessLevel: "read_only",
+    assignedArea: "Audit",
+    key: "read_only_auditor",
+    name: "Read-only Auditor",
+    permissionsSummary: "Read-only access to reports, security, operations, and audit summaries."
+  }
+];
+
+const internalPermissionGroups: AdminInternalTeamControl["permissionGroups"] = [
+  { description: "Platform user review and account governance.", key: "users", label: "Users" },
+  { description: "Store monitoring and seller/store governance.", key: "stores", label: "Stores" },
+  { description: "Subscriptions, invoices, payment provider monitoring, and revenue reports.", key: "billing", label: "Billing" },
+  { description: "Domain, hosting, professional email, DNS, and SSL monitoring.", key: "domains", label: "Domains" },
+  { description: "AI jobs, provider readiness, usage, and failure monitoring.", key: "ai", label: "AI" },
+  { description: "Support tickets, user issues, and safe assistance workflows.", key: "support", label: "Support" },
+  { description: "Security events, risk review, fraud/abuse placeholders, and audit logs.", key: "security", label: "Security" },
+  { description: "Queues, workers, cron placeholders, backups, and runtime health.", key: "operations", label: "Operations" },
+  { description: "Templates, themes, plugins, apps, and approval workflow placeholders.", key: "marketplace", label: "Marketplace" },
+  { description: "Platform settings, integrations, branding, SEO, and governance foundations.", key: "settings", label: "Settings" }
+];
+
+export async function getAdminInternalTeamControl(): Promise<AdminInternalTeamControl> {
+  const access = await getAdminAccess();
+  const { supabase, users } = await getAdminUsersBase();
+  const configuredEmails = configuredInternalAdminEmails();
+  const fallbackEmails = configuredEmails.length ? configuredEmails : [access.user.email?.toLowerCase()].filter(Boolean) as string[];
+  const internalEmailSet = new Set(fallbackEmails);
+  const usersByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+  const events = await safeSelect(
+    supabase,
+    "monitoring_events",
+    "event_type, event_status, entity_type, metadata, user_id, created_at",
+    500
+  );
+  const teamEvents = events.filter((event) => text(event.entity_type) === "admin_internal_team_center");
+  const latestByEmail = new Map<string, AnyRecord>();
+
+  for (const event of teamEvents.sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const email = text(metadata.staff_email).toLowerCase();
+
+    if (email && !latestByEmail.has(email)) {
+      latestByEmail.set(email, event);
+    }
+  }
+
+  const members: AdminInternalTeamControl["members"] = Array.from(internalEmailSet).map((email, index) => {
+    const user = usersByEmail.get(email);
+    const latestEvent = latestByEmail.get(email);
+    const metadata = isRecord(latestEvent?.metadata) ? latestEvent.metadata : {};
+    const eventType = text(latestEvent?.event_type);
+    const roleKey = text(metadata.role_key, "super_admin");
+    const role = internalTeamRoles.find((candidate) => candidate.key === roleKey) ?? internalTeamRoles[0];
+    const status: AdminInternalTeamControl["members"][number]["status"] =
+      eventType === "admin_internal_team_suspend_placeholder"
+        ? "suspended_placeholder"
+        : eventType === "admin_internal_team_restore_placeholder"
+          ? "restored_placeholder"
+          : "active";
+
+    return {
+      assignedArea: role.assignedArea,
+      createdAt: user?.createdAt ?? (text(latestEvent?.created_at) || null),
+      email,
+      id: user?.id ?? `configured-admin-${index}`,
+      lastActiveAt: user?.lastLoginAt ?? null,
+      name: user?.fullName ?? (text(metadata.staff_name) || email),
+      permissionsSummary: role.permissionsSummary,
+      role: role.name,
+      status
+    };
+  });
+
+  const inviteMembers = teamEvents
+    .filter((event) => text(event.event_type) === "admin_internal_team_invite_placeholder")
+    .map((event, index) => {
+      const metadata = isRecord(event.metadata) ? event.metadata : {};
+      const email = text(metadata.staff_email).toLowerCase();
+      const roleKey = text(metadata.role_key, "read_only_auditor");
+      const role = internalTeamRoles.find((candidate) => candidate.key === roleKey) ?? internalTeamRoles.at(-1)!;
+
+      return {
+        assignedArea: role.assignedArea,
+        createdAt: text(event.created_at) || null,
+        email: email || "pending-invite@example.com",
+        id: `placeholder-invite-${index}-${text(event.created_at)}`,
+        lastActiveAt: null,
+        name: text(metadata.staff_name) || email || "Pending staff invite",
+        permissionsSummary: role.permissionsSummary,
+        role: role.name,
+        status: "invited_placeholder" as const
+      };
+    })
+    .filter((member) => !internalEmailSet.has(member.email));
+  const allMembers = [...members, ...inviteMembers];
+
+  return {
+    accessSafety: [
+      {
+        name: "Final Super Admin protection",
+        note: "The UI exposes no removal action and Super Admin rows are protected from suspend placeholders.",
+        status: "enforced"
+      },
+      {
+        name: "No destructive staff deletion",
+        note: "Staff deletion is not implemented in this phase.",
+        status: "enforced"
+      },
+      {
+        name: "No auth rewrite",
+        note: "Internal staff status is derived from existing admin access configuration and auth metadata.",
+        status: "enforced"
+      },
+      {
+        name: "Privilege escalation guard",
+        note: "Role changes are audit-only placeholders and require platform admin access.",
+        status: "enforced"
+      },
+      {
+        name: "Audit every role action",
+        note: "Invite, role, suspend, restore, and activity actions write monitoring_events intent records.",
+        status: "enforced"
+      }
+    ],
+    futureHooks: [
+      "Staff invitation email",
+      "2FA enforcement",
+      "Permission matrix editor",
+      "Staff activity export",
+      "Session revocation"
+    ],
+    members: allMembers,
+    overview: {
+      activeStaff: allMembers.filter((member) => member.status === "active" || member.status === "restored_placeholder").length,
+      finalSuperAdminProtected: "enforced",
+      permissionGroups: internalPermissionGroups.length,
+      placeholderInvites: allMembers.filter((member) => member.status === "invited_placeholder").length,
+      roles: internalTeamRoles.length,
+      suspendedPlaceholders: allMembers.filter((member) => member.status === "suspended_placeholder").length
+    },
+    permissionGroups: internalPermissionGroups,
+    roles: internalTeamRoles
   };
 }
 

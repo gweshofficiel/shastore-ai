@@ -13,6 +13,7 @@ type FoundationStatus = "missing" | "partial" | "ready";
 type AdminHref =
   | "/admin"
   | "/admin/users"
+  | "/admin/team"
   | "/admin/subscriptions"
   | "/admin/billing/payment-providers"
   | "/admin/domains-hosting"
@@ -55,6 +56,12 @@ const modules: FoundationModule[] = [
     href: "/admin/users",
     name: "Users",
     notes: "Uses real user, plan, status, created date, store count, and action data.",
+    status: "ready"
+  },
+  {
+    href: "/admin/team",
+    name: "Internal Team",
+    notes: "Super Admin internal team center exists for SHASTORE staff roles, permission groups, access safety, and audit-only placeholder staff actions separate from Store Owner workspace teams.",
     status: "ready"
   },
   {
