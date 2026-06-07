@@ -228,6 +228,45 @@ export type ResellerLeadsData = {
   };
 };
 
+export type ResellerMessageInboxKey =
+  | "all"
+  | "archived"
+  | "custom_requests"
+  | "lead_inquiries"
+  | "listing_inquiries"
+  | "template_inquiries"
+  | "unread";
+
+export type ResellerConversationStatus = "archived" | "open" | "read" | "unread";
+
+export type ResellerConversation = {
+  buyerDisplayName: string;
+  contactMasked: string;
+  createdAt: string | null;
+  id: string;
+  internalNotes: string;
+  itemType: "custom request" | "store" | "template";
+  lastActivity: string | null;
+  lastMessagePreview: string;
+  relatedItem: string;
+  relatedLead: string;
+  status: ResellerConversationStatus;
+  timeline: string[];
+  unreadCount: number;
+};
+
+export type ResellerMessagesData = {
+  conversations: ResellerConversation[];
+  emptyState: string;
+  futureHooks: string[];
+  inbox: Array<{
+    count: number;
+    key: ResellerMessageInboxKey;
+    label: string;
+  }>;
+  selectedConversation: ResellerConversation | null;
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -561,6 +600,47 @@ function leadFromEvent(row: Record<string, unknown>, index: number): ResellerLea
       textValue(row.event_type, "lead_placeholder_event"),
       "Messaging, conversion, order creation, and ownership transfer are future hooks only."
     ]
+  };
+}
+
+function normalizeConversationStatus(value: unknown): ResellerConversationStatus {
+  const status = textValue(value).toLowerCase();
+
+  if (status === "archived" || status === "open" || status === "read" || status === "unread") {
+    return status;
+  }
+
+  return "open";
+}
+
+function conversationFromEvent(row: Record<string, unknown>, index: number): ResellerConversation {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const itemType = textValue(metadata.item_type, "custom request");
+  const timelineMessage = textValue(metadata.last_message_preview, "Message placeholder recorded.");
+
+  return {
+    buyerDisplayName: textValue(metadata.buyer_display_name, "Buyer placeholder"),
+    contactMasked: maskedContact(metadata.contact_masked ?? metadata.contact_reference),
+    createdAt: textValue(row.created_at) || null,
+    id: textValue(metadata.conversation_reference, textValue(row.id, `conversation-${index}`)),
+    internalNotes: textValue(metadata.internal_notes, "No internal notes yet. Notes are placeholder-only."),
+    itemType:
+      itemType === "store" || itemType === "template" || itemType === "custom request"
+        ? itemType
+        : "custom request",
+    lastActivity: textValue(row.created_at) || null,
+    lastMessagePreview: timelineMessage,
+    relatedItem: textValue(metadata.related_item, "Related item placeholder"),
+    relatedLead: textValue(metadata.related_lead, "Lead placeholder"),
+    status: normalizeConversationStatus(metadata.conversation_status ?? metadata.status),
+    timeline: [
+      timelineMessage,
+      "Real-time chat, external notifications, attachments, orders, and ownership transfer are future hooks only."
+    ],
+    unreadCount: Math.max(0, numberValue(metadata.unread_count))
   };
 }
 
@@ -1262,6 +1342,66 @@ export async function getResellerLeadsData(): Promise<ResellerLeadsData> {
       totalLeads: leads.length,
       wonPlaceholders: leads.filter((lead) => lead.status === "won_placeholder").length
     }
+  };
+}
+
+export async function getResellerMessagesData(): Promise<ResellerMessagesData> {
+  const user = await getDashboardUser();
+  const emptyState = "No conversations yet. Future buyer message forms and lead inquiries will appear here privately.";
+  const futureHooks = [
+    "Real-time chat",
+    "Buyer message form",
+    "Email notification",
+    "WhatsApp/SMS bridge",
+    "File attachments",
+    "Dispute escalation",
+    "Lead-to-order conversion"
+  ];
+
+  if (!user) {
+    return {
+      conversations: [],
+      emptyState,
+      futureHooks,
+      inbox: [
+        { count: 0, key: "all", label: "All conversations" },
+        { count: 0, key: "unread", label: "Unread" },
+        { count: 0, key: "lead_inquiries", label: "Lead inquiries" },
+        { count: 0, key: "listing_inquiries", label: "Listing inquiries" },
+        { count: 0, key: "template_inquiries", label: "Template inquiries" },
+        { count: 0, key: "custom_requests", label: "Custom requests" },
+        { count: 0, key: "archived", label: "Archived" }
+      ],
+      selectedConversation: null
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_messages")
+        .order("created_at", { ascending: false })
+        .limit(25)
+    : { data: [] };
+  const conversations = ((data ?? []) as unknown as Record<string, unknown>[]).map(conversationFromEvent);
+
+  return {
+    conversations,
+    emptyState,
+    futureHooks,
+    inbox: [
+      { count: conversations.length, key: "all", label: "All conversations" },
+      { count: conversations.filter((conversation) => conversation.status === "unread" || conversation.unreadCount > 0).length, key: "unread", label: "Unread" },
+      { count: conversations.filter((conversation) => conversation.relatedLead !== "Lead placeholder").length, key: "lead_inquiries", label: "Lead inquiries" },
+      { count: conversations.filter((conversation) => conversation.itemType === "store").length, key: "listing_inquiries", label: "Listing inquiries" },
+      { count: conversations.filter((conversation) => conversation.itemType === "template").length, key: "template_inquiries", label: "Template inquiries" },
+      { count: conversations.filter((conversation) => conversation.itemType === "custom request").length, key: "custom_requests", label: "Custom requests" },
+      { count: conversations.filter((conversation) => conversation.status === "archived").length, key: "archived", label: "Archived" }
+    ],
+    selectedConversation: conversations[0] ?? null
   };
 }
 
