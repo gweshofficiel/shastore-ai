@@ -309,6 +309,51 @@ export type ResellerNotificationsData = {
   };
 };
 
+export type ResellerBuyerRequestCategory =
+  | "consultation"
+  | "custom_store"
+  | "custom_template"
+  | "domain_email_setup_help"
+  | "migration_help"
+  | "redesign_request"
+  | "setup_assistance";
+
+export type ResellerBuyerRequestStatus =
+  | "accepted_placeholder"
+  | "archived"
+  | "declined"
+  | "in_discussion"
+  | "new"
+  | "reviewed";
+
+export type ResellerBuyerRequest = {
+  budgetRange: string;
+  businessCategory: string;
+  buyerDisplayName: string;
+  category: ResellerBuyerRequestCategory;
+  createdAt: string | null;
+  description: string;
+  id: string;
+  preferredNiche: string;
+  relatedConversation: string;
+  relatedLead: string;
+  requestedService: string;
+  status: ResellerBuyerRequestStatus;
+  timeline: string;
+};
+
+export type ResellerBuyerRequestsData = {
+  categories: Array<{
+    label: string;
+    value: ResellerBuyerRequestCategory;
+  }>;
+  emptyState: string;
+  futureHooks: string[];
+  requests: ResellerBuyerRequest[];
+  selectedRequest: ResellerBuyerRequest | null;
+  statuses: ResellerBuyerRequestStatus[];
+};
+
 export type PublicResellerProfile = {
   canonicalPath: string;
   contactLinkPlaceholder: string;
@@ -741,6 +786,67 @@ function notificationFromEvent(row: Record<string, unknown>, index: number): Res
     relatedItem: textValue(metadata.related_item, "Related item placeholder"),
     status: normalizeNotificationStatus(metadata.notification_status ?? metadata.status),
     title: textValue(metadata.title, "Reseller notification placeholder")
+  };
+}
+
+function normalizeBuyerRequestCategory(value: unknown): ResellerBuyerRequestCategory {
+  const category = textValue(value).toLowerCase();
+
+  if (
+    category === "consultation" ||
+    category === "custom_store" ||
+    category === "custom_template" ||
+    category === "domain_email_setup_help" ||
+    category === "migration_help" ||
+    category === "redesign_request" ||
+    category === "setup_assistance"
+  ) {
+    return category;
+  }
+
+  return "custom_store";
+}
+
+function normalizeBuyerRequestStatus(value: unknown): ResellerBuyerRequestStatus {
+  const status = textValue(value).toLowerCase();
+
+  if (
+    status === "accepted_placeholder" ||
+    status === "archived" ||
+    status === "declined" ||
+    status === "in_discussion" ||
+    status === "new" ||
+    status === "reviewed"
+  ) {
+    return status;
+  }
+
+  return "new";
+}
+
+function buyerRequestFromEvent(row: Record<string, unknown>, index: number): ResellerBuyerRequest {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    budgetRange: textValue(metadata.budget_range ?? metadata.budget_placeholder, "Budget placeholder"),
+    businessCategory: textValue(metadata.business_category, "Business category placeholder"),
+    buyerDisplayName: textValue(metadata.buyer_display_name, "Buyer placeholder"),
+    category: normalizeBuyerRequestCategory(metadata.request_category ?? metadata.category),
+    createdAt: textValue(row.created_at) || null,
+    description: textValue(
+      metadata.description,
+      "Request description placeholder. Full buyer intake is a future hook."
+    ),
+    id: textValue(metadata.request_reference, textValue(row.id, `buyer-request-${index}`)),
+    preferredNiche: textValue(metadata.preferred_niche, "Preferred niche placeholder"),
+    relatedConversation: textValue(metadata.related_conversation, "Conversation placeholder"),
+    relatedLead: textValue(metadata.related_lead, "Lead placeholder"),
+    requestedService: textValue(metadata.requested_service, "Custom store/template request"),
+    status: normalizeBuyerRequestStatus(metadata.request_status ?? metadata.status),
+    timeline: textValue(metadata.timeline, "Timeline placeholder")
   };
 }
 
@@ -1564,6 +1670,69 @@ export async function getResellerNotificationsData(): Promise<ResellerNotificati
       ).length,
       unread: notifications.filter((notification) => notification.status === "unread").length
     }
+  };
+}
+
+export async function getResellerBuyerRequestsData(): Promise<ResellerBuyerRequestsData> {
+  const user = await getDashboardUser();
+  const categories: ResellerBuyerRequestsData["categories"] = [
+    { label: "Custom store", value: "custom_store" },
+    { label: "Custom template", value: "custom_template" },
+    { label: "Redesign request", value: "redesign_request" },
+    { label: "Setup assistance", value: "setup_assistance" },
+    { label: "Domain/email setup help", value: "domain_email_setup_help" },
+    { label: "Migration help", value: "migration_help" },
+    { label: "Consultation", value: "consultation" }
+  ];
+  const statuses: ResellerBuyerRequestStatus[] = [
+    "new",
+    "reviewed",
+    "accepted_placeholder",
+    "declined",
+    "in_discussion",
+    "archived"
+  ];
+  const futureHooks = [
+    "Public request form",
+    "Buyer account requests",
+    "Convert request to lead",
+    "Convert lead to order",
+    "Custom quote",
+    "Messaging integration",
+    "Notification integration"
+  ];
+  const emptyState = "No buyer requests yet. Future private custom store/template requests will appear here.";
+
+  if (!user) {
+    return {
+      categories,
+      emptyState,
+      futureHooks,
+      requests: [],
+      selectedRequest: null,
+      statuses
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_buyer_requests")
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: [] };
+  const requests = ((data ?? []) as unknown as Record<string, unknown>[]).map(buyerRequestFromEvent);
+
+  return {
+    categories,
+    emptyState,
+    futureHooks,
+    requests,
+    selectedRequest: requests[0] ?? null,
+    statuses
   };
 }
 

@@ -12,6 +12,7 @@ const navItems = [
   { href: "/reseller/dashboard/verification", label: "Verification", icon: "business" },
   { href: "/reseller/dashboard/orders", label: "Orders", icon: "orders" },
   { href: "/reseller/dashboard/leads", label: "Leads", icon: "reports" },
+  { href: "/reseller/dashboard/requests", label: "Requests", icon: "reports" },
   { href: "/reseller/dashboard/messages", label: "Messages", icon: "reports" },
   { href: "/reseller/dashboard/notifications", label: "Notifications", icon: "reports" },
   { href: "/reseller/dashboard/reviews", label: "Reviews", icon: "reports" },
