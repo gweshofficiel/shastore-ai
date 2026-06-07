@@ -96,6 +96,47 @@ export type ResellerVerificationData = {
   verifiedCount: number;
 };
 
+export type ResellerBadgeType =
+  | "active_reseller"
+  | "expert_placeholder"
+  | "fast_delivery_placeholder"
+  | "high_rating"
+  | "new_seller"
+  | "premium_creator"
+  | "top_seller_placeholder"
+  | "trusted_designer"
+  | "verified_reseller";
+
+export type ResellerBadgeStatus = "earned" | "expired" | "hidden" | "locked" | "pending";
+
+export type ResellerBadge = {
+  description: string;
+  isPublicVisible: boolean;
+  label: string;
+  requirements: Array<{
+    label: string;
+    met: boolean;
+    value: string | number;
+  }>;
+  slug: ResellerBadgeType;
+  status: ResellerBadgeStatus;
+};
+
+export type ResellerBadgesData = {
+  badges: ResellerBadge[];
+  earnedBadges: ResellerBadge[];
+  emptyState: string;
+  futureHooks: string[];
+  publicBadges: ResellerBadge[];
+  summary: {
+    earned: number;
+    hidden: number;
+    locked: number;
+    pending: number;
+    publicVisible: number;
+  };
+};
+
 export type ResellerInventoryPlan = "Agency" | "Enterprise" | "Pro" | "Starter";
 
 export type ResellerInventoryData = {
@@ -451,6 +492,7 @@ export type ResellerCategoriesData = {
 };
 
 export type PublicResellerProfile = {
+  badges: ResellerBadge[];
   canonicalPath: string;
   contactLinkPlaceholder: string;
   country: string;
@@ -733,6 +775,229 @@ function analyticsRow(item: ResellerShowcaseItem, itemType: ResellerAnalyticsRow
 
 function analyticsMetric(key: string, label: string, value: string | number, note: string): ResellerAnalyticsMetric {
   return { key, label, note, value };
+}
+
+function isBadgeType(value: string): value is ResellerBadgeType {
+  return [
+    "active_reseller",
+    "expert_placeholder",
+    "fast_delivery_placeholder",
+    "high_rating",
+    "new_seller",
+    "premium_creator",
+    "top_seller_placeholder",
+    "trusted_designer",
+    "verified_reseller"
+  ].includes(value);
+}
+
+async function getBadgeVisibilityOverrides(userId: string | null | undefined) {
+  if (!userId) {
+    return new Map<ResellerBadgeType, boolean>();
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("metadata, created_at")
+        .eq("user_id", userId)
+        .eq("entity_type", "reseller_badges")
+        .order("created_at", { ascending: false })
+        .limit(100)
+    : { data: [] };
+  const overrides = new Map<ResellerBadgeType, boolean>();
+
+  ((data ?? []) as unknown as Array<{ metadata?: Record<string, unknown> }>).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {};
+    const badgeSlug = textValue(metadata.badge_slug).toLowerCase();
+
+    if (isBadgeType(badgeSlug) && !overrides.has(badgeSlug)) {
+      overrides.set(badgeSlug, textValue(metadata.public_visibility, "visible") !== "hidden");
+    }
+  });
+
+  return overrides;
+}
+
+function badgeRequirement(label: string, value: string | number, met: boolean) {
+  return { label, met, value };
+}
+
+function buildResellerBadges({
+  dashboard,
+  reputation,
+  reviews,
+  verification,
+  visibilityOverrides
+}: {
+  dashboard: ResellerDashboardData;
+  reputation: ResellerReputation;
+  reviews: ResellerReviewsData;
+  verification: ResellerVerificationData;
+  visibilityOverrides: Map<ResellerBadgeType, boolean>;
+}): ResellerBadgesData {
+  const templateListingsCount = dashboard.items.filter(isTemplateListing).length;
+  const listingsCount = dashboard.items.filter((item) => !isTemplateListing(item)).length;
+  const approvedReviews = reviews.summary.approvedReviews;
+  const ratingScore = reviews.summary.averageRating ?? 0;
+  const hasVerification = verification.verifiedCount > 0;
+  const accountAgeDays = reputation.accountAgeDays;
+  const activityMet = Boolean(dashboard.profile) || listingsCount + templateListingsCount > 0;
+  const salesCountPlaceholder = 0;
+
+  const makeBadge = ({
+    description,
+    earned,
+    label,
+    pending = false,
+    requirements,
+    slug
+  }: {
+    description: string;
+    earned: boolean;
+    label: string;
+    pending?: boolean;
+    requirements: ResellerBadge["requirements"];
+    slug: ResellerBadgeType;
+  }): ResellerBadge => {
+    const isPublicVisible = visibilityOverrides.get(slug) ?? true;
+    const status: ResellerBadgeStatus = earned ? (isPublicVisible ? "earned" : "hidden") : pending ? "pending" : "locked";
+
+    return {
+      description,
+      isPublicVisible,
+      label,
+      requirements,
+      slug,
+      status
+    };
+  };
+
+  const badges = [
+    makeBadge({
+      description: "Trust badge for resellers with at least one verified foundation check.",
+      earned: hasVerification,
+      label: "Verified Reseller",
+      requirements: [
+        badgeRequirement("Verification status", `${verification.verifiedCount}/4 checks`, hasVerification),
+        badgeRequirement("Activity placeholder", activityMet ? "active" : "not active", activityMet)
+      ],
+      slug: "verified_reseller"
+    }),
+    makeBadge({
+      description: "Future sales-based badge placeholder. No fake sales are counted.",
+      earned: false,
+      label: "Top Seller placeholder",
+      requirements: [
+        badgeRequirement("Future sales count placeholder", salesCountPlaceholder, false),
+        badgeRequirement("Review count", approvedReviews, approvedReviews >= 5)
+      ],
+      slug: "top_seller_placeholder"
+    }),
+    makeBadge({
+      description: "Future delivery-speed badge placeholder. No real delivery metrics are connected yet.",
+      earned: false,
+      label: "Fast Delivery placeholder",
+      requirements: [
+        badgeRequirement("Delivery speed placeholder", "future metric", false),
+        badgeRequirement("Activity placeholder", activityMet ? "active" : "not active", activityMet)
+      ],
+      slug: "fast_delivery_placeholder"
+    }),
+    makeBadge({
+      description: "Quality badge for resellers with store/template activity and safe trust signals.",
+      earned: listingsCount + templateListingsCount >= 2 && reputation.trustScore !== "low",
+      label: "Trusted Designer",
+      requirements: [
+        badgeRequirement("Listings count", listingsCount, listingsCount >= 1),
+        badgeRequirement("Templates count", templateListingsCount, templateListingsCount >= 1),
+        badgeRequirement("Verification status", `${verification.verifiedCount}/4 checks`, hasVerification)
+      ],
+      slug: "trusted_designer"
+    }),
+    makeBadge({
+      description: "Creator badge for resellers with multiple templates or strong public showcase activity.",
+      earned: templateListingsCount >= 2 || listingsCount >= 3,
+      label: "Premium Creator",
+      pending: templateListingsCount + listingsCount > 0,
+      requirements: [
+        badgeRequirement("Templates count", templateListingsCount, templateListingsCount >= 2),
+        badgeRequirement("Listings count", listingsCount, listingsCount >= 3)
+      ],
+      slug: "premium_creator"
+    }),
+    makeBadge({
+      description: "Review quality badge based on approved public reviews only.",
+      earned: ratingScore >= 4 && approvedReviews > 0,
+      label: "High Rating",
+      requirements: [
+        badgeRequirement("Rating score", ratingScore ? `${ratingScore}/5` : "No rating", ratingScore >= 4),
+        badgeRequirement("Review count", approvedReviews, approvedReviews > 0)
+      ],
+      slug: "high_rating"
+    }),
+    makeBadge({
+      description: "Activity badge for resellers with profile or marketplace listing activity.",
+      earned: activityMet,
+      label: "Active Reseller",
+      requirements: [
+        badgeRequirement("Activity placeholder", activityMet ? "active" : "not active", activityMet),
+        badgeRequirement("Listings count", listingsCount, listingsCount > 0),
+        badgeRequirement("Templates count", templateListingsCount, templateListingsCount > 0)
+      ],
+      slug: "active_reseller"
+    }),
+    makeBadge({
+      description: "Starter badge for new reseller accounts and early profile setup.",
+      earned: Boolean(dashboard.profile) && accountAgeDays <= 30,
+      label: "New Seller",
+      requirements: [
+        badgeRequirement("Activity placeholder", dashboard.profile ? "profile created" : "profile missing", Boolean(dashboard.profile)),
+        badgeRequirement("Account age", `${accountAgeDays} days`, accountAgeDays <= 30)
+      ],
+      slug: "new_seller"
+    }),
+    makeBadge({
+      description: "Future expertise badge placeholder for admin-approved specializations.",
+      earned: false,
+      label: "Expert placeholder",
+      pending: reputation.currentLevel === "Gold" || reputation.currentLevel === "Platinum" || reputation.currentLevel === "Diamond",
+      requirements: [
+        badgeRequirement("Verification status", `${verification.verifiedCount}/4 checks`, verification.verifiedCount >= 2),
+        badgeRequirement("Rating score", ratingScore ? `${ratingScore}/5` : "No rating", ratingScore >= 4.5),
+        badgeRequirement("Future sales count placeholder", salesCountPlaceholder, false)
+      ],
+      slug: "expert_placeholder"
+    })
+  ];
+  const earnedBadges = badges.filter((badge) => badge.status === "earned" || badge.status === "hidden");
+  const publicBadges = badges.filter((badge) => badge.status === "earned" && badge.isPublicVisible);
+
+  return {
+    badges,
+    earnedBadges,
+    emptyState: "No badges earned yet. Complete verification, publish listings/templates, and collect approved reviews to unlock badges.",
+    futureHooks: [
+      "Automatic badge calculation",
+      "Admin badge approval",
+      "Sales-based badges",
+      "Delivery-speed badges",
+      "Dispute-safe badges",
+      "Badge expiration"
+    ],
+    publicBadges,
+    summary: {
+      earned: earnedBadges.length,
+      hidden: badges.filter((badge) => badge.status === "hidden").length,
+      locked: badges.filter((badge) => badge.status === "locked").length,
+      pending: badges.filter((badge) => badge.status === "pending").length,
+      publicVisible: publicBadges.length
+    }
+  };
 }
 
 function previewItemType(item: ResellerShowcaseItem): ResellerPreviewItemType {
@@ -1566,6 +1831,25 @@ export async function getResellerVerificationData(): Promise<ResellerVerificatio
   });
 }
 
+export async function getResellerBadgesData(): Promise<ResellerBadgesData> {
+  const [dashboard, reviews, reputation, verification, user] = await Promise.all([
+    getResellerDashboardData(),
+    getResellerReviewsData(),
+    getResellerReputationData(),
+    getResellerVerificationData(),
+    getDashboardUser()
+  ]);
+  const visibilityOverrides = await getBadgeVisibilityOverrides(user?.id);
+
+  return buildResellerBadges({
+    dashboard,
+    reputation,
+    reviews,
+    verification,
+    visibilityOverrides
+  });
+}
+
 export async function getResellerInventoryData(): Promise<ResellerInventoryData> {
   const dashboard = await getResellerDashboardData();
 
@@ -2370,8 +2654,32 @@ export async function getPublicResellerProfile(
     hasBusinessProfile: Boolean(showcase?.profile),
     profile: showcase?.profile ?? null
   });
+  const visibilityOverrides = await getBadgeVisibilityOverrides(showcase?.profile.user_id);
+  const badgeData = buildResellerBadges({
+    dashboard: {
+      items,
+      profile: showcase?.profile ?? null,
+      ready: true,
+      stores: [],
+      themeSettings: showcase?.themeSettings ?? null
+    },
+    reputation,
+    reviews: {
+      approved: reviews,
+      futureHooks: [],
+      latest: reviews.slice(0, 5),
+      pending: [],
+      profile: showcase?.profile ?? null,
+      ready: true,
+      rejected: [],
+      summary: reviewsSummary
+    },
+    verification,
+    visibilityOverrides
+  });
 
   return {
+    badges: badgeData.publicBadges,
     canonicalPath: `/resellers/${slug}`,
     contactLinkPlaceholder: "#reseller-contact",
     country: "Country placeholder",

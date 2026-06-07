@@ -11,6 +11,7 @@ import {
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
   getResellerDashboardData,
+  getResellerBadgesData,
   getResellerInventoryData,
   getResellerReputationData,
   getResellerTemplateInventoryData,
@@ -30,12 +31,13 @@ export default async function PrivateResellerHomePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation, verification, inventory, templateInventory, account] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification, badges, inventory, templateInventory, account] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
     getResellerReputationData(),
     getResellerVerificationData(),
+    getResellerBadgesData(),
     getResellerInventoryData(),
     getResellerTemplateInventoryData(),
     getOrCreateAccountProfile("reseller")
@@ -66,6 +68,29 @@ export default async function PrivateResellerHomePage({
       <ResellerStatusAlerts query={query} />
       <AccountIdCard account={account} unavailableMessage={accountProfileUnavailableMessage()} />
       <ResellerOverviewCards data={data} />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Badge system</p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {badges.summary.earned} earned · {badges.summary.publicVisible} public
+            </h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(badges.publicBadges.length ? badges.publicBadges : badges.badges.slice(0, 3)).map((badge) => (
+                <span className="rounded-full bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-violet-700" key={badge.slug}>
+                  {badge.label}: {badge.status}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/badges"
+          >
+            Manage badges
+          </Link>
+        </div>
+      </Card>
       <ResellerInventoryCard inventory={inventory} />
       <ResellerTemplateInventoryCard inventory={templateInventory} />
       <Card className="p-6 lg:p-8">

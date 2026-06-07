@@ -311,6 +311,11 @@ export default async function PublicResellerProfilePage({ params, searchParams }
                       {badge.label}: {badge.status}
                     </span>
                   ))}
+                  {profileData.badges.map((badge) => (
+                    <span className="rounded-full bg-emerald-400/15 px-3 py-2 text-xs font-bold text-emerald-100" key={badge.slug}>
+                      {badge.label}
+                    </span>
+                  ))}
                   {profileData.trustBadges.map((badge) => (
                     <span className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white/80" key={badge}>
                       {badge}

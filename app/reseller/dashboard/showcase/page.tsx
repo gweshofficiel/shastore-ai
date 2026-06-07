@@ -7,6 +7,7 @@ import {
   ResellerStatusAlerts
 } from "@/components/reseller-showcase/dashboard-panels";
 import {
+  getResellerBadgesData,
   getResellerDashboardData,
   getResellerReputationData,
   getResellerVerificationData,
@@ -21,12 +22,13 @@ export default async function PrivateResellerShowcasePage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const [query, data, reviewsData, reputation, verification] = await Promise.all([
+  const [query, data, reviewsData, reputation, verification, badges] = await Promise.all([
     searchParams,
     getResellerDashboardData(),
     getResellerReviewsData(),
     getResellerReputationData(),
-    getResellerVerificationData()
+    getResellerVerificationData(),
+    getResellerBadgesData()
   ]);
 
   return (
@@ -50,6 +52,27 @@ export default async function PrivateResellerShowcasePage({
         returnPath="/reseller/dashboard/showcase"
         title="Marketplace Visibility Controls"
       />
+      <Card className="p-6 lg:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+              Public badges
+            </p>
+            <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-ink">
+              {badges.summary.publicVisible} visible badges
+            </h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+              Public profile shows only earned and visible badges. Locked/internal badge states stay private.
+            </p>
+          </div>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
+            href="/reseller/dashboard/badges"
+          >
+            Badge center
+          </Link>
+        </div>
+      </Card>
       <Card className="p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
