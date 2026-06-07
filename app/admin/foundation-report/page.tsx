@@ -186,23 +186,8 @@ const modules: FoundationModule[] = [
   },
   {
     name: "Billing Center",
-    notes: "Dedicated billing operations center is not built yet; subscription controls remain separate.",
+    notes: "Dedicated billing operations center is not built yet; subscription controls and payment provider monitoring remain separate.",
     status: "missing"
-  },
-  {
-    name: "AI Center",
-    notes: "AI Control Center is available for global monitoring; provider pausing, store-level AI disablement, failed-job retry, exports, and cost enforcement remain future work.",
-    status: "partial"
-  },
-  {
-    name: "Domain Center",
-    notes: "Domain and hosting control center is available for monitoring; real provider registration, mailbox creation, SSL issuance, and hosting provisioning remain future work.",
-    status: "partial"
-  },
-  {
-    name: "Marketplace",
-    notes: "Marketplace administration is available for marketplace preparation; seller payouts, real installs, and external payments remain future work.",
-    status: "partial"
   }
 ];
 
