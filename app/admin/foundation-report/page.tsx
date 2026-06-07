@@ -18,6 +18,7 @@ type AdminHref =
   | "/admin/domains-hosting"
   | "/admin/integrations"
   | "/admin/ai"
+  | "/admin/platform-website"
   | "/admin/foundation-report"
   | "/admin/sellers"
   | "/admin/resellers"
@@ -112,6 +113,12 @@ const modules: FoundationModule[] = [
     href: "/admin/ai",
     name: "AI Control",
     notes: "Admin monitoring foundation exists for AI visual jobs, provider status, store usage, failure monitoring, safe public asset links, and governance placeholders.",
+    status: "ready"
+  },
+  {
+    href: "/admin/platform-website",
+    name: "Platform Website",
+    notes: "Admin management foundation exists for SHASTORE public pages, landing readiness, SEO previews, multilingual placeholders, and safe page status controls.",
     status: "ready"
   },
   {

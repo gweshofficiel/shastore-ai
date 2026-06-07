@@ -363,6 +363,40 @@ export type AdminAIControl = {
   }>;
 };
 
+export type AdminPlatformWebsiteControl = {
+  futureHooks: string[];
+  landingStatus: Array<{
+    label: string;
+    ready: boolean;
+    route: string;
+  }>;
+  pages: Array<{
+    canonical: string;
+    languages: Array<{
+      language: "Arabic" | "English" | "French";
+      status: "placeholder" | "ready";
+    }>;
+    lastUpdated: string | null;
+    metaDescription: string;
+    metaTitle: string;
+    openGraph: string;
+    previewHref: string | null;
+    section: string;
+    seoStatus: "needs_metadata" | "placeholder" | "ready";
+    slug: string;
+    status: "archived" | "draft" | "published";
+    title: string;
+  }>;
+  overview: {
+    archivedPages: number;
+    draftPages: number;
+    publishedPages: number;
+    readyLandingPages: number;
+    seoReadyPages: number;
+    totalPages: number;
+  };
+};
+
 type AdminLanding = {
   id: string;
   ownerEmail: string;
@@ -2313,6 +2347,205 @@ export async function getAdminAIControl(): Promise<AdminAIControl> {
     storeUsage: [...jobsByStore.values()]
       .sort((left, right) => right.totalJobs - left.totalJobs)
       .slice(0, 50)
+  };
+}
+
+export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
+  const { supabase } = await getAdminUsersBase();
+  const monitoringEvents = await safeSelect(
+    supabase,
+    "monitoring_events",
+    "event_type, event_status, entity_type, metadata, created_at",
+    300
+  );
+  const controlEvents = monitoringEvents
+    .filter((event) => text(event.event_type).startsWith("admin_platform_page_"))
+    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+  const latestBySlug = new Map<string, AnyRecord>();
+
+  for (const event of controlEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const slug = text(metadata.slug);
+
+    if (slug && !latestBySlug.has(slug)) {
+      latestBySlug.set(slug, event);
+    }
+  }
+
+  const pageDefinitions = [
+    {
+      canonical: "/",
+      metaDescription: "SHASTORE AI helps sellers launch ecommerce storefronts with templates, AI visuals, billing, domains, and checkout foundations.",
+      metaTitle: "SHASTORE AI - AI ecommerce storefront platform",
+      openGraph: "Homepage OG placeholder",
+      previewHref: "/",
+      section: "Homepage",
+      seoStatus: "ready" as const,
+      slug: "/",
+      status: "published" as const,
+      title: "Homepage"
+    },
+    {
+      canonical: "/pricing",
+      metaDescription: "Simple SHASTORE AI plans for launching and scaling ecommerce stores.",
+      metaTitle: "Pricing - SHASTORE AI",
+      openGraph: "Pricing OG placeholder",
+      previewHref: "/pricing",
+      section: "Pricing Page",
+      seoStatus: "ready" as const,
+      slug: "/pricing",
+      status: "published" as const,
+      title: "Pricing Page"
+    },
+    {
+      canonical: "/features",
+      metaDescription: "Platform features overview placeholder for SHASTORE AI.",
+      metaTitle: "Features - SHASTORE AI",
+      openGraph: "Features OG placeholder",
+      previewHref: null,
+      section: "Features Page",
+      seoStatus: "placeholder" as const,
+      slug: "/features",
+      status: "draft" as const,
+      title: "Features Page"
+    },
+    {
+      canonical: "/about",
+      metaDescription: "About SHASTORE AI platform placeholder.",
+      metaTitle: "About Us - SHASTORE AI",
+      openGraph: "About OG placeholder",
+      previewHref: null,
+      section: "About Us",
+      seoStatus: "placeholder" as const,
+      slug: "/about",
+      status: "draft" as const,
+      title: "About Us"
+    },
+    {
+      canonical: "/contact",
+      metaDescription: "Contact SHASTORE AI platform placeholder.",
+      metaTitle: "Contact Us - SHASTORE AI",
+      openGraph: "Contact OG placeholder",
+      previewHref: null,
+      section: "Contact Us",
+      seoStatus: "placeholder" as const,
+      slug: "/contact",
+      status: "draft" as const,
+      title: "Contact Us"
+    },
+    {
+      canonical: "/blog",
+      metaDescription: "SHASTORE AI blog placeholder.",
+      metaTitle: "Blog - SHASTORE AI",
+      openGraph: "Blog OG placeholder",
+      previewHref: null,
+      section: "Blog",
+      seoStatus: "placeholder" as const,
+      slug: "/blog",
+      status: "draft" as const,
+      title: "Blog"
+    },
+    {
+      canonical: "/affiliates",
+      metaDescription: "SHASTORE AI affiliate program placeholder.",
+      metaTitle: "Affiliates - SHASTORE AI",
+      openGraph: "Affiliates OG placeholder",
+      previewHref: null,
+      section: "Affiliates Page",
+      seoStatus: "placeholder" as const,
+      slug: "/affiliates",
+      status: "draft" as const,
+      title: "Affiliates Page"
+    },
+    {
+      canonical: "/reseller",
+      metaDescription: "SHASTORE AI reseller program public entry point.",
+      metaTitle: "Reseller Program - SHASTORE AI",
+      openGraph: "Reseller OG placeholder",
+      previewHref: "/reseller",
+      section: "Reseller Program Page",
+      seoStatus: "placeholder" as const,
+      slug: "/reseller",
+      status: "published" as const,
+      title: "Reseller Program Page"
+    },
+    {
+      canonical: "/careers",
+      metaDescription: "SHASTORE AI careers placeholder.",
+      metaTitle: "Careers - SHASTORE AI",
+      openGraph: "Careers OG placeholder",
+      previewHref: null,
+      section: "Careers Page",
+      seoStatus: "placeholder" as const,
+      slug: "/careers",
+      status: "draft" as const,
+      title: "Careers Page"
+    },
+    {
+      canonical: "/legal",
+      metaDescription: "Platform legal pages placeholder for SHASTORE AI.",
+      metaTitle: "Legal - SHASTORE AI",
+      openGraph: "Legal OG placeholder",
+      previewHref: null,
+      section: "Legal Pages",
+      seoStatus: "needs_metadata" as const,
+      slug: "/legal",
+      status: "draft" as const,
+      title: "Legal Pages"
+    }
+  ];
+  const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions.map((page) => {
+    const event = latestBySlug.get(page.slug);
+    const eventType = text(event?.event_type);
+    const eventStatus =
+      eventType === "admin_platform_page_mark_draft"
+        ? "draft"
+        : eventType === "admin_platform_page_mark_published"
+          ? "published"
+          : eventType === "admin_platform_page_archive"
+            ? "archived"
+            : page.status;
+
+    return {
+      ...page,
+      languages: [
+        { language: "Arabic", status: "placeholder" },
+        { language: "English", status: page.status === "published" ? "ready" : "placeholder" },
+        { language: "French", status: "placeholder" }
+      ],
+      lastUpdated: text(event?.created_at) || null,
+      status: eventStatus
+    };
+  });
+  const readySlugs = new Set(pages.filter((page) => page.status === "published").map((page) => page.slug));
+  const landingStatus = [
+    { label: "Homepage ready", ready: readySlugs.has("/"), route: "/" },
+    { label: "Pricing ready", ready: readySlugs.has("/pricing"), route: "/pricing" },
+    { label: "Features ready", ready: readySlugs.has("/features"), route: "/features" },
+    { label: "Contact ready", ready: readySlugs.has("/contact"), route: "/contact" },
+    { label: "Legal ready", ready: readySlugs.has("/legal"), route: "/legal" },
+    { label: "Reseller page ready", ready: readySlugs.has("/reseller"), route: "/reseller" }
+  ];
+
+  return {
+    futureHooks: [
+      "Platform page editor",
+      "Platform blog editor",
+      "Landing page builder",
+      "SEO generator",
+      "Translation workflow",
+      "Publish workflow"
+    ],
+    landingStatus,
+    overview: {
+      archivedPages: pages.filter((page) => page.status === "archived").length,
+      draftPages: pages.filter((page) => page.status === "draft").length,
+      publishedPages: pages.filter((page) => page.status === "published").length,
+      readyLandingPages: landingStatus.filter((item) => item.ready).length,
+      seoReadyPages: pages.filter((page) => page.seoStatus === "ready").length,
+      totalPages: pages.length
+    },
+    pages
   };
 }
 

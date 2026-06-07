@@ -13,6 +13,7 @@ export const adminNavItems = [
   { href: "/admin/domains-hosting", label: "Domains & Hosting", icon: "domains" },
   { href: "/admin/integrations", label: "Integrations", icon: "analytics" },
   { href: "/admin/ai", label: "AI Control", icon: "templates" },
+  { href: "/admin/platform-website", label: "Platform Website", icon: "templates" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
   { href: "/admin/support", label: "Support", icon: "support" },
   { href: "/admin/security", label: "Security", icon: "security" },
