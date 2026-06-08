@@ -231,6 +231,68 @@ async function upsertDeliveryAssignment({
   }
 }
 
+async function activeDeliveryOrderCount({
+  agentId,
+  excludeOrderId,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  agentId: string;
+  excludeOrderId?: string | null;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  let query = supabase
+    .from("delivery_assignments" as never)
+    .select("id", { count: "exact", head: true } as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never)
+    .eq("delivery_agent_id" as never, agentId as never)
+    .in("status" as never, ["assigned", "accepted", "picked_up"] as never);
+
+  if (excludeOrderId) {
+    query = query.neq("order_id" as never, excludeOrderId as never);
+  }
+
+  const { count } = await query;
+  return count ?? 0;
+}
+
+async function syncAgentActiveOrderSnapshot({
+  agentId,
+  storeId,
+  supabase,
+  workspaceId
+}: {
+  agentId: string | null | undefined;
+  storeId: string;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  if (!agentId) {
+    return;
+  }
+
+  const activeOrders = await activeDeliveryOrderCount({
+    agentId,
+    storeId,
+    supabase,
+    workspaceId
+  });
+
+  await supabase
+    .from("store_delivery_agents" as never)
+    .update({
+      current_active_orders: activeOrders,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, agentId as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, storeId as never);
+}
+
 function assignmentStatusFromDeliveryStatus(status: DeliveryStatus): AssignmentStatus {
   if (status === "picked_up") {
     return "picked_up";
@@ -423,12 +485,20 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
     orderDeliveryRedirect(returnTo, "delivery-not-authorized");
   }
 
-  let agent: { city_zone?: string | null; id: string; name: string; phone: string; status: string } | null = null;
+  let agent: {
+    availability_status?: string | null;
+    capacity_limit?: number | string | null;
+    city_zone?: string | null;
+    id: string;
+    name: string;
+    phone: string;
+    status: string;
+  } | null = null;
 
   if (agentId) {
     const { data, error } = await context.supabase
       .from("store_delivery_agents" as never)
-      .select("id, name, phone, city_zone, status")
+      .select("id, name, phone, city_zone, status, availability_status, capacity_limit")
       .eq("id" as never, agentId as never)
       .eq("workspace_id" as never, context.workspaceId as never)
       .eq("store_id" as never, order.store_id as never)
@@ -438,10 +508,31 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
       orderDeliveryRedirect(returnTo, "delivery-agent-invalid");
     }
 
-    agent = data as unknown as { city_zone?: string | null; id: string; name: string; phone: string; status: string };
+    agent = data as unknown as {
+      availability_status?: string | null;
+      capacity_limit?: number | string | null;
+      city_zone?: string | null;
+      id: string;
+      name: string;
+      phone: string;
+      status: string;
+    };
 
     if (agent.status !== "active") {
       orderDeliveryRedirect(returnTo, "delivery-agent-inactive");
+    }
+
+    const activeOrders = await activeDeliveryOrderCount({
+      agentId: agent.id,
+      excludeOrderId: orderId,
+      storeId: order.store_id,
+      supabase: context.supabase,
+      workspaceId: context.workspaceId
+    });
+    const capacityLimit = Math.max(0, Math.trunc(numericValue(agent.capacity_limit ?? 5)));
+
+    if (activeOrders >= capacityLimit) {
+      orderDeliveryRedirect(returnTo, "delivery-capacity-full");
     }
   }
 
@@ -483,6 +574,21 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
     supabase: context.supabase,
     workspaceId: context.workspaceId
   });
+
+  await Promise.all([
+    syncAgentActiveOrderSnapshot({
+      agentId: agent?.id,
+      storeId: order.store_id,
+      supabase: context.supabase,
+      workspaceId: context.workspaceId
+    }),
+    syncAgentActiveOrderSnapshot({
+      agentId: order.delivery_agent_id,
+      storeId: order.store_id,
+      supabase: context.supabase,
+      workspaceId: context.workspaceId
+    })
+  ]);
 
   await recordDeliveryEvent({
     actorUserId: context.user.id,

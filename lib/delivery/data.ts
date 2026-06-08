@@ -5,7 +5,11 @@ export type DeliveryRole = "delivery" | "pending_delivery" | "suspended_delivery
 export type DeliveryAgentAccessRecord = {
   agentId: string;
   agentName: string;
+  assignedZoneIds: string[];
+  availabilityStatus: "online" | "offline" | "busy";
+  capacityLimit: number;
   cityZone: string | null;
+  currentActiveOrders: number;
   email: string | null;
   role: DeliveryRole;
   status: "active" | "inactive";
@@ -74,7 +78,11 @@ export type DeliveryAssignedOrdersData = {
 };
 
 type DeliveryAgentRow = {
+  assigned_zone_ids?: string[] | null;
+  availability_status?: string | null;
+  capacity_limit?: number | string | null;
   city_zone?: string | null;
+  current_active_orders?: number | string | null;
   email?: string | null;
   id: string;
   metadata?: Record<string, unknown> | null;
@@ -130,6 +138,22 @@ type DeliveryReturnRow = {
   status?: string | null;
 };
 
+export type DeliveryZoneSummary = {
+  city: string | null;
+  id: string;
+  isActive: boolean;
+  name: string;
+  region: string | null;
+};
+
+export type DeliveryRouteCapacityData = {
+  activeOrders: number;
+  assignedZones: DeliveryZoneSummary[];
+  availabilityStatus: "online" | "offline" | "busy";
+  capacityLimit: number;
+  remainingCapacity: number;
+};
+
 function normalizeDeliveryEmail(value: string | null | undefined) {
   const email = value?.trim().toLowerCase() ?? "";
   return email.includes("@") ? email : "";
@@ -137,6 +161,14 @@ function normalizeDeliveryEmail(value: string | null | undefined) {
 
 function agentRoleForStatus(status: string | null | undefined): DeliveryRole {
   return status === "inactive" ? "suspended_delivery" : "delivery";
+}
+
+function normalizeAvailabilityStatus(value: string | null | undefined): "online" | "offline" | "busy" {
+  if (value === "online" || value === "busy") {
+    return value;
+  }
+
+  return "offline";
 }
 
 function storeNameFromRow(row: DeliveryAgentRow) {
@@ -155,7 +187,11 @@ function toAccessRecord(row: DeliveryAgentRow): DeliveryAgentAccessRecord {
   return {
     agentId: row.id,
     agentName: row.name,
+    assignedZoneIds: Array.isArray(row.assigned_zone_ids) ? row.assigned_zone_ids : [],
+    availabilityStatus: normalizeAvailabilityStatus(row.availability_status),
+    capacityLimit: Math.max(0, Math.trunc(numericValue(row.capacity_limit ?? 5))),
     cityZone: row.city_zone ?? null,
+    currentActiveOrders: Math.max(0, Math.trunc(numericValue(row.current_active_orders))),
     email: row.email ?? row.normalized_email ?? null,
     role: agentRoleForStatus(row.status),
     status,
@@ -246,7 +282,7 @@ async function loadDeliveryAgentRows({
   }
 
   const select =
-    "id, name, email, normalized_email, city_zone, status, store_id, workspace_id, metadata, stores:store_id ( name )";
+    "id, name, email, normalized_email, city_zone, status, availability_status, capacity_limit, current_active_orders, assigned_zone_ids, store_id, workspace_id, metadata, stores:store_id ( name )";
 
   if (userId) {
     const { data: linkedRows } = await admin
@@ -599,5 +635,71 @@ export async function getDeliveryAssignedOrdersData(
     returnRate: Math.round(((returnsInProgress + completedReturns) / totalOrders) * 100),
     returnsInProgress,
     returnedOrders: orders.filter((order) => order.status === "returned").length
+  };
+}
+
+export async function getDeliveryRouteCapacityData(
+  agent: DeliveryAgentAccessRecord | null
+): Promise<DeliveryRouteCapacityData> {
+  if (!agent) {
+    return {
+      activeOrders: 0,
+      assignedZones: [],
+      availabilityStatus: "offline",
+      capacityLimit: 0,
+      remainingCapacity: 0
+    };
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return {
+      activeOrders: agent.currentActiveOrders,
+      assignedZones: [],
+      availabilityStatus: agent.availabilityStatus,
+      capacityLimit: agent.capacityLimit,
+      remainingCapacity: Math.max(agent.capacityLimit - agent.currentActiveOrders, 0)
+    };
+  }
+
+  const [{ count }, zonesResult] = await Promise.all([
+    admin
+      .from("delivery_assignments" as never)
+      .select("id", { count: "exact", head: true } as never)
+      .eq("workspace_id" as never, agent.workspaceId as never)
+      .eq("store_id" as never, agent.storeId as never)
+      .eq("delivery_agent_id" as never, agent.agentId as never)
+      .in("status" as never, ["assigned", "accepted", "picked_up"] as never),
+    agent.assignedZoneIds.length
+      ? admin
+          .from("delivery_zones" as never)
+          .select("id, name, city, region, is_active")
+          .eq("workspace_id" as never, agent.workspaceId as never)
+          .eq("store_id" as never, agent.storeId as never)
+          .in("id" as never, agent.assignedZoneIds as never)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+  const activeOrders = count ?? agent.currentActiveOrders;
+  const assignedZones = ((zonesResult.data ?? []) as unknown as Array<{
+    city?: string | null;
+    id: string;
+    is_active?: boolean | null;
+    name: string;
+    region?: string | null;
+  }>).map((zone) => ({
+    city: zone.city ?? null,
+    id: zone.id,
+    isActive: zone.is_active !== false,
+    name: zone.name,
+    region: zone.region ?? null
+  }));
+
+  return {
+    activeOrders,
+    assignedZones,
+    availabilityStatus: agent.availabilityStatus,
+    capacityLimit: agent.capacityLimit,
+    remainingCapacity: Math.max(agent.capacityLimit - activeOrders, 0)
   };
 }

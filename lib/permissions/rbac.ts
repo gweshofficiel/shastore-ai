@@ -252,7 +252,7 @@ export const dashboardRoutePermissions: readonly DashboardRoutePermission[] = [
   { href: "/dashboard/support", label: "Support Tickets", icon: "support", permission: "can_view_notifications" },
   { href: "/dashboard/payments", label: "Payments", icon: "payments", permission: "can_manage_payments" },
   { href: "/dashboard/tax", label: "Taxes", icon: "payments", permission: "can_manage_payments" },
-  { href: "/dashboard/delivery-agents", label: "Delivery Agents", icon: "shipping", permission: "manage_orders" },
+  { href: "/dashboard/delivery-agents", label: "Delivery Management", icon: "shipping", permission: "manage_orders" },
   { href: "/dashboard/cod", label: "COD Center", icon: "payments", permission: "manage_orders" },
   { href: "/dashboard/returns", label: "Returns", icon: "shipping", permission: "manage_orders" },
   { href: "/dashboard/refunds", label: "Refunds", icon: "payments", permission: "manage_orders" },

@@ -1,6 +1,7 @@
 import { getOrCreateAccountProfile, accountProfileUnavailableMessage } from "@/lib/account-profiles";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
-import { getDeliveryAssignedOrdersData } from "@/lib/delivery/data";
+import { getDeliveryAssignedOrdersData, getDeliveryRouteCapacityData } from "@/lib/delivery/data";
+import { updateDeliveryAvailabilityAction } from "@/lib/delivery/route-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +41,42 @@ function formatMoney(amount: number, currency = "USD") {
   }).format(amount);
 }
 
-export default async function DeliveryDashboardPage() {
+function availabilityLabel(status: string) {
+  const labels: Record<string, string> = {
+    busy: "Busy",
+    offline: "Offline",
+    online: "Online"
+  };
+
+  return labels[status] ?? status;
+}
+
+function dashboardMessage(value: string | string[] | undefined) {
+  const status = Array.isArray(value) ? value[0] : value;
+  const messages: Record<string, string> = {
+    "access-denied": "Delivery access could not be verified.",
+    "availability-failed": "Availability could not be updated.",
+    "availability-invalid": "Choose a valid availability status.",
+    "availability-updated": "Availability updated.",
+    unavailable: "Delivery route service is not configured."
+  };
+
+  return status ? messages[status] ?? null : null;
+}
+
+export default async function DeliveryDashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ delivery?: string | string[] }>;
+}) {
+  const query = await searchParams;
   const { agent, role, user } = await requireDeliveryAccess();
-  const [account, assignmentData] = await Promise.all([
+  const [account, assignmentData, routeData] = await Promise.all([
     getOrCreateAccountProfile("delivery"),
-    getDeliveryAssignedOrdersData(agent)
+    getDeliveryAssignedOrdersData(agent),
+    getDeliveryRouteCapacityData(agent)
   ]);
+  const message = dashboardMessage(query?.delivery);
 
   return (
     <>
@@ -77,6 +108,12 @@ export default async function DeliveryDashboardPage() {
         </div>
       </section>
 
+      {message ? (
+        <section className="rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-800">
+          {message}
+        </section>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
@@ -91,8 +128,10 @@ export default async function DeliveryDashboardPage() {
           },
           {
             label: "City / Zone",
-            value: agent?.cityZone ?? "Not set",
-            detail: "Service area from the owner delivery agent profile."
+            value: routeData.assignedZones[0]?.name ?? agent?.cityZone ?? "Not set",
+            detail: routeData.assignedZones.length
+              ? `${routeData.assignedZones.length} assigned delivery zone(s).`
+              : "Service area from the owner delivery agent profile."
           },
           {
             label: "Assigned orders",
@@ -127,8 +166,23 @@ export default async function DeliveryDashboardPage() {
         {[
           {
             label: "Availability",
-            value: "Placeholder",
-            detail: "Future online, offline, pause, and route capacity controls."
+            value: availabilityLabel(routeData.availabilityStatus),
+            detail: "Online, offline, or busy route status."
+          },
+          {
+            label: "Current load",
+            value: routeData.activeOrders.toLocaleString(),
+            detail: "Active assigned, accepted, or picked-up orders."
+          },
+          {
+            label: "Capacity limit",
+            value: routeData.capacityLimit.toLocaleString(),
+            detail: "Owner-defined maximum active workload."
+          },
+          {
+            label: "Remaining capacity",
+            value: routeData.remainingCapacity.toLocaleString(),
+            detail: "Available slots before capacity is reached."
           },
           {
             label: "Proof of delivery",
@@ -207,8 +261,28 @@ export default async function DeliveryDashboardPage() {
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <div className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] lg:p-6">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-            Quick actions placeholder
+            Availability controls
           </p>
+          <form action={updateDeliveryAvailabilityAction} className="mt-4 grid gap-3">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              <span>Availability status</span>
+              <select
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none"
+                defaultValue={routeData.availabilityStatus}
+                name="availabilityStatus"
+              >
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+                <option value="busy">Busy</option>
+              </select>
+            </label>
+            <button
+              className="h-11 rounded-2xl bg-emerald-950 px-4 text-xs font-black uppercase tracking-[0.12em] text-white"
+              type="submit"
+            >
+              Update availability
+            </button>
+          </form>
           <div className="mt-4 grid gap-3">
             {quickActions.map((action) => (
               <div
@@ -223,9 +297,24 @@ export default async function DeliveryDashboardPage() {
 
         <div className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] lg:p-6">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-            Future hooks prepared
+            Assigned zones and future hooks
           </p>
           <div className="mt-4 grid gap-3">
+            {routeData.assignedZones.length ? routeData.assignedZones.map((zone) => (
+              <div
+                className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3"
+                key={zone.id}
+              >
+                <p className="text-sm font-black text-emerald-950">{zone.name}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-600">
+                  {[zone.city, zone.region].filter(Boolean).join(" / ") || "Coverage zone"}
+                </p>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-950">
+                No assigned delivery zones yet.
+              </div>
+            )}
             {futureHooks.map((hook) => (
               <div
                 className="flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3"

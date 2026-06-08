@@ -45,7 +45,10 @@ type OrderEvent = {
 };
 
 type DeliveryAgent = {
+  availability_status: string | null;
+  capacity_limit: number | null;
   city_zone: string | null;
+  current_active_orders: number | null;
   email: string | null;
   id: string;
   name: string;
@@ -292,6 +295,10 @@ function statusMessage(value: string | undefined) {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Assign a delivery agent before changing delivery status."
     },
+    "delivery-capacity-full": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Capacity Full: that delivery agent has reached their active order limit."
+    },
     "delivery-failed": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Delivery assignment could not be updated. Please try again."
@@ -509,7 +516,7 @@ async function loadDeliveryAgents({
 }) {
   const { data, error } = await supabase
     .from("store_delivery_agents" as never)
-    .select("id, name, phone, email, city_zone, status")
+    .select("id, name, phone, email, city_zone, status, availability_status, capacity_limit, current_active_orders")
     .eq("workspace_id" as never, workspaceId as never)
     .eq("store_id" as never, storeId as never)
     .order("name" as never, { ascending: true } as never);
@@ -1348,11 +1355,19 @@ function DeliveryAssignmentForm({
           name="deliveryAgentId"
         >
           <option value="">No delivery agent</option>
-          {agents.map((agent) => (
-            <option disabled={agent.status !== "active"} key={agent.id} value={agent.id}>
-              {agent.name} · {agent.city_zone ?? "No zone"} · {agent.status}
-            </option>
-          ))}
+          {agents.map((agent) => {
+            const activeLoad = agent.current_active_orders ?? 0;
+            const capacityLimit = agent.capacity_limit ?? 5;
+            const capacityFull = activeLoad >= capacityLimit;
+
+            return (
+              <option disabled={agent.status !== "active" || capacityFull} key={agent.id} value={agent.id}>
+                {agent.name} · {agent.city_zone ?? "No zone"} · {agent.availability_status ?? "offline"} ·{" "}
+                {activeLoad}/{capacityLimit}
+                {capacityFull ? " · Capacity Full" : ""}
+              </option>
+            );
+          })}
         </select>
       </label>
       <button className="h-11 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5" type="submit">
