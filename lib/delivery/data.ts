@@ -33,14 +33,17 @@ export type DeliveryAssignedOrder = {
   orderId: string;
   orderNumber: string;
   phone: string | null;
+  source: "orders" | "store_orders";
   status: DeliveryAssignmentStatus;
   storeId: string;
+  updatedAt: string;
 };
 
 export type DeliveryAssignedOrdersData = {
+  acceptedOrders: number;
   assignedOrders: number;
   deliveredOrders: number;
-  pendingOrders: number;
+  pickedUpOrders: number;
   returnedOrders: number;
   orders: DeliveryAssignedOrder[];
 };
@@ -69,8 +72,10 @@ type DeliveryAssignmentRow = {
   order_amount?: number | string | null;
   order_id: string;
   order_number?: string | null;
+  order_source?: "orders" | "store_orders" | null;
   status?: string | null;
   store_id: string;
+  updated_at?: string | null;
 };
 
 function normalizeDeliveryEmail(value: string | null | undefined) {
@@ -145,8 +150,10 @@ function toAssignedOrder(row: DeliveryAssignmentRow): DeliveryAssignedOrder {
     orderId: row.order_id,
     orderNumber: row.order_number ?? row.order_id.slice(0, 8).toUpperCase(),
     phone: row.customer_phone ?? null,
+    source: row.order_source ?? "store_orders",
     status: normalizeAssignmentStatus(row.status),
-    storeId: row.store_id
+    storeId: row.store_id,
+    updatedAt: row.updated_at ?? row.assigned_at
   };
 }
 
@@ -335,10 +342,11 @@ export async function getDeliveryAssignedOrdersData(
 ): Promise<DeliveryAssignedOrdersData> {
   if (!agent) {
     return {
+      acceptedOrders: 0,
       assignedOrders: 0,
       deliveredOrders: 0,
       orders: [],
-      pendingOrders: 0,
+      pickedUpOrders: 0,
       returnedOrders: 0
     };
   }
@@ -347,10 +355,11 @@ export async function getDeliveryAssignedOrdersData(
 
   if (!admin) {
     return {
+      acceptedOrders: 0,
       assignedOrders: 0,
       deliveredOrders: 0,
       orders: [],
-      pendingOrders: 0,
+      pickedUpOrders: 0,
       returnedOrders: 0
     };
   }
@@ -358,7 +367,7 @@ export async function getDeliveryAssignedOrdersData(
   const { data, error } = await admin
     .from("delivery_assignments" as never)
     .select(
-      "id, store_id, order_id, delivery_agent_id, assigned_at, status, order_number, customer_name, customer_phone, customer_city, order_amount, currency"
+      "id, store_id, order_id, order_source, delivery_agent_id, assigned_at, updated_at, status, order_number, customer_name, customer_phone, customer_city, order_amount, currency"
     )
     .eq("delivery_agent_id" as never, agent.agentId as never)
     .eq("store_id" as never, agent.storeId as never)
@@ -372,10 +381,11 @@ export async function getDeliveryAssignedOrdersData(
     });
 
     return {
+      acceptedOrders: 0,
       assignedOrders: 0,
       deliveredOrders: 0,
       orders: [],
-      pendingOrders: 0,
+      pickedUpOrders: 0,
       returnedOrders: 0
     };
   }
@@ -383,10 +393,11 @@ export async function getDeliveryAssignedOrdersData(
   const orders = ((data ?? []) as unknown as DeliveryAssignmentRow[]).map(toAssignedOrder);
 
   return {
-    assignedOrders: orders.length,
+    acceptedOrders: orders.filter((order) => order.status === "accepted").length,
+    assignedOrders: orders.filter((order) => order.status === "assigned").length,
     deliveredOrders: orders.filter((order) => order.status === "delivered").length,
     orders,
-    pendingOrders: orders.filter((order) => order.status === "assigned" || order.status === "accepted").length,
+    pickedUpOrders: orders.filter((order) => order.status === "picked_up").length,
     returnedOrders: orders.filter((order) => order.status === "returned").length
   };
 }

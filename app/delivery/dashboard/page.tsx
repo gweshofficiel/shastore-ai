@@ -134,6 +134,16 @@ export default async function DeliveryDashboardPage() {
             detail: "Orders marked delivered in the assignment foundation."
           },
           {
+            label: "Accepted orders",
+            value: assignmentData.acceptedOrders.toLocaleString(),
+            detail: "Orders accepted by this delivery agent."
+          },
+          {
+            label: "Picked up orders",
+            value: assignmentData.pickedUpOrders.toLocaleString(),
+            detail: "Orders picked up and moving through delivery."
+          },
+          {
             label: "Returns",
             value: assignmentData.returnedOrders.toLocaleString(),
             detail: "Returned assignments tracked without proof-of-delivery yet."

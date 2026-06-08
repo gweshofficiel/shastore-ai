@@ -53,6 +53,13 @@ type DeliveryAgent = {
   status: string;
 };
 
+type DeliveryAssignmentSummary = {
+  assigned_at: string | null;
+  delivery_agent_id: string | null;
+  status: string | null;
+  updated_at: string | null;
+};
+
 function numericValue(value: number | string | null | undefined) {
   if (typeof value === "number") {
     return value;
@@ -187,6 +194,7 @@ function fulfillmentBadgeClass(status: string | null | undefined) {
 
 function deliveryStatusLabel(status: string | null | undefined) {
   const labels: Record<string, string> = {
+    accepted: "Accepted",
     assigned: "Assigned",
     delivered: "Delivered",
     failed: "Failed",
@@ -380,6 +388,32 @@ async function loadDeliveryEvents({
   return (data ?? []) as unknown as OrderEvent[];
 }
 
+async function loadDeliveryAssignmentSummary({
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("delivery_assignments" as never)
+    .select("delivery_agent_id, status, assigned_at, updated_at")
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as unknown as DeliveryAssignmentSummary | null;
+}
+
 async function loadDeliveryAgents({
   storeId,
   supabase,
@@ -511,6 +545,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const deliveryAssignment = await loadDeliveryAssignmentSummary({
+          orderId: row.id,
+          source: "store_orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId: row.store_id,
           supabase,
@@ -539,6 +579,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agent: deliveryAgent,
             delivery_agent_id: row.delivery_agent_id ?? null,
             delivery_agents: deliveryAgents,
+            delivery_assignment: deliveryAssignment,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -670,6 +711,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const deliveryAssignment = await loadDeliveryAssignmentSummary({
+          orderId: row.id,
+          source: "orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId,
           supabase,
@@ -698,6 +745,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agent: deliveryAgent,
             delivery_agent_id: row.delivery_agent_id ?? null,
             delivery_agents: deliveryAgents,
+            delivery_assignment: deliveryAssignment,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -847,6 +895,14 @@ export default async function OrderDetailPage({
                 <Info label="Phone" value={order.delivery_agent.phone} />
                 <Info label="Email" value={order.delivery_agent.email || "Not provided"} />
                 <Info label="City / Zone" value={order.delivery_agent.city_zone || "Not provided"} />
+                <Info
+                  label="Current delivery status"
+                  value={deliveryStatusLabel(order.delivery_assignment?.status ?? order.delivery_status)}
+                />
+                <Info
+                  label="Last delivery update"
+                  value={formatDate(order.delivery_assignment?.updated_at ?? order.delivery_assigned_at)}
+                />
                 <Info label="Assigned" value={formatDate(order.delivery_assigned_at)} />
                 <Info label="Picked up" value={formatDate(order.delivery_picked_up_at)} />
                 <Info label="Delivery out" value={formatDate(order.delivery_out_for_delivery_at)} />
@@ -937,7 +993,7 @@ export default async function OrderDetailPage({
                     ) : null}
                     {event.actor_user_id ? (
                       <p className="mt-2 text-xs font-bold text-slate-500">
-                        Assigned by user {event.actor_user_id.slice(0, 8)}
+                        Actor user {event.actor_user_id.slice(0, 8)}
                       </p>
                     ) : null}
                   </div>

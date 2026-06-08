@@ -1,5 +1,6 @@
 import { requireDeliveryAccess } from "@/lib/delivery/access";
-import { getDeliveryAssignedOrdersData } from "@/lib/delivery/data";
+import { getDeliveryAssignedOrdersData, type DeliveryAssignmentStatus } from "@/lib/delivery/data";
+import { updateDeliveryAssignmentStatusAction } from "@/lib/delivery/status-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +47,63 @@ function statusClass(status: string) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default async function DeliveryAssignedOrdersPage() {
+function nextStatuses(status: DeliveryAssignmentStatus) {
+  const transitions: Record<DeliveryAssignmentStatus, DeliveryAssignmentStatus[]> = {
+    accepted: ["picked_up"],
+    assigned: ["accepted"],
+    delivered: [],
+    picked_up: ["delivered", "returned"],
+    returned: []
+  };
+
+  return transitions[status];
+}
+
+function statusMessage(value: string | string[] | undefined) {
+  const status = Array.isArray(value) ? value[0] : value;
+  const messages: Record<string, { className: string; text: string }> = {
+    "access-denied": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Delivery access could not be verified."
+    },
+    failed: {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Delivery status could not be updated. Please try again."
+    },
+    invalid: {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Choose a valid delivery status."
+    },
+    "invalid-transition": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That status change is not allowed. Move one step at a time."
+    },
+    "not-found": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That assignment does not belong to this delivery account."
+    },
+    unavailable: {
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+      text: "Delivery status service is not configured."
+    },
+    updated: {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Delivery status updated."
+    }
+  };
+
+  return status ? messages[status] ?? null : null;
+}
+
+export default async function DeliveryAssignedOrdersPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ delivery?: string | string[] }>;
+}) {
+  const query = await searchParams;
   const { agent } = await requireDeliveryAccess();
   const data = await getDeliveryAssignedOrdersData(agent);
+  const message = statusMessage(query?.delivery);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -65,11 +120,18 @@ export default async function DeliveryAssignedOrdersPage() {
         </p>
       </section>
 
+      {message ? (
+        <section className={`rounded-3xl border p-4 text-sm font-bold ${message.className}`}>
+          {message.text}
+        </section>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Assigned Orders", value: data.assignedOrders },
+          { label: "Accepted Orders", value: data.acceptedOrders },
+          { label: "Picked Up Orders", value: data.pickedUpOrders },
           { label: "Delivered Orders", value: data.deliveredOrders },
-          { label: "Pending Orders", value: data.pendingOrders },
           { label: "Returns", value: data.returnedOrders }
         ].map((card) => (
           <article
@@ -101,7 +163,7 @@ export default async function DeliveryAssignedOrdersPage() {
 
         {data.orders.length ? (
           <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200">
-            <div className="grid min-w-[780px] grid-cols-[1fr_1.2fr_1fr_1fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            <div className="grid min-w-[980px] grid-cols-[1fr_1.1fr_1fr_0.9fr_0.9fr_0.9fr_1fr_1.4fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               <span>Order Number</span>
               <span>Customer</span>
               <span>Phone</span>
@@ -109,11 +171,12 @@ export default async function DeliveryAssignedOrdersPage() {
               <span>Amount</span>
               <span>Status</span>
               <span>Assigned Date</span>
+              <span>Update Status</span>
             </div>
             <div className="grid overflow-x-auto">
               {data.orders.map((order) => (
                 <article
-                  className="grid min-w-[780px] grid-cols-[1fr_1.2fr_1fr_1fr_1fr_1fr_1fr] gap-3 border-t border-slate-100 px-4 py-4 text-sm font-semibold text-slate-600"
+                  className="grid min-w-[980px] grid-cols-[1fr_1.1fr_1fr_0.9fr_0.9fr_0.9fr_1fr_1.4fr] gap-3 border-t border-slate-100 px-4 py-4 text-sm font-semibold text-slate-600"
                   key={order.id}
                 >
                   <span className="font-black text-slate-950">{order.orderNumber}</span>
@@ -127,6 +190,7 @@ export default async function DeliveryAssignedOrdersPage() {
                     </span>
                   </span>
                   <span>{formatDate(order.assignedAt)}</span>
+                  <StatusUpdateForm assignmentId={order.id} status={order.status} />
                 </article>
               ))}
             </div>
@@ -143,5 +207,46 @@ export default async function DeliveryAssignedOrdersPage() {
         )}
       </section>
     </div>
+  );
+}
+
+function StatusUpdateForm({
+  assignmentId,
+  status
+}: {
+  assignmentId: string;
+  status: DeliveryAssignmentStatus;
+}) {
+  const options = nextStatuses(status);
+
+  if (!options.length) {
+    return (
+      <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+        Final status
+      </span>
+    );
+  }
+
+  return (
+    <form action={updateDeliveryAssignmentStatusAction} className="flex gap-2">
+      <input name="assignmentId" type="hidden" value={assignmentId} />
+      <select
+        className="h-10 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+        defaultValue={options[0]}
+        name="status"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {statusLabel(option)}
+          </option>
+        ))}
+      </select>
+      <button
+        className="h-10 rounded-2xl bg-emerald-950 px-3 text-xs font-black uppercase tracking-[0.12em] text-white"
+        type="submit"
+      >
+        Update
+      </button>
+    </form>
   );
 }
