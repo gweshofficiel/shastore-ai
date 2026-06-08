@@ -679,6 +679,82 @@ export type ResellerStoreDeliveryData = {
   deliveries: ResellerStoreDeliveryRecord[];
 };
 
+export type ResellerDisputeCategory =
+  | "communication_dispute"
+  | "custom_request_dispute"
+  | "delivery_dispute"
+  | "marketplace_dispute"
+  | "other"
+  | "ownership_transfer_dispute"
+  | "review_dispute";
+
+export type ResellerDisputeStatus =
+  | "awaiting_response"
+  | "closed"
+  | "escalated"
+  | "open"
+  | "rejected"
+  | "resolved_placeholder"
+  | "under_review";
+
+export type ResellerDisputePriority = "high" | "low" | "normal" | "urgent";
+
+export type ResellerDisputeTimelineEvent = {
+  action: string;
+  createdAt: string | null;
+  note: string;
+  status: ResellerDisputeStatus;
+};
+
+export type ResellerDisputeRecord = {
+  buyerMaskedPlaceholder: string;
+  category: ResellerDisputeCategory;
+  createdAt: string | null;
+  disputeId: string;
+  evidencePlaceholder: string;
+  internalNotesPlaceholder: string;
+  priority: ResellerDisputePriority;
+  relatedDelivery: string;
+  relatedRequest: string;
+  relatedReview: string;
+  relatedTransfer: string;
+  status: ResellerDisputeStatus;
+  statusHistory: Array<{
+    createdAt: string | null;
+    status: ResellerDisputeStatus;
+  }>;
+  summary: string;
+  timeline: ResellerDisputeTimelineEvent[];
+  updatedAt: string | null;
+};
+
+export type ResellerDisputesData = {
+  categories: Array<{
+    label: string;
+    value: ResellerDisputeCategory;
+  }>;
+  disputes: ResellerDisputeRecord[];
+  emptyState: string;
+  futureHooks: string[];
+  priorityOptions: ResellerDisputePriority[];
+  relatedOptions: {
+    deliveries: ResellerStoreDeliveryRecord[];
+    requests: ResellerBuyerRequest[];
+    reviews: ResellerReview[];
+    transfers: ResellerOwnershipTransferRequest[];
+  };
+  safetyNotes: string[];
+  selectedDispute: ResellerDisputeRecord | null;
+  statusFoundation: ResellerDisputeStatus[];
+  summary: {
+    awaitingResponse: number;
+    closed: number;
+    escalated: number;
+    open: number;
+    underReview: number;
+  };
+};
+
 export type PublicResellerProfile = {
   badges: ResellerBadge[];
   canonicalPath: string;
@@ -1593,6 +1669,108 @@ function deliveryFromEvents(events: Record<string, unknown>[]): ResellerStoreDel
     storeName: textValue(metadata.store_name, "Store placeholder"),
     timeline: events.map(deliveryTimelineFromEvent),
     transferId: textValue(metadata.transfer_id, "transfer-placeholder"),
+    updatedAt: textValue(updatedAt) || null
+  };
+}
+
+const resellerDisputeCategories: ResellerDisputesData["categories"] = [
+  { label: "Delivery dispute", value: "delivery_dispute" },
+  { label: "Ownership transfer dispute", value: "ownership_transfer_dispute" },
+  { label: "Review dispute", value: "review_dispute" },
+  { label: "Custom request dispute", value: "custom_request_dispute" },
+  { label: "Marketplace dispute", value: "marketplace_dispute" },
+  { label: "Communication dispute", value: "communication_dispute" },
+  { label: "Other", value: "other" }
+];
+
+const resellerDisputeStatuses: ResellerDisputeStatus[] = [
+  "open",
+  "under_review",
+  "awaiting_response",
+  "escalated",
+  "resolved_placeholder",
+  "rejected",
+  "closed"
+];
+
+const resellerDisputePriorities: ResellerDisputePriority[] = ["low", "normal", "high", "urgent"];
+
+function normalizeDisputeCategory(value: unknown): ResellerDisputeCategory {
+  const category = textValue(value).toLowerCase();
+
+  return resellerDisputeCategories.some((item) => item.value === category)
+    ? (category as ResellerDisputeCategory)
+    : "other";
+}
+
+function normalizeDisputeStatus(value: unknown): ResellerDisputeStatus {
+  const status = textValue(value).toLowerCase();
+
+  return resellerDisputeStatuses.includes(status as ResellerDisputeStatus)
+    ? (status as ResellerDisputeStatus)
+    : "open";
+}
+
+function normalizeDisputePriority(value: unknown): ResellerDisputePriority {
+  const priority = textValue(value).toLowerCase();
+
+  return resellerDisputePriorities.includes(priority as ResellerDisputePriority)
+    ? (priority as ResellerDisputePriority)
+    : "normal";
+}
+
+function disputeTimelineFromEvent(row: Record<string, unknown>): ResellerDisputeTimelineEvent {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    action: textValue(row.event_type, "dispute_created"),
+    createdAt: textValue(row.created_at) || null,
+    note: textValue(
+      metadata.timeline_note,
+      "Dispute workflow placeholder. No refund, ownership reversal, payment action, account suspension, wallet, payout, withdrawal, commission, or fake sale occurred."
+    ),
+    status: normalizeDisputeStatus(metadata.dispute_status)
+  };
+}
+
+function disputeFromEvents(events: Record<string, unknown>[]): ResellerDisputeRecord {
+  const latest = events[0] ?? {};
+  const metadata =
+    latest.metadata && typeof latest.metadata === "object" && !Array.isArray(latest.metadata)
+      ? (latest.metadata as Record<string, unknown>)
+      : {};
+  const createdAt = events[events.length - 1]?.created_at;
+  const updatedAt = latest.created_at;
+  const timeline = events.map(disputeTimelineFromEvent);
+
+  return {
+    buyerMaskedPlaceholder: textValue(metadata.buyer_masked_placeholder, "Buyer masked placeholder"),
+    category: normalizeDisputeCategory(metadata.dispute_category),
+    createdAt: textValue(createdAt) || null,
+    disputeId: textValue(metadata.dispute_id, String(latest.id ?? "dispute-placeholder")),
+    evidencePlaceholder: textValue(
+      metadata.evidence_placeholder,
+      "Evidence placeholder only. File uploads are a future hook and no private buyer data is exposed."
+    ),
+    internalNotesPlaceholder: textValue(
+      metadata.internal_notes_placeholder,
+      "Private reseller-facing note placeholder. Internal admin notes are not exposed."
+    ),
+    priority: normalizeDisputePriority(metadata.priority),
+    relatedDelivery: textValue(metadata.related_delivery, "delivery-placeholder"),
+    relatedRequest: textValue(metadata.related_request, "request-placeholder"),
+    relatedReview: textValue(metadata.related_review, "review-placeholder"),
+    relatedTransfer: textValue(metadata.related_transfer, "transfer-placeholder"),
+    status: normalizeDisputeStatus(metadata.dispute_status),
+    statusHistory: timeline.map((event) => ({
+      createdAt: event.createdAt,
+      status: event.status
+    })),
+    summary: textValue(metadata.summary, "Dispute summary placeholder"),
+    timeline,
     updatedAt: textValue(updatedAt) || null
   };
 }
@@ -3401,6 +3579,110 @@ export async function getResellerStoreDeliveryData(): Promise<ResellerStoreDeliv
       readyToHandoff: deliveries.filter((delivery) => delivery.deliveryStatus === "ready_to_handoff").length
     },
     transferOptions: transferData.transfers
+  };
+}
+
+export async function getResellerDisputesData(
+  selectedDisputeId?: string | null
+): Promise<ResellerDisputesData> {
+  const user = await getDashboardUser();
+  const [transferData, deliveryData, requestData, reviewData] = await Promise.all([
+    getResellerOwnershipTransferData(),
+    getResellerStoreDeliveryData(),
+    getResellerBuyerRequestsData(),
+    getResellerReviewsData()
+  ]);
+  const futureHooks = [
+    "Admin mediation",
+    "Dispute evidence uploads",
+    "Refund workflow integration",
+    "Ownership rollback review",
+    "Buyer claim investigation",
+    "Dispute notifications"
+  ];
+  const safetyNotes = [
+    "Disputes are private reseller workflow records and never public.",
+    "Buyer data remains masked or placeholder-only.",
+    "Internal admin notes are not exposed in this reseller view.",
+    "No refund, ownership reversal, payment action, account suspension, wallet, payout, withdrawal, commission, or fake sale is executed.",
+    "Delivery Center, Ownership Transfer, Reviews, and Buyer Requests remain separate systems."
+  ];
+
+  if (!user) {
+    return {
+      categories: resellerDisputeCategories,
+      disputes: [],
+      emptyState: "No disputes yet. Future disagreements will appear here as private workflow records only.",
+      futureHooks,
+      priorityOptions: resellerDisputePriorities,
+      relatedOptions: {
+        deliveries: [],
+        requests: [],
+        reviews: [],
+        transfers: []
+      },
+      safetyNotes,
+      selectedDispute: null,
+      statusFoundation: resellerDisputeStatuses,
+      summary: {
+        awaitingResponse: 0,
+        closed: 0,
+        escalated: 0,
+        open: 0,
+        underReview: 0
+      }
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_disputes")
+        .order("created_at", { ascending: false })
+        .limit(120)
+    : { data: [] };
+  const grouped = new Map<string, Record<string, unknown>[]>();
+
+  ((data ?? []) as unknown as Record<string, unknown>[]).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const disputeId = textValue(metadata.dispute_id, String(row.id ?? "dispute-placeholder"));
+    grouped.set(disputeId, [...(grouped.get(disputeId) ?? []), row]);
+  });
+
+  const disputes = Array.from(grouped.values()).map(disputeFromEvents);
+  const selectedDispute =
+    (selectedDisputeId
+      ? disputes.find((dispute) => dispute.disputeId === selectedDisputeId)
+      : disputes[0]) ?? null;
+
+  return {
+    categories: resellerDisputeCategories,
+    disputes,
+    emptyState: "No disputes yet. Create a private dispute placeholder to track a disagreement without financial or ownership actions.",
+    futureHooks,
+    priorityOptions: resellerDisputePriorities,
+    relatedOptions: {
+      deliveries: deliveryData.deliveries,
+      requests: requestData.requests,
+      reviews: reviewData.latest,
+      transfers: transferData.transfers
+    },
+    safetyNotes,
+    selectedDispute,
+    statusFoundation: resellerDisputeStatuses,
+    summary: {
+      awaitingResponse: disputes.filter((dispute) => dispute.status === "awaiting_response").length,
+      closed: disputes.filter((dispute) => dispute.status === "closed" || dispute.status === "resolved_placeholder" || dispute.status === "rejected").length,
+      escalated: disputes.filter((dispute) => dispute.status === "escalated").length,
+      open: disputes.filter((dispute) => dispute.status === "open").length,
+      underReview: disputes.filter((dispute) => dispute.status === "under_review").length
+    }
   };
 }
 
