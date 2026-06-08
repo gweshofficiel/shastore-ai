@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type DeliveryRole = "delivery" | "pending_delivery" | "suspended_delivery";
@@ -43,6 +42,10 @@ export type DeliveryAssignedOrder = {
   phone: string | null;
   proofNotes: string | null;
   proofSubmitted: boolean;
+  returnNotes: string | null;
+  returnReason: string | null;
+  returnRequestedDate: string | null;
+  returnStatus: string | null;
   source: "orders" | "store_orders";
   status: DeliveryAssignmentStatus;
   storeId: string;
@@ -57,8 +60,16 @@ export type DeliveryAssignedOrdersData = {
   codPendingSettlement: number;
   codSettled: number;
   deliveredOrders: number;
+  failedDeliveries: number;
   pickedUpOrders: number;
+  reschedules: number;
+  returnRate: number;
+  returnsInProgress: number;
   returnedOrders: number;
+  completedReturns: number;
+  failedDeliveryRate: number;
+  refusalRate: number;
+  rescheduleRate: number;
   orders: DeliveryAssignedOrder[];
 };
 
@@ -109,6 +120,14 @@ type CodCollectionRow = {
   notes?: string | null;
   settled_at?: string | null;
   status?: CodCollectionStatus | null;
+};
+
+type DeliveryReturnRow = {
+  assignment_id: string;
+  notes?: string | null;
+  reason?: string | null;
+  requested_delivery_date_placeholder?: string | null;
+  status?: string | null;
 };
 
 function normalizeDeliveryEmail(value: string | null | undefined) {
@@ -175,10 +194,12 @@ function normalizeAssignmentStatus(value: string | null | undefined): DeliveryAs
 function toAssignedOrder(
   row: DeliveryAssignmentRow,
   proofByAssignmentId: Map<string, DeliveryProofRow> = new Map(),
-  codByAssignmentId: Map<string, CodCollectionRow> = new Map()
+  codByAssignmentId: Map<string, CodCollectionRow> = new Map(),
+  returnByAssignmentId: Map<string, DeliveryReturnRow> = new Map()
 ): DeliveryAssignedOrder {
   const proof = proofByAssignmentId.get(row.id) ?? null;
   const cod = codByAssignmentId.get(row.id) ?? null;
+  const deliveryReturn = returnByAssignmentId.get(row.id) ?? null;
 
   return {
     amount: numericValue(row.order_amount),
@@ -200,6 +221,10 @@ function toAssignedOrder(
     phone: row.customer_phone ?? null,
     proofNotes: proof?.notes ?? null,
     proofSubmitted: Boolean(proof),
+    returnNotes: deliveryReturn?.notes ?? null,
+    returnReason: deliveryReturn?.reason ?? null,
+    returnRequestedDate: deliveryReturn?.requested_delivery_date_placeholder ?? null,
+    returnStatus: deliveryReturn?.status ?? null,
     source: row.order_source ?? "store_orders",
     status: normalizeAssignmentStatus(row.status),
     storeId: row.store_id,
@@ -372,13 +397,7 @@ export async function linkDeliveryAgentToAuthUser({
   }
 }
 
-export async function getDeliveryDashboardData({
-  supabase,
-  user
-}: {
-  supabase: SupabaseClient;
-  user: { email?: string | null; id: string };
-}) {
+export async function getDeliveryDashboardData({ user }: { user: { email?: string | null; id: string } }) {
   const lookup = await getDeliveryAccessForUser({
     email: user.email,
     userId: user.id
@@ -398,9 +417,17 @@ export async function getDeliveryAssignedOrdersData(
       codCollectedTotal: 0,
       codPendingSettlement: 0,
       codSettled: 0,
+      completedReturns: 0,
       deliveredOrders: 0,
+      failedDeliveries: 0,
+      failedDeliveryRate: 0,
       orders: [],
       pickedUpOrders: 0,
+      refusalRate: 0,
+      rescheduleRate: 0,
+      reschedules: 0,
+      returnRate: 0,
+      returnsInProgress: 0,
       returnedOrders: 0
     };
   }
@@ -415,9 +442,17 @@ export async function getDeliveryAssignedOrdersData(
       codCollectedTotal: 0,
       codPendingSettlement: 0,
       codSettled: 0,
+      completedReturns: 0,
       deliveredOrders: 0,
+      failedDeliveries: 0,
+      failedDeliveryRate: 0,
       orders: [],
       pickedUpOrders: 0,
+      refusalRate: 0,
+      rescheduleRate: 0,
+      reschedules: 0,
+      returnRate: 0,
+      returnsInProgress: 0,
       returnedOrders: 0
     };
   }
@@ -445,9 +480,17 @@ export async function getDeliveryAssignedOrdersData(
       codCollectedTotal: 0,
       codPendingSettlement: 0,
       codSettled: 0,
+      completedReturns: 0,
       deliveredOrders: 0,
+      failedDeliveries: 0,
+      failedDeliveryRate: 0,
       orders: [],
       pickedUpOrders: 0,
+      refusalRate: 0,
+      rescheduleRate: 0,
+      reschedules: 0,
+      returnRate: 0,
+      returnsInProgress: 0,
       returnedOrders: 0
     };
   }
@@ -456,9 +499,10 @@ export async function getDeliveryAssignedOrdersData(
   const assignmentIds = assignmentRows.map((row) => row.id);
   const proofByAssignmentId = new Map<string, DeliveryProofRow>();
   const codByAssignmentId = new Map<string, CodCollectionRow>();
+  const returnByAssignmentId = new Map<string, DeliveryReturnRow>();
 
   if (assignmentIds.length) {
-    const [proofResult, codResult] = await Promise.all([
+    const [proofResult, codResult, returnResult] = await Promise.all([
       admin
         .from("delivery_proofs" as never)
         .select("assignment_id, delivered_at, notes")
@@ -466,10 +510,15 @@ export async function getDeliveryAssignedOrdersData(
       admin
         .from("cod_collections" as never)
         .select("assignment_id, amount, currency, status, collected_at, settled_at, notes")
+        .in("assignment_id" as never, assignmentIds as never),
+      admin
+        .from("delivery_returns" as never)
+        .select("assignment_id, reason, status, notes, requested_delivery_date_placeholder")
         .in("assignment_id" as never, assignmentIds as never)
     ]);
     const { data: proofRows, error: proofError } = proofResult;
     const { data: codRows, error: codError } = codResult;
+    const { data: returnRows, error: returnError } = returnResult;
 
     if (proofError) {
       console.warn("[delivery-assignments] proof lookup failed", {
@@ -485,6 +534,13 @@ export async function getDeliveryAssignedOrdersData(
       });
     }
 
+    if (returnError) {
+      console.warn("[delivery-assignments] return lookup failed", {
+        agentId: agent.agentId,
+        message: returnError.message
+      });
+    }
+
     for (const proof of (proofRows ?? []) as unknown as DeliveryProofRow[]) {
       proofByAssignmentId.set(proof.assignment_id, proof);
     }
@@ -492,10 +548,29 @@ export async function getDeliveryAssignedOrdersData(
     for (const cod of (codRows ?? []) as unknown as CodCollectionRow[]) {
       codByAssignmentId.set(cod.assignment_id, cod);
     }
+
+    for (const deliveryReturn of (returnRows ?? []) as unknown as DeliveryReturnRow[]) {
+      returnByAssignmentId.set(deliveryReturn.assignment_id, deliveryReturn);
+    }
   }
 
-  const orders = assignmentRows.map((row) => toAssignedOrder(row, proofByAssignmentId, codByAssignmentId));
+  const orders = assignmentRows.map((row) =>
+    toAssignedOrder(row, proofByAssignmentId, codByAssignmentId, returnByAssignmentId)
+  );
   const todayKey = new Date().toISOString().slice(0, 10);
+  const totalOrders = Math.max(orders.length, 1);
+  const failedDeliveries = orders.filter((order) => Boolean(order.returnStatus)).length;
+  const returnsInProgress = orders.filter(
+    (order) =>
+      order.returnStatus === "customer_refused" ||
+      order.returnStatus === "customer_unreachable" ||
+      order.returnStatus === "wrong_address" ||
+      order.returnStatus === "return_in_progress" ||
+      order.returnStatus === "returned_to_store"
+  ).length;
+  const completedReturns = orders.filter((order) => order.returnStatus === "return_completed").length;
+  const reschedules = orders.filter((order) => order.returnStatus === "reschedule_requested").length;
+  const refusals = orders.filter((order) => order.returnReason === "customer_refused").length;
 
   return {
     acceptedOrders: orders.filter((order) => order.status === "accepted").length,
@@ -512,9 +587,17 @@ export async function getDeliveryAssignedOrdersData(
     codSettled: orders
       .filter((order) => order.codStatus === "settled_to_store")
       .reduce((sum, order) => sum + order.codAmount, 0),
+    completedReturns,
     deliveredOrders: orders.filter((order) => order.status === "delivered").length,
+    failedDeliveries,
+    failedDeliveryRate: Math.round((failedDeliveries / totalOrders) * 100),
     orders,
     pickedUpOrders: orders.filter((order) => order.status === "picked_up").length,
+    refusalRate: Math.round((refusals / totalOrders) * 100),
+    rescheduleRate: Math.round((reschedules / totalOrders) * 100),
+    reschedules,
+    returnRate: Math.round(((returnsInProgress + completedReturns) / totalOrders) * 100),
+    returnsInProgress,
     returnedOrders: orders.filter((order) => order.status === "returned").length
   };
 }

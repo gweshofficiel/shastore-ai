@@ -60,7 +60,7 @@ export default async function DeliveryDashboardPage() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
               Linked to your store owner delivery agent profile. Assigned orders, proof of delivery,
-              COD, and returns remain placeholders in this phase.
+              COD, failed deliveries, reschedules, and returns remain store-scoped to this delivery account.
             </p>
           </div>
           <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
@@ -98,6 +98,11 @@ export default async function DeliveryDashboardPage() {
             label: "Assigned orders",
             value: assignmentData.assignedOrders.toLocaleString(),
             detail: "Store orders assigned to this delivery agent."
+          },
+          {
+            label: "Failed deliveries",
+            value: assignmentData.failedDeliveries.toLocaleString(),
+            detail: `${assignmentData.failedDeliveryRate}% failed delivery rate.`
           },
           {
             label: "Collected today",
@@ -157,8 +162,23 @@ export default async function DeliveryDashboardPage() {
           },
           {
             label: "Returns",
-            value: assignmentData.returnedOrders.toLocaleString(),
-            detail: "Returned assignments tracked without proof-of-delivery yet."
+            value: assignmentData.returnsInProgress.toLocaleString(),
+            detail: `${assignmentData.returnRate}% return rate across assigned orders.`
+          },
+          {
+            label: "Completed returns",
+            value: assignmentData.completedReturns.toLocaleString(),
+            detail: "Failed deliveries completed back to store."
+          },
+          {
+            label: "Reschedules",
+            value: assignmentData.reschedules.toLocaleString(),
+            detail: `${assignmentData.rescheduleRate}% reschedule rate.`
+          },
+          {
+            label: "Refusals",
+            value: `${assignmentData.refusalRate}%`,
+            detail: "Customer refused rate across assigned orders."
           },
           {
             label: "Pending settlement",

@@ -2,6 +2,7 @@ import { requireDeliveryAccess } from "@/lib/delivery/access";
 import { markCashCollectedAction } from "@/lib/delivery/cod-actions";
 import { getDeliveryAssignedOrdersData, type DeliveryAssignmentStatus } from "@/lib/delivery/data";
 import { submitProofOfDeliveryAction } from "@/lib/delivery/proof-actions";
+import { reportFailedDeliveryAction } from "@/lib/delivery/return-actions";
 import { updateDeliveryAssignmentStatusAction } from "@/lib/delivery/status-actions";
 
 export const dynamic = "force-dynamic";
@@ -132,6 +133,26 @@ function statusMessage(value: string | string[] | undefined) {
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
       text: "Proof of delivery submitted and order marked delivered."
     },
+    "return-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Failed delivery report could not be saved. Please try again."
+    },
+    "return-invalid": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Choose a valid failed delivery reason."
+    },
+    "return-not-found": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That return assignment does not belong to this delivery account."
+    },
+    "return-reported": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Failed delivery / return report submitted."
+    },
+    "return-status-invalid": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "This order can no longer be reported as failed from delivery."
+    },
     unavailable: {
       className: "border-amber-200 bg-amber-50 text-amber-700",
       text: "Delivery status service is not configured."
@@ -182,7 +203,10 @@ export default async function DeliveryAssignedOrdersPage({
           { label: "Accepted Orders", value: data.acceptedOrders },
           { label: "Picked Up Orders", value: data.pickedUpOrders },
           { label: "Delivered Orders", value: data.deliveredOrders },
-          { label: "Returns", value: data.returnedOrders }
+          { label: "Failed Deliveries", value: data.failedDeliveries },
+          { label: "Returns In Progress", value: data.returnsInProgress },
+          { label: "Completed Returns", value: data.completedReturns },
+          { label: "Reschedules", value: data.reschedules }
         ].map((card) => (
           <article
             className="rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_55px_-44px_rgba(15,23,42,0.7)]"
@@ -264,6 +288,7 @@ export default async function DeliveryAssignedOrdersPage({
                   </div>
                   <ProofSection order={order} />
                   <CodCollectionSection order={order} />
+                  <FailedDeliverySection order={order} />
                 </article>
               ))}
             </div>
@@ -280,6 +305,120 @@ export default async function DeliveryAssignedOrdersPage({
         )}
       </section>
     </div>
+  );
+}
+
+function returnReasonLabel(reason: string | null) {
+  const labels: Record<string, string> = {
+    customer_refused: "Customer Refused",
+    customer_unreachable: "Customer Unreachable",
+    reschedule_requested: "Reschedule Requested",
+    wrong_address: "Wrong Address"
+  };
+
+  return reason ? labels[reason] ?? reason.replaceAll("_", " ") : "Not reported";
+}
+
+function returnStatusLabel(status: string | null) {
+  const labels: Record<string, string> = {
+    customer_refused: "Customer Refused",
+    customer_unreachable: "Customer Unreachable",
+    reschedule_requested: "Reschedule Requested",
+    return_completed: "Return Completed",
+    return_in_progress: "Return In Progress",
+    returned_to_store: "Returned To Store",
+    wrong_address: "Wrong Address"
+  };
+
+  return status ? labels[status] ?? status.replaceAll("_", " ") : "Not started";
+}
+
+function FailedDeliverySection({
+  order
+}: {
+  order: {
+    id: string;
+    returnNotes: string | null;
+    returnReason: string | null;
+    returnRequestedDate: string | null;
+    returnStatus: string | null;
+    status: DeliveryAssignmentStatus;
+  };
+}) {
+  if (order.returnStatus) {
+    return (
+      <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-950">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-red-700">
+          Failed delivery / return
+        </p>
+        <p className="mt-2 font-black">{returnStatusLabel(order.returnStatus)}</p>
+        <p className="mt-1">Reason: {returnReasonLabel(order.returnReason)}</p>
+        {order.returnRequestedDate ? (
+          <p className="mt-1">Requested delivery date: {formatDate(order.returnRequestedDate)}</p>
+        ) : null}
+        {order.returnNotes ? (
+          <p className="mt-3 rounded-2xl bg-white p-3 leading-6">{order.returnNotes}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (order.status === "delivered" || order.status === "returned") {
+    return null;
+  }
+
+  return (
+    <form
+      action={reportFailedDeliveryAction}
+      className="mt-4 grid gap-3 rounded-2xl border border-red-100 bg-red-50 p-4"
+    >
+      <input name="assignmentId" type="hidden" value={order.id} />
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-red-700">
+          Report failed delivery
+        </p>
+        <p className="mt-1 text-sm font-semibold leading-6 text-red-950">
+          Report a failed delivery, return action, or reschedule request for this assigned order.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-red-700">
+          Reason
+          <select
+            className="h-11 rounded-2xl border border-red-100 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none"
+            name="reason"
+            required
+          >
+            <option value="customer_refused">Customer Refused</option>
+            <option value="customer_unreachable">Customer Unreachable</option>
+            <option value="wrong_address">Wrong Address</option>
+            <option value="reschedule_requested">Reschedule Requested</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-red-700">
+          New delivery date placeholder
+          <input
+            className="h-11 rounded-2xl border border-red-100 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none"
+            name="requestedDeliveryDate"
+            type="datetime-local"
+          />
+        </label>
+      </div>
+      <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-red-700">
+        Notes
+        <textarea
+          className="min-h-24 rounded-2xl border border-red-100 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none"
+          name="notes"
+          placeholder="Add safe notes for the store owner. Do not include sensitive customer data."
+        />
+      </label>
+      <button
+        className="h-11 rounded-2xl bg-red-700 px-4 text-xs font-black uppercase tracking-[0.12em] text-white"
+        type="submit"
+      >
+        Submit return action
+      </button>
+    </form>
   );
 }
 
