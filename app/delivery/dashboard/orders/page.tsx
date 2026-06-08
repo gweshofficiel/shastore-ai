@@ -1,4 +1,5 @@
 import { requireDeliveryAccess } from "@/lib/delivery/access";
+import { markCashCollectedAction } from "@/lib/delivery/cod-actions";
 import { getDeliveryAssignedOrdersData, type DeliveryAssignmentStatus } from "@/lib/delivery/data";
 import { submitProofOfDeliveryAction } from "@/lib/delivery/proof-actions";
 import { updateDeliveryAssignmentStatusAction } from "@/lib/delivery/status-actions";
@@ -66,6 +67,26 @@ function statusMessage(value: string | string[] | undefined) {
     "access-denied": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Delivery access could not be verified."
+    },
+    "cod-collected": {
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      text: "Cash collection marked collected."
+    },
+    "cod-delivered-required": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Cash can only be collected after proof delivery marks the order delivered."
+    },
+    "cod-failed": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Cash collection could not be saved. Please try again."
+    },
+    "cod-invalid": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Choose a valid assignment before collecting cash."
+    },
+    "cod-not-found": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "That COD assignment does not belong to this delivery account."
     },
     failed: {
       className: "border-red-200 bg-red-50 text-red-700",
@@ -175,6 +196,25 @@ export default async function DeliveryAssignedOrdersPage({
         ))}
       </section>
 
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Collected Today", value: formatMoney(data.codCollectedToday) },
+          { label: "Collected Total", value: formatMoney(data.codCollectedTotal) },
+          { label: "Pending Settlement", value: formatMoney(data.codPendingSettlement) },
+          { label: "Settled", value: formatMoney(data.codSettled) }
+        ].map((card) => (
+          <article
+            className="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/80 p-5 shadow-[0_18px_55px_-44px_rgba(15,23,42,0.7)]"
+            key={card.label}
+          >
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+              {card.label}
+            </p>
+            <p className="mt-3 text-2xl font-black text-emerald-950">{card.value}</p>
+          </article>
+        ))}
+      </section>
+
       <section className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] lg:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -223,6 +263,7 @@ export default async function DeliveryAssignedOrdersPage({
                     <StatusUpdateForm assignmentId={order.id} status={order.status} />
                   </div>
                   <ProofSection order={order} />
+                  <CodCollectionSection order={order} />
                 </article>
               ))}
             </div>
@@ -238,6 +279,101 @@ export default async function DeliveryAssignedOrdersPage({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function codStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    collected: "Collected",
+    disputed: "Disputed",
+    not_started: "Pending Collection",
+    pending_collection: "Pending Collection",
+    settled_to_store: "Settled To Store"
+  };
+
+  return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function CodCollectionSection({
+  order
+}: {
+  order: {
+    codAmount: number;
+    codCollectedAt: string | null;
+    codCurrency: string;
+    codNotes: string | null;
+    codSettledAt: string | null;
+    codStatus: string;
+    id: string;
+    proofSubmitted: boolean;
+    status: DeliveryAssignmentStatus;
+  };
+}) {
+  return (
+    <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">
+            Cash on delivery
+          </p>
+          <p className="mt-1 text-sm font-semibold text-amber-950">
+            COD Amount: {formatMoney(order.codAmount, order.codCurrency)}
+          </p>
+          <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+            {codStatusLabel(order.codStatus)}
+          </p>
+        </div>
+        {order.codCollectedAt ? (
+          <p className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-amber-700">
+            Collected {formatDate(order.codCollectedAt)}
+          </p>
+        ) : null}
+      </div>
+      {order.codNotes ? (
+        <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-amber-950">
+          {order.codNotes}
+        </p>
+      ) : null}
+      {order.codSettledAt ? (
+        <p className="mt-3 text-sm font-bold text-amber-950">
+          Settled to store {formatDate(order.codSettledAt)}.
+        </p>
+      ) : null}
+      {order.proofSubmitted && (order.codStatus === "not_started" || order.codStatus === "pending_collection") ? (
+        <form action={markCashCollectedAction} className="mt-4 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
+          <input name="assignmentId" type="hidden" value={order.id} />
+          <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-amber-700">
+            Amount
+            <input
+              className="h-11 rounded-2xl border border-amber-100 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none"
+              defaultValue={order.codAmount.toFixed(2)}
+              name="amount"
+              type="number"
+              min="0"
+              step="0.01"
+            />
+          </label>
+          <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-amber-700">
+            Collection notes
+            <input
+              className="h-11 rounded-2xl border border-amber-100 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none"
+              name="notes"
+              placeholder="Cash received from customer"
+            />
+          </label>
+          <button
+            className="self-end rounded-2xl bg-amber-600 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white"
+            type="submit"
+          >
+            Mark Cash Collected
+          </button>
+        </form>
+      ) : !order.proofSubmitted ? (
+        <p className="mt-3 text-sm font-bold text-amber-800">
+          Submit proof of delivery before collecting COD cash.
+        </p>
+      ) : null}
     </div>
   );
 }

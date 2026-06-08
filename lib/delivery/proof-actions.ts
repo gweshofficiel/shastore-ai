@@ -8,10 +8,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const assignedOrdersPath = "/delivery/dashboard/orders";
 
 type AssignmentRow = {
+  currency?: string | null;
   delivery_agent_id: string;
   delivery_code_placeholder?: string | null;
   id: string;
   metadata?: Record<string, unknown> | null;
+  order_amount?: number | string | null;
   order_id: string;
   order_source: "orders" | "store_orders";
   status: string;
@@ -21,6 +23,19 @@ type AssignmentRow = {
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 500) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function numericValue(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
 }
 
 function proofRedirect(status: string): never {
@@ -126,6 +141,47 @@ async function syncOrderDelivered({
   }
 }
 
+async function ensurePendingCodCollection({
+  assignment,
+  deliveredAt
+}: {
+  assignment: AssignmentRow;
+  deliveredAt: string;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return;
+  }
+
+  const { error } = await admin.from("cod_collections" as never).upsert(
+    {
+      amount: numericValue(assignment.order_amount),
+      assignment_id: assignment.id,
+      currency: assignment.currency ?? "USD",
+      delivery_agent_id: assignment.delivery_agent_id,
+      metadata: {
+        createdFrom: "proof_of_delivery",
+        deliveredAt
+      },
+      order_id: assignment.order_id,
+      order_source: assignment.order_source,
+      status: "pending_collection",
+      store_id: assignment.store_id,
+      updated_at: deliveredAt,
+      workspace_id: assignment.workspace_id
+    } as never,
+    { onConflict: "assignment_id" } as never
+  );
+
+  if (error) {
+    console.warn("[delivery-proof] pending cod collection skipped", {
+      assignmentId: assignment.id,
+      message: error.message
+    });
+  }
+}
+
 export async function submitProofOfDeliveryAction(formData: FormData) {
   const assignmentId = cleanText(formData.get("assignmentId"), 80);
   const deliveryCode = cleanText(formData.get("deliveryCode"), 80);
@@ -153,7 +209,7 @@ export async function submitProofOfDeliveryAction(formData: FormData) {
   const { data, error } = await admin
     .from("delivery_assignments" as never)
     .select(
-      "id, workspace_id, store_id, order_source, order_id, delivery_agent_id, status, delivery_code_placeholder, metadata"
+      "id, workspace_id, store_id, order_source, order_id, delivery_agent_id, status, delivery_code_placeholder, order_amount, currency, metadata"
     )
     .eq("id" as never, assignmentId as never)
     .eq("delivery_agent_id" as never, agent.agentId as never)
@@ -273,11 +329,16 @@ export async function submitProofOfDeliveryAction(formData: FormData) {
       assignment,
       deliveredAt,
       notes: notes || null
+    }),
+    ensurePendingCodCollection({
+      assignment,
+      deliveredAt
     })
   ]);
 
   revalidatePath(assignedOrdersPath);
   revalidatePath("/delivery/dashboard");
+  revalidatePath("/dashboard/cod");
   revalidatePath(`/dashboard/orders/${assignment.order_id}`);
   proofRedirect("proof-submitted");
 }

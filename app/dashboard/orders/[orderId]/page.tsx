@@ -70,6 +70,16 @@ type DeliveryProofSummary = {
   signature_text_placeholder: string | null;
 };
 
+type CodCollectionSummary = {
+  amount: number | string | null;
+  collected_at: string | null;
+  currency: string | null;
+  delivery_agent_id: string | null;
+  notes: string | null;
+  settled_at: string | null;
+  status: string | null;
+};
+
 function numericValue(value: number | string | null | undefined) {
   if (typeof value === "number") {
     return value;
@@ -212,6 +222,18 @@ function deliveryStatusLabel(status: string | null | undefined) {
     picked_up: "Picked Up"
   };
   const normalized = status?.trim() || "Not assigned";
+
+  return labels[normalized] ?? normalized.replaceAll("_", " ");
+}
+
+function codStatusLabel(status: string | null | undefined) {
+  const labels: Record<string, string> = {
+    collected: "Collected",
+    disputed: "Disputed",
+    pending_collection: "Pending Collection",
+    settled_to_store: "Settled To Store"
+  };
+  const normalized = status?.trim() || "Not started";
 
   return labels[normalized] ?? normalized.replaceAll("_", " ");
 }
@@ -450,6 +472,32 @@ async function loadDeliveryProofSummary({
   return data as unknown as DeliveryProofSummary | null;
 }
 
+async function loadCodCollectionSummary({
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("cod_collections" as never)
+    .select("delivery_agent_id, amount, currency, status, collected_at, settled_at, notes")
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as unknown as CodCollectionSummary | null;
+}
+
 async function loadDeliveryAgents({
   storeId,
   supabase,
@@ -593,6 +641,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const codCollection = await loadCodCollectionSummary({
+          orderId: row.id,
+          source: "store_orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId: row.store_id,
           supabase,
@@ -623,6 +677,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agents: deliveryAgents,
             delivery_assignment: deliveryAssignment,
             delivery_proof: deliveryProof,
+            cod_collection: codCollection,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -766,6 +821,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const codCollection = await loadCodCollectionSummary({
+          orderId: row.id,
+          source: "orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId,
           supabase,
@@ -796,6 +857,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agents: deliveryAgents,
             delivery_assignment: deliveryAssignment,
             delivery_proof: deliveryProof,
+            cod_collection: codCollection,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -991,6 +1053,30 @@ export default async function OrderDetailPage({
               {order.delivery_proof.notes ? (
                 <p className="mt-4 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-emerald-950">
                   {order.delivery_proof.notes}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {order.cod_collection ? (
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">
+                Cash on delivery
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Info label="COD status" value={codStatusLabel(order.cod_collection.status)} />
+                <Info
+                  label="Amount"
+                  value={formatMoney(order.cod_collection.amount ?? 0, order.cod_collection.currency ?? order.currency)}
+                />
+                <Info label="Collected by" value={order.delivery_agent?.name ?? "Assigned delivery agent"} />
+                <Info label="Collected date" value={formatDate(order.cod_collection.collected_at)} />
+                <Info label="Settlement status" value={codStatusLabel(order.cod_collection.status)} />
+                <Info label="Settled date" value={formatDate(order.cod_collection.settled_at)} />
+              </div>
+              {order.cod_collection.notes ? (
+                <p className="mt-4 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-amber-950">
+                  {order.cod_collection.notes}
                 </p>
               ) : null}
             </div>

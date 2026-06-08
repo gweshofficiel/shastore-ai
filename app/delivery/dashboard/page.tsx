@@ -33,6 +33,13 @@ function statusLabel(role: string, agentStatus?: string | null) {
   return "Active delivery agent";
 }
 
+function formatMoney(amount: number, currency = "USD") {
+  return new Intl.NumberFormat("en", {
+    currency,
+    style: "currency"
+  }).format(amount);
+}
+
 export default async function DeliveryDashboardPage() {
   const { agent, role, user } = await requireDeliveryAccess();
   const [account, assignmentData] = await Promise.all([
@@ -91,6 +98,11 @@ export default async function DeliveryDashboardPage() {
             label: "Assigned orders",
             value: assignmentData.assignedOrders.toLocaleString(),
             detail: "Store orders assigned to this delivery agent."
+          },
+          {
+            label: "Collected today",
+            value: formatMoney(assignmentData.codCollectedToday),
+            detail: "COD cash marked collected today."
           }
         ].map((card) => (
           <article
@@ -147,6 +159,16 @@ export default async function DeliveryDashboardPage() {
             label: "Returns",
             value: assignmentData.returnedOrders.toLocaleString(),
             detail: "Returned assignments tracked without proof-of-delivery yet."
+          },
+          {
+            label: "Pending settlement",
+            value: formatMoney(assignmentData.codPendingSettlement),
+            detail: "Collected COD cash awaiting owner settlement."
+          },
+          {
+            label: "Settled COD",
+            value: formatMoney(assignmentData.codSettled),
+            detail: "COD cash settled to the store."
           }
         ].map((card) => (
           <article

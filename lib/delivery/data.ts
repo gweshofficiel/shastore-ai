@@ -27,6 +27,12 @@ export type DeliveryAssignedOrder = {
   amount: number;
   assignedAt: string;
   city: string | null;
+  codAmount: number;
+  codCollectedAt: string | null;
+  codCurrency: string;
+  codNotes: string | null;
+  codSettledAt: string | null;
+  codStatus: CodCollectionStatus;
   currency: string;
   customer: string | null;
   deliveredAt: string | null;
@@ -46,6 +52,10 @@ export type DeliveryAssignedOrder = {
 export type DeliveryAssignedOrdersData = {
   acceptedOrders: number;
   assignedOrders: number;
+  codCollectedToday: number;
+  codCollectedTotal: number;
+  codPendingSettlement: number;
+  codSettled: number;
   deliveredOrders: number;
   pickedUpOrders: number;
   returnedOrders: number;
@@ -87,6 +97,18 @@ type DeliveryProofRow = {
   assignment_id: string;
   delivered_at?: string | null;
   notes?: string | null;
+};
+
+export type CodCollectionStatus = "pending_collection" | "collected" | "settled_to_store" | "disputed" | "not_started";
+
+type CodCollectionRow = {
+  amount?: number | string | null;
+  assignment_id: string;
+  collected_at?: string | null;
+  currency?: string | null;
+  notes?: string | null;
+  settled_at?: string | null;
+  status?: CodCollectionStatus | null;
 };
 
 function normalizeDeliveryEmail(value: string | null | undefined) {
@@ -152,14 +174,22 @@ function normalizeAssignmentStatus(value: string | null | undefined): DeliveryAs
 
 function toAssignedOrder(
   row: DeliveryAssignmentRow,
-  proofByAssignmentId: Map<string, DeliveryProofRow> = new Map()
+  proofByAssignmentId: Map<string, DeliveryProofRow> = new Map(),
+  codByAssignmentId: Map<string, CodCollectionRow> = new Map()
 ): DeliveryAssignedOrder {
   const proof = proofByAssignmentId.get(row.id) ?? null;
+  const cod = codByAssignmentId.get(row.id) ?? null;
 
   return {
     amount: numericValue(row.order_amount),
     assignedAt: row.assigned_at,
     city: row.customer_city ?? null,
+    codAmount: numericValue(cod?.amount ?? row.order_amount),
+    codCollectedAt: cod?.collected_at ?? null,
+    codCurrency: cod?.currency ?? row.currency ?? "USD",
+    codNotes: cod?.notes ?? null,
+    codSettledAt: cod?.settled_at ?? null,
+    codStatus: cod?.status ?? "not_started",
     currency: row.currency ?? "USD",
     customer: row.customer_name ?? null,
     deliveredAt: proof?.delivered_at ?? null,
@@ -364,6 +394,10 @@ export async function getDeliveryAssignedOrdersData(
     return {
       acceptedOrders: 0,
       assignedOrders: 0,
+      codCollectedToday: 0,
+      codCollectedTotal: 0,
+      codPendingSettlement: 0,
+      codSettled: 0,
       deliveredOrders: 0,
       orders: [],
       pickedUpOrders: 0,
@@ -377,6 +411,10 @@ export async function getDeliveryAssignedOrdersData(
     return {
       acceptedOrders: 0,
       assignedOrders: 0,
+      codCollectedToday: 0,
+      codCollectedTotal: 0,
+      codPendingSettlement: 0,
+      codSettled: 0,
       deliveredOrders: 0,
       orders: [],
       pickedUpOrders: 0,
@@ -403,6 +441,10 @@ export async function getDeliveryAssignedOrdersData(
     return {
       acceptedOrders: 0,
       assignedOrders: 0,
+      codCollectedToday: 0,
+      codCollectedTotal: 0,
+      codPendingSettlement: 0,
+      codSettled: 0,
       deliveredOrders: 0,
       orders: [],
       pickedUpOrders: 0,
@@ -413,12 +455,21 @@ export async function getDeliveryAssignedOrdersData(
   const assignmentRows = (data ?? []) as unknown as DeliveryAssignmentRow[];
   const assignmentIds = assignmentRows.map((row) => row.id);
   const proofByAssignmentId = new Map<string, DeliveryProofRow>();
+  const codByAssignmentId = new Map<string, CodCollectionRow>();
 
   if (assignmentIds.length) {
-    const { data: proofRows, error: proofError } = await admin
-      .from("delivery_proofs" as never)
-      .select("assignment_id, delivered_at, notes")
-      .in("assignment_id" as never, assignmentIds as never);
+    const [proofResult, codResult] = await Promise.all([
+      admin
+        .from("delivery_proofs" as never)
+        .select("assignment_id, delivered_at, notes")
+        .in("assignment_id" as never, assignmentIds as never),
+      admin
+        .from("cod_collections" as never)
+        .select("assignment_id, amount, currency, status, collected_at, settled_at, notes")
+        .in("assignment_id" as never, assignmentIds as never)
+    ]);
+    const { data: proofRows, error: proofError } = proofResult;
+    const { data: codRows, error: codError } = codResult;
 
     if (proofError) {
       console.warn("[delivery-assignments] proof lookup failed", {
@@ -427,16 +478,40 @@ export async function getDeliveryAssignedOrdersData(
       });
     }
 
+    if (codError) {
+      console.warn("[delivery-assignments] cod lookup failed", {
+        agentId: agent.agentId,
+        message: codError.message
+      });
+    }
+
     for (const proof of (proofRows ?? []) as unknown as DeliveryProofRow[]) {
       proofByAssignmentId.set(proof.assignment_id, proof);
     }
+
+    for (const cod of (codRows ?? []) as unknown as CodCollectionRow[]) {
+      codByAssignmentId.set(cod.assignment_id, cod);
+    }
   }
 
-  const orders = assignmentRows.map((row) => toAssignedOrder(row, proofByAssignmentId));
+  const orders = assignmentRows.map((row) => toAssignedOrder(row, proofByAssignmentId, codByAssignmentId));
+  const todayKey = new Date().toISOString().slice(0, 10);
 
   return {
     acceptedOrders: orders.filter((order) => order.status === "accepted").length,
     assignedOrders: orders.filter((order) => order.status === "assigned").length,
+    codCollectedToday: orders
+      .filter((order) => order.codStatus === "collected" && order.codCollectedAt?.slice(0, 10) === todayKey)
+      .reduce((sum, order) => sum + order.codAmount, 0),
+    codCollectedTotal: orders
+      .filter((order) => order.codStatus === "collected" || order.codStatus === "settled_to_store")
+      .reduce((sum, order) => sum + order.codAmount, 0),
+    codPendingSettlement: orders
+      .filter((order) => order.codStatus === "collected")
+      .reduce((sum, order) => sum + order.codAmount, 0),
+    codSettled: orders
+      .filter((order) => order.codStatus === "settled_to_store")
+      .reduce((sum, order) => sum + order.codAmount, 0),
     deliveredOrders: orders.filter((order) => order.status === "delivered").length,
     orders,
     pickedUpOrders: orders.filter((order) => order.status === "picked_up").length,
