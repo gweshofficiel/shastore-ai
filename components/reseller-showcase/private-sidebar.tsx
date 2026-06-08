@@ -5,6 +5,7 @@ import { ResellerPrivateNavLink } from "@/components/reseller-showcase/private-n
 
 const navItems = [
   { href: "/reseller/dashboard", label: "Overview", icon: "overview" },
+  { href: "/reseller/dashboard/profile", label: "Profile", icon: "showcase" },
   { href: "/reseller/dashboard/showcase", label: "Showcase", icon: "showcase" },
   { href: "/reseller/dashboard/listings", label: "Listings", icon: "stores" },
   { href: "/reseller/dashboard/templates", label: "Templates", icon: "templates" },
@@ -12,6 +13,7 @@ const navItems = [
   { href: "/reseller/dashboard/portfolio", label: "Portfolio", icon: "showcase" },
   { href: "/reseller/dashboard/categories", label: "Categories", icon: "showcase" },
   { href: "/reseller/dashboard/badges", label: "Badges", icon: "showcase" },
+  { href: "/reseller/dashboard/levels", label: "Levels", icon: "reports" },
   { href: "/reseller/dashboard/search-optimization", label: "Search Optimization", icon: "reports" },
   { href: "/reseller/dashboard/business", label: "Business Settings", icon: "business" },
   { href: "/reseller/dashboard/verification", label: "Verification", icon: "business" },

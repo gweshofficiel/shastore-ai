@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils";
 
 const resellerNavItems = [
   { href: "/reseller/dashboard", label: "Home" },
+  { href: "/reseller/dashboard/profile", label: "Profile" },
   { href: "/reseller/dashboard/showcase", label: "Showcase" },
   { href: "/reseller/dashboard/listings", label: "Listings" },
   { href: "/reseller/dashboard/previews", label: "Previews" },
   { href: "/reseller/dashboard/portfolio", label: "Portfolio" },
   { href: "/reseller/dashboard/categories", label: "Categories" },
   { href: "/reseller/dashboard/badges", label: "Badges" },
+  { href: "/reseller/dashboard/levels", label: "Levels" },
   { href: "/reseller/dashboard/search-optimization", label: "Search" },
   { href: "/reseller/dashboard/verification", label: "Verification" },
   { href: "/reseller/dashboard/orders", label: "Orders" },
