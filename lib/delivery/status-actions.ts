@@ -217,6 +217,10 @@ export async function updateDeliveryAssignmentStatusAction(formData: FormData) {
     deliveryStatusRedirect("invalid-transition");
   }
 
+  if (newStatus === "delivered") {
+    deliveryStatusRedirect("proof-required");
+  }
+
   const timestamp = new Date().toISOString();
   const metadata = assignment.metadata ?? {};
   const statusHistory = Array.isArray(metadata.status_history) ? metadata.status_history : [];

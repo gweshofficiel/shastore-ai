@@ -29,10 +29,14 @@ export type DeliveryAssignedOrder = {
   city: string | null;
   currency: string;
   customer: string | null;
+  deliveredAt: string | null;
+  deliveryCodeRequired: boolean;
   id: string;
   orderId: string;
   orderNumber: string;
   phone: string | null;
+  proofNotes: string | null;
+  proofSubmitted: boolean;
   source: "orders" | "store_orders";
   status: DeliveryAssignmentStatus;
   storeId: string;
@@ -67,6 +71,7 @@ type DeliveryAssignmentRow = {
   customer_city?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
+  delivery_code_placeholder?: string | null;
   delivery_agent_id: string;
   id: string;
   order_amount?: number | string | null;
@@ -76,6 +81,12 @@ type DeliveryAssignmentRow = {
   status?: string | null;
   store_id: string;
   updated_at?: string | null;
+};
+
+type DeliveryProofRow = {
+  assignment_id: string;
+  delivered_at?: string | null;
+  notes?: string | null;
 };
 
 function normalizeDeliveryEmail(value: string | null | undefined) {
@@ -139,17 +150,26 @@ function normalizeAssignmentStatus(value: string | null | undefined): DeliveryAs
   return "assigned";
 }
 
-function toAssignedOrder(row: DeliveryAssignmentRow): DeliveryAssignedOrder {
+function toAssignedOrder(
+  row: DeliveryAssignmentRow,
+  proofByAssignmentId: Map<string, DeliveryProofRow> = new Map()
+): DeliveryAssignedOrder {
+  const proof = proofByAssignmentId.get(row.id) ?? null;
+
   return {
     amount: numericValue(row.order_amount),
     assignedAt: row.assigned_at,
     city: row.customer_city ?? null,
     currency: row.currency ?? "USD",
     customer: row.customer_name ?? null,
+    deliveredAt: proof?.delivered_at ?? null,
+    deliveryCodeRequired: Boolean(row.delivery_code_placeholder),
     id: row.id,
     orderId: row.order_id,
     orderNumber: row.order_number ?? row.order_id.slice(0, 8).toUpperCase(),
     phone: row.customer_phone ?? null,
+    proofNotes: proof?.notes ?? null,
+    proofSubmitted: Boolean(proof),
     source: row.order_source ?? "store_orders",
     status: normalizeAssignmentStatus(row.status),
     storeId: row.store_id,
@@ -367,7 +387,7 @@ export async function getDeliveryAssignedOrdersData(
   const { data, error } = await admin
     .from("delivery_assignments" as never)
     .select(
-      "id, store_id, order_id, order_source, delivery_agent_id, assigned_at, updated_at, status, order_number, customer_name, customer_phone, customer_city, order_amount, currency"
+      "id, store_id, order_id, order_source, delivery_agent_id, assigned_at, updated_at, status, order_number, customer_name, customer_phone, customer_city, order_amount, currency, delivery_code_placeholder"
     )
     .eq("delivery_agent_id" as never, agent.agentId as never)
     .eq("store_id" as never, agent.storeId as never)
@@ -390,7 +410,29 @@ export async function getDeliveryAssignedOrdersData(
     };
   }
 
-  const orders = ((data ?? []) as unknown as DeliveryAssignmentRow[]).map(toAssignedOrder);
+  const assignmentRows = (data ?? []) as unknown as DeliveryAssignmentRow[];
+  const assignmentIds = assignmentRows.map((row) => row.id);
+  const proofByAssignmentId = new Map<string, DeliveryProofRow>();
+
+  if (assignmentIds.length) {
+    const { data: proofRows, error: proofError } = await admin
+      .from("delivery_proofs" as never)
+      .select("assignment_id, delivered_at, notes")
+      .in("assignment_id" as never, assignmentIds as never);
+
+    if (proofError) {
+      console.warn("[delivery-assignments] proof lookup failed", {
+        agentId: agent.agentId,
+        message: proofError.message
+      });
+    }
+
+    for (const proof of (proofRows ?? []) as unknown as DeliveryProofRow[]) {
+      proofByAssignmentId.set(proof.assignment_id, proof);
+    }
+  }
+
+  const orders = assignmentRows.map((row) => toAssignedOrder(row, proofByAssignmentId));
 
   return {
     acceptedOrders: orders.filter((order) => order.status === "accepted").length,

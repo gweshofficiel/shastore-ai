@@ -48,6 +48,11 @@ type RefundRequest = {
   status: string;
 };
 
+type SafeDeliveryProof = {
+  delivered_at: string | null;
+  notes: string | null;
+};
+
 function cleanText(value: string | undefined, maxLength = 120) {
   return (value ?? "").trim().slice(0, maxLength);
 }
@@ -324,6 +329,39 @@ async function loadCustomerRefundRequests({
   return (data ?? []) as unknown as RefundRequest[];
 }
 
+async function loadSafeDeliveryProof({
+  admin,
+  orderId,
+  source,
+  storeId,
+  workspaceId
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  orderId: string;
+  source: "orders" | "store_orders";
+  storeId: string;
+  workspaceId: string | null;
+}) {
+  let query = admin
+    .from("delivery_proofs" as never)
+    .select("delivered_at, notes")
+    .eq("store_id" as never, storeId as never)
+    .eq("order_source" as never, source as never)
+    .eq("order_id" as never, orderId as never);
+
+  if (workspaceId) {
+    query = query.eq("workspace_id" as never, workspaceId as never);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as unknown as SafeDeliveryProof | null;
+}
+
 async function loadTrackedOrder({
   phone,
   reference,
@@ -426,6 +464,13 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const deliveryProof = await loadSafeDeliveryProof({
+      admin,
+      orderId: order.id,
+      source: "orders",
+      storeId: preview.store.id,
+      workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -436,6 +481,7 @@ async function loadTrackedOrder({
         delivery_fee: order.delivery_fee ?? 0,
         delivery_method: order.delivery_method ?? null,
         delivery_notes: order.delivery_notes ?? null,
+        delivery_proof: deliveryProof,
         delivery_status: order.delivery_status ?? null,
         delivered_at: order.delivered_at ?? null,
         fulfillment_status: order.fulfillment_status ?? "pending",
@@ -506,6 +552,13 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const deliveryProof = await loadSafeDeliveryProof({
+      admin,
+      orderId: storeOrder.id,
+      source: "store_orders",
+      storeId: preview.store.id,
+      workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -516,6 +569,7 @@ async function loadTrackedOrder({
         delivery_fee: storeOrder.delivery_fee ?? 0,
         delivery_method: storeOrder.delivery_method ?? null,
         delivery_notes: storeOrder.delivery_notes ?? null,
+        delivery_proof: deliveryProof,
         delivery_status: storeOrder.delivery_status ?? null,
         delivered_at: storeOrder.delivered_at ?? null,
         fulfillment_status: storeOrder.fulfillment_status ?? "pending",
@@ -713,6 +767,22 @@ export default async function PublicOrderTrackingPage({
                   </p>
                 ) : null}
               </div>
+              {order.delivery_proof ? (
+                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                    Delivery confirmation
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Info label="Delivered" value="Yes" />
+                    <Info label="Delivered at" value={formatOptionalDate(order.delivery_proof.delivered_at)} />
+                  </div>
+                  {order.delivery_proof.notes ? (
+                    <p className="mt-4 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-emerald-950">
+                      {order.delivery_proof.notes}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {reviewStatusMessage ? (
                 <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
                   query.review === "submitted" || query.review === "already-submitted"

@@ -54,10 +54,20 @@ type DeliveryAgent = {
 };
 
 type DeliveryAssignmentSummary = {
+  id?: string | null;
   assigned_at: string | null;
   delivery_agent_id: string | null;
   status: string | null;
   updated_at: string | null;
+};
+
+type DeliveryProofSummary = {
+  customer_name: string | null;
+  delivered_at: string | null;
+  delivery_code_verified: boolean | null;
+  notes: string | null;
+  photo_url_placeholder: string | null;
+  signature_text_placeholder: string | null;
 };
 
 function numericValue(value: number | string | null | undefined) {
@@ -401,7 +411,7 @@ async function loadDeliveryAssignmentSummary({
 }) {
   const { data, error } = await supabase
     .from("delivery_assignments" as never)
-    .select("delivery_agent_id, status, assigned_at, updated_at")
+    .select("id, delivery_agent_id, status, assigned_at, updated_at")
     .eq("order_id" as never, orderId as never)
     .eq("order_source" as never, source as never)
     .eq("workspace_id" as never, workspaceId as never)
@@ -412,6 +422,32 @@ async function loadDeliveryAssignmentSummary({
   }
 
   return data as unknown as DeliveryAssignmentSummary | null;
+}
+
+async function loadDeliveryProofSummary({
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  workspaceId: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("delivery_proofs" as never)
+    .select("customer_name, delivered_at, delivery_code_verified, notes, photo_url_placeholder, signature_text_placeholder")
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as unknown as DeliveryProofSummary | null;
 }
 
 async function loadDeliveryAgents({
@@ -551,6 +587,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const deliveryProof = await loadDeliveryProofSummary({
+          orderId: row.id,
+          source: "store_orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId: row.store_id,
           supabase,
@@ -580,6 +622,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agent_id: row.delivery_agent_id ?? null,
             delivery_agents: deliveryAgents,
             delivery_assignment: deliveryAssignment,
+            delivery_proof: deliveryProof,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -717,6 +760,12 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
           supabase,
           workspaceId
         });
+        const deliveryProof = await loadDeliveryProofSummary({
+          orderId: row.id,
+          source: "orders",
+          supabase,
+          workspaceId
+        });
         const deliveryAgents = await loadDeliveryAgents({
           storeId,
           supabase,
@@ -746,6 +795,7 @@ async function loadOrderDetail(orderId: string, sourceHint?: string) {
             delivery_agent_id: row.delivery_agent_id ?? null,
             delivery_agents: deliveryAgents,
             delivery_assignment: deliveryAssignment,
+            delivery_proof: deliveryProof,
             delivery_assigned_at: row.delivery_assigned_at ?? null,
             delivery_delivered_at: row.delivery_delivered_at ?? null,
             delivery_failed_at: row.delivery_failed_at ?? null,
@@ -915,6 +965,36 @@ export default async function OrderDetailPage({
               </p>
             )}
           </div>
+
+          {order.delivery_proof ? (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                Proof of delivery
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Info label="Proof submitted" value="Yes" />
+                <Info label="Delivery agent" value={order.delivery_agent?.name ?? "Assigned agent"} />
+                <Info label="Delivered at" value={formatDate(order.delivery_proof.delivered_at)} />
+                <Info
+                  label="Delivery code verified"
+                  value={order.delivery_proof.delivery_code_verified ? "Verified" : "Fallback / not required"}
+                />
+                <Info
+                  label="Signature placeholder"
+                  value={order.delivery_proof.signature_text_placeholder || "Not provided"}
+                />
+                <Info
+                  label="Photo placeholder"
+                  value={order.delivery_proof.photo_url_placeholder || "Not provided"}
+                />
+              </div>
+              {order.delivery_proof.notes ? (
+                <p className="mt-4 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-emerald-950">
+                  {order.delivery_proof.notes}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
