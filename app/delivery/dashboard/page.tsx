@@ -20,16 +20,20 @@ const quickActions = [
   "Contact support placeholder"
 ];
 
-function statusLabel(role: string) {
+function statusLabel(role: string, agentStatus?: string | null) {
   if (role === "pending_delivery") {
     return "Pending delivery review";
   }
 
-  return "Active delivery shell";
+  if (agentStatus === "inactive") {
+    return "Inactive delivery agent";
+  }
+
+  return "Active delivery agent";
 }
 
 export default async function DeliveryDashboardPage() {
-  const { role, user } = await requireDeliveryAccess();
+  const { agent, role, user } = await requireDeliveryAccess();
   const account = await getOrCreateAccountProfile("delivery");
 
   return (
@@ -44,15 +48,17 @@ export default async function DeliveryDashboardPage() {
               Delivery dashboard
             </h1>
             <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-              A private fulfillment access shell for delivery users. No orders are assigned,
-              routed, collected, returned, or disputed in this phase.
+              Linked to your store owner delivery agent profile. Assigned orders, proof of delivery,
+              COD, and returns remain placeholders in this phase.
             </p>
           </div>
           <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-500">
               Account status
             </p>
-            <p className="mt-2 text-xl font-black text-emerald-950">{statusLabel(role)}</p>
+            <p className="mt-2 text-xl font-black text-emerald-950">
+              {statusLabel(role, agent?.status)}
+            </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
               {account?.account_id ?? accountProfileUnavailableMessage()}
             </p>
@@ -63,14 +69,45 @@ export default async function DeliveryDashboardPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
-            label: "Availability",
-            value: "Placeholder",
-            detail: "Future online, offline, pause, and route capacity controls."
+            label: "Agent name",
+            value: agent?.agentName ?? "Delivery agent",
+            detail: user.email ?? "No email on session"
+          },
+          {
+            label: "Store",
+            value: agent?.storeName ?? "Store linked",
+            detail: agent?.storeId ? `Store ID ${agent.storeId.slice(0, 8)}` : "Store scope pending"
+          },
+          {
+            label: "City / Zone",
+            value: agent?.cityZone ?? "Not set",
+            detail: "Service area from the owner delivery agent profile."
           },
           {
             label: "Assigned orders",
             value: "0",
-            detail: "No real order assignment is enabled in this phase."
+            detail: "Placeholder only. No live order assignment in this phase."
+          }
+        ].map((card) => (
+          <article
+            className="rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_55px_-44px_rgba(15,23,42,0.7)]"
+            key={card.label}
+          >
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              {card.label}
+            </p>
+            <p className="mt-3 text-2xl font-black text-slate-950">{card.value}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{card.detail}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: "Availability",
+            value: "Placeholder",
+            detail: "Future online, offline, pause, and route capacity controls."
           },
           {
             label: "Proof of delivery",
@@ -81,6 +118,11 @@ export default async function DeliveryDashboardPage() {
             label: "Support",
             value: "Ready",
             detail: "A safe placeholder area for delivery help and account review."
+          },
+          {
+            label: "Agent status",
+            value: agent?.status ?? role,
+            detail: "Approved by the store owner delivery agent record."
           }
         ].map((card) => (
           <article
@@ -135,9 +177,9 @@ export default async function DeliveryDashboardPage() {
 
       <section className="rounded-[2rem] border border-dashed border-emerald-200 bg-emerald-50/70 p-5 lg:p-6">
         <p className="text-sm font-bold leading-6 text-emerald-950">
-          Signed in as {user.email ?? "delivery user"}. Delivery authentication is isolated from
-          admin, owner, reseller, and customer areas. This dashboard intentionally does not read or
-          assign orders yet.
+          Signed in as {user.email ?? "delivery user"}. Delivery access is linked to the store owner
+          delivery agent record for {agent?.storeName ?? "your assigned store"}. Admin, owner,
+          reseller, and customer areas remain isolated.
         </p>
       </section>
     </>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { findAuthUserIdByEmail, linkDeliveryAgentToAuthUser } from "@/lib/delivery/data";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
 type OrderSource = "orders" | "store_orders";
@@ -183,17 +184,21 @@ export async function createDeliveryAgentAction(formData: FormData) {
     deliveryAgentsRedirect("access-denied", storeId);
   }
 
-  const { error } = await context.supabase.from("store_delivery_agents" as never).insert({
-    city_zone: cityZone,
-    email: email || null,
-    name,
-    normalized_email: email || null,
-    normalized_phone: normalizedPhone,
-    phone,
-    status,
-    store_id: storeId,
-    workspace_id: context.workspaceId
-  } as never);
+  const { data: createdAgent, error } = await context.supabase
+    .from("store_delivery_agents" as never)
+    .insert({
+      city_zone: cityZone,
+      email: email || null,
+      name,
+      normalized_email: email || null,
+      normalized_phone: normalizedPhone,
+      phone,
+      status,
+      store_id: storeId,
+      workspace_id: context.workspaceId
+    } as never)
+    .select("id")
+    .single();
 
   if (error) {
     if (error.code === "23505" || error.message.toLowerCase().includes("duplicate")) {
@@ -206,6 +211,16 @@ export async function createDeliveryAgentAction(formData: FormData) {
       storeId
     });
     deliveryAgentsRedirect("create-failed", storeId);
+  }
+
+  const agentId = (createdAgent as { id?: string } | null)?.id;
+
+  if (agentId && email) {
+    const authUserId = await findAuthUserIdByEmail(email);
+
+    if (authUserId) {
+      await linkDeliveryAgentToAuthUser({ agentId, userId: authUserId });
+    }
   }
 
   revalidatePath(deliveryAgentsPath);

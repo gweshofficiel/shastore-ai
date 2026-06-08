@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  getDeliveryAccessForUser,
+  type DeliveryAgentAccessRecord,
+  type DeliveryRole
+} from "@/lib/delivery/data";
 import { createClient } from "@/lib/supabase/server";
 
-export type DeliveryRole = "delivery" | "pending_delivery" | "suspended_delivery";
+export type { DeliveryRole };
 
 type SupabaseUser = NonNullable<Awaited<ReturnType<SupabaseClient["auth"]["getUser"]>>["data"]["user"]>;
 
@@ -14,17 +19,13 @@ function normalizeDeliveryRole(value: unknown): DeliveryRole | null {
   return null;
 }
 
-export async function getDeliveryRoleForUser({
+async function getLegacyDeliveryRole({
   supabase,
   user
 }: {
   supabase: SupabaseClient;
-  user: SupabaseUser | null;
+  user: SupabaseUser;
 }): Promise<DeliveryRole | null> {
-  if (!user) {
-    return null;
-  }
-
   const metadataRole =
     normalizeDeliveryRole(user.user_metadata?.delivery_role) ??
     normalizeDeliveryRole(user.user_metadata?.account_role) ??
@@ -49,17 +50,55 @@ export async function getDeliveryRoleForUser({
   return data ? "delivery" : null;
 }
 
+export async function getDeliveryRoleForUser({
+  supabase,
+  user
+}: {
+  supabase: SupabaseClient;
+  user: SupabaseUser | null;
+}): Promise<DeliveryRole | null> {
+  if (!user) {
+    return null;
+  }
+
+  const agentLookup = await getDeliveryAccessForUser({
+    email: user.email,
+    userId: user.id
+  });
+
+  if (agentLookup.status === "approved") {
+    return agentLookup.access.role;
+  }
+
+  if (agentLookup.status === "inactive") {
+    return "suspended_delivery";
+  }
+
+  return getLegacyDeliveryRole({ supabase, user });
+}
+
 export async function getCurrentDeliveryAccess() {
   const supabase = await createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
   const role = await getDeliveryRoleForUser({ supabase, user });
+  const agent =
+    user && role
+      ? await getDeliveryAccessForUser({ email: user.email, userId: user.id }).then((lookup) =>
+          lookup.status === "approved" || lookup.status === "inactive" ? lookup.access : null
+        )
+      : null;
 
-  return { role, supabase, user };
+  return { agent, role, supabase, user };
 }
 
-export async function requireDeliveryAccess() {
+export async function requireDeliveryAccess(): Promise<{
+  agent: DeliveryAgentAccessRecord | null;
+  role: DeliveryRole;
+  supabase: SupabaseClient;
+  user: SupabaseUser;
+}> {
   const access = await getCurrentDeliveryAccess();
 
   if (!access.user) {
@@ -75,6 +114,7 @@ export async function requireDeliveryAccess() {
   }
 
   return {
+    agent: access.agent,
     role: access.role,
     supabase: access.supabase,
     user: access.user
