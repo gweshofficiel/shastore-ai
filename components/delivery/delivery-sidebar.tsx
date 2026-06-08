@@ -9,6 +9,7 @@ const deliveryNavItems = [
   { href: "/delivery/dashboard/profile", label: "Profile" },
   { href: "/delivery/dashboard/orders", label: "Assigned Orders" },
   { href: "/delivery/dashboard/status", label: "Delivery Status" },
+  { href: "/delivery/dashboard/performance", label: "Performance" },
   { href: "/delivery/dashboard/notifications", label: "Notifications" },
   { href: "/delivery/dashboard/support", label: "Support" },
   { href: "/delivery/dashboard/settings", label: "Settings" }
@@ -59,7 +60,7 @@ export function DeliverySidebar() {
             Delivery shell
           </p>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
-            Order assignment, proof of delivery, COD, and returns are future hooks only.
+            Order assignment, proof of delivery, COD, returns, and performance are store-scoped.
           </p>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
+import { submitDeliveryRatingAction } from "@/lib/delivery/rating-actions";
 import { submitPurchasedProductReview } from "@/lib/product-review-actions";
 import { getProductReviewStatusByOrder } from "@/lib/product-reviews";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
@@ -20,6 +21,7 @@ type PublicOrderTrackingPageProps = {
     phone?: string;
     reference?: string;
     review?: string;
+    deliveryRating?: string;
     refunds?: string;
     returns?: string;
   }>;
@@ -51,6 +53,11 @@ type RefundRequest = {
 type SafeDeliveryProof = {
   delivered_at: string | null;
   notes: string | null;
+};
+
+type SafeDeliveryRating = {
+  comment: string | null;
+  rating: number;
 };
 
 function cleanText(value: string | undefined, maxLength = 120) {
@@ -117,6 +124,20 @@ function reviewMessage(status: string | undefined) {
     "invalid-product": "That product was not found in this order.",
     "not-configured": "Review submission is not configured yet.",
     submitted: "Review submitted and waiting for approval."
+  };
+
+  return status ? messages[status] : null;
+}
+
+function deliveryRatingMessage(status: string | undefined) {
+  const messages: Record<string, string> = {
+    failed: "Delivery rating could not be submitted. Please try again.",
+    invalid: "Choose a delivery rating from 1 to 5.",
+    "not-authorized": "We could not verify this delivered order for that phone number.",
+    "not-configured": "Delivery rating is not configured yet.",
+    "not-delivered": "Delivery can only be rated after the order is delivered.",
+    submitted: "Delivery rating submitted.",
+    updated: "Delivery rating updated."
   };
 
   return status ? messages[status] : null;
@@ -362,6 +383,39 @@ async function loadSafeDeliveryProof({
   return data as unknown as SafeDeliveryProof | null;
 }
 
+async function loadSafeDeliveryRating({
+  admin,
+  orderId,
+  source,
+  storeId,
+  workspaceId
+}: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  orderId: string;
+  source: "orders" | "store_orders";
+  storeId: string;
+  workspaceId: string | null;
+}) {
+  let query = admin
+    .from("delivery_ratings" as never)
+    .select("rating, comment")
+    .eq("store_id" as never, storeId as never)
+    .eq("order_source" as never, source as never)
+    .eq("order_id" as never, orderId as never);
+
+  if (workspaceId) {
+    query = query.eq("workspace_id" as never, workspaceId as never);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as unknown as SafeDeliveryRating | null;
+}
+
 async function loadTrackedOrder({
   phone,
   reference,
@@ -471,6 +525,13 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const deliveryRating = await loadSafeDeliveryRating({
+      admin,
+      orderId: order.id,
+      source: "orders",
+      storeId: preview.store.id,
+      workspaceId: order.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -482,6 +543,7 @@ async function loadTrackedOrder({
         delivery_method: order.delivery_method ?? null,
         delivery_notes: order.delivery_notes ?? null,
         delivery_proof: deliveryProof,
+        delivery_rating: deliveryRating,
         delivery_status: order.delivery_status ?? null,
         delivered_at: order.delivered_at ?? null,
         fulfillment_status: order.fulfillment_status ?? "pending",
@@ -559,6 +621,13 @@ async function loadTrackedOrder({
       storeId: preview.store.id,
       workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
     });
+    const deliveryRating = await loadSafeDeliveryRating({
+      admin,
+      orderId: storeOrder.id,
+      source: "store_orders",
+      storeId: preview.store.id,
+      workspaceId: storeOrder.workspace_id ?? preview.store.workspaceId ?? null
+    });
 
     return {
       order: {
@@ -570,6 +639,7 @@ async function loadTrackedOrder({
         delivery_method: storeOrder.delivery_method ?? null,
         delivery_notes: storeOrder.delivery_notes ?? null,
         delivery_proof: deliveryProof,
+        delivery_rating: deliveryRating,
         delivery_status: storeOrder.delivery_status ?? null,
         delivered_at: storeOrder.delivered_at ?? null,
         fulfillment_status: storeOrder.fulfillment_status ?? "pending",
@@ -641,6 +711,7 @@ export default async function PublicOrderTrackingPage({
       })
     : new Map<string, string>();
   const reviewStatusMessage = reviewMessage(query.review);
+  const deliveryRatingStatusMessage = deliveryRatingMessage(query.deliveryRating);
   const refundStatusMessage = refundMessage(query.refunds);
   const returnStatusMessage = returnMessage(query.returns);
   const returnTo = `/store/${slug}/track?reference=${encodeURIComponent(reference)}&phone=${encodeURIComponent(phone)}`;
@@ -792,6 +863,15 @@ export default async function PublicOrderTrackingPage({
                   {reviewStatusMessage}
                 </div>
               ) : null}
+              {deliveryRatingStatusMessage ? (
+                <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
+                  query.deliveryRating === "submitted" || query.deliveryRating === "updated"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  {deliveryRatingStatusMessage}
+                </div>
+              ) : null}
               {returnStatusMessage ? (
                 <div className={`mt-5 rounded-2xl border p-4 text-sm font-bold ${
                   query.returns === "requested" || query.returns === "duplicate"
@@ -857,6 +937,29 @@ export default async function PublicOrderTrackingPage({
                   )}
                 </div>
               </div>
+
+              {(order.delivery_status === "delivered" || order.delivery_proof) ? (
+                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                    Rate delivery agent
+                  </p>
+                  {order.delivery_rating ? (
+                    <div className="mt-3 rounded-2xl bg-white p-4 text-sm font-semibold text-emerald-950">
+                      <p className="font-black">Your rating: {order.delivery_rating.rating}/5</p>
+                      {order.delivery_rating.comment ? (
+                        <p className="mt-2 leading-6">{order.delivery_rating.comment}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <DeliveryRatingForm
+                      orderId={order.id}
+                      phone={phone}
+                      returnTo={returnTo}
+                      source={order.source}
+                    />
+                  )}
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-4">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
@@ -985,6 +1088,52 @@ export default async function PublicOrderTrackingPage({
         ) : null}
       </div>
     </main>
+  );
+}
+
+function DeliveryRatingForm({
+  orderId,
+  phone,
+  returnTo,
+  source
+}: {
+  orderId: string;
+  phone: string;
+  returnTo: string;
+  source: "orders" | "store_orders";
+}) {
+  return (
+    <form action={submitDeliveryRatingAction} className="mt-4 grid gap-3">
+      <input name="orderId" type="hidden" value={orderId} />
+      <input name="phone" type="hidden" value={phone} />
+      <input name="returnTo" type="hidden" value={returnTo} />
+      <input name="source" type="hidden" value={source} />
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Rating</span>
+        <select className="h-11 rounded-2xl border border-emerald-100 bg-white px-4 text-sm text-ink outline-none" name="rating" required>
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Good</option>
+          <option value="3">3 - Okay</option>
+          <option value="2">2 - Poor</option>
+          <option value="1">1 - Bad</option>
+        </select>
+      </label>
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        <span>Comment optional</span>
+        <textarea
+          className="min-h-24 rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-sm text-ink outline-none"
+          maxLength={1000}
+          name="comment"
+          placeholder="Tell the store about the delivery experience."
+        />
+      </label>
+      <button className="h-11 rounded-full bg-emerald-700 px-5 text-sm font-black text-white transition hover:bg-emerald-800" type="submit">
+        Submit delivery rating
+      </button>
+      <p className="text-xs font-semibold leading-5 text-emerald-800">
+        Delivery ratings are used for agent performance and future ranking. They do not change the order.
+      </p>
+    </form>
   );
 }
 

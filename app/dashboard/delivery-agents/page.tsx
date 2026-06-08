@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createDeliveryAgentAction } from "@/lib/delivery-actions";
+import { calculateDeliveryPerformanceMetrics, type DeliveryPerformanceMetrics } from "@/lib/delivery/performance-data";
 import { createDeliveryZoneAction, updateDeliveryAgentCapacityAction } from "@/lib/delivery/route-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import { createClient } from "@/lib/supabase/server";
@@ -52,6 +53,7 @@ type DeliveryAgentsData = {
   activeStore: UserStoreRow | null;
   agents: DeliveryAgentRow[];
   error: string | null;
+  performance: Map<string, DeliveryPerformanceMetrics>;
   stores: UserStoreRow[];
   zones: DeliveryZoneRow[];
 };
@@ -91,6 +93,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore: null,
       agents: [],
       error: "Sign in to manage delivery agents.",
+      performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
       zones: []
     };
@@ -105,6 +108,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore: null,
       agents: [],
       error: "You do not have permission to manage delivery agents.",
+      performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
       zones: []
     };
@@ -119,6 +123,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       agents: [],
       error: storesError ? "Stores could not be loaded." : null,
+      performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
     };
@@ -151,6 +156,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore,
       agents: [],
       error: "Delivery agents could not be loaded. Apply the delivery migration.",
+      performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
     };
@@ -162,6 +168,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore,
       agents: (agentsResult.data ?? []) as unknown as DeliveryAgentRow[],
       error: "Delivery zones could not be loaded. Apply the route capacity migration.",
+      performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
     };
@@ -173,11 +180,24 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     activeLoads.set(assignment.delivery_agent_id, (activeLoads.get(assignment.delivery_agent_id) ?? 0) + 1);
   }
 
+  const agents = (agentsResult.data ?? []) as unknown as DeliveryAgentRow[];
+  const performanceRows = await Promise.all(
+    agents.map((agent) =>
+      calculateDeliveryPerformanceMetrics({
+        agentId: agent.id,
+        storeId: activeStore.id,
+        workspaceId
+      })
+    )
+  );
+  const performance = new Map(performanceRows.map((metrics) => [metrics.deliveryAgentId, metrics]));
+
   return {
     activeLoads,
     activeStore,
-    agents: (agentsResult.data ?? []) as unknown as DeliveryAgentRow[],
+    agents,
     error: null,
+    performance,
     stores,
     zones: (zonesResult.data ?? []) as unknown as DeliveryZoneRow[]
   };
@@ -185,7 +205,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
 
 export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgentsPageProps) {
   const query = await searchParams;
-  const { activeLoads, activeStore, agents, error, stores, zones } = await getDeliveryAgentsData(query.storeId);
+  const { activeLoads, activeStore, agents, error, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
   const message = statusMessage(query.delivery);
   const onlineAgents = agents.filter((agent) => agent.availability_status === "online").length;
   const busyAgents = agents.filter((agent) => agent.availability_status === "busy").length;
@@ -199,6 +219,13 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
     return sum + Math.max((agent.capacity_limit ?? 0) - activeLoad, 0);
   }, 0);
   const ordersPerAgent = agents.length ? Math.round((Array.from(activeLoads.values()).reduce((sum, value) => sum + value, 0) / agents.length) * 10) / 10 : 0;
+  const performanceRows = Array.from(performance.values());
+  const topAgent = performanceRows
+    .slice()
+    .sort((a, b) => b.successRate - a.successRate || b.ratingAverage - a.ratingAverage)[0];
+  const bestRated = performanceRows.slice().sort((a, b) => b.ratingAverage - a.ratingAverage)[0];
+  const lowestReturn = performanceRows.slice().sort((a, b) => a.returnRate - b.returnRate)[0];
+  const highestDeliveries = performanceRows.slice().sort((a, b) => b.totalDeliveredOrders - a.totalDeliveredOrders)[0];
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -244,6 +271,13 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
         <MetricCard label="Available Capacity" value={availableCapacity} />
         <MetricCard label="Orders Per Agent" value={ordersPerAgent} />
         <MetricCard label="Active Zones" value={zones.filter((zone) => zone.is_active).length} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Top Delivery Agents" value={topAgent ? `${topAgent.successRate}%` : "0%"} />
+        <MetricCard label="Lowest Return Rate" value={lowestReturn ? `${lowestReturn.returnRate}%` : "0%"} />
+        <MetricCard label="Best Ratings" value={bestRated ? `${bestRated.ratingAverage}/5` : "0/5"} />
+        <MetricCard label="Highest Deliveries" value={highestDeliveries?.totalDeliveredOrders ?? 0} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
@@ -341,6 +375,13 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
                       Load {activeLoads.get(agent.id) ?? 0}/{agent.capacity_limit ?? 0} · Remaining{" "}
                       {Math.max((agent.capacity_limit ?? 0) - (activeLoads.get(agent.id) ?? 0), 0)}
                     </p>
+                    {performance.get(agent.id) ? (
+                      <p className="mt-2 text-sm font-bold text-muted">
+                        Success {performance.get(agent.id)?.successRate}% · Rating{" "}
+                        {performance.get(agent.id)?.ratingAverage}/5 · Return {performance.get(agent.id)?.returnRate}% ·{" "}
+                        {performance.get(agent.id)?.rank}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(agent.status)}`}>
@@ -421,11 +462,13 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function MetricCard({ label, value }: { label: string; value: number | string }) {
   return (
     <Card className="p-5">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">{label}</p>
-      <p className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">{value.toLocaleString()}</p>
+      <p className="mt-2 text-3xl font-black tracking-[-0.04em] text-ink">
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </p>
     </Card>
   );
 }
