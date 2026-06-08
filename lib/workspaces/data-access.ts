@@ -14,6 +14,7 @@ import {
   type WorkspacePermission,
   type WorkspaceRole
 } from "@/lib/permissions/rbac";
+import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { recordDeniedAccess } from "@/lib/security/audit";
 
 type WorkspaceDataContextOptions = {
@@ -103,6 +104,10 @@ export async function getWorkspaceDataContext(
     redirect(`/login?next=${encodeURIComponent(options.redirectTo ?? "/dashboard")}`);
   }
 
+  if (await isCurrentUserDeliveryAccount(supabase, user)) {
+    redirect("/delivery/dashboard");
+  }
+
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const { overrides, role, status } = await getWorkspaceMembershipAccess(
     supabase,
@@ -184,6 +189,27 @@ export async function getDashboardPageAccess({
       status: null,
       supabase,
       user: null,
+      workspaceId: null
+    };
+  }
+
+  if (await isCurrentUserDeliveryAccount(supabase, user)) {
+    await recordDeniedAccess({
+      action: "dashboard.delivery_account.denied",
+      metadata: { deliveryIsolation: true },
+      reason: "Delivery accounts use the isolated delivery dashboard",
+      route: pathname,
+      userId: user.id
+    });
+
+    return {
+      allowed: false,
+      permission: requiredPermission,
+      reason: "permission_denied",
+      role: null,
+      status: "active",
+      supabase,
+      user,
       workspaceId: null
     };
   }

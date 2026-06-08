@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { createClient } from "@/lib/supabase/server";
 
 function getConfiguredAdminEmails() {
@@ -31,6 +32,10 @@ export async function getAdminAccess() {
 
   if (!user) {
     redirect("/login?next=/admin");
+  }
+
+  if (await isCurrentUserDeliveryAccount(supabase, user)) {
+    redirect("/delivery/dashboard");
   }
 
   const { isAdmin, isConfigured } = isPlatformAdminEmail(user.email);

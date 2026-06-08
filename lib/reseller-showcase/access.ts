@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { createClient } from "@/lib/supabase/server";
 
 export async function requireResellerDashboardAccess() {
@@ -9,6 +10,10 @@ export async function requireResellerDashboardAccess() {
 
   if (!user) {
     redirect("/login?next=/reseller/dashboard");
+  }
+
+  if (await isCurrentUserDeliveryAccount(supabase, user)) {
+    redirect("/delivery/dashboard");
   }
 
   // Future role hook: check a dedicated reseller role/profile flag here once roles exist.

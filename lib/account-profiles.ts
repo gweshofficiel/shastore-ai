@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 
-export type AccountProfileType = "user" | "reseller" | "admin";
+export type AccountProfileType = "user" | "reseller" | "admin" | "delivery";
 
 export type AccountProfile = {
   id: string;
@@ -15,6 +15,10 @@ export type AccountProfile = {
 };
 
 function accountSuffix(accountType: AccountProfileType) {
+  if (accountType === "delivery") {
+    return "D";
+  }
+
   if (accountType === "reseller") {
     return "R";
   }
@@ -27,7 +31,7 @@ function accountSuffix(accountType: AccountProfileType) {
 }
 
 function accountDigits(accountType: AccountProfileType) {
-  return accountType === "reseller" ? 7 : 9;
+  return accountType === "reseller" || accountType === "delivery" ? 7 : 9;
 }
 
 function randomDigits(length: number) {
