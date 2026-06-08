@@ -232,10 +232,18 @@ export async function generateMetadata({ params }: PublicResellerProfilePageProp
   const description =
     profile.showcase?.profile.bio ??
     "Public reseller profile for SHASTORE marketplace identity, stores, templates, and trust signals.";
+  const publicKeywords = [
+    displayName,
+    ...profile.publicCategories.map((category) => category.name),
+    ...profile.storeListings.map((item) => item.category ?? item.title),
+    ...profile.templateListings.map((item) => item.category ?? item.title),
+    ...profile.portfolioItems.map((item) => item.categoryNiche)
+  ].filter(Boolean);
 
   return {
     title: `${displayName} | SHASTORE Reseller Profile`,
     description,
+    keywords: publicKeywords,
     alternates: {
       canonical: profile.canonicalPath
     },

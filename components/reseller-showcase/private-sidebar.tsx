@@ -12,6 +12,7 @@ const navItems = [
   { href: "/reseller/dashboard/portfolio", label: "Portfolio", icon: "showcase" },
   { href: "/reseller/dashboard/categories", label: "Categories", icon: "showcase" },
   { href: "/reseller/dashboard/badges", label: "Badges", icon: "showcase" },
+  { href: "/reseller/dashboard/search-optimization", label: "Search Optimization", icon: "reports" },
   { href: "/reseller/dashboard/business", label: "Business Settings", icon: "business" },
   { href: "/reseller/dashboard/verification", label: "Verification", icon: "business" },
   { href: "/reseller/dashboard/orders", label: "Orders", icon: "orders" },

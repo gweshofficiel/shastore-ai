@@ -531,6 +531,40 @@ export type ResellerCategoriesData = {
   visibilityOptions: ResellerCategoryVisibility[];
 };
 
+export type ResellerSearchOptimizationItemType = "portfolio" | "profile" | "store" | "template";
+
+export type ResellerSearchOptimizationItem = {
+  category: string;
+  countryLanguageTargeting: string;
+  id: string;
+  isPublicEligible: boolean;
+  itemName: string;
+  itemType: ResellerSearchOptimizationItemType;
+  keywordsTags: string[];
+  lastUpdated: string | null;
+  marketplaceTitle: string;
+  missingImprovements: string[];
+  optimizationScore: number;
+  previewSnippet: string;
+  shortDescription: string;
+  targetAudience: string;
+  visibilityStatus: string;
+};
+
+export type ResellerSearchOptimizationData = {
+  emptyState: string;
+  futureHooks: string[];
+  items: ResellerSearchOptimizationItem[];
+  selectedItem: ResellerSearchOptimizationItem | null;
+  summary: {
+    averageScore: number;
+    hiddenWarnings: number;
+    missingMetadataWarnings: number;
+    optimizedItems: number;
+    totalItems: number;
+  };
+};
+
 export type PublicResellerProfile = {
   badges: ResellerBadge[];
   canonicalPath: string;
@@ -1144,6 +1178,114 @@ function normalizePortfolioStatus(value: unknown): ResellerPortfolioStatus {
   }
 
   return "draft";
+}
+
+function optimizationVisibilityLabel(status: string | boolean | null | undefined) {
+  if (typeof status === "boolean") {
+    return status ? "public" : "private";
+  }
+
+  return textValue(status, "private");
+}
+
+function optimizationSnippet({
+  category,
+  description,
+  title,
+  visibility
+}: {
+  category: string;
+  description: string;
+  title: string;
+  visibility: string;
+}) {
+  return `${title || "Untitled marketplace item"} · ${category || "Uncategorized"} · ${description || "No short description yet."} · ${visibility}`;
+}
+
+function optimizationScore({
+  category,
+  description,
+  hasPreviewImage,
+  isHiddenOrPrivate,
+  tags,
+  title
+}: {
+  category: string;
+  description: string;
+  hasPreviewImage: boolean;
+  isHiddenOrPrivate: boolean;
+  tags: string[];
+  title: string;
+}) {
+  const missingImprovements = [
+    title ? null : "Missing title",
+    description ? null : "Missing description",
+    category ? null : "Missing category",
+    tags.length ? null : "Missing tags",
+    hasPreviewImage ? null : "Missing preview image",
+    isHiddenOrPrivate ? "Hidden/private visibility warning" : null
+  ].filter(Boolean) as string[];
+  const score = Math.max(0, Math.round(((6 - missingImprovements.length) / 6) * 100));
+
+  return { missingImprovements, score };
+}
+
+function searchOptimizationRow({
+  category,
+  countryLanguageTargeting = "Country/language targeting placeholder",
+  description,
+  hasPreviewImage,
+  id,
+  isPublicEligible,
+  itemName,
+  itemType,
+  lastUpdated,
+  targetAudience = "Target audience placeholder",
+  tags,
+  title,
+  visibilityStatus
+}: {
+  category: string;
+  countryLanguageTargeting?: string;
+  description: string;
+  hasPreviewImage: boolean;
+  id: string;
+  isPublicEligible: boolean;
+  itemName: string;
+  itemType: ResellerSearchOptimizationItemType;
+  lastUpdated: string | null;
+  targetAudience?: string;
+  tags: string[];
+  title: string;
+  visibilityStatus: string;
+}): ResellerSearchOptimizationItem {
+  const isHiddenOrPrivate = !isPublicEligible || ["hidden", "private", "draft", "unpublished"].includes(visibilityStatus);
+  const { missingImprovements, score } = optimizationScore({
+    category,
+    description,
+    hasPreviewImage,
+    isHiddenOrPrivate,
+    tags,
+    title
+  });
+
+  return {
+    category: category || "Uncategorized",
+    countryLanguageTargeting,
+    id,
+    isPublicEligible,
+    itemName,
+    itemType,
+    keywordsTags: tags,
+    lastUpdated,
+    marketplaceTitle: title || itemName,
+    missingImprovements,
+    optimizationScore: score,
+    previewSnippet: optimizationSnippet({ category, description, title: title || itemName, visibility: visibilityStatus }),
+    shortDescription: description || "Short description placeholder",
+    targetAudience,
+    visibilityStatus
+  };
 }
 
 function portfolioItemFromEvent(row: Record<string, unknown>, index: number): ResellerPortfolioItem {
@@ -2680,6 +2822,103 @@ export async function getResellerCategoriesData(): Promise<ResellerCategoriesDat
     portfolioItems: portfolioData.items,
     visibilityOverrides
   });
+}
+
+export async function getResellerSearchOptimizationData(): Promise<ResellerSearchOptimizationData> {
+  const [dashboard, portfolioData] = await Promise.all([
+    getResellerDashboardData(),
+    getResellerPortfolioData()
+  ]);
+  const profile = dashboard.profile;
+  const rows: ResellerSearchOptimizationItem[] = [];
+
+  if (profile) {
+    rows.push(
+      searchOptimizationRow({
+        category: "Reseller profile",
+        description: textValue(profile.bio),
+        hasPreviewImage: Boolean(profile.logo_url || profile.banner_url),
+        id: profile.id,
+        isPublicEligible: profile.is_published,
+        itemName: profile.display_name,
+        itemType: "profile",
+        lastUpdated: profile.updated_at,
+        tags: [
+          profile.display_name,
+          profile.theme_id,
+          profile.website_url ? "website" : "",
+          profile.instagram_url ? "instagram" : "",
+          profile.tiktok_url ? "tiktok" : ""
+        ].filter(Boolean),
+        title: profile.display_name,
+        visibilityStatus: optimizationVisibilityLabel(profile.is_published)
+      })
+    );
+  }
+
+  dashboard.items.forEach((item) => {
+    const itemType: ResellerSearchOptimizationItemType = isTemplateListing(item) ? "template" : "store";
+    const tags = stringList(item.features);
+
+    rows.push(
+      searchOptimizationRow({
+        category: textValue(item.category),
+        description: textValue(item.description),
+        hasPreviewImage: Boolean(item.thumbnail_url || stringList(item.preview_images).length),
+        id: item.id,
+        isPublicEligible: isPublicMarketplaceStatus(item.status),
+        itemName: item.title,
+        itemType,
+        lastUpdated: item.updated_at,
+        tags,
+        title: item.title,
+        visibilityStatus: optimizationVisibilityLabel(item.status)
+      })
+    );
+  });
+
+  portfolioData.items.forEach((item) => {
+    rows.push(
+      searchOptimizationRow({
+        category: item.categoryNiche,
+        description: item.description,
+        hasPreviewImage: !item.previewImagePlaceholder.toLowerCase().includes("placeholder"),
+        id: item.id,
+        isPublicEligible: item.status === "published",
+        itemName: item.title,
+        itemType: "portfolio",
+        lastUpdated: item.createdAt,
+        tags: item.toolsServicesUsed,
+        title: item.title,
+        visibilityStatus: item.status
+      })
+    );
+  });
+
+  const averageScore = rows.length
+    ? Math.round(rows.reduce((total, item) => total + item.optimizationScore, 0) / rows.length)
+    : 0;
+
+  return {
+    emptyState: "No search optimization items yet. Create a reseller profile, listings, templates, or portfolio items to optimize discovery metadata.",
+    futureHooks: [
+      "Marketplace search ranking",
+      "AI metadata generator",
+      "Keyword suggestions",
+      "Featured search placement",
+      "Analytics-based optimization",
+      "Paid boost integration later"
+    ],
+    items: rows,
+    selectedItem: rows[0] ?? null,
+    summary: {
+      averageScore,
+      hiddenWarnings: rows.filter((item) => item.missingImprovements.includes("Hidden/private visibility warning")).length,
+      missingMetadataWarnings: rows.reduce((total, item) => total + item.missingImprovements.length, 0),
+      optimizedItems: rows.filter((item) => item.optimizationScore >= 80).length,
+      totalItems: rows.length
+    }
+  };
 }
 
 async function getPublicResellerCategoriesData({
