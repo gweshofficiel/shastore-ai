@@ -565,6 +565,55 @@ export type ResellerSearchOptimizationData = {
   };
 };
 
+export type ResellerTransferStatus =
+  | "approved"
+  | "cancelled"
+  | "completed_placeholder"
+  | "disputed"
+  | "draft"
+  | "pending_buyer"
+  | "pending_review"
+  | "ready_for_transfer";
+
+export type ResellerTransferAuditEvent = {
+  action: string;
+  createdAt: string | null;
+  note: string;
+  status: ResellerTransferStatus;
+};
+
+export type ResellerOwnershipTransferRequest = {
+  auditTimeline: ResellerTransferAuditEvent[];
+  buyerPlaceholder: string;
+  createdAt: string | null;
+  notesPlaceholder: string;
+  ownershipTimeline: string[];
+  resellerId: string;
+  storeDescription: string | null;
+  storeId: string;
+  storeName: string;
+  transferId: string;
+  transferStatus: ResellerTransferStatus;
+  updatedAt: string | null;
+};
+
+export type ResellerOwnershipTransferData = {
+  emptyState: string;
+  futureHooks: string[];
+  safetyNotes: string[];
+  selectedTransfer: ResellerOwnershipTransferRequest | null;
+  statusFoundation: ResellerTransferStatus[];
+  storeOptions: ResellerDashboardStoreOption[];
+  summary: {
+    activeTransfers: number;
+    cancelledTransfers: number;
+    completedPlaceholders: number;
+    disputedTransfers: number;
+    pendingTransfers: number;
+  };
+  transfers: ResellerOwnershipTransferRequest[];
+};
+
 export type PublicResellerProfile = {
   badges: ResellerBadge[];
   canonicalPath: string;
@@ -1285,6 +1334,78 @@ function searchOptimizationRow({
     shortDescription: description || "Short description placeholder",
     targetAudience,
     visibilityStatus
+  };
+}
+
+const resellerTransferStatuses: ResellerTransferStatus[] = [
+  "draft",
+  "pending_buyer",
+  "pending_review",
+  "approved",
+  "ready_for_transfer",
+  "completed_placeholder",
+  "cancelled",
+  "disputed"
+];
+
+function normalizeTransferStatus(value: unknown): ResellerTransferStatus {
+  const status = textValue(value).toLowerCase();
+
+  return resellerTransferStatuses.includes(status as ResellerTransferStatus)
+    ? (status as ResellerTransferStatus)
+    : "draft";
+}
+
+function transferAuditFromEvent(row: Record<string, unknown>): ResellerTransferAuditEvent {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    action: textValue(row.event_type, "transfer_created"),
+    createdAt: textValue(row.created_at) || null,
+    note: textValue(
+      metadata.audit_note,
+      "Ownership transfer audit placeholder. No store owner, workspace, account, RLS, wallet, payout, withdrawal, commission, or sales state changed."
+    ),
+    status: normalizeTransferStatus(metadata.transfer_status)
+  };
+}
+
+function transferFromEvents(events: Record<string, unknown>[]): ResellerOwnershipTransferRequest {
+  const latest = events[0] ?? {};
+  const metadata =
+    latest.metadata && typeof latest.metadata === "object" && !Array.isArray(latest.metadata)
+      ? (latest.metadata as Record<string, unknown>)
+      : {};
+  const auditTimeline = events.map(transferAuditFromEvent);
+  const createdAt = events[events.length - 1]?.created_at;
+  const updatedAt = latest.created_at;
+  const transferStatus = normalizeTransferStatus(metadata.transfer_status);
+
+  return {
+    auditTimeline,
+    buyerPlaceholder: textValue(metadata.buyer_placeholder, "Buyer placeholder - private and never public"),
+    createdAt: textValue(createdAt) || null,
+    notesPlaceholder: textValue(
+      metadata.notes_placeholder,
+      "Internal transfer notes placeholder. No buyer private data or real ownership instructions are exposed publicly."
+    ),
+    ownershipTimeline: [
+      "Transfer request drafted as an internal reseller workflow.",
+      "Buyer claim and identity verification are future hooks only.",
+      "Approval can be recorded as placeholder audit state only.",
+      "Ready/completed states do not change store owner_id, workspace, account, or RLS.",
+      "Actual store ownership migration remains disabled until a future transfer engine is approved."
+    ],
+    resellerId: textValue(metadata.reseller_id, "reseller-placeholder"),
+    storeDescription: textValue(metadata.store_description) || null,
+    storeId: textValue(metadata.store_id, "store-placeholder"),
+    storeName: textValue(metadata.store_name, "Store placeholder"),
+    transferId: textValue(metadata.transfer_id, String(latest.id ?? "transfer-placeholder")),
+    transferStatus,
+    updatedAt: textValue(updatedAt) || null
   };
 }
 
@@ -2918,6 +3039,93 @@ export async function getResellerSearchOptimizationData(): Promise<ResellerSearc
       optimizedItems: rows.filter((item) => item.optimizationScore >= 80).length,
       totalItems: rows.length
     }
+  };
+}
+
+export async function getResellerOwnershipTransferData(
+  selectedTransferId?: string | null
+): Promise<ResellerOwnershipTransferData> {
+  const user = await getDashboardUser();
+  const dashboard = await getResellerDashboardData();
+  const futureHooks = [
+    "Buyer claim workflow",
+    "Ownership verification",
+    "Store ownership migration",
+    "Workspace migration",
+    "Automated delivery",
+    "Transfer approval engine",
+    "Dispute resolution workflow"
+  ];
+  const safetyNotes = [
+    "No store owner ID is changed in this phase.",
+    "No workspace, account, or RLS policy is transferred or modified.",
+    "Buyer information remains a private placeholder and is never shown publicly.",
+    "Completed transfer remains a placeholder audit state only.",
+    "No wallet, payout, withdrawal, commission, fake sale, or paid delivery system is created."
+  ];
+
+  if (!user) {
+    return {
+      emptyState: "No ownership transfer requests yet. Future transfer requests will appear here as private audit records only.",
+      futureHooks,
+      safetyNotes,
+      selectedTransfer: null,
+      statusFoundation: resellerTransferStatuses,
+      storeOptions: [],
+      summary: {
+        activeTransfers: 0,
+        cancelledTransfers: 0,
+        completedPlaceholders: 0,
+        disputedTransfers: 0,
+        pendingTransfers: 0
+      },
+      transfers: []
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_ownership_transfers")
+        .order("created_at", { ascending: false })
+        .limit(100)
+    : { data: [] };
+  const grouped = new Map<string, Record<string, unknown>[]>();
+
+  ((data ?? []) as unknown as Record<string, unknown>[]).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const transferId = textValue(metadata.transfer_id, String(row.id ?? "transfer-placeholder"));
+    grouped.set(transferId, [...(grouped.get(transferId) ?? []), row]);
+  });
+
+  const transfers = Array.from(grouped.values()).map(transferFromEvents);
+  const selectedTransfer =
+    (selectedTransferId
+      ? transfers.find((transfer) => transfer.transferId === selectedTransferId)
+      : transfers[0]) ?? null;
+  const pendingStatuses: ResellerTransferStatus[] = ["pending_buyer", "pending_review", "approved", "ready_for_transfer"];
+
+  return {
+    emptyState: "No ownership transfer requests yet. Create a transfer request placeholder from an owned store to start the audit lifecycle.",
+    futureHooks,
+    safetyNotes,
+    selectedTransfer,
+    statusFoundation: resellerTransferStatuses,
+    storeOptions: dashboard.stores,
+    summary: {
+      activeTransfers: transfers.filter((transfer) => !["cancelled", "completed_placeholder"].includes(transfer.transferStatus)).length,
+      cancelledTransfers: transfers.filter((transfer) => transfer.transferStatus === "cancelled").length,
+      completedPlaceholders: transfers.filter((transfer) => transfer.transferStatus === "completed_placeholder").length,
+      disputedTransfers: transfers.filter((transfer) => transfer.transferStatus === "disputed").length,
+      pendingTransfers: transfers.filter((transfer) => pendingStatuses.includes(transfer.transferStatus)).length
+    },
+    transfers
   };
 }
 
