@@ -614,6 +614,71 @@ export type ResellerOwnershipTransferData = {
   transfers: ResellerOwnershipTransferRequest[];
 };
 
+export type ResellerDeliveryStatus =
+  | "buyer_invited"
+  | "cancelled"
+  | "delivered_placeholder"
+  | "disputed"
+  | "not_started"
+  | "preparing"
+  | "ready_to_handoff"
+  | "waiting_buyer_claim";
+
+export type ResellerDeliveryChecklistKey =
+  | "buyer_instructions_prepared"
+  | "demo_content_reviewed"
+  | "domain_subdomain_note"
+  | "pages_reviewed"
+  | "products_reviewed"
+  | "settings_reviewed"
+  | "store_preview_checked";
+
+export type ResellerDeliveryChecklistItem = {
+  completed: boolean;
+  description: string;
+  key: ResellerDeliveryChecklistKey;
+  label: string;
+};
+
+export type ResellerDeliveryTimelineEvent = {
+  action: string;
+  createdAt: string | null;
+  note: string;
+  status: ResellerDeliveryStatus;
+};
+
+export type ResellerStoreDeliveryRecord = {
+  buyerPlaceholder: string;
+  checklist: ResellerDeliveryChecklistItem[];
+  createdAt: string | null;
+  deliveryId: string;
+  deliveryStatus: ResellerDeliveryStatus;
+  resellerId: string;
+  storeId: string;
+  storeName: string;
+  timeline: ResellerDeliveryTimelineEvent[];
+  transferId: string;
+  updatedAt: string | null;
+};
+
+export type ResellerStoreDeliveryData = {
+  emptyState: string;
+  futureHooks: string[];
+  safetyNotes: string[];
+  selectedDelivery: ResellerStoreDeliveryRecord | null;
+  statusFoundation: ResellerDeliveryStatus[];
+  summary: {
+    activeDeliveries: number;
+    cancelledDeliveries: number;
+    deliveredPlaceholders: number;
+    disputedDeliveries: number;
+    pendingBuyerClaims: number;
+    readyToHandoff: number;
+  };
+  transferOptions: ResellerOwnershipTransferRequest[];
+  deliveries: ResellerStoreDeliveryRecord[];
+};
+
 export type PublicResellerProfile = {
   badges: ResellerBadge[];
   canonicalPath: string;
@@ -1405,6 +1470,129 @@ function transferFromEvents(events: Record<string, unknown>[]): ResellerOwnershi
     storeName: textValue(metadata.store_name, "Store placeholder"),
     transferId: textValue(metadata.transfer_id, String(latest.id ?? "transfer-placeholder")),
     transferStatus,
+    updatedAt: textValue(updatedAt) || null
+  };
+}
+
+const resellerDeliveryStatuses: ResellerDeliveryStatus[] = [
+  "not_started",
+  "preparing",
+  "waiting_buyer_claim",
+  "buyer_invited",
+  "ready_to_handoff",
+  "delivered_placeholder",
+  "cancelled",
+  "disputed"
+];
+
+const resellerDeliveryChecklistDefinitions: Array<Omit<ResellerDeliveryChecklistItem, "completed">> = [
+  {
+    description: "Confirm the reseller preview link or internal store preview is usable before handoff.",
+    key: "store_preview_checked",
+    label: "Store preview checked"
+  },
+  {
+    description: "Review placeholder/demo content so the buyer knows what must be replaced later.",
+    key: "demo_content_reviewed",
+    label: "Demo content reviewed"
+  },
+  {
+    description: "Check core pages and navigation before the buyer claim workflow exists.",
+    key: "pages_reviewed",
+    label: "Pages reviewed"
+  },
+  {
+    description: "Review product/catalog placeholders without creating sales or orders.",
+    key: "products_reviewed",
+    label: "Products reviewed"
+  },
+  {
+    description: "Review store settings without changing ownership, workspace, account, or RLS.",
+    key: "settings_reviewed",
+    label: "Settings reviewed"
+  },
+  {
+    description: "Add a domain/subdomain handoff note without DNS automation.",
+    key: "domain_subdomain_note",
+    label: "Domain/subdomain note"
+  },
+  {
+    description: "Prepare buyer instructions as private placeholder content only.",
+    key: "buyer_instructions_prepared",
+    label: "Buyer instructions prepared"
+  }
+];
+
+function normalizeDeliveryStatus(value: unknown): ResellerDeliveryStatus {
+  const status = textValue(value).toLowerCase();
+
+  return resellerDeliveryStatuses.includes(status as ResellerDeliveryStatus)
+    ? (status as ResellerDeliveryStatus)
+    : "not_started";
+}
+
+function normalizeDeliveryChecklistKey(value: unknown): ResellerDeliveryChecklistKey | null {
+  const key = textValue(value).toLowerCase();
+
+  return resellerDeliveryChecklistDefinitions.some((item) => item.key === key)
+    ? (key as ResellerDeliveryChecklistKey)
+    : null;
+}
+
+function deliveryTimelineFromEvent(row: Record<string, unknown>): ResellerDeliveryTimelineEvent {
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    action: textValue(row.event_type, "delivery_created"),
+    createdAt: textValue(row.created_at) || null,
+    note: textValue(
+      metadata.timeline_note,
+      "Store delivery workflow placeholder. No buyer account, ownership, workspace, RLS, wallet, payout, withdrawal, commission, or fake sale changed."
+    ),
+    status: normalizeDeliveryStatus(metadata.delivery_status)
+  };
+}
+
+function deliveryFromEvents(events: Record<string, unknown>[]): ResellerStoreDeliveryRecord {
+  const latest = events[0] ?? {};
+  const metadata =
+    latest.metadata && typeof latest.metadata === "object" && !Array.isArray(latest.metadata)
+      ? (latest.metadata as Record<string, unknown>)
+      : {};
+  const completedChecklist = new Set<ResellerDeliveryChecklistKey>();
+
+  events.forEach((event) => {
+    const eventMetadata =
+      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : {};
+    const checklistKey = normalizeDeliveryChecklistKey(eventMetadata.checklist_key);
+
+    if (checklistKey && eventMetadata.checklist_completed !== false) {
+      completedChecklist.add(checklistKey);
+    }
+  });
+
+  const createdAt = events[events.length - 1]?.created_at;
+  const updatedAt = latest.created_at;
+
+  return {
+    buyerPlaceholder: textValue(metadata.buyer_placeholder, "Buyer placeholder - private and never public"),
+    checklist: resellerDeliveryChecklistDefinitions.map((item) => ({
+      ...item,
+      completed: completedChecklist.has(item.key)
+    })),
+    createdAt: textValue(createdAt) || null,
+    deliveryId: textValue(metadata.delivery_id, String(latest.id ?? "delivery-placeholder")),
+    deliveryStatus: normalizeDeliveryStatus(metadata.delivery_status),
+    resellerId: textValue(metadata.reseller_id, "reseller-placeholder"),
+    storeId: textValue(metadata.store_id, "store-placeholder"),
+    storeName: textValue(metadata.store_name, "Store placeholder"),
+    timeline: events.map(deliveryTimelineFromEvent),
+    transferId: textValue(metadata.transfer_id, "transfer-placeholder"),
     updatedAt: textValue(updatedAt) || null
   };
 }
@@ -3126,6 +3314,93 @@ export async function getResellerOwnershipTransferData(
       pendingTransfers: transfers.filter((transfer) => pendingStatuses.includes(transfer.transferStatus)).length
     },
     transfers
+  };
+}
+
+export async function getResellerStoreDeliveryData(): Promise<ResellerStoreDeliveryData> {
+  const user = await getDashboardUser();
+  const transferData = await getResellerOwnershipTransferData();
+  const futureHooks = [
+    "Buyer claim link",
+    "Activation token",
+    "Store handoff email",
+    "Ownership migration",
+    "Handoff certificate/PDF",
+    "Delivery dispute escalation"
+  ];
+  const safetyNotes = [
+    "Delivery here means digital store handoff workflow, not physical delivery agents.",
+    "No store owner ID, workspace, buyer account, or RLS policy is changed.",
+    "Buyer information remains placeholder-only and is never exposed publicly.",
+    "Delivered remains a placeholder lifecycle state until future ownership migration is approved.",
+    "No wallet, payout, withdrawal, commission, fake sale, or paid delivery system is created."
+  ];
+
+  if (!user) {
+    return {
+      deliveries: [],
+      emptyState: "No delivery records yet. Future delivery handoff workflows will appear here as private reseller audit records only.",
+      futureHooks,
+      safetyNotes,
+      selectedDelivery: null,
+      statusFoundation: resellerDeliveryStatuses,
+      summary: {
+        activeDeliveries: 0,
+        cancelledDeliveries: 0,
+        deliveredPlaceholders: 0,
+        disputedDeliveries: 0,
+        pendingBuyerClaims: 0,
+        readyToHandoff: 0
+      },
+      transferOptions: []
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("id, event_type, metadata, created_at")
+        .eq("user_id", user.id)
+        .eq("entity_type", "reseller_store_deliveries")
+        .order("created_at", { ascending: false })
+        .limit(120)
+    : { data: [] };
+  const grouped = new Map<string, Record<string, unknown>[]>();
+
+  ((data ?? []) as unknown as Record<string, unknown>[]).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const deliveryId = textValue(metadata.delivery_id, String(row.id ?? "delivery-placeholder"));
+    grouped.set(deliveryId, [...(grouped.get(deliveryId) ?? []), row]);
+  });
+
+  const deliveries = Array.from(grouped.values()).map(deliveryFromEvents);
+  const activeStatuses: ResellerDeliveryStatus[] = [
+    "preparing",
+    "waiting_buyer_claim",
+    "buyer_invited",
+    "ready_to_handoff"
+  ];
+
+  return {
+    deliveries,
+    emptyState: "No delivery records yet. Start preparation from a prepared transfer to create a private handoff workflow.",
+    futureHooks,
+    safetyNotes,
+    selectedDelivery: deliveries[0] ?? null,
+    statusFoundation: resellerDeliveryStatuses,
+    summary: {
+      activeDeliveries: deliveries.filter((delivery) => activeStatuses.includes(delivery.deliveryStatus)).length,
+      cancelledDeliveries: deliveries.filter((delivery) => delivery.deliveryStatus === "cancelled").length,
+      deliveredPlaceholders: deliveries.filter((delivery) => delivery.deliveryStatus === "delivered_placeholder").length,
+      disputedDeliveries: deliveries.filter((delivery) => delivery.deliveryStatus === "disputed").length,
+      pendingBuyerClaims: deliveries.filter((delivery) => delivery.deliveryStatus === "waiting_buyer_claim" || delivery.deliveryStatus === "buyer_invited").length,
+      readyToHandoff: deliveries.filter((delivery) => delivery.deliveryStatus === "ready_to_handoff").length
+    },
+    transferOptions: transferData.transfers
   };
 }
 
