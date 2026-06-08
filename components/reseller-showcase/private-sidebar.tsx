@@ -23,6 +23,7 @@ const navItems = [
   { href: "/reseller/dashboard/messages", label: "Messages", icon: "reports" },
   { href: "/reseller/dashboard/notifications", label: "Notifications", icon: "reports" },
   { href: "/reseller/dashboard/disputes", label: "Disputes", icon: "reports" },
+  { href: "/reseller/dashboard/compliance", label: "Compliance", icon: "reports" },
   { href: "/reseller/dashboard/reviews", label: "Reviews", icon: "reports" },
   { href: "/reseller/dashboard/analytics", label: "Analytics", icon: "reports" },
   { href: "/reseller/dashboard/reports", label: "Reports", icon: "reports" },

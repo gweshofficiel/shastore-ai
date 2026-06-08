@@ -22,6 +22,7 @@ const resellerNavItems = [
   { href: "/reseller/dashboard/messages", label: "Messages" },
   { href: "/reseller/dashboard/notifications", label: "Notifications" },
   { href: "/reseller/dashboard/disputes", label: "Disputes" },
+  { href: "/reseller/dashboard/compliance", label: "Compliance" },
   { href: "/reseller/dashboard/reviews", label: "Reviews" },
   { href: "/reseller/dashboard/analytics", label: "Analytics" },
   { href: "/reseller/dashboard/reports", label: "Reports" },

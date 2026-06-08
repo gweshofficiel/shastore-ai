@@ -755,6 +755,62 @@ export type ResellerDisputesData = {
   };
 };
 
+export type ResellerComplianceSectionKey =
+  | "account_standing"
+  | "buyer_protection_rules"
+  | "delivery_rules"
+  | "listing_quality_rules"
+  | "marketplace_rules"
+  | "prohibited_content"
+  | "review_policy"
+  | "template_quality_rules";
+
+export type ResellerComplianceStatus =
+  | "good_standing"
+  | "needs_attention"
+  | "restricted_placeholder"
+  | "under_review"
+  | "warning_placeholder";
+
+export type ResellerComplianceSection = {
+  description: string;
+  key: ResellerComplianceSectionKey;
+  lastReviewedAt: string | null;
+  requirements: string[];
+  status: ResellerComplianceStatus;
+  title: string;
+};
+
+export type ResellerComplianceChecklistItem = {
+  completed: boolean;
+  description: string;
+  key: string;
+  label: string;
+};
+
+export type ResellerComplianceData = {
+  accountStanding: {
+    currentStanding: ResellerComplianceStatus;
+    disputesCount: number;
+    reviewsStatus: string;
+    verificationStatus: ResellerVerificationStatus;
+    warningsPlaceholder: number;
+  };
+  checklist: ResellerComplianceChecklistItem[];
+  emptyState: string;
+  futureHooks: string[];
+  safetyNotes: string[];
+  sections: ResellerComplianceSection[];
+  statusFoundation: ResellerComplianceStatus[];
+  summary: {
+    goodStanding: number;
+    needsAttention: number;
+    restrictedPlaceholders: number;
+    underReview: number;
+    warningPlaceholders: number;
+  };
+};
+
 export type PublicResellerProfile = {
   badges: ResellerBadge[];
   canonicalPath: string;
@@ -1773,6 +1829,140 @@ function disputeFromEvents(events: Record<string, unknown>[]): ResellerDisputeRe
     timeline,
     updatedAt: textValue(updatedAt) || null
   };
+}
+
+const resellerComplianceStatuses: ResellerComplianceStatus[] = [
+  "good_standing",
+  "needs_attention",
+  "warning_placeholder",
+  "under_review",
+  "restricted_placeholder"
+];
+
+const resellerComplianceSectionDefinitions: Array<Omit<ResellerComplianceSection, "lastReviewedAt" | "status">> = [
+  {
+    description: "Core marketplace behavior, accurate representation, and private buyer handling.",
+    key: "marketplace_rules",
+    requirements: [
+      "Keep reseller profile information accurate.",
+      "Do not create fake traffic, fake sales, or fake buyer claims.",
+      "Keep buyer data private and masked."
+    ],
+    title: "Marketplace rules"
+  },
+  {
+    description: "Quality expectations for ready store listings and public marketplace visibility.",
+    key: "listing_quality_rules",
+    requirements: [
+      "Use clear listing titles and descriptions.",
+      "Keep previews available when a listing is public.",
+      "Avoid prohibited or misleading content."
+    ],
+    title: "Listing quality rules"
+  },
+  {
+    description: "Template descriptions, preview readiness, and future template quality checks.",
+    key: "template_quality_rules",
+    requirements: [
+      "Describe template purpose clearly.",
+      "Show meaningful preview material.",
+      "Avoid copied, unsafe, or prohibited template content."
+    ],
+    title: "Template quality rules"
+  },
+  {
+    description: "Digital handoff preparation requirements before future buyer claim workflows.",
+    key: "delivery_rules",
+    requirements: [
+      "Prepare buyer instructions privately.",
+      "Review demo content, products, pages, and settings.",
+      "Do not transfer ownership until future migration is approved."
+    ],
+    title: "Delivery rules"
+  },
+  {
+    description: "Buyer protection expectations for requests, disputes, reviews, and future claims.",
+    key: "buyer_protection_rules",
+    requirements: [
+      "Do not expose buyer private contact data.",
+      "Use disputes for disagreements instead of external pressure.",
+      "Do not promise refunds or ownership changes from this dashboard."
+    ],
+    title: "Buyer protection rules"
+  },
+  {
+    description: "Review handling guidance for public trust signals and future moderation.",
+    key: "review_policy",
+    requirements: [
+      "Do not manipulate or fake reviews.",
+      "Use dispute workflow for review disagreements.",
+      "Respect pending/rejected review states."
+    ],
+    title: "Review policy"
+  },
+  {
+    description: "Content that must not appear in profiles, listings, templates, or portfolio examples.",
+    key: "prohibited_content",
+    requirements: [
+      "No illegal, misleading, harmful, or abusive content.",
+      "No private client or buyer data in public examples.",
+      "No prohibited payment, payout, or commission promises."
+    ],
+    title: "Prohibited content"
+  },
+  {
+    description: "Private account standing summary for reseller/admin review only.",
+    key: "account_standing",
+    requirements: [
+      "Keep verification and profile basics up to date.",
+      "Resolve disputes through the private workflow.",
+      "Maintain quality listings, templates, and deliveries."
+    ],
+    title: "Account standing"
+  }
+];
+
+function normalizeComplianceStatus(value: unknown): ResellerComplianceStatus {
+  const status = textValue(value).toLowerCase();
+
+  return resellerComplianceStatuses.includes(status as ResellerComplianceStatus)
+    ? (status as ResellerComplianceStatus)
+    : "good_standing";
+}
+
+async function getComplianceReviewEvents(userId: string | null | undefined) {
+  if (!userId) {
+    return new Map<ResellerComplianceSectionKey, { lastReviewedAt: string | null; status: ResellerComplianceStatus }>();
+  }
+
+  const admin = createAdminClient();
+  const { data } = admin
+    ? await admin
+        .from("monitoring_events" as never)
+        .select("metadata, created_at")
+        .eq("user_id", userId)
+        .eq("entity_type", "reseller_compliance")
+        .order("created_at", { ascending: false })
+        .limit(100)
+    : { data: [] };
+  const reviews = new Map<ResellerComplianceSectionKey, { lastReviewedAt: string | null; status: ResellerComplianceStatus }>();
+
+  ((data ?? []) as unknown as Array<{ created_at?: string; metadata?: Record<string, unknown> }>).forEach((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {};
+    const sectionKey = textValue(metadata.section_key) as ResellerComplianceSectionKey;
+
+    if (resellerComplianceSectionDefinitions.some((section) => section.key === sectionKey) && !reviews.has(sectionKey)) {
+      reviews.set(sectionKey, {
+        lastReviewedAt: textValue(row.created_at) || null,
+        status: normalizeComplianceStatus(metadata.compliance_status)
+      });
+    }
+  });
+
+  return reviews;
 }
 
 function portfolioItemFromEvent(row: Record<string, unknown>, index: number): ResellerPortfolioItem {
@@ -3682,6 +3872,125 @@ export async function getResellerDisputesData(
       escalated: disputes.filter((dispute) => dispute.status === "escalated").length,
       open: disputes.filter((dispute) => dispute.status === "open").length,
       underReview: disputes.filter((dispute) => dispute.status === "under_review").length
+    }
+  };
+}
+
+export async function getResellerComplianceData(): Promise<ResellerComplianceData> {
+  const user = await getDashboardUser();
+  const [dashboard, verification, disputes, reviews, deliveries, reviewEvents] = await Promise.all([
+    getResellerDashboardData(),
+    getResellerVerificationData(),
+    getResellerDisputesData(),
+    getResellerReviewsData(),
+    getResellerStoreDeliveryData(),
+    getComplianceReviewEvents(user?.id)
+  ]);
+  const templateItems = dashboard.items.filter(isTemplateListing);
+  const listingItems = dashboard.items.filter((item) => !isTemplateListing(item));
+  const publicItems = dashboard.items.filter((item) => isPublicMarketplaceStatus(item.status));
+  const listingsWithPreview = listingItems.filter((item) => isPreviewEnabledForPublicItem(item)).length;
+  const templatesWithDescriptions = templateItems.filter((item) => Boolean(textValue(item.description))).length;
+  const openDisputes = disputes.summary.open + disputes.summary.underReview + disputes.summary.awaitingResponse + disputes.summary.escalated;
+  const warningPlaceholders = disputes.summary.escalated + reviews.summary.rejectedReviews;
+  const currentStanding: ResellerComplianceStatus =
+    openDisputes > 0 || warningPlaceholders > 0
+      ? "needs_attention"
+      : verification.overallStatus === "pending"
+        ? "under_review"
+        : "good_standing";
+  const checklist: ResellerComplianceChecklistItem[] = [
+    {
+      completed: Boolean(dashboard.profile?.is_published && textValue(dashboard.profile?.display_name)),
+      description: "Publish a reseller profile with core public identity details.",
+      key: "public_profile_completed",
+      label: "Public profile completed"
+    },
+    {
+      completed: verification.overallStatus !== "not_started",
+      description: "Start at least one verification flow before advanced marketplace trust features.",
+      key: "verification_started",
+      label: "Verification started"
+    },
+    {
+      completed: listingItems.length === 0 || listingsWithPreview >= publicItems.filter((item) => !isTemplateListing(item)).length,
+      description: "Public store listings should have safe preview links or preview imagery.",
+      key: "listings_have_preview",
+      label: "Listings have preview"
+    },
+    {
+      completed: templateItems.length === 0 || templatesWithDescriptions === templateItems.length,
+      description: "Templates should explain what the buyer can expect before future purchase flows.",
+      key: "templates_have_descriptions",
+      label: "Templates have descriptions"
+    },
+    {
+      completed: true,
+      description: "Prohibited content checks are guidance-only until future automated detection is approved.",
+      key: "no_prohibited_content",
+      label: "No prohibited content"
+    },
+    {
+      completed: deliveries.deliveries.some((delivery) => delivery.deliveryStatus === "ready_to_handoff"),
+      description: "Prepare at least one delivery workflow before future buyer claim handoff.",
+      key: "delivery_process_prepared",
+      label: "Delivery process prepared"
+    },
+    {
+      completed: reviewEvents.has("buyer_protection_rules") || reviewEvents.has("marketplace_rules"),
+      description: "Review dispute and buyer protection policy guidance.",
+      key: "dispute_policy_reviewed",
+      label: "Dispute policy reviewed"
+    }
+  ];
+  const sections = resellerComplianceSectionDefinitions.map((section) => {
+    const review = reviewEvents.get(section.key);
+    const derivedStatus: ResellerComplianceStatus =
+      section.key === "account_standing"
+        ? currentStanding
+        : section.key === "delivery_rules" && !checklist.find((item) => item.key === "delivery_process_prepared")?.completed
+          ? "needs_attention"
+          : review?.status ?? "good_standing";
+
+    return {
+      ...section,
+      lastReviewedAt: review?.lastReviewedAt ?? null,
+      status: derivedStatus
+    };
+  });
+
+  return {
+    accountStanding: {
+      currentStanding,
+      disputesCount: disputes.disputes.length,
+      reviewsStatus: `${reviews.summary.approvedReviews} approved, ${reviews.summary.pendingReviews} pending, ${reviews.summary.rejectedReviews} rejected`,
+      verificationStatus: verification.overallStatus,
+      warningsPlaceholder: warningPlaceholders
+    },
+    checklist,
+    emptyState: "No compliance review activity yet. Review SHASTORE marketplace rules to build your private compliance foundation.",
+    futureHooks: [
+      "Admin compliance review",
+      "Automatic listing checks",
+      "Prohibited content detection",
+      "Policy violation warnings",
+      "Account restrictions",
+      "Appeal workflow"
+    ],
+    safetyNotes: [
+      "Compliance data is private to reseller/admin workflows and is not shown on public profiles.",
+      "This phase does not apply real penalties or automatic account suspension.",
+      "No refunds, ownership reversals, wallet, payout, withdrawal, commission, or fake sale systems are created.",
+      "Future public compliance badges must be separately approved before appearing publicly."
+    ],
+    sections,
+    statusFoundation: resellerComplianceStatuses,
+    summary: {
+      goodStanding: sections.filter((section) => section.status === "good_standing").length,
+      needsAttention: sections.filter((section) => section.status === "needs_attention").length,
+      restrictedPlaceholders: sections.filter((section) => section.status === "restricted_placeholder").length,
+      underReview: sections.filter((section) => section.status === "under_review").length,
+      warningPlaceholders: sections.filter((section) => section.status === "warning_placeholder").length
     }
   };
 }
