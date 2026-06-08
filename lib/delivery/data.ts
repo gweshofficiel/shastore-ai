@@ -21,6 +21,30 @@ export type DeliveryAccessLookup =
   | { status: "missing_email" }
   | { status: "not_found" };
 
+export type DeliveryAssignmentStatus = "assigned" | "accepted" | "picked_up" | "delivered" | "returned";
+
+export type DeliveryAssignedOrder = {
+  amount: number;
+  assignedAt: string;
+  city: string | null;
+  currency: string;
+  customer: string | null;
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  phone: string | null;
+  status: DeliveryAssignmentStatus;
+  storeId: string;
+};
+
+export type DeliveryAssignedOrdersData = {
+  assignedOrders: number;
+  deliveredOrders: number;
+  pendingOrders: number;
+  returnedOrders: number;
+  orders: DeliveryAssignedOrder[];
+};
+
 type DeliveryAgentRow = {
   city_zone?: string | null;
   email?: string | null;
@@ -32,6 +56,21 @@ type DeliveryAgentRow = {
   store_id: string;
   stores?: { name?: string | null } | { name?: string | null }[] | null;
   workspace_id: string;
+};
+
+type DeliveryAssignmentRow = {
+  assigned_at: string;
+  currency?: string | null;
+  customer_city?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  delivery_agent_id: string;
+  id: string;
+  order_amount?: number | string | null;
+  order_id: string;
+  order_number?: string | null;
+  status?: string | null;
+  store_id: string;
 };
 
 function normalizeDeliveryEmail(value: string | null | undefined) {
@@ -66,6 +105,48 @@ function toAccessRecord(row: DeliveryAgentRow): DeliveryAgentAccessRecord {
     storeId: row.store_id,
     storeName: storeNameFromRow(row),
     workspaceId: row.workspace_id
+  };
+}
+
+function numericValue(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function normalizeAssignmentStatus(value: string | null | undefined): DeliveryAssignmentStatus {
+  if (
+    value === "accepted" ||
+    value === "picked_up" ||
+    value === "delivered" ||
+    value === "returned"
+  ) {
+    return value;
+  }
+
+  return "assigned";
+}
+
+function toAssignedOrder(row: DeliveryAssignmentRow): DeliveryAssignedOrder {
+  return {
+    amount: numericValue(row.order_amount),
+    assignedAt: row.assigned_at,
+    city: row.customer_city ?? null,
+    currency: row.currency ?? "USD",
+    customer: row.customer_name ?? null,
+    id: row.id,
+    orderId: row.order_id,
+    orderNumber: row.order_number ?? row.order_id.slice(0, 8).toUpperCase(),
+    phone: row.customer_phone ?? null,
+    status: normalizeAssignmentStatus(row.status),
+    storeId: row.store_id
   };
 }
 
@@ -247,4 +328,65 @@ export async function getDeliveryDashboardData({
   });
 
   return lookup.status === "approved" || lookup.status === "inactive" ? lookup.access : null;
+}
+
+export async function getDeliveryAssignedOrdersData(
+  agent: DeliveryAgentAccessRecord | null
+): Promise<DeliveryAssignedOrdersData> {
+  if (!agent) {
+    return {
+      assignedOrders: 0,
+      deliveredOrders: 0,
+      orders: [],
+      pendingOrders: 0,
+      returnedOrders: 0
+    };
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return {
+      assignedOrders: 0,
+      deliveredOrders: 0,
+      orders: [],
+      pendingOrders: 0,
+      returnedOrders: 0
+    };
+  }
+
+  const { data, error } = await admin
+    .from("delivery_assignments" as never)
+    .select(
+      "id, store_id, order_id, delivery_agent_id, assigned_at, status, order_number, customer_name, customer_phone, customer_city, order_amount, currency"
+    )
+    .eq("delivery_agent_id" as never, agent.agentId as never)
+    .eq("store_id" as never, agent.storeId as never)
+    .order("assigned_at" as never, { ascending: false } as never);
+
+  if (error) {
+    console.warn("[delivery-assignments] assigned orders lookup failed", {
+      agentId: agent.agentId,
+      message: error.message,
+      storeId: agent.storeId
+    });
+
+    return {
+      assignedOrders: 0,
+      deliveredOrders: 0,
+      orders: [],
+      pendingOrders: 0,
+      returnedOrders: 0
+    };
+  }
+
+  const orders = ((data ?? []) as unknown as DeliveryAssignmentRow[]).map(toAssignedOrder);
+
+  return {
+    assignedOrders: orders.length,
+    deliveredOrders: orders.filter((order) => order.status === "delivered").length,
+    orders,
+    pendingOrders: orders.filter((order) => order.status === "assigned" || order.status === "accepted").length,
+    returnedOrders: orders.filter((order) => order.status === "returned").length
+  };
 }

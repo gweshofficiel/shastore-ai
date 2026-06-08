@@ -1,5 +1,6 @@
 import { getOrCreateAccountProfile, accountProfileUnavailableMessage } from "@/lib/account-profiles";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
+import { getDeliveryAssignedOrdersData } from "@/lib/delivery/data";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,10 @@ function statusLabel(role: string, agentStatus?: string | null) {
 
 export default async function DeliveryDashboardPage() {
   const { agent, role, user } = await requireDeliveryAccess();
-  const account = await getOrCreateAccountProfile("delivery");
+  const [account, assignmentData] = await Promise.all([
+    getOrCreateAccountProfile("delivery"),
+    getDeliveryAssignedOrdersData(agent)
+  ]);
 
   return (
     <>
@@ -85,8 +89,8 @@ export default async function DeliveryDashboardPage() {
           },
           {
             label: "Assigned orders",
-            value: "0",
-            detail: "Placeholder only. No live order assignment in this phase."
+            value: assignmentData.assignedOrders.toLocaleString(),
+            detail: "Store orders assigned to this delivery agent."
           }
         ].map((card) => (
           <article
@@ -123,6 +127,16 @@ export default async function DeliveryDashboardPage() {
             label: "Agent status",
             value: agent?.status ?? role,
             detail: "Approved by the store owner delivery agent record."
+          },
+          {
+            label: "Delivered orders",
+            value: assignmentData.deliveredOrders.toLocaleString(),
+            detail: "Orders marked delivered in the assignment foundation."
+          },
+          {
+            label: "Returns",
+            value: assignmentData.returnedOrders.toLocaleString(),
+            detail: "Returned assignments tracked without proof-of-delivery yet."
           }
         ].map((card) => (
           <article

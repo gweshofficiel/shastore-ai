@@ -7,6 +7,7 @@ import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
 type OrderSource = "orders" | "store_orders";
 type DeliveryStatus = "assigned" | "picked_up" | "out_for_delivery" | "delivered" | "failed";
+type AssignmentStatus = "assigned" | "accepted" | "picked_up" | "delivered" | "returned";
 
 const deliveryAgentsPath = "/dashboard/delivery-agents";
 const deliveryStatuses = new Set<DeliveryStatus>([
@@ -28,6 +29,36 @@ function normalizeEmail(value: FormDataEntryValue | null) {
 
 function normalizePhone(value: FormDataEntryValue | null) {
   return cleanText(value, 80).replace(/[^0-9+]/g, "");
+}
+
+function numericValue(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function orderReference(orderId: string) {
+  return orderId.slice(0, 8).toUpperCase();
+}
+
+function cityFromAddress(address: string | null | undefined) {
+  if (!address) {
+    return null;
+  }
+
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return parts.at(-2) ?? parts.at(-1) ?? null;
 }
 
 function safeOrderReturnPath(value: FormDataEntryValue | null) {
@@ -85,7 +116,9 @@ async function loadOrderForDelivery({
   const tableName = source === "orders" ? "orders" : "store_orders";
   const { data, error } = await supabase
     .from(tableName as never)
-    .select("id, store_id, store_instance_id, workspace_id, delivery_agent_id, delivery_status")
+    .select(
+      "id, store_id, store_instance_id, workspace_id, delivery_agent_id, delivery_status, customer_name, customer_phone, customer_address, total, total_amount"
+    )
     .eq("id" as never, orderId as never)
     .eq("workspace_id" as never, workspaceId as never)
     .maybeSingle();
@@ -98,19 +131,157 @@ async function loadOrderForDelivery({
     delivery_agent_id?: string | null;
     delivery_status?: string | null;
     id: string;
+    customer_address?: string | null;
+    customer_name?: string | null;
+    customer_phone?: string | null;
     store_id?: string | null;
     store_instance_id?: string | null;
+    total?: number | string | null;
+    total_amount?: number | string | null;
     workspace_id?: string | null;
   };
 
   return {
+    customer_address: row.customer_address ?? null,
+    customer_name: row.customer_name ?? null,
+    customer_phone: row.customer_phone ?? null,
     delivery_agent_id: row.delivery_agent_id ?? null,
     delivery_status: row.delivery_status ?? null,
     id: row.id,
     store_id: row.store_id ?? row.store_instance_id ?? null,
     tableName,
+    total: row.total_amount ?? row.total ?? 0,
     workspace_id: row.workspace_id ?? workspaceId
   };
+}
+
+async function upsertDeliveryAssignment({
+  actorUserId,
+  agent,
+  assignmentStatus = "assigned",
+  order,
+  orderId,
+  source,
+  supabase,
+  workspaceId
+}: {
+  actorUserId: string;
+  agent: { id: string; name: string } | null;
+  assignmentStatus?: AssignmentStatus;
+  order: NonNullable<Awaited<ReturnType<typeof loadOrderForDelivery>>>;
+  orderId: string;
+  source: OrderSource;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  if (!agent) {
+    const { error } = await supabase
+      .from("delivery_assignments" as never)
+      .delete()
+      .eq("order_id" as never, orderId as never)
+      .eq("order_source" as never, source as never)
+      .eq("workspace_id" as never, workspaceId as never);
+
+    if (error) {
+      console.warn("[delivery-assignments] assignment clear skipped", {
+        code: error.code,
+        message: error.message,
+        orderId,
+        source
+      });
+    }
+
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("delivery_assignments" as never).upsert(
+    {
+      assigned_at: now,
+      assigned_by: actorUserId,
+      currency: "USD",
+      customer_city: cityFromAddress(order.customer_address),
+      customer_name: order.customer_name,
+      customer_phone: order.customer_phone,
+      delivery_agent_id: agent.id,
+      metadata: {
+        source: "owner_order_detail",
+        sourceOrderTable: order.tableName
+      },
+      notes: `Assigned to ${agent.name} from owner order detail.`,
+      order_amount: numericValue(order.total),
+      order_id: orderId,
+      order_number: orderReference(orderId),
+      order_source: source,
+      status: assignmentStatus,
+      store_id: order.store_id,
+      updated_at: now,
+      workspace_id: workspaceId
+    } as never,
+    { onConflict: "order_source,order_id" } as never
+  );
+
+  if (error) {
+    console.warn("[delivery-assignments] assignment write skipped", {
+      code: error.code,
+      message: error.message,
+      orderId,
+      source
+    });
+  }
+}
+
+function assignmentStatusFromDeliveryStatus(status: DeliveryStatus): AssignmentStatus {
+  if (status === "picked_up") {
+    return "picked_up";
+  }
+
+  if (status === "delivered") {
+    return "delivered";
+  }
+
+  if (status === "failed") {
+    return "returned";
+  }
+
+  if (status === "out_for_delivery") {
+    return "accepted";
+  }
+
+  return "assigned";
+}
+
+async function updateDeliveryAssignmentStatus({
+  orderId,
+  source,
+  status,
+  supabase,
+  workspaceId
+}: {
+  orderId: string;
+  source: OrderSource;
+  status: AssignmentStatus;
+  supabase: Awaited<ReturnType<typeof getWorkspaceDataContext>>["supabase"];
+  workspaceId: string;
+}) {
+  const { error } = await supabase
+    .from("delivery_assignments" as never)
+    .update({
+      status,
+      updated_at: new Date().toISOString()
+    } as never)
+    .eq("order_id" as never, orderId as never)
+    .eq("order_source" as never, source as never)
+    .eq("workspace_id" as never, workspaceId as never);
+
+  if (error) {
+    console.warn("[delivery-assignments] assignment status sync skipped", {
+      message: error.message,
+      orderId,
+      source,
+      status
+    });
+  }
 }
 
 async function recordDeliveryEvent({
@@ -303,12 +474,32 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
     orderDeliveryRedirect(returnTo, "delivery-failed");
   }
 
+  await upsertDeliveryAssignment({
+    actorUserId: context.user.id,
+    agent,
+    order,
+    orderId,
+    source,
+    supabase: context.supabase,
+    workspaceId: context.workspaceId
+  });
+
   await recordDeliveryEvent({
     actorUserId: context.user.id,
     agentId: agent?.id ?? null,
     eventType: order.delivery_agent_id ? "delivery_agent_changed" : "delivery_assigned",
-    message: agent ? `Delivery agent assigned to ${agent.name}.` : "Delivery agent assignment cleared.",
-    metadata: agent ? { agentName: agent.name, agentPhone: agent.phone, cityZone: agent.city_zone } : {},
+    message: agent
+      ? `Order ${orderReference(orderId)} assigned to delivery agent ${agent.name}.`
+      : `Delivery assignment cleared for order ${orderReference(orderId)}.`,
+    metadata: agent
+      ? {
+          agentName: agent.name,
+          agentPhone: agent.phone,
+          assignmentStatus: "assigned",
+          cityZone: agent.city_zone,
+          orderReference: orderReference(orderId)
+        }
+      : { orderReference: orderReference(orderId) },
     newValue: agent?.id ?? null,
     orderId,
     previousValue: order.delivery_agent_id,
@@ -394,6 +585,14 @@ export async function updateOrderDeliveryStatusAction(formData: FormData) {
     });
     orderDeliveryRedirect(returnTo, "delivery-failed");
   }
+
+  await updateDeliveryAssignmentStatus({
+    orderId,
+    source,
+    status: assignmentStatusFromDeliveryStatus(status),
+    supabase: context.supabase,
+    workspaceId: context.workspaceId
+  });
 
   await recordDeliveryEvent({
     actorUserId: context.user.id,

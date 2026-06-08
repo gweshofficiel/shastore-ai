@@ -36,6 +36,7 @@ type OrderItem = {
 };
 
 type OrderEvent = {
+  actor_user_id?: string | null;
   created_at: string;
   event_type: string;
   message: string;
@@ -366,7 +367,7 @@ async function loadDeliveryEvents({
 }) {
   const { data, error } = await supabase
     .from("store_delivery_events" as never)
-    .select("event_type, previous_value, new_value, message, created_at")
+    .select("event_type, previous_value, new_value, message, created_at, actor_user_id")
     .eq("order_id" as never, orderId as never)
     .eq("order_source" as never, source as never)
     .eq("workspace_id" as never, workspaceId as never)
@@ -932,6 +933,11 @@ export default async function OrderDetailPage({
                     {event.previous_value || event.new_value ? (
                       <p className="mt-2 text-xs font-bold text-slate-500">
                         {timelineValueLabel(event.previous_value)} → {timelineValueLabel(event.new_value)}
+                      </p>
+                    ) : null}
+                    {event.actor_user_id ? (
+                      <p className="mt-2 text-xs font-bold text-slate-500">
+                        Assigned by user {event.actor_user_id.slice(0, 8)}
                       </p>
                     ) : null}
                   </div>
