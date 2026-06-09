@@ -36,6 +36,8 @@ export type TestEnvironmentData = {
     label: string;
     ok: boolean;
   }>;
+  healthMonitor: Array<WorkflowStatusItem>;
+  lastTestResults: Array<WorkflowStatusItem>;
   order: {
     customer: string;
     id: string;
@@ -59,6 +61,7 @@ export type TestEnvironmentData = {
     template: string;
   };
   resellerFlow: Array<WorkflowStatusItem>;
+  roleAccess: Array<WorkflowStatusItem>;
   shortcuts: Array<{
     href: string;
     label: string;
@@ -72,6 +75,15 @@ export type TestEnvironmentData = {
     slug: string | null;
     status: string;
   };
+  testAssets: Array<WorkflowStatusItem>;
+  testRunCenter: Array<WorkflowStatusItem>;
+  testingWorkspace: {
+    readiness: string;
+    summary: string;
+    title: string;
+  };
+  workflowStatus: Array<WorkflowStatusItem>;
+  futureHooks: Array<WorkflowStatusItem>;
   workflowHealth: Array<WorkflowStatusItem>;
   workflowMap: Array<WorkflowStatusItem>;
 };
@@ -182,6 +194,10 @@ type LegacyCustomerOrderLinkRow = {
   delivery_agent_id?: string | null;
   order_id?: string | null;
   status?: string | null;
+};
+
+type IdRow = {
+  id: string;
 };
 
 type AuthUserStatus = {
@@ -524,7 +540,10 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     storeCustomers,
     customerAddresses,
     wishlistItems,
-    supportTickets
+    supportTickets,
+    platformNotifications,
+    deliveryNotifications,
+    emailLogs
   ] = await Promise.all([
     safeSelect<DeliveryProofRow>("delivery_proofs", "id, assignment_id", 100),
     safeSelect<DeliveryCodRow>("cod_collections", "id, assignment_id, status", 100),
@@ -532,7 +551,10 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     safeSelect<StoreCustomerRow>("store_customers", "id, store_id, email, phone, last_order_id", 100),
     safeSelect<CustomerAddressRow>("customer_addresses", "id, customer_id", 100),
     safeSelect<StoreWishlistRow>("store_wishlist_items", "id, customer_id", 100),
-    safeSelect<StoreSupportTicketRow>("store_support_tickets", "id, store_id, customer_id, customer_email, customer_phone", 100)
+    safeSelect<StoreSupportTicketRow>("store_support_tickets", "id, store_id, customer_id, customer_email, customer_phone", 100),
+    safeSelect<IdRow>("notifications", "id", 100),
+    safeSelect<IdRow>("delivery_notifications", "id", 100),
+    safeSelect<IdRow>("email_event_logs", "id", 100)
   ]);
   const customerPhone = text(testOrder?.customer_phone);
   const customerEmail = text(testOrder?.customer_email, customerAccount?.email ?? "");
@@ -662,6 +684,58 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     { href: "/delivery/dashboard", label: "Open Delivery Dashboard", note: "Existing delivery route, no impersonation" },
     { href: "/reseller/dashboard", label: "Open Reseller Dashboard", note: "Existing reseller route, no sale activation" }
   ];
+  const roleAccess = accounts.map((account) =>
+    workflowItem(account.label, account.status === "available", account.status, account.email)
+  );
+  const testAssets = [
+    workflowItem("Test Store", store.registryStatus === "available", store.registryStatus, store.name),
+    workflowItem("Test Product", product.registryStatus === "available", product.registryStatus, product.name),
+    workflowItem("Test Customer", Boolean(storeCustomer), storeCustomer ? "available" : "missing", storeCustomer?.id ?? customerEmail),
+    workflowItem("Test Delivery Agent", delivery.status === "available", delivery.status, delivery.agent),
+    workflowItem("Test Reseller Listing", reseller.registryStatus === "available", reseller.registryStatus, reseller.marketplaceListing)
+  ];
+  const workflowStatus = [
+    workflowItem("Store Ready", store.registryStatus === "available", store.registryStatus, store.name),
+    workflowItem("Product Ready", productLinkedToStore, productLinkedToStore ? "ready" : "missing", product.name),
+    workflowItem("Customer Ready", Boolean(storeCustomer), storeCustomer ? "ready" : "missing", customerEmail || "No linked customer."),
+    workflowItem("Delivery Ready", deliveryLinkedToStore, deliveryLinkedToStore ? "ready" : "missing", delivery.agent),
+    workflowItem("Reseller Ready", resellerLinkedToListing, resellerLinkedToListing ? "ready" : "missing", reseller.marketplaceListing)
+  ];
+  const lastTestResults = [
+    workflowItem("Last Order Test", Boolean(testOrder), orderStatus, testOrder?.id ?? "No order test has run yet."),
+    workflowItem("Last Delivery Test", Boolean(activeAssignment), assignmentStatus, activeAssignment?.id ?? "No delivery test has run yet."),
+    workflowItem("Last Customer Test", Boolean(storeCustomer), storeCustomer ? "visible" : "missing", storeCustomer?.id ?? "No customer test has run yet."),
+    workflowItem("Last Reseller Test", resellerLinkedToListing, reseller.registryStatus, reseller.marketplaceListing)
+  ];
+  const healthMonitor = [
+    workflowItem("Auth", accounts.some((account) => account.status === "available"), "available", `${accounts.filter((account) => account.status === "available").length}/${accounts.length} test accounts found.`),
+    workflowItem("RLS", true, "enabled", "No RLS policies were changed; admin reads use existing service/admin access."),
+    workflowItem("Store", store.registryStatus === "available", store.registryStatus, store.id),
+    workflowItem("Products", product.registryStatus === "available", product.registryStatus, product.id),
+    workflowItem("Orders", Boolean(testOrder), orderStatus, testOrder?.id ?? "No test order."),
+    workflowItem("Delivery", Boolean(deliveryAgent || activeAssignment), delivery.currentStatus, delivery.id),
+    workflowItem("Notifications", Boolean(platformNotifications.length || deliveryNotifications.length || emailLogs.length), platformNotifications.length || deliveryNotifications.length || emailLogs.length ? "available" : "missing", `${platformNotifications.length} platform · ${deliveryNotifications.length} delivery · ${emailLogs.length} email`),
+    workflowItem("Support", Boolean(supportTickets.length), supportTickets.length ? "available" : "missing", `${supportTickets.length} support tickets loaded.`)
+  ];
+  const testRunCenter = [
+    workflowItem("Run Order Test", false, "reserved", "Placeholder only. No order mutation is wired."),
+    workflowItem("Run Delivery Test", false, "reserved", "Placeholder only. No assignment/status mutation is wired."),
+    workflowItem("Run Customer Test", false, "reserved", "Placeholder only. No customer mutation is wired."),
+    workflowItem("Run Reseller Test", false, "reserved", "Placeholder only. No reseller sale activation is wired."),
+    workflowItem("Run Commerce Test", false, "reserved", "Placeholder only. No payment/commerce charge is wired.")
+  ];
+  const futureHooks = [
+    workflowItem("Stripe Test", false, "reserved", "Future payment provider sandbox hook."),
+    workflowItem("NOWPayments Test", false, "reserved", "Future crypto payment sandbox hook."),
+    workflowItem("PayPal Test", false, "reserved", "Future PayPal sandbox hook."),
+    workflowItem("Email Test", Boolean(emailLogs.length), emailLogs.length ? "available" : "reserved", `${emailLogs.length} existing email logs.`),
+    workflowItem("WhatsApp Test", false, "reserved", "Future WhatsApp handoff test hook.")
+  ];
+  const testingWorkspace = {
+    readiness: `${workflowStatus.filter((item) => item.ok).length}/${workflowStatus.length}`,
+    summary: "Permanent multi-role testing control center using existing SHASTORE accounts, assets, routes, and workflow tables.",
+    title: "Testing Workspace"
+  };
   const health = [
     { label: "Admin exists", ok: accounts[0].status === "available" },
     { label: "Owner exists", ok: accounts[1].status === "available" },
@@ -676,14 +750,22 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     customerFlow,
     delivery,
     deliveryFlow,
+    futureHooks,
     health,
+    healthMonitor,
+    lastTestResults,
     order,
     orderFlow,
     product,
     reseller,
     resellerFlow,
+    roleAccess,
     shortcuts,
     store,
+    testAssets,
+    testRunCenter,
+    testingWorkspace,
+    workflowStatus,
     workflowHealth,
     workflowMap
   };

@@ -34,6 +34,10 @@ function statusTone(status: string): "amber" | "green" | "red" {
     return "green";
   }
 
+  if (status === "ready" || status === "enabled") {
+    return "green";
+  }
+
   if (
     status === "missing" ||
     status === "pending" ||
@@ -70,8 +74,10 @@ function ActionLink({ href, label }: { href: string; label: string }) {
 
 function WorkflowPanel({
   items,
-  title
+  title,
+  eyebrow = "Real workflow"
 }: {
+  eyebrow?: string;
   items: Array<{ label: string; note: string; ok: boolean; status: string }>;
   title: string;
 }) {
@@ -79,7 +85,7 @@ function WorkflowPanel({
     <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Real workflow</p>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">{eyebrow}</p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">{title}</h2>
         </div>
       </div>
@@ -98,6 +104,32 @@ function WorkflowPanel({
   );
 }
 
+function ReservedPanel({
+  items,
+  title
+}: {
+  items: Array<{ label: string; note: string; status: string }>;
+  title: string;
+}) {
+  return (
+    <section className="rounded-[2rem] border border-dashed border-blue-200 bg-blue-50 p-5">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-700">Reserved hooks</p>
+      <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-blue-950">{title}</h2>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <div className="rounded-2xl border border-blue-100 bg-white/80 p-4" key={item.label}>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-black text-blue-950">{item.label}</p>
+              <AdminBadge tone={statusTone(item.status)}>{item.status}</AdminBadge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-blue-900">{item.note}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function AdminTestEnvironmentPage() {
   const data = await getTestEnvironmentData();
   const readyCount = data.health.filter((item) => item.ok).length;
@@ -108,6 +140,20 @@ export default async function AdminTestEnvironmentPage() {
         description="Permanent admin-only registry for dedicated SHASTORE test accounts, linked assets, ecosystem readiness, and future provisioning hooks before real commerce activation."
         title="Test Environment"
       />
+
+      <section className="rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white lg:p-6">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Testing Workspace</p>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-black tracking-[-0.04em]">{data.testingWorkspace.title}</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{data.testingWorkspace.summary}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">Workflow readiness</p>
+            <p className="mt-1 text-2xl font-black">{data.testingWorkspace.readiness}</p>
+          </div>
+        </div>
+      </section>
 
       <AdminStatGrid
         stats={[
@@ -123,6 +169,37 @@ export default async function AdminTestEnvironmentPage() {
           <HealthCard key={item.label} label={item.label} ok={item.ok} />
         ))}
       </section>
+
+      <WorkflowPanel eyebrow="Role access panel" items={data.roleAccess} title="Multi-role access" />
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Quick access</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Daily testing dashboards</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Opens existing role dashboards and portals only. Authentication and RLS remain unchanged.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ActionLink href="/admin" label="Open Admin Dashboard" />
+            <ActionLink href="/dashboard" label="Open Owner Dashboard" />
+            <ActionLink href="/reseller/dashboard" label="Open Reseller Dashboard" />
+            <ActionLink href={data.shortcuts.find((shortcut) => shortcut.label === "Open Customer Portal")?.href ?? "#customer-flow"} label="Open Customer Portal" />
+            <ActionLink href="/delivery/dashboard" label="Open Delivery Dashboard" />
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <WorkflowPanel eyebrow="Test assets" items={data.testAssets} title="Permanent test assets" />
+        <WorkflowPanel eyebrow="Workflow status" items={data.workflowStatus} title="Readiness summary" />
+      </div>
+
+      <WorkflowPanel eyebrow="Last test results" items={data.lastTestResults} title="Latest real workflow records" />
+      <WorkflowPanel eyebrow="Health monitor" items={data.healthMonitor} title="Platform testing health" />
+      <ReservedPanel items={data.testRunCenter} title="Test Run Center" />
+      <ReservedPanel items={data.futureHooks} title="Future Hooks" />
 
       <WorkflowPanel items={data.workflowMap} title="Test Environment Workflow Map" />
       <WorkflowPanel items={data.workflowHealth} title="Workflow Health Checks" />
