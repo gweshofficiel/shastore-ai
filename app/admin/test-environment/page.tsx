@@ -16,7 +16,33 @@ function statusTone(status: string): "amber" | "green" | "red" {
     return "green";
   }
 
-  if (status === "missing" || status === "pending" || status === "pending_verification") {
+  if (
+    status === "linked" ||
+    status === "visible" ||
+    status === "submitted" ||
+    status === "created" ||
+    status === "delivered" ||
+    status === "confirmed" ||
+    status === "processing" ||
+    status === "fulfilled" ||
+    status === "assigned" ||
+    status === "accepted" ||
+    status === "picked_up" ||
+    status === "collected" ||
+    status === "settled_to_store"
+  ) {
+    return "green";
+  }
+
+  if (
+    status === "missing" ||
+    status === "pending" ||
+    status === "pending_verification" ||
+    status === "reserved" ||
+    status === "waiting" ||
+    status === "none" ||
+    status === "not created"
+  ) {
     return "amber";
   }
 
@@ -27,8 +53,8 @@ function HealthCard({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className={`mt-2 text-sm font-black ${ok ? "text-emerald-700" : "text-amber-700"}`}>
-        {ok ? "Ready" : "Missing"}
+      <p className={`mt-2 text-sm font-black ${ok ? "text-emerald-700" : "text-red-700"}`}>
+        {ok ? "Green" : "Red"}
       </p>
     </div>
   );
@@ -39,6 +65,36 @@ function ActionLink({ href, label }: { href: string; label: string }) {
     <Link className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" href={href}>
       {label}
     </Link>
+  );
+}
+
+function WorkflowPanel({
+  items,
+  title
+}: {
+  items: Array<{ label: string; note: string; ok: boolean; status: string }>;
+  title: string;
+}) {
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Real workflow</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">{title}</h2>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={item.label}>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-black text-slate-950">{item.label}</p>
+              <AdminBadge tone={item.ok ? statusTone(item.status) : "red"}>{item.ok ? item.status : "red"}</AdminBadge>
+            </div>
+            <p className="mt-3 break-all text-sm leading-6 text-slate-500">{item.note}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -67,6 +123,35 @@ export default async function AdminTestEnvironmentPage() {
           <HealthCard key={item.label} label={item.label} ok={item.ok} />
         ))}
       </section>
+
+      <WorkflowPanel items={data.workflowMap} title="Test Environment Workflow Map" />
+      <WorkflowPanel items={data.workflowHealth} title="Workflow Health Checks" />
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Admin actions</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Real workflow shortcuts</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              These open existing SHASTORE routes only. They do not impersonate roles or bypass RLS.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data.shortcuts.map((shortcut) => (
+              <ActionLink href={shortcut.href} key={shortcut.label} label={shortcut.label} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <WorkflowPanel items={data.orderFlow} title="Test Order Flow Status" />
+        <WorkflowPanel items={data.deliveryFlow} title="Delivery Flow Status" />
+        <WorkflowPanel items={data.customerFlow} title="Customer Flow Status" />
+        <WorkflowPanel items={data.adminMonitoring} title="Admin Monitoring" />
+      </div>
+
+      <WorkflowPanel items={data.resellerFlow} title="Reseller Flow Placeholder" />
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
