@@ -132,7 +132,13 @@ function isLocalhostHost(value: string) {
 }
 
 function envAppBaseUrl() {
-  for (const key of ["NEXT_PUBLIC_APP_URL", "PUBLIC_APP_URL", "NEXT_PUBLIC_SITE_URL"] as const) {
+  for (const key of [
+    "NEXT_PUBLIC_APP_URL",
+    "PUBLIC_APP_URL",
+    "VERCEL_PROJECT_PRODUCTION_URL",
+    "NEXT_PUBLIC_SITE_URL",
+    "VERCEL_URL"
+  ] as const) {
     const value = process.env[key]?.trim();
 
     if (!value) {
@@ -146,10 +152,6 @@ function envAppBaseUrl() {
     }
 
     return baseUrl;
-  }
-
-  if (process.env.VERCEL_URL) {
-    return withProtocol(process.env.VERCEL_URL);
   }
 
   if (isProduction()) {
@@ -174,6 +176,12 @@ export function getAppBaseUrl() {
 }
 
 export async function resolveAppBaseUrl() {
+  const fromEnv = envAppBaseUrl();
+
+  if (fromEnv) {
+    return fromEnv;
+  }
+
   try {
     const { headers } = await import("next/headers");
     const headerList = await headers();
@@ -192,12 +200,6 @@ export async function resolveAppBaseUrl() {
     }
   } catch {
     // headers() is unavailable outside a request context.
-  }
-
-  const fromEnv = envAppBaseUrl();
-
-  if (fromEnv) {
-    return fromEnv;
   }
 
   if (isProduction()) {
