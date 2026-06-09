@@ -1,5 +1,6 @@
 import { getOrCreateAccountProfile, accountProfileUnavailableMessage } from "@/lib/account-profiles";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
+import { getDeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { getDeliveryCommunicationSummary } from "@/lib/delivery/communication-data";
 import { getDeliveryAssignedOrdersData, getDeliveryRouteCapacityData } from "@/lib/delivery/data";
 import { updateDeliveryAvailabilityAction } from "@/lib/delivery/route-actions";
@@ -52,6 +53,18 @@ function availabilityLabel(status: string) {
   return labels[status] ?? status;
 }
 
+function complianceBadgeClass(value: string) {
+  if (value === "Verified") {
+    return "bg-emerald-950 text-white";
+  }
+
+  if (value === "Suspended" || value === "Not Eligible") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
 function dashboardMessage(value: string | string[] | undefined) {
   const status = Array.isArray(value) ? value[0] : value;
   const messages: Record<string, string> = {
@@ -72,7 +85,7 @@ export default async function DeliveryDashboardPage({
 }) {
   const query = await searchParams;
   const { agent, role, user } = await requireDeliveryAccess();
-  const [account, assignmentData, routeData, communicationData] = await Promise.all([
+  const [account, assignmentData, routeData, communicationData, complianceData] = await Promise.all([
     getOrCreateAccountProfile("delivery"),
     getDeliveryAssignedOrdersData(agent),
     getDeliveryRouteCapacityData(agent),
@@ -82,7 +95,8 @@ export default async function DeliveryDashboardPage({
           storeId: agent.storeId,
           workspaceId: agent.workspaceId
         })
-      : Promise.resolve({ recentMessages: [], recentNotifications: [], unreadMessages: 0, unreadNotifications: 0 })
+      : Promise.resolve({ recentMessages: [], recentNotifications: [], unreadMessages: 0, unreadNotifications: 0 }),
+    getDeliveryComplianceData(agent)
   ]);
   const message = dashboardMessage(query?.delivery);
 
@@ -104,13 +118,13 @@ export default async function DeliveryDashboardPage({
           </div>
           <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-500">
-              Notification bell
+              Compliance badge
             </p>
-            <p className="mt-2 text-xl font-black text-emerald-950">
-              {communicationData.unreadNotifications + communicationData.unreadMessages} unread
+            <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${complianceBadgeClass(complianceData.badge)}`}>
+              {complianceData.badge}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
-              {communicationData.unreadNotifications} notifications · {communicationData.unreadMessages} messages
+              {communicationData.unreadNotifications + communicationData.unreadMessages} unread · {complianceData.checklistCompleted}/{complianceData.checklistTotal} checks complete
             </p>
           </div>
         </div>

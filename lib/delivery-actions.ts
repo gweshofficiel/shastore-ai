@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getDeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { createDeliveryNotification, createDeliverySystemMessage } from "@/lib/delivery/communication-data";
 import { findAuthUserIdByEmail, linkDeliveryAgentToAuthUser } from "@/lib/delivery/data";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
@@ -488,8 +489,11 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
 
   let agent: {
     availability_status?: string | null;
+    assigned_zone_ids?: string[] | null;
     capacity_limit?: number | string | null;
     city_zone?: string | null;
+    current_active_orders?: number | string | null;
+    email?: string | null;
     id: string;
     name: string;
     phone: string;
@@ -499,7 +503,7 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
   if (agentId) {
     const { data, error } = await context.supabase
       .from("store_delivery_agents" as never)
-      .select("id, name, phone, city_zone, status, availability_status, capacity_limit")
+      .select("id, name, phone, email, city_zone, status, availability_status, capacity_limit, current_active_orders, assigned_zone_ids")
       .eq("id" as never, agentId as never)
       .eq("workspace_id" as never, context.workspaceId as never)
       .eq("store_id" as never, order.store_id as never)
@@ -511,8 +515,11 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
 
     agent = data as unknown as {
       availability_status?: string | null;
+      assigned_zone_ids?: string[] | null;
       capacity_limit?: number | string | null;
       city_zone?: string | null;
+      current_active_orders?: number | string | null;
+      email?: string | null;
       id: string;
       name: string;
       phone: string;
@@ -521,6 +528,26 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
 
     if (agent.status !== "active") {
       orderDeliveryRedirect(returnTo, "delivery-agent-inactive");
+    }
+
+    const compliance = await getDeliveryComplianceData({
+      agentId: agent.id,
+      agentName: agent.name,
+      assignedZoneIds: Array.isArray(agent.assigned_zone_ids) ? agent.assigned_zone_ids : [],
+      availabilityStatus: agent.availability_status === "online" || agent.availability_status === "busy" ? agent.availability_status : "offline",
+      capacityLimit: Math.max(0, Math.trunc(numericValue(agent.capacity_limit ?? 5))),
+      cityZone: agent.city_zone ?? null,
+      currentActiveOrders: Math.max(0, Math.trunc(numericValue(agent.current_active_orders))),
+      email: agent.email ?? null,
+      role: "delivery",
+      status: "active",
+      storeId: order.store_id,
+      storeName: null,
+      workspaceId: context.workspaceId
+    });
+
+    if (!compliance.isAssignmentEligible) {
+      orderDeliveryRedirect(returnTo, "delivery-agent-not-eligible");
     }
 
     const activeOrders = await activeDeliveryOrderCount({

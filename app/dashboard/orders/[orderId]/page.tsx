@@ -7,6 +7,7 @@ import {
   assignOrderDeliveryAgentAction,
   updateOrderDeliveryStatusAction
 } from "@/lib/delivery-actions";
+import { getDeliveryComplianceMap, type DeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
 import {
   updateStoreOrderFulfillmentStatusAction,
@@ -48,6 +49,7 @@ type DeliveryAgent = {
   availability_status: string | null;
   capacity_limit: number | null;
   city_zone: string | null;
+  compliance?: DeliveryComplianceData | null;
   current_active_orders: number | null;
   email: string | null;
   id: string;
@@ -299,6 +301,10 @@ function statusMessage(value: string | undefined) {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Capacity Full: that delivery agent has reached their active order limit."
     },
+    "delivery-agent-not-eligible": {
+      className: "border-red-200 bg-red-50 text-red-700",
+      text: "Delivery agent is not eligible for new assignments."
+    },
     "delivery-failed": {
       className: "border-red-200 bg-red-50 text-red-700",
       text: "Delivery assignment could not be updated. Please try again."
@@ -525,7 +531,17 @@ async function loadDeliveryAgents({
     return [];
   }
 
-  return (data ?? []) as unknown as DeliveryAgent[];
+  const agents = (data ?? []) as unknown as DeliveryAgent[];
+  const compliance = await getDeliveryComplianceMap({
+    agentIds: agents.map((agent) => agent.id),
+    storeId,
+    workspaceId: workspaceId ?? ""
+  });
+
+  return agents.map((agent) => ({
+    ...agent,
+    compliance: compliance.get(agent.id) ?? null
+  }));
 }
 
 async function loadOrderDetail(orderId: string, sourceHint?: string) {
@@ -1359,12 +1375,15 @@ function DeliveryAssignmentForm({
             const activeLoad = agent.current_active_orders ?? 0;
             const capacityLimit = agent.capacity_limit ?? 5;
             const capacityFull = activeLoad >= capacityLimit;
+            const notEligible = agent.compliance ? !agent.compliance.isAssignmentEligible : false;
 
             return (
-              <option disabled={agent.status !== "active" || capacityFull} key={agent.id} value={agent.id}>
+              <option disabled={agent.status !== "active" || capacityFull || notEligible} key={agent.id} value={agent.id}>
                 {agent.name} · {agent.city_zone ?? "No zone"} · {agent.availability_status ?? "offline"} ·{" "}
                 {activeLoad}/{capacityLimit}
                 {capacityFull ? " · Capacity Full" : ""}
+                {agent.compliance ? ` · ${agent.compliance.eligibilityStatus.replaceAll("_", " ")}` : ""}
+                {notEligible ? " · Not eligible" : ""}
               </option>
             );
           })}

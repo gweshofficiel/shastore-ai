@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createDeliveryAgentAction } from "@/lib/delivery-actions";
+import { getDeliveryComplianceMap, type DeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { sendOwnerDeliveryMessageAction } from "@/lib/delivery/communication-actions";
 import { calculateDeliveryPerformanceMetrics, type DeliveryPerformanceMetrics } from "@/lib/delivery/performance-data";
 import { createDeliveryZoneAction, updateDeliveryAgentCapacityAction } from "@/lib/delivery/route-actions";
@@ -62,6 +63,7 @@ type DeliveryAgentsData = {
   activeLoads: Map<string, number>;
   activeStore: UserStoreRow | null;
   agents: DeliveryAgentRow[];
+  compliance: Map<string, DeliveryComplianceData>;
   error: string | null;
   messagesByAgent: Map<string, DeliveryMessageRow[]>;
   performance: Map<string, DeliveryPerformanceMetrics>;
@@ -96,6 +98,18 @@ function statusClass(status: string) {
   return status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700";
 }
 
+function complianceBadgeClass(status: string) {
+  if (status === "Verified") {
+    return "bg-emerald-950 text-white";
+  }
+
+  if (status === "Suspended" || status === "Not Eligible") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
 async function getDeliveryAgentsData(selectedStoreId?: string): Promise<DeliveryAgentsData> {
   const supabase = await createClient();
   const {
@@ -107,6 +121,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       activeStore: null,
       agents: [],
+      compliance: new Map<string, DeliveryComplianceData>(),
       error: "Sign in to manage delivery agents.",
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
@@ -123,6 +138,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       activeStore: null,
       agents: [],
+      compliance: new Map<string, DeliveryComplianceData>(),
       error: "You do not have permission to manage delivery agents.",
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
@@ -139,6 +155,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore,
       activeLoads: new Map<string, number>(),
       agents: [],
+      compliance: new Map<string, DeliveryComplianceData>(),
       error: storesError ? "Stores could not be loaded." : null,
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
@@ -173,6 +190,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       activeStore,
       agents: [],
+      compliance: new Map<string, DeliveryComplianceData>(),
       error: "Delivery agents could not be loaded. Apply the delivery migration.",
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
@@ -186,6 +204,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       activeStore,
       agents: (agentsResult.data ?? []) as unknown as DeliveryAgentRow[],
+      compliance: new Map<string, DeliveryComplianceData>(),
       error: "Delivery zones could not be loaded. Apply the route capacity migration.",
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
@@ -211,6 +230,11 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     )
   );
   const performance = new Map(performanceRows.map((metrics) => [metrics.deliveryAgentId, metrics]));
+  const compliance = await getDeliveryComplianceMap({
+    agentIds: agents.map((agent) => agent.id),
+    storeId: activeStore.id,
+    workspaceId
+  });
   const { data: messageRows } = await supabase
     .from("delivery_messages" as never)
     .select("id, delivery_agent_id, sender_type, message, status, created_at")
@@ -231,6 +255,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     activeLoads,
     activeStore,
     agents,
+    compliance,
     error: null,
     messagesByAgent,
     performance,
@@ -241,7 +266,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
 
 export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgentsPageProps) {
   const query = await searchParams;
-  const { activeLoads, activeStore, agents, error, messagesByAgent, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
+  const { activeLoads, activeStore, agents, compliance, error, messagesByAgent, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
   const message = statusMessage(query.delivery);
   const onlineAgents = agents.filter((agent) => agent.availability_status === "online").length;
   const busyAgents = agents.filter((agent) => agent.availability_status === "busy").length;
@@ -262,6 +287,11 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
   const bestRated = performanceRows.slice().sort((a, b) => b.ratingAverage - a.ratingAverage)[0];
   const lowestReturn = performanceRows.slice().sort((a, b) => a.returnRate - b.returnRate)[0];
   const highestDeliveries = performanceRows.slice().sort((a, b) => b.totalDeliveredOrders - a.totalDeliveredOrders)[0];
+  const verifiedAgents = agents.filter((agent) => compliance.get(agent.id)?.badge === "Verified").length;
+  const blockedAgents = agents.filter((agent) => {
+    const status = compliance.get(agent.id)?.eligibilityStatus;
+    return status === "not_eligible" || status === "suspended" || status === "blocked";
+  }).length;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -307,6 +337,8 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
         <MetricCard label="Available Capacity" value={availableCapacity} />
         <MetricCard label="Orders Per Agent" value={ordersPerAgent} />
         <MetricCard label="Active Zones" value={zones.filter((zone) => zone.is_active).length} />
+        <MetricCard label="Verified Agents" value={verifiedAgents} />
+        <MetricCard label="Compliance Blocks" value={blockedAgents} />
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -401,6 +433,11 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
             ) : null}
             {agents.length ? agents.map((agent) => (
               <article className="rounded-[1.5rem] border border-slate-200 bg-white p-5" key={agent.id}>
+                {(() => {
+                  const agentCompliance = compliance.get(agent.id);
+
+                  return (
+                    <>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{agent.city_zone ?? "No zone"}</p>
@@ -418,6 +455,13 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
                         {performance.get(agent.id)?.rank}
                       </p>
                     ) : null}
+                    {agentCompliance ? (
+                      <p className="mt-2 text-sm font-bold text-muted">
+                        Verification {agentCompliance.verificationStatus.replaceAll("_", " ")} · Eligibility{" "}
+                        {agentCompliance.eligibilityStatus.replaceAll("_", " ")} · Checklist{" "}
+                        {agentCompliance.checklistCompleted}/{agentCompliance.checklistTotal}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(agent.status)}`}>
@@ -426,8 +470,37 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
                     <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-blue-700">
                       {agent.availability_status ?? "offline"}
                     </span>
+                    {agentCompliance ? (
+                      <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${complianceBadgeClass(agentCompliance.badge)}`}>
+                        {agentCompliance.badge}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
+                {agentCompliance ? (
+                  <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-700">
+                      Compliance summary
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <CompliancePill label="Profile" checked={agentCompliance.checklist.profileCompleted} />
+                      <CompliancePill label="Phone" checked={agentCompliance.checklist.phoneVerified} />
+                      <CompliancePill label="Vehicle" checked={agentCompliance.checklist.vehicleInformationCompleted} />
+                      <CompliancePill label="License" checked={agentCompliance.checklist.licenseUploadedPlaceholder} />
+                      <CompliancePill label="Region" checked={agentCompliance.checklist.assignedRegionConfirmed} />
+                      <CompliancePill label="Owner approved" checked={agentCompliance.checklist.ownerApproved} />
+                      <CompliancePill label="No violations" checked={agentCompliance.checklist.noActiveViolations} />
+                    </div>
+                    {!agentCompliance.isAssignmentEligible ? (
+                      <p className="rounded-2xl bg-red-100 px-3 py-2 text-sm font-black text-red-700">
+                        Delivery agent is not eligible for new assignments.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                    </>
+                  );
+                })()}
                 <form action={updateDeliveryAgentCapacityAction} className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-4">
                   <input name="agentId" type="hidden" value={agent.id} />
                   <input name="storeId" type="hidden" value={activeStore?.id ?? ""} />
@@ -539,5 +612,14 @@ function MetricCard({ label, value }: { label: string; value: number | string })
         {typeof value === "number" ? value.toLocaleString() : value}
       </p>
     </Card>
+  );
+}
+
+function CompliancePill({ checked, label }: { checked: boolean; label: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-2xl bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">
+      <span>{label}</span>
+      <span className={checked ? "text-emerald-600" : "text-slate-400"}>{checked ? "OK" : "Pending"}</span>
+    </div>
   );
 }
