@@ -1,25 +1,124 @@
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import Stripe from "stripe";
 
+export type StorePaymentsStripeOAuthState = {
+  issuedAt: number;
+  nonce: string;
+  storeId: string;
+  userId: string;
+  workspaceId: string;
+};
+
 export function getStorePaymentsStripeSecretKey() {
-  return process.env.STORE_PAYMENTS_STRIPE_SECRET_KEY ?? process.env.STRIPE_CONNECT_SECRET_KEY ?? null;
+  return process.env.STRIPE_SECRET_KEY ?? null;
+}
+
+export function getStripeConnectClientId() {
+  return process.env.STRIPE_CONNECT_CLIENT_ID?.trim() || null;
+}
+
+export function getStorePaymentsStripeKeyMode() {
+  const secretKey = getStorePaymentsStripeSecretKey();
+
+  if (secretKey?.startsWith("sk_live_")) {
+    return "live";
+  }
+
+  if (secretKey?.startsWith("sk_test_")) {
+    return "test";
+  }
+
+  return secretKey ? "unknown" : "missing";
 }
 
 export function missingStorePaymentsStripeEnvNames() {
-  return getStorePaymentsStripeSecretKey()
-    ? []
-    : ["STORE_PAYMENTS_STRIPE_SECRET_KEY", "STRIPE_CONNECT_SECRET_KEY"];
+  return [
+    ["STRIPE_SECRET_KEY", getStorePaymentsStripeSecretKey()],
+    ["STRIPE_CONNECT_CLIENT_ID", getStripeConnectClientId()]
+  ]
+    .filter((entry): entry is [string, null] => !entry[1])
+    .map(([name]) => name);
 }
 
 export function getStorePaymentsStripe() {
   const secretKey = getStorePaymentsStripeSecretKey();
 
   if (!secretKey) {
-    throw new Error("Missing STORE_PAYMENTS_STRIPE_SECRET_KEY or STRIPE_CONNECT_SECRET_KEY");
+    throw new Error("Missing STRIPE_SECRET_KEY");
   }
 
   return new Stripe(secretKey, {
     typescript: true
   });
+}
+
+function stripeOAuthStateSecret() {
+  const secretKey = getStorePaymentsStripeSecretKey();
+
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY");
+  }
+
+  return secretKey;
+}
+
+function signStripeOAuthState(payload: string) {
+  return createHmac("sha256", stripeOAuthStateSecret()).update(payload).digest("base64url");
+}
+
+export function createStripeOAuthState(input: Omit<StorePaymentsStripeOAuthState, "issuedAt" | "nonce">) {
+  const state: StorePaymentsStripeOAuthState = {
+    ...input,
+    issuedAt: Date.now(),
+    nonce: randomBytes(16).toString("base64url")
+  };
+  const payload = Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+  const signature = signStripeOAuthState(payload);
+
+  return `${payload}.${signature}`;
+}
+
+export function verifyStripeOAuthState(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const [payload, signature] = value.split(".");
+
+  if (!payload || !signature) {
+    return null;
+  }
+
+  const expected = signStripeOAuthState(payload);
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Partial<StorePaymentsStripeOAuthState>;
+    const maxAgeMs = 15 * 60 * 1000;
+
+    if (
+      typeof parsed.storeId !== "string" ||
+      typeof parsed.workspaceId !== "string" ||
+      typeof parsed.userId !== "string" ||
+      typeof parsed.nonce !== "string" ||
+      typeof parsed.issuedAt !== "number" ||
+      Date.now() - parsed.issuedAt > maxAgeMs
+    ) {
+      return null;
+    }
+
+    return parsed as StorePaymentsStripeOAuthState;
+  } catch {
+    return null;
+  }
 }
 
 export function paypalPartnerOnboardingUrl() {

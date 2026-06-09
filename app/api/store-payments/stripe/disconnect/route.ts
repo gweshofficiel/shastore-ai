@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       charges_enabled: false,
       connection_status: "disconnected",
       disconnected_at: now,
+      last_sync_at: now,
       onboarding_completed_at: null,
       payouts_enabled: false,
       provider: "stripe",

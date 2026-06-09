@@ -2367,7 +2367,7 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
     {
       key: "stripe",
       name: "Stripe",
-      configured: envConfigured(["PLATFORM_BILLING_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY", "STORE_PAYMENTS_STRIPE_SECRET_KEY", "STRIPE_CONNECT_SECRET_KEY"]),
+      configured: envConfigured(["STRIPE_SECRET_KEY", "STRIPE_CONNECT_CLIENT_ID"]),
       webhookConfigured: envConfigured(["PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"])
     },
     {
