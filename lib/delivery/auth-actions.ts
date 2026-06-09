@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { recordTestEnvironmentLogin } from "@/lib/admin/test-environment-actions";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -76,6 +77,11 @@ export async function deliveryLogin(formData: FormData) {
     email,
     route: "/delivery/login",
     success: true,
+    userId: data.user.id
+  });
+  await recordTestEnvironmentLogin({
+    email,
+    route: "/delivery/login",
     userId: data.user.id
   });
 

@@ -2,6 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { getPublicUrl } from "@/lib/deployment/config";
+import {
+  recordTestEnvironmentLogin,
+  recordTestEnvironmentLogout
+} from "@/lib/admin/test-environment-actions";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -65,6 +69,11 @@ export async function login(formData: FormData) {
     email,
     route: "/login",
     success: true,
+    userId: data.user?.id ?? null
+  });
+  await recordTestEnvironmentLogin({
+    email,
+    route: "/login",
     userId: data.user?.id ?? null
   });
 
@@ -208,6 +217,10 @@ export async function registerWithInvite(formData: FormData) {
 
 export async function logout() {
   const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  await recordTestEnvironmentLogout(user?.id);
   await supabase.auth.signOut();
   redirect("/");
 }

@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import {
+  deactivateTestEnvironmentAccount,
+  impersonateTestEnvironmentAccount
+} from "@/lib/admin/test-environment-actions";
 
 export function TestAccountActions({
   email,
+  role,
   userId
 }: {
   email: string;
+  role: string;
   userId: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -37,17 +43,34 @@ export function TestAccountActions({
       >
         View Account
       </Link>
-      <Link
-        aria-disabled={!canOpen}
-        className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
-          canOpen
-            ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            : "pointer-events-none border-slate-100 bg-slate-50 text-slate-300"
-        }`}
-        href={canOpen ? `/admin/users/${userId}` : "#"}
-      >
-        Open Account
-      </Link>
+      <form action={impersonateTestEnvironmentAccount}>
+        <input name="role" type="hidden" value={role} />
+        <button
+          className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
+            canOpen
+              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+              : "border-slate-100 bg-slate-50 text-slate-300"
+          }`}
+          disabled={!canOpen}
+          type="submit"
+        >
+          Open Account
+        </button>
+      </form>
+      <form action={deactivateTestEnvironmentAccount}>
+        <input name="role" type="hidden" value={role} />
+        <button
+          className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
+            canOpen
+              ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+              : "border-slate-100 bg-slate-50 text-slate-300"
+          }`}
+          disabled={!canOpen}
+          type="submit"
+        >
+          Deactivate
+        </button>
+      </form>
       <button
         className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
           canCopy

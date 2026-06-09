@@ -453,7 +453,7 @@ function SectionRenderer({
             {landing.copy.testimonials.map((testimonial) => (
               <figure className={`rounded-[2rem] p-6 ${variant.surface}`} key={testimonial.quote}>
                 <blockquote className={`text-lg font-black leading-8 ${variant.heading}`}>
-                  "{testimonial.quote}"
+                  &quot;{testimonial.quote}&quot;
                 </blockquote>
                 <figcaption className={`mt-4 text-sm font-bold ${variant.muted}`}>
                   {testimonial.author}

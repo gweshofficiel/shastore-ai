@@ -7,6 +7,11 @@ import {
   formatAdminDate
 } from "@/components/admin/admin-control";
 import { TestAccountActions } from "@/components/admin/test-account-actions";
+import {
+  createTestEnvironmentAccounts,
+  refreshTestEnvironmentAccountStatus,
+  resetTestEnvironmentPasswords
+} from "@/lib/admin/test-environment-actions";
 import { getTestEnvironmentData } from "@/lib/admin/test-environment-data";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +75,42 @@ function ActionLink({ href, label }: { href: string; label: string }) {
     <Link className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" href={href}>
       {label}
     </Link>
+  );
+}
+
+function testAccountActionRole(role: string) {
+  if (role === "Super Admin") {
+    return "admin";
+  }
+
+  if (role === "Store Owner") {
+    return "owner";
+  }
+
+  return role.toLowerCase();
+}
+
+function AdminActionButton({
+  action,
+  label,
+  tone = "slate"
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  label: string;
+  tone?: "blue" | "red" | "slate";
+}) {
+  const className = tone === "blue"
+    ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+    : tone === "red"
+      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
+
+  return (
+    <form action={action}>
+      <button className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${className}`} type="submit">
+        {label}
+      </button>
+    </form>
   );
 }
 
@@ -210,9 +251,26 @@ export default async function AdminTestEnvironmentPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Admin actions</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Operational test accounts</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Super Admin-only actions create real Supabase Auth users, refresh verified status, and reset generated passwords without exposing secrets.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <AdminActionButton action={createTestEnvironmentAccounts} label="Create Accounts" tone="blue" />
+            <AdminActionButton action={resetTestEnvironmentPasswords} label="Reset Passwords" />
+            <AdminActionButton action={refreshTestEnvironmentAccountStatus} label="Refresh Status" />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Workflow shortcuts</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Real workflow shortcuts</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              These open existing SHASTORE routes only. They do not impersonate roles or bypass RLS.
+              These open existing SHASTORE routes only. RLS and role routing remain unchanged.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -286,7 +344,7 @@ export default async function AdminTestEnvironmentPage() {
               </p>
             </td>
             <td className="px-5 py-4">
-              <TestAccountActions email={account.email} userId={account.id} />
+              <TestAccountActions email={account.email} role={testAccountActionRole(account.role)} userId={account.id} />
             </td>
           </tr>
         ))}

@@ -205,6 +205,16 @@ type AuthUserStatus = {
   confirmedAt: string | null;
 };
 
+type TestEnvironmentAccountRow = {
+  auth_user_id?: string | null;
+  created_at?: string | null;
+  email?: string | null;
+  last_login_at?: string | null;
+  role?: string | null;
+  status?: string | null;
+  verified?: boolean | null;
+};
+
 const testAccountEmails = {
   admin: process.env.SHASTORE_TEST_ADMIN_EMAIL ?? "superadmin.test@shastore.test",
   customer: process.env.SHASTORE_TEST_CUSTOMER_EMAIL ?? "customer.test@shastore.test",
@@ -319,13 +329,15 @@ async function getAuthUserStatusMap() {
 export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
   await getAdminAccess();
 
-  const [users, stores, resellers, accountProfiles, authStatus] = await Promise.all([
+  const [users, stores, resellers, accountProfiles, testEnvironmentAccounts, authStatus] = await Promise.all([
     getAdminUsers(),
     getAdminStores(),
     getAdminResellers(),
     safeSelect<AccountProfileRow>("account_profiles", "user_id, account_type, display_name", 500),
+    safeSelect<TestEnvironmentAccountRow>("test_environment_accounts", "role, email, auth_user_id, verified, status, created_at, last_login_at", 100),
     getAuthUserStatusMap()
   ]);
+  const registryByRole = new Map(testEnvironmentAccounts.map((account) => [text(account.role), account]));
   const profileByUser = new Map(accountProfiles.map((profile) => [text(profile.user_id), profile]));
   const testStore = stores.find((store) => looksLikeTest(store.name, store.slug, store.ownerEmail)) ?? null;
   const linkedStore = {
@@ -360,7 +372,8 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
       text(profile.account_type) === type && looksLikeTest(profile.display_name)
     );
     const exactEmailMatch = users.find((candidate) => candidate.email.toLowerCase() === expectedEmail.toLowerCase());
-    const user = exactEmailMatch ?? users.find((candidate) => {
+    const registryMatch = registryByRole.get(type);
+    const user = exactEmailMatch ?? users.find((candidate) => candidate.id === registryMatch?.auth_user_id) ?? users.find((candidate) => {
       const profile = profileByUser.get(candidate.id);
       const searchText = [
         candidate.email,
@@ -378,16 +391,16 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
 
     return user
       ? {
-          accountStatus: user.accountStatus,
-          createdAt: user.createdAt,
+          accountStatus: registryMatch?.status === "inactive" ? "inactive" : "active",
+          createdAt: registryMatch?.created_at ?? user.createdAt,
           email: user.email,
           id: user.id,
           label,
-          lastLoginAt: user.lastLoginAt,
+          lastLoginAt: registryMatch?.last_login_at ?? user.lastLoginAt,
           linkedAsset,
           role,
           status: "available" as const,
-          verified: Boolean(authStatus.get(user.id)?.confirmedAt)
+          verified: Boolean(registryMatch?.verified || authStatus.get(user.id)?.confirmedAt)
         }
       : missingAccount(label, role, expectedEmail, linkedAsset);
   };
