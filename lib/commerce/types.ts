@@ -11,6 +11,7 @@ export type CommerceOrderStatus =
   | "canceled";
 export type CommercePaymentMethod =
   | "bank_transfer"
+  | "cash_on_delivery"
   | "cod"
   | "whatsapp"
   | "whatsapp_order"

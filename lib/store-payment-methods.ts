@@ -8,6 +8,7 @@ import {
 
 export type StorePaymentMethod =
   | "bank_transfer"
+  | "cash_on_delivery"
   | "cod"
   | "paypal"
   | "stripe"
@@ -42,6 +43,13 @@ export const storePaymentMethodOptions: Array<{
   method: ConfigurableStorePaymentMethod;
   title: string;
 }> = [
+  {
+    defaultDisplayName: "Cash On Delivery",
+    defaultEnabled: true,
+    description: "Let customers place orders and pay the delivery agent when receiving the order.",
+    method: "cash_on_delivery",
+    title: "Cash On Delivery"
+  },
   {
     defaultDisplayName: "Cash on Delivery",
     defaultEnabled: true,
@@ -93,6 +101,7 @@ const defaultLabels = new Map<StorePaymentMethod, string>([
 function isConfigurablePaymentMethod(value: unknown): value is ConfigurableStorePaymentMethod {
   return (
     value === "bank_transfer" ||
+    value === "cash_on_delivery" ||
     value === "cod" ||
     value === "paypal" ||
     value === "whatsapp" ||
@@ -197,7 +206,8 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
             ? row.display_name
             : defaultLabels.get(method) || method,
         instructions: typeof row.instructions === "string" ? row.instructions : null,
-        method
+        method,
+        provider_internal: method === "cash_on_delivery" ? "cod" : undefined
       };
     })
     .filter((method): method is PublicStorePaymentMethod => Boolean(method))

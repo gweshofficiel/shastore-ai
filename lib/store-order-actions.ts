@@ -266,6 +266,7 @@ function parsePublicStorePaymentMethod(value: FormDataEntryValue | null): Public
   return (
     value === "bank_transfer" ||
     value === "card" ||
+    value === "cash_on_delivery" ||
     value === "cod" ||
     value === "paypal" ||
     value === "whatsapp" ||

@@ -114,6 +114,7 @@ function internalPaymentMethod(method: PublicStorePaymentMethod): CommercePaymen
 export function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     bank_transfer: "Bank Transfer",
+    cash_on_delivery: "Cash On Delivery",
     cod: "Cash on Delivery",
     paypal: "PayPal",
     stripe: "Credit / Debit Card",

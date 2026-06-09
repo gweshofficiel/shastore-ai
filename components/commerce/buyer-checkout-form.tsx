@@ -24,6 +24,7 @@ function SubmitButton() {
 function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
     bank_transfer: "Bank Transfer",
+    cash_on_delivery: "Cash On Delivery",
     cod: "Cash on Delivery",
     paypal: "PayPal",
     stripe: "Credit / Debit Card",
@@ -36,7 +37,7 @@ function getPaymentMethodLabel(method: CommercePaymentMethod) {
 }
 
 function getPaymentMethodDescription(method: CommercePaymentMethod) {
-  if (method === "cod") {
+  if (method === "cash_on_delivery" || method === "cod") {
     return "Pay the seller when your order is delivered.";
   }
 

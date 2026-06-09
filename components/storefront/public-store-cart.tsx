@@ -475,7 +475,7 @@ function displayPrice(item: Pick<CartItem, "price" | "priceLabel">, currency: st
 }
 
 function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
-  if (method === "cod") {
+  if (method === "cash_on_delivery" || method === "cod") {
     return "Pay the seller when your order is delivered.";
   }
 

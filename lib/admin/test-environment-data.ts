@@ -499,7 +499,9 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
   const codOrManualPaymentReady =
     !hasSavedPaymentMethods ||
     storePaymentMethods.some((method) =>
-      ["cod", "manual", "whatsapp"].includes(text(method.method).toLowerCase()) && method.is_enabled !== false
+      ["bank_transfer", "cash_on_delivery", "cod", "manual", "whatsapp", "whatsapp_order"].includes(
+        text(method.method).toLowerCase()
+      ) && method.is_enabled !== false
     );
   const productPriceReady = numericValue(testProduct?.price) > 0;
   const productStockReady = numericValue(testProduct?.stock_quantity) > 0;
