@@ -2444,6 +2444,14 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
     };
   });
   const enabledMethods = methods.filter((method) => method.is_enabled === true);
+  const storesWithSavedPaymentMethods = new Set(
+    methods.map((method) => text(method.store_id)).filter(Boolean)
+  );
+  const storesWithImplicitCod = new Set(
+    stores
+      .map((store) => text(store.id))
+      .filter((storeId) => storeId && !storesWithSavedPaymentMethods.has(storeId))
+  );
   const stripeStores = new Set(
     connections
       .filter(
@@ -2465,33 +2473,73 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       .filter(Boolean)
   );
   const codStores = new Set(
-    enabledMethods
-      .filter((method) => text(method.method) === "cod")
-      .map((method) => text(method.store_id))
-      .filter(Boolean)
+    [
+      ...enabledMethods
+        .filter((method) => text(method.method) === "cod")
+        .map((method) => text(method.store_id))
+        .filter(Boolean),
+      ...storesWithImplicitCod
+    ]
   );
+  const externalMethodRisks = enabledMethods
+    .filter((method) => {
+      const storeId = text(method.store_id);
+      const methodName = text(method.method);
+
+      if (methodName === "paypal") {
+        return !paypalStores.has(storeId);
+      }
+
+      if (methodName === "youcan_pay") {
+        return !connections.some(
+          (connection) =>
+            text(connection.store_id) === storeId &&
+            text(connection.provider) === "youcan_pay" &&
+            text(connection.config_status) === "configured"
+        );
+      }
+
+      return false;
+    })
+    .map((method) => {
+      const store = stores.find((candidate) => text(candidate.id) === text(method.store_id));
+      return {
+        id: text(method.store_id),
+        name: text(store?.store_name, text(store?.name, "Untitled store")),
+        ownerEmail: owners.get(ownerUserId(store ?? {})) ?? text(ownerUserId(store ?? {}), "Unknown owner"),
+        reason: `${text(method.method).replace(/_/g, " ")} enabled but provider connection is not ready.`,
+        slug: text(store?.slug) || null
+      };
+    });
   const manualStores = new Set(
-    enabledMethods
-      .filter((method) => ["cod", "whatsapp"].includes(text(method.method)))
-      .map((method) => text(method.store_id))
-      .filter(Boolean)
+    [
+      ...enabledMethods
+        .filter((method) => ["cod", "whatsapp"].includes(text(method.method)))
+        .map((method) => text(method.store_id))
+        .filter(Boolean),
+      ...storesWithImplicitCod
+    ]
   );
   const storesWithPayment = new Set([
     ...stripeStores,
     ...paypalStores,
     ...manualStores,
-    ...enabledMethods.map((method) => text(method.store_id)).filter(Boolean)
+    ...enabledMethods
+      .map((method) => text(method.store_id))
+      .filter(Boolean)
   ]);
-  const paymentSetupRisks = stores
-    .filter((store) => !storesWithPayment.has(text(store.id)))
-    .slice(0, 25)
-    .map((store) => ({
-      id: text(store.id),
-      name: text(store.store_name, text(store.name, "Untitled store")),
-      ownerEmail: owners.get(ownerUserId(store)) ?? text(ownerUserId(store), "Unknown owner"),
-      reason: "No enabled payment method or connected provider found.",
-      slug: text(store.slug) || null
-    }));
+  const paymentSetupRisks = [
+    ...externalMethodRisks,
+    ...stores
+      .filter((store) => !storesWithPayment.has(text(store.id)))
+      .map((store) => ({
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        ownerEmail: owners.get(ownerUserId(store)) ?? text(ownerUserId(store), "Unknown owner"),
+        reason: "No enabled payment method or connected provider found.",
+        slug: text(store.slug) || null
+      }))
+  ].slice(0, 25);
 
   return {
     paymentSetupRisks,

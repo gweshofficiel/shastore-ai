@@ -31,12 +31,14 @@ export type PublicStorePaymentMethod = {
 
 export const storePaymentMethodOptions: Array<{
   defaultDisplayName: string;
+  defaultEnabled?: boolean;
   description: string;
   method: ConfigurableStorePaymentMethod;
   title: string;
 }> = [
   {
     defaultDisplayName: "Cash on Delivery",
+    defaultEnabled: true,
     description: "Let customers place orders and pay when the seller delivers.",
     method: "cod",
     title: "Cash on Delivery"
@@ -178,6 +180,16 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
       }
       return method.method !== "paypal" && method.method !== "youcan_pay";
     });
+  const hasPersistedMethods = ((data ?? []) as unknown[]).length > 0;
+
+  if (!hasPersistedMethods) {
+    configuredMethods.push({
+      displayName: "Cash on Delivery",
+      instructions: "Pay when your order is delivered.",
+      method: "cod"
+    });
+    enabledMethodNames.add("cod");
+  }
 
   const stripeConnection = providerConnectionByName(providerConnections, "stripe");
   const paypalConnection = providerConnectionByName(providerConnections, "paypal");
@@ -193,7 +205,7 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     });
   }
 
-  if (isPayPalReady(paypalConnection)) {
+  if (enabledMethodNames.has("paypal") && isPayPalReady(paypalConnection)) {
     providerMethods.push({
       displayName: "PayPal",
       instructions: "Pay with this store's connected PayPal merchant account.",

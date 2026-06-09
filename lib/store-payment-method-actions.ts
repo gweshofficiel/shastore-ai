@@ -77,8 +77,17 @@ async function requireWorkspaceStore(formData: FormData) {
 }
 
 function safeConfigForMethod(formData: FormData, method: StorePaymentMethod) {
+  const environment = cleanText(formData.get(`${method}Environment`), 20) === "live" ? "live" : "test";
+  const base = {
+    connection_status: method === "cod" || method === "whatsapp" ? "manual_ready" : "placeholder",
+    currency: cleanText(formData.get(`${method}Currency`), 12).toUpperCase() || "USD",
+    environment,
+    webhook_status: "placeholder"
+  };
+
   if (method === "paypal") {
     return {
+      ...base,
       client_id: cleanOptionalText(formData.get("paypalClientId"), 300),
       merchant_email: cleanOptionalText(formData.get("paypalMerchantEmail"), 180)
     };
@@ -86,12 +95,13 @@ function safeConfigForMethod(formData: FormData, method: StorePaymentMethod) {
 
   if (method === "youcan_pay") {
     return {
+      ...base,
       public_key: cleanOptionalText(formData.get("youcanPublicKey"), 300),
       store_id: cleanOptionalText(formData.get("youcanStoreId"), 180)
     };
   }
 
-  return {};
+  return base;
 }
 
 function revalidatePaymentPaths(store: WorkspaceStoreRow, storeId: string) {

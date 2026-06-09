@@ -276,6 +276,44 @@ function ProviderConnectionCard({
   );
 }
 
+function ProviderPlaceholderCard({
+  description,
+  title
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <Card className="border-dashed p-6 lg:p-8">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+        Provider placeholder
+      </p>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">{title}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+          Disabled
+        </span>
+      </div>
+      <div className="mt-5 grid gap-2 text-sm font-semibold text-muted">
+        <p>Mode: test / live reserved</p>
+        <p>Webhook status: placeholder</p>
+        <p>Connection status: not connected</p>
+        <p>Checkout status: hidden until connected and explicitly enabled</p>
+      </div>
+      <button
+        className="mt-5 h-11 rounded-full border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-400"
+        disabled
+        type="button"
+      >
+        Connect placeholder
+      </button>
+    </Card>
+  );
+}
+
 function ManualProviderConfigForm({
   paypalConnection,
   stripeConnection,
@@ -471,6 +509,30 @@ export default async function PaymentsPage({
           </form>
         </Card>
       ) : null}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-blue-200 bg-blue-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-700">
+            Platform billing
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-blue-950">
+            SHASTORE subscriptions
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-blue-900">
+            Platform subscription billing remains managed by SHASTORE billing systems. These credentials and flows are not used for customer checkout.
+          </p>
+        </Card>
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+            Store payments
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-emerald-950">
+            Owner receives customer payments
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-emerald-900">
+            These methods belong to the selected store. Public checkout only shows enabled manual methods and connected provider methods.
+          </p>
+        </Card>
+      </div>
       {activeStore ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <ProviderConnectionCard
@@ -482,6 +544,10 @@ export default async function PaymentsPage({
             connection={paypalConnection}
             provider="paypal"
             storeId={activeStore.id}
+          />
+          <ProviderPlaceholderCard
+            description="NOWPayments will support seller-owned crypto checkout in a later phase. It is not active for customer checkout yet."
+            title="NOWPayments"
           />
         </div>
       ) : null}
@@ -499,6 +565,7 @@ export default async function PaymentsPage({
           <div className="grid gap-6 lg:grid-cols-2">
             {storePaymentMethodOptions.map((option) => {
               const current = methodByName(methods, option.method);
+              const isEnabled = current?.is_enabled ?? option.defaultEnabled ?? false;
               return (
                 <Card className="p-6 lg:p-8" key={option.method}>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -510,7 +577,7 @@ export default async function PaymentsPage({
                   <p className="mt-2 text-sm leading-6 text-muted">{option.description}</p>
                   <div className="mt-5 grid gap-4">
                     <Toggle
-                      checked={current?.is_enabled ?? false}
+                      checked={isEnabled}
                       description="Show this method in public checkout for this store."
                       label="Enabled"
                       name={`${option.method}Enabled`}
@@ -528,6 +595,42 @@ export default async function PaymentsPage({
                       name={`${option.method}Instructions`}
                       placeholder="Buyer-facing payment instructions."
                     />
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <label className="grid gap-2 text-sm font-semibold text-ink">
+                        Mode
+                        <select
+                          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm"
+                          defaultValue={methodConfigValue(current, "environment") || "test"}
+                          name={`${option.method}Environment`}
+                        >
+                          <option value="test">Test mode</option>
+                          <option value="live">Live mode</option>
+                        </select>
+                      </label>
+                      <Input
+                        defaultValue={methodConfigValue(current, "currency") || "USD"}
+                        id={`${option.method}-currency`}
+                        label="Currency"
+                        name={`${option.method}Currency`}
+                      />
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                          Webhook
+                        </p>
+                        <p className="mt-2 text-sm font-bold text-slate-600">
+                          {methodConfigValue(current, "webhook_status") || "placeholder"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Connection status
+                      </p>
+                      <p className="mt-2 text-sm font-bold text-slate-600">
+                        {methodConfigValue(current, "connection_status") ||
+                          (option.method === "cod" || option.method === "whatsapp" ? "manual_ready" : "placeholder")}
+                      </p>
+                    </div>
                     {option.method === "paypal" ? (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <Input

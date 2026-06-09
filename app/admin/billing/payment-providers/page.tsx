@@ -55,7 +55,7 @@ export default async function AdminPaymentProvidersPage() {
           { label: "Stores with Stripe", value: data.storePaymentAdoption.stripeStores },
           { label: "Stores with PayPal", value: data.storePaymentAdoption.paypalStores },
           { label: "COD/manual stores", value: data.storePaymentAdoption.manualStores },
-          { label: "Missing payment method", value: data.storePaymentAdoption.missingPaymentMethodStores },
+          { label: "Setup warnings", value: data.storePaymentAdoption.missingPaymentMethodStores },
           { label: "Webhook events", value: data.webhookMonitoring.totalEvents },
           { label: "Failed webhooks/events", value: data.webhookMonitoring.failedEvents }
         ]}
