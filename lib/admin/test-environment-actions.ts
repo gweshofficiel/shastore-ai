@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
+import { getAdminStores } from "@/lib/admin/data";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -429,6 +430,29 @@ function safeActionLinkRedirectTarget(actionLink: string) {
   }
 }
 
+function looksLikeTest(...values: Array<string | null | undefined>) {
+  return values.some((value) => {
+    const normalized = value?.toLowerCase() ?? "";
+    return normalized.includes("test") || normalized.includes("demo") || normalized.includes("sandbox");
+  });
+}
+
+async function resolveOpenAccountPath(role: TestRole, definition: TestAccountDefinition) {
+  if (role !== "customer") {
+    return definition.dashboardPath;
+  }
+
+  const stores = await getAdminStores();
+  const testStore = stores.find((store) => looksLikeTest(store.name, store.slug, store.ownerEmail)) ?? null;
+
+  if (!testStore) {
+    return null;
+  }
+
+  const storeKey = testStore.slug?.trim() || testStore.id;
+  return `/store/${storeKey}/account`;
+}
+
 export async function createTestEnvironmentImpersonationLink(
   roleInput: string,
   request?: NextRequest
@@ -471,10 +495,17 @@ export async function createTestEnvironmentImpersonationLink(
   }
 
   const { isLocalhost, origin, originSource } = await resolveAppOrigin(request);
-  const redirectTo = `${origin}${definition.dashboardPath}`;
+  const openPath = await resolveOpenAccountPath(role, definition);
+
+  if (!openPath) {
+    return { error: "impersonation-failed", ok: false };
+  }
+
+  const redirectTo = `${origin}${openPath}`;
 
   console.info("[test-env][open-account] origin", {
     isLocalhost,
+    openPath,
     origin,
     originSource,
     redirectTo,
