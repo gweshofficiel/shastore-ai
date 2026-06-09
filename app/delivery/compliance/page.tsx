@@ -134,10 +134,12 @@ export default async function DeliveryCompliancePage() {
               <p className="text-xs font-black uppercase tracking-[0.2em] text-red-600">
                 Violations foundation
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-5">
                 <MetricCard label="Total" value={compliance.violationSummary.total.toLocaleString()} />
                 <MetricCard label="Active" value={compliance.violationSummary.active.toLocaleString()} />
                 <MetricCard label="Critical" value={compliance.violationSummary.critical.toLocaleString()} />
+                <MetricCard label="Incidents" value={compliance.violationSummary.incidentHistory.toLocaleString()} />
+                <MetricCard label="Risk" value={compliance.violationSummary.riskLevel} />
               </div>
               <p className="mt-4 text-sm font-semibold leading-6 text-red-900">
                 Violation types prepared: late delivery, failed proof, COD dispute, customer complaint, owner complaint, and policy issue.

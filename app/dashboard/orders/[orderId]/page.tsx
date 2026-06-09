@@ -1383,6 +1383,7 @@ function DeliveryAssignmentForm({
                 {activeLoad}/{capacityLimit}
                 {capacityFull ? " · Capacity Full" : ""}
                 {agent.compliance ? ` · ${agent.compliance.eligibilityStatus.replaceAll("_", " ")}` : ""}
+                {agent.compliance?.violationSummary.critical ? " · Critical incident review" : ""}
                 {notEligible ? " · Not eligible" : ""}
               </option>
             );

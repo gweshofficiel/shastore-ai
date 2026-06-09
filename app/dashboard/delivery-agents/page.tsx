@@ -6,6 +6,14 @@ import { Input } from "@/components/ui/input";
 import { createDeliveryAgentAction } from "@/lib/delivery-actions";
 import { getDeliveryComplianceMap, type DeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { sendOwnerDeliveryMessageAction } from "@/lib/delivery/communication-actions";
+import { updateDeliveryIncidentStatusAction } from "@/lib/delivery/incident-actions";
+import {
+  getStoreDeliveryIncidents,
+  incidentCategoryLabel,
+  incidentStatusLabel,
+  type DeliveryIncidentItem,
+  type DeliveryIncidentSummary
+} from "@/lib/delivery/incident-data";
 import { calculateDeliveryPerformanceMetrics, type DeliveryPerformanceMetrics } from "@/lib/delivery/performance-data";
 import { createDeliveryZoneAction, updateDeliveryAgentCapacityAction } from "@/lib/delivery/route-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
@@ -65,6 +73,8 @@ type DeliveryAgentsData = {
   agents: DeliveryAgentRow[];
   compliance: Map<string, DeliveryComplianceData>;
   error: string | null;
+  incidentSummary: DeliveryIncidentSummary;
+  incidentsByAgent: Map<string, DeliveryIncidentItem[]>;
   messagesByAgent: Map<string, DeliveryMessageRow[]>;
   performance: Map<string, DeliveryPerformanceMetrics>;
   stores: UserStoreRow[];
@@ -81,6 +91,10 @@ function statusMessage(value: string | undefined) {
     created: "Delivery agent created.",
     duplicate: "A delivery agent with that phone already exists for this store.",
     invalid: "Enter a delivery agent name, phone, city/zone, and valid status.",
+    "incident-access-denied": "You can only update incidents for delivery agents in your own store.",
+    "incident-failed": "Delivery incident could not be updated.",
+    "incident-invalid": "Choose a valid incident and status.",
+    "incident-updated": "Delivery incident status updated.",
     "message-access-denied": "You can only message delivery agents for your own store.",
     "message-failed": "Delivery message could not be sent.",
     "message-invalid": "Enter a message before sending.",
@@ -110,6 +124,22 @@ function complianceBadgeClass(status: string) {
   return "bg-amber-100 text-amber-700";
 }
 
+function incidentBadgeClass(status: string) {
+  if (status === "resolved" || status === "closed") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (status === "escalated") {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (status === "under_review") {
+    return "bg-amber-100 text-amber-700";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
 async function getDeliveryAgentsData(selectedStoreId?: string): Promise<DeliveryAgentsData> {
   const supabase = await createClient();
   const {
@@ -123,6 +153,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       agents: [],
       compliance: new Map<string, DeliveryComplianceData>(),
       error: "Sign in to manage delivery agents.",
+      incidentSummary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low", total: 0 },
+      incidentsByAgent: new Map<string, DeliveryIncidentItem[]>(),
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
@@ -140,6 +172,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       agents: [],
       compliance: new Map<string, DeliveryComplianceData>(),
       error: "You do not have permission to manage delivery agents.",
+      incidentSummary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low", total: 0 },
+      incidentsByAgent: new Map<string, DeliveryIncidentItem[]>(),
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
@@ -157,6 +191,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       agents: [],
       compliance: new Map<string, DeliveryComplianceData>(),
       error: storesError ? "Stores could not be loaded." : null,
+      incidentSummary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low", total: 0 },
+      incidentsByAgent: new Map<string, DeliveryIncidentItem[]>(),
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
@@ -192,6 +228,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       agents: [],
       compliance: new Map<string, DeliveryComplianceData>(),
       error: "Delivery agents could not be loaded. Apply the delivery migration.",
+      incidentSummary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low", total: 0 },
+      incidentsByAgent: new Map<string, DeliveryIncidentItem[]>(),
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
@@ -206,6 +244,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       agents: (agentsResult.data ?? []) as unknown as DeliveryAgentRow[],
       compliance: new Map<string, DeliveryComplianceData>(),
       error: "Delivery zones could not be loaded. Apply the route capacity migration.",
+      incidentSummary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low", total: 0 },
+      incidentsByAgent: new Map<string, DeliveryIncidentItem[]>(),
       messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
@@ -235,6 +275,18 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     storeId: activeStore.id,
     workspaceId
   });
+  const incidentData = await getStoreDeliveryIncidents({
+    storeId: activeStore.id,
+    workspaceId
+  });
+  const incidentsByAgent = new Map<string, DeliveryIncidentItem[]>();
+
+  for (const incident of incidentData.incidents) {
+    const current = incidentsByAgent.get(incident.deliveryAgentId) ?? [];
+    if (current.length < 3) {
+      incidentsByAgent.set(incident.deliveryAgentId, [...current, incident]);
+    }
+  }
   const { data: messageRows } = await supabase
     .from("delivery_messages" as never)
     .select("id, delivery_agent_id, sender_type, message, status, created_at")
@@ -257,6 +309,8 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     agents,
     compliance,
     error: null,
+    incidentSummary: incidentData.summary,
+    incidentsByAgent,
     messagesByAgent,
     performance,
     stores,
@@ -266,7 +320,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
 
 export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgentsPageProps) {
   const query = await searchParams;
-  const { activeLoads, activeStore, agents, compliance, error, messagesByAgent, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
+  const { activeLoads, activeStore, agents, compliance, error, incidentSummary, incidentsByAgent, messagesByAgent, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
   const message = statusMessage(query.delivery);
   const onlineAgents = agents.filter((agent) => agent.availability_status === "online").length;
   const busyAgents = agents.filter((agent) => agent.availability_status === "busy").length;
@@ -339,6 +393,8 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
         <MetricCard label="Active Zones" value={zones.filter((zone) => zone.is_active).length} />
         <MetricCard label="Verified Agents" value={verifiedAgents} />
         <MetricCard label="Compliance Blocks" value={blockedAgents} />
+        <MetricCard label="Active Incidents" value={incidentSummary.active} />
+        <MetricCard label="Incident Risk" value={incidentSummary.riskLevel} />
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -496,6 +552,55 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
                         Delivery agent is not eligible for new assignments.
                       </p>
                     ) : null}
+                  </div>
+                ) : null}
+                {(incidentsByAgent.get(agent.id) ?? []).length ? (
+                  <div className="mt-4 grid gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-red-700">
+                      Incident management
+                    </p>
+                    {(incidentsByAgent.get(agent.id) ?? []).map((incident) => (
+                      <div className="rounded-2xl bg-white p-3" key={incident.id}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black capitalize text-ink">
+                              {incidentCategoryLabel(incident.category)}
+                            </p>
+                            <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                              {incident.priority} · {incidentStatusLabel(incident.status)}
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${incidentBadgeClass(incident.status)}`}>
+                            {incidentStatusLabel(incident.status)}
+                          </span>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-muted">
+                          {incident.description}
+                        </p>
+                        <form action={updateDeliveryIncidentStatusAction} className="mt-3 flex flex-wrap items-center gap-2">
+                          <input name="incidentId" type="hidden" value={incident.id} />
+                          <input name="storeId" type="hidden" value={activeStore?.id ?? ""} />
+                          <select
+                            className="h-10 rounded-2xl border border-red-100 bg-red-50 px-3 text-xs font-bold uppercase tracking-[0.12em] text-red-700 outline-none"
+                            defaultValue={incident.status}
+                            name="status"
+                          >
+                            <option value="open">Open</option>
+                            <option value="under_review">Under Review</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="escalated">Escalated</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                          <button
+                            className="h-10 rounded-2xl bg-red-700 px-4 text-xs font-black uppercase tracking-[0.12em] text-white"
+                            type="submit"
+                          >
+                            Update incident
+                          </button>
+                        </form>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
                     </>

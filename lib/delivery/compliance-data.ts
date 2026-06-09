@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { DeliveryAgentAccessRecord } from "@/lib/delivery/data";
+import { deliveryRiskLevel, type DeliveryRiskLevel } from "@/lib/delivery/incident-data";
 
 export type DeliveryVerificationStatus = "not_started" | "pending_review" | "verified" | "rejected" | "expired";
 export type DeliveryEligibilityStatus = "eligible" | "not_eligible" | "pending_review" | "suspended" | "blocked";
@@ -30,6 +31,8 @@ export type DeliveryComplianceData = {
   violationSummary: {
     active: number;
     critical: number;
+    incidentHistory: number;
+    riskLevel: DeliveryRiskLevel;
     total: number;
   };
 };
@@ -53,6 +56,11 @@ type ComplianceRow = {
 
 type ViolationRow = {
   severity?: string | null;
+  status?: string | null;
+};
+
+type IncidentRow = {
+  priority?: string | null;
   status?: string | null;
 };
 
@@ -142,6 +150,8 @@ function fallbackCompliance(agent: DeliveryAgentAccessRecord | null): DeliveryCo
     violationSummary: {
       active: 0,
       critical: 0,
+      incidentHistory: 0,
+      riskLevel: "Low",
       total: 0
     }
   };
@@ -158,7 +168,7 @@ export async function getDeliveryComplianceData(agent: DeliveryAgentAccessRecord
     return fallbackCompliance(agent);
   }
 
-  const [complianceResult, violationsResult] = await Promise.all([
+  const [complianceResult, violationsResult, incidentsResult] = await Promise.all([
     admin
       .from("delivery_agent_compliance" as never)
       .select(
@@ -173,20 +183,31 @@ export async function getDeliveryComplianceData(agent: DeliveryAgentAccessRecord
       .select("status, severity")
       .eq("workspace_id" as never, agent.workspaceId as never)
       .eq("store_id" as never, agent.storeId as never)
+      .eq("delivery_agent_id" as never, agent.agentId as never),
+    admin
+      .from("delivery_incidents" as never)
+      .select("status, priority")
+      .eq("workspace_id" as never, agent.workspaceId as never)
+      .eq("store_id" as never, agent.storeId as never)
       .eq("delivery_agent_id" as never, agent.agentId as never)
   ]);
   const row = complianceResult.data as unknown as ComplianceRow | null;
   const violations = (violationsResult.data ?? []) as unknown as ViolationRow[];
+  const incidents = (incidentsResult.data ?? []) as unknown as IncidentRow[];
 
   if (!row) {
     return fallbackCompliance(agent);
   }
 
   const activeViolations = violations.filter((violation) => violation.status === "open" || violation.status === "reviewing");
+  const activeIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "under_review" || incident.status === "escalated");
+  const criticalViolations = violations.filter((violation) => violation.severity === "critical").length;
+  const criticalIncidents = incidents.filter((incident) => incident.priority === "critical" && (incident.status === "open" || incident.status === "under_review" || incident.status === "escalated")).length;
+  const escalatedIncidents = incidents.filter((incident) => incident.status === "escalated").length;
   const checklist = {
     assignedRegionConfirmed: Boolean(row.assigned_region_confirmed),
     licenseUploadedPlaceholder: Boolean(row.license_uploaded_placeholder),
-    noActiveViolations: Boolean(row.no_active_violations) && activeViolations.length === 0,
+    noActiveViolations: Boolean(row.no_active_violations) && activeViolations.length === 0 && activeIncidents.length === 0,
     ownerApproved: Boolean(row.owner_approved),
     phoneVerified: Boolean(row.phone_verified),
     profileCompleted: Boolean(row.profile_completed),
@@ -214,9 +235,15 @@ export async function getDeliveryComplianceData(agent: DeliveryAgentAccessRecord
     ],
     verificationStatus,
     violationSummary: {
-      active: activeViolations.length,
-      critical: violations.filter((violation) => violation.severity === "critical").length,
-      total: violations.length
+      active: activeViolations.length + activeIncidents.length,
+      critical: criticalViolations + criticalIncidents,
+      incidentHistory: incidents.length,
+      riskLevel: deliveryRiskLevel({
+        active: activeViolations.length + activeIncidents.length,
+        critical: criticalViolations + criticalIncidents,
+        escalated: escalatedIncidents
+      }),
+      total: violations.length + incidents.length
     }
   };
 }
