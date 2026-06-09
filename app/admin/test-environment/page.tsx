@@ -34,7 +34,7 @@ function statusTone(status: string): "amber" | "green" | "red" {
     return "green";
   }
 
-  if (status === "ready" || status === "enabled") {
+  if (status === "ready" || status === "enabled" || status === "isolated") {
     return "green";
   }
 
@@ -45,7 +45,8 @@ function statusTone(status: string): "amber" | "green" | "red" {
     status === "reserved" ||
     status === "waiting" ||
     status === "none" ||
-    status === "not created"
+    status === "not created" ||
+    status === "needs_review"
   ) {
     return "amber";
   }
@@ -171,6 +172,7 @@ export default async function AdminTestEnvironmentPage() {
       </section>
 
       <WorkflowPanel eyebrow="Role access panel" items={data.roleAccess} title="Multi-role access" />
+      <WorkflowPanel eyebrow="Phase C3" items={data.c3OperationalFlow} title="Real operational test flow" />
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

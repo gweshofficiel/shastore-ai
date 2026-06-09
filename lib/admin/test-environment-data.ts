@@ -24,6 +24,7 @@ export type TestEnvironmentAccount = {
 export type TestEnvironmentData = {
   adminMonitoring: Array<WorkflowStatusItem>;
   accounts: TestEnvironmentAccount[];
+  c3OperationalFlow: Array<WorkflowStatusItem>;
   customerFlow: Array<WorkflowStatusItem>;
   delivery: {
     agent: string;
@@ -111,6 +112,13 @@ type ProductRow = {
   title?: string | null;
 };
 
+type PaymentMethodRow = {
+  display_name?: string | null;
+  is_enabled?: boolean | null;
+  method?: string | null;
+  store_id?: string | null;
+};
+
 type ProductVariantRow = {
   product_id?: string | null;
   sku?: string | null;
@@ -187,13 +195,6 @@ type StoreSupportTicketRow = {
   customer_phone?: string | null;
   id: string;
   store_id?: string | null;
-};
-
-type LegacyCustomerOrderLinkRow = {
-  customer_id?: string | null;
-  delivery_agent_id?: string | null;
-  order_id?: string | null;
-  status?: string | null;
 };
 
 type IdRow = {
@@ -424,6 +425,11 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     "id, store_id, title, name, price, currency, stock_quantity",
     100
   );
+  const paymentMethods = await safeSelect<PaymentMethodRow>(
+    "store_payment_methods",
+    "store_id, method, is_enabled, display_name",
+    100
+  );
   const testProduct =
     products.find((product) => product.store_id === testStore?.id && looksLikeTest(product.title, product.name)) ??
     products.find((product) => product.store_id === testStore?.id) ??
@@ -454,6 +460,16 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
         registryStatus: "missing" as const,
         sku: "Missing"
       };
+  const storePaymentMethods = paymentMethods.filter((method) => method.store_id === testStore?.id);
+  const hasSavedPaymentMethods = storePaymentMethods.length > 0;
+  const codOrManualPaymentReady =
+    !hasSavedPaymentMethods ||
+    storePaymentMethods.some((method) =>
+      ["cod", "manual", "whatsapp"].includes(text(method.method).toLowerCase()) && method.is_enabled !== false
+    );
+  const productPriceReady = numericValue(testProduct?.price) > 0;
+  const productStockReady = numericValue(testProduct?.stock_quantity) > 0;
+  const productVisibleInStorefront = Boolean(testStore?.slug && testProduct && productPriceReady && productStockReady);
   const [storeOrders, draftOrders] = await Promise.all([
     safeSelect<OrderRow>("store_orders", "id, store_id, owner_user_id, customer_name, customer_email, customer_phone, order_status, fulfillment_status", 100),
     safeSelect<OrderRow>("orders", "id, store_id, owner_user_id, customer_name, customer_email, customer_phone, order_status, fulfillment_status", 100)
@@ -666,6 +682,39 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
     workflowItem("Template/listing exists", resellerLinkedToListing, reseller.registryStatus, reseller.marketplaceListing),
     workflowItem("Future store sale workflow prepared", true, "reserved", "Real reseller sale activation remains disabled.")
   ];
+  const allDedicatedAccountsAvailable = accounts.every((account) => account.status === "available");
+  const ownerCanSeeOrder = Boolean(testOrder && ownerLinkedToStore && testOrder.store_id === testStore?.id);
+  const deliveryCanReceiveOrAssign = Boolean(testOrder && deliveryLinkedToStore);
+  const deliveryCanUpdateStatus = Boolean(
+    activeAssignment &&
+      deliveryLinkedToOrder &&
+      !["delivered", "returned"].includes(assignmentStatus)
+  );
+  const customerCanTrackOrder = Boolean(testOrder && store.slug && (customerPhone || customerEmail));
+  const resellerAccount = accounts.find((account) => account.label === "Reseller Test");
+  const resellerIsolatedFromOwnerStore = Boolean(
+    resellerAccount?.status !== "available" ||
+      (testStore && resellerAccount?.id !== testStore.ownerId && resellerAccount?.email.toLowerCase() !== store.owner.toLowerCase())
+  );
+  const c3OperationalFlow = [
+    workflowItem(
+      "Dedicated test accounts",
+      allDedicatedAccountsAvailable,
+      allDedicatedAccountsAvailable ? "ready" : "missing",
+      accounts.map((account) => `${account.role}: ${account.status}`).join(" · ")
+    ),
+    workflowItem("Owner owns Test Store", ownerLinkedToStore, ownerLinkedToStore ? "linked" : "missing", store.owner),
+    workflowItem("Test Store usable", Boolean(testStore?.slug && store.status !== "archived"), testStore?.slug ? "ready" : "missing", store.slug ?? "No storefront slug."),
+    workflowItem("Test Product purchasable", productVisibleInStorefront, productVisibleInStorefront ? "visible" : "missing", `${product.name} · ${product.price} · stock ${product.inventory}`),
+    workflowItem("COD/manual payment ready", codOrManualPaymentReady, codOrManualPaymentReady ? "ready" : "missing", hasSavedPaymentMethods ? storePaymentMethods.map((method) => `${method.method}:${method.is_enabled === false ? "off" : "on"}`).join(" · ") : "COD is implicit when no store methods are saved."),
+    workflowItem("Customer order persisted", Boolean(testOrder), orderStatus, testOrder?.id ?? "No Customer Test order found."),
+    workflowItem("Owner order visibility", ownerCanSeeOrder, ownerCanSeeOrder ? "visible" : "missing", testOrder?.id ?? "No order available to owner."),
+    workflowItem("Delivery assignable", deliveryCanReceiveOrAssign, deliveryCanReceiveOrAssign ? "ready" : "missing", deliveryCanReceiveOrAssign ? delivery.agent : "Needs Test Order and Delivery Test agent."),
+    workflowItem("Delivery lifecycle update", deliveryCanUpdateStatus, deliveryCanUpdateStatus ? assignmentStatus : "missing", activeAssignment?.id ?? "No active delivery assignment."),
+    workflowItem("Customer tracking", customerCanTrackOrder, customerCanTrackOrder ? "available" : "missing", trackingHref),
+    workflowItem("Admin monitoring", Boolean(testOrder && adminCanMonitor), testOrder && adminCanMonitor ? "visible" : "missing", "Admin reads existing workflow tables only."),
+    workflowItem("Reseller isolation", resellerIsolatedFromOwnerStore, resellerIsolatedFromOwnerStore ? "isolated" : "needs_review", reseller.registryStatus === "available" ? reseller.name : "Reseller test account missing.")
+  ];
   const workflowHealth = [
     workflowItem("Owner linked to store", ownerLinkedToStore, ownerLinkedToStore ? "linked" : "missing", store.owner),
     workflowItem("Product linked to store", productLinkedToStore, productLinkedToStore ? "linked" : "missing", product.name),
@@ -747,6 +796,7 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
   return {
     adminMonitoring,
     accounts,
+    c3OperationalFlow,
     customerFlow,
     delivery,
     deliveryFlow,
