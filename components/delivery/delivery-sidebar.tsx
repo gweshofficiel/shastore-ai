@@ -13,6 +13,7 @@ const deliveryNavItems = [
   { href: "/delivery/analytics", label: "Analytics" },
   { href: "/delivery/compliance", label: "Compliance" },
   { href: "/delivery/incidents", label: "Incidents" },
+  { href: "/delivery/reputation", label: "Reputation" },
   { href: "/delivery/notifications", label: "Notifications" },
   { href: "/delivery/messages", label: "Messages" },
   { href: "/delivery/dashboard/support", label: "Support" },

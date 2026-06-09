@@ -4,6 +4,7 @@ import { getDeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { getDeliveryCommunicationSummary } from "@/lib/delivery/communication-data";
 import { getDeliveryAssignedOrdersData, getDeliveryRouteCapacityData } from "@/lib/delivery/data";
 import { getDeliveryIncidentsForAgent } from "@/lib/delivery/incident-data";
+import { getDeliveryReputationData } from "@/lib/delivery/reputation-data";
 import { updateDeliveryAvailabilityAction } from "@/lib/delivery/route-actions";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +87,7 @@ export default async function DeliveryDashboardPage({
 }) {
   const query = await searchParams;
   const { agent, role, user } = await requireDeliveryAccess();
-  const [account, assignmentData, routeData, communicationData, complianceData, incidentData] = await Promise.all([
+  const [account, assignmentData, routeData, communicationData, complianceData, incidentData, reputationData] = await Promise.all([
     getOrCreateAccountProfile("delivery"),
     getDeliveryAssignedOrdersData(agent),
     getDeliveryRouteCapacityData(agent),
@@ -108,7 +109,8 @@ export default async function DeliveryDashboardPage({
           events: [],
           incidents: [],
           summary: { active: 0, closed: 0, critical: 0, escalated: 0, riskLevel: "Low" as const, total: 0 }
-        })
+        }),
+    getDeliveryReputationData(agent)
   ]);
   const message = dashboardMessage(query?.delivery);
 
@@ -242,6 +244,16 @@ export default async function DeliveryDashboardPage({
             label: "Incident Center",
             value: incidentData.summary.active.toLocaleString(),
             detail: `${incidentData.summary.total} total incidents · ${incidentData.summary.riskLevel} risk.`
+          },
+          {
+            label: "Current Level",
+            value: reputationData.level,
+            detail: `${reputationData.score}/100 reputation · ${reputationData.nextLevelProgress}% next level.`
+          },
+          {
+            label: "Reward Points",
+            value: reputationData.rewards.rewardPointsPlaceholder.toLocaleString(),
+            detail: `${reputationData.badges.length} badge(s) · payout and wallet disabled.`
           },
           {
             label: "Delivered orders",
