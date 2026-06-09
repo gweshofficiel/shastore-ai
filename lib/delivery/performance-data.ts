@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createDeliveryNotification } from "@/lib/delivery/communication-data";
 
 export type DeliveryRank = "Bronze" | "Silver" | "Gold" | "Platinum";
 
@@ -248,6 +249,19 @@ export async function upsertDeliveryPerformanceSnapshot({
     user_id: actorUserId ?? null,
     workspace_id: workspaceId
   } as never);
+
+  await createDeliveryNotification({
+    agentId,
+    category: "performance_update",
+    message: `Performance updated: ${metrics.successRate}% success rate, ${metrics.ratingAverage}/5 rating.`,
+    storeId,
+    title: `${metrics.rank} performance update`,
+    workspaceId,
+    metadata: {
+      metrics,
+      source: "delivery_performance"
+    }
+  });
 
   return metrics;
 }

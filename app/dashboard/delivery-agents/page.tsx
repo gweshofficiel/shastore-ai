@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createDeliveryAgentAction } from "@/lib/delivery-actions";
+import { sendOwnerDeliveryMessageAction } from "@/lib/delivery/communication-actions";
 import { calculateDeliveryPerformanceMetrics, type DeliveryPerformanceMetrics } from "@/lib/delivery/performance-data";
 import { createDeliveryZoneAction, updateDeliveryAgentCapacityAction } from "@/lib/delivery/route-actions";
 import { getUserPrimaryWorkspaceId, getUserWorkspaceRole, hasPermission } from "@/lib/permissions/rbac";
@@ -48,11 +49,21 @@ type DeliveryAssignmentLoadRow = {
   status: string;
 };
 
+type DeliveryMessageRow = {
+  created_at: string;
+  delivery_agent_id: string;
+  id: string;
+  message: string;
+  sender_type: string;
+  status: string;
+};
+
 type DeliveryAgentsData = {
   activeLoads: Map<string, number>;
   activeStore: UserStoreRow | null;
   agents: DeliveryAgentRow[];
   error: string | null;
+  messagesByAgent: Map<string, DeliveryMessageRow[]>;
   performance: Map<string, DeliveryPerformanceMetrics>;
   stores: UserStoreRow[];
   zones: DeliveryZoneRow[];
@@ -68,6 +79,10 @@ function statusMessage(value: string | undefined) {
     created: "Delivery agent created.",
     duplicate: "A delivery agent with that phone already exists for this store.",
     invalid: "Enter a delivery agent name, phone, city/zone, and valid status.",
+    "message-access-denied": "You can only message delivery agents for your own store.",
+    "message-failed": "Delivery message could not be sent.",
+    "message-invalid": "Enter a message before sending.",
+    "message-sent": "Delivery message sent.",
     "zone-created": "Delivery zone created.",
     "zone-duplicate": "A delivery zone with that name already exists for this store.",
     "zone-failed": "Delivery zone could not be created.",
@@ -93,6 +108,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore: null,
       agents: [],
       error: "Sign in to manage delivery agents.",
+      messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
       zones: []
@@ -108,6 +124,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore: null,
       agents: [],
       error: "You do not have permission to manage delivery agents.",
+      messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores: [],
       zones: []
@@ -123,6 +140,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeLoads: new Map<string, number>(),
       agents: [],
       error: storesError ? "Stores could not be loaded." : null,
+      messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
@@ -156,6 +174,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore,
       agents: [],
       error: "Delivery agents could not be loaded. Apply the delivery migration.",
+      messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
@@ -168,6 +187,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
       activeStore,
       agents: (agentsResult.data ?? []) as unknown as DeliveryAgentRow[],
       error: "Delivery zones could not be loaded. Apply the route capacity migration.",
+      messagesByAgent: new Map<string, DeliveryMessageRow[]>(),
       performance: new Map<string, DeliveryPerformanceMetrics>(),
       stores,
       zones: []
@@ -191,12 +211,28 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
     )
   );
   const performance = new Map(performanceRows.map((metrics) => [metrics.deliveryAgentId, metrics]));
+  const { data: messageRows } = await supabase
+    .from("delivery_messages" as never)
+    .select("id, delivery_agent_id, sender_type, message, status, created_at")
+    .eq("workspace_id" as never, workspaceId as never)
+    .eq("store_id" as never, activeStore.id as never)
+    .order("created_at" as never, { ascending: false } as never)
+    .limit(50);
+  const messagesByAgent = new Map<string, DeliveryMessageRow[]>();
+
+  for (const message of (messageRows ?? []) as unknown as DeliveryMessageRow[]) {
+    const current = messagesByAgent.get(message.delivery_agent_id) ?? [];
+    if (current.length < 3) {
+      messagesByAgent.set(message.delivery_agent_id, [...current, message]);
+    }
+  }
 
   return {
     activeLoads,
     activeStore,
     agents,
     error: null,
+    messagesByAgent,
     performance,
     stores,
     zones: (zonesResult.data ?? []) as unknown as DeliveryZoneRow[]
@@ -205,7 +241,7 @@ async function getDeliveryAgentsData(selectedStoreId?: string): Promise<Delivery
 
 export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgentsPageProps) {
   const query = await searchParams;
-  const { activeLoads, activeStore, agents, error, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
+  const { activeLoads, activeStore, agents, error, messagesByAgent, performance, stores, zones } = await getDeliveryAgentsData(query.storeId);
   const message = statusMessage(query.delivery);
   const onlineAgents = agents.filter((agent) => agent.availability_status === "online").length;
   const busyAgents = agents.filter((agent) => agent.availability_status === "busy").length;
@@ -446,6 +482,39 @@ export default async function DeliveryAgentsPage({ searchParams }: DeliveryAgent
                     Update capacity
                   </button>
                 </form>
+                <div className="mt-4 grid gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+                    Communication
+                  </p>
+                  <form action={sendOwnerDeliveryMessageAction} className="grid gap-3">
+                    <input name="agentId" type="hidden" value={agent.id} />
+                    <input name="storeId" type="hidden" value={activeStore?.id ?? ""} />
+                    <textarea
+                      className="min-h-20 rounded-2xl border border-blue-100 bg-white px-3 py-3 text-sm font-semibold text-ink outline-none"
+                      name="message"
+                      placeholder="Send a delivery operation message."
+                      required
+                    />
+                    <button
+                      className="h-10 rounded-2xl bg-blue-700 px-4 text-xs font-black uppercase tracking-[0.12em] text-white"
+                      type="submit"
+                    >
+                      Send message
+                    </button>
+                  </form>
+                  {(messagesByAgent.get(agent.id) ?? []).length ? (
+                    <div className="grid gap-2">
+                      {(messagesByAgent.get(agent.id) ?? []).map((message) => (
+                        <div className="rounded-2xl bg-white p-3 text-sm font-semibold text-muted" key={message.id}>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-500">
+                            {message.sender_type} · {message.status}
+                          </p>
+                          <p className="mt-1 leading-6">{message.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </article>
             )) : (
               <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-8 text-center">

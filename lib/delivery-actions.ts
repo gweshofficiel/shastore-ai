@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createDeliveryNotification, createDeliverySystemMessage } from "@/lib/delivery/communication-data";
 import { findAuthUserIdByEmail, linkDeliveryAgentToAuthUser } from "@/lib/delivery/data";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
@@ -614,6 +615,36 @@ export async function assignOrderDeliveryAgentAction(formData: FormData) {
     supabase: context.supabase,
     workspaceId: context.workspaceId
   });
+
+  if (agent) {
+    await Promise.all([
+      createDeliveryNotification({
+        agentId: agent.id,
+        category: order.delivery_agent_id ? "assignment_updated" : "new_assignment",
+        message: `Order ${orderReference(orderId)} has been assigned to you.`,
+        orderId,
+        orderSource: source,
+        storeId: order.store_id,
+        title: order.delivery_agent_id ? "Assignment updated" : "New assignment",
+        workspaceId: context.workspaceId,
+        metadata: {
+          assignedBy: context.user.id,
+          source: "owner_order_assignment"
+        }
+      }),
+      createDeliverySystemMessage({
+        agentId: agent.id,
+        message: `System notice: order ${orderReference(orderId)} is assigned to you.`,
+        orderId,
+        orderSource: source,
+        storeId: order.store_id,
+        workspaceId: context.workspaceId,
+        metadata: {
+          source: "owner_order_assignment"
+        }
+      })
+    ]);
+  }
 
   revalidatePath("/dashboard/orders");
   revalidatePath(returnTo);

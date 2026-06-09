@@ -10,7 +10,8 @@ const deliveryNavItems = [
   { href: "/delivery/dashboard/orders", label: "Assigned Orders" },
   { href: "/delivery/dashboard/status", label: "Delivery Status" },
   { href: "/delivery/dashboard/performance", label: "Performance" },
-  { href: "/delivery/dashboard/notifications", label: "Notifications" },
+  { href: "/delivery/notifications", label: "Notifications" },
+  { href: "/delivery/messages", label: "Messages" },
   { href: "/delivery/dashboard/support", label: "Support" },
   { href: "/delivery/dashboard/settings", label: "Settings" }
 ] as const;

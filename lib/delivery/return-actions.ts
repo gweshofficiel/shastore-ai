@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
+import { createDeliveryNotification } from "@/lib/delivery/communication-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
 
@@ -448,6 +449,24 @@ export async function updateDeliveryReturnStatusAction(formData: FormData) {
             : "Return status updated.",
     newValue: status,
     previousValue: current.status
+  });
+
+  await createDeliveryNotification({
+    agentId: current.delivery_agent_id,
+    category: status === "reschedule_requested" ? "return_approved" : "return_request",
+    message:
+      status === "reschedule_requested"
+        ? "Your reschedule request was approved by the store owner."
+        : `Return status updated to ${status.replaceAll("_", " ")}.`,
+    orderId: current.order_id,
+    orderSource: current.order_source,
+    storeId: current.store_id,
+    title: status === "reschedule_requested" ? "Reschedule approved" : "Return updated",
+    workspaceId: current.workspace_id,
+    metadata: {
+      returnId: current.id,
+      status
+    }
   });
 
   revalidatePath(returnsPath);

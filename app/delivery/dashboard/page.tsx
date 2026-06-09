@@ -1,5 +1,6 @@
 import { getOrCreateAccountProfile, accountProfileUnavailableMessage } from "@/lib/account-profiles";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
+import { getDeliveryCommunicationSummary } from "@/lib/delivery/communication-data";
 import { getDeliveryAssignedOrdersData, getDeliveryRouteCapacityData } from "@/lib/delivery/data";
 import { updateDeliveryAvailabilityAction } from "@/lib/delivery/route-actions";
 
@@ -71,10 +72,17 @@ export default async function DeliveryDashboardPage({
 }) {
   const query = await searchParams;
   const { agent, role, user } = await requireDeliveryAccess();
-  const [account, assignmentData, routeData] = await Promise.all([
+  const [account, assignmentData, routeData, communicationData] = await Promise.all([
     getOrCreateAccountProfile("delivery"),
     getDeliveryAssignedOrdersData(agent),
-    getDeliveryRouteCapacityData(agent)
+    getDeliveryRouteCapacityData(agent),
+    agent
+      ? getDeliveryCommunicationSummary({
+          agentId: agent.agentId,
+          storeId: agent.storeId,
+          workspaceId: agent.workspaceId
+        })
+      : Promise.resolve({ recentMessages: [], recentNotifications: [], unreadMessages: 0, unreadNotifications: 0 })
   ]);
   const message = dashboardMessage(query?.delivery);
 
@@ -96,13 +104,13 @@ export default async function DeliveryDashboardPage({
           </div>
           <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-500">
-              Account status
+              Notification bell
             </p>
             <p className="mt-2 text-xl font-black text-emerald-950">
-              {statusLabel(role, agent?.status)}
+              {communicationData.unreadNotifications + communicationData.unreadMessages} unread
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
-              {account?.account_id ?? accountProfileUnavailableMessage()}
+              {communicationData.unreadNotifications} notifications · {communicationData.unreadMessages} messages
             </p>
           </div>
         </div>
@@ -147,6 +155,11 @@ export default async function DeliveryDashboardPage({
             label: "Collected today",
             value: formatMoney(assignmentData.codCollectedToday),
             detail: "COD cash marked collected today."
+          },
+          {
+            label: "Account status",
+            value: statusLabel(role, agent?.status),
+            detail: account?.account_id ?? accountProfileUnavailableMessage()
           }
         ].map((card) => (
           <article
@@ -326,6 +339,46 @@ export default async function DeliveryDashboardPage({
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] lg:p-6">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+            Recent notifications
+          </p>
+          <div className="mt-4 grid gap-3">
+            {communicationData.recentNotifications.length ? communicationData.recentNotifications.map((notification) => (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3" key={notification.id}>
+                <p className="text-sm font-black text-emerald-950">{notification.title}</p>
+                <p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">{notification.message}</p>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                No notifications yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-5 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.8)] lg:p-6">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+            Recent messages
+          </p>
+          <div className="mt-4 grid gap-3">
+            {communicationData.recentMessages.length ? communicationData.recentMessages.map((messageItem) => (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" key={messageItem.id}>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                  {messageItem.senderType}
+                </p>
+                <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{messageItem.message}</p>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                No messages yet.
+              </div>
+            )}
           </div>
         </div>
       </section>

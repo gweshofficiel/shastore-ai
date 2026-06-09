@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createDeliveryNotification } from "@/lib/delivery/communication-data";
 import { requireDeliveryAccess } from "@/lib/delivery/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceDataContext } from "@/lib/workspaces/data-access";
@@ -260,6 +261,20 @@ export async function settleCodCollectionAction(formData: FormData) {
     message: "Cash settled to store.",
     newValue: "settled_to_store",
     previousValue: collection.status
+  });
+
+  await createDeliveryNotification({
+    agentId: collection.delivery_agent_id,
+    category: "cod_settled",
+    message: "COD collection was settled to the store.",
+    orderId: collection.order_id,
+    orderSource: collection.order_source,
+    storeId: collection.store_id,
+    title: "COD settled",
+    workspaceId: collection.workspace_id,
+    metadata: {
+      collectionId: collection.id
+    }
   });
 
   revalidatePath(codCenterPath);
