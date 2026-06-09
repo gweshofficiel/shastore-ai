@@ -85,11 +85,32 @@ function auditMetadata(value: Record<string, unknown> = {}) {
   };
 }
 
+function testAccountMetadata(definition: TestAccountDefinition) {
+  const baseMetadata = {
+    account_type: definition.accountType,
+    full_name: definition.displayName,
+    role: definition.role,
+    shastore_test_account: true,
+    shastore_test_role: definition.role
+  };
+
+  if (definition.role === "delivery") {
+    return {
+      ...baseMetadata,
+      account_role: "delivery",
+      account_type: "delivery",
+      delivery_role: "delivery"
+    };
+  }
+
+  return baseMetadata;
+}
+
 async function requireSuperAdmin() {
   const access = await getAdminAccess();
-  const adminAccess = isPlatformAdminEmail(access.user.email, { allowUnconfigured: false });
+  const adminAccess = isPlatformAdminEmail(access.user.email);
 
-  if (!adminAccess.isConfigured || !adminAccess.isAdmin) {
+  if (!adminAccess.isAdmin) {
     redirect("/admin/test-environment?test_accounts=super-admin-required");
   }
 
@@ -147,7 +168,7 @@ async function upsertAccountProfile(definition: TestAccountDefinition, authUserI
     return;
   }
 
-  await admin.from("account_profiles" as never).upsert({
+  const { error } = await admin.from("account_profiles" as never).upsert({
     account_id: accountIdForRole(definition.role),
     account_type: definition.accountType,
     display_name: definition.displayName,
@@ -155,6 +176,14 @@ async function upsertAccountProfile(definition: TestAccountDefinition, authUserI
     user_id: authUserId,
     updated_at: new Date().toISOString()
   } as never, { onConflict: "user_id,account_type" } as never);
+
+  if (error) {
+    console.warn("[test-environment] account profile repair skipped", {
+      email: definition.email,
+      message: error.message,
+      role: definition.role
+    });
+  }
 }
 
 async function upsertTestAccountRegistry(input: {
@@ -171,7 +200,7 @@ async function upsertTestAccountRegistry(input: {
   }
 
   const now = new Date().toISOString();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("test_environment_accounts" as never)
     .upsert({
       auth_user_id: input.authUserId,
@@ -184,6 +213,15 @@ async function upsertTestAccountRegistry(input: {
     } as never, { onConflict: "role" } as never)
     .select("id")
     .single();
+
+  if (error) {
+    console.warn("[test-environment] registry upsert skipped", {
+      email: input.definition.email,
+      message: error.message,
+      role: input.definition.role
+    });
+    return null;
+  }
 
   const row = data as { id?: string } | null;
   await writeAuditLog({
@@ -207,11 +245,7 @@ export async function createTestEnvironmentAccounts() {
     const password = generatedPassword();
     const email = normalizedEmail(definition.email);
     const existingUser = await findAuthUserByEmail(email);
-    const metadata = {
-      full_name: definition.displayName,
-      shastore_test_account: true,
-      shastore_test_role: definition.role
-    };
+    const metadata = testAccountMetadata(definition);
 
     const authResult = existingUser
       ? await admin.auth.admin.updateUserById(existingUser.id, {

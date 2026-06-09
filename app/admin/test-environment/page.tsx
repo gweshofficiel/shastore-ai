@@ -257,7 +257,7 @@ export default async function AdminTestEnvironmentPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <AdminActionButton action={createTestEnvironmentAccounts} label="Create Accounts" tone="blue" />
+            <AdminActionButton action={createTestEnvironmentAccounts} label="Create / Repair Accounts" tone="blue" />
             <AdminActionButton action={resetTestEnvironmentPasswords} label="Reset Passwords" />
             <AdminActionButton action={refreshTestEnvironmentAccountStatus} label="Refresh Status" />
           </div>
