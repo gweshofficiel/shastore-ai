@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   deactivateTestEnvironmentAccount,
-  impersonateTestEnvironmentAccount
+  openTestEnvironmentAccount
 } from "@/lib/admin/test-environment-actions";
 
 export function TestAccountActions({
@@ -17,6 +17,7 @@ export function TestAccountActions({
   userId: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState(false);
   const canOpen = userId !== "Not found";
   const canCopy = email !== "Not found";
 
@@ -30,6 +31,26 @@ export function TestAccountActions({
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  async function handleOpenAccount() {
+    if (!canOpen || opening) {
+      return;
+    }
+
+    setOpening(true);
+
+    try {
+      const result = await openTestEnvironmentAccount(
+        role as "admin" | "customer" | "delivery" | "owner" | "reseller"
+      );
+
+      if (result.ok) {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      setOpening(false);
+    }
+  }
+
   return (
     <div className="flex min-w-72 flex-wrap gap-2">
       <Link
@@ -40,23 +61,23 @@ export function TestAccountActions({
             : "pointer-events-none border-slate-100 bg-slate-50 text-slate-300"
         }`}
         href={canOpen ? `/admin/users/${userId}` : "#"}
+        rel="noopener noreferrer"
+        target="_blank"
       >
         View Account
       </Link>
-      <form action={impersonateTestEnvironmentAccount}>
-        <input name="role" type="hidden" value={role} />
-        <button
-          className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
-            canOpen
-              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              : "border-slate-100 bg-slate-50 text-slate-300"
-          }`}
-          disabled={!canOpen}
-          type="submit"
-        >
-          Open Account
-        </button>
-      </form>
+      <button
+        className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
+          canOpen
+            ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+            : "border-slate-100 bg-slate-50 text-slate-300"
+        }`}
+        disabled={!canOpen || opening}
+        onClick={handleOpenAccount}
+        type="button"
+      >
+        {opening ? "Opening..." : "Open Account"}
+      </button>
       <form action={deactivateTestEnvironmentAccount}>
         <input name="role" type="hidden" value={role} />
         <button

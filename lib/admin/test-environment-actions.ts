@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
+import { resolveAppBaseUrl } from "@/lib/deployment/config";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type TestRole = "admin" | "customer" | "delivery" | "owner" | "reseller";
@@ -408,19 +409,43 @@ export async function deactivateTestEnvironmentAccount(formData: FormData) {
   redirect("/admin/test-environment?test_accounts=deactivated");
 }
 
-export async function impersonateTestEnvironmentAccount(formData: FormData) {
-  const { actorUserId, admin } = await requireSuperAdmin();
-  const role = String(formData.get("role") ?? "") as TestRole;
+type TestEnvironmentImpersonationError =
+  | "inactive"
+  | "impersonation-failed"
+  | "invalid-role"
+  | "missing-auth-user"
+  | "super-admin-required";
+
+type TestEnvironmentImpersonationResult =
+  | { error: TestEnvironmentImpersonationError; ok: false }
+  | { ok: true; url: string };
+
+async function createTestEnvironmentImpersonationLink(
+  role: TestRole
+): Promise<TestEnvironmentImpersonationResult> {
+  const access = await getAdminAccess();
+  const adminAccess = isPlatformAdminEmail(access.user.email);
+
+  if (!adminAccess.isAdmin) {
+    return { error: "super-admin-required", ok: false };
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return { error: "impersonation-failed", ok: false };
+  }
+
   const definition = testAccountDefinitions.find((candidate) => candidate.role === role);
 
   if (!definition) {
-    redirect("/admin/test-environment?test_accounts=invalid-role");
+    return { error: "invalid-role", ok: false };
   }
 
   const user = await findAuthUserByEmail(definition.email);
 
   if (!user) {
-    redirect("/admin/test-environment?test_accounts=missing-auth-user");
+    return { error: "missing-auth-user", ok: false };
   }
 
   const { data: registry } = await admin
@@ -431,15 +456,18 @@ export async function impersonateTestEnvironmentAccount(formData: FormData) {
   const account = registry as { id?: string | null; status?: string | null } | null;
 
   if (account?.status === "inactive") {
-    redirect("/admin/test-environment?test_accounts=inactive");
+    return { error: "inactive", ok: false };
   }
+
+  const appBaseUrl = await resolveAppBaseUrl();
 
   await writeAuditLog({
     accountId: account?.id ?? null,
-    actorUserId,
+    actorUserId: access.user.id,
     authUserId: user.id,
     eventType: "impersonation",
     metadata: {
+      app_base_url: appBaseUrl,
       email: definition.email,
       role
     }
@@ -448,16 +476,36 @@ export async function impersonateTestEnvironmentAccount(formData: FormData) {
   const { data, error } = await admin.auth.admin.generateLink({
     email: definition.email,
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}${definition.dashboardPath}`
+      redirectTo: `${appBaseUrl}${definition.dashboardPath}`
     },
     type: "magiclink"
   });
 
   if (error || !data.properties?.action_link) {
-    redirect("/admin/test-environment?test_accounts=impersonation-failed");
+    return { error: "impersonation-failed", ok: false };
   }
 
-  redirect(data.properties.action_link);
+  return {
+    ok: true,
+    url: data.properties.action_link
+  };
+}
+
+export async function openTestEnvironmentAccount(
+  role: TestRole
+): Promise<TestEnvironmentImpersonationResult> {
+  return createTestEnvironmentImpersonationLink(role);
+}
+
+export async function impersonateTestEnvironmentAccount(formData: FormData) {
+  const role = String(formData.get("role") ?? "") as TestRole;
+  const result = await createTestEnvironmentImpersonationLink(role);
+
+  if (!result.ok) {
+    redirect(`/admin/test-environment?test_accounts=${result.error}`);
+  }
+
+  redirect(result.url);
 }
 
 export async function recordTestEnvironmentLogin(input: {

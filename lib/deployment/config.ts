@@ -122,17 +122,86 @@ export function isProduction() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
 
-export function getAppBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return withProtocol(process.env.NEXT_PUBLIC_APP_URL);
+function isLocalhostHost(value: string) {
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
   }
+}
 
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return withProtocol(process.env.NEXT_PUBLIC_SITE_URL);
+function envAppBaseUrl() {
+  for (const key of ["NEXT_PUBLIC_APP_URL", "PUBLIC_APP_URL", "NEXT_PUBLIC_SITE_URL"] as const) {
+    const value = process.env[key]?.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    const baseUrl = withProtocol(value);
+
+    if (isProduction() && isLocalhostHost(baseUrl)) {
+      continue;
+    }
+
+    return baseUrl;
   }
 
   if (process.env.VERCEL_URL) {
     return withProtocol(process.env.VERCEL_URL);
+  }
+
+  if (isProduction()) {
+    return null;
+  }
+
+  return "http://localhost:3000";
+}
+
+export function getAppBaseUrl() {
+  const resolved = envAppBaseUrl();
+
+  if (resolved) {
+    return resolved;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return withProtocol(process.env.VERCEL_URL);
+  }
+
+  return "http://localhost:3000";
+}
+
+export async function resolveAppBaseUrl() {
+  try {
+    const { headers } = await import("next/headers");
+    const headerList = await headers();
+    const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
+
+    if (host) {
+      const normalizedHost = host.split(",")[0]?.trim();
+
+      if (normalizedHost && !isLocalhostHost(`https://${normalizedHost}`)) {
+        const proto =
+          headerList.get("x-forwarded-proto")?.split(",")[0]?.trim() ??
+          (isProduction() ? "https" : "http");
+
+        return `${proto}://${normalizedHost}`;
+      }
+    }
+  } catch {
+    // headers() is unavailable outside a request context.
+  }
+
+  const fromEnv = envAppBaseUrl();
+
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  if (isProduction()) {
+    throw new Error("App base URL is not configured for production.");
   }
 
   return "http://localhost:3000";
