@@ -479,7 +479,11 @@ function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
     return "Pay the seller when your order is delivered.";
   }
 
-  if (method === "whatsapp") {
+  if (method === "bank_transfer") {
+    return "Place the order and pay manually by bank transfer.";
+  }
+
+  if (method === "whatsapp" || method === "whatsapp_order") {
     return "Create the order and continue through WhatsApp.";
   }
 

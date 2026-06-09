@@ -263,7 +263,15 @@ function parseDeliveryMethod(value: FormDataEntryValue | null): DeliveryMethod {
 }
 
 function parsePublicStorePaymentMethod(value: FormDataEntryValue | null): PublicStorePaymentMethodKey | null {
-  return value === "card" || value === "cod" || value === "whatsapp" || value === "paypal" || value === "youcan_pay"
+  return (
+    value === "bank_transfer" ||
+    value === "card" ||
+    value === "cod" ||
+    value === "paypal" ||
+    value === "whatsapp" ||
+    value === "whatsapp_order" ||
+    value === "youcan_pay"
+  )
     ? value
     : null;
 }

@@ -9,7 +9,14 @@ export type CommerceOrderStatus =
   | "shipped"
   | "delivered"
   | "canceled";
-export type CommercePaymentMethod = "cod" | "whatsapp" | "stripe" | "paypal" | "youcan_pay";
+export type CommercePaymentMethod =
+  | "bank_transfer"
+  | "cod"
+  | "whatsapp"
+  | "whatsapp_order"
+  | "stripe"
+  | "paypal"
+  | "youcan_pay";
 export type CommercePaymentStatus = "pending" | "paid" | "failed" | "refunded";
 export type CommerceAnalyticsEventType =
   | "visitor"

@@ -23,10 +23,12 @@ function SubmitButton() {
 
 function getPaymentMethodLabel(method: CommercePaymentMethod) {
   const labels: Record<CommercePaymentMethod, string> = {
+    bank_transfer: "Bank Transfer",
     cod: "Cash on Delivery",
     paypal: "PayPal",
     stripe: "Credit / Debit Card",
     whatsapp: "Order via WhatsApp",
+    whatsapp_order: "Order via WhatsApp",
     youcan_pay: "YouCan Pay"
   };
 
@@ -38,7 +40,11 @@ function getPaymentMethodDescription(method: CommercePaymentMethod) {
     return "Pay the seller when your order is delivered.";
   }
 
-  if (method === "whatsapp") {
+  if (method === "bank_transfer") {
+    return "Place the order and pay manually by bank transfer.";
+  }
+
+  if (method === "whatsapp" || method === "whatsapp_order") {
     return "Save the order and open WhatsApp with a prepared message.";
   }
 

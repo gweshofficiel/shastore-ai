@@ -6,7 +6,14 @@ import {
   providerConnectionByName
 } from "@/lib/store-payment-provider-connections";
 
-export type StorePaymentMethod = "cod" | "paypal" | "stripe" | "whatsapp" | "youcan_pay";
+export type StorePaymentMethod =
+  | "bank_transfer"
+  | "cod"
+  | "paypal"
+  | "stripe"
+  | "whatsapp"
+  | "whatsapp_order"
+  | "youcan_pay";
 type ConfigurableStorePaymentMethod = Exclude<StorePaymentMethod, "stripe">;
 export type PublicStorePaymentMethodKey = ConfigurableStorePaymentMethod | "card";
 
@@ -43,10 +50,24 @@ export const storePaymentMethodOptions: Array<{
     title: "Cash on Delivery"
   },
   {
+    defaultDisplayName: "Bank Transfer",
+    defaultEnabled: false,
+    description: "Let customers place orders and pay manually by bank transfer.",
+    method: "bank_transfer",
+    title: "Bank Transfer"
+  },
+  {
     defaultDisplayName: "WhatsApp Orders",
     description: "Create the order and open WhatsApp with a prepared message.",
     method: "whatsapp",
     title: "WhatsApp Orders"
+  },
+  {
+    defaultDisplayName: "Order via WhatsApp",
+    defaultEnabled: false,
+    description: "Let customers place orders for manual merchant follow-up through WhatsApp.",
+    method: "whatsapp_order",
+    title: "Order via WhatsApp"
   },
   {
     defaultDisplayName: "PayPal",
@@ -70,7 +91,14 @@ const defaultLabels = new Map<StorePaymentMethod, string>([
 ]);
 
 function isConfigurablePaymentMethod(value: unknown): value is ConfigurableStorePaymentMethod {
-  return value === "cod" || value === "paypal" || value === "whatsapp" || value === "youcan_pay";
+  return (
+    value === "bank_transfer" ||
+    value === "cod" ||
+    value === "paypal" ||
+    value === "whatsapp" ||
+    value === "whatsapp_order" ||
+    value === "youcan_pay"
+  );
 }
 
 function normalizeConfig(value: unknown): Record<string, unknown> {
