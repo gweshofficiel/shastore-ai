@@ -2,10 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
-  deactivateTestEnvironmentAccount,
-  openTestEnvironmentAccount
-} from "@/lib/admin/test-environment-actions";
+import { deactivateTestEnvironmentAccount } from "@/lib/admin/test-environment-actions";
 
 export function TestAccountActions({
   email,
@@ -39,11 +36,17 @@ export function TestAccountActions({
     setOpening(true);
 
     try {
-      const result = await openTestEnvironmentAccount(
-        role as "admin" | "customer" | "delivery" | "owner" | "reseller"
-      );
+      const response = await fetch("/api/admin/test-environment/open-account", {
+        body: JSON.stringify({ role }),
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const result = (await response.json()) as { ok: boolean; url?: string };
 
-      if (result.ok) {
+      if (response.ok && result.ok && result.url) {
         window.open(result.url, "_blank", "noopener,noreferrer");
       }
     } finally {

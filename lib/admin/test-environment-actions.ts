@@ -1,10 +1,11 @@
 "use server";
 
 import { createHash, randomBytes } from "crypto";
+import type { NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
-import { resolveAppBaseUrl } from "@/lib/deployment/config";
+import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type TestRole = "admin" | "customer" | "delivery" | "owner" | "reseller";
@@ -420,9 +421,19 @@ type TestEnvironmentImpersonationResult =
   | { error: TestEnvironmentImpersonationError; ok: false }
   | { ok: true; url: string };
 
-async function createTestEnvironmentImpersonationLink(
-  role: TestRole
+function safeActionLinkRedirectTarget(actionLink: string) {
+  try {
+    return new URL(actionLink).searchParams.get("redirect_to");
+  } catch {
+    return null;
+  }
+}
+
+export async function createTestEnvironmentImpersonationLink(
+  roleInput: string,
+  request?: NextRequest
 ): Promise<TestEnvironmentImpersonationResult> {
+  const role = roleInput as TestRole;
   const access = await getAdminAccess();
   const adminAccess = isPlatformAdminEmail(access.user.email);
 
@@ -459,7 +470,16 @@ async function createTestEnvironmentImpersonationLink(
     return { error: "inactive", ok: false };
   }
 
-  const appBaseUrl = await resolveAppBaseUrl();
+  const { isLocalhost, origin, originSource } = await resolveAppOrigin(request);
+  const redirectTo = `${origin}${definition.dashboardPath}`;
+
+  console.info("[test-env][open-account] origin", {
+    isLocalhost,
+    origin,
+    originSource,
+    redirectTo,
+    role: definition.role
+  });
 
   await writeAuditLog({
     accountId: account?.id ?? null,
@@ -467,8 +487,10 @@ async function createTestEnvironmentImpersonationLink(
     authUserId: user.id,
     eventType: "impersonation",
     metadata: {
-      app_base_url: appBaseUrl,
+      app_base_url: origin,
       email: definition.email,
+      origin_source: originSource,
+      redirect_to: redirectTo,
       role
     }
   });
@@ -476,7 +498,7 @@ async function createTestEnvironmentImpersonationLink(
   const { data, error } = await admin.auth.admin.generateLink({
     email: definition.email,
     options: {
-      redirectTo: `${appBaseUrl}${definition.dashboardPath}`
+      redirectTo
     },
     type: "magiclink"
   });
@@ -484,6 +506,12 @@ async function createTestEnvironmentImpersonationLink(
   if (error || !data.properties?.action_link) {
     return { error: "impersonation-failed", ok: false };
   }
+
+  console.info("[test-env][open-account] generateLink", {
+    actionLinkRedirectTo: safeActionLinkRedirectTarget(data.properties.action_link),
+    originSource,
+    redirectTo
+  });
 
   return {
     ok: true,
