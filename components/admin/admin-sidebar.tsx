@@ -4,6 +4,7 @@ import { AdminNavLink } from "@/components/admin/admin-nav-link";
 export const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
   { href: "/admin/foundation-report", label: "Foundation Report", icon: "reports" },
+  { href: "/admin/test-environment", label: "Test Environment", icon: "reports" },
   { href: "/admin/users", label: "Users", icon: "users" },
   { href: "/admin/team", label: "Internal Team", icon: "users" },
   { href: "/admin/stores", label: "Stores", icon: "stores" },
