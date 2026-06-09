@@ -8,6 +8,7 @@ import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
 import { getAdminStores } from "@/lib/admin/data";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type TestRole = "admin" | "customer" | "delivery" | "owner" | "reseller";
 
@@ -422,12 +423,114 @@ type TestEnvironmentImpersonationResult =
   | { error: TestEnvironmentImpersonationError; ok: false }
   | { ok: true; url: string };
 
-function safeActionLinkRedirectTarget(actionLink: string) {
-  try {
-    return new URL(actionLink).searchParams.get("redirect_to");
-  } catch {
-    return null;
+type TestEnvironmentRegistryAccount = {
+  auth_user_id: string;
+  email: string;
+  id: string;
+  status: string;
+};
+
+type LoadedTestEnvironmentAccount = {
+  actorUserId: string;
+  authUser: {
+    email: string | null;
+    id: string;
+  };
+  definition: TestAccountDefinition;
+  registry: TestEnvironmentRegistryAccount;
+};
+
+async function requireSuperAdminForImpersonation() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const adminAccess = isPlatformAdminEmail(user?.email);
+
+  if (!user || !adminAccess.isAdmin) {
+    return { error: "super-admin-required" as const, ok: false as const };
   }
+
+  return {
+    actorUserId: user.id,
+    ok: true as const
+  };
+}
+
+export async function loadTestEnvironmentAccountForImpersonation(
+  roleInput: string
+): Promise<
+  | { error: TestEnvironmentImpersonationError; ok: false }
+  | ({ ok: true } & LoadedTestEnvironmentAccount)
+> {
+  const role = roleInput as TestRole;
+  const access = await requireSuperAdminForImpersonation();
+
+  if (!access.ok) {
+    return { error: access.error, ok: false };
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return { error: "impersonation-failed", ok: false };
+  }
+
+  const definition = testAccountDefinitions.find((candidate) => candidate.role === role);
+
+  if (!definition) {
+    return { error: "invalid-role", ok: false };
+  }
+
+  const { data: registry } = await admin
+    .from("test_environment_accounts" as never)
+    .select("id, email, auth_user_id, status")
+    .eq("role" as never, role as never)
+    .maybeSingle();
+  const account = registry as {
+    auth_user_id?: string | null;
+    email?: string | null;
+    id?: string | null;
+    status?: string | null;
+  } | null;
+
+  if (!account?.auth_user_id || !account.email) {
+    return { error: "missing-auth-user", ok: false };
+  }
+
+  if (account.status === "inactive") {
+    return { error: "inactive", ok: false };
+  }
+
+  const { data: authResult, error: authError } = await admin.auth.admin.getUserById(account.auth_user_id);
+
+  if (authError || !authResult.user) {
+    return { error: "missing-auth-user", ok: false };
+  }
+
+  const registryEmail = normalizedEmail(account.email);
+  const definitionEmail = normalizedEmail(definition.email);
+  const authEmail = normalizedEmail(authResult.user.email ?? "");
+
+  if (!authEmail || authEmail !== registryEmail || authEmail !== definitionEmail) {
+    return { error: "impersonation-failed", ok: false };
+  }
+
+  return {
+    actorUserId: access.actorUserId,
+    authUser: {
+      email: authResult.user.email ?? account.email,
+      id: authResult.user.id
+    },
+    definition,
+    ok: true,
+    registry: {
+      auth_user_id: account.auth_user_id,
+      email: account.email,
+      id: account.id ?? "",
+      status: account.status ?? "active"
+    }
+  };
 }
 
 function looksLikeTest(...values: Array<string | null | undefined>) {
@@ -437,7 +540,7 @@ function looksLikeTest(...values: Array<string | null | undefined>) {
   });
 }
 
-async function resolveOpenAccountPath(role: TestRole, definition: TestAccountDefinition) {
+export async function resolveOpenAccountPath(role: TestRole, definition: TestAccountDefinition) {
   if (role !== "customer") {
     return definition.dashboardPath;
   }
@@ -458,95 +561,24 @@ export async function createTestEnvironmentImpersonationLink(
   request?: NextRequest
 ): Promise<TestEnvironmentImpersonationResult> {
   const role = roleInput as TestRole;
-  const access = await getAdminAccess();
-  const adminAccess = isPlatformAdminEmail(access.user.email);
+  const loaded = await loadTestEnvironmentAccountForImpersonation(role);
 
-  if (!adminAccess.isAdmin) {
-    return { error: "super-admin-required", ok: false };
+  if (!loaded.ok) {
+    return loaded;
   }
 
-  const admin = createAdminClient();
+  const { origin } = await resolveAppOrigin(request);
 
-  if (!admin) {
-    return { error: "impersonation-failed", ok: false };
-  }
-
-  const definition = testAccountDefinitions.find((candidate) => candidate.role === role);
-
-  if (!definition) {
-    return { error: "invalid-role", ok: false };
-  }
-
-  const user = await findAuthUserByEmail(definition.email);
-
-  if (!user) {
-    return { error: "missing-auth-user", ok: false };
-  }
-
-  const { data: registry } = await admin
-    .from("test_environment_accounts" as never)
-    .select("id, status")
-    .eq("role" as never, role as never)
-    .maybeSingle();
-  const account = registry as { id?: string | null; status?: string | null } | null;
-
-  if (account?.status === "inactive") {
-    return { error: "inactive", ok: false };
-  }
-
-  const { isLocalhost, origin, originSource } = await resolveAppOrigin(request);
-  const openPath = await resolveOpenAccountPath(role, definition);
-
-  if (!openPath) {
-    return { error: "impersonation-failed", ok: false };
-  }
-
-  const redirectTo = `${origin}${openPath}`;
-
-  console.info("[test-env][open-account] origin", {
-    isLocalhost,
-    openPath,
-    origin,
-    originSource,
-    redirectTo,
-    role: definition.role
-  });
-
-  await writeAuditLog({
-    accountId: account?.id ?? null,
-    actorUserId: access.user.id,
-    authUserId: user.id,
-    eventType: "impersonation",
-    metadata: {
-      app_base_url: origin,
-      email: definition.email,
-      origin_source: originSource,
-      redirect_to: redirectTo,
-      role
-    }
-  });
-
-  const { data, error } = await admin.auth.admin.generateLink({
-    email: definition.email,
-    options: {
-      redirectTo
-    },
-    type: "magiclink"
-  });
-
-  if (error || !data.properties?.action_link) {
-    return { error: "impersonation-failed", ok: false };
-  }
-
-  console.info("[test-env][open-account] generateLink", {
-    actionLinkRedirectTo: safeActionLinkRedirectTarget(data.properties.action_link),
-    originSource,
-    redirectTo
+  console.info("[test-env][open-account] prepare", {
+    generatedForUserId: loaded.authUser.id,
+    selectedAuthUserId: loaded.registry.auth_user_id,
+    selectedEmail: loaded.registry.email,
+    selectedRole: role
   });
 
   return {
     ok: true,
-    url: data.properties.action_link
+    url: `${origin}/api/admin/test-environment/establish-session?role=${encodeURIComponent(role)}`
   };
 }
 
@@ -554,6 +586,21 @@ export async function openTestEnvironmentAccount(
   role: TestRole
 ): Promise<TestEnvironmentImpersonationResult> {
   return createTestEnvironmentImpersonationLink(role);
+}
+
+export async function recordTestEnvironmentImpersonation(input: {
+  accountId: string | null;
+  actorUserId: string;
+  authUserId: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await writeAuditLog({
+    accountId: input.accountId,
+    actorUserId: input.actorUserId,
+    authUserId: input.authUserId,
+    eventType: "impersonation",
+    metadata: auditMetadata(input.metadata)
+  });
 }
 
 export async function impersonateTestEnvironmentAccount(formData: FormData) {
