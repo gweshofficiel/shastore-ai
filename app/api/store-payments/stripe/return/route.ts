@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
       connected_at: status === "connected" ? now : null,
       connection_status: status,
       disconnected_at: null,
+      last_sync_at: now,
       onboarding_completed_at: account.details_submitted ? now : null,
       payouts_enabled: account.payouts_enabled,
       provider: "stripe",

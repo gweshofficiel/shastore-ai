@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getStorePaymentProviderConnections,
   isPayPalReady,
-  isStripeReady,
   isYouCanPayReady,
   providerConnectionByName
 } from "@/lib/store-payment-provider-connections";
@@ -191,20 +190,11 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
     enabledMethodNames.add("cod");
   }
 
-  const stripeConnection = providerConnectionByName(providerConnections, "stripe");
   const paypalConnection = providerConnectionByName(providerConnections, "paypal");
   const youCanConnection = providerConnectionByName(providerConnections, "youcan_pay");
   const providerMethods: PublicStorePaymentMethod[] = [];
 
-  if (isStripeReady(stripeConnection)) {
-    providerMethods.push({
-      displayName: "Credit / Debit Card",
-      instructions: "Pay securely with Visa or Mastercard.",
-      method: "card",
-      provider_internal: "stripe"
-    });
-  }
-
+  // C2 keeps card checkout inactive. Stripe readiness is visible in owner/admin surfaces only.
   if (enabledMethodNames.has("paypal") && isPayPalReady(paypalConnection)) {
     providerMethods.push({
       displayName: "PayPal",

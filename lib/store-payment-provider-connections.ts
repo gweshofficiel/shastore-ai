@@ -18,6 +18,7 @@ export type StorePaymentProviderConnection = {
   disconnected_at: string | null;
   environment: string | null;
   id: string;
+  last_sync_at: string | null;
   onboarding_completed_at: string | null;
   paypal_merchant_id: string | null;
   paypal_status: string | null;
@@ -82,6 +83,7 @@ function normalizeProviderConnection(value: unknown): StorePaymentProviderConnec
     disconnected_at: text(row.disconnected_at),
     environment: text(row.environment),
     id: row.id,
+    last_sync_at: text(row.last_sync_at),
     onboarding_completed_at: text(row.onboarding_completed_at),
     paypal_merchant_id: text(row.paypal_merchant_id),
     paypal_status: text(row.paypal_status),
@@ -102,7 +104,7 @@ export async function getStorePaymentProviderConnections(
   const { data, error } = await client
     .from("store_payment_provider_connections" as never)
     .select(
-      "id, workspace_id, store_id, provider, connection_mode, config_status, connection_status, stripe_account_id, onboarding_completed_at, charges_enabled, payouts_enabled, paypal_merchant_id, paypal_status, connected_at, disconnected_at, environment, publishable_key, public_key, account_reference"
+      "id, workspace_id, store_id, provider, connection_mode, config_status, connection_status, stripe_account_id, onboarding_completed_at, last_sync_at, charges_enabled, payouts_enabled, paypal_merchant_id, paypal_status, connected_at, disconnected_at, environment, publishable_key, public_key, account_reference"
     )
     .eq("store_id", storeId)
     .order("provider" as never, { ascending: true } as never);
@@ -130,7 +132,11 @@ export function providerConnectionByName(
 
 export function isStripeReady(connection: StorePaymentProviderConnection | null) {
   return (
-    (connection?.connection_mode === "connect" && Boolean(connection.stripe_account_id)) ||
+    (connection?.connection_mode === "connect" &&
+      connection.connection_status === "connected" &&
+      connection.charges_enabled &&
+      connection.payouts_enabled &&
+      Boolean(connection.stripe_account_id)) ||
     (connection?.connection_mode === "manual" &&
       connection.config_status === "configured" &&
       Boolean(connection.publishable_key))

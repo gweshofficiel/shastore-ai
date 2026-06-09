@@ -202,6 +202,52 @@ function providerStatusLabel(connection: StorePaymentProviderConnection | null) 
   return "Pending";
 }
 
+function formatPaymentDate(value: string | null | undefined) {
+  if (!value) {
+    return "Not synced";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function stripeReadiness(connection: StorePaymentProviderConnection | null) {
+  if (!connection || connection.connection_status === "disconnected") {
+    return {
+      label: "Setup Required",
+      tone: "amber" as const
+    };
+  }
+
+  if (connection.connection_status === "restricted") {
+    return {
+      label: "Restricted",
+      tone: "red" as const
+    };
+  }
+
+  if (
+    connection.connection_status === "connected" &&
+    connection.charges_enabled &&
+    connection.payouts_enabled
+  ) {
+    return {
+      label: "Ready For Payments",
+      tone: "green" as const
+    };
+  }
+
+  return {
+    label: "Setup Required",
+    tone: "amber" as const
+  };
+}
+
 function ProviderConnectionCard({
   connection,
   provider,
@@ -211,7 +257,8 @@ function ProviderConnectionCard({
   provider: "paypal" | "stripe";
   storeId: string;
 }) {
-  const title = provider === "stripe" ? "Stripe" : "PayPal";
+  const title = provider === "stripe" ? "Stripe Connect" : "PayPal";
+  const readiness = provider === "stripe" ? stripeReadiness(connection) : null;
   const description =
     provider === "stripe"
       ? "Connect a seller-owned Stripe account through Stripe Connect onboarding. Platform subscription billing is not used here."
@@ -237,10 +284,25 @@ function ProviderConnectionCard({
       <div className="mt-5 grid gap-2 text-sm font-semibold text-muted">
         {provider === "stripe" ? (
           <>
+            <p>
+              Store payment readiness:{" "}
+              <span className={
+                readiness?.tone === "green"
+                  ? "text-emerald-700"
+                  : readiness?.tone === "red"
+                    ? "text-red-700"
+                    : "text-amber-700"
+              }>
+                {readiness?.label}
+              </span>
+            </p>
+            <p>Stripe status: {providerStatusLabel(connection)}</p>
+            <p>Stripe Ready: {readiness?.tone === "green" ? "Yes" : "No"}</p>
+            <p>Onboarding completed: {connection?.onboarding_completed_at ? "Yes" : "No"}</p>
             <p>Charges enabled: {connection?.charges_enabled ? "Yes" : "No"}</p>
             <p>Payouts enabled: {connection?.payouts_enabled ? "Yes" : "No"}</p>
             <p>Stripe account: {connection?.stripe_account_id ? "Stored securely" : "Not stored"}</p>
-            <p>Manual status: {connection?.config_status ?? "not_configured"}</p>
+            <p>Last sync: {formatPaymentDate(connection?.last_sync_at)}</p>
           </>
         ) : (
           <>
@@ -272,6 +334,23 @@ function ProviderConnectionCard({
           </Button>
         </form>
       </div>
+      {provider === "stripe" ? (
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-slate-600">
+            View Connection Details
+          </summary>
+          <div className="mt-4 grid gap-2 text-sm font-semibold text-muted">
+            <p>Provider scope: Store payments only</p>
+            <p>Platform billing credentials exposed: No</p>
+            <p>Secret keys exposed: No</p>
+            <p>Webhook secrets exposed: No</p>
+            <p>Stripe account ID: {connection?.stripe_account_id ? "Stored securely" : "Not connected"}</p>
+            <p>Connection mode: {connection?.connection_mode ?? "connect"}</p>
+            <p>Connected at: {formatPaymentDate(connection?.connected_at)}</p>
+            <p>Last synced at: {formatPaymentDate(connection?.last_sync_at)}</p>
+          </div>
+        </details>
+      ) : null}
     </Card>
   );
 }
@@ -550,6 +629,26 @@ export default async function PaymentsPage({
             title="NOWPayments"
           />
         </div>
+      ) : null}
+      {activeStore ? (
+        <Card className="border-dashed p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+            Stripe future hooks
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {["Real Card Payments", "Refunds", "Disputes", "Payout Monitoring", "Tax Reporting"].map((label) => (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={label}>
+                <p className="text-sm font-black text-ink">{label}</p>
+                <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                  Reserved
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-sm font-bold leading-6 text-muted">
+            Card checkout remains inactive in C2. Stripe readiness is monitored here before online card payments are enabled in a later phase.
+          </p>
+        </Card>
       ) : null}
       {activeStore ? (
         <ManualProviderConfigForm

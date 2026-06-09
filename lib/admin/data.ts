@@ -201,6 +201,8 @@ export type AdminPaymentProviderControl = {
     codStores: number;
     manualStores: number;
     missingPaymentMethodStores: number;
+    stripePendingStores: number;
+    stripeRestrictedStores: number;
     paypalStores: number;
     stripeStores: number;
     totalStores: number;
@@ -2315,7 +2317,7 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
   ] = await Promise.all([
     safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug"),
     safeSelect(supabase, "store_payment_methods", "store_id, method, is_enabled"),
-    safeSelect(supabase, "store_payment_provider_connections", "store_id, provider, connection_status, config_status, charges_enabled, paypal_status"),
+    safeSelect(supabase, "store_payment_provider_connections", "store_id, provider, connection_status, config_status, charges_enabled, payouts_enabled, paypal_status, last_sync_at"),
     safeSelect(
       supabase,
       "monitoring_events",
@@ -2457,7 +2459,29 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       .filter(
         (connection) =>
           text(connection.provider) === "stripe" &&
-          (text(connection.connection_status) === "connected" || connection.charges_enabled === true)
+          text(connection.connection_status) === "connected" &&
+          connection.charges_enabled === true &&
+          connection.payouts_enabled === true
+      )
+      .map((connection) => text(connection.store_id))
+      .filter(Boolean)
+  );
+  const stripePendingStores = new Set(
+    connections
+      .filter(
+        (connection) =>
+          text(connection.provider) === "stripe" &&
+          text(connection.connection_status) === "pending"
+      )
+      .map((connection) => text(connection.store_id))
+      .filter(Boolean)
+  );
+  const stripeRestrictedStores = new Set(
+    connections
+      .filter(
+        (connection) =>
+          text(connection.provider) === "stripe" &&
+          text(connection.connection_status) === "restricted"
       )
       .map((connection) => text(connection.store_id))
       .filter(Boolean)
@@ -2549,6 +2573,8 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       manualStores: manualStores.size,
       missingPaymentMethodStores: paymentSetupRisks.length,
       paypalStores: paypalStores.size,
+      stripePendingStores: stripePendingStores.size,
+      stripeRestrictedStores: stripeRestrictedStores.size,
       stripeStores: stripeStores.size,
       totalStores: stores.length
     },

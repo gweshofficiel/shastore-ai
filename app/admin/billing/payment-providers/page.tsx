@@ -53,6 +53,8 @@ export default async function AdminPaymentProvidersPage() {
           { label: "Providers", value: data.providers.length },
           { label: "Configured providers", value: data.providers.filter((provider) => provider.configurationStatus === "configured").length },
           { label: "Stores with Stripe", value: data.storePaymentAdoption.stripeStores },
+          { label: "Stripe pending", value: data.storePaymentAdoption.stripePendingStores },
+          { label: "Stripe restricted", value: data.storePaymentAdoption.stripeRestrictedStores },
           { label: "Stores with PayPal", value: data.storePaymentAdoption.paypalStores },
           { label: "COD/manual stores", value: data.storePaymentAdoption.manualStores },
           { label: "Setup warnings", value: data.storePaymentAdoption.missingPaymentMethodStores },

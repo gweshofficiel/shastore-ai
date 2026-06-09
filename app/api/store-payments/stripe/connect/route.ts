@@ -71,6 +71,7 @@ async function persistStripeConnectPending(
     connection_mode: "connect",
     connection_status: "pending",
     disconnected_at: null,
+    last_sync_at: input.now,
     onboarding_completed_at: input.account.details_submitted ? input.now : null,
     payouts_enabled: input.account.payouts_enabled ?? false,
     provider: "stripe",
@@ -112,6 +113,7 @@ async function connectStripeAccount(request: NextRequest, storeId: string) {
   await context.supabase.from("store_payment_provider_connections" as never).upsert({
     connection_mode: "connect",
     connection_status: "pending",
+    last_sync_at: now,
     provider: "stripe",
     store_id: storeId,
     updated_at: now,
