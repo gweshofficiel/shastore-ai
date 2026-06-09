@@ -3,14 +3,24 @@ import {
   AdminBadge,
   AdminHeader,
   AdminStatGrid,
-  AdminTable
+  AdminTable,
+  formatAdminDate
 } from "@/components/admin/admin-control";
+import { TestAccountActions } from "@/components/admin/test-account-actions";
 import { getTestEnvironmentData } from "@/lib/admin/test-environment-data";
 
 export const dynamic = "force-dynamic";
 
-function statusTone(status: string) {
-  return status === "available" ? "green" : "amber";
+function statusTone(status: string): "amber" | "green" | "red" {
+  if (status === "available" || status === "active" || status === "verified") {
+    return "green";
+  }
+
+  if (status === "missing" || status === "pending" || status === "pending_verification") {
+    return "amber";
+  }
+
+  return "red";
 }
 
 function HealthCard({ label, ok }: { label: string; ok: boolean }) {
@@ -39,16 +49,16 @@ export default async function AdminTestEnvironmentPage() {
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Permanent read-only test environment registry for validating accounts, store data, products, orders, delivery, and reseller assets before real commerce activation."
+        description="Permanent admin-only registry for dedicated SHASTORE test accounts, linked assets, ecosystem readiness, and future provisioning hooks before real commerce activation."
         title="Test Environment"
       />
 
       <AdminStatGrid
         stats={[
-          { label: "Health checks", value: `${readyCount}/${data.health.length}`, note: "Existing test fixture coverage." },
-          { label: "Accounts", value: data.accounts.filter((account) => account.status === "available").length, note: "Admin, owner, reseller, customer, delivery." },
+          { label: "Account health", value: `${readyCount}/${data.health.length}`, note: "Super Admin, owner, reseller, customer, delivery." },
+          { label: "Dedicated accounts", value: data.accounts.filter((account) => account.status === "available").length, note: "Permanent role workflow accounts." },
           { label: "Store registry", value: data.store.registryStatus === "available" ? "Ready" : "Missing", note: data.store.name },
-          { label: "No payouts", value: "Safe", note: "No wallet, payout, withdrawal, or reset action exists." }
+          { label: "Provisioning mode", value: "Reserved", note: "Reset, suspend, replace, and regenerate actions are placeholders." }
         ]}
       />
 
@@ -75,20 +85,51 @@ export default async function AdminTestEnvironmentPage() {
         </div>
       </section>
 
-      <AdminTable headers={["Account", "Email", "User ID", "Status"]}>
+      <AdminTable
+        headers={[
+          "Account",
+          "Email",
+          "Role",
+          "Creation Date",
+          "Last Login",
+          "Status",
+          "Verified",
+          "Linked Asset",
+          "Actions"
+        ]}
+      >
         {data.accounts.map((account) => (
           <tr key={account.label}>
             <td className="px-5 py-4 font-bold text-slate-950">{account.label}</td>
             <td className="px-5 py-4 text-slate-600">{account.email}</td>
-            <td className="max-w-72 break-all px-5 py-4 text-slate-500">{account.id}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={statusTone(account.status)}>{account.status}</AdminBadge>
+              <AdminBadge tone="blue">{account.role}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(account.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(account.lastLoginAt)}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={statusTone(account.accountStatus)}>{account.accountStatus}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={account.verified ? "green" : "amber"}>{account.verified ? "Verified" : "Unverified"}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <Link className="font-bold text-slate-950 underline-offset-4 hover:underline" href={account.linkedAsset.href}>
+                {account.linkedAsset.label}
+              </Link>
+              <p className="mt-1">
+                <AdminBadge tone={statusTone(account.linkedAsset.status)}>{account.linkedAsset.status}</AdminBadge>
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <TestAccountActions email={account.email} userId={account.id} />
             </td>
           </tr>
         ))}
       </AdminTable>
 
       <div className="grid gap-6 xl:grid-cols-2">
+        <div id="store-registry">
         <AdminTable headers={["Store Name", "Store ID", "Owner", "Status"]}>
           <tr>
             <td className="px-5 py-4 font-bold text-slate-950">{data.store.name}</td>
@@ -99,18 +140,19 @@ export default async function AdminTestEnvironmentPage() {
             </td>
           </tr>
         </AdminTable>
+        </div>
 
         <div id="product-registry">
-        <AdminTable headers={["Product Name", "SKU", "Price", "Inventory"]}>
-          <tr>
-            <td className="px-5 py-4 font-bold text-slate-950">{data.product.name}</td>
-            <td className="px-5 py-4 text-slate-600">{data.product.sku}</td>
-            <td className="px-5 py-4 text-slate-600">{data.product.price}</td>
-            <td className="px-5 py-4">
-              <AdminBadge tone={statusTone(data.product.registryStatus)}>{data.product.inventory}</AdminBadge>
-            </td>
-          </tr>
-        </AdminTable>
+          <AdminTable headers={["Product Name", "SKU", "Price", "Inventory"]}>
+            <tr>
+              <td className="px-5 py-4 font-bold text-slate-950">{data.product.name}</td>
+              <td className="px-5 py-4 text-slate-600">{data.product.sku}</td>
+              <td className="px-5 py-4 text-slate-600">{data.product.price}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={statusTone(data.product.registryStatus)}>{data.product.inventory}</AdminBadge>
+              </td>
+            </tr>
+          </AdminTable>
         </div>
 
         <AdminTable headers={["Test Order", "Status", "Customer", "Owner"]}>
@@ -125,19 +167,20 @@ export default async function AdminTestEnvironmentPage() {
         </AdminTable>
 
         <div id="delivery-registry">
-        <AdminTable headers={["Assigned Delivery Agent", "Agent ID", "Current Status", "Registry"]}>
-          <tr>
-            <td className="px-5 py-4 font-bold text-slate-950">{data.delivery.agent}</td>
-            <td className="max-w-72 break-all px-5 py-4 text-slate-500">{data.delivery.id}</td>
-            <td className="px-5 py-4 text-slate-600">{data.delivery.currentStatus}</td>
-            <td className="px-5 py-4">
-              <AdminBadge tone={statusTone(data.delivery.status)}>{data.delivery.status}</AdminBadge>
-            </td>
-          </tr>
-        </AdminTable>
+          <AdminTable headers={["Assigned Delivery Agent", "Agent ID", "Current Status", "Registry"]}>
+            <tr>
+              <td className="px-5 py-4 font-bold text-slate-950">{data.delivery.agent}</td>
+              <td className="max-w-72 break-all px-5 py-4 text-slate-500">{data.delivery.id}</td>
+              <td className="px-5 py-4 text-slate-600">{data.delivery.currentStatus}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={statusTone(data.delivery.status)}>{data.delivery.status}</AdminBadge>
+              </td>
+            </tr>
+          </AdminTable>
         </div>
       </div>
 
+      <div id="reseller-registry">
       <AdminTable headers={["Test Reseller", "Test Template", "Test Marketplace Listing", "Status"]}>
         <tr>
           <td className="px-5 py-4 font-bold text-slate-950">{data.reseller.name}</td>
@@ -148,6 +191,19 @@ export default async function AdminTestEnvironmentPage() {
           </td>
         </tr>
       </AdminTable>
+      </div>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {["Reset Password", "Regenerate Test Data", "Suspend Test Account", "Replace Test Account"].map((label) => (
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5" key={label}>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Reserved</p>
+            <h3 className="mt-2 text-lg font-black text-slate-950">{label}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Prepared for a future audited admin action. No mutation is wired in this phase.
+            </p>
+          </div>
+        ))}
+      </section>
 
       <section className="rounded-[2rem] border border-dashed border-blue-200 bg-blue-50 p-5 lg:p-6">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-700">
