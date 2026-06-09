@@ -5,7 +5,6 @@ import type { NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
-import { getAdminStores } from "@/lib/admin/data";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -413,6 +412,7 @@ export async function deactivateTestEnvironmentAccount(formData: FormData) {
 }
 
 type TestEnvironmentImpersonationError =
+  | "customer-store-link-missing"
   | "inactive"
   | "impersonation-failed"
   | "invalid-role"
@@ -533,27 +533,105 @@ export async function loadTestEnvironmentAccountForImpersonation(
   };
 }
 
-function looksLikeTest(...values: Array<string | null | undefined>) {
-  return values.some((value) => {
-    const normalized = value?.toLowerCase() ?? "";
-    return normalized.includes("test") || normalized.includes("demo") || normalized.includes("sandbox");
-  });
+const TEST_CUSTOMER_PORTAL_PHONE = "+15551234567";
+
+function portalPhoneFromCustomerRow(phone: string | null | undefined) {
+  const trimmed = phone?.trim();
+  return trimmed || TEST_CUSTOMER_PORTAL_PHONE;
 }
 
-export async function resolveOpenAccountPath(role: TestRole, definition: TestAccountDefinition) {
+type CustomerStoreLinkRow = {
+  phone?: string | null;
+  store_id?: string | null;
+};
+
+function firstCustomerStoreLink(data: unknown) {
+  return ((data ?? []) as CustomerStoreLinkRow[])[0] ?? null;
+}
+
+async function linkedCustomerStorePath(email: string) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const selectedEmail = normalizedEmail(email);
+  const { data: storeCustomerRows } = await admin
+    .from("store_customers" as never)
+    .select("store_id, phone, email, normalized_email")
+    .eq("normalized_email" as never, selectedEmail as never)
+    .limit(1);
+  let storeCustomer = firstCustomerStoreLink(storeCustomerRows);
+
+  if (!storeCustomer) {
+    const { data: storeCustomerEmailRows } = await admin
+      .from("store_customers" as never)
+      .select("store_id, phone, email, normalized_email")
+      .eq("email" as never, selectedEmail as never)
+      .limit(1);
+    storeCustomer = firstCustomerStoreLink(storeCustomerEmailRows);
+  }
+
+  const { data: customerRows } = storeCustomer
+    ? { data: [] }
+    : await admin
+        .from("customers" as never)
+        .select("store_id, phone, email, normalized_email")
+        .eq("normalized_email" as never, selectedEmail as never)
+        .limit(1);
+  let customer = firstCustomerStoreLink(customerRows);
+
+  if (!storeCustomer && !customer) {
+    const { data: customerEmailRows } = await admin
+      .from("customers" as never)
+      .select("store_id, phone, email, normalized_email")
+      .eq("email" as never, selectedEmail as never)
+      .limit(1);
+    customer = firstCustomerStoreLink(customerEmailRows);
+  }
+
+  const linkedCustomer = storeCustomer ?? customer;
+
+  if (!linkedCustomer?.store_id) {
+    return null;
+  }
+
+  const { data: storeData } = await admin
+    .from("stores" as never)
+    .select("id, slug, status")
+    .eq("id" as never, linkedCustomer.store_id as never)
+    .eq("status" as never, "published" as never)
+    .maybeSingle();
+  const store = storeData as { id?: string | null; slug?: string | null; status?: string | null } | null;
+
+  if (!store?.id || !store.slug) {
+    return null;
+  }
+
+  const { data: publicationData } = await admin
+    .from("published_stores" as never)
+    .select("store_id, slug, status, visibility")
+    .eq("store_id" as never, store.id as never)
+    .eq("slug" as never, store.slug as never)
+    .eq("status" as never, "published" as never)
+    .eq("visibility" as never, "public" as never)
+    .maybeSingle();
+  const publication = publicationData as { slug?: string | null; status?: string | null; visibility?: string | null } | null;
+
+  if (!publication?.slug) {
+    return null;
+  }
+
+  return `/store/${publication.slug}/account?phone=${encodeURIComponent(portalPhoneFromCustomerRow(linkedCustomer.phone))}`;
+}
+
+export async function resolveOpenAccountPath(role: TestRole, definition: TestAccountDefinition, selectedEmail = definition.email) {
   if (role !== "customer") {
     return definition.dashboardPath;
   }
 
-  const stores = await getAdminStores();
-  const testStore = stores.find((store) => looksLikeTest(store.name, store.slug, store.ownerEmail)) ?? null;
-
-  if (!testStore) {
-    return null;
-  }
-
-  const storeKey = testStore.slug?.trim() || testStore.id;
-  return `/store/${storeKey}/account`;
+  return linkedCustomerStorePath(selectedEmail);
 }
 
 export async function createTestEnvironmentImpersonationLink(
@@ -568,6 +646,11 @@ export async function createTestEnvironmentImpersonationLink(
   }
 
   const { origin } = await resolveAppOrigin(request);
+  const openPath = await resolveOpenAccountPath(role, loaded.definition, loaded.registry.email);
+
+  if (!openPath) {
+    return { error: "customer-store-link-missing", ok: false };
+  }
 
   console.info("[test-env][open-account] prepare", {
     generatedForUserId: loaded.authUser.id,

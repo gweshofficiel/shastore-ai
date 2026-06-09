@@ -14,6 +14,7 @@ export function TestAccountActions({
   userId: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const canOpen = userId !== "Not found";
   const canCopy = email !== "Not found";
@@ -34,6 +35,7 @@ export function TestAccountActions({
     }
 
     setOpening(true);
+    setErrorMessage(null);
 
     try {
       const response = await fetch("/api/admin/test-environment/open-account", {
@@ -44,18 +46,23 @@ export function TestAccountActions({
         },
         method: "POST"
       });
-      const result = (await response.json()) as { ok: boolean; url?: string };
+      const result = (await response.json()) as { message?: string; ok: boolean; url?: string };
 
       if (response.ok && result.ok && result.url) {
         window.open(result.url, "_blank", "noopener,noreferrer");
+      } else {
+        setErrorMessage(result.message ?? "Could not open this test account.");
       }
+    } catch {
+      setErrorMessage("Could not open this test account.");
     } finally {
       setOpening(false);
     }
   }
 
   return (
-    <div className="flex min-w-72 flex-wrap gap-2">
+    <div className="min-w-72">
+      <div className="flex flex-wrap gap-2">
       <Link
         aria-disabled={!canOpen}
         className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${
@@ -107,6 +114,10 @@ export function TestAccountActions({
       >
         {copied ? "Copied" : "Copy Email"}
       </button>
+      </div>
+      {errorMessage ? (
+        <p className="mt-2 max-w-sm text-xs font-bold text-red-700">{errorMessage}</p>
+      ) : null}
     </div>
   );
 }

@@ -12,6 +12,16 @@ export async function POST(request: NextRequest) {
   const result = await createTestEnvironmentImpersonationLink(role, request);
 
   if (!result.ok) {
+    if (result.error === "customer-store-link-missing") {
+      return NextResponse.json(
+        {
+          ...result,
+          message: "Customer test account is not linked to a store customer record"
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(result, { status: 403 });
   }
 

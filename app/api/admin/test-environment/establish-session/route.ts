@@ -11,7 +11,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
 
 function impersonationErrorResponse(error: string, status = 403) {
-  return NextResponse.json({ error, ok: false }, { status });
+  const message = error === "customer-store-link-missing"
+    ? "Customer test account is not linked to a store customer record"
+    : undefined;
+
+  return NextResponse.json({ error, message, ok: false }, { status });
 }
 
 export async function GET(request: NextRequest) {
@@ -33,10 +37,10 @@ export async function GET(request: NextRequest) {
     return impersonationErrorResponse("impersonation-failed", 500);
   }
 
-  const openPath = await resolveOpenAccountPath(loaded.definition.role, loaded.definition);
+  const openPath = await resolveOpenAccountPath(loaded.definition.role, loaded.definition, loaded.registry.email);
 
   if (!openPath) {
-    return impersonationErrorResponse("impersonation-failed", 500);
+    return impersonationErrorResponse("customer-store-link-missing", 409);
   }
 
   const { origin } = await resolveAppOrigin(request);
