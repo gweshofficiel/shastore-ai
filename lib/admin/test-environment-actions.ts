@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminAccess } from "@/lib/admin-access";
+import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type TestRole = "admin" | "customer" | "delivery" | "owner" | "reseller";
@@ -87,6 +87,12 @@ function auditMetadata(value: Record<string, unknown> = {}) {
 
 async function requireSuperAdmin() {
   const access = await getAdminAccess();
+  const adminAccess = isPlatformAdminEmail(access.user.email, { allowUnconfigured: false });
+
+  if (!adminAccess.isConfigured || !adminAccess.isAdmin) {
+    redirect("/admin/test-environment?test_accounts=super-admin-required");
+  }
+
   const admin = createAdminClient();
 
   if (!admin) {
