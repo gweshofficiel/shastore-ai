@@ -8,6 +8,7 @@ import {
 } from "@/lib/admin/test-environment-actions";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { setActiveWorkspaceCookie } from "@/lib/workspaces/active-workspace";
 import type { Database } from "@/types/database";
 
 function impersonationErrorResponse(error: string, status = 403) {
@@ -102,6 +103,10 @@ export async function GET(request: NextRequest) {
 
   if (verified.user.id !== loaded.registry.auth_user_id) {
     return impersonationErrorResponse("impersonation-failed", 500);
+  }
+
+  if (role === "owner") {
+    await setActiveWorkspaceCookie(verified.user.id);
   }
 
   await recordTestEnvironmentImpersonation({

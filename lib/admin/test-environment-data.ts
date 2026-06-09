@@ -247,6 +247,27 @@ function looksLikeTest(...values: Array<string | null | undefined>) {
   });
 }
 
+function resolveCanonicalC3TestStore(
+  stores: Awaited<ReturnType<typeof getAdminStores>>,
+  registryByRole: Map<string, TestEnvironmentAccountRow>
+) {
+  const ownerRegistry = registryByRole.get("owner");
+  const ownerAuthId = text(ownerRegistry?.auth_user_id);
+  const ownerEmail = testAccountEmails.owner.toLowerCase();
+
+  return (
+    stores.find((store) => store.slug === "c3-test-store") ??
+    stores.find((store) => ownerAuthId && store.ownerId === ownerAuthId) ??
+    stores.find(
+      (store) =>
+        store.ownerEmail.toLowerCase() === ownerEmail &&
+        (store.slug?.toLowerCase().includes("c3") || store.name.toLowerCase().includes("c3"))
+    ) ??
+    stores.find((store) => store.ownerEmail.toLowerCase() === ownerEmail) ??
+    null
+  );
+}
+
 function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/[^0-9+]/g, "");
 }
@@ -339,7 +360,7 @@ export async function getTestEnvironmentData(): Promise<TestEnvironmentData> {
   ]);
   const registryByRole = new Map(testEnvironmentAccounts.map((account) => [text(account.role), account]));
   const profileByUser = new Map(accountProfiles.map((profile) => [text(profile.user_id), profile]));
-  const testStore = stores.find((store) => looksLikeTest(store.name, store.slug, store.ownerEmail)) ?? null;
+  const testStore = resolveCanonicalC3TestStore(stores, registryByRole);
   const linkedStore = {
     href: testStore ? `/admin/stores?owner=${encodeURIComponent(testStore.ownerEmail)}` : "#store-registry",
     label: testStore?.name ?? "Test Store",
