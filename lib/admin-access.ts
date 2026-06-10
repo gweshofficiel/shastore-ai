@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import {
   getAccountRoleForUser,
-  isOfficialSuperAdminEmail,
-  upsertAccountRoleForUser
+  isConfiguredSuperAdminEmail
 } from "@/lib/account-roles";
 import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { createClient } from "@/lib/supabase/server";
@@ -44,14 +43,12 @@ export async function getAdminAccess() {
   }
 
   const accountRole = await getAccountRoleForUser(supabase, user.id);
-  const officialSuperAdmin = isOfficialSuperAdminEmail(user.email);
+  const officialSuperAdmin = isConfiguredSuperAdminEmail(user.email);
   const { isConfigured } = isPlatformAdminEmail(user.email);
 
-  if (!accountRole && officialSuperAdmin) {
-    await upsertAccountRoleForUser({ role: "super_admin", status: "active", userId: user.id });
-  } else if (accountRole?.role !== "super_admin" || accountRole.status !== "active") {
+  if (!officialSuperAdmin || accountRole?.role !== "super_admin" || accountRole.status !== "active") {
     await supabase.auth.signOut();
-    redirect("/admin/login?error=role");
+    redirect("/admin/login?error=restricted");
   }
 
   return {

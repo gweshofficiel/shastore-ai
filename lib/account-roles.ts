@@ -61,18 +61,20 @@ export async function getAccountRoleForUser(
 }
 
 export function configuredSuperAdminEmails() {
-  return (process.env.SHASTORE_SUPER_ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
+  return (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
 }
 
-export function isOfficialSuperAdminEmail(email: string | null | undefined) {
+export function isConfiguredSuperAdminEmail(email: string | null | undefined) {
   const configured = configuredSuperAdminEmails();
   const normalized = email?.trim().toLowerCase() ?? "";
 
   return configured.length > 0 && configured.includes(normalized);
 }
+
+export const isOfficialSuperAdminEmail = isConfiguredSuperAdminEmail;
 
 export async function upsertAccountRoleForUser({
   role,

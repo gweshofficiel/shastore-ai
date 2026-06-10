@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import {
   activateAccountRoleForUser,
   getAccountRoleForUser,
-  isOfficialSuperAdminEmail,
+  isConfiguredSuperAdminEmail,
   upsertAccountRoleForUser,
   type AccountRole
 } from "@/lib/account-roles";
@@ -79,8 +79,8 @@ async function loginForRole({
     redirect(roleErrorPath(loginRoute, "rate-limit", next));
   }
 
-  if (role === "super_admin" && !isOfficialSuperAdminEmail(email)) {
-    redirect(roleErrorPath(loginRoute, "role", next));
+  if (role === "super_admin" && !isConfiguredSuperAdminEmail(email)) {
+    redirect(roleErrorPath(loginRoute, "restricted", next));
   }
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -97,7 +97,7 @@ async function loginForRole({
     await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
   } else if (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled") {
     await supabase.auth.signOut();
-    redirect(roleErrorPath(loginRoute, "role", next));
+    redirect(roleErrorPath(loginRoute, role === "super_admin" ? "restricted" : "role", next));
   } else if (accountRole.status === "pending") {
     await activateAccountRoleForUser(data.user.id, role);
   }
@@ -144,8 +144,8 @@ async function registerForRole({
     redirect(roleErrorPath(registerRoute, "rate-limit", next));
   }
 
-  if (role === "super_admin" && !isOfficialSuperAdminEmail(email)) {
-    redirect(roleErrorPath(registerRoute, "role", next));
+  if (role === "super_admin" && !isConfiguredSuperAdminEmail(email)) {
+    redirect(roleErrorPath(registerRoute, "restricted", next));
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -311,12 +311,9 @@ export async function adminLogin(formData: FormData) {
 }
 
 export async function adminRegister(formData: FormData) {
-  await registerForRole({
-    defaultNext: "/admin",
-    formData,
-    registerRoute: "/admin/register",
-    role: "super_admin"
-  });
+  const next = safeRoleRedirect(formData.get("next"), "/admin", "/admin");
+
+  redirect(roleErrorPath("/admin/login", "restricted", next));
 }
 
 export async function resellerLogin(formData: FormData) {

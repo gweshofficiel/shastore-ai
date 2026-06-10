@@ -5,6 +5,10 @@ import { adminLogin } from "@/lib/auth-actions";
 function errorMessage(error: string | string[] | undefined) {
   const code = Array.isArray(error) ? error[0] : error;
 
+  if (code === "restricted") {
+    return "Super Admin access is restricted.";
+  }
+
   if (code === "role") {
     return "This account is not allowed in Super Admin.";
   }
@@ -40,9 +44,9 @@ export default async function AdminLoginPage({
         <AuthForm
           action={adminLogin}
           buttonLabel="Log in"
-          footerHref="/admin/register"
-          footerLabel="Register official admin email"
-          footerText="Need Super Admin access?"
+          footerHref="/login"
+          footerLabel="Use owner login"
+          footerText="Not a Super Admin?"
           nextPath="/admin"
           subtitle="Super Admin access is limited to official configured admin emails."
           title="Super Admin Login"
