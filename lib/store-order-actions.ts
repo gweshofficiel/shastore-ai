@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAccountRoleForUser } from "@/lib/account-roles";
-import { ensureCustomerProfileForUser, customerNameFromUser, linkStoreCustomersForUser } from "@/lib/customer-profiles";
+import {
+  customerNameFromUser,
+  ensureCustomerProfileForUser,
+  linkCustomerStoreIdentity,
+  linkStoreCustomersForUser
+} from "@/lib/customer-profiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import {
@@ -1316,6 +1321,20 @@ async function persistStorefrontOrderDraft({
           workspaceId
         });
       }
+      if (customerAuthUserId && customerProfileId) {
+        await linkCustomerStoreIdentity({
+          customerEmail,
+          customerName,
+          customerPhone,
+          orderCreatedAt: new Date().toISOString(),
+          orderId: orderRow.id,
+          orderSource: "orders",
+          profileId: customerProfileId,
+          storeId: store.id,
+          userId: customerAuthUserId,
+          workspaceId
+        });
+      }
       return { orderId: orderRow.id, table: "orders" as const };
     }
 
@@ -1605,6 +1624,21 @@ async function persistStorefrontOrderDraft({
       storeId: store.id,
       title: "Coupon used",
       type: "coupon_used",
+      workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
+    });
+  }
+
+  if (customerAuthUserId && customerProfileId) {
+    await linkCustomerStoreIdentity({
+      customerEmail,
+      customerName,
+      customerPhone,
+      orderCreatedAt: new Date().toISOString(),
+      orderId: storeOrderRow.id,
+      orderSource: "store_orders",
+      profileId: customerProfileId,
+      storeId: store.id,
+      userId: customerAuthUserId,
       workspaceId: workspaceId ?? store.owner_user_id ?? store.user_id
     });
   }
