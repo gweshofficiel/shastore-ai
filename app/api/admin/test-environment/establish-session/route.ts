@@ -30,6 +30,13 @@ export async function GET(request: NextRequest) {
   const loaded = await loadTestEnvironmentAccountForImpersonation(role);
 
   if (!loaded.ok) {
+    console.info("[test-env][impersonation]", {
+      email: null,
+      guardResult: loaded.error,
+      origin: null,
+      redirectTo: null,
+      role
+    });
     return impersonationErrorResponse(loaded.error);
   }
 
@@ -63,6 +70,13 @@ export async function GET(request: NextRequest) {
 
   const generatedForUserId = linkData.user?.id ?? loaded.authUser.id;
 
+  console.info("[test-env][impersonation]", {
+    email: loaded.registry.email,
+    guardResult: "allowed",
+    origin,
+    redirectTo: openPath,
+    role
+  });
   console.info("[test-env][open-account] establish", {
     generatedForUserId,
     selectedAuthUserId: loaded.registry.auth_user_id,

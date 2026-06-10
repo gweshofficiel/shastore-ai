@@ -46,10 +46,17 @@ export function TestAccountActions({
         },
         method: "POST"
       });
-      const result = (await response.json()) as { message?: string; ok: boolean; url?: string };
+      const result = (await response.json()) as {
+        error?: string;
+        message?: string;
+        ok: boolean;
+        url?: string;
+      };
 
       if (response.ok && result.ok && result.url) {
         window.open(result.url, "_blank", "noopener,noreferrer");
+      } else if (result.error === "super-admin-required") {
+        setErrorMessage("Super Admin session is required. Log in at /admin/login and try again.");
       } else {
         setErrorMessage(result.message ?? "Could not open this test account.");
       }

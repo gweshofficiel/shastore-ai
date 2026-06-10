@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import type { NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getAccountRoleForUser, isConfiguredSuperAdminEmail } from "@/lib/account-roles";
 import { getAdminAccess, isPlatformAdminEmail } from "@/lib/admin-access";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -43,7 +44,7 @@ const testAccountDefinitions: TestAccountDefinition[] = [
   },
   {
     accountType: "user",
-    dashboardPath: "/dashboard",
+    dashboardPath: "/customer/dashboard",
     displayName: "Customer Test",
     email: process.env.SHASTORE_TEST_CUSTOMER_EMAIL ?? "customer.test@shastore.test",
     role: "customer"
@@ -440,21 +441,72 @@ type LoadedTestEnvironmentAccount = {
   registry: TestEnvironmentRegistryAccount;
 };
 
-async function requireSuperAdminForImpersonation() {
-  const supabase = await createClient();
+type SuperAdminImpersonationGuardResult =
+  | "allowed"
+  | "inactive-role"
+  | "missing-role"
+  | "missing-session"
+  | "not-configured-email"
+  | "suspended-role";
+
+async function verifySuperAdminImpersonationAccess() {
+  const supabase = await createClient({ role: "admin" });
   const {
     data: { user }
   } = await supabase.auth.getUser();
-  const adminAccess = isPlatformAdminEmail(user?.email);
 
-  if (!user || !adminAccess.isAdmin) {
-    return { error: "super-admin-required" as const, ok: false as const };
+  if (!user) {
+    return {
+      error: "super-admin-required" as const,
+      guardResult: "missing-session" as const,
+      ok: false as const
+    };
+  }
+
+  if (!isConfiguredSuperAdminEmail(user.email)) {
+    return {
+      error: "super-admin-required" as const,
+      guardResult: "not-configured-email" as const,
+      ok: false as const
+    };
+  }
+
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (!accountRole || accountRole.role !== "super_admin") {
+    return {
+      error: "super-admin-required" as const,
+      guardResult: "missing-role" as const,
+      ok: false as const
+    };
+  }
+
+  if (accountRole.status === "suspended" || accountRole.status === "disabled") {
+    return {
+      error: "super-admin-required" as const,
+      guardResult: "suspended-role" as const,
+      ok: false as const
+    };
+  }
+
+  if (accountRole.status !== "active") {
+    return {
+      error: "super-admin-required" as const,
+      guardResult: "inactive-role" as const,
+      ok: false as const
+    };
   }
 
   return {
     actorUserId: user.id,
+    email: user.email ?? "",
+    guardResult: "allowed" as const,
     ok: true as const
   };
+}
+
+async function requireSuperAdminForImpersonation() {
+  return verifySuperAdminImpersonationAccess();
 }
 
 export async function loadTestEnvironmentAccountForImpersonation(
@@ -631,7 +683,7 @@ export async function resolveOpenAccountPath(role: TestRole, definition: TestAcc
     return definition.dashboardPath;
   }
 
-  return linkedCustomerStorePath(selectedEmail);
+  return (await linkedCustomerStorePath(selectedEmail)) ?? definition.dashboardPath;
 }
 
 export async function createTestEnvironmentImpersonationLink(
@@ -639,9 +691,29 @@ export async function createTestEnvironmentImpersonationLink(
   request?: NextRequest
 ): Promise<TestEnvironmentImpersonationResult> {
   const role = roleInput as TestRole;
+  const access = await verifySuperAdminImpersonationAccess();
+
+  if (!access.ok) {
+    console.info("[test-env][impersonation]", {
+      email: null,
+      guardResult: access.guardResult,
+      origin: null,
+      redirectTo: null,
+      role
+    });
+    return { error: access.error, ok: false };
+  }
+
   const loaded = await loadTestEnvironmentAccountForImpersonation(role);
 
   if (!loaded.ok) {
+    console.info("[test-env][impersonation]", {
+      email: null,
+      guardResult: access.guardResult,
+      origin: null,
+      redirectTo: null,
+      role
+    });
     return loaded;
   }
 
@@ -652,11 +724,12 @@ export async function createTestEnvironmentImpersonationLink(
     return { error: "customer-store-link-missing", ok: false };
   }
 
-  console.info("[test-env][open-account] prepare", {
-    generatedForUserId: loaded.authUser.id,
-    selectedAuthUserId: loaded.registry.auth_user_id,
-    selectedEmail: loaded.registry.email,
-    selectedRole: role
+  console.info("[test-env][impersonation]", {
+    email: loaded.registry.email,
+    guardResult: access.guardResult,
+    origin,
+    redirectTo: openPath,
+    role
   });
 
   return {
