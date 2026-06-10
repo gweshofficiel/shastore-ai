@@ -108,8 +108,28 @@ where orders.customer_profile_id is null
   );
 
 -- Build explicit customer -> store links from store customers.
--- Multiple store_customers rows can match the same profile+store (email row + phone row,
--- or legacy sync duplicates) after auth backfill; aggregate before ON CONFLICT.
+-- Multiple store_customers rows can match the same profile+store after auth backfill.
+-- Deduplicate with DISTINCT ON before INSERT so ON CONFLICT never sees duplicate keys.
+with store_customer_source as (
+  select distinct on (customers.customer_profile_id, customers.store_id)
+    customers.customer_profile_id,
+    customers.customer_auth_user_id,
+    customers.workspace_id,
+    customers.store_id,
+    customers.id as store_customer_id,
+    coalesce(customers.total_orders, 0)::integer as orders_count,
+    customers.last_order_at as latest_order_at
+  from public.store_customers customers
+  where customers.customer_profile_id is not null
+    and customers.customer_auth_user_id is not null
+    and customers.store_id is not null
+  order by
+    customers.customer_profile_id,
+    customers.store_id,
+    customers.last_order_at desc nulls last,
+    coalesce(customers.total_orders, 0) desc,
+    customers.updated_at desc nulls last
+)
 insert into public.customer_store_links (
   customer_profile_id,
   customer_auth_user_id,
@@ -121,22 +141,15 @@ insert into public.customer_store_links (
   metadata
 )
 select
-  customers.customer_profile_id,
-  max(customers.customer_auth_user_id::text)::uuid,
-  max(customers.workspace_id::text)::uuid,
-  customers.store_id,
-  (array_agg(
-    customers.id
-    order by coalesce(customers.total_orders, 0) desc, customers.last_order_at desc nulls last
-  ))[1],
-  max(coalesce(customers.total_orders, 0))::integer,
-  max(customers.last_order_at),
+  store_customer_source.customer_profile_id,
+  store_customer_source.customer_auth_user_id,
+  store_customer_source.workspace_id,
+  store_customer_source.store_id,
+  store_customer_source.store_customer_id,
+  store_customer_source.orders_count,
+  store_customer_source.latest_order_at,
   jsonb_build_object('source', 'store_customers_backfill')
-from public.store_customers customers
-where customers.customer_profile_id is not null
-  and customers.customer_auth_user_id is not null
-  and customers.store_id is not null
-group by customers.customer_profile_id, customers.store_id
+from store_customer_source
 on conflict (customer_profile_id, store_id) do update
 set
   customer_auth_user_id = excluded.customer_auth_user_id,
@@ -148,24 +161,8 @@ set
   metadata = coalesce(customer_store_links.metadata, '{}'::jsonb) || excluded.metadata;
 
 -- Build links directly from historical order rows when a store_customer row is absent.
-insert into public.customer_store_links (
-  customer_profile_id,
-  customer_auth_user_id,
-  workspace_id,
-  store_id,
-  orders_count,
-  latest_order_at,
-  metadata
-)
-select
-  profile_id,
-  max(auth_user_id::text)::uuid,
-  max(workspace_id::text)::uuid,
-  store_id,
-  count(*)::integer,
-  max(created_at),
-  jsonb_build_object('source', 'orders_backfill')
-from (
+-- One representative order row per profile+store (DISTINCT ON), with aggregated counts.
+with linked_orders as (
   select
     orders.customer_profile_id as profile_id,
     orders.customer_auth_user_id as auth_user_id,
@@ -187,8 +184,50 @@ from (
   where orders.customer_profile_id is not null
     and orders.customer_auth_user_id is not null
     and orders.store_id is not null
-) linked_orders
-group by profile_id, store_id
+),
+order_source as (
+  select distinct on (linked_orders.profile_id, linked_orders.store_id)
+    linked_orders.profile_id,
+    linked_orders.auth_user_id,
+    linked_orders.workspace_id,
+    linked_orders.store_id,
+    linked_orders.created_at as latest_order_at
+  from linked_orders
+  order by
+    linked_orders.profile_id,
+    linked_orders.store_id,
+    linked_orders.created_at desc nulls last
+),
+order_counts as (
+  select
+    linked_orders.profile_id,
+    linked_orders.store_id,
+    count(*)::integer as orders_count,
+    max(linked_orders.created_at) as latest_order_at
+  from linked_orders
+  group by linked_orders.profile_id, linked_orders.store_id
+)
+insert into public.customer_store_links (
+  customer_profile_id,
+  customer_auth_user_id,
+  workspace_id,
+  store_id,
+  orders_count,
+  latest_order_at,
+  metadata
+)
+select
+  order_source.profile_id,
+  order_source.auth_user_id,
+  order_source.workspace_id,
+  order_source.store_id,
+  order_counts.orders_count,
+  order_counts.latest_order_at,
+  jsonb_build_object('source', 'orders_backfill')
+from order_source
+join order_counts
+  on order_counts.profile_id = order_source.profile_id
+ and order_counts.store_id = order_source.store_id
 on conflict (customer_profile_id, store_id) do update
 set
   customer_auth_user_id = excluded.customer_auth_user_id,
@@ -432,3 +471,15 @@ begin
     metadata = coalesce(public.customer_store_links.metadata, '{}'::jsonb) || excluded.metadata,
     last_linked_at = now();
 end $$;
+
+-- Diagnostic: confirm linked customer identity rows after migration/backfill.
+select
+  profiles.email as linked_customer_email,
+  stores.slug as linked_store_slug,
+  links.orders_count
+from public.customer_store_links links
+join public.customer_profiles profiles
+  on profiles.id = links.customer_profile_id
+join public.stores stores
+  on stores.id = links.store_id
+order by profiles.email, stores.slug;
