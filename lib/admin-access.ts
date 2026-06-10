@@ -29,7 +29,7 @@ export function isPlatformAdminEmail(
 }
 
 export async function getAdminAccess() {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "admin" });
   const {
     data: { user }
   } = await supabase.auth.getUser();

@@ -6,6 +6,7 @@ import {
   recordTestEnvironmentImpersonation,
   resolveOpenAccountPath
 } from "@/lib/admin/test-environment-actions";
+import { authCookieOptionsForRole, authSessionRoleFromPath } from "@/lib/auth-session-roles";
 import { resolveAppOrigin } from "@/lib/deployment/app-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setActiveWorkspaceCookie } from "@/lib/workspaces/active-workspace";
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
 
   const { origin } = await resolveAppOrigin(request);
   const redirectTo = `${origin}${openPath}`;
+  const sessionRole = authSessionRoleFromPath(openPath);
 
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     email: loaded.authUser.email!,
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: authCookieOptionsForRole(sessionRole),
       cookies: {
         getAll() {
           return cookieStore.getAll();

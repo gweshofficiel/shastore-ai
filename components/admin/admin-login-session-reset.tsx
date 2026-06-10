@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export function AdminLoginSessionReset() {
   useEffect(() => {
-    const supabase = createClient();
+    const supabase = createClient({ role: "admin" });
 
     void supabase.auth.signOut();
   }, []);

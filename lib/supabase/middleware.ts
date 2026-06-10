@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { authCookieOptionsForRole, authSessionRoleFromPath } from "@/lib/auth-session-roles";
 import type { Database } from "@/types/database";
 
 function loginPathForRoute(pathname: string) {
@@ -65,6 +66,7 @@ export async function updateSession(request: NextRequest) {
     supabaseUrl,
     supabaseAnonKey,
     {
+      cookieOptions: authCookieOptionsForRole(authSessionRoleFromPath(request.nextUrl.pathname)),
       cookies: {
         getAll() {
           return request.cookies.getAll();

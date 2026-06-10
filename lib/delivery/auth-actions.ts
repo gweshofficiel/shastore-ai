@@ -46,7 +46,7 @@ export async function deliveryLogin(formData: FormData) {
     redirect(`/delivery/login?error=rate-limit&next=${encodeURIComponent(next)}`);
   }
 
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "delivery" });
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.user) {

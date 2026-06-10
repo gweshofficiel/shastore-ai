@@ -21,6 +21,7 @@ import {
 import { ensureDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { authSessionRoleForAccountRole } from "@/lib/auth-session-roles";
 import { createClient } from "@/lib/supabase/server";
 import { getInviteTokenPreview } from "@/lib/workspace-members";
 
@@ -283,7 +284,7 @@ async function loginForRole({
   rateLimitAction: string;
   role: AccountRole;
 }) {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: authSessionRoleForAccountRole(role) });
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const next = safeRoleRedirect(formData.get("next"), defaultNext, allowedPrefix);
@@ -381,7 +382,7 @@ async function registerForRole({
   registerRoute: string;
   role: AccountRole;
 }) {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: authSessionRoleForAccountRole(role) });
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const customerPhone = role === "customer" ? String(formData.get("phone") ?? "").trim() : "";
@@ -425,7 +426,7 @@ async function registerForRole({
 }
 
 export async function login(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "owner" });
   const email = String(formData.get("email"));
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
@@ -505,7 +506,7 @@ export async function login(formData: FormData) {
 }
 
 export async function register(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "owner" });
   const email = String(formData.get("email"));
   const password = String(formData.get("password"));
   const next = safeAuthRedirect(formData.get("next"));
@@ -671,7 +672,7 @@ export async function customerRegister(formData: FormData) {
 }
 
 export async function registerWithInvite(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "owner" });
   const token = String(formData.get("inviteToken") ?? "");
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
