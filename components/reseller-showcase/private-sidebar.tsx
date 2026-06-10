@@ -68,6 +68,7 @@ export function ResellerPrivateSidebar() {
           </p>
         </div>
         <form action={logout} className="hidden pt-4 lg:block">
+          <input name="role" type="hidden" value="reseller" />
           <Button className="w-full" type="submit" variant="secondary">
             Sign out
           </Button>

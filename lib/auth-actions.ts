@@ -21,8 +21,13 @@ import {
 import { ensureDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { authSessionRoleForAccountRole } from "@/lib/auth-session-roles";
+import {
+  authSessionRoleForAccountRole,
+  authSessionRoleFromHeaders,
+  type AuthSessionRole
+} from "@/lib/auth-session-roles";
 import { createClient } from "@/lib/supabase/server";
+import { headers } from "next/headers";
 import { getInviteTokenPreview } from "@/lib/workspace-members";
 
 type AuthenticatedUser = NonNullable<Awaited<ReturnType<Awaited<ReturnType<typeof createClient>>["auth"]["getUser"]>>["data"]["user"]>;
@@ -756,12 +761,49 @@ export async function registerWithInvite(formData: FormData) {
   redirect(`/invite/${encodeURIComponent(token)}`);
 }
 
-export async function logout() {
-  const supabase = await createClient();
+function logoutRedirectForRole(role: AuthSessionRole) {
+  if (role === "admin") {
+    return "/admin/login";
+  }
+
+  if (role === "customer") {
+    return "/customer/login";
+  }
+
+  if (role === "delivery") {
+    return "/delivery/login";
+  }
+
+  if (role === "reseller") {
+    return "/reseller/login";
+  }
+
+  return "/login";
+}
+
+function authSessionRoleFromFormData(formData: FormData | null | undefined): AuthSessionRole | null {
+  const role = String(formData?.get("role") ?? "").trim();
+
+  if (
+    role === "admin" ||
+    role === "customer" ||
+    role === "delivery" ||
+    role === "owner" ||
+    role === "reseller"
+  ) {
+    return role;
+  }
+
+  return null;
+}
+
+export async function logout(formData?: FormData) {
+  const role = authSessionRoleFromFormData(formData) ?? authSessionRoleFromHeaders(await headers());
+  const supabase = await createClient({ role });
   const {
     data: { user }
   } = await supabase.auth.getUser();
   await recordTestEnvironmentLogout(user?.id);
   await supabase.auth.signOut();
-  redirect("/");
+  redirect(logoutRedirectForRole(role));
 }

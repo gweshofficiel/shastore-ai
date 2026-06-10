@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function CustomerDashboardPage() {
-  const supabase = await createClient();
+  const supabase = await createClient({ role: "customer" });
   const {
     data: { user }
   } = await supabase.auth.getUser();
