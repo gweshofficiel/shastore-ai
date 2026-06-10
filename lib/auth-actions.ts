@@ -34,6 +34,118 @@ function roleErrorPath(route: string, error: string, next?: string) {
   return `${route}?error=${encodeURIComponent(error)}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
 }
 
+function registrationResultPath(
+  registerRoute: string,
+  outcome: "check-email" | "auth" | "rate-limit" | "restricted" | "password",
+  options?: { message?: string; next?: string }
+) {
+  const params = new URLSearchParams();
+
+  if (outcome === "check-email") {
+    params.set("status", outcome);
+  } else {
+    params.set("error", outcome);
+    if (options?.message) {
+      params.set("message", options.message.slice(0, 240));
+    }
+  }
+
+  if (options?.next) {
+    params.set("next", options.next);
+  }
+
+  return `${registerRoute}?${params.toString()}`;
+}
+
+function logAuthRegistration(
+  role: AccountRole,
+  email: string,
+  result: { errorMessage: string | null; hasSession: boolean; hasUser: boolean }
+) {
+  console.log(`[auth-register][${role}]`, {
+    role,
+    email,
+    hasUser: result.hasUser,
+    hasSession: result.hasSession,
+    errorMessage: result.errorMessage
+  });
+}
+
+async function completeAuthRegistration({
+  confirmationLoginPath,
+  email,
+  next,
+  password,
+  registerRoute,
+  role,
+  signupSource,
+  supabase
+}: {
+  confirmationLoginPath: string;
+  email: string;
+  next?: string;
+  password: string;
+  registerRoute: string;
+  role: AccountRole;
+  signupSource: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        account_role: role,
+        shastore_signup_source: signupSource
+      },
+      emailRedirectTo: getPublicUrl(confirmationLoginPath)
+    }
+  });
+
+  const hasUser = Boolean(data?.user);
+  const hasSession = Boolean(data?.session);
+  const errorMessage = error?.message ?? null;
+
+  logAuthRegistration(role, email, { hasUser, hasSession, errorMessage });
+
+  if (error) {
+    redirect(registrationResultPath(registerRoute, "auth", { message: error.message, next }));
+  }
+
+  const user = data?.user;
+  if (!user) {
+    redirect(
+      registrationResultPath(registerRoute, "auth", {
+        message:
+          "Registration was not accepted. No account was created. If email sign-up is disabled, contact support.",
+        next
+      })
+    );
+  }
+
+  const identities = user.identities ?? [];
+  if (identities.length === 0) {
+    redirect(
+      registrationResultPath(registerRoute, "auth", {
+        message: "An account with this email already exists or registration was not accepted.",
+        next
+      })
+    );
+  }
+
+  const roleSaved = await upsertAccountRoleForUser({ role, status: "pending", userId: user.id });
+  if (!roleSaved) {
+    redirect(
+      registrationResultPath(registerRoute, "auth", {
+        message: "Account was created but role assignment failed. Contact support.",
+        next
+      })
+    );
+  }
+
+  redirect(registrationResultPath(registerRoute, "check-email", { next }));
+}
+
 function safeRoleRedirect(value: FormDataEntryValue | null, fallback: string, allowedPrefix: string) {
   const next = typeof value === "string" ? value.trim() : "";
 
@@ -118,11 +230,13 @@ async function loginForRole({
 }
 
 async function registerForRole({
+  confirmationLoginPath,
   defaultNext,
   formData,
   registerRoute,
   role
 }: {
+  confirmationLoginPath: string;
   defaultNext: string;
   formData: FormData;
   registerRoute: string;
@@ -141,34 +255,23 @@ async function registerForRole({
   });
 
   if (!rateLimit.allowed) {
-    redirect(roleErrorPath(registerRoute, "rate-limit", next));
+    redirect(registrationResultPath(registerRoute, "rate-limit", { next }));
   }
 
   if (role === "super_admin" && !isConfiguredSuperAdminEmail(email)) {
-    redirect(roleErrorPath(registerRoute, "restricted", next));
+    redirect(registrationResultPath(registerRoute, "restricted", { next }));
   }
 
-  const { data, error } = await supabase.auth.signUp({
+  await completeAuthRegistration({
+    confirmationLoginPath,
     email,
+    next,
     password,
-    options: {
-      data: {
-        account_role: role,
-        shastore_signup_source: `${role}_register`
-      },
-      emailRedirectTo: getPublicUrl(next)
-    }
+    registerRoute,
+    role,
+    signupSource: `${role}_register`,
+    supabase
   });
-
-  if (error) {
-    redirect(roleErrorPath(registerRoute, "auth", next));
-  }
-
-  if (data.user) {
-    await upsertAccountRoleForUser({ role, status: "pending", userId: data.user.id });
-  }
-
-  redirect(roleErrorPath(registerRoute, "check-email", next));
 }
 
 export async function login(formData: FormData) {
@@ -270,9 +373,15 @@ export async function register(formData: FormData) {
         account_role: "owner",
         shastore_signup_source: "owner_register"
       },
-      emailRedirectTo: getPublicUrl(next)
+      emailRedirectTo: getPublicUrl("/login")
     }
   });
+
+  const hasUser = Boolean(data?.user);
+  const hasSession = Boolean(data?.session);
+  const errorMessage = error?.message ?? null;
+
+  logAuthRegistration("owner", email, { hasUser, hasSession, errorMessage });
 
   if (error) {
     if (next.startsWith("/invite/")) {
@@ -281,10 +390,42 @@ export async function register(formData: FormData) {
         message: error.message
       });
     }
+    const inviteToken = next.replace("/invite/", "");
     redirect(
       next.startsWith("/invite/")
-        ? `/auth/register?error=auth&invite=${encodeURIComponent(next.replace("/invite/", ""))}`
-        : `/register?error=auth&next=${encodeURIComponent(next)}`
+        ? `/auth/register?error=auth&invite=${encodeURIComponent(inviteToken)}&message=${encodeURIComponent(error.message.slice(0, 240))}`
+        : registrationResultPath("/register", "auth", { message: error.message, next })
+    );
+  }
+
+  const user = data?.user;
+  if (!user) {
+    redirect(
+      registrationResultPath("/register", "auth", {
+        message:
+          "Registration was not accepted. No account was created. If email sign-up is disabled, contact support.",
+        next
+      })
+    );
+  }
+
+  const identities = user.identities ?? [];
+  if (identities.length === 0) {
+    redirect(
+      registrationResultPath("/register", "auth", {
+        message: "An account with this email already exists or registration was not accepted.",
+        next
+      })
+    );
+  }
+
+  const roleSaved = await upsertAccountRoleForUser({ role: "owner", status: "pending", userId: user.id });
+  if (!roleSaved) {
+    redirect(
+      registrationResultPath("/register", "auth", {
+        message: "Account was created but role assignment failed. Contact support.",
+        next
+      })
     );
   }
 
@@ -292,11 +433,7 @@ export async function register(formData: FormData) {
     console.info("[invite-auth-success] invite signup submitted", { email });
   }
 
-  if (data.user) {
-    await upsertAccountRoleForUser({ role: "owner", status: "pending", userId: data.user.id });
-  }
-
-  redirect(`/register?status=check-email&next=${encodeURIComponent(next)}`);
+  redirect(registrationResultPath("/register", "check-email", { next }));
 }
 
 export async function adminLogin(formData: FormData) {
@@ -329,6 +466,7 @@ export async function resellerLogin(formData: FormData) {
 
 export async function resellerRegister(formData: FormData) {
   await registerForRole({
+    confirmationLoginPath: "/reseller/login",
     defaultNext: "/reseller/dashboard",
     formData,
     registerRoute: "/reseller/register",
@@ -338,6 +476,7 @@ export async function resellerRegister(formData: FormData) {
 
 export async function deliveryRegister(formData: FormData) {
   await registerForRole({
+    confirmationLoginPath: "/delivery/login",
     defaultNext: "/delivery/dashboard",
     formData,
     registerRoute: "/delivery/register",
@@ -358,6 +497,7 @@ export async function customerLogin(formData: FormData) {
 
 export async function customerRegister(formData: FormData) {
   await registerForRole({
+    confirmationLoginPath: "/customer/login",
     defaultNext: "/customer",
     formData,
     registerRoute: "/customer/register",
