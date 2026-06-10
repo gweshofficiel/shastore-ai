@@ -92,12 +92,9 @@ async function loginForRole({
 
   const accountRole = await getAccountRoleForUser(supabase, data.user.id);
   const legacyOwner = role === "owner" && !accountRole;
-  const officialSuperAdminBootstrap = role === "super_admin" && !accountRole && isOfficialSuperAdminEmail(data.user.email);
 
   if (legacyOwner) {
     await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
-  } else if (officialSuperAdminBootstrap) {
-    await upsertAccountRoleForUser({ role: "super_admin", status: "active", userId: data.user.id });
   } else if (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled") {
     await supabase.auth.signOut();
     redirect(roleErrorPath(loginRoute, "role", next));

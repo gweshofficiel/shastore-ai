@@ -1,6 +1,7 @@
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { AdminTopbar } from "@/components/admin/admin-topbar";
 import { getAdminAccess } from "@/lib/admin-access";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,13 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-shastore-path") ?? "/admin";
+
+  if (pathname === "/admin/login") {
+    return children;
+  }
+
   const access = await getAdminAccess();
 
   return (
