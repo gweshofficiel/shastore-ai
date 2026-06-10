@@ -1,32 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AccountLookupForm,
   CustomerAccountShell,
   EmptyAccountCard,
   StatusPill
 } from "@/components/storefront/customer-account-shell";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import {
   accountStatusLabel,
   formatAccountDate,
   formatAccountMoney,
-  loadCustomerAccountPortal,
+  loadAuthenticatedCustomerAccountPortal,
   orderReference
 } from "@/lib/customer-account";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 type OrdersPageProps = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ phone?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 };
-
-function cleanText(value: string | undefined, maxLength = 120) {
-  return (value ?? "").trim().slice(0, maxLength);
-}
 
 export async function generateMetadata({ params }: OrdersPageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -40,8 +37,7 @@ export async function generateMetadata({ params }: OrdersPageProps): Promise<Met
 
 export default async function CustomerOrdersPage({ params, searchParams }: OrdersPageProps) {
   const { slug } = await params;
-  const query = await searchParams;
-  const phone = cleanText(query.phone, 80);
+  await searchParams;
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
@@ -57,15 +53,24 @@ export default async function CustomerOrdersPage({ params, searchParams }: Order
     return <Unavailable title="This storefront is temporarily unavailable." />;
   }
 
-  const portal = phone ? await loadCustomerAccountPortal({ phone, slug: preview.store.slug }) : null;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const accountRole = user ? await getAccountRoleForUser(supabase, user.id) : null;
+  const isAuthenticatedCustomer = Boolean(user && accountRole?.role === "customer" && accountRole.status === "active");
+  const portal = isAuthenticatedCustomer && user
+    ? await loadAuthenticatedCustomerAccountPortal({ slug: preview.store.slug, userId: user.id })
+    : null;
   const orders = portal?.orders ?? [];
+  const accountPhone = portal?.profile?.phone ?? "";
 
   return (
     <CustomerAccountShell
       active="orders"
       currency={preview.store.currency}
       description="Review order totals, dates, payment status, and fulfillment status for this store account."
-      phone={phone}
+      phone={accountPhone}
       slug={preview.store.slug}
       storeId={preview.store.id}
       storeTitle={preview.store.title}
@@ -76,11 +81,11 @@ export default async function CustomerOrdersPage({ params, searchParams }: Order
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Order history</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              {phone ? `${orders.length} ${orders.length === 1 ? "order" : "orders"}` : "Lookup required"}
+              {isAuthenticatedCustomer ? `${orders.length} ${orders.length === 1 ? "order" : "orders"}` : "Login required"}
             </h2>
           </div>
-          {!phone ? (
-            <EmptyAccountCard title="Enter your phone number" text="Use the same phone number from checkout to load your orders." />
+          {!isAuthenticatedCustomer ? (
+            <EmptyAccountCard title="Log in to view your orders" text="Phone-only order access is no longer the primary secure access method." />
           ) : orders.length ? (
             orders.map((order) => (
               <article className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm" key={`${order.source}-${order.id}`}>
@@ -98,7 +103,7 @@ export default async function CustomerOrdersPage({ params, searchParams }: Order
                   </div>
                   <Link
                     className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                    href={`/store/${preview.store.slug}/track?reference=${encodeURIComponent(orderReference(order.id))}&phone=${encodeURIComponent(phone)}`}
+                    href={`/store/${preview.store.slug}/track?reference=${encodeURIComponent(orderReference(order.id))}&phone=${encodeURIComponent(accountPhone)}`}
                   >
                     Details
                   </Link>
@@ -111,10 +116,12 @@ export default async function CustomerOrdersPage({ params, searchParams }: Order
               </article>
             ))
           ) : (
-            <EmptyAccountCard title="No orders found" text="No orders matched this phone number for this store." />
+            <EmptyAccountCard title="No orders found" text="No orders are linked to your customer account for this store." />
           )}
         </div>
-        <AccountLookupForm phone={phone} />
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 text-sm font-bold leading-6 text-muted shadow-sm">
+          Log in through `/customer/login` to view authenticated order history. Legacy phone lookup is not used for secure order access.
+        </div>
       </section>
     </CustomerAccountShell>
   );

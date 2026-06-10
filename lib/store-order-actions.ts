@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getAccountRoleForUser } from "@/lib/account-roles";
+import { ensureCustomerProfileForUser, customerNameFromUser, linkStoreCustomersForUser } from "@/lib/customer-profiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import {
@@ -725,6 +727,53 @@ function receiptUrl({
   return `${baseUrl}/store/${slug}/receipt/${orderId}?${params.toString()}`;
 }
 
+async function getAuthenticatedCheckoutCustomer({
+  customerEmail,
+  customerName,
+  customerPhone
+}: {
+  customerEmail: string;
+  customerName: string;
+  customerPhone: string;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (accountRole?.role !== "customer" || accountRole.status !== "active") {
+    return null;
+  }
+
+  const profile = await ensureCustomerProfileForUser({
+    email: user.email ?? customerEmail,
+    name: customerName || customerNameFromUser(user),
+    phone: customerPhone,
+    userId: user.id
+  });
+
+  if (!profile) {
+    return null;
+  }
+
+  await linkStoreCustomersForUser({
+    email: profile.email,
+    phone: profile.phone,
+    userId: user.id
+  });
+
+  return {
+    profileId: profile.id,
+    userId: user.id
+  };
+}
+
 function orderConfirmationEmailMetadata({
   currency,
   customerName,
@@ -799,6 +848,8 @@ async function persistStorefrontOrderDraft({
   customerName,
   customerPhone,
   customerEmail,
+  customerAuthUserId,
+  customerProfileId,
   customerAddress,
   customerNotes,
   items,
@@ -833,6 +884,8 @@ async function persistStorefrontOrderDraft({
   customerName: string;
   customerPhone: string;
   customerEmail: string;
+  customerAuthUserId?: string | null;
+  customerProfileId?: string | null;
   customerAddress: string;
   customerNotes: string;
   items: DraftLineItem[];
@@ -900,6 +953,8 @@ async function persistStorefrontOrderDraft({
     customer_name: customerName,
     customer_phone: customerPhone,
     customer_email: customerEmail || null,
+    customer_auth_user_id: customerAuthUserId ?? null,
+    customer_profile_id: customerProfileId ?? null,
     notes: combinedNotes,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
@@ -968,6 +1023,8 @@ async function persistStorefrontOrderDraft({
             "delivery_type",
             "digital_delivery_metadata",
             "digital_delivery_status",
+            "customer_auth_user_id",
+            "customer_profile_id",
             "fulfillment_status",
             "has_digital_items",
             "shipping_method_id",
@@ -994,6 +1051,8 @@ async function persistStorefrontOrderDraft({
             "delivery_type",
             "digital_delivery_metadata",
             "digital_delivery_status",
+            "customer_auth_user_id",
+            "customer_profile_id",
             "fulfillment_status",
             "has_digital_items",
             "shipping_method_id",
@@ -1297,6 +1356,8 @@ async function persistStorefrontOrderDraft({
     customer_name: customerName,
     customer_phone: customerPhone,
     customer_email: customerEmail || null,
+    customer_auth_user_id: customerAuthUserId ?? null,
+    customer_profile_id: customerProfileId ?? null,
     customer_address: customerAddress || null,
     delivery_fee: deliveryFee,
     delivery_method: deliveryMethod,
@@ -1350,6 +1411,8 @@ async function persistStorefrontOrderDraft({
             "delivery_type",
             "digital_delivery_metadata",
             "digital_delivery_status",
+            "customer_auth_user_id",
+            "customer_profile_id",
             "fulfillment_status",
             "has_digital_items",
             "shipping_method_id",
@@ -2718,6 +2781,11 @@ export async function createPublicStoreOrderDraftAction(
 
   const giftCardAmount = giftCardResult?.ok ? giftCardResult.appliedAmount : 0;
   const financialBreakdown = applyGiftCardToBreakdown(baseFinancialBreakdown, giftCardAmount);
+  const authenticatedCustomer = await getAuthenticatedCheckoutCustomer({
+    customerEmail,
+    customerName,
+    customerPhone
+  });
 
   if (selectedPaymentMethod.method === "card" && financialBreakdown.totalAmount > 0) {
     const cardCheckoutError = await redirectToStoreCardCheckout({
@@ -2794,6 +2862,8 @@ export async function createPublicStoreOrderDraftAction(
     customerName,
     customerPhone,
     customerEmail,
+    customerAuthUserId: authenticatedCustomer?.userId ?? null,
+    customerProfileId: authenticatedCustomer?.profileId ?? null,
     customerAddress,
     customerNotes,
     items,

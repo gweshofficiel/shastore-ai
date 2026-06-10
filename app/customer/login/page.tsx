@@ -12,6 +12,10 @@ function errorMessage(error: string | string[] | undefined) {
     return "Customer email or password is incorrect.";
   }
 
+  if (code === "profile") {
+    return "Customer profile setup could not be completed. Contact support before trying again.";
+  }
+
   return code === "rate-limit" ? "Too many customer login attempts. Wait a few minutes and try again." : null;
 }
 
@@ -37,7 +41,7 @@ export default async function CustomerLoginPage({
           footerHref="/customer/register"
           footerLabel="Create customer account"
           footerText="New customer?"
-          nextPath="/customer"
+          nextPath="/customer/dashboard"
           subtitle="Access is limited to confirmed customer accounts."
           title="Customer Login"
         />

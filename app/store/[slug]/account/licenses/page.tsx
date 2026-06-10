@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import {
-  AccountLookupForm,
   CustomerAccountShell,
   EmptyAccountCard,
   StatusPill
 } from "@/components/storefront/customer-account-shell";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
-import { formatAccountDate, loadCustomerAccountPortal } from "@/lib/customer-account";
+import { formatAccountDate, loadAuthenticatedCustomerAccountPortal } from "@/lib/customer-account";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,6 @@ type LicensesPageProps = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ phone?: string }>;
 };
-
-function cleanText(value: string | undefined, maxLength = 120) {
-  return (value ?? "").trim().slice(0, maxLength);
-}
 
 export async function generateMetadata({ params }: LicensesPageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -33,8 +30,7 @@ export async function generateMetadata({ params }: LicensesPageProps): Promise<M
 
 export default async function CustomerLicensesPage({ params, searchParams }: LicensesPageProps) {
   const { slug } = await params;
-  const query = await searchParams;
-  const phone = cleanText(query.phone, 80);
+  await searchParams;
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
@@ -50,8 +46,17 @@ export default async function CustomerLicensesPage({ params, searchParams }: Lic
     return <Unavailable title="This storefront is temporarily unavailable." />;
   }
 
-  const portal = phone ? await loadCustomerAccountPortal({ phone, slug: preview.store.slug }) : null;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const accountRole = user ? await getAccountRoleForUser(supabase, user.id) : null;
+  const isAuthenticatedCustomer = Boolean(user && accountRole?.role === "customer" && accountRole.status === "active");
+  const portal = isAuthenticatedCustomer && user
+    ? await loadAuthenticatedCustomerAccountPortal({ slug: preview.store.slug, userId: user.id })
+    : null;
   const licensedDownloads = (portal?.downloads ?? []).filter((download) => download.licenseKey);
+  const phone = portal?.profile?.phone ?? "";
 
   return (
     <CustomerAccountShell
@@ -69,11 +74,11 @@ export default async function CustomerLicensesPage({ params, searchParams }: Lic
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Assigned keys</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              {phone ? `${licensedDownloads.length} ${licensedDownloads.length === 1 ? "license" : "licenses"}` : "Lookup required"}
+              {isAuthenticatedCustomer ? `${licensedDownloads.length} ${licensedDownloads.length === 1 ? "license" : "licenses"}` : "Login required"}
             </h2>
           </div>
-          {!phone ? (
-            <EmptyAccountCard title="Enter your phone number" text="Use the same phone number from checkout to load assigned license keys." />
+          {!isAuthenticatedCustomer ? (
+            <EmptyAccountCard title="Log in to view licenses" text="Phone-only access is not used for secure license keys." />
           ) : licensedDownloads.length ? (
             licensedDownloads.map((download) => (
               <article className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm" key={`${download.orderSource}-${download.orderId}-${download.productId}`}>
@@ -99,7 +104,9 @@ export default async function CustomerLicensesPage({ params, searchParams }: Lic
             <EmptyAccountCard title="No licenses found" text="Assigned license keys for paid digital products will appear here." />
           )}
         </div>
-        <AccountLookupForm buttonLabel="View licenses" phone={phone} />
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 text-sm font-bold leading-6 text-muted shadow-sm">
+          License keys require an authenticated customer account.
+        </div>
       </section>
     </CustomerAccountShell>
   );

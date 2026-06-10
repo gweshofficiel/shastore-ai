@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AccountLookupForm,
   CustomerAccountShell,
   EmptyAccountCard,
   StatusPill
 } from "@/components/storefront/customer-account-shell";
 import { RecentlyViewedProducts } from "@/components/storefront/recently-viewed-products";
 import { WishlistPageClient } from "@/components/storefront/public-store-wishlist";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
 import {
   accountStatusLabel,
   formatAccountDate,
   formatAccountMoney,
-  loadCustomerAccountPortal,
+  loadAuthenticatedCustomerAccountPortal,
   orderReference,
   updateCustomerAccountProfile
 } from "@/lib/customer-account";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -104,19 +105,62 @@ export default async function CustomerAccountPage({
     );
   }
 
-  const portal = phone ? await loadCustomerAccountPortal({ phone, slug: preview.store.slug }) : null;
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const accountRole = user ? await getAccountRoleForUser(supabase, user.id) : null;
+  const isAuthenticatedCustomer = Boolean(user && accountRole?.role === "customer" && accountRole.status === "active");
+  const portal = isAuthenticatedCustomer && user
+    ? await loadAuthenticatedCustomerAccountPortal({ slug: preview.store.slug, userId: user.id })
+    : null;
   const orders = portal?.orders ?? [];
   const downloads = portal?.downloads ?? [];
   const loyalty = portal?.loyalty ?? { history: [], points: 0 };
   const profile = portal?.profile;
+  const accountPhone = profile?.phone ?? "";
   const message = profileMessage(query.profile);
+
+  if (!isAuthenticatedCustomer) {
+    return (
+      <CustomerAccountShell
+        active="overview"
+        currency={preview.store.currency}
+        description="Log in with a customer account to view orders, downloads, licenses, wishlist products, and saved addresses for this store."
+        phone=""
+        slug={preview.store.slug}
+        storeId={preview.store.id}
+        storeTitle={preview.store.title}
+        title="Account Login Required"
+      >
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Secure customer access</p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-ink">
+            Log in to view your orders and account.
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold leading-6 text-muted">
+            Phone lookup is no longer the primary secure access method. Existing phone-based links are
+            legacy only and customer data is shown after customer authentication.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link className="rounded-full bg-ink px-5 py-3 text-sm font-black text-white" href={`/customer/login?next=${encodeURIComponent(`/store/${preview.store.slug}/account`)}`}>
+              Log in
+            </Link>
+            <Link className="rounded-full bg-slate-100 px-5 py-3 text-sm font-black text-ink" href="/customer/register">
+              Create customer account
+            </Link>
+          </div>
+        </section>
+      </CustomerAccountShell>
+    );
+  }
 
   return (
     <CustomerAccountShell
       active="overview"
       currency={preview.store.currency}
       description="View recent orders, digital products, license keys, profile details, wishlist products, and saved addresses for this store."
-      phone={phone}
+      phone={accountPhone}
       slug={preview.store.slug}
       storeId={preview.store.id}
       storeTitle={preview.store.title}
@@ -126,10 +170,10 @@ export default async function CustomerAccountPage({
         <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Dashboard</p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-            {phone ? "Your customer portal" : "Lookup required"}
+            Your secure customer portal
           </h2>
           <p className="mt-3 text-sm font-semibold leading-6 text-muted">
-            Customer data is loaded only for the phone number used at checkout and only for {preview.store.title}.
+            Customer data is loaded only for your authenticated customer account and only for {preview.store.title}.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-4">
             <SummaryCard label="Orders" value={orders.length} />
@@ -138,7 +182,12 @@ export default async function CustomerAccountPage({
             <SummaryCard label="Points" value={loyalty.points} />
           </div>
         </div>
-        <AccountLookupForm phone={phone} />
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Authenticated</p>
+          <p className="mt-2 text-sm font-bold leading-6 text-muted">
+            Signed in as {profile?.email ?? user?.email}. Phone lookup is legacy fallback only.
+          </p>
+        </div>
       </section>
 
       {message ? (
@@ -149,10 +198,8 @@ export default async function CustomerAccountPage({
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="grid gap-6">
-          <CardSection eyebrow="Recent orders" title={phone ? `${orders.slice(0, 4).length} shown` : "Lookup required"}>
-            {!phone ? (
-              <EmptyAccountCard title="Enter your phone number" text="Use the same phone number from checkout to load recent orders." />
-            ) : orders.length ? (
+          <CardSection eyebrow="Recent orders" title={`${orders.slice(0, 4).length} shown`}>
+            {orders.length ? (
               <div className="grid gap-3">
                 {orders.slice(0, 4).map((order) => (
                   <article className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm" key={`${order.source}-${order.id}`}>
@@ -170,7 +217,7 @@ export default async function CustomerAccountPage({
                       </div>
                       <Link
                         className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted transition hover:bg-slate-200"
-                        href={`/store/${preview.store.slug}/track?reference=${encodeURIComponent(orderReference(order.id))}&phone=${encodeURIComponent(phone)}`}
+                        href={`/store/${preview.store.slug}/track?reference=${encodeURIComponent(orderReference(order.id))}&phone=${encodeURIComponent(accountPhone)}`}
                       >
                         Details
                       </Link>
@@ -182,20 +229,18 @@ export default async function CustomerAccountPage({
                   </article>
                 ))}
                 <div>
-                  <Link className="inline-flex rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white" href={`/store/${preview.store.slug}/account/orders?phone=${encodeURIComponent(phone)}`}>
+                  <Link className="inline-flex rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white" href={`/store/${preview.store.slug}/account/orders`}>
                     View all orders
                   </Link>
                 </div>
               </div>
             ) : (
-              <EmptyAccountCard title="No orders found" text="No recent orders matched this phone number for this store." />
+              <EmptyAccountCard title="No orders found" text="No recent orders are linked to your customer account for this store." />
             )}
           </CardSection>
 
           <CardSection eyebrow="Digital access" title="Downloads and licenses">
-            {!phone ? (
-              <EmptyAccountCard title="Enter your phone number" text="Use the lookup above to load digital products and assigned license keys." />
-            ) : downloads.length ? (
+            {downloads.length ? (
               <div className="grid gap-3">
                 {downloads.slice(0, 3).map((download) => (
                   <article className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm" key={`${download.orderSource}-${download.orderId}-${download.productId}`}>
@@ -211,10 +256,10 @@ export default async function CustomerAccountPage({
                   </article>
                 ))}
                 <div className="flex flex-wrap gap-2">
-                  <Link className="inline-flex rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white" href={`/store/${preview.store.slug}/account/downloads?phone=${encodeURIComponent(phone)}`}>
+                  <Link className="inline-flex rounded-full bg-ink px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white" href={`/store/${preview.store.slug}/account/downloads`}>
                     Downloads
                   </Link>
-                  <Link className="inline-flex rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted" href={`/store/${preview.store.slug}/account/licenses?phone=${encodeURIComponent(phone)}`}>
+                  <Link className="inline-flex rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted" href={`/store/${preview.store.slug}/account/licenses`}>
                     Licenses
                   </Link>
                 </div>
@@ -227,12 +272,12 @@ export default async function CustomerAccountPage({
 
         <aside className="grid h-fit gap-6">
           <CardSection eyebrow="Profile" title="Account info">
-            {phone ? (
+            {accountPhone ? (
               <form action={updateCustomerAccountProfile} className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
                 <input name="slug" type="hidden" value={preview.store.slug} />
-                <input name="currentPhone" type="hidden" value={phone} />
+                <input name="currentPhone" type="hidden" value={accountPhone} />
                 <ProfileInput defaultValue={profile?.name ?? ""} label="Name" name="name" placeholder="Your name" required />
-                <ProfileInput defaultValue={profile?.phone ?? phone} label="Phone" name="phone" placeholder="+15551234567" required />
+                <ProfileInput defaultValue={profile?.phone ?? accountPhone} label="Phone" name="phone" placeholder="+15551234567" required />
                 <ProfileInput defaultValue={profile?.email ?? ""} label="Email display" name="email" placeholder="you@example.com" type="email" />
                 <label className="grid gap-2 text-sm font-semibold text-ink">
                   <span>Preferred contact</span>
@@ -253,7 +298,7 @@ export default async function CustomerAccountPage({
                 </button>
               </form>
             ) : (
-              <EmptyAccountCard title="Lookup required" text="Enter your checkout phone number to edit account profile details." />
+              <EmptyAccountCard title="Profile setup required" text="Customer profile details are not available yet." />
             )}
           </CardSection>
 

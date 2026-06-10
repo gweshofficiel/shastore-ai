@@ -13,6 +13,11 @@ import {
   recordTestEnvironmentLogin,
   recordTestEnvironmentLogout
 } from "@/lib/admin/test-environment-actions";
+import {
+  customerNameFromUser,
+  ensureCustomerProfileForUser,
+  linkStoreCustomersForUser
+} from "@/lib/customer-profiles";
 import { ensureDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -117,7 +122,8 @@ async function completeAuthRegistration({
   registerRoute,
   role,
   signupSource,
-  supabase
+  supabase,
+  verifiedPhone
 }: {
   confirmationLoginPath: string;
   email: string;
@@ -127,6 +133,7 @@ async function completeAuthRegistration({
   role: AccountRole;
   signupSource: string;
   supabase: Awaited<ReturnType<typeof createClient>>;
+  verifiedPhone?: string;
 }) {
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -134,6 +141,7 @@ async function completeAuthRegistration({
     options: {
       data: {
         account_role: role,
+        phone: verifiedPhone,
         shastore_signup_source: signupSource
       },
       emailRedirectTo: getPublicUrl(confirmationLoginPath)
@@ -212,6 +220,35 @@ async function completeAuthRegistration({
         })
       );
     }
+  }
+
+  if (role === "customer") {
+    const profile = await ensureCustomerProfileForUser({
+      email: user.email ?? email,
+      name: customerNameFromUser(user),
+      phone: verifiedPhone,
+      userId: user.id
+    });
+
+    if (!profile) {
+      console.warn("[auth-register][customer] customer profile creation failed", {
+        email,
+        role,
+        userId: user.id
+      });
+      redirect(
+        registrationResultPath(registerRoute, "auth", {
+          message: "Account was created but customer profile setup failed. Contact support.",
+          next
+        })
+      );
+    }
+
+    await linkStoreCustomersForUser({
+      email: user.email ?? email,
+      phone: profile.phone,
+      userId: user.id
+    });
   }
 
   redirect(registrationResultPath(registerRoute, "check-email", { next }));
@@ -295,6 +332,27 @@ async function loginForRole({
     await activateAccountRoleForUser(data.user.id, role);
   }
 
+  if (role === "customer") {
+    const metadataPhone = typeof data.user.user_metadata?.phone === "string" ? data.user.user_metadata.phone : "";
+    const profile = await ensureCustomerProfileForUser({
+      email: data.user.email ?? email,
+      name: customerNameFromUser(data.user),
+      phone: metadataPhone || data.user.phone,
+      userId: data.user.id
+    });
+
+    if (!profile) {
+      await supabase.auth.signOut();
+      redirect(roleErrorPath(loginRoute, "profile", next));
+    }
+
+    await linkStoreCustomersForUser({
+      email: data.user.email ?? email,
+      phone: profile.phone,
+      userId: data.user.id
+    });
+  }
+
   await recordAuthLoginAttempt({
     email,
     route: loginRoute,
@@ -326,6 +384,7 @@ async function registerForRole({
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const customerPhone = role === "customer" ? String(formData.get("phone") ?? "").trim() : "";
   const next = safeRoleRedirect(formData.get("next"), defaultNext, defaultNext.split("/").slice(0, 2).join("/") || defaultNext);
   const rateLimit = await checkRateLimit({
     action: `auth.${role}_register`,
@@ -343,6 +402,15 @@ async function registerForRole({
     redirect(registrationResultPath(registerRoute, "restricted", { next }));
   }
 
+  if (role === "customer" && !customerPhone) {
+    redirect(
+      registrationResultPath(registerRoute, "auth", {
+        message: "Phone or WhatsApp number is required for customer registration.",
+        next
+      })
+    );
+  }
+
   await completeAuthRegistration({
     confirmationLoginPath,
     email,
@@ -351,7 +419,8 @@ async function registerForRole({
     registerRoute,
     role,
     signupSource: `${role}_register`,
-    supabase
+    supabase,
+    verifiedPhone: customerPhone || undefined
   });
 }
 

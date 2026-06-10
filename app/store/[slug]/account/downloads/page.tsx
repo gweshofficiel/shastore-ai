@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import {
-  AccountLookupForm,
   CustomerAccountShell,
   EmptyAccountCard,
   StatusPill
 } from "@/components/storefront/customer-account-shell";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import { getPublicStorefrontAccess } from "@/lib/billing/publish-access";
-import { accountStatusLabel, formatAccountDate } from "@/lib/customer-account";
-import { loadCustomerDownloads } from "@/lib/customer-downloads";
+import { accountStatusLabel, formatAccountDate, loadAuthenticatedCustomerAccountPortal } from "@/lib/customer-account";
 import { getPublicStorefrontPreview } from "@/lib/public-storefront-preview";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +22,6 @@ type DownloadsPageProps = {
     phone?: string;
   }>;
 };
-
-function cleanText(value: string | undefined, maxLength = 120) {
-  return (value ?? "").trim().slice(0, maxLength);
-}
 
 function downloadMessage(status: string | undefined) {
   const messages: Record<string, string> = {
@@ -63,7 +59,6 @@ export default async function CustomerDownloadsPage({
 }: DownloadsPageProps) {
   const { slug } = await params;
   const query = await searchParams;
-  const phone = cleanText(query.phone, 80);
   const preview = await getPublicStorefrontPreview(slug);
 
   if (!preview) {
@@ -82,7 +77,17 @@ export default async function CustomerDownloadsPage({
     return <Unavailable title="This storefront is temporarily unavailable." />;
   }
 
-  const downloads = phone ? await loadCustomerDownloads({ phone, slug: preview.store.slug }) : [];
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const accountRole = user ? await getAccountRoleForUser(supabase, user.id) : null;
+  const isAuthenticatedCustomer = Boolean(user && accountRole?.role === "customer" && accountRole.status === "active");
+  const portal = isAuthenticatedCustomer && user
+    ? await loadAuthenticatedCustomerAccountPortal({ slug: preview.store.slug, userId: user.id })
+    : null;
+  const downloads = portal?.downloads ?? [];
+  const phone = portal?.profile?.phone ?? "";
   const message = downloadMessage(query.download);
 
   return (
@@ -101,7 +106,7 @@ export default async function CustomerDownloadsPage({
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Digital products</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">
-              {phone ? `${downloads.length} ${downloads.length === 1 ? "download" : "downloads"}` : "Lookup required"}
+              {isAuthenticatedCustomer ? `${downloads.length} ${downloads.length === 1 ? "download" : "downloads"}` : "Login required"}
             </h2>
           </div>
           {message ? (
@@ -109,8 +114,8 @@ export default async function CustomerDownloadsPage({
               {message}
             </div>
           ) : null}
-          {!phone ? (
-            <EmptyAccountCard title="Enter your phone number" text="Use the same phone number from checkout to load purchased digital downloads." />
+          {!isAuthenticatedCustomer ? (
+            <EmptyAccountCard title="Log in to view downloads" text="Phone-only access is not used for secure digital downloads." />
           ) : downloads.length ? (
             downloads.map((download) => {
               const href = `/api/store-downloads?${new URLSearchParams({
@@ -159,7 +164,9 @@ export default async function CustomerDownloadsPage({
             <EmptyAccountCard title="No downloads found" text="No paid digital products matched this phone number for this store." />
           )}
         </div>
-        <AccountLookupForm buttonLabel="View downloads" phone={phone} />
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 text-sm font-bold leading-6 text-muted shadow-sm">
+          Digital downloads require an authenticated customer account.
+        </div>
       </section>
     </CustomerAccountShell>
   );
