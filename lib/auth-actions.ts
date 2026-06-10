@@ -13,10 +13,13 @@ import {
   recordTestEnvironmentLogin,
   recordTestEnvironmentLogout
 } from "@/lib/admin/test-environment-actions";
+import { ensureDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { getInviteTokenPreview } from "@/lib/workspace-members";
+
+type AuthenticatedUser = NonNullable<Awaited<ReturnType<Awaited<ReturnType<typeof createClient>>["auth"]["getUser"]>>["data"]["user"]>;
 
 function safeAuthRedirect(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
@@ -69,6 +72,41 @@ function logAuthRegistration(
     hasSession: result.hasSession,
     errorMessage: result.errorMessage
   });
+}
+
+function registrationRoleFromMetadata(user: AuthenticatedUser): AccountRole | null {
+  const metadata = user.user_metadata as Record<string, unknown> | null;
+  const role = metadata?.account_role;
+  const signupSource = metadata?.shastore_signup_source;
+
+  if (
+    (role === "owner" || role === "reseller" || role === "delivery" || role === "customer") &&
+    signupSource === `${role}_register`
+  ) {
+    return role;
+  }
+
+  return null;
+}
+
+async function recoverMissingRoleFromRegistration({
+  expectedRole,
+  user
+}: {
+  expectedRole: AccountRole;
+  user: AuthenticatedUser;
+}) {
+  if (expectedRole === "super_admin") {
+    return false;
+  }
+
+  const registeredRole = registrationRoleFromMetadata(user);
+
+  if (registeredRole !== expectedRole) {
+    return false;
+  }
+
+  return upsertAccountRoleForUser({ role: expectedRole, status: "active", userId: user.id });
 }
 
 async function completeAuthRegistration({
@@ -135,12 +173,45 @@ async function completeAuthRegistration({
 
   const roleSaved = await upsertAccountRoleForUser({ role, status: "pending", userId: user.id });
   if (!roleSaved) {
+    console.warn(`[auth-register][${role}] role assignment failed`, {
+      email,
+      role,
+      userId: user.id
+    });
     redirect(
       registrationResultPath(registerRoute, "auth", {
         message: "Account was created but role assignment failed. Contact support.",
         next
       })
     );
+  }
+
+  if (role === "delivery") {
+    const profile = await ensureDeliveryProfileForUser({
+      email: user.email ?? email,
+      name:
+        typeof user.user_metadata?.name === "string"
+          ? user.user_metadata.name
+          : typeof user.user_metadata?.full_name === "string"
+            ? user.user_metadata.full_name
+            : null,
+      phone: user.phone,
+      userId: user.id
+    });
+
+    if (!profile) {
+      console.warn("[auth-register][delivery] delivery profile creation failed", {
+        email,
+        role,
+        userId: user.id
+      });
+      redirect(
+        registrationResultPath(registerRoute, "auth", {
+          message: "Account was created but delivery profile setup failed. Contact support.",
+          next
+        })
+      );
+    }
   }
 
   redirect(registrationResultPath(registerRoute, "check-email", { next }));
@@ -203,14 +274,24 @@ async function loginForRole({
   }
 
   const accountRole = await getAccountRoleForUser(supabase, data.user.id);
-  const legacyOwner = role === "owner" && !accountRole;
+  const recoveredRole = !accountRole
+    ? await recoverMissingRoleFromRegistration({ expectedRole: role, user: data.user })
+    : false;
+  const legacyOwner = role === "owner" && !accountRole && !registrationRoleFromMetadata(data.user);
 
   if (legacyOwner) {
-    await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
-  } else if (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled") {
+    const roleSaved = await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
+    if (!roleSaved) {
+      await supabase.auth.signOut();
+      redirect(roleErrorPath(loginRoute, "role", next));
+    }
+  } else if (
+    !recoveredRole &&
+    (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled")
+  ) {
     await supabase.auth.signOut();
     redirect(roleErrorPath(loginRoute, role === "super_admin" ? "restricted" : "role", next));
-  } else if (accountRole.status === "pending") {
+  } else if (accountRole?.status === "pending") {
     await activateAccountRoleForUser(data.user.id, role);
   }
 
@@ -317,6 +398,7 @@ export async function login(formData: FormData) {
   }
 
   const accountRole = data.user ? await getAccountRoleForUser(supabase, data.user.id) : null;
+  const registeredRole = data.user ? registrationRoleFromMetadata(data.user) : null;
 
   if (accountRole && accountRole.role !== "owner") {
     await supabase.auth.signOut();
@@ -324,7 +406,16 @@ export async function login(formData: FormData) {
   }
 
   if (data.user && !accountRole) {
-    await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
+    if (registeredRole && registeredRole !== "owner") {
+      await supabase.auth.signOut();
+      redirect(`/login?error=role&next=${encodeURIComponent(next)}`);
+    }
+
+    const roleSaved = await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
+    if (!roleSaved) {
+      await supabase.auth.signOut();
+      redirect(`/login?error=role&next=${encodeURIComponent(next)}`);
+    }
   } else if (data.user && accountRole?.role === "owner" && accountRole.status === "pending") {
     await activateAccountRoleForUser(data.user.id, "owner");
   }
@@ -421,6 +512,11 @@ export async function register(formData: FormData) {
 
   const roleSaved = await upsertAccountRoleForUser({ role: "owner", status: "pending", userId: user.id });
   if (!roleSaved) {
+    console.warn("[auth-register][owner] role assignment failed", {
+      email,
+      role: "owner",
+      userId: user.id
+    });
     redirect(
       registrationResultPath("/register", "auth", {
         message: "Account was created but role assignment failed. Contact support.",

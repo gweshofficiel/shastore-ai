@@ -4,6 +4,7 @@ import { getDeliveryComplianceData } from "@/lib/delivery/compliance-data";
 import { getDeliveryCommunicationSummary } from "@/lib/delivery/communication-data";
 import { getDeliveryAssignedOrdersData, getDeliveryRouteCapacityData } from "@/lib/delivery/data";
 import { getDeliveryIncidentsForAgent } from "@/lib/delivery/incident-data";
+import { getDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { getDeliveryReputationData } from "@/lib/delivery/reputation-data";
 import { updateDeliveryAvailabilityAction } from "@/lib/delivery/route-actions";
 
@@ -87,8 +88,9 @@ export default async function DeliveryDashboardPage({
 }) {
   const query = await searchParams;
   const { agent, role, user } = await requireDeliveryAccess();
-  const [account, assignmentData, routeData, communicationData, complianceData, incidentData, reputationData] = await Promise.all([
+  const [account, profile, assignmentData, routeData, communicationData, complianceData, incidentData, reputationData] = await Promise.all([
     getOrCreateAccountProfile("delivery"),
+    getDeliveryProfileForUser(user.id),
     getDeliveryAssignedOrdersData(agent),
     getDeliveryRouteCapacityData(agent),
     agent
@@ -126,8 +128,8 @@ export default async function DeliveryDashboardPage({
               Delivery dashboard
             </h1>
             <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-              Linked to your store owner delivery agent profile. Assigned orders, proof of delivery,
-              COD, failed deliveries, reschedules, and returns remain store-scoped to this delivery account.
+              Independent delivery profile. Store assignments, order access, COD, failed deliveries,
+              reschedules, and returns appear only after an owner invites you and you accept that store assignment.
             </p>
           </div>
           <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
@@ -154,20 +156,22 @@ export default async function DeliveryDashboardPage({
         {[
           {
             label: "Agent name",
-            value: agent?.agentName ?? "Delivery agent",
-            detail: user.email ?? "No email on session"
+            value: profile?.name ?? agent?.agentName ?? "Delivery agent",
+            detail: profile?.email ?? user.email ?? "No email on session"
           },
           {
-            label: "Store",
-            value: agent?.storeName ?? "Store linked",
-            detail: agent?.storeId ? `Store ID ${agent.storeId.slice(0, 8)}` : "Store scope pending"
+            label: "Store assignment",
+            value: agent?.storeName ?? "No store assigned",
+            detail: agent?.storeId
+              ? `Store ID ${agent.storeId.slice(0, 8)}`
+              : "Owners can invite you later; no stores are linked automatically."
           },
           {
             label: "City / Zone",
-            value: routeData.assignedZones[0]?.name ?? agent?.cityZone ?? "Not set",
+            value: routeData.assignedZones[0]?.name ?? profile?.zone ?? profile?.city ?? agent?.cityZone ?? "Not set",
             detail: routeData.assignedZones.length
               ? `${routeData.assignedZones.length} assigned delivery zone(s).`
-              : "Service area from the owner delivery agent profile."
+              : "Service area on your independent delivery profile."
           },
           {
             label: "Assigned orders",

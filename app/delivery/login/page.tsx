@@ -26,11 +26,15 @@ function deliveryErrorMessage({
   const agentEmail = Array.isArray(email) ? email[0] : email;
 
   if (code === "delivery_required") {
-    return "This area is reserved for approved delivery agents. Ask your store owner to create your delivery agent profile first.";
+    return "Delivery access could not be verified. Create a delivery account or contact support.";
   }
 
   if (code === "suspended_delivery") {
-    return "This delivery agent profile is inactive. Contact the store owner to reactivate your access.";
+    return "This delivery profile is suspended. Contact support to reactivate your access.";
+  }
+
+  if (code === "profile") {
+    return "Delivery profile setup could not be completed. Contact support before trying again.";
   }
 
   if (code === "auth_setup_required") {
@@ -91,7 +95,7 @@ export default async function DeliveryLoginPage({
           footerLabel="Create delivery account"
           footerText="New delivery user?"
           nextPath={nextPath}
-          subtitle="Use the same email your store owner saved when creating your delivery agent profile."
+          subtitle="Use your independent delivery agent email. Store assignments are added later by invitation."
           title="Delivery login"
         />
       </div>

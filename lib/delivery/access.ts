@@ -6,6 +6,7 @@ import {
   type DeliveryAgentAccessRecord,
   type DeliveryRole
 } from "@/lib/delivery/data";
+import { getDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { createClient } from "@/lib/supabase/server";
 
 export type { DeliveryRole };
@@ -68,8 +69,12 @@ export async function getDeliveryRoleForUser({
     return null;
   }
 
-  if (accountRole?.role === "delivery" && accountRole.status !== "active") {
+  if (accountRole?.role === "delivery" && (accountRole.status === "suspended" || accountRole.status === "disabled")) {
     return "suspended_delivery";
+  }
+
+  if (accountRole?.role === "delivery" && accountRole.status === "pending") {
+    return "pending_delivery";
   }
 
   const agentLookup = await getDeliveryAccessForUser({
@@ -86,6 +91,16 @@ export async function getDeliveryRoleForUser({
   }
 
   if (accountRole?.role === "delivery") {
+    const profile = await getDeliveryProfileForUser(user.id);
+
+    if (profile?.status === "suspended") {
+      return "suspended_delivery";
+    }
+
+    if (profile?.status === "pending" || profile?.verification_status === "pending") {
+      return "pending_delivery";
+    }
+
     return "delivery";
   }
 

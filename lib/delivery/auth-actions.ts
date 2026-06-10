@@ -1,16 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { activateAccountRoleForUser, getAccountRoleForUser } from "@/lib/account-roles";
+import type { User } from "@supabase/supabase-js";
+import { activateAccountRoleForUser, getAccountRoleForUser, upsertAccountRoleForUser } from "@/lib/account-roles";
 import { recordTestEnvironmentLogin } from "@/lib/admin/test-environment-actions";
+import { ensureDeliveryProfileForUser } from "@/lib/delivery/profiles";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
-import {
-  findAuthUserIdByEmail,
-  getDeliveryAccessForUser,
-  linkDeliveryAgentToAuthUser
-} from "@/lib/delivery/data";
+import { getDeliveryAccessForUser, linkDeliveryAgentToAuthUser } from "@/lib/delivery/data";
 
 function normalizeEmail(value: FormDataEntryValue | null) {
   const email = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -25,6 +23,11 @@ function safeDeliveryRedirect(value: FormDataEntryValue | null) {
   }
 
   return next;
+}
+
+function isDeliveryRegistrationUser(user: User) {
+  const metadata = user.user_metadata as Record<string, unknown> | null;
+  return metadata?.account_role === "delivery" && metadata?.shastore_signup_source === "delivery_register";
 }
 
 export async function deliveryLogin(formData: FormData) {
@@ -43,24 +46,6 @@ export async function deliveryLogin(formData: FormData) {
     redirect(`/delivery/login?error=rate-limit&next=${encodeURIComponent(next)}`);
   }
 
-  const lookup = await getDeliveryAccessForUser({ email });
-
-  if (lookup.status === "missing_email" || lookup.status === "not_found") {
-    redirect("/delivery/login?error=delivery_required");
-  }
-
-  if (lookup.status === "inactive") {
-    redirect("/delivery/login?error=suspended_delivery");
-  }
-
-  const authUserId = await findAuthUserIdByEmail(email);
-
-  if (!authUserId) {
-    redirect(
-      `/delivery/login?error=auth_setup_required&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
-    );
-  }
-
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -70,20 +55,57 @@ export async function deliveryLogin(formData: FormData) {
   }
 
   const accountRole = await getAccountRoleForUser(supabase, data.user.id);
+  const recoveredRole =
+    !accountRole && isDeliveryRegistrationUser(data.user)
+      ? await upsertAccountRoleForUser({ role: "delivery", status: "active", userId: data.user.id })
+      : false;
 
-  if (accountRole?.role !== "delivery" || accountRole.status === "suspended" || accountRole.status === "disabled") {
+  if (
+    !recoveredRole &&
+    (accountRole?.role !== "delivery" || accountRole.status === "suspended" || accountRole.status === "disabled")
+  ) {
     await supabase.auth.signOut();
     redirect(`/delivery/login?error=role&next=${encodeURIComponent(next)}`);
   }
 
-  if (accountRole.status === "pending") {
-    await activateAccountRoleForUser(data.user.id, "delivery");
+  if (accountRole?.status === "pending") {
+    const activated = await activateAccountRoleForUser(data.user.id, "delivery");
+    if (!activated) {
+      await supabase.auth.signOut();
+      redirect(`/delivery/login?error=role&next=${encodeURIComponent(next)}`);
+    }
   }
 
-  await linkDeliveryAgentToAuthUser({
-    agentId: lookup.access.agentId,
+  const profile = await ensureDeliveryProfileForUser({
+    email: data.user.email ?? email,
+    name:
+      typeof data.user.user_metadata?.name === "string"
+        ? data.user.user_metadata.name
+        : typeof data.user.user_metadata?.full_name === "string"
+          ? data.user.user_metadata.full_name
+          : null,
+    phone: data.user.phone,
     userId: data.user.id
   });
+
+  if (!profile) {
+    await supabase.auth.signOut();
+    redirect(`/delivery/login?error=profile&next=${encodeURIComponent(next)}`);
+  }
+
+  if (profile.status === "suspended") {
+    await supabase.auth.signOut();
+    redirect(`/delivery/login?error=suspended_delivery&next=${encodeURIComponent(next)}`);
+  }
+
+  const lookup = await getDeliveryAccessForUser({ email: data.user.email ?? email, userId: data.user.id });
+
+  if (lookup.status === "approved") {
+    await linkDeliveryAgentToAuthUser({
+      agentId: lookup.access.agentId,
+      userId: data.user.id
+    });
+  }
 
   await recordAuthLoginAttempt({
     email,
