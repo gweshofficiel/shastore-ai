@@ -1,18 +1,9 @@
 import { AuthForm } from "@/components/auth/auth-form";
-import { login } from "@/lib/auth-actions";
+import { resellerLogin } from "@/lib/auth-actions";
 
 function safeNextPath(value: string | string[] | undefined) {
   const next = Array.isArray(value) ? value[0] : value;
-
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
-    return undefined;
-  }
-
-  if (next.startsWith("/login") || next.startsWith("/register")) {
-    return undefined;
-  }
-
-  return next;
+  return next?.startsWith("/reseller") && !next.startsWith("/reseller/login") ? next : "/reseller/dashboard";
 }
 
 function errorMessage(error: string | string[] | undefined) {
@@ -23,24 +14,23 @@ function errorMessage(error: string | string[] | undefined) {
   }
 
   if (code === "auth") {
-    return "Email or password is incorrect.";
+    return "Reseller email or password is incorrect.";
   }
 
-  return code === "rate-limit" ? "Too many login attempts. Wait a few minutes and try again." : null;
+  return code === "rate-limit" ? "Too many reseller login attempts. Wait a few minutes and try again." : null;
 }
 
-export default async function LoginPage({
+export default async function ResellerLoginPage({
   searchParams
 }: {
   searchParams?: Promise<{ error?: string | string[]; next?: string | string[] }>;
 }) {
   const query = await searchParams;
   const nextPath = safeNextPath(query?.next);
-  const registerHref = nextPath ? `/register?next=${encodeURIComponent(nextPath)}` : "/register";
   const message = errorMessage(query?.error);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-fuchsia-50 px-4 py-12">
       <div className="grid w-full max-w-md gap-4">
         {message ? (
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
@@ -48,14 +38,14 @@ export default async function LoginPage({
           </div>
         ) : null}
         <AuthForm
-          action={login}
+          action={resellerLogin}
           buttonLabel="Log in"
-          footerHref={registerHref}
-          footerLabel="Create an account"
-          footerText="New to SHASTORE AI?"
+          footerHref="/reseller/register"
+          footerLabel="Create reseller account"
+          footerText="New reseller?"
           nextPath={nextPath}
-          subtitle="Owner login for workspace and store management."
-          title="Owner Login"
+          subtitle="Access is limited to confirmed reseller accounts."
+          title="Reseller Login"
         />
       </div>
     </main>

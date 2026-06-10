@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,8 +17,11 @@ export async function requireResellerDashboardAccess() {
     redirect("/delivery/dashboard");
   }
 
-  // Future role hook: check a dedicated reseller role/profile flag here once roles exist.
-  // For now, any authenticated user can prepare a reseller showcase without affecting
-  // seller, admin, billing, checkout, or public storefront systems.
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (accountRole?.role !== "reseller" || accountRole.status !== "active") {
+    redirect("/reseller/login?error=role");
+  }
+
   return { role: "reseller" as const, user };
 }

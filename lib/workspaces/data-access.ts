@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import {
   getActiveWorkspaceForUser,
   type UserWorkspaceMembership
@@ -108,6 +109,19 @@ export async function getWorkspaceDataContext(
     redirect("/delivery/dashboard");
   }
 
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (accountRole && accountRole.role !== "owner") {
+    await recordDeniedAccess({
+      action: "dashboard.role.denied",
+      metadata: { accountRole: accountRole.role, status: accountRole.status },
+      reason: "This account is not allowed here.",
+      route: options.redirectTo ?? "/dashboard",
+      userId: user.id
+    });
+    redirect("/login?error=role");
+  }
+
   const selection = await getActiveWorkspaceForUser({ supabase, userId: user.id });
   const { overrides, role, status } = await getWorkspaceMembershipAccess(
     supabase,
@@ -198,6 +212,29 @@ export async function getDashboardPageAccess({
       action: "dashboard.delivery_account.denied",
       metadata: { deliveryIsolation: true },
       reason: "Delivery accounts use the isolated delivery dashboard",
+      route: pathname,
+      userId: user.id
+    });
+
+    return {
+      allowed: false,
+      permission: requiredPermission,
+      reason: "permission_denied",
+      role: null,
+      status: "active",
+      supabase,
+      user,
+      workspaceId: null
+    };
+  }
+
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (accountRole && accountRole.role !== "owner") {
+    await recordDeniedAccess({
+      action: "dashboard.role.denied",
+      metadata: { accountRole: accountRole.role, status: accountRole.status },
+      reason: "This account is not allowed here.",
       route: pathname,
       userId: user.id
     });

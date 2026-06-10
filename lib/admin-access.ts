@@ -1,4 +1,9 @@
 import { redirect } from "next/navigation";
+import {
+  getAccountRoleForUser,
+  isOfficialSuperAdminEmail,
+  upsertAccountRoleForUser
+} from "@/lib/account-roles";
 import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,15 +43,20 @@ export async function getAdminAccess() {
     redirect("/delivery/dashboard");
   }
 
-  const { isAdmin, isConfigured } = isPlatformAdminEmail(user.email);
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+  const officialSuperAdmin = isOfficialSuperAdminEmail(user.email);
+  const { isConfigured } = isPlatformAdminEmail(user.email);
 
-  if (!isAdmin) {
-    redirect("/dashboard");
+  if (!accountRole && officialSuperAdmin) {
+    await upsertAccountRoleForUser({ role: "super_admin", status: "active", userId: user.id });
+  } else if (accountRole?.role !== "super_admin" || accountRole.status !== "active") {
+    await supabase.auth.signOut();
+    redirect("/admin/login?error=role");
   }
 
   return {
     isConfigured,
-    role: "admin" as const,
+    role: "super_admin" as const,
     user
   };
 }

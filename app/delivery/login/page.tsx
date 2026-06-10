@@ -43,6 +43,10 @@ function deliveryErrorMessage({
     return "Delivery agent found, but the email or password is incorrect.";
   }
 
+  if (code === "role") {
+    return "This account is not allowed here.";
+  }
+
   if (code === "rate-limit") {
     return "Too many delivery login attempts. Wait a few minutes and try again.";
   }
@@ -83,9 +87,9 @@ export default async function DeliveryLoginPage({
         <AuthForm
           action={deliveryLogin}
           buttonLabel="Log in"
-          footerHref="/login"
-          footerLabel="Use standard login"
-          footerText="Not a delivery user?"
+          footerHref="/delivery/register"
+          footerLabel="Create delivery account"
+          footerText="New delivery user?"
           nextPath={nextPath}
           subtitle="Use the same email your store owner saved when creating your delivery agent profile."
           title="Delivery login"

@@ -1,6 +1,13 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import {
+  activateAccountRoleForUser,
+  getAccountRoleForUser,
+  isOfficialSuperAdminEmail,
+  upsertAccountRoleForUser,
+  type AccountRole
+} from "@/lib/account-roles";
 import { getPublicUrl } from "@/lib/deployment/config";
 import {
   recordTestEnvironmentLogin,
@@ -21,6 +28,150 @@ function safeAuthRedirect(value: FormDataEntryValue | null) {
   }
 
   return value;
+}
+
+function roleErrorPath(route: string, error: string, next?: string) {
+  return `${route}?error=${encodeURIComponent(error)}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
+}
+
+function safeRoleRedirect(value: FormDataEntryValue | null, fallback: string, allowedPrefix: string) {
+  const next = typeof value === "string" ? value.trim() : "";
+
+  if (!next.startsWith("/") || next.startsWith("//")) {
+    return fallback;
+  }
+
+  if (!next.startsWith(allowedPrefix)) {
+    return fallback;
+  }
+
+  return next;
+}
+
+async function loginForRole({
+  allowedPrefix,
+  defaultNext,
+  formData,
+  loginRoute,
+  rateLimitAction,
+  role
+}: {
+  allowedPrefix: string;
+  defaultNext: string;
+  formData: FormData;
+  loginRoute: string;
+  rateLimitAction: string;
+  role: AccountRole;
+}) {
+  const supabase = await createClient();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const next = safeRoleRedirect(formData.get("next"), defaultNext, allowedPrefix);
+  const rateLimit = await checkRateLimit({
+    action: rateLimitAction,
+    identifier: email,
+    limit: 10,
+    route: loginRoute,
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(roleErrorPath(loginRoute, "rate-limit", next));
+  }
+
+  if (role === "super_admin" && !isOfficialSuperAdminEmail(email)) {
+    redirect(roleErrorPath(loginRoute, "role", next));
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error || !data.user) {
+    await recordAuthLoginAttempt({ email, route: loginRoute, success: false });
+    redirect(roleErrorPath(loginRoute, "auth", next));
+  }
+
+  const accountRole = await getAccountRoleForUser(supabase, data.user.id);
+  const legacyOwner = role === "owner" && !accountRole;
+  const officialSuperAdminBootstrap = role === "super_admin" && !accountRole && isOfficialSuperAdminEmail(data.user.email);
+
+  if (legacyOwner) {
+    await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
+  } else if (officialSuperAdminBootstrap) {
+    await upsertAccountRoleForUser({ role: "super_admin", status: "active", userId: data.user.id });
+  } else if (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled") {
+    await supabase.auth.signOut();
+    redirect(roleErrorPath(loginRoute, "role", next));
+  } else if (accountRole.status === "pending") {
+    await activateAccountRoleForUser(data.user.id, role);
+  }
+
+  await recordAuthLoginAttempt({
+    email,
+    route: loginRoute,
+    success: true,
+    userId: data.user.id
+  });
+  await recordTestEnvironmentLogin({
+    email,
+    route: loginRoute,
+    userId: data.user.id
+  });
+
+  redirect(next);
+}
+
+async function registerForRole({
+  defaultNext,
+  formData,
+  registerRoute,
+  role
+}: {
+  defaultNext: string;
+  formData: FormData;
+  registerRoute: string;
+  role: AccountRole;
+}) {
+  const supabase = await createClient();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const next = safeRoleRedirect(formData.get("next"), defaultNext, defaultNext.split("/").slice(0, 2).join("/") || defaultNext);
+  const rateLimit = await checkRateLimit({
+    action: `auth.${role}_register`,
+    identifier: email,
+    limit: 5,
+    route: registerRoute,
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(roleErrorPath(registerRoute, "rate-limit", next));
+  }
+
+  if (role === "super_admin" && !isOfficialSuperAdminEmail(email)) {
+    redirect(roleErrorPath(registerRoute, "role", next));
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        account_role: role,
+        shastore_signup_source: `${role}_register`
+      },
+      emailRedirectTo: getPublicUrl(next)
+    }
+  });
+
+  if (error) {
+    redirect(roleErrorPath(registerRoute, "auth", next));
+  }
+
+  if (data.user) {
+    await upsertAccountRoleForUser({ role, status: "pending", userId: data.user.id });
+  }
+
+  redirect(roleErrorPath(registerRoute, "check-email", next));
 }
 
 export async function login(formData: FormData) {
@@ -65,6 +216,19 @@ export async function login(formData: FormData) {
     console.info("[invite-auth-success] invite login succeeded", { email });
   }
 
+  const accountRole = data.user ? await getAccountRoleForUser(supabase, data.user.id) : null;
+
+  if (accountRole && accountRole.role !== "owner") {
+    await supabase.auth.signOut();
+    redirect(`/login?error=role&next=${encodeURIComponent(next)}`);
+  }
+
+  if (data.user && !accountRole) {
+    await upsertAccountRoleForUser({ role: "owner", status: "active", userId: data.user.id });
+  } else if (data.user && accountRole?.role === "owner" && accountRole.status === "pending") {
+    await activateAccountRoleForUser(data.user.id, "owner");
+  }
+
   await recordAuthLoginAttempt({
     email,
     route: "/login",
@@ -101,10 +265,14 @@ export async function register(formData: FormData) {
     console.info("[invite-auth-redirect] signup requested for invite", { email });
   }
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      data: {
+        account_role: "owner",
+        shastore_signup_source: "owner_register"
+      },
       emailRedirectTo: getPublicUrl(next)
     }
   });
@@ -127,7 +295,80 @@ export async function register(formData: FormData) {
     console.info("[invite-auth-success] invite signup submitted", { email });
   }
 
-  redirect(next);
+  if (data.user) {
+    await upsertAccountRoleForUser({ role: "owner", status: "pending", userId: data.user.id });
+  }
+
+  redirect(`/register?status=check-email&next=${encodeURIComponent(next)}`);
+}
+
+export async function adminLogin(formData: FormData) {
+  await loginForRole({
+    allowedPrefix: "/admin",
+    defaultNext: "/admin",
+    formData,
+    loginRoute: "/admin/login",
+    rateLimitAction: "auth.admin_login",
+    role: "super_admin"
+  });
+}
+
+export async function adminRegister(formData: FormData) {
+  await registerForRole({
+    defaultNext: "/admin",
+    formData,
+    registerRoute: "/admin/register",
+    role: "super_admin"
+  });
+}
+
+export async function resellerLogin(formData: FormData) {
+  await loginForRole({
+    allowedPrefix: "/reseller",
+    defaultNext: "/reseller/dashboard",
+    formData,
+    loginRoute: "/reseller/login",
+    rateLimitAction: "auth.reseller_login",
+    role: "reseller"
+  });
+}
+
+export async function resellerRegister(formData: FormData) {
+  await registerForRole({
+    defaultNext: "/reseller/dashboard",
+    formData,
+    registerRoute: "/reseller/register",
+    role: "reseller"
+  });
+}
+
+export async function deliveryRegister(formData: FormData) {
+  await registerForRole({
+    defaultNext: "/delivery/dashboard",
+    formData,
+    registerRoute: "/delivery/register",
+    role: "delivery"
+  });
+}
+
+export async function customerLogin(formData: FormData) {
+  await loginForRole({
+    allowedPrefix: "/customer",
+    defaultNext: "/customer",
+    formData,
+    loginRoute: "/customer/login",
+    rateLimitAction: "auth.customer_login",
+    role: "customer"
+  });
+}
+
+export async function customerRegister(formData: FormData) {
+  await registerForRole({
+    defaultNext: "/customer",
+    formData,
+    registerRoute: "/customer/register",
+    role: "customer"
+  });
 }
 
 export async function registerWithInvite(formData: FormData) {

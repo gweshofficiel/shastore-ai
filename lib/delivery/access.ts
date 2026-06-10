@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getAccountRoleForUser } from "@/lib/account-roles";
 import {
   getDeliveryAccessForUser,
   type DeliveryAgentAccessRecord,
@@ -61,6 +62,16 @@ export async function getDeliveryRoleForUser({
     return null;
   }
 
+  const accountRole = await getAccountRoleForUser(supabase, user.id);
+
+  if (accountRole && accountRole.role !== "delivery") {
+    return null;
+  }
+
+  if (accountRole?.role === "delivery" && accountRole.status !== "active") {
+    return "suspended_delivery";
+  }
+
   const agentLookup = await getDeliveryAccessForUser({
     email: user.email,
     userId: user.id
@@ -72,6 +83,10 @@ export async function getDeliveryRoleForUser({
 
   if (agentLookup.status === "inactive") {
     return "suspended_delivery";
+  }
+
+  if (accountRole?.role === "delivery") {
+    return "delivery";
   }
 
   return getLegacyDeliveryRole({ supabase, user });

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { activateAccountRoleForUser, getAccountRoleForUser } from "@/lib/account-roles";
 import { recordTestEnvironmentLogin } from "@/lib/admin/test-environment-actions";
 import { recordAuthLoginAttempt } from "@/lib/security/login-events";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -66,6 +67,17 @@ export async function deliveryLogin(formData: FormData) {
   if (error || !data.user) {
     await recordAuthLoginAttempt({ email, route: "/delivery/login", success: false });
     redirect(`/delivery/login?error=auth_failed&next=${encodeURIComponent(next)}`);
+  }
+
+  const accountRole = await getAccountRoleForUser(supabase, data.user.id);
+
+  if (accountRole?.role !== "delivery" || accountRole.status === "suspended" || accountRole.status === "disabled") {
+    await supabase.auth.signOut();
+    redirect(`/delivery/login?error=role&next=${encodeURIComponent(next)}`);
+  }
+
+  if (accountRole.status === "pending") {
+    await activateAccountRoleForUser(data.user.id, "delivery");
   }
 
   await linkDeliveryAgentToAuthUser({
