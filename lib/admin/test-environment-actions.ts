@@ -441,14 +441,6 @@ type LoadedTestEnvironmentAccount = {
   registry: TestEnvironmentRegistryAccount;
 };
 
-type SuperAdminImpersonationGuardResult =
-  | "allowed"
-  | "inactive-role"
-  | "missing-role"
-  | "missing-session"
-  | "not-configured-email"
-  | "suspended-role";
-
 async function verifySuperAdminImpersonationAccess() {
   const supabase = await createClient({ role: "admin" });
   const {

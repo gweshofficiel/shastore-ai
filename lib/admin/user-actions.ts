@@ -3,15 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAdminAccess } from "@/lib/admin-access";
-import { getBillingPlan } from "@/lib/billing/plans";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+type AdminUserAction =
+  | "admin_user_clear_risk"
+  | "admin_user_export_placeholder"
+  | "admin_user_mark_high_risk"
+  | "admin_user_mark_reviewed"
+  | "admin_user_suspend_shortcut";
 
-async function updateUserSubscriptionStatus(userId: string, status: "active" | "incomplete") {
-  await getAdminAccess();
-
+async function recordAdminUserAction(formData: FormData, action: AdminUserAction) {
+  const access = await getAdminAccess();
+  const userId = String(formData.get("userId") ?? "").trim();
   if (!userId) {
     throw new Error("Missing user ID.");
   }
@@ -19,63 +21,60 @@ async function updateUserSubscriptionStatus(userId: string, status: "active" | "
   const admin = createAdminClient();
 
   if (!admin) {
-    throw new Error("Service-role admin access is required for user status changes.");
+    throw new Error("Service-role admin access is required for user monitoring actions.");
   }
 
-  const { data } = await admin
-    .from("user_subscriptions" as never)
-    .select("plan_id, limits_snapshot")
-    .eq("user_id" as never, userId as never)
-    .maybeSingle();
-  const existing = data as { limits_snapshot: Record<string, unknown> | null; plan_id: string | null } | null;
-  const planId = existing?.plan_id ?? "free";
-  const plan = getBillingPlan(planId);
-  const currentMetadata = isRecord(existing?.limits_snapshot) ? existing.limits_snapshot : {};
-  const adminGovernance =
-    status === "incomplete"
-      ? {
-          source: "super_admin_user_management",
-          status: "suspended",
-          suspendedAt: new Date().toISOString()
-        }
-      : {
-          restoredAt: new Date().toISOString(),
-          source: "super_admin_user_management",
-          status: "active"
-        };
-
-  await admin.from("user_subscriptions" as never).upsert(
-    {
-      limits_snapshot: {
-        ...currentMetadata,
-        adminGovernance
-      },
-      plan_id: plan.id,
-      status,
-      user_id: userId
-    } as never,
-    { onConflict: "user_id" }
-  );
-
-  await admin.from("billing_events" as never).insert({
-    event_type: status === "active" ? "admin_user_restored" : "admin_user_suspended",
-    provider: "admin",
-    user_id: userId,
-    payload: { governanceStatus: adminGovernance.status, status } as never,
-    processed_at: new Date().toISOString()
+  const { error } = await admin.from("monitoring_events" as never).insert({
+    entity_id: userId,
+    entity_type: "admin_user",
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      actor_user_id: access.user.id,
+      note:
+        action === "admin_user_suspend_shortcut"
+          ? "Suspend shortcut placeholder only. No auth user, subscription, store, or workspace record was modified."
+          : "Super Admin user monitoring action recorded. No secrets or destructive account changes were executed.",
+      source: "super_admin_users_runtime"
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
   } as never);
+
+  if (error) {
+    console.warn("[admin-users] monitoring action insert failed", {
+      action,
+      code: error.code,
+      message: error.message,
+      userId
+    });
+  }
 
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${userId}`);
-  revalidatePath("/admin/subscriptions");
 }
 
-export async function suspendAdminUser(formData: FormData) {
-  await updateUserSubscriptionStatus(String(formData.get("userId") ?? ""), "incomplete");
+export async function markAdminUserReviewed(formData: FormData) {
+  await recordAdminUserAction(formData, "admin_user_mark_reviewed");
 }
 
-export async function restoreAdminUser(formData: FormData) {
-  await updateUserSubscriptionStatus(String(formData.get("userId") ?? ""), "active");
+export async function markAdminUserHighRisk(formData: FormData) {
+  await recordAdminUserAction(formData, "admin_user_mark_high_risk");
 }
 
-export const activateAdminUser = restoreAdminUser;
+export async function clearAdminUserRisk(formData: FormData) {
+  await recordAdminUserAction(formData, "admin_user_clear_risk");
+}
+
+export async function suspendAdminUserShortcut(formData: FormData) {
+  await recordAdminUserAction(formData, "admin_user_suspend_shortcut");
+}
+
+export async function exportAdminUserPlaceholder(formData: FormData) {
+  await recordAdminUserAction(formData, "admin_user_export_placeholder");
+}
+
+export const activateAdminUser = markAdminUserReviewed;
+export const restoreAdminUser = clearAdminUserRisk;
+export const suspendAdminUser = suspendAdminUserShortcut;

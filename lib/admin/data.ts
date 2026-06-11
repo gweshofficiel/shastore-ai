@@ -13,11 +13,22 @@ import type { Database } from "@/types/database";
 type AnyRecord = Record<string, unknown>;
 
 export type AdminUser = {
+  activeSubscriptionLabel: string;
   id: string;
   email: string;
+  emailMasked: string;
   fullName: string | null;
+  isHighRisk: boolean;
   plan: string;
   planId: string;
+  primaryRole: string;
+  reviewedAt: string | null;
+  riskStatus: "clear" | "high_risk" | "reviewed";
+  securitySignals: Array<{
+    createdAt: string;
+    label: string;
+    severity: "high" | "low" | "medium";
+  }>;
   status: string;
   accountStatus: string;
   governanceStatus: "suspended" | null;
@@ -1174,6 +1185,36 @@ function userGovernanceStatus(value: unknown): "suspended" | null {
   return text(governance.status) === "suspended" ? "suspended" : null;
 }
 
+function maskEmail(value: string) {
+  const [localPart = "", domain = ""] = value.split("@");
+
+  if (!domain) {
+    return value ? `${value.slice(0, 4)}...` : "No email";
+  }
+
+  const visibleLocal = localPart.length <= 2 ? localPart.slice(0, 1) : `${localPart.slice(0, 2)}...${localPart.slice(-1)}`;
+  const [domainName = "", ...domainRest] = domain.split(".");
+  const maskedDomain = domainRest.length
+    ? `${domainName.slice(0, 1)}...${domainName.slice(-1)}.${domainRest.join(".")}`
+    : domain;
+
+  return `${visibleLocal}@${maskedDomain}`;
+}
+
+function securitySignalSeverity(action: string): "high" | "low" | "medium" {
+  const lowered = action.toLowerCase();
+
+  if (lowered.includes("high") || lowered.includes("risk") || lowered.includes("failed") || lowered.includes("suspend")) {
+    return "high";
+  }
+
+  if (lowered.includes("warning") || lowered.includes("review")) {
+    return "medium";
+  }
+
+  return "low";
+}
+
 function adminGovernanceStatus(value: unknown): "suspended" | "under_review" | null {
   if (!isRecord(value)) {
     return null;
@@ -1298,7 +1339,18 @@ export async function getAdminOverview() {
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
   const { supabase, users } = await getAdminUsersBase();
-  const [stores, landings, orders, subscriptions, workspaceMembers, accountProfiles, billingEvents] = await Promise.all([
+  const [
+    stores,
+    landings,
+    orders,
+    subscriptions,
+    workspaceMembers,
+    accountProfiles,
+    billingEvents,
+    accountRoles,
+    monitoringEvents,
+    securityAuditLogs
+  ] = await Promise.all([
     safeSelect(supabase, "stores", "id, user_id, owner_user_id, workspace_id, name, store_name, status, created_at"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_orders", "user_id"),
@@ -1309,12 +1361,21 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
     ),
     safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status, created_at"),
     safeSelect(supabase, "account_profiles", "user_id, display_name, account_id, account_type"),
-    safeSelect(supabase, "billing_events", "user_id, event_type, processed_at, created_at")
+    safeSelect(supabase, "billing_events", "user_id, event_type, processed_at, created_at"),
+    safeSelect(supabase, "account_roles", "user_id, role, status, updated_at"),
+    safeSelect(
+      supabase,
+      "monitoring_events",
+      "user_id, entity_id, event_type, event_status, entity_type, metadata, created_at",
+      5000
+    ),
+    safeSelect(supabase, "security_audit_logs", "user_id, action, reason, created_at", 5000)
   ]);
   const storeCounts = countStoresByOwner(stores);
   const landingCounts = countBy(landings, "user_id");
   const orderCounts = countBy(orders, "user_id");
   const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
+  const rolesByUser = new Map(accountRoles.map((row) => [text(row.user_id), row]));
   const accountProfilesByUser = new Map(
     accountProfiles
       .filter((profile) => text(profile.account_type, "user") === "user")
@@ -1340,15 +1401,70 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
 
     activityByUser.set(userId, [...(activityByUser.get(userId) ?? []), event]);
   }
+  const monitoringByUser = new Map<string, AnyRecord[]>();
+  for (const event of monitoringEvents) {
+    const userId = text(event.entity_type) === "admin_user" ? text(event.entity_id) : text(event.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    monitoringByUser.set(userId, [...(monitoringByUser.get(userId) ?? []), event]);
+  }
+  const securityByUser = new Map<string, AnyRecord[]>();
+  for (const event of securityAuditLogs) {
+    const userId = text(event.user_id);
+
+    if (!userId) {
+      continue;
+    }
+
+    securityByUser.set(userId, [...(securityByUser.get(userId) ?? []), event]);
+  }
 
   return users.map((user) => {
     const subscription = subscriptionsByUser.get(user.id);
     const plan = getBillingPlan(text(subscription?.plan_id, "free"));
     const governanceStatus = userGovernanceStatus(subscription?.limits_snapshot);
     const subscriptionStatus = text(subscription?.status, "active");
+    const role = rolesByUser.get(user.id);
     const profile = accountProfilesByUser.get(user.id);
     const workspaces = workspacesByUser.get(user.id) ?? [];
     const workspaceIds = new Set(workspaces.map((workspace) => text(workspace.workspace_id)).filter(Boolean));
+    const monitoring = (monitoringByUser.get(user.id) ?? [])
+      .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
+    const latestRiskEvent = monitoring.find((event) => {
+      const eventType = text(event.event_type);
+      return (
+        eventType === "admin_user_mark_high_risk" ||
+        eventType === "admin_user_clear_risk" ||
+        eventType === "admin_user_mark_reviewed"
+      );
+    });
+    const riskEventType = text(latestRiskEvent?.event_type);
+    const riskStatus =
+      riskEventType === "admin_user_mark_high_risk"
+        ? "high_risk"
+        : riskEventType === "admin_user_mark_reviewed"
+          ? "reviewed"
+          : "clear";
+    const securitySignals = [
+      ...(securityByUser.get(user.id) ?? []).map((event) => ({
+        createdAt: text(event.created_at),
+        label: text(event.action, text(event.reason, "security_audit")),
+        severity: securitySignalSeverity(`${text(event.action)} ${text(event.reason)}`)
+      })),
+      ...monitoring
+        .filter((event) => text(event.entity_type) === "admin_user")
+        .map((event) => ({
+          createdAt: text(event.created_at),
+          label: text(event.event_type, "admin_user_event"),
+          severity: securitySignalSeverity(text(event.event_type))
+        }))
+    ]
+      .filter((signal) => signal.createdAt)
+      .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
+      .slice(0, 5);
     const accountStatus = governanceStatus ?? (subscriptionStatus === "incomplete" ? "suspended" : subscriptionStatus);
     const userStores = stores
       .filter((store) => ownerUserId(store) === user.id)
@@ -1360,17 +1476,21 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
       }));
 
     return {
+      activeSubscriptionLabel: `${plan.name} · ${subscriptionStatus}`,
       accountStatus,
       createdAt: user.createdAt,
       email: user.email,
+      emailMasked: maskEmail(user.email),
       fullName: user.fullName ?? (text(profile?.display_name) || null),
       governanceStatus,
       id: user.id,
+      isHighRisk: riskStatus === "high_risk",
       landingsCount: landingCounts.get(user.id) ?? 0,
       lastLoginAt: user.lastLoginAt,
       ordersCount: orderCounts.get(user.id) ?? 0,
       plan: plan.name,
       planId: plan.id,
+      primaryRole: text(role?.role, "unknown"),
       recentActivity: (activityByUser.get(user.id) ?? [])
         .sort(
           (left, right) =>
@@ -1383,6 +1503,9 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
           label: text(event.event_type, "billing_event")
         })),
       status: subscriptionStatus,
+      reviewedAt: riskStatus === "reviewed" ? text(latestRiskEvent?.created_at) || null : null,
+      riskStatus,
+      securitySignals,
       stores: userStores,
       storesCount: storeCounts.get(user.id) ?? 0,
       subscription: {
