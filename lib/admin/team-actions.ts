@@ -632,10 +632,15 @@ export async function signupInternalTeamInvitee(formData: FormData) {
 export async function loginInternalTeamInvitee(formData: FormData) {
   const token = cleanText(formData.get("token"), 256);
   const password = cleanPassword(formData.get("password"));
+  const confirmPassword = cleanPassword(formData.get("confirmPassword"));
   const { invite } = await getValidInternalTeamInvitation(token);
 
   if (!invitationIsOpen(invite) || !invite?.email) {
     teamInviteRedirect(token, "invalid");
+  }
+
+  if (password.length < 8 || password !== confirmPassword) {
+    teamInviteRedirect(token, "password");
   }
 
   const supabase = await createClient({ role: "admin" });
@@ -659,7 +664,7 @@ export async function logoutForInternalTeamInvitation(formData: FormData) {
   const supabase = await createClient({ role: "admin" });
 
   await supabase.auth.signOut();
-  redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
+  redirect(`${internalTeamInviteAcceptPath(token)}?mode=setup`);
 }
 
 export async function enterInternalTeamWorkspace(formData: FormData) {
@@ -670,7 +675,7 @@ export async function enterInternalTeamWorkspace(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
+    redirect(`${internalTeamInviteAcceptPath(token)}?mode=setup`);
   }
 
   const { invite } = await getValidInternalTeamInvitation(token);
@@ -682,7 +687,7 @@ export async function enterInternalTeamWorkspace(formData: FormData) {
 
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
     await supabase.auth.signOut();
-    redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
+    redirect(`${internalTeamInviteAcceptPath(token)}?mode=setup`);
   }
 
   await acceptInternalTeamInvitationForUser({

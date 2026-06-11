@@ -65,9 +65,9 @@ export function InternalTeamInviteAuthForm({
         />
       </label>
       <PasswordField label="Password" name="password" />
-      {isSignup ? <PasswordField label="Confirm password" name="confirmPassword" /> : null}
+      <PasswordField label="Confirm password" name="confirmPassword" />
       <button className="h-11 rounded-full bg-slate-950 px-5 text-sm font-black text-white" type="submit">
-        {isSignup ? "Create account and enter" : "Log in and enter"}
+        {isSignup ? "Create account and enter workspace" : "Log in and enter workspace"}
       </button>
       <a className="text-sm font-bold text-slate-600 underline" href={switchHref}>
         {isSignup ? "Already have this account?" : "Need to create this account?"}

@@ -60,15 +60,24 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
   const emailMatches = Boolean(user?.email && invite.email && user.email.toLowerCase() === invite.email.toLowerCase());
   const mode = Array.isArray(query?.mode) ? query?.mode[0] : query?.mode;
   const inviteStatus = Array.isArray(query?.invite) ? query?.invite[0] : query?.invite;
-  const showAuthForm = mode === "auth" || mode === "login" || mode === "signup";
+  const showAuthForm =
+    mode === "setup" ||
+    mode === "login" ||
+    mode === "signup" ||
+    inviteStatus === "account-exists" ||
+    inviteStatus === "login-failed" ||
+    inviteStatus === "login-required" ||
+    inviteStatus === "password" ||
+    inviteStatus === "signup-failed";
   const showLogin = invite.authUserExists || mode === "login" || inviteStatus === "account-exists" || inviteStatus === "login-required";
   const feedback = inviteFeedback(query?.invite);
+  const title = showAuthForm && !user ? "Set up your internal team account" : "Accept team invitation";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
       <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-white p-8 shadow-2xl">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">SHASTORE Internal Team</p>
-        <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">Accept team invitation</h1>
+        <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">{title}</h1>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{invite.message}</p>
         {feedback ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
@@ -92,15 +101,15 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
         {!invite.ok ? (
           <Link
             className="mt-6 inline-flex h-11 items-center rounded-full bg-slate-950 px-5 text-sm font-black text-white"
-            href="/admin/login"
+            href="/"
           >
-            Go to Admin login
+            Return home
           </Link>
         ) : !showAuthForm || (user && !emailMatches) || emailMatches ? (
           <form action={enterInternalTeamWorkspace} className="mt-6">
             <input name="token" type="hidden" value={token} />
             <button className="h-11 rounded-full bg-slate-950 px-5 text-sm font-black text-white" type="submit">
-              Enter your workspace / ادخل إلى مكان عملك
+              Enter workspace
             </button>
           </form>
         ) : !user ? (
@@ -109,7 +118,7 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
               action={loginInternalTeamInvitee}
               email={invite.email ?? ""}
               mode="login"
-              switchHref={`${acceptPath}?mode=signup`}
+              switchHref={`${acceptPath}?mode=setup`}
               token={token}
             />
           ) : (
