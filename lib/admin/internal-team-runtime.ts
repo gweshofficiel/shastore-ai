@@ -4,8 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type InternalTeamRole =
   | "admin"
+  | "content_moderator"
   | "developer_operator"
   | "finance_manager"
+  | "finance_operator"
+  | "marketing_operator"
   | "moderator"
   | "read_only_auditor"
   | "security_analyst"
@@ -81,10 +84,24 @@ export const internalTeamRoles: Array<{
   },
   {
     accessLevel: "specialized",
+    assignedArea: "Moderation",
+    key: "content_moderator",
+    name: "Content Moderator",
+    permissionsSummary: "Content review, abuse queues, marketplace quality checks, and moderation workspace access."
+  },
+  {
+    accessLevel: "specialized",
     assignedArea: "Billing",
     key: "finance_manager",
     name: "Finance Manager",
     permissionsSummary: "Billing, subscriptions, payment provider monitoring, invoices, and reports."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Subscriptions",
+    key: "finance_operator",
+    name: "Finance Operator",
+    permissionsSummary: "Subscription operations, billing review, and finance workspace access."
   },
   {
     accessLevel: "specialized",
@@ -106,6 +123,13 @@ export const internalTeamRoles: Array<{
     key: "read_only_auditor",
     name: "Read-only Auditor",
     permissionsSummary: "Read-only access to reports, security, operations, and audit summaries."
+  },
+  {
+    accessLevel: "specialized",
+    assignedArea: "Marketing",
+    key: "marketing_operator",
+    name: "Marketing Operator",
+    permissionsSummary: "Platform marketing workspace access for campaign coordination and review."
   }
 ];
 
@@ -115,6 +139,8 @@ const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
   admin: [
     "/admin",
     "/admin/account",
+    "/admin/internal-team/workspace",
+    "/admin/internal-team/settings",
     "/admin/users",
     "/admin/stores",
     "/admin/sellers",
@@ -126,6 +152,8 @@ const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
   developer_operator: [
     "/admin",
     "/admin/account",
+    "/admin/internal-team/workspace",
+    "/admin/internal-team/settings",
     "/admin/ai",
     "/admin/domains-hosting",
     "/admin/email",
@@ -133,12 +161,15 @@ const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
     "/admin/notifications",
     "/admin/operations"
   ],
-  finance_manager: ["/admin", "/admin/account", "/admin/billing", "/admin/reports", "/admin/subscriptions"],
-  moderator: ["/admin", "/admin/account", "/admin/marketplace", "/admin/moderation", "/admin/templates"],
-  read_only_auditor: ["/admin", "/admin/account", "/admin/operations", "/admin/reports", "/admin/security", "/admin/stores", "/admin/users"],
-  security_analyst: ["/admin", "/admin/account", "/admin/security"],
+  content_moderator: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/marketplace", "/admin/moderation", "/admin/templates"],
+  finance_manager: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/billing", "/admin/reports", "/admin/subscriptions"],
+  finance_operator: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/subscriptions"],
+  marketing_operator: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/marketing"],
+  moderator: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/marketplace", "/admin/moderation", "/admin/templates"],
+  read_only_auditor: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/operations", "/admin/reports", "/admin/security", "/admin/stores", "/admin/users"],
+  security_analyst: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/security"],
   super_admin: ["/admin"],
-  support_agent: ["/admin", "/admin/account", "/admin/resellers", "/admin/sellers", "/admin/stores", "/admin/support", "/admin/users"]
+  support_agent: ["/admin", "/admin/account", "/admin/internal-team/workspace", "/admin/internal-team/settings", "/admin/resellers", "/admin/sellers", "/admin/stores", "/admin/support", "/admin/users"]
 };
 
 export function normalizeInternalTeamRole(value: unknown): InternalTeamRole {
@@ -184,12 +215,16 @@ export function canInternalTeamRoleAccessPath(role: InternalTeamRole, pathname: 
 }
 
 export function internalTeamDefaultPathForRole(role: InternalTeamRole) {
-  if (role === "finance_manager") {
+  if (role === "finance_manager" || role === "finance_operator") {
     return "/admin/subscriptions";
   }
 
-  if (role === "moderator") {
+  if (role === "moderator" || role === "content_moderator") {
     return "/admin/moderation";
+  }
+
+  if (role === "marketing_operator") {
+    return "/admin/marketing";
   }
 
   if (role === "security_analyst") {
@@ -208,7 +243,7 @@ export function internalTeamDefaultPathForRole(role: InternalTeamRole) {
     return "/admin/reports";
   }
 
-  return "/admin";
+  return "/admin/internal-team/workspace";
 }
 
 export function internalTeamRoleCanMutate(role: InternalTeamRole) {

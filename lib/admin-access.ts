@@ -7,6 +7,7 @@ import {
 import {
   canInternalTeamRoleAccessPath,
   getInternalTeamMemberForAuthUser,
+  internalTeamDefaultPathForRole,
   internalTeamRoleCanMutate
 } from "@/lib/admin/internal-team-runtime";
 import { isCurrentUserDeliveryAccount } from "@/lib/delivery/access";
@@ -36,6 +37,7 @@ export function isPlatformAdminEmail(
 
 export async function getAdminAccess() {
   const supabase = await createClient({ role: "admin" });
+  const internalSupabase = await createClient({ role: "internal_team" });
   const headerStore = await headers();
   const pathname = headerStore.get("x-shastore-path") ?? "/admin";
   const isMutationRequest = Boolean(headerStore.get("next-action")) || headerStore.get("content-type")?.includes("multipart/form-data");
@@ -43,49 +45,56 @@ export async function getAdminAccess() {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (user) {
+    if (await isCurrentUserDeliveryAccount(supabase, user)) {
+      redirect("/delivery/dashboard");
+    }
+
+    const accountRole = await getAccountRoleForUser(supabase, user.id);
+    const officialSuperAdmin = isConfiguredSuperAdminEmail(user.email);
+    const { isConfigured } = isPlatformAdminEmail(user.email);
+
+    if (officialSuperAdmin && accountRole?.role === "super_admin" && accountRole.status === "active") {
+      return {
+        internalRole: "super_admin" as const,
+        isConfigured,
+        role: "super_admin" as const,
+        user
+      };
+    }
+  }
+
+  const {
+    data: { user: internalUser }
+  } = await internalSupabase.auth.getUser();
+
+  if (!internalUser) {
     redirect("/login?next=/admin");
   }
 
-  if (await isCurrentUserDeliveryAccount(supabase, user)) {
-    redirect("/delivery/dashboard");
-  }
-
-  const accountRole = await getAccountRoleForUser(supabase, user.id);
-  const officialSuperAdmin = isConfiguredSuperAdminEmail(user.email);
-  const { isConfigured } = isPlatformAdminEmail(user.email);
-
-  if (officialSuperAdmin && accountRole?.role === "super_admin" && accountRole.status === "active") {
-    return {
-      internalRole: "super_admin" as const,
-      isConfigured,
-      role: "super_admin" as const,
-      user
-    };
-  }
-
+  const { isConfigured } = isPlatformAdminEmail(internalUser.email);
   const internalMember = await getInternalTeamMemberForAuthUser({
-    email: user.email,
-    userId: user.id
+    email: internalUser.email,
+    userId: internalUser.id
   });
 
   if (!internalMember || internalMember.status !== "active") {
-    await supabase.auth.signOut();
-    redirect("/admin/login?error=restricted");
+    await internalSupabase.auth.signOut();
+    redirect("/admin/internal-team/accept/restricted?invite=restricted");
   }
 
   if (!canInternalTeamRoleAccessPath(internalMember.role, pathname)) {
-    redirect("/admin?error=permission-denied");
+    redirect(`${internalTeamDefaultPathForRole(internalMember.role)}?error=permission-denied`);
   }
 
   if (isMutationRequest && !internalTeamRoleCanMutate(internalMember.role)) {
-    redirect("/admin?error=read-only");
+    redirect(`${internalTeamDefaultPathForRole(internalMember.role)}?error=read-only`);
   }
 
   return {
     internalRole: internalMember.role,
     isConfigured,
     role: "internal_team" as const,
-    user
+    user: internalUser
   };
 }

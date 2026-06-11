@@ -2,9 +2,7 @@ import Link from "next/link";
 import { InternalTeamInviteAuthForm } from "@/components/admin/internal-team-invite-auth-form";
 import {
   enterInternalTeamWorkspace,
-  getInternalTeamInviteTokenPreview,
-  loginInternalTeamInvitee,
-  signupInternalTeamInvitee
+  getInternalTeamInviteTokenPreview
 } from "@/lib/admin/team-actions";
 import { createClient } from "@/lib/supabase/server";
 
@@ -52,7 +50,7 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
   const { token } = await params;
   const query = await searchParams;
   const invite = await getInternalTeamInviteTokenPreview(token);
-  const supabase = await createClient({ role: "admin" });
+  const supabase = await createClient({ role: "internal_team" });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -71,12 +69,13 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
     inviteStatus === "signup-failed";
   const showLogin = invite.authUserExists || mode === "login" || inviteStatus === "account-exists" || inviteStatus === "login-required";
   const feedback = inviteFeedback(query?.invite);
-  const title = showAuthForm && !user ? "Set up your internal team account" : "Accept team invitation";
+  const title = showAuthForm && !emailMatches ? "Set up your internal team account" : "You are invited to join the internal team";
+  const setupAction = `${acceptPath}/setup`;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
       <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-white p-8 shadow-2xl">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">SHASTORE Internal Team</p>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">SHASTORE AI</p>
         <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">{title}</h1>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{invite.message}</p>
         {feedback ? (
@@ -109,13 +108,13 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
           <form action={enterInternalTeamWorkspace} className="mt-6">
             <input name="token" type="hidden" value={token} />
             <button className="h-11 rounded-full bg-slate-950 px-5 text-sm font-black text-white" type="submit">
-              Enter workspace
+              Enter your workspace
             </button>
           </form>
-        ) : !user ? (
+        ) : !emailMatches ? (
           showLogin ? (
             <InternalTeamInviteAuthForm
-              action={loginInternalTeamInvitee}
+              action={setupAction}
               email={invite.email ?? ""}
               mode="login"
               switchHref={`${acceptPath}?mode=setup`}
@@ -123,7 +122,7 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
             />
           ) : (
             <InternalTeamInviteAuthForm
-              action={signupInternalTeamInvitee}
+              action={setupAction}
               email={invite.email ?? ""}
               mode="signup"
               switchHref={`${acceptPath}?mode=login`}

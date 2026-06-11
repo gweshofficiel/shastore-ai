@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { authCookieOptionsForRole, authSessionRoleFromPath } from "@/lib/auth-session-roles";
+import { authCookieOptionsForRole, authSessionRoleFromPath, type AuthSessionRole } from "@/lib/auth-session-roles";
 import type { Database } from "@/types/database";
 
 function loginPathForRoute(pathname: string) {
@@ -31,9 +31,10 @@ export async function updateSession(request: NextRequest) {
       headers: requestHeaders
     }
   });
+  const isInternalTeamInviteRoute = request.nextUrl.pathname.startsWith("/admin/internal-team/accept/");
   const isProtectedRoute =
     request.nextUrl.pathname.startsWith("/dashboard") ||
-    request.nextUrl.pathname.startsWith("/admin") ||
+    (request.nextUrl.pathname.startsWith("/admin") && !isInternalTeamInviteRoute) ||
     request.nextUrl.pathname.startsWith("/customer") ||
     request.nextUrl.pathname.startsWith("/delivery/dashboard") ||
     request.nextUrl.pathname.startsWith("/reseller/dashboard");
@@ -62,37 +63,53 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
-  const supabase = createServerClient<Database>(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookieOptions: authCookieOptionsForRole(authSessionRoleFromPath(request.nextUrl.pathname)),
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request: {
-              headers: requestHeaders
-            }
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+  const checkedSupabaseUrl = supabaseUrl;
+  const checkedSupabaseAnonKey = supabaseAnonKey;
+
+  function createRoleClient(role: AuthSessionRole) {
+    return createServerClient<Database>(
+      checkedSupabaseUrl,
+      checkedSupabaseAnonKey,
+      {
+        cookieOptions: authCookieOptionsForRole(role),
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) =>
+              request.cookies.set(name, value)
+            );
+            response = NextResponse.next({
+              request: {
+                headers: requestHeaders
+              }
+            });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          }
         }
       }
-    }
-  );
+    );
+  }
+
+  const supabase = createRoleClient(authSessionRoleFromPath(request.nextUrl.pathname));
 
   const {
     data: { user }
   } = await supabase.auth.getUser();
+  let resolvedUser = user;
 
-  if (!user && isProtectedRoute && !isRoleAuthRoute) {
+  if (!resolvedUser && request.nextUrl.pathname.startsWith("/admin") && !request.nextUrl.pathname.startsWith("/admin/login")) {
+    const internalTeamSupabase = createRoleClient("internal_team");
+    const {
+      data: { user: internalTeamUser }
+    } = await internalTeamSupabase.auth.getUser();
+    resolvedUser = internalTeamUser;
+  }
+
+  if (!resolvedUser && isProtectedRoute && !isRoleAuthRoute) {
     if (isStoreDashboardRoute) {
       console.warn("[store-access] unauthenticated store dashboard request", {
         path: request.nextUrl.pathname
@@ -105,10 +122,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && isStoreDashboardRoute) {
+  if (resolvedUser && isStoreDashboardRoute) {
     console.info("[store-access] store dashboard session verified", {
       path: request.nextUrl.pathname,
-      userId: user.id
+      userId: resolvedUser.id
     });
   }
 

@@ -1,12 +1,13 @@
 import type { CookieOptionsWithName } from "@supabase/ssr";
 import type { AccountRole } from "@/lib/account-roles";
 
-export type AuthSessionRole = "admin" | "customer" | "delivery" | "owner" | "reseller";
+export type AuthSessionRole = "admin" | "customer" | "delivery" | "internal_team" | "owner" | "reseller";
 
 const roleCookieNames: Record<AuthSessionRole, string> = {
   admin: "shastore-auth-admin",
   customer: "shastore-auth-customer",
   delivery: "shastore-auth-delivery",
+  internal_team: "shastore-auth-internal-team",
   owner: "shastore-auth-owner",
   reseller: "shastore-auth-reseller"
 };
@@ -33,6 +34,10 @@ export function authSessionRoleForAccountRole(role: AccountRole): AuthSessionRol
 
 export function authSessionRoleFromPath(pathname: string | null | undefined): AuthSessionRole {
   const path = pathname || "/";
+
+  if (path.startsWith("/admin/internal-team/accept/")) {
+    return "internal_team";
+  }
 
   if (path.startsWith("/admin")) {
     return "admin";

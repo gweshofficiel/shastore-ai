@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 type InternalTeamInviteAuthFormProps = {
-  action: (formData: FormData) => void | Promise<void>;
+  action: string | ((formData: FormData) => void | Promise<void>);
   email: string;
   mode: "login" | "signup";
   switchHref: string;
@@ -57,7 +57,9 @@ export function InternalTeamInviteAuthForm({
       <label className="grid gap-2 text-sm font-bold text-slate-700">
         Invited email
         <input
+          aria-disabled="true"
           className="h-11 rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-500"
+          disabled
           name="email"
           readOnly
           type="email"

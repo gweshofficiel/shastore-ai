@@ -8,7 +8,7 @@ import {
 export const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
   { href: "/admin/foundation-report", label: "Foundation Report", icon: "reports" },
-  { href: "/admin/account", label: "Account", icon: "settings" },
+  { href: "/admin/internal-team/settings", label: "Account", icon: "settings" },
   { href: "/admin/test-environment", label: "Test Environment", icon: "reports" },
   { href: "/admin/users", label: "Users", icon: "users" },
   { href: "/admin/internal-team", label: "Internal Team", icon: "users" },

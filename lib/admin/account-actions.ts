@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { isConfiguredSuperAdminEmail, getAccountRoleForUser } from "@/lib/account-roles";
+import { getAccountRoleForUser, isConfiguredSuperAdminEmail } from "@/lib/account-roles";
 import { getInternalTeamMemberForAuthUser } from "@/lib/admin/internal-team-runtime";
 import { getRequestAuditFields, recordSecurityAuditLog } from "@/lib/security/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,32 +9,49 @@ import { createClient } from "@/lib/supabase/server";
 
 async function requireAdminAccountSession() {
   const supabase = await createClient({ role: "admin" });
+  const internalSupabase = await createClient({ role: "internal_team" });
   const {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/admin/login?next=/admin/account");
+  if (user) {
+    const accountRole = await getAccountRoleForUser(supabase, user.id);
+    const isSuperAdmin =
+      isConfiguredSuperAdminEmail(user.email) &&
+      accountRole?.role === "super_admin" &&
+      accountRole.status === "active";
+
+    if (isSuperAdmin) {
+      return {
+        internalRole: "super_admin",
+        supabase,
+        user
+      };
+    }
   }
 
-  const accountRole = await getAccountRoleForUser(supabase, user.id);
-  const isSuperAdmin =
-    isConfiguredSuperAdminEmail(user.email) &&
-    accountRole?.role === "super_admin" &&
-    accountRole.status === "active";
+  const {
+    data: { user: internalUser }
+  } = await internalSupabase.auth.getUser();
+
+  if (!internalUser) {
+    redirect("/admin/login?next=/admin/internal-team/settings");
+  }
+
   const internalMember = await getInternalTeamMemberForAuthUser({
-    email: user.email,
-    userId: user.id
+    email: internalUser.email,
+    userId: internalUser.id
   });
 
-  if (!isSuperAdmin && internalMember?.status !== "active") {
+  if (internalMember?.status !== "active") {
+    await internalSupabase.auth.signOut();
     redirect("/admin/login?error=restricted");
   }
 
   return {
-    internalRole: isSuperAdmin ? "super_admin" : internalMember?.role ?? "read_only_auditor",
-    supabase,
-    user
+    internalRole: internalMember.role,
+    supabase: internalSupabase,
+    user: internalUser
   };
 }
 
@@ -48,7 +65,7 @@ export async function changeInternalAccountPassword(formData: FormData) {
   const confirmPassword = cleanText(formData.get("confirmPassword"), 256);
 
   if (password.length < 8 || password !== confirmPassword) {
-    redirect("/admin/account?account=password-invalid");
+    redirect("/admin/internal-team/settings?account=password-invalid");
   }
 
   const { error } = await supabase.auth.updateUser({
@@ -56,7 +73,7 @@ export async function changeInternalAccountPassword(formData: FormData) {
   });
 
   if (error) {
-    redirect("/admin/account?account=password-failed");
+    redirect("/admin/internal-team/settings?account=password-failed");
   }
 
   const admin = createAdminClient();
@@ -74,7 +91,7 @@ export async function changeInternalAccountPassword(formData: FormData) {
     userId: user.id
   });
 
-  redirect("/admin/account?account=password-updated");
+  redirect("/admin/internal-team/settings?account=password-updated");
 }
 
 export async function requestInternalAccountEmailChange(formData: FormData) {
@@ -82,14 +99,22 @@ export async function requestInternalAccountEmailChange(formData: FormData) {
   const requestedEmail = cleanText(formData.get("requestedEmail")).toLowerCase();
 
   if (!requestedEmail || requestedEmail === user.email?.toLowerCase() || !requestedEmail.includes("@")) {
-    redirect("/admin/account?account=email-invalid");
+    redirect("/admin/internal-team/settings?account=email-invalid");
   }
 
   const admin = createAdminClient();
 
   if (!admin) {
-    redirect("/admin/account?account=email-request-failed");
+    redirect("/admin/internal-team/settings?account=email-request-failed");
   }
+
+  await admin
+    .from("internal_team_members" as never)
+    .update({
+      email_change_requested: true,
+      requested_new_email: requestedEmail
+    } as never)
+    .eq("user_id" as never, user.id as never);
 
   const request = await getRequestAuditFields();
   const metadata = {
@@ -120,5 +145,5 @@ export async function requestInternalAccountEmailChange(formData: FormData) {
     userId: user.id
   });
 
-  redirect("/admin/account?account=email-requested");
+  redirect("/admin/internal-team/settings?account=email-requested");
 }

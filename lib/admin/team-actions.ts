@@ -609,7 +609,7 @@ export async function signupInternalTeamInvitee(formData: FormData) {
     teamInviteRedirect(token, error.message.toLowerCase().includes("already") ? "account-exists" : "signup-failed");
   }
 
-  const supabase = await createClient({ role: "admin" });
+  const supabase = await createClient({ role: "internal_team" });
   const signIn = await supabase.auth.signInWithPassword({
     email: invitedEmail,
     password
@@ -643,7 +643,7 @@ export async function loginInternalTeamInvitee(formData: FormData) {
     teamInviteRedirect(token, "password");
   }
 
-  const supabase = await createClient({ role: "admin" });
+  const supabase = await createClient({ role: "internal_team" });
   const { data, error } = await supabase.auth.signInWithPassword({
     email: invite.email.toLowerCase(),
     password
@@ -661,7 +661,7 @@ export async function loginInternalTeamInvitee(formData: FormData) {
 
 export async function logoutForInternalTeamInvitation(formData: FormData) {
   const token = cleanText(formData.get("token"), 256);
-  const supabase = await createClient({ role: "admin" });
+  const supabase = await createClient({ role: "internal_team" });
 
   await supabase.auth.signOut();
   redirect(`${internalTeamInviteAcceptPath(token)}?mode=setup`);
@@ -669,7 +669,7 @@ export async function logoutForInternalTeamInvitation(formData: FormData) {
 
 export async function enterInternalTeamWorkspace(formData: FormData) {
   const token = cleanText(formData.get("token"), 256);
-  const supabase = await createClient({ role: "admin" });
+  const supabase = await createClient({ role: "internal_team" });
   const {
     data: { user }
   } = await supabase.auth.getUser();

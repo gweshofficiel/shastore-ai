@@ -23,7 +23,7 @@ export function AdminTopbar({
         ) : null}
         <Link
           className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-          href="/admin/account"
+          href="/admin/internal-team/settings"
         >
           Account settings
         </Link>
