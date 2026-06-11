@@ -114,6 +114,7 @@ const allowedRoleKeys = new Set<InternalTeamRole>(internalTeamRoles.map((role) =
 const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
   admin: [
     "/admin",
+    "/admin/account",
     "/admin/users",
     "/admin/stores",
     "/admin/sellers",
@@ -124,6 +125,7 @@ const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
   ],
   developer_operator: [
     "/admin",
+    "/admin/account",
     "/admin/ai",
     "/admin/domains-hosting",
     "/admin/email",
@@ -131,12 +133,12 @@ const allowedPathPrefixes: Record<InternalTeamRole, string[]> = {
     "/admin/notifications",
     "/admin/operations"
   ],
-  finance_manager: ["/admin", "/admin/billing", "/admin/reports", "/admin/subscriptions"],
-  moderator: ["/admin", "/admin/marketplace", "/admin/moderation", "/admin/templates"],
-  read_only_auditor: ["/admin", "/admin/operations", "/admin/reports", "/admin/security", "/admin/stores", "/admin/users"],
-  security_analyst: ["/admin", "/admin/security"],
+  finance_manager: ["/admin", "/admin/account", "/admin/billing", "/admin/reports", "/admin/subscriptions"],
+  moderator: ["/admin", "/admin/account", "/admin/marketplace", "/admin/moderation", "/admin/templates"],
+  read_only_auditor: ["/admin", "/admin/account", "/admin/operations", "/admin/reports", "/admin/security", "/admin/stores", "/admin/users"],
+  security_analyst: ["/admin", "/admin/account", "/admin/security"],
   super_admin: ["/admin"],
-  support_agent: ["/admin", "/admin/resellers", "/admin/sellers", "/admin/stores", "/admin/support", "/admin/users"]
+  support_agent: ["/admin", "/admin/account", "/admin/resellers", "/admin/sellers", "/admin/stores", "/admin/support", "/admin/users"]
 };
 
 export function normalizeInternalTeamRole(value: unknown): InternalTeamRole {

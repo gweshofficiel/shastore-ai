@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { AdminNavLink } from "@/components/admin/admin-nav-link";
+import {
+  canInternalTeamRoleAccessPath,
+  type InternalTeamRole
+} from "@/lib/admin/internal-team-runtime";
 
 export const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
   { href: "/admin/foundation-report", label: "Foundation Report", icon: "reports" },
+  { href: "/admin/account", label: "Account", icon: "settings" },
   { href: "/admin/test-environment", label: "Test Environment", icon: "reports" },
   { href: "/admin/users", label: "Users", icon: "users" },
   { href: "/admin/internal-team", label: "Internal Team", icon: "users" },
@@ -31,7 +36,13 @@ export const adminNavItems = [
   { href: "/admin/settings", label: "Settings", icon: "settings" }
 ] as const;
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  internalRole
+}: {
+  internalRole: InternalTeamRole;
+}) {
+  const visibleItems = adminNavItems.filter((item) => canInternalTeamRoleAccessPath(internalRole, item.href));
+
   return (
     <aside className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
       <div className="flex h-full flex-col px-4 py-4 lg:px-5 lg:py-6">
@@ -47,7 +58,7 @@ export function AdminSidebar() {
           </div>
         </div>
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:max-h-[calc(100vh-17rem)] lg:overflow-y-auto lg:pb-1">
-          {adminNavItems.map((item) => (
+          {visibleItems.map((item) => (
             <AdminNavLink
               href={item.href}
               icon={item.icon}

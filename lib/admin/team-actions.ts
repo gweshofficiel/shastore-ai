@@ -615,15 +615,18 @@ export async function signupInternalTeamInvitee(formData: FormData) {
     password
   });
 
-  if (signIn.error) {
+  if (signIn.error || !signIn.data.user) {
     console.warn("[internal-team] invite signup sign-in failed", {
       email: invitedEmail,
-      message: signIn.error.message
+      message: signIn.error?.message ?? "No authenticated user returned after signup."
     });
     teamInviteRedirect(token, "login-required");
   }
 
-  redirect(internalTeamInviteAcceptPath(token));
+  await acceptInternalTeamInvitationForUser({
+    token,
+    user: signIn.data.user
+  });
 }
 
 export async function loginInternalTeamInvitee(formData: FormData) {
@@ -636,16 +639,19 @@ export async function loginInternalTeamInvitee(formData: FormData) {
   }
 
   const supabase = await createClient({ role: "admin" });
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: invite.email.toLowerCase(),
     password
   });
 
-  if (error) {
+  if (error || !data.user) {
     teamInviteRedirect(token, "login-failed");
   }
 
-  redirect(internalTeamInviteAcceptPath(token));
+  await acceptInternalTeamInvitationForUser({
+    token,
+    user: data.user
+  });
 }
 
 export async function logoutForInternalTeamInvitation(formData: FormData) {
@@ -653,10 +659,10 @@ export async function logoutForInternalTeamInvitation(formData: FormData) {
   const supabase = await createClient({ role: "admin" });
 
   await supabase.auth.signOut();
-  redirect(internalTeamInviteAcceptPath(token));
+  redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
 }
 
-export async function acceptInternalTeamInvitation(formData: FormData) {
+export async function enterInternalTeamWorkspace(formData: FormData) {
   const token = cleanText(formData.get("token"), 256);
   const supabase = await createClient({ role: "admin" });
   const {
@@ -664,9 +670,34 @@ export async function acceptInternalTeamInvitation(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/admin/login?next=${encodeURIComponent(internalTeamInviteAcceptPath(token))}`);
+    redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
   }
 
+  const { invite } = await getValidInternalTeamInvitation(token);
+  const userEmail = user.email?.toLowerCase();
+
+  if (!invitationIsOpen(invite) || !invite?.email) {
+    teamInviteRedirect(token, "invalid");
+  }
+
+  if (!userEmail || userEmail !== invite.email.toLowerCase()) {
+    await supabase.auth.signOut();
+    redirect(`${internalTeamInviteAcceptPath(token)}?mode=auth`);
+  }
+
+  await acceptInternalTeamInvitationForUser({
+    token,
+    user
+  });
+}
+
+async function acceptInternalTeamInvitationForUser({
+  token,
+  user
+}: {
+  token: string;
+  user: NonNullable<Awaited<ReturnType<Awaited<ReturnType<typeof createClient>>["auth"]["getUser"]>>["data"]["user"]>;
+}) {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -753,5 +784,9 @@ export async function acceptInternalTeamInvitation(formData: FormData) {
   revalidatePath("/admin/team");
   revalidatePath("/admin/internal-team");
   redirect(`${internalTeamDefaultPathForRole(role)}?team=accepted`);
+}
+
+export async function acceptInternalTeamInvitation(formData: FormData) {
+  await enterInternalTeamWorkspace(formData);
 }
 
