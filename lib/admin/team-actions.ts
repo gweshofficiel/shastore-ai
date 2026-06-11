@@ -7,6 +7,7 @@ import { getAdminAccess } from "@/lib/admin-access";
 import {
   countActiveInternalSuperAdmins,
   createInternalTeamInviteToken,
+  internalTeamDefaultPathForRole,
   hashInternalTeamInviteToken,
   internalTeamInviteAcceptPath,
   internalTeamRoleMeta,
@@ -38,6 +39,68 @@ function cleanEmail(value: FormDataEntryValue | null) {
 
 function teamRedirect(status: string): never {
   redirect(`/admin/internal-team?team=${encodeURIComponent(status)}`);
+}
+
+function teamInviteRedirect(token: string, status: string): never {
+  const params = new URLSearchParams({ invite: status });
+  redirect(`${internalTeamInviteAcceptPath(token)}?${params.toString()}`);
+}
+
+function cleanPassword(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value : "";
+}
+
+async function findAuthUserByEmail(email: string) {
+  const admin = createAdminClient();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!admin || !normalizedEmail) {
+    return null;
+  }
+
+  const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+
+  if (error) {
+    console.warn("[internal-team] auth user lookup failed", {
+      email: normalizedEmail,
+      message: error.message
+    });
+    return null;
+  }
+
+  return data.users.find((user) => user.email?.toLowerCase() === normalizedEmail) ?? null;
+}
+
+async function getValidInternalTeamInvitation(token: string) {
+  const admin = createAdminClient();
+
+  if (!admin || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
+    return { admin, invite: null };
+  }
+
+  const { data } = await admin
+    .from("internal_team_invitations" as never)
+    .select("id, email, display_name, role, status, expires_at")
+    .eq("token_hash" as never, hashInternalTeamInviteToken(token) as never)
+    .maybeSingle();
+  const invite = data as {
+    display_name?: string | null;
+    email?: string | null;
+    expires_at?: string | null;
+    id: string;
+    role?: string | null;
+    status?: string | null;
+  } | null;
+
+  return { admin, invite };
+}
+
+function invitationIsOpen(invite: { expires_at?: string | null; status?: string | null } | null) {
+  if (!invite || invite.status !== "pending") {
+    return false;
+  }
+
+  return !invite.expires_at || new Date(invite.expires_at).getTime() >= Date.now();
 }
 
 async function requireSuperAdminTeamAccess() {
@@ -462,38 +525,135 @@ export async function cancelInternalStaffInvitation(formData: FormData) {
 }
 
 export async function getInternalTeamInviteTokenPreview(token: string) {
-  const admin = createAdminClient();
+  const { admin, invite } = await getValidInternalTeamInvitation(token);
 
-  if (!admin || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
-    return { email: null, message: "Invitation is invalid.", ok: false, role: null, status: "invalid" };
+  if (!admin) {
+    return { authUserExists: false, email: null, message: "Invitation is invalid.", ok: false, role: null, status: "invalid" };
   }
 
-  const { data } = await admin
-    .from("internal_team_invitations" as never)
-    .select("email, role, status, expires_at")
-    .eq("token_hash" as never, hashInternalTeamInviteToken(token) as never)
-    .maybeSingle();
-  const invite = data as { email?: string | null; expires_at?: string | null; role?: string | null; status?: string | null } | null;
-
   if (!invite) {
-    return { email: null, message: "Invitation was not found.", ok: false, role: null, status: "missing" };
+    return { authUserExists: false, email: null, message: "Invitation was not found.", ok: false, role: null, status: "missing" };
   }
 
   if (invite.status !== "pending") {
-    return { email: invite.email ?? null, message: `Invitation is ${invite.status}.`, ok: false, role: null, status: invite.status ?? "closed" };
+    return {
+      authUserExists: Boolean(invite.email ? await findAuthUserByEmail(invite.email) : null),
+      email: invite.email ?? null,
+      message: `Invitation is ${invite.status}.`,
+      ok: false,
+      role: null,
+      status: invite.status ?? "closed"
+    };
   }
 
   if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-    return { email: invite.email ?? null, message: "Invitation has expired.", ok: false, role: null, status: "expired" };
+    return {
+      authUserExists: Boolean(invite.email ? await findAuthUserByEmail(invite.email) : null),
+      email: invite.email ?? null,
+      message: "Invitation has expired.",
+      ok: false,
+      role: null,
+      status: "expired"
+    };
   }
 
+  const authUserExists = Boolean(invite.email ? await findAuthUserByEmail(invite.email) : null);
+
   return {
+    authUserExists,
     email: invite.email ?? null,
     message: "Invitation is ready to accept.",
     ok: true,
     role: normalizeInternalTeamRole(invite.role),
     status: "pending"
   };
+}
+
+export async function signupInternalTeamInvitee(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const password = cleanPassword(formData.get("password"));
+  const confirmPassword = cleanPassword(formData.get("confirmPassword"));
+  const { admin, invite } = await getValidInternalTeamInvitation(token);
+
+  if (!admin || !invitationIsOpen(invite) || !invite?.email) {
+    teamInviteRedirect(token, "invalid");
+  }
+
+  if (password.length < 8 || password !== confirmPassword) {
+    teamInviteRedirect(token, "password");
+  }
+
+  const invitedEmail = invite.email.toLowerCase();
+  const existingUser = await findAuthUserByEmail(invitedEmail);
+
+  if (existingUser) {
+    teamInviteRedirect(token, "account-exists");
+  }
+
+  const { error } = await admin.auth.admin.createUser({
+    email: invitedEmail,
+    email_confirm: true,
+    password,
+    user_metadata: {
+      full_name: invite.display_name ?? undefined,
+      shastore_internal_invite: true,
+      shastore_internal_role: normalizeInternalTeamRole(invite.role)
+    }
+  });
+
+  if (error) {
+    console.warn("[internal-team] invite signup failed", {
+      email: invitedEmail,
+      message: error.message
+    });
+    teamInviteRedirect(token, error.message.toLowerCase().includes("already") ? "account-exists" : "signup-failed");
+  }
+
+  const supabase = await createClient({ role: "admin" });
+  const signIn = await supabase.auth.signInWithPassword({
+    email: invitedEmail,
+    password
+  });
+
+  if (signIn.error) {
+    console.warn("[internal-team] invite signup sign-in failed", {
+      email: invitedEmail,
+      message: signIn.error.message
+    });
+    teamInviteRedirect(token, "login-required");
+  }
+
+  redirect(internalTeamInviteAcceptPath(token));
+}
+
+export async function loginInternalTeamInvitee(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const password = cleanPassword(formData.get("password"));
+  const { invite } = await getValidInternalTeamInvitation(token);
+
+  if (!invitationIsOpen(invite) || !invite?.email) {
+    teamInviteRedirect(token, "invalid");
+  }
+
+  const supabase = await createClient({ role: "admin" });
+  const { error } = await supabase.auth.signInWithPassword({
+    email: invite.email.toLowerCase(),
+    password
+  });
+
+  if (error) {
+    teamInviteRedirect(token, "login-failed");
+  }
+
+  redirect(internalTeamInviteAcceptPath(token));
+}
+
+export async function logoutForInternalTeamInvitation(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const supabase = await createClient({ role: "admin" });
+
+  await supabase.auth.signOut();
+  redirect(internalTeamInviteAcceptPath(token));
 }
 
 export async function acceptInternalTeamInvitation(formData: FormData) {
@@ -592,6 +752,6 @@ export async function acceptInternalTeamInvitation(formData: FormData) {
 
   revalidatePath("/admin/team");
   revalidatePath("/admin/internal-team");
-  redirect("/admin/internal-team?team=accepted");
+  redirect(`${internalTeamDefaultPathForRole(role)}?team=accepted`);
 }
 

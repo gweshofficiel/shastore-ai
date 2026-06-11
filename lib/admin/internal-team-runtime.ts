@@ -172,7 +172,41 @@ export function canInternalTeamRoleAccessPath(role: InternalTeamRole, pathname: 
   const normalizedPath = pathname.split("?")[0] || "/admin";
   const prefixes = allowedPathPrefixes[role] ?? ["/admin"];
 
-  return prefixes.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`));
+  return prefixes.some((prefix) => {
+    if (prefix === "/admin") {
+      return normalizedPath === "/admin";
+    }
+
+    return normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`);
+  });
+}
+
+export function internalTeamDefaultPathForRole(role: InternalTeamRole) {
+  if (role === "finance_manager") {
+    return "/admin/subscriptions";
+  }
+
+  if (role === "moderator") {
+    return "/admin/moderation";
+  }
+
+  if (role === "security_analyst") {
+    return "/admin/security";
+  }
+
+  if (role === "support_agent") {
+    return "/admin/support";
+  }
+
+  if (role === "developer_operator") {
+    return "/admin/operations";
+  }
+
+  if (role === "read_only_auditor") {
+    return "/admin/reports";
+  }
+
+  return "/admin";
 }
 
 export function internalTeamRoleCanMutate(role: InternalTeamRole) {
