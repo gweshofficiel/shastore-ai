@@ -13,7 +13,7 @@ export default async function AdminLayout({
   const headerStore = await headers();
   const pathname = headerStore.get("x-shastore-path") ?? "/admin";
 
-  if (pathname === "/admin/login") {
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/internal-team/accept/")) {
     return children;
   }
 

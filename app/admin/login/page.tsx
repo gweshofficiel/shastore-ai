@@ -24,13 +24,24 @@ function errorMessage(error: string | string[] | undefined) {
   return null;
 }
 
+function safeAdminNext(value: string | string[] | undefined) {
+  const next = Array.isArray(value) ? value[0] : value;
+
+  if (!next || !next.startsWith("/admin") || next.startsWith("//")) {
+    return "/admin";
+  }
+
+  return next;
+}
+
 export default async function AdminLoginPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string | string[] }>;
+  searchParams?: Promise<{ error?: string | string[]; next?: string | string[] }>;
 }) {
   const query = await searchParams;
   const message = errorMessage(query?.error);
+  const nextPath = safeAdminNext(query?.next);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
@@ -47,7 +58,7 @@ export default async function AdminLoginPage({
           footerHref="/login"
           footerLabel="Use owner login"
           footerText="Not a Super Admin?"
-          nextPath="/admin"
+          nextPath={nextPath}
           subtitle="Super Admin access is limited to official configured admin emails."
           title="Super Admin Login"
         />

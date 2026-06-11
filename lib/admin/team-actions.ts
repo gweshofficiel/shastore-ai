@@ -1,26 +1,32 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { configuredSuperAdminEmails } from "@/lib/account-roles";
 import { getAdminAccess } from "@/lib/admin-access";
+import {
+  countActiveInternalSuperAdmins,
+  createInternalTeamInviteToken,
+  hashInternalTeamInviteToken,
+  internalTeamInviteAcceptPath,
+  internalTeamRoleMeta,
+  normalizeInternalTeamRole,
+  type InternalTeamRole
+} from "@/lib/admin/internal-team-runtime";
+import { getPublicUrl } from "@/lib/deployment/config";
+import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
+import { getRequestAuditFields, recordSecurityAuditLog } from "@/lib/security/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type InternalTeamAction =
-  | "admin_internal_team_activity_viewed"
-  | "admin_internal_team_change_role_placeholder"
-  | "admin_internal_team_invite_placeholder"
-  | "admin_internal_team_restore_placeholder"
-  | "admin_internal_team_suspend_placeholder";
-
-const allowedRoleKeys = new Set([
-  "admin",
-  "developer_operator",
-  "finance_manager",
-  "moderator",
-  "read_only_auditor",
-  "security_analyst",
-  "super_admin",
-  "support_agent"
-]);
+  | "admin_internal_team_invitation_accepted"
+  | "admin_internal_team_invitation_cancelled"
+  | "admin_internal_team_invitation_created"
+  | "admin_internal_team_invitation_resent"
+  | "admin_internal_team_member_restored"
+  | "admin_internal_team_member_suspended"
+  | "admin_internal_team_role_changed";
 
 function cleanText(value: FormDataEntryValue | null, maxLength = 160) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -30,30 +36,15 @@ function cleanEmail(value: FormDataEntryValue | null) {
   return cleanText(value, 254).toLowerCase();
 }
 
-function configuredSuperAdminEmails() {
-  return (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
+function teamRedirect(status: string): never {
+  redirect(`/admin/internal-team?team=${encodeURIComponent(status)}`);
 }
 
-async function recordInternalTeamAction(formData: FormData, action: InternalTeamAction) {
+async function requireSuperAdminTeamAccess() {
   const access = await getAdminAccess();
-  const staffEmail = cleanEmail(formData.get("staffEmail"));
-  const staffName = cleanText(formData.get("staffName"));
-  const currentRoleKey = cleanText(formData.get("currentRoleKey")) || "read_only_auditor";
-  const requestedRoleKey = cleanText(formData.get("roleKey")) || currentRoleKey;
-  const roleKey = allowedRoleKeys.has(requestedRoleKey) ? requestedRoleKey : "read_only_auditor";
 
-  if (!staffEmail) {
-    throw new Error("Missing internal staff email.");
-  }
-
-  const superAdminEmails = configuredSuperAdminEmails();
-  const isKnownSuperAdmin = currentRoleKey === "super_admin" || superAdminEmails.includes(staffEmail);
-
-  if (action === "admin_internal_team_suspend_placeholder" && isKnownSuperAdmin) {
-    throw new Error("Final Super Admin protection blocks Super Admin suspension placeholders.");
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admins can manage internal team membership.");
   }
 
   const admin = createAdminClient();
@@ -62,43 +53,545 @@ async function recordInternalTeamAction(formData: FormData, action: InternalTeam
     throw new Error("Service-role admin access is required for internal team controls.");
   }
 
+  return { access, admin };
+}
+
+async function recordInternalTeamAudit({
+  action,
+  actorUserId,
+  metadata,
+  reason,
+  targetUserId
+}: {
+  action: InternalTeamAction;
+  actorUserId: string;
+  metadata: Record<string, unknown>;
+  reason: string;
+  targetUserId?: string | null;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return;
+  }
+
+  const request = await getRequestAuditFields();
+
   await admin.from("monitoring_events" as never).insert({
-    entity_id: null,
+    entity_id: targetUserId ?? null,
     entity_type: "admin_internal_team_center",
     event_status: "info",
     event_type: action,
     metadata: {
-      current_role_key: currentRoleKey,
-      note: "Placeholder internal staff governance action only. No auth rewrite, user deletion, session revocation, permission mutation, or Store Owner workspace team change was performed.",
-      role_key: roleKey,
-      source: "super_admin_internal_team_center",
-      staff_email: staffEmail,
-      staff_name: staffName || null
+      ...metadata,
+      actor_user_id: actorUserId,
+      source: "super_admin_internal_team_runtime"
     },
     store_id: null,
-    user_id: access.user.id,
+    user_id: actorUserId,
     workspace_id: null
   } as never);
 
+  await recordSecurityAuditLog({
+    ...request,
+    action,
+    client: admin,
+    metadata: {
+      ...metadata,
+      actor_user_id: actorUserId,
+      source: "super_admin_internal_team_runtime"
+    },
+    reason,
+    route: "/admin/internal-team",
+    userId: targetUserId ?? actorUserId
+  });
+}
+
+async function requireMutableSuperAdminTarget({
+  memberId,
+  nextRole
+}: {
+  memberId: string;
+  nextRole?: InternalTeamRole;
+}) {
+  const { access, admin } = await requireSuperAdminTeamAccess();
+  const { data, error } = await admin
+    .from("internal_team_members" as never)
+    .select("id, user_id, email, display_name, role, status")
+    .eq("id" as never, memberId as never)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error("Internal team member was not found.");
+  }
+
+  const member = data as {
+    display_name?: string | null;
+    email?: string | null;
+    id: string;
+    role?: string | null;
+    status?: string | null;
+    user_id?: string | null;
+  };
+  const currentRole = normalizeInternalTeamRole(member.role);
+  const configuredAdmins = configuredSuperAdminEmails();
+  const activeSuperAdminCount = configuredAdmins.length + await countActiveInternalSuperAdmins(admin);
+  const removesSuperAdmin = currentRole === "super_admin" && nextRole !== "super_admin";
+
+  if (member.user_id === access.user.id && removesSuperAdmin) {
+    throw new Error("You cannot remove your own Super Admin access.");
+  }
+
+  if (removesSuperAdmin && activeSuperAdminCount <= 1) {
+    throw new Error("Final Super Admin protection blocks this action.");
+  }
+
+  return { access, admin, currentRole, member };
+}
+
+export async function inviteInternalStaff(formData: FormData) {
+  const { access, admin } = await requireSuperAdminTeamAccess();
+  const staffEmail = cleanEmail(formData.get("staffEmail"));
+  const staffName = cleanText(formData.get("staffName"));
+  const role = normalizeInternalTeamRole(cleanText(formData.get("roleKey")));
+
+  if (!staffEmail) {
+    throw new Error("Missing internal staff email.");
+  }
+
+  const { data: existingMember } = await admin
+    .from("internal_team_members" as never)
+    .select("id")
+    .ilike("email" as never, staffEmail as never)
+    .maybeSingle();
+
+  if (existingMember) {
+    throw new Error("This email is already an internal team member.");
+  }
+
+  const { token, tokenHash } = createInternalTeamInviteToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+  const { data: invitation, error } = await admin
+    .from("internal_team_invitations" as never)
+    .insert({
+      display_name: staffName || null,
+      email: staffEmail,
+      email_status: "attempted",
+      expires_at: expiresAt,
+      invited_by: access.user.id,
+      last_sent_at: now,
+      role,
+      status: "pending",
+      token_hash: tokenHash
+    } as never)
+    .select("id")
+    .single();
+
+  if (error || !invitation) {
+    throw new Error("Unable to create internal team invitation.");
+  }
+
+  const acceptUrl = getPublicUrl(internalTeamInviteAcceptPath(token));
+  await sendWorkspaceInviteEmailSafe({
+    acceptUrl,
+    email: staffEmail,
+    role: internalTeamRoleMeta(role).name
+  });
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_invitation_created",
+    actorUserId: access.user.id,
+    metadata: {
+      email_status: "attempted",
+      invitation_id: (invitation as { id: string }).id,
+      role,
+      staff_email: staffEmail,
+      staff_name: staffName || null
+    },
+    reason: "Super Admin created an internal team invitation.",
+    targetUserId: null
+  });
+
   revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
+  teamRedirect("invited");
 }
 
-export async function inviteInternalStaffPlaceholder(formData: FormData) {
-  await recordInternalTeamAction(formData, "admin_internal_team_invite_placeholder");
+export async function changeInternalStaffRole(formData: FormData) {
+  const memberId = cleanText(formData.get("memberId"), 80);
+  const role = normalizeInternalTeamRole(cleanText(formData.get("roleKey")));
+
+  if (!memberId) {
+    throw new Error("Missing internal team member ID.");
+  }
+
+  const { access, admin, currentRole, member } = await requireMutableSuperAdminTarget({
+    memberId,
+    nextRole: role
+  });
+
+  const { error } = await admin
+    .from("internal_team_members" as never)
+    .update({ role } as never)
+    .eq("id" as never, memberId as never);
+
+  if (error) {
+    throw new Error("Unable to change internal team role.");
+  }
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_role_changed",
+    actorUserId: access.user.id,
+    metadata: {
+      member_id: memberId,
+      new_role: role,
+      previous_role: currentRole,
+      staff_email: member.email ?? null
+    },
+    reason: "Super Admin changed an internal team member role.",
+    targetUserId: member.user_id ?? null
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
 }
 
-export async function changeInternalStaffRolePlaceholder(formData: FormData) {
-  await recordInternalTeamAction(formData, "admin_internal_team_change_role_placeholder");
+export async function suspendInternalStaff(formData: FormData) {
+  const memberId = cleanText(formData.get("memberId"), 80);
+
+  if (!memberId) {
+    throw new Error("Missing internal team member ID.");
+  }
+
+  const { access, admin, member } = await requireMutableSuperAdminTarget({
+    memberId,
+    nextRole: undefined
+  });
+  const role = normalizeInternalTeamRole(member.role);
+
+  if (role === "super_admin") {
+    const activeSuperAdminCount = configuredSuperAdminEmails().length + await countActiveInternalSuperAdmins(admin);
+
+    if (member.user_id === access.user.id || activeSuperAdminCount <= 1) {
+      throw new Error("Final Super Admin protection blocks this suspension.");
+    }
+  }
+
+  const { error } = await admin
+    .from("internal_team_members" as never)
+    .update({
+      status: "suspended",
+      suspended_at: new Date().toISOString()
+    } as never)
+    .eq("id" as never, memberId as never);
+
+  if (error) {
+    throw new Error("Unable to suspend internal team member.");
+  }
+
+  if (member.user_id) {
+    await admin.auth.admin.signOut(member.user_id, "global");
+  }
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_member_suspended",
+    actorUserId: access.user.id,
+    metadata: {
+      member_id: memberId,
+      role,
+      staff_email: member.email ?? null
+    },
+    reason: "Super Admin suspended an internal team member without deleting account history.",
+    targetUserId: member.user_id ?? null
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
 }
 
-export async function suspendInternalStaffPlaceholder(formData: FormData) {
-  await recordInternalTeamAction(formData, "admin_internal_team_suspend_placeholder");
+export async function restoreInternalStaff(formData: FormData) {
+  const memberId = cleanText(formData.get("memberId"), 80);
+
+  if (!memberId) {
+    throw new Error("Missing internal team member ID.");
+  }
+
+  const { access, admin, member } = await requireMutableSuperAdminTarget({
+    memberId,
+    nextRole: normalizeInternalTeamRole((formData.get("currentRoleKey") as string | null) ?? "read_only_auditor")
+  });
+  const { error } = await admin
+    .from("internal_team_members" as never)
+    .update({
+      restored_at: new Date().toISOString(),
+      status: "active"
+    } as never)
+    .eq("id" as never, memberId as never);
+
+  if (error) {
+    throw new Error("Unable to restore internal team member.");
+  }
+
+  if (member.user_id) {
+    await admin.auth.admin.updateUserById(member.user_id, {
+      ban_duration: "none"
+    });
+  }
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_member_restored",
+    actorUserId: access.user.id,
+    metadata: {
+      member_id: memberId,
+      role: normalizeInternalTeamRole(member.role),
+      staff_email: member.email ?? null
+    },
+    reason: "Super Admin restored an internal team member.",
+    targetUserId: member.user_id ?? null
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
 }
 
-export async function restoreInternalStaffPlaceholder(formData: FormData) {
-  await recordInternalTeamAction(formData, "admin_internal_team_restore_placeholder");
+export async function resendInternalStaffInvitation(formData: FormData) {
+  const { access, admin } = await requireSuperAdminTeamAccess();
+  const invitationId = cleanText(formData.get("invitationId"), 80);
+
+  if (!invitationId) {
+    throw new Error("Missing invitation ID.");
+  }
+
+  const { data, error } = await admin
+    .from("internal_team_invitations" as never)
+    .select("id, email, display_name, role, status")
+    .eq("id" as never, invitationId as never)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error("Internal team invitation was not found.");
+  }
+
+  const invite = data as { display_name?: string | null; email: string; id: string; role: InternalTeamRole; status: string };
+
+  if (invite.status !== "pending") {
+    throw new Error("Only pending invitations can be resent.");
+  }
+
+  const { token, tokenHash } = createInternalTeamInviteToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await admin
+    .from("internal_team_invitations" as never)
+    .update({
+      email_status: "attempted",
+      expires_at: expiresAt,
+      last_sent_at: now,
+      token_hash: tokenHash
+    } as never)
+    .eq("id" as never, invitationId as never);
+
+  if (updateError) {
+    throw new Error("Unable to resend invitation.");
+  }
+
+  await sendWorkspaceInviteEmailSafe({
+    acceptUrl: getPublicUrl(internalTeamInviteAcceptPath(token)),
+    email: invite.email,
+    role: internalTeamRoleMeta(normalizeInternalTeamRole(invite.role)).name
+  });
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_invitation_resent",
+    actorUserId: access.user.id,
+    metadata: {
+      invitation_id: invitationId,
+      role: invite.role,
+      staff_email: invite.email
+    },
+    reason: "Super Admin resent an internal team invitation.",
+    targetUserId: null
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
 }
 
-export async function viewInternalStaffActivity(formData: FormData) {
-  await recordInternalTeamAction(formData, "admin_internal_team_activity_viewed");
+export async function cancelInternalStaffInvitation(formData: FormData) {
+  const { access, admin } = await requireSuperAdminTeamAccess();
+  const invitationId = cleanText(formData.get("invitationId"), 80);
+
+  if (!invitationId) {
+    throw new Error("Missing invitation ID.");
+  }
+
+  const { data, error } = await admin
+    .from("internal_team_invitations" as never)
+    .update({
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: access.user.id,
+      status: "cancelled"
+    } as never)
+    .eq("id" as never, invitationId as never)
+    .eq("status" as never, "pending" as never)
+    .select("email, role")
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error("Unable to cancel pending invitation.");
+  }
+
+  const invite = data as { email?: string | null; role?: string | null };
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_invitation_cancelled",
+    actorUserId: access.user.id,
+    metadata: {
+      invitation_id: invitationId,
+      role: normalizeInternalTeamRole(invite.role),
+      staff_email: invite.email ?? null
+    },
+    reason: "Super Admin cancelled an internal team invitation.",
+    targetUserId: null
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
 }
+
+export async function getInternalTeamInviteTokenPreview(token: string) {
+  const admin = createAdminClient();
+
+  if (!admin || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
+    return { email: null, message: "Invitation is invalid.", ok: false, role: null, status: "invalid" };
+  }
+
+  const { data } = await admin
+    .from("internal_team_invitations" as never)
+    .select("email, role, status, expires_at")
+    .eq("token_hash" as never, hashInternalTeamInviteToken(token) as never)
+    .maybeSingle();
+  const invite = data as { email?: string | null; expires_at?: string | null; role?: string | null; status?: string | null } | null;
+
+  if (!invite) {
+    return { email: null, message: "Invitation was not found.", ok: false, role: null, status: "missing" };
+  }
+
+  if (invite.status !== "pending") {
+    return { email: invite.email ?? null, message: `Invitation is ${invite.status}.`, ok: false, role: null, status: invite.status ?? "closed" };
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    return { email: invite.email ?? null, message: "Invitation has expired.", ok: false, role: null, status: "expired" };
+  }
+
+  return {
+    email: invite.email ?? null,
+    message: "Invitation is ready to accept.",
+    ok: true,
+    role: normalizeInternalTeamRole(invite.role),
+    status: "pending"
+  };
+}
+
+export async function acceptInternalTeamInvitation(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const supabase = await createClient({ role: "admin" });
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect(`/admin/login?next=${encodeURIComponent(internalTeamInviteAcceptPath(token))}`);
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required to accept internal invitations.");
+  }
+
+  const { data } = await admin
+    .from("internal_team_invitations" as never)
+    .select("id, email, display_name, role, status, expires_at")
+    .eq("token_hash" as never, hashInternalTeamInviteToken(token) as never)
+    .maybeSingle();
+  const invite = data as { display_name?: string | null; email?: string | null; expires_at?: string | null; id: string; role?: string | null; status?: string | null } | null;
+
+  if (!invite || invite.status !== "pending") {
+    teamRedirect("invalid-invite");
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    await admin
+      .from("internal_team_invitations" as never)
+      .update({ status: "expired" } as never)
+      .eq("id" as never, invite.id as never);
+    teamRedirect("expired");
+  }
+
+  const userEmail = user.email?.toLowerCase();
+
+  if (!userEmail || userEmail !== invite.email?.toLowerCase()) {
+    throw new Error("You must accept this invitation with the invited email address.");
+  }
+
+  const role = normalizeInternalTeamRole(invite.role);
+  const now = new Date().toISOString();
+  const { data: existingMember } = await admin
+    .from("internal_team_members" as never)
+    .select("id")
+    .ilike("email" as never, userEmail as never)
+    .maybeSingle();
+
+  if (existingMember) {
+    await admin
+      .from("internal_team_members" as never)
+      .update({
+        accepted_at: now,
+        display_name: invite.display_name ?? user.user_metadata?.full_name ?? null,
+        role,
+        status: "active",
+        user_id: user.id
+      } as never)
+      .eq("id" as never, (existingMember as { id: string }).id as never);
+  } else {
+    await admin.from("internal_team_members" as never).insert({
+      accepted_at: now,
+      display_name: invite.display_name ?? user.user_metadata?.full_name ?? null,
+      email: userEmail,
+      invited_at: now,
+      role,
+      status: "active",
+      user_id: user.id
+    } as never);
+  }
+
+  await admin
+    .from("internal_team_invitations" as never)
+    .update({
+      accepted_at: now,
+      accepted_user_id: user.id,
+      status: "accepted"
+    } as never)
+    .eq("id" as never, invite.id as never);
+
+  await recordInternalTeamAudit({
+    action: "admin_internal_team_invitation_accepted",
+    actorUserId: user.id,
+    metadata: {
+      invitation_id: invite.id,
+      role,
+      staff_email: userEmail
+    },
+    reason: "Internal team invitation was accepted by the invited user.",
+    targetUserId: user.id
+  });
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
+  redirect("/admin/internal-team?team=accepted");
+}
+

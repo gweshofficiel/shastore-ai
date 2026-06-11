@@ -13,6 +13,7 @@ import {
   recordTestEnvironmentLogin,
   recordTestEnvironmentLogout
 } from "@/lib/admin/test-environment-actions";
+import { canUseAdminLoginForInternalTeam } from "@/lib/admin/internal-team-runtime";
 import {
   customerNameFromUser,
   ensureCustomerProfileForUser,
@@ -305,7 +306,12 @@ async function loginForRole({
     redirect(roleErrorPath(loginRoute, "rate-limit", next));
   }
 
-  if (role === "super_admin" && !isConfiguredSuperAdminEmail(email)) {
+  const internalTeamAdminLoginAllowed =
+    role === "super_admin" && !isConfiguredSuperAdminEmail(email)
+      ? await canUseAdminLoginForInternalTeam(email)
+      : false;
+
+  if (role === "super_admin" && !isConfiguredSuperAdminEmail(email) && !internalTeamAdminLoginAllowed) {
     redirect(roleErrorPath(loginRoute, "restricted", next));
   }
 
@@ -329,6 +335,7 @@ async function loginForRole({
       redirect(roleErrorPath(loginRoute, "role", next));
     }
   } else if (
+    !internalTeamAdminLoginAllowed &&
     !recoveredRole &&
     (!accountRole || accountRole.role !== role || accountRole.status === "suspended" || accountRole.status === "disabled")
   ) {
