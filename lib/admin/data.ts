@@ -103,18 +103,36 @@ export type AdminStore = {
   workspaceId: string | null;
   ownerId: string | null;
   ownerEmail: string;
+  ownerType: "owner" | "unknown";
   name: string;
   status: string;
   storeStatus: string;
   plan: string;
+  planId: string;
+  subscriptionStatus: string;
   publicationStatus: string;
   template: string;
   publishedUrl: string | null;
   createdAt: string;
+  updatedAt: string | null;
+  hasDomain: boolean;
+  domainStatus: string;
+  domains: Array<{
+    hostname: string;
+    status: string;
+    verificationStatus: string;
+  }>;
   productsCount: number;
   ordersCount: number;
   revenue: number;
   viewsCount: number;
+  riskStatus: "clear" | "high_risk" | "reviewed";
+  reviewedAt: string | null;
+  riskSignals: Array<{
+    createdAt: string | null;
+    label: string;
+    severity: "high" | "low" | "medium";
+  }>;
   health: Array<{
     key: AdminStoreHealthKey;
     label: string;
@@ -1168,6 +1186,33 @@ function governanceStatus(storeData: unknown, fallback: string) {
   return status === "suspended" || status === "under_review" ? status : fallback;
 }
 
+function storeGovernanceRisk(storeData: unknown): {
+  reviewedAt: string | null;
+  riskStatus: AdminStore["riskStatus"];
+} {
+  if (!isRecord(storeData) || !isRecord(storeData.adminGovernance)) {
+    return {
+      reviewedAt: null,
+      riskStatus: "clear"
+    };
+  }
+
+  const governance = storeData.adminGovernance;
+  const riskStatus = text(governance.riskStatus);
+  const status = text(governance.status);
+  const reviewedAt = text(governance.reviewedAt) || null;
+
+  if (riskStatus === "high_risk") {
+    return { reviewedAt, riskStatus: "high_risk" };
+  }
+
+  if (riskStatus === "reviewed" || reviewedAt || status === "reviewed") {
+    return { reviewedAt, riskStatus: "reviewed" };
+  }
+
+  return { reviewedAt, riskStatus: "clear" };
+}
+
 function countStoresByOwner(records: AnyRecord[]) {
   const counts = new Map<string, number>();
 
@@ -1615,12 +1660,14 @@ export async function getAdminStores(): Promise<AdminStore[]> {
     legalPages,
     storeDomains,
     subscriptions,
-    workspaceMembers
+    workspaceMembers,
+    monitoringEvents,
+    securityAuditLogs
   ] = await Promise.all([
     safeSelect(
       supabase,
       "stores",
-      "id, user_id, owner_user_id, workspace_id, name, store_name, slug, status, store_data, template_id, created_at, delivery_enabled, pickup_enabled, delivery_notes"
+      "id, user_id, owner_user_id, workspace_id, name, store_name, slug, status, store_data, template_id, created_at, updated_at, delivery_enabled, pickup_enabled, delivery_notes"
     ),
     safeSelect(supabase, "published_stores", "store_id, slug, url, status, custom_domain"),
     safeSelect(supabase, "commerce_orders", "source_id, source_type, total_amount, total"),
@@ -1635,7 +1682,9 @@ export async function getAdminStores(): Promise<AdminStore[]> {
     safeSelect(supabase, "store_pages", "store_id, page_type, status"),
     safeSelect(supabase, "store_domains", "store_id, hostname, status, verification_status"),
     safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status"),
-    safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status")
+    safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status"),
+    safeSelect(supabase, "monitoring_events", "entity_id, entity_type, event_type, event_status, metadata, created_at", 1000),
+    safeSelect(supabase, "security_audit_logs", "user_id, action, reason, metadata, created_at", 1000)
   ]);
   const publicationByStore = new Map(publications.map((row) => [text(row.store_id), row]));
   const commerceStoreOrders = commerceOrders.filter((order) => order.source_type === "store");
@@ -1687,11 +1736,11 @@ export async function getAdminStores(): Promise<AdminStore[]> {
         requiredLegalPages.delete(text(page.page_type));
       }
     }
+    const storeDomainRows = storeDomains.filter((domain) => text(domain.store_id) === storeId);
     const hasCustomDomain =
       text(publication?.custom_domain).length > 0 ||
-      storeDomains.some(
+      storeDomainRows.some(
         (domain) =>
-          text(domain.store_id) === storeId &&
           (text(domain.status) === "verified" || text(domain.verification_status) === "verified")
       );
     const orderCount = (commerceOrderCounts.get(storeId) ?? 0) + (directOrderCounts.get(storeId) ?? 0);
@@ -1740,28 +1789,78 @@ export async function getAdminStores(): Promise<AdminStore[]> {
       }
     ];
     const subscription = subscriptionByUser.get(ownerId);
-    const plan = getBillingPlan(text(subscription?.plan_id, "free"));
+    const planId = text(subscription?.plan_id, "free");
+    const subscriptionStatus = text(subscription?.status, "none");
+    const plan = getBillingPlan(planId);
     const workspaceMemberRows = workspaceId ? membersByWorkspace.get(workspaceId) ?? [] : [];
     const storeStatus = text(store.status, "draft");
     const adminStatus = governanceStatus(store.store_data, storeStatus);
+    const risk = storeGovernanceRisk(store.store_data);
+    const monitoringSignals = monitoringEvents
+      .filter((event) => {
+        const metadata = isRecord(event.metadata) ? event.metadata : {};
+        return text(event.entity_id) === storeId || text(metadata.store_id) === storeId;
+      })
+      .slice(0, 3)
+      .map((event) => ({
+        createdAt: text(event.created_at) || null,
+        label: text(event.event_type, "Monitoring event"),
+        severity: text(event.event_status) === "warning" || text(event.event_type).includes("risk") ? "high" as const : "medium" as const
+      }));
+    const securitySignals = securityAuditLogs
+      .filter((event) => {
+        const metadata = isRecord(event.metadata) ? event.metadata : {};
+        return text(metadata.store_id) === storeId || text(event.reason).includes(storeId);
+      })
+      .slice(0, 2)
+      .map((event) => ({
+        createdAt: text(event.created_at) || null,
+        label: text(event.action, "Security audit"),
+        severity: securitySignalSeverity(text(event.action))
+      }));
+    const riskSignals = [
+      ...(risk.riskStatus === "high_risk"
+        ? [{
+            createdAt: risk.reviewedAt,
+            label: "Marked high risk by Super Admin",
+            severity: "high" as const
+          }]
+        : []),
+      ...monitoringSignals,
+      ...securitySignals
+    ];
 
     return {
       createdAt: text(store.created_at),
+      domainStatus: hasCustomDomain ? "connected" : storeDomainRows.length ? "pending" : "not_connected",
+      domains: storeDomainRows.map((domain) => ({
+        hostname: text(domain.hostname, "Unknown domain"),
+        status: text(domain.status, "pending"),
+        verificationStatus: text(domain.verification_status, "pending")
+      })),
       health,
+      hasDomain: hasCustomDomain,
       id: storeId,
       name: text(store.store_name, text(store.name, "Untitled store")),
       ordersCount: orderCount,
       ownerEmail: owners.get(ownerId) ?? text(ownerId, "Unknown owner"),
       ownerId: ownerId || null,
+      ownerType: ownerId ? "owner" : "unknown",
       plan: plan.name,
+      planId,
       productsCount: productCounts.get(storeId) ?? 0,
       publicationStatus: text(publication?.status, "not_published"),
       publishedUrl: url,
       revenue: storeRevenue + directRevenue,
+      reviewedAt: risk.reviewedAt,
+      riskSignals,
+      riskStatus: risk.riskStatus,
       slug: text(store.slug) || text(publication?.slug) || null,
       status: adminStatus,
       storeStatus,
+      subscriptionStatus,
       template: text(store.template_id, "default"),
+      updatedAt: text(store.updated_at) || null,
       viewsCount: viewCounts.get(storeId) ?? 0,
       workspaceId,
       workspaceMembers: workspaceMemberRows.map((member) => ({

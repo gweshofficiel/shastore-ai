@@ -9,15 +9,19 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminStores } from "@/lib/admin/data";
 import {
+  clearAdminStoreRisk,
+  markAdminStoreHighRisk,
+  markAdminStoreReviewed,
   markAdminStoreUnderReview,
-  restoreAdminStore,
-  suspendAdminStore
 } from "@/lib/admin/store-governance-actions";
 
 type AdminStoresPageProps = {
   searchParams: Promise<{
-    owner?: string;
+    domain?: string;
     plan?: string;
+    ownerType?: string;
+    q?: string;
+    risk?: string;
     status?: string;
   }>;
 };
@@ -50,6 +54,30 @@ function healthTone(status: "blocked" | "ready" | "warning") {
   return "amber" as const;
 }
 
+function riskTone(status: string) {
+  if (status === "high_risk") {
+    return "red" as const;
+  }
+
+  if (status === "reviewed") {
+    return "green" as const;
+  }
+
+  return "slate" as const;
+}
+
+function domainTone(status: string) {
+  if (status === "connected") {
+    return "green" as const;
+  }
+
+  if (status === "pending") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
 function cleanFilter(value: string | undefined, allowed: string[]) {
   return allowed.includes(value ?? "") ? value ?? "" : "";
 }
@@ -73,22 +101,37 @@ function matchesStatus(store: Awaited<ReturnType<typeof getAdminStores>>[number]
 export default async function AdminStoresPage({ searchParams }: AdminStoresPageProps) {
   const query = await searchParams;
   const stores = await getAdminStores();
-  const statusFilter = cleanFilter(query.status, ["", "all", "published", "draft", "suspended", "inactive"]);
+  const statusFilter = cleanFilter(query.status, ["", "all", "published", "draft", "suspended", "under_review", "inactive"]);
   const planFilter = String(query.plan ?? "").trim().toLowerCase();
-  const ownerFilter = String(query.owner ?? "").trim().toLowerCase();
+  const search = String(query.q ?? "").trim().toLowerCase();
+  const ownerTypeFilter = cleanFilter(query.ownerType, ["", "all", "owner", "unknown"]);
+  const domainFilter = cleanFilter(query.domain, ["", "all", "connected", "not_connected"]);
+  const riskFilter = cleanFilter(query.risk, ["", "all", "clear", "reviewed", "high_risk"]);
   const filteredStores = stores.filter((store) => {
-    const planMatches = !planFilter || store.plan.toLowerCase() === planFilter;
-    const ownerMatches =
-      !ownerFilter ||
-      store.ownerEmail.toLowerCase().includes(ownerFilter) ||
-      (store.ownerId ?? "").toLowerCase().includes(ownerFilter);
+    const planMatches = !planFilter || store.plan.toLowerCase() === planFilter || store.planId.toLowerCase() === planFilter;
+    const ownerTypeMatches = !ownerTypeFilter || ownerTypeFilter === "all" || store.ownerType === ownerTypeFilter;
+    const domainMatches =
+      !domainFilter ||
+      domainFilter === "all" ||
+      (domainFilter === "connected" ? store.hasDomain : !store.hasDomain);
+    const riskMatches = !riskFilter || riskFilter === "all" || store.riskStatus === riskFilter;
+    const searchMatches =
+      !search ||
+      store.name.toLowerCase().includes(search) ||
+      store.id.toLowerCase().includes(search) ||
+      store.ownerEmail.toLowerCase().includes(search) ||
+      (store.ownerId ?? "").toLowerCase().includes(search) ||
+      (store.slug ?? "").toLowerCase().includes(search) ||
+      store.domains.some((domain) => domain.hostname.toLowerCase().includes(search));
 
-    return matchesStatus(store, statusFilter || "all") && planMatches && ownerMatches;
+    return matchesStatus(store, statusFilter || "all") && planMatches && ownerTypeMatches && domainMatches && riskMatches && searchMatches;
   });
-  const publishedCount = stores.filter((store) => store.status === "published" || store.publicationStatus === "published").length;
+  const activeCount = stores.filter((store) => store.status === "published" || store.status === "active" || store.publicationStatus === "published").length;
   const suspendedCount = stores.filter((store) => store.status === "suspended").length;
-  const underReviewCount = stores.filter((store) => store.status === "under_review").length;
-  const totalRevenue = stores.reduce((total, store) => total + store.revenue, 0);
+  const disabledCount = stores.filter((store) => store.status === "disabled").length;
+  const domainCount = stores.filter((store) => store.hasDomain).length;
+  const activeSubscriptionCount = stores.filter((store) => store.subscriptionStatus === "active" || store.subscriptionStatus === "trialing").length;
+  const highRiskCount = stores.filter((store) => store.riskStatus === "high_risk").length;
   const planOptions = [...new Set(stores.map((store) => store.plan))].sort();
 
   return (
@@ -100,19 +143,27 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
 
       <AdminStatGrid
         stats={[
-          { label: "Stores", value: stores.length },
-          { label: "Published", value: publishedCount },
-          { label: "Suspended", value: suspendedCount },
-          { label: "Under review", value: underReviewCount },
-          { label: "Orders", value: stores.reduce((total, store) => total + store.ordersCount, 0) },
-          { label: "Revenue", value: formatAdminMoney(totalRevenue) },
-          { label: "Products", value: stores.reduce((total, store) => total + store.productsCount, 0) },
+          { label: "Total stores", value: stores.length },
+          { label: "Active stores", value: activeCount },
+          { label: "Suspended/disabled", value: suspendedCount + disabledCount },
+          { label: "With domains", value: domainCount },
+          { label: "Active subscriptions", value: activeSubscriptionCount },
+          { label: "High risk", value: highRiskCount },
           { label: "Filtered", value: filteredStores.length }
         ]}
       />
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5">
-        <form className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+        <form className="grid gap-4 lg:grid-cols-4 xl:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr_auto] lg:items-end">
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            <span>Search</span>
+            <input
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none"
+              defaultValue={query.q ?? ""}
+              name="q"
+              placeholder="store, id, owner, domain"
+            />
+          </label>
           <label className="grid gap-2 text-sm font-semibold text-slate-700">
             <span>Status</span>
             <select
@@ -123,6 +174,7 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
               <option value="all">All</option>
               <option value="published">Published</option>
               <option value="draft">Draft</option>
+              <option value="under_review">Under review</option>
               <option value="suspended">Suspended</option>
               <option value="inactive">Inactive</option>
             </select>
@@ -143,13 +195,41 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
             </select>
           </label>
           <label className="grid gap-2 text-sm font-semibold text-slate-700">
-            <span>Owner</span>
-            <input
+            <span>Owner type</span>
+            <select
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none"
-              defaultValue={query.owner ?? ""}
-              name="owner"
-              placeholder="email or user id"
-            />
+              defaultValue={ownerTypeFilter || "all"}
+              name="ownerType"
+            >
+              <option value="all">All owners</option>
+              <option value="owner">Known owner</option>
+              <option value="unknown">Unknown owner</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            <span>Domain</span>
+            <select
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none"
+              defaultValue={domainFilter || "all"}
+              name="domain"
+            >
+              <option value="all">All domains</option>
+              <option value="connected">Connected</option>
+              <option value="not_connected">Not connected</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            <span>Risk</span>
+            <select
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none"
+              defaultValue={riskFilter || "all"}
+              name="risk"
+            >
+              <option value="all">All risk</option>
+              <option value="clear">Clear</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="high_risk">High risk</option>
+            </select>
           </label>
           <button className="h-11 rounded-full bg-slate-950 px-5 text-sm font-black text-white" type="submit">
             Filter stores
@@ -164,12 +244,11 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
           "Owner",
           "Workspace",
           "Status",
-          "Plan",
-          "Products",
-          "Orders",
-          "Revenue",
-          "Health",
-          "Ownership",
+          "Subscription",
+          "Domain",
+          "Activity",
+          "Snapshot",
+          "Risk",
           "Actions"
         ]}
       >
@@ -178,9 +257,11 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
             <td className="px-5 py-4">
               <div className="grid gap-1">
                 <span className="font-bold text-slate-950">{store.name}</span>
+                <span className="break-all text-slate-500">ID: {store.id}</span>
                 <span className="text-slate-500">Slug: {store.slug ?? "Not set"}</span>
                 <span className="text-slate-500">Template: {store.template}</span>
                 <span className="text-slate-500">Created: {formatAdminDate(store.createdAt)}</span>
+                <span className="text-slate-500">Updated: {formatAdminDate(store.updatedAt)}</span>
               </div>
             </td>
             <td className="px-5 py-4 text-slate-600">
@@ -189,7 +270,12 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
                 <span className="break-all text-slate-400">{store.ownerId ?? "Unknown owner"}</span>
               </div>
             </td>
-            <td className="px-5 py-4 break-all text-slate-600">{store.workspaceId ?? "No workspace"}</td>
+            <td className="px-5 py-4">
+              <div className="grid gap-1 break-all text-slate-600">
+                <span>{store.workspaceId ?? "No workspace"}</span>
+                <span className="text-slate-400">{store.workspaceMembers.length} linked users</span>
+              </div>
+            </td>
             <td className="px-5 py-4">
               <div className="grid gap-2">
                 <AdminBadge tone={statusTone(store.status)}>{store.status}</AdminBadge>
@@ -198,27 +284,47 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
                 </AdminBadge>
               </div>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{store.plan}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{store.productsCount}</td>
-            <td className="px-5 py-4 text-slate-600">{store.ordersCount}</td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminMoney(store.revenue)}</td>
             <td className="px-5 py-4">
-              <div className="flex max-w-sm flex-wrap gap-2">
-                {store.health.map((item) => (
-                  <AdminBadge key={item.key} tone={healthTone(item.status)}>
-                    {item.label}
-                  </AdminBadge>
-                ))}
+              <div className="grid gap-2">
+                <AdminBadge tone="blue">{store.plan}</AdminBadge>
+                <AdminBadge tone={store.subscriptionStatus === "active" || store.subscriptionStatus === "trialing" ? "green" : "slate"}>
+                  {store.subscriptionStatus}
+                </AdminBadge>
+                <span className="text-xs font-semibold text-slate-500">{store.planId}</span>
               </div>
             </td>
             <td className="px-5 py-4">
-              <details className="min-w-64 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid gap-2">
+                <AdminBadge tone={domainTone(store.domainStatus)}>{store.domainStatus}</AdminBadge>
+                {store.domains.length ? (
+                  <div className="grid gap-1 text-xs text-slate-500">
+                    {store.domains.slice(0, 2).map((domain) => (
+                      <span className="break-all" key={`${store.id}-${domain.hostname}`}>
+                        {domain.hostname} · {domain.status}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-500">No domain records</span>
+                )}
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              <div className="grid gap-1">
+                <span>Products: {store.productsCount}</span>
+                <span>Orders: {store.ordersCount}</span>
+                <span>Revenue: {formatAdminMoney(store.revenue)}</span>
+                <span>Views: {store.viewsCount}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <details className="min-w-72 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
-                  Ownership
+                  Store snapshot
                 </summary>
                 <div className="mt-3 grid gap-3 text-sm text-slate-600">
                   <p>
-                    Current owner <span className="block break-all font-bold text-slate-950">{store.ownerEmail}</span>
+                    Owner <span className="block break-all font-bold text-slate-950">{store.ownerEmail}</span>
                   </p>
                   <div>
                     <p className="font-bold text-slate-950">Workspace members</p>
@@ -235,25 +341,62 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
                       )}
                     </div>
                   </div>
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 font-bold text-amber-800">
-                    Ownership transfer tools are reserved for a future phase.
+                  <div>
+                    <p className="font-bold text-slate-950">Runtime health</p>
+                    <div className="mt-2 flex max-w-sm flex-wrap gap-2">
+                      {store.health.map((item) => (
+                        <AdminBadge key={item.key} tone={healthTone(item.status)}>
+                          {item.label}
+                        </AdminBadge>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="rounded-xl border border-blue-200 bg-blue-50 p-2 font-bold text-blue-800">
+                    Subscription: {store.plan} · {store.subscriptionStatus}
                   </p>
                 </div>
               </details>
             </td>
             <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <AdminBadge tone={riskTone(store.riskStatus)}>{store.riskStatus}</AdminBadge>
+                {store.reviewedAt ? <span className="text-xs text-slate-500">Reviewed: {formatAdminDate(store.reviewedAt)}</span> : null}
+                {store.riskSignals.length ? (
+                  <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                      Signals
+                    </summary>
+                    <div className="mt-2 grid gap-2">
+                      {store.riskSignals.map((signal, index) => (
+                        <p className="text-xs text-slate-600" key={`${store.id}-risk-${index}`}>
+                          <AdminBadge tone={signal.severity === "high" ? "red" : signal.severity === "medium" ? "amber" : "slate"}>
+                            {signal.severity}
+                          </AdminBadge>{" "}
+                          {signal.label}
+                        </p>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <span className="text-xs text-slate-500">No risk signals</span>
+                )}
+              </div>
+            </td>
+            <td className="px-5 py-4">
               <div className="grid min-w-52 gap-2">
-                <Link
-                  className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
-                  href={`/admin/stores?owner=${encodeURIComponent(store.ownerId ?? store.ownerEmail)}`}
-                >
-                  View store
-                </Link>
+                {store.ownerId ? (
+                  <Link
+                    className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                    href={`/admin/users/${encodeURIComponent(store.ownerId)}`}
+                  >
+                    Open owner profile
+                  </Link>
+                ) : null}
                 <Link
                   className="inline-flex h-9 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
                   href={`/dashboard/stores/${encodeURIComponent(store.id)}`}
                 >
-                  Owner dashboard
+                  Store dashboard
                 </Link>
                 {store.publishedUrl ? (
                   <Link
@@ -277,24 +420,34 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
                     Mark under review
                   </button>
                 </form>
-                <form action={suspendAdminStore}>
-                  <input name="storeId" type="hidden" value={store.id} />
-                  <button
-                    className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700 disabled:opacity-50"
-                    disabled={store.status === "suspended"}
-                    type="submit"
-                  >
-                    Suspend store
-                  </button>
-                </form>
-                <form action={restoreAdminStore}>
+                <form action={markAdminStoreReviewed}>
                   <input name="storeId" type="hidden" value={store.id} />
                   <button
                     className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700 disabled:opacity-50"
-                    disabled={store.status !== "suspended" && store.status !== "under_review"}
+                    disabled={store.riskStatus === "reviewed"}
                     type="submit"
                   >
-                    Restore store
+                    Mark reviewed
+                  </button>
+                </form>
+                <form action={markAdminStoreHighRisk}>
+                  <input name="storeId" type="hidden" value={store.id} />
+                  <button
+                    className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700 disabled:opacity-50"
+                    disabled={store.riskStatus === "high_risk"}
+                    type="submit"
+                  >
+                    Mark high risk
+                  </button>
+                </form>
+                <form action={clearAdminStoreRisk}>
+                  <input name="storeId" type="hidden" value={store.id} />
+                  <button
+                    className="h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700 disabled:opacity-50"
+                    disabled={store.riskStatus === "clear"}
+                    type="submit"
+                  >
+                    Clear risk
                   </button>
                 </form>
                 <button
@@ -302,7 +455,7 @@ export default async function AdminStoresPage({ searchParams }: AdminStoresPageP
                   disabled
                   type="button"
                 >
-                  Delete coming later
+                  Suspend placeholder
                 </button>
               </div>
             </td>
