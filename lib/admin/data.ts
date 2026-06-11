@@ -1094,26 +1094,55 @@ type AdminCustomer = {
 };
 
 type AdminSubscription = {
+  subscriptionId: string;
   userId: string;
   email: string;
   plan: string;
   planId: string;
   status: string;
   billingProvider: string;
+  billingCycle: string;
   billingReview: boolean;
+  amount: number;
+  currency: string;
   createdAt: string | null;
+  currentPeriodEnd: string | null;
+  currentPeriodStart: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancellationDate: string | null;
   failedPayments: number;
   landingsUsed: number;
   landingLimit: string;
   manualOverrideActive: boolean;
   nextBillingDate: string | null;
   previousPlanId: string | null;
+  providerSubscriptionId: string | null;
+  providerUrl: string | null;
+  renewalStatus: string;
+  stores: Array<{
+    id: string;
+    name: string;
+    slug: string | null;
+    status: string;
+    workspaceId: string | null;
+  }>;
+  workspaceIds: string[];
   storesUsed: number;
   storeLimit: string;
   domainsUsed: number;
   domainLimit: string;
   publishedStoresUsed: number;
   ordersUsed: number;
+  invoices: Array<{
+    createdAt: string | null;
+    provider: string;
+    status: string;
+  }>;
+  lastBillingEvent: {
+    createdAt: string | null;
+    eventType: string;
+    provider: string;
+  } | null;
   warningBadges: Array<"limit_exceeded" | "manual_override_active" | "payment_failed" | "subscription_cancelled">;
 };
 
@@ -2486,9 +2515,9 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
     safeSelect(
       supabase,
       "user_subscriptions",
-      "user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, current_period_end, cancel_at_period_end, created_at, limits_snapshot"
+      "id, user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, cancel_at_period_end, created_at, limits_snapshot"
     ),
-    safeSelect(supabase, "stores", "user_id, owner_user_id"),
+    safeSelect(supabase, "stores", "id, user_id, owner_user_id, workspace_id, name, store_name, slug, status, store_data"),
     safeSelect(supabase, "published_stores", "user_id, status"),
     safeSelect(supabase, "landing_pages", "user_id"),
     safeSelect(supabase, "commerce_domain_publications", "user_id"),
@@ -2496,8 +2525,18 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
     safeSelect(supabase, "invoices", "user_id, provider, status, created_at"),
     safeSelect(supabase, "billing_events", "user_id, provider, event_type, created_at, processed_at")
   ]);
-  const subscriptionsByUser = new Map(subscriptions.map((row) => [text(row.user_id), row]));
+  const usersById = new Map(users.map((user) => [user.id, user]));
   const storeCounts = countStoresByOwner(stores);
+  const storesByOwner = new Map<string, AnyRecord[]>();
+  for (const store of stores) {
+    const ownerId = ownerUserId(store);
+
+    if (!ownerId) {
+      continue;
+    }
+
+    storesByOwner.set(ownerId, [...(storesByOwner.get(ownerId) ?? []), store]);
+  }
   const landingCounts = countBy(landings, "user_id");
   const domainCounts = countBy(domains, "user_id");
   const orderCounts = countBy(orders, "user_id");
@@ -2526,13 +2565,16 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
     billingEventsByUser.set(userId, [...(billingEventsByUser.get(userId) ?? []), event]);
   }
 
-  return users.map((user) => {
-    const subscription = subscriptionsByUser.get(user.id);
+  return subscriptions.map((subscription) => {
+    const userId = text(subscription.user_id);
+    const user = usersById.get(userId);
     const plan = getBillingPlan(text(subscription?.plan_id, "free"));
     const metadata = isRecord(subscription?.limits_snapshot) ? subscription.limits_snapshot : {};
     const adminBilling = isRecord(metadata.adminBilling) ? metadata.adminBilling : {};
-    const userInvoices = invoicesByUser.get(user.id) ?? [];
-    const userEvents = billingEventsByUser.get(user.id) ?? [];
+    const billingCycle = text(metadata.billingCycle, plan.id === "free" ? "not_available" : "monthly");
+    const currency = text(metadata.currency, "USD").toUpperCase();
+    const userInvoices = invoicesByUser.get(userId) ?? [];
+    const userEvents = billingEventsByUser.get(userId) ?? [];
     const failedPayments =
       userInvoices.filter((invoice) => ["failed", "uncollectible", "void"].includes(text(invoice.status))).length +
       userEvents.filter((event) => text(event.event_type).toLowerCase().includes("payment_failed")).length;
@@ -2540,14 +2582,32 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
       text(userInvoices[0]?.provider) ||
       text(userEvents[0]?.provider) ||
       (text(subscription?.stripe_subscription_id) || text(subscription?.stripe_customer_id) ? "stripe" : "manual");
-    const storesUsed = storeCounts.get(user.id) ?? 0;
-    const domainsUsed = domainCounts.get(user.id) ?? 0;
+    const ownedStores = storesByOwner.get(userId) ?? [];
+    const workspaceIds = [
+      ...new Set(ownedStores.map((store) => text(store.workspace_id)).filter(Boolean))
+    ];
+    const storesUsed = storeCounts.get(userId) ?? 0;
+    const domainsUsed = domainCounts.get(userId) ?? 0;
     const limitExceeded =
       (plan.storeLimit !== null && storesUsed > plan.storeLimit) ||
       (plan.domainLimit !== null && domainsUsed > plan.domainLimit);
     const status = text(subscription?.status, "active");
     const manualOverrideActive = adminBilling.manualOverrideActive === true;
     const billingReview = adminBilling.reviewStatus === "review";
+    const currentPeriodEnd = text(subscription?.current_period_end) || null;
+    const currentPeriodStart = text(subscription?.current_period_start) || null;
+    const cancelAtPeriodEnd = subscription?.cancel_at_period_end === true;
+    const providerSubscriptionId = text(subscription?.stripe_subscription_id) || null;
+    const providerUrl =
+      billingProvider === "stripe" && providerSubscriptionId
+        ? `https://dashboard.stripe.com/subscriptions/${providerSubscriptionId}`
+        : null;
+    const renewalStatus =
+      cancelAtPeriodEnd || status === "canceled" || status === "cancelled"
+        ? "cancels_at_period_end"
+        : ["active", "trialing"].includes(status)
+          ? "renews"
+          : "not_available";
     const warningBadges: AdminSubscription["warningBadges"] = [
       failedPayments > 0 ? "payment_failed" : null,
       status === "canceled" || status === "cancelled" ? "subscription_cancelled" : null,
@@ -2556,27 +2616,58 @@ export async function getAdminSubscriptions(): Promise<AdminSubscription[]> {
     ].filter(Boolean) as AdminSubscription["warningBadges"];
 
     return {
+      amount: plan.priceCents / 100,
       billingProvider,
+      billingCycle,
       billingReview,
-      createdAt: text(subscription?.created_at) || user.createdAt,
-      email: user.email,
+      cancelAtPeriodEnd,
+      cancellationDate: cancelAtPeriodEnd ? currentPeriodEnd : null,
+      createdAt: text(subscription?.created_at) || user?.createdAt || null,
+      currency,
+      currentPeriodEnd,
+      currentPeriodStart,
+      email: user?.email ?? text(userId, "Unknown owner"),
       failedPayments,
       domainLimit: plan.domainLimit === null ? "Unlimited" : String(plan.domainLimit),
       domainsUsed,
+      invoices: userInvoices.slice(0, 5).map((invoice) => ({
+        createdAt: text(invoice.created_at) || null,
+        provider: text(invoice.provider, "not_available"),
+        status: text(invoice.status, "not_available")
+      })),
       landingLimit: plan.landingLimit === null ? "Unlimited" : String(plan.landingLimit),
-      landingsUsed: landingCounts.get(user.id) ?? 0,
+      landingsUsed: landingCounts.get(userId) ?? 0,
+      lastBillingEvent: userEvents.length
+        ? {
+            createdAt: text(userEvents[0].processed_at) || text(userEvents[0].created_at) || null,
+            eventType: text(userEvents[0].event_type, "billing_event"),
+            provider: text(userEvents[0].provider, "admin")
+          }
+        : null,
       manualOverrideActive,
-      nextBillingDate: text(subscription?.current_period_end) || null,
-      ordersUsed: orderCounts.get(user.id) ?? 0,
+      nextBillingDate: currentPeriodEnd,
+      ordersUsed: orderCounts.get(userId) ?? 0,
       plan: plan.name,
       planId: plan.id,
       previousPlanId: text(adminBilling.previousPlanId) || null,
-      publishedStoresUsed: publishedCounts.get(user.id) ?? 0,
+      providerSubscriptionId,
+      providerUrl,
+      publishedStoresUsed: publishedCounts.get(userId) ?? 0,
+      renewalStatus,
       status,
       storeLimit: plan.storeLimit === null ? "Unlimited" : String(plan.storeLimit),
+      stores: ownedStores.map((store) => ({
+        id: text(store.id),
+        name: text(store.store_name, text(store.name, "Untitled store")),
+        slug: text(store.slug) || null,
+        status: governanceStatus(store.store_data, text(store.status, "draft")),
+        workspaceId: text(store.workspace_id) || null
+      })),
       storesUsed,
-      userId: user.id,
-      warningBadges
+      subscriptionId: text(subscription.id, userId),
+      userId,
+      warningBadges,
+      workspaceIds
     };
   });
 }

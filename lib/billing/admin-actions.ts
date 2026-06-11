@@ -67,6 +67,20 @@ async function recordBillingAudit({
     } as never,
     processed_at: new Date().toISOString()
   } as never);
+
+  await supabase.from("monitoring_events" as never).insert({
+    entity_id: userId,
+    entity_type: "admin_subscription",
+    event_status: "info",
+    event_type: eventType,
+    metadata: {
+      ...payload,
+      source: "super_admin_billing_control_center"
+    } as never,
+    store_id: null,
+    user_id: userId,
+    workspace_id: null
+  } as never);
 }
 
 async function revalidateBillingControl(userId: string) {
@@ -235,6 +249,43 @@ export async function clearBillingReview(formData: FormData) {
 
   await recordBillingAudit({
     eventType: "admin_billing_clear_review",
+    payload: { planId: plan.id },
+    supabase,
+    userId
+  });
+
+  await revalidateBillingControl(userId);
+}
+
+export async function markBillingReviewed(formData: FormData) {
+  const userId = String(formData.get("userId") ?? "").trim();
+
+  if (!userId) {
+    throw new Error("Missing user ID");
+  }
+
+  const supabase = await getWritableBillingClient();
+  const existing = await getExistingSubscription(supabase, userId);
+  const currentMetadata = isRecord(existing?.limits_snapshot) ? existing.limits_snapshot : {};
+  const currentAdminBilling = isRecord(currentMetadata.adminBilling) ? currentMetadata.adminBilling : {};
+  const plan = getBillingPlan(existing?.plan_id ?? "free");
+
+  await supabase.from("user_subscriptions" as never).upsert({
+    limits_snapshot: {
+      ...currentMetadata,
+      adminBilling: {
+        ...currentAdminBilling,
+        reviewedAt: new Date().toISOString(),
+        reviewStatus: "reviewed"
+      }
+    },
+    plan_id: plan.id,
+    status: existing?.status ?? "active",
+    user_id: userId
+  } as never, { onConflict: "user_id" });
+
+  await recordBillingAudit({
+    eventType: "admin_billing_mark_reviewed",
     payload: { planId: plan.id },
     supabase,
     userId
