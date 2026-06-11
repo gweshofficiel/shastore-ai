@@ -8,7 +8,9 @@ type PaymentProviderAction =
   | "admin_payment_provider_clear_review"
   | "admin_payment_provider_disable"
   | "admin_payment_provider_enable"
+  | "admin_payment_provider_mark_reviewed"
   | "admin_payment_provider_mark_review"
+  | "admin_payment_provider_refresh_status"
   | "admin_payment_provider_view_logs";
 
 function cleanProviderKey(formData: FormData) {
@@ -41,7 +43,24 @@ async function recordPaymentProviderAction(formData: FormData, eventType: Paymen
     processed_at: new Date().toISOString()
   } as never);
 
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: providerKey,
+    entity_type: "admin_payment_provider",
+    event_status: "info",
+    event_type: eventType,
+    metadata: {
+      actor_user_id: access.user.id,
+      providerKey,
+      source: "super_admin_payment_providers_control_center",
+      note: "Safe admin status action only. No provider API was called."
+    } as never,
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
   revalidatePath("/admin/billing/payment-providers");
+  revalidatePath("/admin/payment-providers");
 }
 
 export async function enablePaymentProviderPlaceholder(formData: FormData) {
@@ -56,8 +75,16 @@ export async function markPaymentProviderUnderReview(formData: FormData) {
   await recordPaymentProviderAction(formData, "admin_payment_provider_mark_review");
 }
 
+export async function markPaymentProviderReviewed(formData: FormData) {
+  await recordPaymentProviderAction(formData, "admin_payment_provider_mark_reviewed");
+}
+
 export async function clearPaymentProviderReview(formData: FormData) {
   await recordPaymentProviderAction(formData, "admin_payment_provider_clear_review");
+}
+
+export async function refreshPaymentProviderStatus(formData: FormData) {
+  await recordPaymentProviderAction(formData, "admin_payment_provider_refresh_status");
 }
 
 export async function viewPaymentProviderLogs(formData: FormData) {

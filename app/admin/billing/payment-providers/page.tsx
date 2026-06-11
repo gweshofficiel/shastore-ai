@@ -5,12 +5,13 @@ import {
   AdminTable,
   formatAdminDate
 } from "@/components/admin/admin-control";
+import Link from "next/link";
 import { getAdminPaymentProviderControl } from "@/lib/admin/data";
 import {
   clearPaymentProviderReview,
-  disablePaymentProviderPlaceholder,
-  enablePaymentProviderPlaceholder,
+  markPaymentProviderReviewed,
   markPaymentProviderUnderReview,
+  refreshPaymentProviderStatus,
   viewPaymentProviderLogs
 } from "@/lib/admin/payment-provider-actions";
 
@@ -50,15 +51,13 @@ export default async function AdminPaymentProvidersPage() {
 
       <AdminStatGrid
         stats={[
-          { label: "Providers", value: data.providers.length },
+          { label: "Total providers", value: data.providers.length },
+          { label: "Enabled providers", value: data.providers.filter((provider) => provider.enabledStatus === "enabled").length },
           { label: "Configured providers", value: data.providers.filter((provider) => provider.configurationStatus === "configured").length },
-          { label: "Stores with Stripe", value: data.storePaymentAdoption.stripeStores },
-          { label: "Stripe pending", value: data.storePaymentAdoption.stripePendingStores },
-          { label: "Stripe restricted", value: data.storePaymentAdoption.stripeRestrictedStores },
-          { label: "Stores with PayPal", value: data.storePaymentAdoption.paypalStores },
-          { label: "COD/manual stores", value: data.storePaymentAdoption.manualStores },
-          { label: "Setup warnings", value: data.storePaymentAdoption.missingPaymentMethodStores },
-          { label: "Webhook events", value: data.webhookMonitoring.totalEvents },
+          { label: "Missing configuration", value: data.providers.filter((provider) => provider.configurationStatus === "missing").length },
+          { label: "Healthy providers", value: data.providers.filter((provider) => provider.healthStatus === "healthy").length },
+          { label: "Failing providers", value: data.providers.filter((provider) => provider.healthStatus !== "healthy").length },
+          { label: "Store providers linked", value: data.providers.reduce((total, provider) => total + provider.connectedStoresCount, 0) },
           { label: "Failed webhooks/events", value: data.webhookMonitoring.failedEvents }
         ]}
       />
@@ -67,37 +66,90 @@ export default async function AdminPaymentProvidersPage() {
         empty={!data.providers.length ? "No payment providers configured." : null}
         headers={[
           "Provider",
-          "Enabled",
-          "Mode",
-          "Webhook",
-          "Health",
+          "Scope",
+          "Status",
           "Configuration",
-          "Last event",
+          "Health",
+          "Stores",
+          "Last checked",
           "Warnings",
           "Actions",
-          "Future hooks"
+          "Placeholders"
         ]}
       >
         {data.providers.map((provider) => (
           <tr key={provider.key}>
-            <td className="px-5 py-4 font-bold text-slate-950">{provider.name}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={toneForStatus(provider.enabledStatus)}>{provider.enabledStatus}</AdminBadge>
+              <div className="grid gap-1">
+                <span className="font-bold text-slate-950">{provider.name}</span>
+                <span className="text-xs font-semibold text-slate-500">{provider.key}</span>
+              </div>
             </td>
             <td className="px-5 py-4">
-              <AdminBadge tone={provider.environmentMode === "live" ? "green" : "amber"}>{provider.environmentMode}</AdminBadge>
+              <AdminBadge tone={provider.scope === "platform_billing" ? "blue" : provider.scope === "store_payments" ? "green" : "slate"}>
+                {provider.scope.replace(/_/g, " ")}
+              </AdminBadge>
             </td>
             <td className="px-5 py-4">
-              <AdminBadge tone={toneForStatus(provider.webhookStatus)}>{provider.webhookStatus}</AdminBadge>
+              <div className="grid gap-2">
+                <AdminBadge tone={toneForStatus(provider.enabledStatus)}>{provider.enabledStatus}</AdminBadge>
+                <AdminBadge tone={provider.environmentMode === "live" ? "green" : provider.environmentMode === "placeholder" ? "slate" : "amber"}>
+                  {provider.environmentMode}
+                </AdminBadge>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <AdminBadge tone={toneForStatus(provider.configurationStatus)}>{provider.configurationStatus}</AdminBadge>
+                <AdminBadge tone={toneForStatus(provider.webhookStatus)}>{provider.webhookStatus}</AdminBadge>
+                <p className="text-xs font-semibold text-slate-500">Secrets hidden: presence only.</p>
+              </div>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(provider.healthStatus)}>{provider.healthStatus}</AdminBadge>
             </td>
+            <td className="px-5 py-4 text-slate-600">{provider.connectedStoresCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(provider.lastCheckedAt)}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={toneForStatus(provider.configurationStatus)}>{provider.configurationStatus}</AdminBadge>
-              <p className="mt-2 text-xs font-semibold text-slate-500">Secrets hidden: configured/missing only.</p>
+              <details className="min-w-80 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                  Safe config details
+                </summary>
+                <div className="mt-3 grid gap-4 text-sm text-slate-600">
+                  <section className="rounded-xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Configuration presence</p>
+                    <div className="mt-2 grid gap-2">
+                      {provider.configChecks.map((check) => (
+                        <p className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-2" key={`${provider.key}-${check.label}`}>
+                          <span>{check.label}</span>
+                          <AdminBadge tone={toneForStatus(check.status)}>{check.status}</AdminBadge>
+                        </p>
+                      ))}
+                    </div>
+                  </section>
+                  <section className="rounded-xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Runtime status</p>
+                    <p className="mt-2">Scope: {provider.scope.replace(/_/g, " ")}</p>
+                    <p>Connected/configured stores: {provider.connectedStoresCount}</p>
+                    <p>Last event: {provider.lastEvent ?? "not available"}</p>
+                    <p>Last checked: {formatAdminDate(provider.lastCheckedAt)}</p>
+                  </section>
+                  <section className="rounded-xl bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Safe links</p>
+                    {provider.docsUrl ? (
+                      <a className="mt-2 block text-xs font-black uppercase tracking-[0.14em] text-blue-700" href={provider.docsUrl} rel="noreferrer" target="_blank">
+                        Open provider docs
+                      </a>
+                    ) : (
+                      <p className="mt-2">Provider docs/config link not available.</p>
+                    )}
+                    <Link className="mt-2 block text-xs font-black uppercase tracking-[0.14em] text-blue-700" href="/admin/billing/payment-providers">
+                      Open config page
+                    </Link>
+                  </section>
+                </div>
+              </details>
             </td>
-            <td className="px-5 py-4 text-slate-600">{provider.lastEvent ?? "No event found"}</td>
             <td className="px-5 py-4">
               <div className="flex min-w-64 flex-wrap gap-2">
                 {provider.warnings.length ? (
@@ -113,16 +165,16 @@ export default async function AdminPaymentProvidersPage() {
             </td>
             <td className="px-5 py-4">
               <div className="grid min-w-56 gap-2">
-                <form action={enablePaymentProviderPlaceholder}>
+                <form action={refreshPaymentProviderStatus}>
                   <input name="providerKey" type="hidden" value={provider.key} />
                   <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                    Enable placeholder
+                    Refresh status
                   </button>
                 </form>
-                <form action={disablePaymentProviderPlaceholder}>
+                <form action={markPaymentProviderReviewed}>
                   <input name="providerKey" type="hidden" value={provider.key} />
-                  <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                    Disable placeholder
+                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                    Mark reviewed
                   </button>
                 </form>
                 <form action={markPaymentProviderUnderReview}>
@@ -148,6 +200,8 @@ export default async function AdminPaymentProvidersPage() {
             <td className="px-5 py-4">
               <div className="grid min-w-56 gap-2">
                 {[
+                  "Enable provider placeholder",
+                  "Disable provider placeholder",
                   "Test provider connection",
                   "Sync Stripe account",
                   "Sync NOWPayments status",

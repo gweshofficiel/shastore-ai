@@ -249,12 +249,20 @@ export type AdminReseller = {
 export type AdminPaymentProviderControl = {
   providers: Array<{
     configurationStatus: "configured" | "missing" | "partial";
+    configChecks: Array<{
+      label: string;
+      status: "configured" | "missing" | "not_applicable";
+    }>;
+    connectedStoresCount: number;
+    docsUrl: string | null;
     enabledStatus: "disabled" | "enabled" | "placeholder_disabled" | "under_review";
     environmentMode: "live" | "test" | "sandbox" | "placeholder";
     healthStatus: "healthy" | "missing_config" | "needs_review" | "warning";
     key: string;
+    lastCheckedAt: string | null;
     lastEvent: string | null;
     name: string;
+    scope: "manual_offline" | "platform_billing" | "store_payments";
     warnings: Array<"live_mode_not_verified" | "provider_not_configured" | "test_mode" | "webhook_missing">;
     webhookStatus: "configured" | "missing" | "not_applicable" | "placeholder";
   }>;
@@ -2676,12 +2684,35 @@ function envConfigured(names: string[]) {
   return names.some((name) => Boolean(process.env[name]));
 }
 
+function envConfigurationChecks(names: Array<{ label: string; names: string[] }>): AdminPaymentProviderControl["providers"][number]["configChecks"] {
+  return names.map((entry) => ({
+    label: entry.label,
+    status: !entry.names.length
+      ? "not_applicable"
+      : entry.names.some((name) => Boolean(process.env[name]))
+        ? "configured"
+        : "missing"
+  }));
+}
+
+function configurationStatusFromChecks(
+  checks: AdminPaymentProviderControl["providers"][number]["configChecks"]
+): AdminPaymentProviderControl["providers"][number]["configurationStatus"] {
+  const applicable = checks.filter((check) => check.status !== "not_applicable");
+
+  if (!applicable.length || applicable.every((check) => check.status === "configured")) {
+    return "configured";
+  }
+
+  return applicable.some((check) => check.status === "configured") ? "partial" : "missing";
+}
+
 function providerMode(providerKey: string): AdminPaymentProviderControl["providers"][number]["environmentMode"] {
-  if (providerKey === "paypal") {
+  if (providerKey.includes("paypal")) {
     return process.env.PAYPAL_ENVIRONMENT === "live" ? "live" : "sandbox";
   }
 
-  if (providerKey === "stripe") {
+  if (providerKey.includes("stripe")) {
     return process.env.NODE_ENV === "production" ? "live" : "test";
   }
 
@@ -2896,7 +2927,11 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
   ] = await Promise.all([
     safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug"),
     safeSelect(supabase, "store_payment_methods", "store_id, method, is_enabled"),
-    safeSelect(supabase, "store_payment_provider_connections", "store_id, provider, connection_status, config_status, charges_enabled, payouts_enabled, paypal_status, last_sync_at"),
+    safeSelect(
+      supabase,
+      "store_payment_provider_connections",
+      "store_id, provider, connection_mode, connection_status, config_status, charges_enabled, payouts_enabled, paypal_status, last_sync_at, environment, publishable_key, public_key"
+    ),
     safeSelect(
       supabase,
       "monitoring_events",
@@ -2942,48 +2977,153 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       latestControlByProvider.set(providerKey, event);
     }
   }
+  const enabledMethods = methods.filter((method) => method.is_enabled === true);
+  const connectedStoreCountsByProvider = new Map<string, number>();
+  const configuredStoreCountsByProvider = new Map<string, number>();
+  const latestSyncByProvider = new Map<string, string>();
+
+  for (const connection of connections) {
+    const provider = text(connection.provider);
+    const storeId = text(connection.store_id);
+
+    if (!provider || !storeId) {
+      continue;
+    }
+
+    if (
+      text(connection.connection_status) === "connected" ||
+      text(connection.config_status) === "configured" ||
+      text(connection.paypal_status) === "connected"
+    ) {
+      configuredStoreCountsByProvider.set(provider, (configuredStoreCountsByProvider.get(provider) ?? 0) + 1);
+    }
+
+    if (
+      text(connection.connection_status) === "connected" ||
+      (text(connection.config_status) === "configured" && (text(connection.publishable_key) || text(connection.public_key)))
+    ) {
+      connectedStoreCountsByProvider.set(provider, (connectedStoreCountsByProvider.get(provider) ?? 0) + 1);
+    }
+
+    const lastSyncAt = text(connection.last_sync_at);
+    const currentLatest = latestSyncByProvider.get(provider);
+
+    if (lastSyncAt && (!currentLatest || dateValue(lastSyncAt) > dateValue(currentLatest))) {
+      latestSyncByProvider.set(provider, lastSyncAt);
+    }
+  }
+
+  const enabledMethodCounts = new Map<string, number>();
+  for (const method of enabledMethods) {
+    const methodName = text(method.method);
+
+    if (methodName) {
+      enabledMethodCounts.set(methodName, (enabledMethodCounts.get(methodName) ?? 0) + 1);
+    }
+  }
+
   const providerDefinitions = [
     {
-      key: "stripe",
-      name: "Stripe",
-      configured: envConfigured(["STRIPE_SECRET_KEY", "STRIPE_CONNECT_CLIENT_ID"]),
+      checks: [
+        { label: "Platform secret key", names: ["PLATFORM_BILLING_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY"] },
+        { label: "Platform webhook secret", names: ["PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"] },
+        { label: "Platform publishable key", names: ["NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "STRIPE_PUBLISHABLE_KEY"] }
+      ],
+      connectedStoresCount: 0,
+      docsUrl: "https://docs.stripe.com/billing",
+      key: "stripe_platform",
+      name: "Stripe Platform Billing",
+      scope: "platform_billing" as const,
       webhookConfigured: envConfigured(["PLATFORM_BILLING_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"])
     },
     {
+      checks: [
+        { label: "Store payments secret key", names: ["STRIPE_SECRET_KEY"] },
+        { label: "Stripe Connect client ID", names: ["STRIPE_CONNECT_CLIENT_ID"] }
+      ],
+      connectedStoresCount: Math.max(
+        connectedStoreCountsByProvider.get("stripe") ?? 0,
+        configuredStoreCountsByProvider.get("stripe") ?? 0
+      ),
+      docsUrl: "https://docs.stripe.com/connect",
+      key: "stripe_store",
+      name: "Stripe Store Payments",
+      scope: "store_payments" as const,
+      webhookConfigured: envConfigured(["STRIPE_WEBHOOK_SECRET"])
+    },
+    {
+      checks: [
+        { label: "NOWPayments API key", names: ["NOWPAYMENTS_API_KEY"] },
+        { label: "NOWPayments IPN secret", names: ["NOWPAYMENTS_IPN_SECRET"] }
+      ],
+      connectedStoresCount: 0,
+      docsUrl: "https://nowpayments.io/payment-integration",
       key: "nowpayments",
       name: "NOWPayments",
-      configured: envConfigured(["NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"]),
+      scope: "platform_billing" as const,
       webhookConfigured: envConfigured(["NOWPAYMENTS_IPN_SECRET"])
     },
     {
+      checks: [
+        { label: "PayPal client ID", names: ["PAYPAL_CLIENT_ID"] },
+        { label: "PayPal client secret", names: ["PAYPAL_CLIENT_SECRET"] },
+        { label: "PayPal partner merchant ID", names: ["PAYPAL_PARTNER_MERCHANT_ID"] }
+      ],
+      connectedStoresCount: Math.max(
+        connectedStoreCountsByProvider.get("paypal") ?? 0,
+        configuredStoreCountsByProvider.get("paypal") ?? 0
+      ),
+      docsUrl: "https://developer.paypal.com/docs/multiparty/",
       key: "paypal",
-      name: "PayPal",
-      configured: envConfigured(["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_PARTNER_MERCHANT_ID"]),
+      name: "PayPal Store Payments",
+      scope: "store_payments" as const,
       webhookConfigured: null
     },
     {
+      checks: [
+        { label: "YouCan Pay API key", names: ["YOUCAN_PAY_API_KEY"] },
+        { label: "YouCan Pay secret key", names: ["YOUCAN_PAY_SECRET_KEY"] }
+      ],
+      connectedStoresCount: Math.max(
+        connectedStoreCountsByProvider.get("youcan_pay") ?? 0,
+        configuredStoreCountsByProvider.get("youcan_pay") ?? 0
+      ),
+      docsUrl: null,
       key: "youcan_pay",
       name: "YouCan Pay",
-      configured: envConfigured(["YOUCAN_PAY_API_KEY", "YOUCAN_PAY_SECRET_KEY"]),
+      scope: "store_payments" as const,
       webhookConfigured: null
     },
     {
+      checks: [{ label: "Store-level instructions", names: [] }],
+      connectedStoresCount: enabledMethodCounts.get("bank_transfer") ?? 0,
+      docsUrl: null,
       key: "bank_transfer",
       name: "Bank Transfer",
-      configured: true,
+      scope: "manual_offline" as const,
       webhookConfigured: null
     },
     {
+      checks: [{ label: "Store-level manual methods", names: [] }],
+      connectedStoresCount:
+        (enabledMethodCounts.get("cod") ?? 0) +
+        (enabledMethodCounts.get("cash_on_delivery") ?? 0) +
+        (enabledMethodCounts.get("whatsapp") ?? 0) +
+        (enabledMethodCounts.get("whatsapp_order") ?? 0),
+      docsUrl: null,
       key: "manual_payments",
       name: "Manual Payments",
-      configured: true,
+      scope: "manual_offline" as const,
       webhookConfigured: null
     }
   ];
   const providers: AdminPaymentProviderControl["providers"] = providerDefinitions.map((provider) => {
+    const configChecks = envConfigurationChecks(provider.checks);
+    const configurationStatus = configurationStatusFromChecks(configChecks);
+    const configured = configurationStatus === "configured";
     const mode = providerMode(provider.key);
     const warnings = providerWarningList({
-      configured: provider.configured,
+      configured,
       mode,
       webhookConfigured: provider.webhookConfigured
     });
@@ -2994,27 +3134,44 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
         ? "under_review"
         : controlType === "admin_payment_provider_disable"
           ? "placeholder_disabled"
-          : provider.configured
+          : configured || provider.connectedStoresCount > 0
             ? "enabled"
             : "disabled";
-    const providerEvents = recentEvents.filter((event) => event.provider === provider.key || event.provider === provider.name.toLowerCase());
+    const providerEvents = recentEvents.filter((event) => {
+      const eventProvider = event.provider.toLowerCase();
+
+      return eventProvider === provider.key ||
+        provider.key.includes(eventProvider) ||
+        eventProvider.includes(provider.key.split("_")[0] ?? provider.key);
+    });
     const hasFailures = providerEvents.some((event) => event.eventStatus === "failed");
+    const lastCheckedAt =
+      latestSyncByProvider.get(provider.key.replace("_store", "").replace("_platform", "")) ??
+      text(controlEvent?.processed_at) ??
+      text(controlEvent?.created_at) ??
+      providerEvents[0]?.createdAt ??
+      null;
 
     return {
-      configurationStatus: provider.configured ? "configured" : "missing",
+      configurationStatus,
+      configChecks,
+      connectedStoresCount: provider.connectedStoresCount,
+      docsUrl: provider.docsUrl,
       enabledStatus,
       environmentMode: mode,
       healthStatus:
         enabledStatus === "under_review"
           ? "needs_review"
-          : !provider.configured
+          : !configured && provider.connectedStoresCount === 0
             ? "missing_config"
             : hasFailures || warnings.length
               ? "warning"
               : "healthy",
       key: provider.key,
+      lastCheckedAt,
       lastEvent: providerEvents[0]?.eventType ?? null,
       name: provider.name,
+      scope: provider.scope,
       warnings,
       webhookStatus:
         provider.webhookConfigured === null
@@ -3024,7 +3181,6 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
             : "missing"
     };
   });
-  const enabledMethods = methods.filter((method) => method.is_enabled === true);
   const storesWithSavedPaymentMethods = new Set(
     methods.map((method) => text(method.store_id)).filter(Boolean)
   );
