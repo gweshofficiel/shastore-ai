@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   AdminBadge,
   AdminHeader,
@@ -7,8 +8,11 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminUsers } from "@/lib/admin/data";
 import {
+  adminUserRuntimeFiltersFromParams,
+  filterAdminUsersForRuntime
+} from "@/lib/admin/user-runtime-filters";
+import {
   clearAdminUserRisk,
-  exportAdminUserPlaceholder,
   markAdminUserHighRisk,
   markAdminUserReviewed,
   suspendAdminUserShortcut
@@ -52,18 +56,6 @@ function isNewThisMonth(createdAt: string | null) {
   return created.getUTCFullYear() === now.getUTCFullYear() && created.getUTCMonth() === now.getUTCMonth();
 }
 
-function cleanStatusFilter(value: string | undefined) {
-  return value === "active" || value === "suspended" || value === "pending" ? value : "all";
-}
-
-function cleanStoreFilter(value: string | undefined) {
-  return value === "owner" || value === "none" ? value : "all";
-}
-
-function cleanRiskFilter(value: string | undefined) {
-  return value === "high_risk" || value === "reviewed" || value === "clear" ? value : "all";
-}
-
 function toneForRisk(status: string) {
   if (status === "high_risk") {
     return "red" as const;
@@ -80,40 +72,30 @@ function UserHiddenFields({ userId }: { userId: string }) {
   return <input name="userId" type="hidden" value={userId} />;
 }
 
+function exportHref(query: Awaited<AdminUsersPageProps["searchParams"]>, format: "csv" | "json") {
+  const params = new URLSearchParams();
+
+  for (const key of ["q", "status", "role", "plan", "stores", "risk"] as const) {
+    const value = query[key];
+
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  params.set("format", format);
+
+  return `/admin/users/export?${params.toString()}`;
+}
+
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const users = await getAdminUsers();
-  const statusFilter = cleanStatusFilter(query.status);
-  const roleFilter = String(query.role ?? "all").trim();
-  const planFilter = String(query.plan ?? "all").trim();
-  const storeFilter = cleanStoreFilter(query.stores);
-  const riskFilter = cleanRiskFilter(query.risk);
-  const searchTerm = String(query.q ?? "").trim().toLowerCase();
+  const filters = adminUserRuntimeFiltersFromParams(query);
+  const { planFilter, riskFilter, roleFilter, statusFilter, storeFilter } = filters;
   const roleOptions = Array.from(new Set(users.map((user) => user.primaryRole).filter(Boolean))).sort();
   const planOptions = Array.from(new Set(users.map((user) => user.planId).filter(Boolean))).sort();
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      !searchTerm ||
-      user.email.toLowerCase().includes(searchTerm) ||
-      user.emailMasked.toLowerCase().includes(searchTerm) ||
-      user.id.toLowerCase().includes(searchTerm) ||
-      (user.fullName ?? "").toLowerCase().includes(searchTerm);
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "suspended"
-        ? user.accountStatus === "suspended"
-        : statusFilter === "pending"
-          ? user.accountStatus === "pending"
-          : user.accountStatus !== "suspended");
-    const matchesRole = roleFilter === "all" || user.primaryRole === roleFilter;
-    const matchesPlan = planFilter === "all" || user.planId === planFilter;
-    const matchesStore =
-      storeFilter === "all" ||
-      (storeFilter === "owner" ? user.storesCount > 0 : user.storesCount === 0);
-    const matchesRisk = riskFilter === "all" || user.riskStatus === riskFilter;
-
-    return matchesSearch && matchesStatus && matchesRole && matchesPlan && matchesStore && matchesRisk;
-  });
+  const filteredUsers = filterAdminUsersForRuntime(users, filters);
   const suspendedUsers = users.filter((user) => user.accountStatus === "suspended").length;
   const highRiskUsers = users.filter((user) => user.isHighRisk).length;
 
@@ -193,6 +175,20 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             Filter users
           </button>
         </form>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            className="inline-flex h-10 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            href={exportHref(query, "csv")}
+          >
+            Export CSV
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            href={exportHref(query, "json")}
+          >
+            Export JSON
+          </Link>
+        </div>
       </div>
 
       <AdminTable
@@ -214,11 +210,25 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       >
         {filteredUsers.map((user) => (
           <tr key={user.id}>
-            <td className="max-w-64 break-all px-5 py-4 font-bold text-slate-950">{user.id}</td>
+            <td className="max-w-64 break-all px-5 py-4 font-bold text-slate-950">
+              <Link className="text-blue-700 underline-offset-2 hover:underline" href={`/admin/users/${user.id}`}>
+                {user.id}
+              </Link>
+            </td>
             <td className="px-5 py-4">
               <div className="grid gap-1">
-                <span className="font-bold text-slate-950">{user.emailMasked}</span>
-                <span className="text-xs font-semibold text-slate-400">{user.email}</span>
+                <Link
+                  className="font-bold text-blue-700 underline-offset-2 hover:underline"
+                  href={`/admin/users/${user.id}`}
+                >
+                  {user.emailMasked}
+                </Link>
+                <Link
+                  className="text-xs font-semibold text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+                  href={`/admin/users/${user.id}`}
+                >
+                  Open user detail
+                </Link>
               </div>
             </td>
             <td className="px-5 py-4 text-slate-600">{user.fullName ?? "Not set"}</td>
@@ -340,13 +350,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                 <form action={suspendAdminUserShortcut}>
                   <UserHiddenFields userId={user.id} />
                   <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.16em] text-red-700" type="submit">
-                    Suspend shortcut
-                  </button>
-                </form>
-                <form action={exportAdminUserPlaceholder}>
-                  <UserHiddenFields userId={user.id} />
-                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.16em] text-blue-700" type="submit">
-                    Export placeholder
+                    Suspend user
                   </button>
                 </form>
               </div>

@@ -10,7 +10,6 @@ import {
 import { getAdminUserDetail } from "@/lib/admin/data";
 import {
   clearAdminUserRisk,
-  exportAdminUserPlaceholder,
   markAdminUserHighRisk,
   markAdminUserReviewed,
   suspendAdminUserShortcut
@@ -105,15 +104,21 @@ export default async function AdminUserDetailsPage({ params }: AdminUserDetailsP
         <form action={suspendAdminUserShortcut}>
           <UserHiddenFields userId={user.id} />
           <button className="inline-flex h-10 items-center rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-            Suspend shortcut
+            Suspend user
           </button>
         </form>
-        <form action={exportAdminUserPlaceholder}>
-          <UserHiddenFields userId={user.id} />
-          <button className="inline-flex h-10 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-            Export placeholder
-          </button>
-        </form>
+        <Link
+          className="inline-flex h-10 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+          href={`/admin/users/export?q=${encodeURIComponent(user.id)}&format=csv`}
+        >
+          Export CSV
+        </Link>
+        <Link
+          className="inline-flex h-10 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+          href={`/admin/users/export?q=${encodeURIComponent(user.id)}&format=json`}
+        >
+          Export JSON
+        </Link>
       </div>
 
       <AdminStatGrid
@@ -140,7 +145,7 @@ export default async function AdminUserDetailsPage({ params }: AdminUserDetailsP
             Plan <span className="mt-1 block"><AdminBadge tone="blue">{user.plan}</AdminBadge></span>
           </p>
           <p>
-            Status <span className="mt-1 block"><AdminBadge tone={statusTone(user.status)}>{user.status}</AdminBadge></span>
+            Status <span className="mt-1 block"><AdminBadge tone={statusTone(user.accountStatus)}>{user.accountStatus}</AdminBadge></span>
           </p>
           <p>
             Created <span className="mt-1 block font-black text-slate-950">{formatAdminDate(user.createdAt)}</span>

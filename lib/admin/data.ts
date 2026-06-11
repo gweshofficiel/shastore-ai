@@ -1428,6 +1428,7 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
     const governanceStatus = userGovernanceStatus(subscription?.limits_snapshot);
     const subscriptionStatus = text(subscription?.status, "active");
     const role = rolesByUser.get(user.id);
+    const roleStatus = text(role?.status);
     const profile = accountProfilesByUser.get(user.id);
     const workspaces = workspacesByUser.get(user.id) ?? [];
     const workspaceIds = new Set(workspaces.map((workspace) => text(workspace.workspace_id)).filter(Boolean));
@@ -1465,7 +1466,10 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
       .filter((signal) => signal.createdAt)
       .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
       .slice(0, 5);
-    const accountStatus = governanceStatus ?? (subscriptionStatus === "incomplete" ? "suspended" : subscriptionStatus);
+    const accountStatus =
+      roleStatus === "suspended" || roleStatus === "disabled" || roleStatus === "pending"
+        ? roleStatus
+        : governanceStatus ?? (subscriptionStatus === "incomplete" ? "suspended" : subscriptionStatus);
     const userStores = stores
       .filter((store) => ownerUserId(store) === user.id)
       .map((store) => ({
