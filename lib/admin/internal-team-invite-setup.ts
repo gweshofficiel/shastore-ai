@@ -7,17 +7,20 @@ import { getRequestAuditFields, recordSecurityAuditLog } from "@/lib/security/au
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
+export type InternalTeamInviteSetupErrorCode =
+  | "account-exists"
+  | "already-accepted"
+  | "expired"
+  | "invalid"
+  | "login-failed"
+  | "login-required"
+  | "password"
+  | "role-failed"
+  | "signup-failed";
+
 export type InternalTeamInviteSetupResult =
   | { email: string; redirectTo: string; success: true }
-  | { message: string; success: false };
-
-function isOpenInvite(invite: { expires_at?: string | null; status?: string | null } | null) {
-  if (!invite || invite.status !== "pending") {
-    return false;
-  }
-
-  return !invite.expires_at || new Date(invite.expires_at).getTime() >= Date.now();
-}
+  | { code: InternalTeamInviteSetupErrorCode; message: string; success: false };
 
 async function findAuthUserByEmail(email: string) {
   const admin = createAdminClient();
@@ -51,11 +54,15 @@ export async function processInternalTeamInviteSetup({
   const admin = createAdminClient();
 
   if (!admin || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
-    return { message: "This invitation can no longer be accepted.", success: false };
+    return { code: "invalid", message: "This invitation link is invalid.", success: false };
   }
 
   if (password.length < 8 || password !== confirmPassword) {
-    return { message: "Password must be at least 8 characters and match the confirmation.", success: false };
+    return {
+      code: "password",
+      message: "Password must be at least 8 characters and match the confirmation.",
+      success: false
+    };
   }
 
   const { data } = await admin
@@ -72,20 +79,34 @@ export async function processInternalTeamInviteSetup({
     status?: string | null;
   } | null;
 
-  if (!isOpenInvite(invite) || !invite?.email) {
-    if (invite?.status === "pending" && invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-      await admin
-        .from("internal_team_invitations" as never)
-        .update({ status: "expired" } as never)
-        .eq("id" as never, invite.id as never);
-    }
+  if (!invite?.email) {
+    return { code: "invalid", message: "This invitation link is invalid.", success: false };
+  }
 
-    return { message: "This invitation can no longer be accepted.", success: false };
+  if (invite.status === "accepted") {
+    return { code: "already-accepted", message: "This invitation has already been accepted.", success: false };
+  }
+
+  if (invite.status !== "pending") {
+    return { code: "invalid", message: "This invitation can no longer be accepted.", success: false };
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    await admin
+      .from("internal_team_invitations" as never)
+      .update({ status: "expired" } as never)
+      .eq("id" as never, invite.id as never);
+
+    return { code: "expired", message: "This invitation has expired.", success: false };
   }
 
   const invitedEmail = invite.email.toLowerCase();
   const existingUser = await findAuthUserByEmail(invitedEmail);
+  const adminSupabase = await createClient({ role: "admin" });
   const internalSupabase = await createClient({ role: "internal_team" });
+
+  await adminSupabase.auth.signOut();
+
   const {
     data: { user: activeInternalUser }
   } = await internalSupabase.auth.getUser();
@@ -114,12 +135,13 @@ export async function processInternalTeamInviteSetup({
 
       if (createError.message.toLowerCase().includes("already")) {
         return {
+          code: "account-exists",
           message: "An account already exists for this email. Log in with that password to continue.",
           success: false
         };
       }
 
-      return { message: "Account creation failed. Try again.", success: false };
+      return { code: "signup-failed", message: "Account creation failed. Try again.", success: false };
     }
   }
 
@@ -130,14 +152,13 @@ export async function processInternalTeamInviteSetup({
 
   if (signInError || !signInData.user || signInData.user.email?.toLowerCase() !== invitedEmail) {
     return {
+      code: existingUser ? "login-failed" : "login-required",
       message: existingUser
         ? "Login failed for the invited email. Check the password and try again."
         : "Account was created but sign-in verification failed. Try again.",
       success: false
     };
   }
-
-  await internalSupabase.auth.signOut();
 
   const role = normalizeInternalTeamRole(invite.role);
   const now = new Date().toISOString();
@@ -148,7 +169,7 @@ export async function processInternalTeamInviteSetup({
     .maybeSingle();
 
   if (existingMember) {
-    await admin
+    const { error: memberUpdateError } = await admin
       .from("internal_team_members" as never)
       .update({
         accepted_at: now,
@@ -158,8 +179,17 @@ export async function processInternalTeamInviteSetup({
         user_id: signInData.user.id
       } as never)
       .eq("id" as never, (existingMember as { id: string }).id as never);
+
+    if (memberUpdateError) {
+      await internalSupabase.auth.signOut();
+      return {
+        code: "role-failed",
+        message: "Unable to assign the invited internal team role. Try again.",
+        success: false
+      };
+    }
   } else {
-    await admin.from("internal_team_members" as never).insert({
+    const { error: memberInsertError } = await admin.from("internal_team_members" as never).insert({
       accepted_at: now,
       display_name: invite.display_name ?? signInData.user.user_metadata?.full_name ?? null,
       email: invitedEmail,
@@ -168,6 +198,15 @@ export async function processInternalTeamInviteSetup({
       status: "active",
       user_id: signInData.user.id
     } as never);
+
+    if (memberInsertError) {
+      await internalSupabase.auth.signOut();
+      return {
+        code: "role-failed",
+        message: "Unable to assign the invited internal team role. Try again.",
+        success: false
+      };
+    }
   }
 
   await admin.from("profiles" as never).upsert(
@@ -213,8 +252,8 @@ export async function processInternalTeamInviteSetup({
     action: "admin_internal_team_invitation_accepted",
     client: admin,
     metadata: auditMetadata,
-    reason: "Internal team invitation accepted through isolated setup API.",
-    route: "/api/admin/internal-team/invitations/[token]/setup",
+    reason: "Internal team invitation accepted through isolated setup flow.",
+    route: "/admin/internal-team/accept/[token]",
     userId: signInData.user.id
   });
 

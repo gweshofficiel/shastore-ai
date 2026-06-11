@@ -2,7 +2,8 @@ import Link from "next/link";
 import { InternalTeamInviteAuthForm } from "@/components/admin/internal-team-invite-auth-form";
 import {
   enterInternalTeamWorkspace,
-  getInternalTeamInviteTokenPreview
+  getInternalTeamInviteTokenPreview,
+  submitInternalTeamInviteSetup
 } from "@/lib/admin/team-actions";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,8 +40,20 @@ function inviteFeedback(value: string | string[] | undefined) {
     return "Account creation failed. Try again or use login if the account already exists.";
   }
 
+  if (status === "already-accepted") {
+    return "This invitation has already been accepted.";
+  }
+
+  if (status === "expired") {
+    return "This invitation has expired.";
+  }
+
   if (status === "invalid") {
     return "This invitation can no longer be accepted.";
+  }
+
+  if (status === "role-failed") {
+    return "Unable to assign the invited internal team role. Try again.";
   }
 
   return null;
@@ -66,12 +79,13 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
     inviteStatus === "login-failed" ||
     inviteStatus === "login-required" ||
     inviteStatus === "password" ||
-    inviteStatus === "signup-failed";
+    inviteStatus === "role-failed" ||
+    inviteStatus === "signup-failed" ||
+    inviteStatus === "expired" ||
+    inviteStatus === "already-accepted";
   const showLogin = invite.authUserExists || mode === "login" || inviteStatus === "account-exists" || inviteStatus === "login-required";
   const feedback = inviteFeedback(query?.invite);
   const title = showAuthForm && !emailMatches ? "Set up your internal team account" : "You are invited to join the internal team";
-  const setupApiPath = `/api/admin/internal-team/invitations/${encodeURIComponent(token)}/setup`;
-
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
       <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-white p-8 shadow-2xl">
@@ -114,17 +128,17 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
         ) : !emailMatches ? (
           showLogin ? (
             <InternalTeamInviteAuthForm
+              action={submitInternalTeamInviteSetup}
               email={invite.email ?? ""}
               mode="login"
-              setupApiPath={setupApiPath}
               switchHref={`${acceptPath}?mode=setup`}
               token={token}
             />
           ) : (
             <InternalTeamInviteAuthForm
+              action={submitInternalTeamInviteSetup}
               email={invite.email ?? ""}
               mode="signup"
-              setupApiPath={setupApiPath}
               switchHref={`${acceptPath}?mode=login`}
               token={token}
             />

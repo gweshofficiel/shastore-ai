@@ -34,6 +34,7 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
   if (!result.success) {
     return NextResponse.json(
       {
+        code: result.code,
         message: result.message,
         success: false
       },

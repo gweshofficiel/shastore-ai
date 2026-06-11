@@ -14,6 +14,7 @@ import {
   normalizeInternalTeamRole,
   type InternalTeamRole
 } from "@/lib/admin/internal-team-runtime";
+import { processInternalTeamInviteSetup } from "@/lib/admin/internal-team-invite-setup";
 import { getPublicUrl } from "@/lib/deployment/config";
 import { sendWorkspaceInviteEmailSafe } from "@/lib/notifications/email-provider";
 import { getRequestAuditFields, recordSecurityAuditLog } from "@/lib/security/audit";
@@ -43,6 +44,11 @@ function teamRedirect(status: string): never {
 
 function teamInviteRedirect(token: string, status: string): never {
   const params = new URLSearchParams({ invite: status });
+  redirect(`${internalTeamInviteAcceptPath(token)}?${params.toString()}`);
+}
+
+function teamInviteSetupRedirect(token: string, status: string): never {
+  const params = new URLSearchParams({ invite: status, mode: "setup" });
   redirect(`${internalTeamInviteAcceptPath(token)}?${params.toString()}`);
 }
 
@@ -793,5 +799,24 @@ async function acceptInternalTeamInvitationForUser({
 
 export async function acceptInternalTeamInvitation(formData: FormData) {
   await enterInternalTeamWorkspace(formData);
+}
+
+export async function submitInternalTeamInviteSetup(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const password = cleanPassword(formData.get("password"));
+  const confirmPassword = cleanPassword(formData.get("confirmPassword"));
+  const result = await processInternalTeamInviteSetup({
+    confirmPassword,
+    password,
+    token
+  });
+
+  if (!result.success) {
+    teamInviteSetupRedirect(token, result.code);
+  }
+
+  revalidatePath("/admin/team");
+  revalidatePath("/admin/internal-team");
+  redirect(result.redirectTo);
 }
 
