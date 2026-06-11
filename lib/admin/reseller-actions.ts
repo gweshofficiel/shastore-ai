@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type ResellerGovernanceStatus = "active" | "pending_review" | "suspended";
 type ResellerVerificationStatus = "pending_verification" | "verified";
+type ResellerRiskStatus = "clear" | "high_risk" | "reviewed";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -189,6 +190,94 @@ async function setResellerGovernance({
   revalidatePath("/admin/stores");
 }
 
+async function setResellerRiskStatus({
+  resellerId,
+  riskStatus
+}: {
+  resellerId: string;
+  riskStatus: ResellerRiskStatus;
+}) {
+  const access = await getAdminAccess();
+
+  if (!resellerId) {
+    throw new Error("Missing reseller ID.");
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for reseller governance.");
+  }
+
+  const { data } = await admin
+    .from("user_subscriptions" as never)
+    .select("plan_id, status, limits_snapshot")
+    .eq("user_id" as never, resellerId as never)
+    .maybeSingle();
+  const existing = data as { limits_snapshot: Record<string, unknown> | null; plan_id: string | null; status: string | null } | null;
+  const plan = getBillingPlan(existing?.plan_id ?? "free");
+  const currentMetadata = isRecord(existing?.limits_snapshot) ? existing.limits_snapshot : {};
+  const currentGovernance = isRecord(currentMetadata.adminGovernance)
+    ? currentMetadata.adminGovernance
+    : {};
+  const now = new Date().toISOString();
+  const nextGovernance = {
+    ...currentGovernance,
+    riskStatus,
+    reviewedAt: riskStatus === "reviewed" || riskStatus === "clear" ? now : currentGovernance.reviewedAt ?? null,
+    riskUpdatedAt: now,
+    source: "super_admin_resellers_runtime"
+  };
+
+  await admin.from("user_subscriptions" as never).upsert(
+    {
+      limits_snapshot: {
+        ...currentMetadata,
+        adminGovernance: nextGovernance
+      },
+      plan_id: plan.id,
+      status: existing?.status ?? "active",
+      user_id: resellerId
+    } as never,
+    { onConflict: "user_id" }
+  );
+
+  const eventType =
+    riskStatus === "high_risk"
+      ? "admin_reseller_marked_high_risk"
+      : riskStatus === "reviewed"
+        ? "admin_reseller_marked_reviewed"
+        : "admin_reseller_risk_cleared";
+  const payload = {
+    actor_user_id: access.user.id,
+    reseller_id: resellerId,
+    riskStatus,
+    source: "super_admin_resellers_runtime"
+  };
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: resellerId,
+    entity_type: "admin_reseller",
+    event_status: riskStatus === "high_risk" ? "warning" : "info",
+    event_type: eventType,
+    metadata: payload,
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  await admin.from("billing_events" as never).insert({
+    event_type: eventType,
+    provider: "admin",
+    user_id: resellerId,
+    payload: payload as never,
+    processed_at: now
+  } as never);
+
+  revalidatePath("/admin/resellers");
+  revalidatePath("/admin/users");
+}
+
 export async function markResellerVerified(formData: FormData) {
   await setResellerGovernance({
     governanceStatus: "active",
@@ -218,5 +307,26 @@ export async function restoreReseller(formData: FormData) {
     governanceStatus: "active",
     resellerId: cleanResellerId(formData),
     verificationStatus: "pending_verification"
+  });
+}
+
+export async function markResellerReviewed(formData: FormData) {
+  await setResellerRiskStatus({
+    resellerId: cleanResellerId(formData),
+    riskStatus: "reviewed"
+  });
+}
+
+export async function markResellerHighRisk(formData: FormData) {
+  await setResellerRiskStatus({
+    resellerId: cleanResellerId(formData),
+    riskStatus: "high_risk"
+  });
+}
+
+export async function clearResellerRisk(formData: FormData) {
+  await setResellerRiskStatus({
+    resellerId: cleanResellerId(formData),
+    riskStatus: "clear"
   });
 }

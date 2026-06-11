@@ -203,10 +203,22 @@ export type AdminReseller = {
   governanceStatus: "active" | "suspended" | "pending_review";
   verificationStatus: "pending_verification" | "verified";
   createdAt: string | null;
+  plan: string;
+  planId: string;
+  subscriptionStatus: string;
+  workspaceIds: string[];
   storesCreated: number;
   storesSold: number;
   customersReferred: number;
   commissionsPlaceholder: string;
+  commissionStatus: string;
+  riskStatus: "clear" | "high_risk" | "reviewed";
+  reviewedAt: string | null;
+  riskSignals: Array<{
+    createdAt: string | null;
+    label: string;
+    severity: "high" | "low" | "medium";
+  }>;
   profile: {
     displayName: string | null;
     id: string | null;
@@ -219,6 +231,7 @@ export type AdminReseller = {
     name: string;
     slug: string | null;
     status: string;
+    workspaceId: string | null;
   }>;
   transferredStores: Array<{
     buyerEmail: string | null;
@@ -1361,6 +1374,33 @@ function resellerGovernance(value: unknown): {
   };
 }
 
+function resellerGovernanceRisk(value: unknown): {
+  reviewedAt: string | null;
+  riskStatus: AdminReseller["riskStatus"];
+} {
+  if (!isRecord(value) || !isRecord(value.adminGovernance)) {
+    return {
+      reviewedAt: null,
+      riskStatus: "clear"
+    };
+  }
+
+  const governance = value.adminGovernance;
+  const riskStatus = text(governance.riskStatus);
+  const status = text(governance.status);
+  const reviewedAt = text(governance.reviewedAt) || null;
+
+  if (riskStatus === "high_risk") {
+    return { reviewedAt, riskStatus: "high_risk" };
+  }
+
+  if (riskStatus === "reviewed" || reviewedAt || status === "reviewed") {
+    return { reviewedAt, riskStatus: "reviewed" };
+  }
+
+  return { reviewedAt, riskStatus: "clear" };
+}
+
 async function safeSelect(
   supabase: SupabaseClient<Database>,
   table: string,
@@ -2131,7 +2171,12 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
     subscriptions,
     purchaseRequests,
     provisionedStores,
-    storeTransfers
+    storeTransfers,
+    workspaceMembers,
+    accountRoles,
+    affiliateOrders,
+    monitoringEvents,
+    securityAuditLogs
   ] = await Promise.all([
     safeSelect(
       supabase,
@@ -2142,16 +2187,21 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
     safeSelect(
       supabase,
       "stores",
-      "id, user_id, owner_user_id, name, store_name, slug, status, store_data, created_at"
+      "id, user_id, owner_user_id, workspace_id, name, store_name, slug, status, store_data, created_at"
     ),
-    safeSelect(supabase, "user_subscriptions", "user_id, status, limits_snapshot"),
+    safeSelect(supabase, "user_subscriptions", "user_id, plan_id, status, limits_snapshot"),
     safeSelect(supabase, "store_purchase_requests", "id, reseller_id, buyer_email, request_status, created_at"),
     safeSelect(
       supabase,
       "provisioned_stores",
       "id, reseller_id, buyer_email, provisioned_store_name, provisioning_status, ownership_status, created_at"
     ),
-    safeSelect(supabase, "store_transfers", "id, reseller_id, buyer_email, transfer_status, transferred_at, created_at")
+    safeSelect(supabase, "store_transfers", "id, reseller_id, buyer_email, transfer_status, transferred_at, created_at"),
+    safeSelect(supabase, "workspace_members", "workspace_id, user_id, role, status"),
+    safeSelect(supabase, "account_roles", "user_id, role, status"),
+    safeSelect(supabase, "store_affiliate_orders", "store_id, commission_amount, status", 1000),
+    safeSelect(supabase, "monitoring_events", "entity_id, entity_type, event_type, event_status, metadata, user_id, created_at", 1000),
+    safeSelect(supabase, "security_audit_logs", "user_id, action, reason, metadata, created_at", 1000)
   ]);
   const profileById = new Map(resellerProfiles.map((profile) => [text(profile.id), profile]));
   const profilesByUser = new Map(resellerProfiles.map((profile) => [text(profile.user_id), profile]));
@@ -2197,13 +2247,25 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
   }
 
   const subscriptionsByUser = new Map(subscriptions.map((subscription) => [text(subscription.user_id), subscription]));
+  const accountRoleByUser = new Map(accountRoles.map((role) => [text(role.user_id), role]));
+  const workspaceMembershipsByUser = new Map<string, AnyRecord[]>();
+  for (const member of workspaceMembers) {
+    const userId = text(member.user_id);
+    if (!userId) {
+      continue;
+    }
+    workspaceMembershipsByUser.set(userId, [...(workspaceMembershipsByUser.get(userId) ?? []), member]);
+  }
 
   return [...resellerIds].map((userId) => {
     const profile = profilesByUser.get(userId);
     const accountProfile = accountProfilesByUser.get(userId);
     const resellerProfileId = text(profile?.id);
-    const governance = resellerGovernance(subscriptionsByUser.get(userId)?.limits_snapshot);
+    const subscription = subscriptionsByUser.get(userId);
+    const governance = resellerGovernance(subscription?.limits_snapshot);
+    const risk = resellerGovernanceRisk(subscription?.limits_snapshot);
     const ownedStores = storesByOwner.get(userId) ?? [];
+    const ownedStoreIds = new Set(ownedStores.map((store) => text(store.id)).filter(Boolean));
     const resellerRequests = purchaseRequests.filter((request) => text(request.reseller_id) === resellerProfileId);
     const resellerProvisionedStores = provisionedStores.filter(
       (store) => text(store.reseller_id) === resellerProfileId
@@ -2235,19 +2297,77 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
       resellerProvisionedStores.filter((store) => text(store.provisioning_status) === "delivered").length,
       resellerTransfers.filter((transfer) => text(transfer.transferred_at)).length
     );
+    const planId = text(subscription?.plan_id, "free");
+    const plan = getBillingPlan(planId);
+    const subscriptionStatus = text(subscription?.status, "none");
+    const accountRole = accountRoleByUser.get(userId);
+    const accountStatus = text(accountRole?.status, "active");
+    const accountSuspended = accountStatus === "suspended" || accountStatus === "disabled";
     const status: AdminReseller["status"] =
-      governance.governanceStatus === "suspended"
+      governance.governanceStatus === "suspended" || accountSuspended
         ? "suspended"
         : governance.verificationStatus === "verified"
           ? "verified"
           : "pending_verification";
+    const resellerAffiliateOrders = affiliateOrders.filter((order) => ownedStoreIds.has(text(order.store_id)));
+    const commissionTotal = resellerAffiliateOrders.reduce((total, order) => total + numberValue(order.commission_amount), 0);
+    const commissionStatuses = new Set(resellerAffiliateOrders.map((order) => text(order.status, "pending")));
+    const commissionStatus =
+      resellerAffiliateOrders.length === 0
+        ? "not_available"
+        : commissionStatuses.has("pending")
+          ? "pending"
+          : commissionStatuses.has("approved")
+            ? "approved"
+            : commissionStatuses.has("paid")
+              ? "paid"
+              : "mixed";
+    const workspaceIds = [
+      ...new Set([
+        ...ownedStores.map((store) => text(store.workspace_id)).filter(Boolean),
+        ...(workspaceMembershipsByUser.get(userId) ?? []).map((member) => text(member.workspace_id)).filter(Boolean)
+      ])
+    ];
+    const monitoringSignals = monitoringEvents
+      .filter((event) => {
+        const metadata = isRecord(event.metadata) ? event.metadata : {};
+        return text(event.user_id) === userId || text(event.entity_id) === userId || text(metadata.reseller_id) === userId;
+      })
+      .slice(0, 3)
+      .map((event) => ({
+        createdAt: text(event.created_at) || null,
+        label: text(event.event_type, "Monitoring event"),
+        severity: text(event.event_status) === "warning" || text(event.event_type).includes("risk") ? "high" as const : "medium" as const
+      }));
+    const securitySignals = securityAuditLogs
+      .filter((event) => text(event.user_id) === userId)
+      .slice(0, 2)
+      .map((event) => ({
+        createdAt: text(event.created_at) || null,
+        label: text(event.action, "Security audit"),
+        severity: securitySignalSeverity(text(event.action))
+      }));
+    const riskSignals = [
+      ...(risk.riskStatus === "high_risk"
+        ? [{
+            createdAt: risk.reviewedAt,
+            label: "Marked high risk by Super Admin",
+            severity: "high" as const
+          }]
+        : []),
+      ...monitoringSignals,
+      ...securitySignals
+    ];
 
     return {
       commissionSummary: {
-        note: "Commission payouts are not implemented in this phase.",
-        total: 0
+        note: resellerAffiliateOrders.length
+          ? `Affiliate commission records found with ${commissionStatus} status.`
+          : "No commission records found.",
+        total: commissionTotal
       },
-      commissionsPlaceholder: "Coming later",
+      commissionStatus,
+      commissionsPlaceholder: resellerAffiliateOrders.length ? `$${commissionTotal.toFixed(2)}` : "No commission records",
       createdAt: text(profile?.created_at) || text(accountProfile?.created_at) || (createdByUser.get(userId) ?? null),
       customersReferred: referredCustomers.size,
       email: owners.get(userId) ?? text(userId, "Unknown reseller"),
@@ -2258,20 +2378,28 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
         id: text(store.id),
         name: text(store.store_name, text(store.name, "Untitled store")),
         slug: text(store.slug) || null,
-        status: governanceStatus(store.store_data, text(store.status, "draft"))
+        status: governanceStatus(store.store_data, text(store.status, "draft")),
+        workspaceId: text(store.workspace_id) || null
       })),
+      plan: plan.name,
+      planId,
       profile: {
         displayName: text(profile?.display_name) || text(accountProfile?.display_name) || null,
         id: resellerProfileId || null,
         isPublished: profile?.is_published === true,
         slug: text(profile?.slug) || null
       },
+      reviewedAt: risk.reviewedAt,
+      riskSignals,
+      riskStatus: risk.riskStatus,
       status,
       storesCreated: ownedStores.length + resellerProvisionedStores.length,
       storesSold,
+      subscriptionStatus,
       transferredStores,
       userId,
-      verificationStatus: governance.verificationStatus
+      verificationStatus: governance.verificationStatus,
+      workspaceIds
     };
   });
 }
