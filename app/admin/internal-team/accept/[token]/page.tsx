@@ -70,7 +70,7 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
   const showLogin = invite.authUserExists || mode === "login" || inviteStatus === "account-exists" || inviteStatus === "login-required";
   const feedback = inviteFeedback(query?.invite);
   const title = showAuthForm && !emailMatches ? "Set up your internal team account" : "You are invited to join the internal team";
-  const setupAction = `${acceptPath}/setup`;
+  const setupApiPath = `/api/admin/internal-team/invitations/${encodeURIComponent(token)}/setup`;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
@@ -114,17 +114,17 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
         ) : !emailMatches ? (
           showLogin ? (
             <InternalTeamInviteAuthForm
-              action={setupAction}
               email={invite.email ?? ""}
               mode="login"
+              setupApiPath={setupApiPath}
               switchHref={`${acceptPath}?mode=setup`}
               token={token}
             />
           ) : (
             <InternalTeamInviteAuthForm
-              action={setupAction}
               email={invite.email ?? ""}
               mode="signup"
+              setupApiPath={setupApiPath}
               switchHref={`${acceptPath}?mode=login`}
               token={token}
             />

@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
 import {
   hashInternalTeamInviteToken,
   internalTeamDefaultPathForRole,
@@ -8,22 +7,9 @@ import { getRequestAuditFields, recordSecurityAuditLog } from "@/lib/security/au
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-type SetupRouteProps = {
-  params: Promise<{
-    token: string;
-  }>;
-};
-
-function invitePath(token: string, status?: string) {
-  const params = new URLSearchParams();
-
-  if (status) {
-    params.set("invite", status);
-    params.set("mode", "setup");
-  }
-
-  return `/admin/internal-team/accept/${encodeURIComponent(token)}${params.size ? `?${params.toString()}` : ""}`;
-}
+export type InternalTeamInviteSetupResult =
+  | { email: string; redirectTo: string; success: true }
+  | { message: string; success: false };
 
 function isOpenInvite(invite: { expires_at?: string | null; status?: string | null } | null) {
   if (!invite || invite.status !== "pending") {
@@ -53,19 +39,23 @@ async function findAuthUserByEmail(email: string) {
   return data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
 }
 
-export async function POST(request: NextRequest, { params }: SetupRouteProps) {
-  const { token } = await params;
-  const formData = await request.formData();
-  const password = String(formData.get("password") ?? "");
-  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+export async function processInternalTeamInviteSetup({
+  confirmPassword,
+  password,
+  token
+}: {
+  confirmPassword: string;
+  password: string;
+  token: string;
+}): Promise<InternalTeamInviteSetupResult> {
   const admin = createAdminClient();
 
   if (!admin || !/^[A-Za-z0-9_-]{20,256}$/.test(token)) {
-    return NextResponse.redirect(new URL(invitePath(token, "invalid"), request.url));
+    return { message: "This invitation can no longer be accepted.", success: false };
   }
 
   if (password.length < 8 || password !== confirmPassword) {
-    return NextResponse.redirect(new URL(invitePath(token, "password"), request.url));
+    return { message: "Password must be at least 8 characters and match the confirmation.", success: false };
   }
 
   const { data } = await admin
@@ -90,7 +80,7 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
         .eq("id" as never, invite.id as never);
     }
 
-    return NextResponse.redirect(new URL(invitePath(token, "invalid"), request.url));
+    return { message: "This invitation can no longer be accepted.", success: false };
   }
 
   const invitedEmail = invite.email.toLowerCase();
@@ -121,7 +111,15 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
         email: invitedEmail,
         message: createError.message
       });
-      return NextResponse.redirect(new URL(invitePath(token, "signup-failed"), request.url));
+
+      if (createError.message.toLowerCase().includes("already")) {
+        return {
+          message: "An account already exists for this email. Log in with that password to continue.",
+          success: false
+        };
+      }
+
+      return { message: "Account creation failed. Try again.", success: false };
     }
   }
 
@@ -131,8 +129,15 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
   });
 
   if (signInError || !signInData.user || signInData.user.email?.toLowerCase() !== invitedEmail) {
-    return NextResponse.redirect(new URL(invitePath(token, existingUser ? "login-failed" : "login-required"), request.url));
+    return {
+      message: existingUser
+        ? "Login failed for the invited email. Check the password and try again."
+        : "Account was created but sign-in verification failed. Try again.",
+      success: false
+    };
   }
+
+  await internalSupabase.auth.signOut();
 
   const role = normalizeInternalTeamRole(invite.role);
   const now = new Date().toISOString();
@@ -165,11 +170,14 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
     } as never);
   }
 
-  await admin.from("profiles" as never).upsert({
-    email: invitedEmail,
-    full_name: invite.display_name ?? signInData.user.user_metadata?.full_name ?? null,
-    id: signInData.user.id
-  } as never);
+  await admin.from("profiles" as never).upsert(
+    {
+      email: invitedEmail,
+      full_name: invite.display_name ?? signInData.user.user_metadata?.full_name ?? null,
+      id: signInData.user.id
+    } as never,
+    { onConflict: "id" }
+  );
 
   await admin
     .from("internal_team_invitations" as never)
@@ -188,6 +196,7 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
     source: "internal_team_isolated_setup",
     staff_email: invitedEmail
   };
+
   await admin.from("monitoring_events" as never).insert({
     entity_id: signInData.user.id,
     entity_type: "admin_internal_team_center",
@@ -204,10 +213,14 @@ export async function POST(request: NextRequest, { params }: SetupRouteProps) {
     action: "admin_internal_team_invitation_accepted",
     client: admin,
     metadata: auditMetadata,
-    reason: "Internal team invitation accepted through isolated setup flow.",
-    route: "/admin/internal-team/accept/[token]/setup",
+    reason: "Internal team invitation accepted through isolated setup API.",
+    route: "/api/admin/internal-team/invitations/[token]/setup",
     userId: signInData.user.id
   });
 
-  return NextResponse.redirect(new URL(`${internalTeamDefaultPathForRole(role)}?team=accepted`, request.url));
+  return {
+    email: invitedEmail,
+    redirectTo: `${internalTeamDefaultPathForRole(role)}?team=accepted`,
+    success: true
+  };
 }
