@@ -801,6 +801,53 @@ export async function acceptInternalTeamInvitation(formData: FormData) {
   await enterInternalTeamWorkspace(formData);
 }
 
+export async function continueInternalTeamInviteSetup(formData: FormData) {
+  const token = cleanText(formData.get("token"), 256);
+  const admin = createAdminClient();
+  const [adminSupabase, ownerSupabase] = await Promise.all([
+    createClient({ role: "admin" }),
+    createClient({ role: "owner" })
+  ]);
+  const [adminAuth, ownerAuth] = await Promise.all([
+    adminSupabase.auth.getUser(),
+    ownerSupabase.auth.getUser()
+  ]);
+  const actorUser = adminAuth.data.user ?? ownerAuth.data.user ?? null;
+  const sourceRole = adminAuth.data.user ? "admin" : ownerAuth.data.user ? "owner" : "unknown";
+
+  if (admin && token) {
+    const metadata = {
+      actor_user_id: actorUser?.id ?? null,
+      source: "internal_team_invite_session_warning",
+      source_role: sourceRole
+    };
+
+    await admin.from("monitoring_events" as never).insert({
+      entity_id: actorUser?.id ?? null,
+      entity_type: "admin_internal_team_invite",
+      event_status: "warning",
+      event_type: "admin_internal_team_invite_session_override",
+      metadata,
+      store_id: null,
+      user_id: actorUser?.id ?? null,
+      workspace_id: null
+    } as never);
+
+    await recordSecurityAuditLog({
+      ...(await getRequestAuditFields()),
+      action: "admin_internal_team_invite_session_override",
+      client: admin,
+      metadata,
+      reason: "Platform Owner chose to continue internal team invite setup in the current browser session.",
+      route: "/admin/internal-team/accept/[token]",
+      userId: actorUser?.id ?? null
+    });
+  }
+
+  const params = new URLSearchParams({ continue: "1", mode: "setup" });
+  redirect(`${internalTeamInviteAcceptPath(token)}?${params.toString()}`);
+}
+
 export async function submitInternalTeamInviteSetup(formData: FormData) {
   const token = cleanText(formData.get("token"), 256);
   const password = cleanPassword(formData.get("password"));

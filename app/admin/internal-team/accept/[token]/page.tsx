@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { InternalTeamInviteAuthForm } from "@/components/admin/internal-team-invite-auth-form";
+import { InternalTeamInviteSessionWarning } from "@/components/admin/internal-team-invite-session-warning";
+import {
+  getAccountRoleForUser,
+  isConfiguredSuperAdminEmail
+} from "@/lib/account-roles";
 import {
   enterInternalTeamWorkspace,
   getInternalTeamInviteTokenPreview,
+  continueInternalTeamInviteSetup,
   submitInternalTeamInviteSetup
 } from "@/lib/admin/team-actions";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +19,7 @@ type InternalTeamAcceptPageProps = {
     token: string;
   }>;
   searchParams?: Promise<{
+    continue?: string | string[];
     invite?: string | string[];
     mode?: string | string[];
   }>;
@@ -59,6 +67,49 @@ function inviteFeedback(value: string | string[] | undefined) {
   return null;
 }
 
+async function hasActivePlatformOwnerSession() {
+  const [adminSupabase, ownerSupabase] = await Promise.all([
+    createClient({ role: "admin" }),
+    createClient({ role: "owner" })
+  ]);
+  const [adminAuth, ownerAuth] = await Promise.all([
+    adminSupabase.auth.getUser(),
+    ownerSupabase.auth.getUser()
+  ]);
+  const adminUser = adminAuth.data.user;
+  const ownerUser = ownerAuth.data.user;
+
+  if (adminUser) {
+    const adminRole = await getAccountRoleForUser(adminSupabase, adminUser.id);
+    const isSuperAdmin =
+      isConfiguredSuperAdminEmail(adminUser.email) &&
+      adminRole?.role === "super_admin" &&
+      adminRole.status === "active";
+
+    if (isSuperAdmin) {
+      return true;
+    }
+  }
+
+  if (ownerUser) {
+    const ownerRole = await getAccountRoleForUser(ownerSupabase, ownerUser.id);
+
+    if (ownerRole?.role === "owner" && ownerRole.status === "active") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function absoluteInviteUrl(path: string) {
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  const protocol = headerStore.get("x-forwarded-proto") ?? "https";
+
+  return host ? `${protocol}://${host}${path}` : path;
+}
+
 export default async function InternalTeamAcceptPage({ params, searchParams }: InternalTeamAcceptPageProps) {
   const { token } = await params;
   const query = await searchParams;
@@ -71,6 +122,12 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
   const emailMatches = Boolean(user?.email && invite.email && user.email.toLowerCase() === invite.email.toLowerCase());
   const mode = Array.isArray(query?.mode) ? query?.mode[0] : query?.mode;
   const inviteStatus = Array.isArray(query?.invite) ? query?.invite[0] : query?.invite;
+  const continueSetup = (Array.isArray(query?.continue) ? query?.continue[0] : query?.continue) === "1";
+  const showOwnerSessionWarning =
+    invite.ok &&
+    !continueSetup &&
+    !emailMatches &&
+    await hasActivePlatformOwnerSession();
   const showAuthForm =
     mode === "setup" ||
     mode === "login" ||
@@ -85,7 +142,11 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
     inviteStatus === "already-accepted";
   const showLogin = invite.authUserExists || mode === "login" || inviteStatus === "account-exists" || inviteStatus === "login-required";
   const feedback = inviteFeedback(query?.invite);
-  const title = showAuthForm && !emailMatches ? "Set up your internal team account" : "You are invited to join the internal team";
+  const title =
+    showOwnerSessionWarning || showAuthForm && !emailMatches
+      ? "Set up your internal team account"
+      : "You are invited to join the internal team";
+  const acceptUrl = await absoluteInviteUrl(acceptPath);
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
       <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-white p-8 shadow-2xl">
@@ -118,6 +179,12 @@ export default async function InternalTeamAcceptPage({ params, searchParams }: I
           >
             Return home
           </Link>
+        ) : showOwnerSessionWarning ? (
+          <InternalTeamInviteSessionWarning
+            acceptUrl={acceptUrl}
+            continueAction={continueInternalTeamInviteSetup}
+            token={token}
+          />
         ) : !showAuthForm || (user && !emailMatches) || emailMatches ? (
           <form action={enterInternalTeamWorkspace} className="mt-6">
             <input name="token" type="hidden" value={token} />
