@@ -5,7 +5,8 @@ import {
   createPlatformCheckoutSession,
   isPaidSubscriptionPlan,
   isPlanAllowedForPlatformBillingRole,
-  resolvePlatformPriceId
+  missingPlatformPriceMessage,
+  resolvePlatformPriceIdAsync
 } from "@/lib/billing/platform-checkout";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getPlatformBillingStripe } from "@/lib/stripe";
@@ -249,20 +250,23 @@ export async function POST(request: Request) {
         return billingErrorResponse(request, "invalid_plan", "Choose Free, Starter, Pro, or Agency.");
       }
 
-      const { envKey, priceId } = resolvePlatformPriceId(requestedPlan);
+      const priceResolution = await resolvePlatformPriceIdAsync(requestedPlan);
 
-      if (!priceId) {
+      if (!priceResolution.priceId) {
         console.error("[plan-change-error] missing Stripe price id", {
-          envKey,
+          checkedEnvKeys: priceResolution.checkedEnvKeys,
+          envKey: priceResolution.envKey,
           requestedPlan,
           userId: user.id
         });
         return billingErrorResponse(
           request,
           "missing_price",
-          `Missing ${envKey}. Add the Stripe price ID for the ${requestedPlan} plan.`
+          missingPlatformPriceMessage(requestedPlan, priceResolution)
         );
       }
+
+      const { priceId } = priceResolution;
 
       const subscription = await stripe.subscriptions.retrieve(access.stripeSubscriptionId);
       const subscriptionItem = subscription.items.data[0];

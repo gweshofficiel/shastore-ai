@@ -1,7 +1,10 @@
 import Stripe from "stripe";
 import { getAppBaseUrl } from "@/lib/deployment/config";
+import { getBillingPlan } from "@/lib/billing/plans";
+import { createClient } from "@/lib/supabase/server";
 
 const PAID_PLANS = ["starter", "pro", "agency"] as const;
+const GENERIC_PLATFORM_PRICE_ENV = "PLATFORM_BILLING_STRIPE_PRICE_ID";
 
 export type PaidSubscriptionPlanId = (typeof PAID_PLANS)[number];
 export type PlatformBillingAccountRole = "owner" | "reseller";
@@ -11,10 +14,11 @@ const PLAN_SCOPES: Record<PlatformBillingAccountRole, readonly PaidSubscriptionP
   reseller: PAID_PLANS
 };
 
-const PLAN_PRICE_ENV: Record<PaidSubscriptionPlanId, string> = {
-  starter: "PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER",
-  pro: "PLATFORM_BILLING_STRIPE_PRICE_ID_PRO",
-  agency: "PLATFORM_BILLING_STRIPE_PRICE_ID_AGENCY"
+export type PlatformPriceResolution = {
+  checkedEnvKeys: string[];
+  envKey: string;
+  priceId: string | null;
+  source: "database" | "env" | null;
 };
 
 export function isPaidSubscriptionPlan(plan: string): plan is PaidSubscriptionPlanId {
@@ -32,11 +36,144 @@ export function getPlatformStripeSecretKey() {
   return process.env.STRIPE_SECRET_KEY ?? process.env.PLATFORM_BILLING_STRIPE_SECRET_KEY ?? null;
 }
 
-export function resolvePlatformPriceId(plan: PaidSubscriptionPlanId) {
-  const envKey = PLAN_PRICE_ENV[plan];
-  const priceId = process.env[envKey]?.trim() || null;
+function readTrimmedEnv(key: string) {
+  const value = process.env[key]?.trim();
+  return value || null;
+}
 
-  return { envKey, priceId };
+function isValidStripePriceId(value: string | null | undefined) {
+  return typeof value === "string" && /^price_/.test(value);
+}
+
+function platformPriceEnvKeys(plan: PaidSubscriptionPlanId) {
+  const billingPlan = getBillingPlan(plan);
+  const keys = [billingPlan.stripePriceEnv, GENERIC_PLATFORM_PRICE_ENV].filter(
+    (key): key is string => Boolean(key)
+  );
+
+  return [...new Set(keys)];
+}
+
+function isMissingSubscriptionPlansTable(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as { code?: string; message?: string };
+  return (
+    record.code === "PGRST205" ||
+    record.message?.toLowerCase().includes("subscription_plans") ||
+    false
+  );
+}
+
+export function missingPlatformPriceMessage(
+  plan: PaidSubscriptionPlanId,
+  resolution: PlatformPriceResolution
+) {
+  const billingPlan = getBillingPlan(plan);
+  const envHint = resolution.checkedEnvKeys.join(", ");
+
+  return `${billingPlan.name} plan is missing a valid Stripe price ID. Set ${envHint} or subscription_plans.stripe_price_id for plan "${plan}".`;
+}
+
+function checkoutFailedMessage(
+  plan: PaidSubscriptionPlanId,
+  resolution: PlatformPriceResolution,
+  stripeMessage: string
+) {
+  const billingPlan = getBillingPlan(plan);
+
+  if (/no such price/i.test(stripeMessage)) {
+    return `${billingPlan.name} plan Stripe price ID was rejected by Stripe. Verify ${resolution.envKey} in your platform billing Stripe account.`;
+  }
+
+  return `Could not start Stripe checkout for the ${billingPlan.name} plan. Verify platform billing Stripe price IDs (${resolution.envKey}) and try again.`;
+}
+
+export function resolvePlatformPriceId(plan: PaidSubscriptionPlanId): PlatformPriceResolution {
+  const checkedEnvKeys = platformPriceEnvKeys(plan);
+
+  for (const envKey of checkedEnvKeys) {
+    const candidate = readTrimmedEnv(envKey);
+
+    if (isValidStripePriceId(candidate)) {
+      return {
+        checkedEnvKeys,
+        envKey,
+        priceId: candidate,
+        source: "env"
+      };
+    }
+
+    if (candidate) {
+      console.warn("[platform-checkout] ignored invalid Stripe price env value", {
+        envKey,
+        plan
+      });
+    }
+  }
+
+  return {
+    checkedEnvKeys,
+    envKey: checkedEnvKeys[0] ?? `PLATFORM_BILLING_STRIPE_PRICE_ID_${plan.toUpperCase()}`,
+    priceId: null,
+    source: null
+  };
+}
+
+async function resolvePlatformPriceIdFromDatabase(
+  plan: PaidSubscriptionPlanId,
+  resolution: PlatformPriceResolution
+): Promise<PlatformPriceResolution> {
+  const supabase = await createClient();
+  const planIds = plan === "agency" ? ["agency", "business"] : [plan];
+
+  for (const planId of planIds) {
+    const { data, error } = await supabase
+      .from("subscription_plans" as never)
+      .select("stripe_price_id")
+      .eq("id", planId as never)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingSubscriptionPlansTable(error)) {
+        break;
+      }
+
+      console.warn("[platform-checkout] subscription_plans lookup failed", {
+        message: error.message,
+        plan,
+        planId
+      });
+      continue;
+    }
+
+    const row = data as { stripe_price_id?: string | null } | null;
+    const priceId = row?.stripe_price_id?.trim() || null;
+
+    if (isValidStripePriceId(priceId)) {
+      return {
+        ...resolution,
+        priceId,
+        source: "database"
+      };
+    }
+  }
+
+  return resolution;
+}
+
+export async function resolvePlatformPriceIdAsync(
+  plan: PaidSubscriptionPlanId
+): Promise<PlatformPriceResolution> {
+  const envResolution = resolvePlatformPriceId(plan);
+
+  if (envResolution.priceId) {
+    return envResolution;
+  }
+
+  return resolvePlatformPriceIdFromDatabase(plan, envResolution);
 }
 
 export function resolvePlatformPlanByPriceId(priceId: string | null | undefined) {
@@ -106,13 +243,13 @@ export async function createPlatformCheckoutSession(
     };
   }
 
-  const { envKey, priceId } = resolvePlatformPriceId(input.plan);
+  const priceResolution = await resolvePlatformPriceIdAsync(input.plan);
 
-  if (!priceId) {
+  if (!priceResolution.priceId) {
     return {
       ok: false,
       code: "missing_price",
-      message: `Missing ${envKey}. Add the Stripe price ID for the ${input.plan} plan.`
+      message: missingPlatformPriceMessage(input.plan, priceResolution)
     };
   }
 
@@ -125,7 +262,7 @@ export async function createPlatformCheckoutSession(
       cancel_url: cancelUrl,
       client_reference_id: input.userId,
       customer_email: input.customerEmail ?? undefined,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: priceResolution.priceId, quantity: 1 }],
       metadata,
       mode: "subscription",
       subscription_data: {
@@ -144,17 +281,20 @@ export async function createPlatformCheckoutSession(
 
     return { ok: true, url: session.url };
   } catch (error) {
+    const stripeMessage = error instanceof Error ? error.message : String(error);
+
     console.error("[platform-checkout] checkout session create failed", {
       accountRole: input.accountRole,
-      message: error instanceof Error ? error.message : String(error),
+      message: stripeMessage,
       plan: input.plan,
+      priceSource: priceResolution.source,
       userId: input.userId
     });
 
     return {
       ok: false,
       code: "checkout_failed",
-      message: "Could not start Stripe checkout. Verify platform billing Stripe price IDs and try again."
+      message: checkoutFailedMessage(input.plan, priceResolution, stripeMessage)
     };
   }
 }
