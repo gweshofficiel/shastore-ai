@@ -87,6 +87,7 @@ export async function POST(request: Request) {
   }
 
   const checkout = await createYouCanPayPlatformCheckout({
+    customerIp: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
     method,
     planId: upgrade.planId,
     userId: user.id,

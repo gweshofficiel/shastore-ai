@@ -1,10 +1,13 @@
+import crypto from "crypto";
 import { getManagedBillingPlanForCheckout } from "@/lib/billing/managed-plans";
-import type { SubscriptionPlanId } from "@/lib/billing/plans";
+import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
 import { isPaidSubscriptionPlan } from "@/lib/billing/platform-checkout";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type YouCanPayBillingMethod = "card" | "cashplus";
 
 type CreateYouCanPayPlatformCheckoutInput = {
+  customerIp?: string | null;
   method: YouCanPayBillingMethod;
   planId: SubscriptionPlanId;
   userId: string;
@@ -24,6 +27,7 @@ type YouCanPayTokenResponse = {
   paymentURL?: string;
   paymentUrl?: string;
   payment_url?: string;
+  tokenId?: string;
   token?: {
     id?: string;
   };
@@ -32,6 +36,39 @@ type YouCanPayTokenResponse = {
 type YouCanPayErrorResponse = {
   errors?: unknown;
   message?: string;
+};
+
+export type YouCanPayWebhookPayload = {
+  event?: {
+    name?: string | null;
+  };
+  event_name?: string | null;
+  id?: string | null;
+  payload?: {
+    customer?: {
+      email?: string | null;
+      id?: string | null;
+    } | null;
+    metadata?: Record<string, unknown> | null;
+    payment_method?: {
+      name?: string | null;
+    } | null;
+    transaction?: YouCanPayTransaction | null;
+  } | null;
+};
+
+type YouCanPayTransaction = {
+  amount?: number | string | null;
+  currency?: string | null;
+  id?: string | null;
+  order_id?: string | null;
+  status?: number | string | null;
+};
+
+type ParsedYouCanPayOrderId = {
+  method: YouCanPayBillingMethod | null;
+  planId: SubscriptionPlanId | null;
+  userId: string | null;
 };
 
 const YOUCAN_PAY_PROVIDER = "youcan_pay";
@@ -78,7 +115,11 @@ function checkoutUrl(path: string) {
 }
 
 function paymentTokenEndpoint() {
-  return `${youCanPayBaseUrl()}${youCanPayIsSandbox() ? "/sandbox" : ""}/api/tokenize/`;
+  return `${youCanPayBaseUrl()}${youCanPayIsSandbox() ? "/sandbox" : ""}/api/tokenize`;
+}
+
+function paymentFormUrl(tokenId: string) {
+  return `${youCanPayBaseUrl()}${youCanPayIsSandbox() ? "/sandbox" : ""}/payment-form/${encodeURIComponent(tokenId)}`;
 }
 
 function normalizeMethod(value: string): YouCanPayBillingMethod | null {
@@ -98,6 +139,241 @@ function orderId(input: CreateYouCanPayPlatformCheckoutInput) {
 
 function amountInSmallestUnit(priceCents: number) {
   return Math.max(0, Math.round(priceCents));
+}
+
+function parseOrderId(value?: string | null): ParsedYouCanPayOrderId {
+  const [prefix, provider, method, planId, userId] = (value ?? "").split(":");
+
+  if (prefix !== "platform_subscription" || provider !== YOUCAN_PAY_PROVIDER) {
+    return {
+      method: null,
+      planId: null,
+      userId: null
+    };
+  }
+
+  return {
+    method: normalizeMethod(method),
+    planId: planId && isPaidSubscriptionPlan(planId) ? planId : null,
+    userId: userId || null
+  };
+}
+
+function stringValue(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function numberStatus(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function eventName(payload: YouCanPayWebhookPayload) {
+  return payload.event_name ?? payload.event?.name ?? "youcan.event.unknown";
+}
+
+function transactionStatusKind(payload: YouCanPayWebhookPayload) {
+  const name = eventName(payload).toLowerCase();
+  const status = numberStatus(payload.payload?.transaction?.status);
+  const textStatus = stringValue(payload.payload?.transaction?.status)?.toLowerCase() ?? "";
+
+  if (name.includes("refund") || textStatus.includes("refund")) {
+    return "refunded" as const;
+  }
+
+  if (name.includes("paid") || status === 1 || textStatus === "paid" || textStatus === "success") {
+    return "paid" as const;
+  }
+
+  if (
+    name.includes("fail") ||
+    name.includes("cancel") ||
+    textStatus.includes("fail") ||
+    textStatus.includes("cancel") ||
+    status === 0
+  ) {
+    return "failed" as const;
+  }
+
+  return "unsupported" as const;
+}
+
+function metadata(payload: YouCanPayWebhookPayload) {
+  return payload.payload?.metadata && typeof payload.payload.metadata === "object"
+    ? payload.payload.metadata
+    : {};
+}
+
+function webhookContext(payload: YouCanPayWebhookPayload) {
+  const tx = payload.payload?.transaction ?? null;
+  const meta = metadata(payload);
+  const orderId = tx?.order_id ?? stringValue(meta.order_id);
+  const parsed = parseOrderId(orderId);
+  const planIdFromMetadata = stringValue(meta.plan_id);
+  const methodFromMetadata = stringValue(meta.payment_method ?? meta.method);
+
+  return {
+    amount: tx?.amount ?? null,
+    currency: tx?.currency ?? null,
+    customerId: payload.payload?.customer?.id ?? payload.payload?.customer?.email ?? null,
+    method: methodFromMetadata ? normalizeMethod(methodFromMetadata) : parsed.method,
+    orderId,
+    planId:
+      planIdFromMetadata && isPaidSubscriptionPlan(planIdFromMetadata)
+        ? planIdFromMetadata
+        : parsed.planId,
+    transactionId: tx?.id ?? payload.id ?? null,
+    userId: stringValue(meta.user_id) ?? parsed.userId,
+    workspaceId: stringValue(meta.workspace_id)
+  };
+}
+
+async function logYouCanPayBillingEvent(input: {
+  eventType: string;
+  outcome: "failed" | "skipped" | "success";
+  payload: Record<string, unknown>;
+  providerEventId: string;
+  reason?: string | null;
+  userId?: string | null;
+}) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    console.warn("[youcan-pay] billing event log skipped without service client", {
+      eventType: input.eventType,
+      providerEventId: input.providerEventId
+    });
+    return;
+  }
+
+  const { error } = await supabase.from("billing_events" as never).upsert({
+    event_type: input.eventType,
+    provider: YOUCAN_PAY_PROVIDER,
+    provider_event_id: input.providerEventId,
+    user_id: input.userId ?? null,
+    payload: {
+      ...input.payload,
+      outcome: input.outcome,
+      reason: input.reason ?? null
+    } as never,
+    processed_at: new Date().toISOString()
+  } as never, { onConflict: "provider_event_id" });
+
+  if (error) {
+    if (
+      error.code === "PGRST205" ||
+      error.message?.toLowerCase().includes("billing_events")
+    ) {
+      console.warn("[youcan-pay] billing event log skipped because table is unavailable", {
+        eventType: input.eventType,
+        providerEventId: input.providerEventId
+      });
+      return;
+    }
+
+    console.warn("[youcan-pay] billing event log failed", {
+      eventType: input.eventType,
+      message: error.message,
+      providerEventId: input.providerEventId
+    });
+  }
+}
+
+async function activateYouCanPaySubscription(input: {
+  customerId?: string | null;
+  method: YouCanPayBillingMethod;
+  orderId?: string | null;
+  planId: SubscriptionPlanId;
+  transactionId: string;
+  userId: string;
+  workspaceId?: string | null;
+}) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY for YouCan Pay billing sync.");
+  }
+
+  const plan = getBillingPlan(input.planId);
+  const { data } = await supabase
+    .from("user_subscriptions" as never)
+    .select("limits_snapshot")
+    .eq("user_id" as never, input.userId as never)
+    .maybeSingle();
+  const existing = data as { limits_snapshot?: Record<string, unknown> | null } | null;
+  const existingSnapshot =
+    existing?.limits_snapshot &&
+    typeof existing.limits_snapshot === "object" &&
+    !Array.isArray(existing.limits_snapshot)
+      ? existing.limits_snapshot
+      : {};
+  const now = new Date();
+  const currentPeriodEnd = new Date(now);
+  currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+
+  const { error } = await supabase.from("user_subscriptions" as never).upsert({
+    cancel_at_period_end: false,
+    current_period_end: currentPeriodEnd.toISOString(),
+    current_period_start: now.toISOString(),
+    grace_period_until: null,
+    limits_snapshot: {
+      ...existingSnapshot,
+      platformBilling: {
+        billingScope: "platform",
+        paymentMethod: input.method,
+        provider: YOUCAN_PAY_PROVIDER,
+        syncedAt: now.toISOString(),
+        transactionId: input.transactionId,
+        workspaceId: input.workspaceId ?? null
+      }
+    },
+    plan_key: plan.id,
+    plan_id: plan.id,
+    provider: YOUCAN_PAY_PROVIDER,
+    provider_customer_id: input.customerId ?? null,
+    provider_subscription_id: input.transactionId,
+    status: "active",
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    updated_at: now.toISOString(),
+    user_id: input.userId
+  } as never, { onConflict: "user_id" });
+
+  if (error) {
+    console.error("youcan activation failed", {
+      message: error.message,
+      method: input.method,
+      orderId: input.orderId ?? null,
+      planId: input.planId,
+      transactionId: input.transactionId,
+      userId: input.userId
+    });
+    throw error;
+  }
+
+  console.info("youcan activation completed", {
+    method: input.method,
+    orderId: input.orderId ?? null,
+    planId: input.planId,
+    transactionId: input.transactionId,
+    userId: input.userId
+  });
 }
 
 export function normalizeYouCanPayBillingMethod(value: string | null | undefined) {
@@ -158,13 +434,14 @@ export async function createYouCanPayPlatformCheckout(
   }
 
   const providerOrderId = orderId(input);
+  const customerIp = input.customerIp?.split(",")[0]?.trim() || "127.0.0.1";
 
   try {
     const response = await fetch(paymentTokenEndpoint(), {
       body: JSON.stringify({
         amount: amountInSmallestUnit(plan.priceCents),
         currency: "USD",
-        customer_ip: "127.0.0.1",
+        customer_ip: customerIp,
         error_url: errorUrl,
         metadata: {
           method: input.method,
@@ -209,11 +486,12 @@ export async function createYouCanPayPlatformCheckout(
       };
     }
 
+    const tokenId = data?.token?.id ?? data?.tokenId ?? data?.id ?? null;
     const url =
       data?.payment_url ??
       data?.paymentUrl ??
       data?.paymentURL ??
-      null;
+      (tokenId ? paymentFormUrl(tokenId) : null);
 
     if (!url) {
       console.error("youcan checkout failed", {
@@ -254,4 +532,128 @@ export async function createYouCanPayPlatformCheckout(
       ok: false
     };
   }
+}
+
+export function verifyYouCanPayWebhookSignature(rawBody: string, signature: string | null) {
+  const privateKey = youCanPayPrivateKey();
+
+  if (!privateKey || !signature) {
+    return false;
+  }
+
+  const expected = crypto.createHmac("sha256", privateKey).update(rawBody).digest("hex");
+
+  if (expected.length !== signature.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+export async function syncYouCanPayPlatformWebhook(payload: YouCanPayWebhookPayload) {
+  const kind = transactionStatusKind(payload);
+  const context = webhookContext(payload);
+  const providerEventId =
+    payload.id ??
+    context.transactionId ??
+    context.orderId ??
+    `youcan:${Date.now()}`;
+  const eventType = eventName(payload);
+
+  if (kind === "paid") {
+    console.info("youcan payment paid", {
+      eventType,
+      method: context.method,
+      orderId: context.orderId,
+      planId: context.planId,
+      transactionId: context.transactionId,
+      userId: context.userId
+    });
+
+    if (!context.userId || !context.planId || !context.method || !context.transactionId) {
+      console.error("youcan activation failed", {
+        eventType,
+        orderId: context.orderId,
+        reason: "missing_activation_context",
+        transactionId: context.transactionId
+      });
+      await logYouCanPayBillingEvent({
+        eventType,
+        outcome: "failed",
+        payload: {
+          context,
+          kind
+        },
+        providerEventId,
+        reason: "missing_activation_context",
+        userId: context.userId
+      });
+      throw new Error("YouCan Pay webhook is missing activation context.");
+    }
+
+    await activateYouCanPaySubscription({
+      customerId: context.customerId,
+      method: context.method,
+      orderId: context.orderId,
+      planId: context.planId,
+      transactionId: context.transactionId,
+      userId: context.userId,
+      workspaceId: context.workspaceId
+    });
+
+    await logYouCanPayBillingEvent({
+      eventType,
+      outcome: "success",
+      payload: {
+        amount: context.amount,
+        currency: context.currency,
+        method: context.method,
+        orderId: context.orderId,
+        planId: context.planId,
+        transactionId: context.transactionId,
+        workspaceId: context.workspaceId
+      },
+      providerEventId,
+      userId: context.userId
+    });
+
+    return { activated: true, reason: "payment_paid" };
+  }
+
+  if (kind === "failed" || kind === "refunded") {
+    await logYouCanPayBillingEvent({
+      eventType,
+      outcome: kind === "failed" ? "failed" : "skipped",
+      payload: {
+        amount: context.amount,
+        currency: context.currency,
+        kind,
+        method: context.method,
+        orderId: context.orderId,
+        planId: context.planId,
+        transactionId: context.transactionId,
+        workspaceId: context.workspaceId
+      },
+      providerEventId,
+      reason: kind,
+      userId: context.userId
+    });
+
+    return { activated: false, reason: `payment_${kind}` };
+  }
+
+  await logYouCanPayBillingEvent({
+    eventType,
+    outcome: "skipped",
+    payload: {
+      kind,
+      orderId: context.orderId,
+      transactionId: context.transactionId
+    },
+    providerEventId,
+    reason: "unsupported_youcan_event",
+    userId: context.userId
+  });
+
+  return { activated: false, reason: "unsupported_youcan_event" };
 }
