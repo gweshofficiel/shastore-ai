@@ -13,7 +13,31 @@ export const dynamic = "force-dynamic";
 
 const planOrder: ResellerInventoryPlan[] = ["Starter", "Pro", "Agency", "Enterprise"];
 
-export default async function ResellerSubscriptionPage() {
+function billingPlanIdForResellerPlan(plan: ResellerInventoryPlan) {
+  if (plan === "Starter") {
+    return "starter";
+  }
+
+  if (plan === "Pro") {
+    return "pro";
+  }
+
+  if (plan === "Agency") {
+    return "agency";
+  }
+
+  return null;
+}
+
+export default async function ResellerSubscriptionPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    billing?: string;
+    message?: string;
+  }>;
+}) {
+  const query = await searchParams;
   const planEngine = await getResellerSubscriptionPlanEngineData();
   const inventory = planEngine.inventory;
   const templateInventory = planEngine.templateInventory;
@@ -25,6 +49,27 @@ export default async function ResellerSubscriptionPage() {
         description="Reseller subscription plan capacity for listings, templates, portfolio, visibility, badges, and marketplace tools. SHASTORE earns from reseller subscriptions only."
         title="Reseller Subscription Plans"
       />
+      {query.billing === "success" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-bold text-emerald-700">
+            Checkout completed. Your reseller plan will update after Stripe sends the platform billing webhook.
+          </p>
+        </Card>
+      ) : null}
+      {query.billing === "cancelled" ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-700">
+            Checkout canceled. Your current reseller plan is unchanged.
+          </p>
+        </Card>
+      ) : null}
+      {query.billing === "error" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-bold text-red-800">
+            {query.message ?? "Stripe checkout could not be started for this reseller plan."}
+          </p>
+        </Card>
+      ) : null}
       <Card className="p-6 lg:p-8">
         <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr] lg:items-start">
           <div>
@@ -75,6 +120,7 @@ export default async function ResellerSubscriptionPage() {
           {planEngine.planLimits.map((plan) => {
             const rank = planOrder.indexOf(plan.name);
             const direction = rank > currentPlanRank ? "Upgrade preview" : rank < currentPlanRank ? "Downgrade preview" : "Current plan";
+            const billingPlanId = billingPlanIdForResellerPlan(plan.name);
 
             return (
               <div
@@ -104,9 +150,26 @@ export default async function ResellerSubscriptionPage() {
                   <p>Team members: {plan.teamMembersPlaceholder} placeholder</p>
                   <p>Support: {plan.supportLevelPlaceholder}</p>
                 </div>
-                <button className="mt-5 h-10 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white" type="button">
-                  {direction}
-                </button>
+                {plan.name === planEngine.currentPlan ? (
+                  <button className="mt-5 h-10 rounded-full bg-slate-200 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-500" disabled type="button">
+                    Current plan
+                  </button>
+                ) : billingPlanId && rank > currentPlanRank ? (
+                  <form action="/api/reseller/billing/checkout" className="mt-5" method="POST">
+                    <input name="plan" type="hidden" value={billingPlanId} />
+                    <button className="h-10 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
+                      {direction.replace(" preview", "")}
+                    </button>
+                  </form>
+                ) : billingPlanId ? (
+                  <button className="mt-5 h-10 rounded-full bg-slate-100 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400" disabled type="button">
+                    Downgrade placeholder
+                  </button>
+                ) : (
+                  <button className="mt-5 h-10 rounded-full bg-slate-100 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400" disabled type="button">
+                    Enterprise placeholder
+                  </button>
+                )}
               </div>
             );
           })}

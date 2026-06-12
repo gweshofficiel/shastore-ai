@@ -3,6 +3,7 @@ import { getPlatformBillingStripe } from "@/lib/stripe";
 import type { BillingPlan } from "@/lib/billing/plans";
 
 export type BillingCheckoutRequest = {
+  accountId?: string | null;
   customerEmail?: string | null;
   plan: BillingPlan;
   userId: string;
@@ -50,16 +51,26 @@ export async function createBillingCheckout(
     customer_email: request.customerEmail ?? undefined,
     line_items: [{ price: priceId, quantity: 1 }],
     metadata: {
+      ...(request.accountId ? { account_id: request.accountId, accountId: request.accountId } : {}),
+      account_role: "owner",
+      billing_scope: "platform_subscription",
       planId: request.plan.id,
       plan_id: request.plan.id,
+      role: "owner",
+      scope: "owner",
       userId: request.userId,
       user_id: request.userId
     },
     mode: "subscription",
     subscription_data: {
       metadata: {
+        ...(request.accountId ? { account_id: request.accountId, accountId: request.accountId } : {}),
+        account_role: "owner",
+        billing_scope: "platform_subscription",
         planId: request.plan.id,
         plan_id: request.plan.id,
+        role: "owner",
+        scope: "owner",
         userId: request.userId,
         user_id: request.userId
       }

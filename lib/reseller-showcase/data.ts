@@ -193,7 +193,7 @@ export type ResellerPlanDefinition = {
 };
 
 export type ResellerSubscriptionPlanEngineData = {
-  billingStatus: "active_placeholder" | "expired_placeholder" | "past_due_placeholder";
+  billingStatus: "active" | "active_placeholder" | "canceled" | "expired_placeholder" | "incomplete" | "past_due" | "past_due_placeholder" | "trialing" | "unpaid";
   currentPlan: ResellerInventoryPlan;
   downgradeWarningPlaceholder: string;
   futureHooks: string[];
@@ -2565,6 +2565,39 @@ function resellerPlanFromConfig(): ResellerInventoryPlan {
   return "Starter";
 }
 
+function resellerPlanFromBillingPlanId(value: string | null | undefined): ResellerInventoryPlan | null {
+  if (value === "agency") {
+    return "Agency";
+  }
+
+  if (value === "pro") {
+    return "Pro";
+  }
+
+  if (value === "starter") {
+    return "Starter";
+  }
+
+  return null;
+}
+
+function normalizeResellerBillingStatus(
+  value: unknown
+): ResellerSubscriptionPlanEngineData["billingStatus"] {
+  if (
+    value === "active" ||
+    value === "trialing" ||
+    value === "past_due" ||
+    value === "canceled" ||
+    value === "incomplete" ||
+    value === "unpaid"
+  ) {
+    return value;
+  }
+
+  return "active_placeholder";
+}
+
 function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerInventoryData {
   const currentPlan = resellerPlanFromConfig();
   const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
@@ -2622,6 +2655,54 @@ function buildResellerInventoryData(dashboard: ResellerDashboardData): ResellerI
         ? "Upgrade your reseller subscription plan to unlock more ready store listings."
         : null,
     usedStoreListings
+  };
+}
+
+function applyResellerPlanToInventory(
+  inventory: ResellerInventoryData,
+  currentPlan: ResellerInventoryPlan
+): ResellerInventoryData {
+  const allowedStoreListings = resellerInventoryPlanLimits[currentPlan];
+  const remainingStoreListings = Math.max(allowedStoreListings - inventory.usedStoreListings, 0);
+  const usageRatio = allowedStoreListings > 0 ? inventory.usedStoreListings / allowedStoreListings : 1;
+
+  return {
+    ...inventory,
+    allowedStoreListings,
+    currentPlan,
+    isAtLimit: remainingStoreListings === 0,
+    isNearLimit: remainingStoreListings > 0 && usageRatio >= 0.8,
+    remainingStoreListings,
+    upgradeHint:
+      remainingStoreListings === 0
+        ? `Upgrade your reseller subscription to create more listings beyond the ${currentPlan} plan.`
+        : usageRatio >= 0.8
+          ? `You are close to the ${currentPlan} reseller listing limit.`
+          : null
+  };
+}
+
+function applyResellerPlanToTemplateInventory(
+  inventory: ResellerTemplateInventoryData,
+  currentPlan: ResellerInventoryPlan
+): ResellerTemplateInventoryData {
+  const allowedTemplates = resellerTemplateInventoryPlanLimits[currentPlan];
+  const remainingTemplates = Math.max(allowedTemplates - inventory.usedTemplates, 0);
+  const usageRatio = allowedTemplates > 0 ? inventory.usedTemplates / allowedTemplates : 1;
+
+  return {
+    ...inventory,
+    allowedTemplates,
+    currentPlan,
+    isAtLimit: remainingTemplates === 0,
+    isNearLimit: remainingTemplates > 0 && usageRatio >= 0.8,
+    remainingTemplates,
+    upgradeHint:
+      remainingTemplates === 0
+        ? `Upgrade your reseller subscription to publish more templates beyond the ${currentPlan} plan.`
+        : usageRatio >= 0.8
+          ? `You are close to the ${currentPlan} reseller template limit.`
+          : null
   };
 }
 
@@ -2796,12 +2877,28 @@ const resellerSubscriptionPlanDefinitions: ResellerPlanDefinition[] = [
 ];
 
 export async function getResellerSubscriptionPlanEngineData(): Promise<ResellerSubscriptionPlanEngineData> {
-  const [inventory, templateInventory, portfolioData] = await Promise.all([
+  const supabase = await createClient();
+  const user = await getDashboardUser();
+  const [baseInventory, baseTemplateInventory, portfolioData, subscriptionResult] = await Promise.all([
     getResellerInventoryData(),
     getResellerTemplateInventoryData(),
-    getResellerPortfolioData()
+    getResellerPortfolioData(),
+    user
+      ? supabase
+          .from("user_subscriptions" as never)
+          .select("plan_id, status, current_period_end")
+          .eq("user_id" as never, user.id as never)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null })
   ]);
-  const currentPlan = inventory.currentPlan;
+  const subscription = subscriptionResult.data as {
+    current_period_end?: string | null;
+    plan_id?: string | null;
+    status?: string | null;
+  } | null;
+  const currentPlan = resellerPlanFromBillingPlanId(subscription?.plan_id) ?? baseInventory.currentPlan;
+  const inventory = applyResellerPlanToInventory(baseInventory, currentPlan);
+  const templateInventory = applyResellerPlanToTemplateInventory(baseTemplateInventory, currentPlan);
   const currentPlanDefinition =
     resellerSubscriptionPlanDefinitions.find((plan) => plan.name === currentPlan) ??
     resellerSubscriptionPlanDefinitions[0];
@@ -2818,7 +2915,7 @@ export async function getResellerSubscriptionPlanEngineData(): Promise<ResellerS
       : null;
 
   return {
-    billingStatus: "active_placeholder",
+    billingStatus: normalizeResellerBillingStatus(subscription?.status),
     currentPlan,
     downgradeWarningPlaceholder:
       "Downgrading will require all listings, templates, and portfolio items to fit within the lower plan limits before enforcement is enabled.",
@@ -2846,7 +2943,7 @@ export async function getResellerSubscriptionPlanEngineData(): Promise<ResellerS
       remainingPortfolioItems,
       usedPortfolioItems
     },
-    renewalDatePlaceholder: "Next renewal date placeholder",
+    renewalDatePlaceholder: subscription?.current_period_end ?? "Next renewal date unavailable",
     templateInventory,
     upgradeCtaPlaceholder:
       "Upgrade CTA placeholder only. No payment, checkout, wallet, payout, withdrawal, commission, order, or ownership transfer is created."

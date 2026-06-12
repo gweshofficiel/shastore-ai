@@ -19,6 +19,7 @@ export async function POST(request: Request) {
   }
 
   const checkout = await createBillingCheckout({
+    accountId: access.context.workspaceId,
     customerEmail: user.email,
     plan,
     userId: user.id

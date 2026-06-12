@@ -4,6 +4,12 @@ import { getAppBaseUrl } from "@/lib/deployment/config";
 const PAID_PLANS = ["starter", "pro", "agency"] as const;
 
 export type PaidSubscriptionPlanId = (typeof PAID_PLANS)[number];
+export type PlatformBillingAccountRole = "owner" | "reseller";
+
+const PLAN_SCOPES: Record<PlatformBillingAccountRole, readonly PaidSubscriptionPlanId[]> = {
+  owner: PAID_PLANS,
+  reseller: PAID_PLANS
+};
 
 const PLAN_PRICE_ENV: Record<PaidSubscriptionPlanId, string> = {
   starter: "PLATFORM_BILLING_STRIPE_PRICE_ID_STARTER",
@@ -13,6 +19,13 @@ const PLAN_PRICE_ENV: Record<PaidSubscriptionPlanId, string> = {
 
 export function isPaidSubscriptionPlan(plan: string): plan is PaidSubscriptionPlanId {
   return PAID_PLANS.includes(plan as PaidSubscriptionPlanId);
+}
+
+export function isPlanAllowedForPlatformBillingRole(
+  plan: PaidSubscriptionPlanId,
+  role: PlatformBillingAccountRole
+) {
+  return PLAN_SCOPES[role].includes(plan);
 }
 
 export function getPlatformStripeSecretKey() {
@@ -35,6 +48,8 @@ export function resolvePlatformPlanByPriceId(priceId: string | null | undefined)
 }
 
 export type CreatePlatformCheckoutInput = {
+  accountId?: string | null;
+  accountRole: PlatformBillingAccountRole;
   customerEmail?: string | null;
   plan: PaidSubscriptionPlanId;
   userId: string;
@@ -48,22 +63,28 @@ export type CreatePlatformCheckoutResult =
       message: string;
     };
 
-function platformCheckoutUrls() {
+function platformCheckoutUrls(accountRole: PlatformBillingAccountRole) {
   const baseUrl = getAppBaseUrl();
+  const billingPath = accountRole === "reseller" ? "/reseller/dashboard/subscription" : "/dashboard/billing";
 
   return {
-    cancelUrl: `${baseUrl}/dashboard/billing?billing=cancelled`,
-    successUrl: `${baseUrl}/dashboard/billing?billing=success`
+    cancelUrl: `${baseUrl}${billingPath}?billing=cancelled`,
+    successUrl: `${baseUrl}${billingPath}?billing=success`
   };
 }
 
-function checkoutMetadata(userId: string, plan: PaidSubscriptionPlanId) {
+function checkoutMetadata(input: CreatePlatformCheckoutInput) {
   return {
-    plan,
-    plan_id: plan,
-    planId: plan,
-    user_id: userId,
-    userId
+    ...(input.accountId ? { account_id: input.accountId, accountId: input.accountId } : {}),
+    account_role: input.accountRole,
+    billing_scope: "platform_subscription",
+    plan: input.plan,
+    plan_id: input.plan,
+    planId: input.plan,
+    role: input.accountRole,
+    scope: input.accountRole,
+    user_id: input.userId,
+    userId: input.userId
   };
 }
 
@@ -92,8 +113,8 @@ export async function createPlatformCheckoutSession(
   }
 
   const stripe = new Stripe(stripeKey, { typescript: true });
-  const { cancelUrl, successUrl } = platformCheckoutUrls();
-  const metadata = checkoutMetadata(input.userId, input.plan);
+  const { cancelUrl, successUrl } = platformCheckoutUrls(input.accountRole);
+  const metadata = checkoutMetadata(input);
 
   const session = await stripe.checkout.sessions.create({
     cancel_url: cancelUrl,

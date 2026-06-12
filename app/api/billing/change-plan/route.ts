@@ -4,6 +4,7 @@ import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
 import {
   createPlatformCheckoutSession,
   isPaidSubscriptionPlan,
+  isPlanAllowedForPlatformBillingRole,
   resolvePlatformPriceId
 } from "@/lib/billing/platform-checkout";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
@@ -104,8 +105,14 @@ export async function POST(request: Request) {
     return billingInfoRedirect("current_plan", "Current plan selected. No billing change was made.");
   }
 
+  if (isPaidSubscriptionPlan(requestedPlan) && !isPlanAllowedForPlatformBillingRole(requestedPlan, "owner")) {
+    return billingErrorRedirect("plan_scope_mismatch", "This plan is not available for owner subscriptions.");
+  }
+
   if (isPaidSubscriptionPlan(requestedPlan) && currentPlan === "free") {
     const checkout = await createPlatformCheckoutSession({
+      accountId: workspaceId,
+      accountRole: "owner",
       customerEmail: user.email,
       plan: requestedPlan,
       userId: user.id
@@ -145,7 +152,12 @@ export async function POST(request: Request) {
       await stripe.subscriptions.update(access.stripeSubscriptionId, {
         cancel_at_period_end: true,
         metadata: {
+          account_id: workspaceId,
+          account_role: "owner",
+          billing_scope: "platform_subscription",
           requested_plan: "free",
+          role: "owner",
+          scope: "owner",
           user_id: user.id,
           userId: user.id
         }
@@ -206,7 +218,12 @@ export async function POST(request: Request) {
         }
       ],
       metadata: {
+        account_id: workspaceId,
+        account_role: "owner",
+        billing_scope: "platform_subscription",
         requested_plan: requestedPlan,
+        role: "owner",
+        scope: "owner",
         user_id: user.id,
         userId: user.id
       },

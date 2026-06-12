@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   createPlatformCheckoutSession,
-  isPaidSubscriptionPlan
+  isPaidSubscriptionPlan,
+  isPlanAllowedForPlatformBillingRole
 } from "@/lib/billing/platform-checkout";
 import { getUserSubscriptionAccessForClient } from "@/lib/billing/access";
 import { canCheckoutUpgrade } from "@/lib/billing/upgrade";
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!isPlanAllowedForPlatformBillingRole(plan, "owner")) {
+    return billingErrorRedirect(
+      "plan_scope_mismatch",
+      "This plan is not available for owner subscriptions."
+    );
+  }
+
   const access = await getUserSubscriptionAccessForClient(supabase, user.id);
   const upgrade = canCheckoutUpgrade(access.plan.id, plan);
 
@@ -68,6 +76,8 @@ export async function POST(request: Request) {
   const checkoutPlan = upgrade.planId;
 
   const checkout = await createPlatformCheckoutSession({
+    accountId: accessContext.context.workspaceId,
+    accountRole: "owner",
     customerEmail: user.email,
     plan: checkoutPlan,
     userId: user.id

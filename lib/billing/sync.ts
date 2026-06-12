@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
 import {
   isPaidSubscriptionPlan,
+  type PlatformBillingAccountRole,
   resolvePlatformPlanByPriceId
 } from "@/lib/billing/platform-checkout";
 import { createBillingNotification } from "@/lib/notifications/billing-notifications";
@@ -163,7 +164,17 @@ async function logBillingEvent(event: Stripe.Event, userId?: string | null) {
     provider: "stripe",
     provider_event_id: event.id,
     user_id: userId ?? null,
-    payload: event as never,
+    payload: {
+      api_version: event.api_version ?? null,
+      created: event.created,
+      data_object_id: typeof event.data.object.id === "string" ? event.data.object.id : null,
+      event_id: event.id,
+      event_type: event.type,
+      livemode: event.livemode,
+      object: event.object,
+      pending_webhooks: event.pending_webhooks ?? null,
+      request_id: event.request?.id ?? null
+    } as never,
     processed_at: new Date().toISOString()
   } as never);
 
@@ -176,6 +187,25 @@ async function logBillingEvent(event: Stripe.Event, userId?: string | null) {
   }
 }
 
+async function stripeEventAlreadyProcessed(eventId: string) {
+  const supabase = getBillingSyncClient();
+  const { data, error } = await supabase
+    .from("billing_events" as never)
+    .select("id")
+    .eq("provider_event_id" as never, eventId as never)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[stripe-webhook] idempotency lookup failed; continuing", {
+      eventId,
+      message: error.message
+    });
+    return false;
+  }
+
+  return Boolean(data);
+}
+
 function metadataValue(metadata: Stripe.Metadata | null | undefined, camelKey: string, snakeKey: string) {
   return metadata?.[snakeKey] ?? metadata?.[camelKey] ?? null;
 }
@@ -186,12 +216,24 @@ function paidPlanFromMetadata(metadata: Stripe.Metadata | null | undefined) {
   return planId && isPaidSubscriptionPlan(planId) ? planId : null;
 }
 
+function platformBillingRoleFromMetadata(metadata: Stripe.Metadata | null | undefined): PlatformBillingAccountRole {
+  const role = metadataValue(metadata, "role", "account_role") ?? metadata?.scope ?? null;
+  return role === "reseller" ? "reseller" : "owner";
+}
+
+function platformBillingAccountIdFromMetadata(metadata: Stripe.Metadata | null | undefined) {
+  return metadataValue(metadata, "accountId", "account_id");
+}
+
 function paidPlanFromSubscriptionPrice(subscription: Stripe.Subscription) {
   const priceId = subscription.items.data[0]?.price?.id ?? null;
   return resolvePlatformPlanByPriceId(priceId);
 }
 
 async function upsertUserSubscription(input: {
+  accountId?: string | null;
+  accountRole?: PlatformBillingAccountRole;
+  billingScope?: "platform_subscription";
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   currentPeriodStart?: string | null;
@@ -204,12 +246,36 @@ async function upsertUserSubscription(input: {
 }) {
   const supabase = getBillingSyncClient();
   const plan = getBillingPlan(input.planId);
+  const { data: existing } = await supabase
+    .from("user_subscriptions" as never)
+    .select("limits_snapshot")
+    .eq("user_id" as never, input.userId as never)
+    .maybeSingle();
+  const existingSnapshot = existing &&
+    typeof existing === "object" &&
+    "limits_snapshot" in existing &&
+    existing.limits_snapshot &&
+    typeof existing.limits_snapshot === "object" &&
+    !Array.isArray(existing.limits_snapshot)
+    ? existing.limits_snapshot as Record<string, unknown>
+    : {};
   const { error } = await supabase.from("user_subscriptions" as never).upsert(
     {
       cancel_at_period_end: input.cancelAtPeriodEnd ?? false,
       current_period_end: input.currentPeriodEnd ?? null,
       current_period_start: input.currentPeriodStart ?? null,
       grace_period_until: input.gracePeriodUntil ?? null,
+      limits_snapshot: {
+        ...existingSnapshot,
+        platformBilling: {
+          accountId: input.accountId ?? null,
+          accountRole: input.accountRole ?? "owner",
+          billingScope: input.billingScope ?? "platform_subscription",
+          provider: "stripe",
+          syncedAt: new Date().toISOString()
+        }
+      },
+      plan_key: plan.id,
       plan_id: plan.id,
       status: input.status,
       stripe_customer_id: input.stripeCustomerId,
@@ -436,6 +502,14 @@ async function createWebhookBillingNotification(input: {
 }
 
 export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
+  if (await stripeEventAlreadyProcessed(event.id)) {
+    console.info("[stripe-webhook] duplicate event skipped", {
+      eventId: event.id,
+      eventType: event.type
+    });
+    return;
+  }
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId =
@@ -455,6 +529,9 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     }
 
     await upsertUserSubscription({
+      accountId: platformBillingAccountIdFromMetadata(session.metadata),
+      accountRole: platformBillingRoleFromMetadata(session.metadata),
+      billingScope: "platform_subscription",
       currentPeriodEnd: null,
       currentPeriodStart: null,
       planId,
@@ -587,6 +664,9 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         : null;
 
     await upsertUserSubscription({
+      accountId: platformBillingAccountIdFromMetadata(subscription.metadata),
+      accountRole: platformBillingRoleFromMetadata(subscription.metadata),
+      billingScope: "platform_subscription",
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       currentPeriodEnd,
       currentPeriodStart: subscriptionPeriodDate(subscription, "current_period_start"),
