@@ -39,6 +39,13 @@ export class HttpApiConfigurationError extends Error {
   }
 }
 
+export class HttpApiProviderError extends Error {
+  constructor(message = "HTTPAPI rejected the request. Check reseller IP whitelist or credentials.") {
+    super(message);
+    this.name = "HttpApiProviderError";
+  }
+}
+
 function readEnv(key: string) {
   return process.env[key]?.trim() || null;
 }
@@ -98,6 +105,27 @@ function responseRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function safeHttpApiErrorBody(value: unknown) {
+  const text =
+    typeof value === "string"
+      ? value
+      : value === null || value === undefined
+        ? ""
+        : JSON.stringify(value);
+
+  return text
+    .replace(/api-key=([^&\s]+)/gi, "api-key=[redacted]")
+    .replace(/"api-key"\s*:\s*"[^"]+"/gi, '"api-key":"[redacted]"')
+    .replace(/"api_key"\s*:\s*"[^"]+"/gi, '"api_key":"[redacted]"')
+    .slice(0, 2000);
+}
+
+async function readSafeHttpApiErrorBody(response: Response) {
+  const rawBody = await response.text().catch(() => "");
+
+  return safeHttpApiErrorBody(rawBody);
 }
 
 function statusFromProviderValue(value: unknown) {
@@ -294,19 +322,25 @@ export async function searchHttpApiDomainAvailability({
         Accept: "application/json"
       }
     });
-    const data = await response.json().catch(() => null);
+    const rawBody = response.ok ? await response.text().catch(() => "") : "";
 
     if (!response.ok) {
+      const responseBody = await readSafeHttpApiErrorBody(response);
+
+      // Vercel outbound IPs can change unless traffic uses a fixed egress IP/proxy.
+      // Production HTTPAPI access therefore requires a whitelisted fixed egress path.
       console.error("httpapi_domain_search_failed", {
         domainName: normalizedDomainName,
         provider: "httpapi",
+        responseBody,
         stage: "availability",
         status: response.status,
         statusText: response.statusText
       });
-      throw new Error("HTTPAPI domain availability request failed.");
+      throw new HttpApiProviderError();
     }
 
+    const data = rawBody ? JSON.parse(rawBody) : null;
     const raw = responseRecord(data);
     const placeholderPrice = {
       extension: "",
@@ -371,18 +405,24 @@ export async function getHttpApiResellerPrices({
         Accept: "application/json"
       }
     });
-    const data = await response.json().catch(() => null);
+    const rawBody = response.ok ? await response.text().catch(() => "") : "";
 
     if (!response.ok) {
+      const responseBody = await readSafeHttpApiErrorBody(response);
+
+      // Vercel outbound IPs can change unless traffic uses a fixed egress IP/proxy.
+      // Production HTTPAPI access therefore requires a whitelisted fixed egress path.
       console.error("httpapi_domain_search_failed", {
         provider: "httpapi",
+        responseBody,
         stage: "pricing",
         status: response.status,
         statusText: response.statusText
       });
-      throw new Error("HTTPAPI reseller pricing request failed.");
+      throw new HttpApiProviderError();
     }
 
+    const data = rawBody ? JSON.parse(rawBody) : null;
     const raw = responseRecord(data);
     const results = normalizedExtensions.map((extension) => {
       const price = priceForExtension({

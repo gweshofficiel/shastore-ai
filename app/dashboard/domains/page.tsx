@@ -39,6 +39,7 @@ import {
 } from "@/lib/domains/extension-catalog";
 import {
   HttpApiConfigurationError,
+  HttpApiProviderError,
   searchHttpApiDomains
 } from "@/lib/domains/httpapi-client";
 import type { HttpApiDomainAvailabilityResult } from "@/lib/domains/httpapi-client";
@@ -391,6 +392,8 @@ export default async function DomainsPage({
       domainAvailabilityError =
         error instanceof HttpApiConfigurationError
           ? error.message
+          : error instanceof HttpApiProviderError
+            ? error.message
           : "Domain availability search failed. Please try again later.";
     }
   }
