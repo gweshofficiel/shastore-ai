@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getManagedBillingPlanForCheckout } from "@/lib/billing/managed-plans";
 import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
 import {
   isPaidSubscriptionPlan,
@@ -291,7 +292,16 @@ export async function createNowPaymentsPlatformCheckout(
     };
   }
 
-  const plan = getBillingPlan(input.plan);
+  const plan = await getManagedBillingPlanForCheckout(input.plan);
+
+  if (!plan.active) {
+    return {
+      code: "invalid_plan",
+      message: `${plan.name} is not available for checkout.`,
+      ok: false
+    };
+  }
+
   const successUrl = platformBillingUrl(input.accountRole, {
     billing: "success",
     provider: "nowpayments"
@@ -366,7 +376,9 @@ export async function createNowPaymentsPlatformCheckout(
         accountRole: input.accountRole,
         invoiceId: data && "id" in data ? data.id ?? null : null,
         orderId,
-        planId: input.plan
+        planId: input.plan,
+        priceAmount: plan.priceCents / 100,
+        priceCurrency: "usd"
       },
       providerEventId: `checkout:${orderId}`,
       userId: input.userId

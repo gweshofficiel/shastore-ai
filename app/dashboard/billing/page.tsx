@@ -4,7 +4,7 @@ import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { billingPlans } from "@/lib/billing/plans";
+import { getManagedBillingPlansForDisplay } from "@/lib/billing/managed-plans";
 import { getUserSubscriptionAccessForClient, planRank } from "@/lib/billing/access";
 import { getUserPrimaryWorkspaceId, hasPermission, getUserWorkspaceRole } from "@/lib/permissions/rbac";
 import { getSubscriptionState } from "@/lib/billing/subscription-state";
@@ -166,6 +166,7 @@ export default async function BillingPage({
   const subscriptionState = getSubscriptionState(access);
 
   const billingHistory = await getBillingHistory(access.userId);
+  const managedPlans = await getManagedBillingPlansForDisplay();
   const usageMeters = [
     {
       label: "Projects",
@@ -427,7 +428,7 @@ export default async function BillingPage({
         </Card>
       </div>
       <div className="grid gap-4 lg:grid-cols-4">
-        {billingPlans.map((plan) => {
+        {managedPlans.map((plan) => {
           const isCurrentPlan = plan.id === currentPlan.id;
           const direction =
             planRank(plan.id) > planRank(currentPlan.id) ? "upgrade" : "downgrade";
