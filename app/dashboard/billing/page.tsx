@@ -1,3 +1,4 @@
+import { BillingCryptoCheckoutButton } from "@/components/billing/billing-crypto-checkout-button";
 import { BillingPlanChangeForm } from "@/components/billing/billing-plan-change-form";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -501,12 +502,7 @@ export default async function BillingPage({
                     variant={direction === "downgrade" ? "secondary" : "primary"}
                   />
                   {plan.id !== "free" ? (
-                    <form action="/api/nowpayments/platform-billing/checkout" method="POST">
-                      <input name="plan" type="hidden" value={plan.id} />
-                      <Button className="w-full" type="submit" variant="secondary">
-                        Pay with crypto
-                      </Button>
-                    </form>
+                    <BillingCryptoCheckoutButton planId={plan.id} />
                   ) : null}
                 </div>
               )}
