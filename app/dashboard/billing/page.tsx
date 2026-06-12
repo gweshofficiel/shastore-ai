@@ -100,10 +100,12 @@ export default async function BillingPage({
   searchParams: Promise<{
     billing?: string;
     message?: string;
+    provider?: string;
     reason?: string;
   }>;
 }) {
   const query = await searchParams;
+  const billingProvider = query.provider ?? "stripe";
   const supabase = await createClient();
   const {
     data: { user }
@@ -227,7 +229,9 @@ export default async function BillingPage({
       {query.billing === "success" ? (
         <Card className="border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-bold text-emerald-700">
-            Checkout completed. Your active plan and limits will update as soon as Stripe sends the platform billing webhook.
+            {billingProvider === "nowpayments"
+              ? "Crypto payment received. Your plan will update after NOWPayments confirms the payment."
+              : "Checkout completed. Your active plan and limits will update as soon as Stripe sends the platform billing webhook."}
           </p>
         </Card>
       ) : null}

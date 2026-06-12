@@ -39,6 +39,7 @@ type NowPaymentsPaymentPayload = {
 type ParsedPlatformOrderId = {
   accountId: string | null;
   accountRole: PlatformBillingAccountRole;
+  orderTimestamp: string | null;
   planId: SubscriptionPlanId | null;
   userId: string | null;
 };
@@ -87,26 +88,29 @@ function nowPaymentsOrderId(input: NowPaymentsCheckoutInput) {
     input.accountRole,
     input.plan,
     input.userId,
-    input.accountId ?? "none",
     Date.now().toString()
   ].join(":");
 }
 
 function parsePlatformOrderId(orderId?: string | null): ParsedPlatformOrderId {
-  const [prefix, role, planId, userId, accountId] = (orderId ?? "").split(":");
+  const [prefix, role, planId, userId, fifthPart, sixthPart] = (orderId ?? "").split(":");
 
   if (prefix !== PLATFORM_ORDER_PREFIX) {
     return {
       accountId: null,
       accountRole: "owner",
+      orderTimestamp: null,
       planId: null,
       userId: null
     };
   }
 
+  const hasLegacyAccountId = Boolean(sixthPart);
+
   return {
-    accountId: accountId && accountId !== "none" ? accountId : null,
+    accountId: hasLegacyAccountId && fifthPart !== "none" ? fifthPart : null,
     accountRole: role === "reseller" ? "reseller" : "owner",
+    orderTimestamp: hasLegacyAccountId ? sixthPart || null : fifthPart || null,
     planId: planId && isPaidSubscriptionPlan(planId) ? planId : null,
     userId: userId || null
   };
@@ -185,6 +189,17 @@ async function logNowPaymentsBillingEvent(input: {
   } as never, { onConflict: "provider_event_id" });
 
   if (error) {
+    if (
+      error.code === "PGRST205" ||
+      error.message?.toLowerCase().includes("billing_events")
+    ) {
+      console.warn("[nowpayments-platform] billing event log skipped because table is unavailable", {
+        eventType: input.eventType,
+        providerEventId: input.providerEventId
+      });
+      return;
+    }
+
     console.warn("[nowpayments-platform] billing event log failed", {
       eventType: input.eventType,
       message: error.message,
@@ -245,6 +260,9 @@ async function upsertNowPaymentsSubscription(input: {
     },
     plan_key: plan.id,
     plan_id: plan.id,
+    provider: "nowpayments",
+    nowpayments_invoice_id: input.nowPaymentsInvoiceId ?? null,
+    nowpayments_payment_id: input.nowPaymentsPaymentId,
     status: "active",
     stripe_customer_id: null,
     stripe_subscription_id: null,
@@ -253,7 +271,7 @@ async function upsertNowPaymentsSubscription(input: {
   } as never, { onConflict: "user_id" });
 
   if (error) {
-    console.error("[nowpayments-platform] user subscription upsert failed", {
+    console.error("[nowpayments_plan_activation_failed]", {
       message: error.message,
       nowPaymentsPaymentId: input.nowPaymentsPaymentId,
       planId: input.planId,
@@ -262,7 +280,7 @@ async function upsertNowPaymentsSubscription(input: {
     throw error;
   }
 
-  console.info("[nowpayments-platform] user subscription upserted", {
+  console.info("[nowpayments_user_subscription_upsert_success]", {
     nowPaymentsPaymentId: input.nowPaymentsPaymentId,
     planId: input.planId,
     provider: "nowpayments",
@@ -444,6 +462,11 @@ export async function syncNowPaymentsPlatformPayment(payload: NowPaymentsPayment
   }
 
   if (!parsedOrder.userId || !parsedOrder.planId) {
+    console.error("[nowpayments_plan_activation_failed]", {
+      orderId: payload.order_id ?? null,
+      paymentStatus,
+      reason: "invalid_platform_order_id"
+    });
     await logNowPaymentsBillingEvent({
       eventType: "nowpayments.payment.confirmed",
       outcome: "failed",
@@ -456,6 +479,15 @@ export async function syncNowPaymentsPlatformPayment(payload: NowPaymentsPayment
     });
     throw new Error("Invalid NOWPayments platform billing order_id.");
   }
+
+  console.info("[nowpayments_plan_activation_started]", {
+    nowPaymentsInvoiceId: stringValue(payload.invoice_id),
+    nowPaymentsPaymentId: providerEventId,
+    orderId: payload.order_id ?? null,
+    paymentStatus,
+    planId: parsedOrder.planId,
+    userId: parsedOrder.userId
+  });
 
   await upsertNowPaymentsSubscription({
     accountId: parsedOrder.accountId,
@@ -473,6 +505,7 @@ export async function syncNowPaymentsPlatformPayment(payload: NowPaymentsPayment
     payload: {
       actuallyPaid: payload.actually_paid ?? null,
       invoiceId: payload.invoice_id ?? null,
+      orderTimestamp: parsedOrder.orderTimestamp,
       orderId: payload.order_id ?? null,
       payAmount: payload.pay_amount ?? null,
       payCurrency: payload.pay_currency ?? null,
