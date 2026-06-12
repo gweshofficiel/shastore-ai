@@ -303,13 +303,73 @@ async function paidPlanFromSubscriptionPrice(subscription: Stripe.Subscription) 
 function isPlatformBillingMetadata(metadata: Stripe.Metadata | null | undefined) {
   const scope = metadataValue(metadata, "billingScope", "billing_scope");
 
-  if (scope === "platform_subscription") {
+  if (scope === "platform" || scope === "platform_subscription") {
     return true;
   }
 
   return Boolean(
     paidPlanFromMetadata(metadata) && metadataValue(metadata, "userId", "user_id")
   );
+}
+
+function checkoutSessionEmail(session: Stripe.Checkout.Session, metadata?: Stripe.Metadata | null) {
+  const metaEmail = metadata?.email;
+
+  if (typeof metaEmail === "string" && metaEmail.includes("@")) {
+    return metaEmail.trim().toLowerCase();
+  }
+
+  if (typeof session.customer_email === "string" && session.customer_email.includes("@")) {
+    return session.customer_email.trim().toLowerCase();
+  }
+
+  const detailsEmail = session.customer_details?.email;
+
+  if (typeof detailsEmail === "string" && detailsEmail.includes("@")) {
+    return detailsEmail.trim().toLowerCase();
+  }
+
+  return null;
+}
+
+async function resolvePlatformBillingUserId(input: {
+  clientReferenceId?: string | null;
+  eventType: string;
+  metadata?: Stripe.Metadata | null;
+  stripeCustomerEmail?: string | null;
+}) {
+  const metadataUserId =
+    metadataValue(input.metadata, "userId", "user_id") ?? input.clientReferenceId ?? null;
+
+  if (metadataUserId) {
+    return metadataUserId;
+  }
+
+  const metadataEmail =
+    typeof input.metadata?.email === "string" && input.metadata.email.includes("@")
+      ? input.metadata.email.trim().toLowerCase()
+      : null;
+  const email = metadataEmail ?? input.stripeCustomerEmail ?? null;
+
+  return resolveNotificationUserId({
+    currentUserId: null,
+    eventType: input.eventType,
+    stripeCustomerEmail: email
+  });
+}
+
+async function retrieveCheckoutSession(sessionId: string) {
+  try {
+    return await getPlatformBillingStripe().checkout.sessions.retrieve(sessionId, {
+      expand: ["customer", "subscription", "line_items.data.price"]
+    });
+  } catch (error) {
+    console.warn("[stripe-webhook] checkout session retrieve failed", {
+      message: error instanceof Error ? error.message : String(error),
+      sessionId
+    });
+    return null;
+  }
 }
 
 async function retrievePlatformSubscription(
@@ -446,7 +506,7 @@ async function activatePlatformSubscriptionFromStripe(input: {
 async function upsertUserSubscription(input: {
   accountId?: string | null;
   accountRole?: PlatformBillingAccountRole;
-  billingScope?: "platform_subscription";
+  billingScope?: "platform" | "platform_subscription";
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   currentPeriodStart?: string | null;
@@ -724,9 +784,9 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
   }
 
   if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
+    const webhookSession = event.data.object as Stripe.Checkout.Session;
 
-    if (session.mode !== "subscription") {
+    if (webhookSession.mode !== "subscription") {
       await logBillingEvent(event, {
         outcome: "skipped",
         reason: "non_subscription_checkout"
@@ -734,9 +794,51 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       return;
     }
 
+    const session =
+      webhookSession.id && (!webhookSession.metadata || !webhookSession.customer || !webhookSession.subscription)
+        ? (await retrieveCheckoutSession(webhookSession.id)) ?? webhookSession
+        : webhookSession;
+    const sessionMetadata = session.metadata ?? {};
+    const sessionEmail = checkoutSessionEmail(session, sessionMetadata);
+    const stripeCustomerId =
+      typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+    const stripeCustomerEmail = await resolveStripeCustomerEmail({
+      customer: session.customer,
+      customerEmail: sessionEmail,
+      stripeCustomerId
+    });
+    const subscription = await retrievePlatformSubscription(session.subscription);
     const activation = await resolvePlatformCheckoutActivation(session);
+    const metadata = {
+      ...activation.metadata,
+      ...sessionMetadata
+    };
+    const planId =
+      paidPlanFromMetadata(sessionMetadata) ??
+      activation.planId ??
+      paidPlanFromMetadata(subscription?.metadata ?? null) ??
+      (subscription ? await paidPlanFromSubscriptionPrice(subscription) : null);
+    let userId = await resolvePlatformBillingUserId({
+      clientReferenceId: session.client_reference_id,
+      eventType: event.type,
+      metadata: sessionMetadata,
+      stripeCustomerEmail
+    });
+    userId = userId ?? activation.userId;
 
-    if (!isPlatformBillingMetadata(activation.metadata)) {
+    const accountId = platformBillingAccountIdFromMetadata(metadata);
+    const accountRole = platformBillingRoleFromMetadata(metadata);
+    const stripeSubscriptionId =
+      subscription?.id ??
+      (typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id ?? null);
+
+    const isPlatformCheckout =
+      isPlatformBillingMetadata(metadata) ||
+      Boolean(userId && planId && session.mode === "subscription");
+
+    if (!isPlatformCheckout) {
       await logBillingEvent(event, {
         outcome: "skipped",
         reason: "non_platform_billing_checkout"
@@ -744,15 +846,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       return;
     }
 
-    const { accountId, accountRole, planId, subscription, userId } = activation;
-
     if (!userId || !planId) {
       console.error("[stripe-webhook] checkout.session.completed missing required metadata", {
         eventId: event.id,
         hasPlan: Boolean(planId),
         hasUserId: Boolean(userId),
-        metadata: activation.metadata ?? null,
-        sessionId: session.id
+        metadata: metadata ?? null,
+        sessionId: session.id,
+        stripeCustomerEmail: stripeCustomerEmail ?? null
       });
       await logBillingEvent(event, {
         outcome: "skipped",
@@ -761,29 +862,57 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       return;
     }
 
-    const stripeCustomerId =
-      typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
-    const stripeSubscriptionId =
-      subscription?.id ??
-      (typeof session.subscription === "string"
-        ? session.subscription
-        : session.subscription?.id ?? null);
-
-    await activatePlatformSubscriptionFromStripe({
-      accountId,
-      accountRole,
-      currentPeriodEnd: subscription
-        ? subscriptionPeriodDate(subscription, "current_period_end")
-        : null,
-      currentPeriodStart: subscription
-        ? subscriptionPeriodDate(subscription, "current_period_start")
-        : null,
+    console.info("[checkout_completed_upsert_started]", {
+      eventId: event.id,
       planId,
-      status: "active",
+      sessionId: session.id,
       stripeCustomerId,
       stripeSubscriptionId,
       userId
     });
+
+    try {
+      await activatePlatformSubscriptionFromStripe({
+        accountId,
+        accountRole,
+        currentPeriodEnd: subscription
+          ? subscriptionPeriodDate(subscription, "current_period_end")
+          : null,
+        currentPeriodStart: subscription
+          ? subscriptionPeriodDate(subscription, "current_period_start")
+          : null,
+        planId,
+        status: "active",
+        stripeCustomerId,
+        stripeSubscriptionId,
+        userId
+      });
+
+      console.info("[checkout_completed_upsert_success]", {
+        eventId: event.id,
+        planId,
+        sessionId: session.id,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        userId
+      });
+    } catch (error) {
+      console.error("[checkout_completed_upsert_failed]", {
+        eventId: event.id,
+        message: error instanceof Error ? error.message : String(error),
+        planId,
+        sessionId: session.id,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        userId
+      });
+      await logBillingEvent(event, {
+        outcome: "failed",
+        reason: "checkout_upsert_failed",
+        userId
+      });
+      throw error;
+    }
 
     try {
       await createBillingNotification({
@@ -1147,6 +1276,22 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
             | { current_period_end?: string | null; id: string; user_id: string | null }
             | undefined;
         }
+      }
+    }
+
+    if (!billingUserId && stripeCustomerEmail) {
+      billingUserId = await resolvePlatformBillingUserId({
+        eventType: event.type,
+        stripeCustomerEmail
+      });
+
+      if (billingUserId) {
+        console.info("[stripe-webhook] invoice matched user by email fallback", {
+          eventId: event.id,
+          eventType: event.type,
+          resolvedEmail: stripeCustomerEmail,
+          userId: billingUserId
+        });
       }
     }
 

@@ -272,7 +272,8 @@ function checkoutMetadata(input: CreatePlatformCheckoutInput) {
   return {
     ...(input.accountId ? { account_id: input.accountId, accountId: input.accountId } : {}),
     account_role: input.accountRole,
-    billing_scope: "platform_subscription",
+    billing_scope: "platform",
+    ...(input.customerEmail ? { email: input.customerEmail.trim().toLowerCase() } : {}),
     plan: input.plan,
     plan_id: input.plan,
     planId: input.plan,
