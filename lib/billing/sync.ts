@@ -420,6 +420,141 @@ async function retrievePlatformSubscriptionForCustomer(stripeCustomerId: string 
   }
 }
 
+async function resolvePlanFromInvoiceContext(
+  invoice: Stripe.Invoice,
+  stripeSubscription: Stripe.Subscription | null
+) {
+  if (stripeSubscription) {
+    const fromMetadata = paidPlanFromMetadata(stripeSubscription.metadata);
+
+    if (fromMetadata) {
+      return fromMetadata;
+    }
+
+    const fromPrice = await paidPlanFromSubscriptionPrice(stripeSubscription);
+
+    if (fromPrice) {
+      return fromPrice;
+    }
+  }
+
+  const invoiceRecord = invoice as unknown as Record<string, unknown>;
+  const lines =
+    invoiceRecord.lines && typeof invoiceRecord.lines === "object"
+      ? (invoiceRecord.lines as {
+          data?: Array<{ price?: { id?: string | null } | string | null }>;
+        })
+      : null;
+  const firstLine = lines?.data?.[0];
+  const priceRef = firstLine?.price;
+  const priceId =
+    typeof priceRef === "string"
+      ? priceRef
+      : priceRef && typeof priceRef === "object" && "id" in priceRef
+        ? (priceRef as { id?: string | null }).id ?? null
+        : null;
+
+  return resolvePlatformPlanByPriceIdAsync(priceId);
+}
+
+async function activateInvoiceSubscriptionByAuthEmailFallback(input: {
+  eventId: string;
+  eventType: string;
+  invoice: Stripe.Invoice;
+  stripeCustomerEmail: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+}) {
+  console.info("[stripe_webhook_auth_email_fallback_started]", {
+    eventId: input.eventId,
+    eventType: input.eventType,
+    resolvedEmail: input.stripeCustomerEmail,
+    stripeCustomerId: input.stripeCustomerId,
+    stripeSubscriptionId: input.stripeSubscriptionId
+  });
+
+  const userId = await resolvePlatformBillingUserId({
+    eventType: input.eventType,
+    stripeCustomerEmail: input.stripeCustomerEmail
+  });
+
+  if (!userId) {
+    return {
+      billingUserId: null as string | null,
+      stripeSubscriptionId: input.stripeSubscriptionId
+    };
+  }
+
+  const stripeSubscription =
+    (await retrievePlatformSubscription(input.stripeSubscriptionId)) ??
+    (await retrievePlatformSubscriptionForCustomer(input.stripeCustomerId));
+  const planId = await resolvePlanFromInvoiceContext(input.invoice, stripeSubscription);
+
+  if (!planId) {
+    console.warn("[stripe-webhook] auth email fallback found user without resolvable plan", {
+      eventId: input.eventId,
+      eventType: input.eventType,
+      resolvedEmail: input.stripeCustomerEmail,
+      userId
+    });
+    return {
+      billingUserId: userId,
+      stripeSubscriptionId: stripeSubscription?.id ?? input.stripeSubscriptionId
+    };
+  }
+
+  const resolvedSubscriptionId = stripeSubscription?.id ?? input.stripeSubscriptionId;
+  const resolvedCustomerId =
+    input.stripeCustomerId ??
+    (typeof stripeSubscription?.customer === "string"
+      ? stripeSubscription.customer
+      : stripeSubscription?.customer?.id ?? null);
+
+  await activatePlatformSubscriptionFromStripe({
+    accountId: stripeSubscription
+      ? platformBillingAccountIdFromMetadata(stripeSubscription.metadata)
+      : null,
+    accountRole: stripeSubscription
+      ? platformBillingRoleFromMetadata(stripeSubscription.metadata)
+      : "owner",
+    currentPeriodEnd: stripeSubscription
+      ? subscriptionPeriodDate(stripeSubscription, "current_period_end")
+      : null,
+    currentPeriodStart: stripeSubscription
+      ? subscriptionPeriodDate(stripeSubscription, "current_period_start")
+      : null,
+    planId,
+    status: "active",
+    stripeCustomerId: resolvedCustomerId,
+    stripeSubscriptionId: resolvedSubscriptionId,
+    userId
+  });
+
+  console.info("[stripe_webhook_auth_email_fallback_success]", {
+    eventId: input.eventId,
+    eventType: input.eventType,
+    planId,
+    resolvedEmail: input.stripeCustomerEmail,
+    stripeCustomerId: resolvedCustomerId,
+    stripeSubscriptionId: resolvedSubscriptionId,
+    userId
+  });
+
+  console.info("[stripe_webhook_user_subscription_upsert_success]", {
+    eventId: input.eventId,
+    eventType: input.eventType,
+    planId,
+    stripeCustomerId: resolvedCustomerId,
+    stripeSubscriptionId: resolvedSubscriptionId,
+    userId
+  });
+
+  return {
+    billingUserId: userId,
+    stripeSubscriptionId: resolvedSubscriptionId
+  };
+}
+
 async function resolvePlatformCheckoutActivation(session: Stripe.Checkout.Session) {
   const sessionMetadata = session.metadata ?? {};
   let userId =
@@ -1219,6 +1354,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       eventId: event.id,
       eventType: event.type,
       matchedUserId: billingUserId,
+      resolvedEmail: stripeCustomerEmail ?? null,
       stripeCustomerId,
       stripeSubscriptionId
     });
@@ -1280,18 +1416,27 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     }
 
     if (!billingUserId && stripeCustomerEmail) {
-      billingUserId = await resolvePlatformBillingUserId({
+      const emailFallback = await activateInvoiceSubscriptionByAuthEmailFallback({
+        eventId: event.id,
         eventType: event.type,
-        stripeCustomerEmail
+        invoice,
+        stripeCustomerEmail,
+        stripeCustomerId,
+        stripeSubscriptionId
       });
 
+      billingUserId = emailFallback.billingUserId;
+      stripeSubscriptionId = emailFallback.stripeSubscriptionId ?? stripeSubscriptionId;
+
       if (billingUserId) {
-        console.info("[stripe-webhook] invoice matched user by email fallback", {
-          eventId: event.id,
-          eventType: event.type,
-          resolvedEmail: stripeCustomerEmail,
-          userId: billingUserId
-        });
+        const { data: activatedSubscription } = await supabase
+          .from("user_subscriptions" as never)
+          .select("id, user_id, current_period_end")
+          .eq("user_id" as never, billingUserId as never)
+          .maybeSingle();
+        subscription = (activatedSubscription ?? undefined) as
+          | { current_period_end?: string | null; id: string; user_id: string | null }
+          | undefined;
       }
     }
 
