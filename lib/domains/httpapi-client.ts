@@ -214,6 +214,16 @@ function findAddNewDomainPrice(value: unknown): { cents: number; rawPrice: strin
     };
   }
 
+  for (const [key, nested] of Object.entries(record)) {
+    if (/^\d+$/.test(key)) {
+      const slabPrice = findAddNewDomainPrice(nested);
+
+      if (slabPrice) {
+        return slabPrice;
+      }
+    }
+  }
+
   for (const nested of Object.values(record)) {
     const found = findAddNewDomainPrice(nested);
 
@@ -225,18 +235,46 @@ function findAddNewDomainPrice(value: unknown): { cents: number; rawPrice: strin
   return null;
 }
 
+// HTTPAPI reseller-price.json keys TLDs by provider product keys, not raw TLD strings.
+// Example: .com -> domcno, .net -> dotnet, .info -> dominfo (not dotinfo).
+const HTTPAPI_TLD_PRODUCT_KEYS: Record<string, readonly string[]> = {
+  ai: ["dotai"],
+  app: ["dotapp"],
+  biz: ["dombiz"],
+  ca: ["dotca"],
+  co: ["dotco"],
+  com: ["domcno"],
+  de: ["dotde"],
+  dev: ["dotdev"],
+  info: ["dominfo"],
+  io: ["dotio"],
+  me: ["dotme"],
+  net: ["dotnet"],
+  online: ["dotonline"],
+  org: ["domorg"],
+  shop: ["dotshop"],
+  store: ["dotstore"],
+  uk: ["dotuk"],
+  us: ["domus"],
+  xyz: ["dotxyz"]
+};
+
 function pricingCandidateKeys(extension: string) {
   const tld = extensionWithoutDot(extension);
+  const mappedKeys = HTTPAPI_TLD_PRODUCT_KEYS[tld] ?? [];
 
-  return [
-    tld,
-    `.${tld}`,
-    tld.toUpperCase(),
-    `.${tld.toUpperCase()}`,
-    `dot${tld}`,
-    `dom${tld}`,
-    `domain${tld}`
-  ];
+  return Array.from(
+    new Set([
+      ...mappedKeys,
+      tld,
+      `.${tld}`,
+      tld.toUpperCase(),
+      `.${tld.toUpperCase()}`,
+      `dot${tld}`,
+      `dom${tld}`,
+      `domain${tld}`
+    ])
+  );
 }
 
 function priceForExtension({
