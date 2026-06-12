@@ -45,9 +45,8 @@ async function getResellerAccountId(userId: string) {
     .eq("user_id" as never, userId as never)
     .maybeSingle();
 
-  return typeof (data as { id?: unknown } | null)?.id === "string"
-    ? ((data as { id: string }).id)
-    : null;
+  const row = data as { id?: unknown } | null;
+  return typeof row?.id === "string" ? row.id : null;
 }
 
 export async function POST(request: Request) {

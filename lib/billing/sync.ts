@@ -167,7 +167,15 @@ async function logBillingEvent(event: Stripe.Event, userId?: string | null) {
     payload: {
       api_version: event.api_version ?? null,
       created: event.created,
-      data_object_id: typeof event.data.object.id === "string" ? event.data.object.id : null,
+      data_object_id: (() => {
+        const dataObject = event.data.object;
+        return dataObject &&
+          typeof dataObject === "object" &&
+          "id" in dataObject &&
+          typeof dataObject.id === "string"
+          ? dataObject.id
+          : null;
+      })(),
       event_id: event.id,
       event_type: event.type,
       livemode: event.livemode,
@@ -246,19 +254,18 @@ async function upsertUserSubscription(input: {
 }) {
   const supabase = getBillingSyncClient();
   const plan = getBillingPlan(input.planId);
-  const { data: existing } = await supabase
+  const { data } = await supabase
     .from("user_subscriptions" as never)
     .select("limits_snapshot")
     .eq("user_id" as never, input.userId as never)
     .maybeSingle();
-  const existingSnapshot = existing &&
-    typeof existing === "object" &&
-    "limits_snapshot" in existing &&
-    existing.limits_snapshot &&
+  const existing = data as { limits_snapshot?: Record<string, unknown> | null } | null;
+  const existingSnapshot =
+    existing?.limits_snapshot &&
     typeof existing.limits_snapshot === "object" &&
     !Array.isArray(existing.limits_snapshot)
-    ? existing.limits_snapshot as Record<string, unknown>
-    : {};
+      ? existing.limits_snapshot
+      : {};
   const { error } = await supabase.from("user_subscriptions" as never).upsert(
     {
       cancel_at_period_end: input.cancelAtPeriodEnd ?? false,
