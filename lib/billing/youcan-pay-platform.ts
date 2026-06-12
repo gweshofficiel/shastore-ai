@@ -35,21 +35,22 @@ type YouCanPayErrorResponse = {
 };
 
 const YOUCAN_PAY_PROVIDER = "youcan_pay";
+const YOUCAN_PAY_NOT_CONFIGURED_MESSAGE = "Moroccan payment methods are not configured";
 
 function readEnv(key: string) {
   return process.env[key]?.trim() || null;
 }
 
+function youCanPayPublicKey() {
+  return readEnv("YOUCANPAY_PUBLIC_KEY");
+}
+
 function youCanPayPrivateKey() {
-  return (
-    readEnv("YOUCAN_PAY_PRIVATE_KEY") ??
-    readEnv("YOUCAN_PAY_SECRET_KEY") ??
-    readEnv("YOUCAN_PAY_API_KEY")
-  );
+  return readEnv("YOUCANPAY_PRIVATE_KEY");
 }
 
 function youCanPayIsSandbox() {
-  return readEnv("YOUCAN_PAY_ENVIRONMENT") !== "live";
+  return readEnv("YOUCANPAY_SANDBOX") !== "false";
 }
 
 function youCanPayBaseUrl() {
@@ -78,10 +79,6 @@ function checkoutUrl(path: string) {
 
 function paymentTokenEndpoint() {
   return `${youCanPayBaseUrl()}${youCanPayIsSandbox() ? "/sandbox" : ""}/api/tokenize/`;
-}
-
-function paymentFormUrl(tokenId: string) {
-  return `${youCanPayBaseUrl()}${youCanPayIsSandbox() ? "/sandbox" : ""}/payment-form/${encodeURIComponent(tokenId)}?lang=en`;
 }
 
 function normalizeMethod(value: string): YouCanPayBillingMethod | null {
@@ -126,14 +123,26 @@ export async function createYouCanPayPlatformCheckout(
     };
   }
 
+  const publicKey = youCanPayPublicKey();
   const privateKey = youCanPayPrivateKey();
   const successUrl = checkoutUrl("/dashboard/billing?billing=success&provider=youcan_pay");
   const errorUrl = checkoutUrl("/dashboard/billing?billing=cancelled&provider=youcan_pay");
 
-  if (!privateKey || !successUrl || !errorUrl) {
+  if (!publicKey || !privateKey || !successUrl || !errorUrl) {
+    console.error("youcan checkout failed", {
+      hasAppUrl: Boolean(appBaseUrl()),
+      hasPrivateKey: Boolean(privateKey),
+      hasPublicKey: Boolean(publicKey),
+      method: input.method,
+      planId: input.planId,
+      provider: YOUCAN_PAY_PROVIDER,
+      reason: "missing_config",
+      userId: input.userId,
+      workspaceId: input.workspaceId
+    });
     return {
       code: "missing_config",
-      message: "YouCan Pay platform billing is not configured.",
+      message: YOUCAN_PAY_NOT_CONFIGURED_MESSAGE,
       ok: false
     };
   }
@@ -161,6 +170,7 @@ export async function createYouCanPayPlatformCheckout(
           method: input.method,
           plan_id: input.planId,
           provider: YOUCAN_PAY_PROVIDER,
+          public_key: publicKey,
           user_id: input.userId,
           workspace_id: input.workspaceId
         },
@@ -199,12 +209,11 @@ export async function createYouCanPayPlatformCheckout(
       };
     }
 
-    const tokenId = data?.token?.id ?? data?.id ?? null;
     const url =
       data?.payment_url ??
       data?.paymentUrl ??
       data?.paymentURL ??
-      (tokenId ? paymentFormUrl(tokenId) : null);
+      null;
 
     if (!url) {
       console.error("youcan checkout failed", {

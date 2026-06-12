@@ -3094,8 +3094,9 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
     },
     {
       checks: [
-        { label: "YouCan Pay API key", names: ["YOUCAN_PAY_API_KEY"] },
-        { label: "YouCan Pay secret key", names: ["YOUCAN_PAY_SECRET_KEY"] }
+        { label: "YouCan Pay public key", names: ["YOUCANPAY_PUBLIC_KEY"] },
+        { label: "YouCan Pay private key", names: ["YOUCANPAY_PRIVATE_KEY"] },
+        { label: "YouCan Pay sandbox mode", names: ["YOUCANPAY_SANDBOX"] }
       ],
       connectedStoresCount: Math.max(
         connectedStoreCountsByProvider.get("youcan_pay") ?? 0,
@@ -3380,7 +3381,7 @@ export async function getAdminIntegrationsControl(): Promise<AdminIntegrationsCo
       category: "Payment Providers",
       key: "youcan_pay",
       name: "YouCan Pay",
-      requiredEnv: ["YOUCAN_PAY_API_KEY", "YOUCAN_PAY_SECRET_KEY"]
+      requiredEnv: ["YOUCANPAY_PUBLIC_KEY", "YOUCANPAY_PRIVATE_KEY", "YOUCANPAY_SANDBOX"]
     },
     {
       category: "Email Sending Providers",
