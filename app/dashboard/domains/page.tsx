@@ -38,6 +38,11 @@ import {
   topDomainExtensions
 } from "@/lib/domains/extension-catalog";
 import {
+  HttpApiConfigurationError,
+  searchHttpApiDomainAvailability
+} from "@/lib/domains/httpapi-client";
+import type { HttpApiDomainAvailabilityResult } from "@/lib/domains/httpapi-client";
+import {
   isReservedSubdomain,
   isValidHostname,
   normalizeSubdomain
@@ -373,6 +378,26 @@ export default async function DomainsPage({
     selectedExtensions
   });
   const hasDomainSearch = Boolean(domainSearch.trim() || idnSearch.trim());
+  let domainAvailabilityResults: HttpApiDomainAvailabilityResult[] = [];
+  let domainAvailabilityError: string | null = null;
+
+  if (hasDomainSearch) {
+    try {
+      domainAvailabilityResults = await searchHttpApiDomainAvailability({
+        domainName: domainSearch || idnSearch,
+        extensions: commercePreview.selectedExtensions
+      });
+    } catch (error) {
+      domainAvailabilityError =
+        error instanceof HttpApiConfigurationError
+          ? error.message
+          : "Domain availability search failed. Please try again later.";
+    }
+  }
+
+  const domainAvailabilityByName = new Map(
+    domainAvailabilityResults.map((result) => [result.domain, result])
+  );
   const savedSubdomain = data.domains.find((domain) => domain.domain_type === "subdomain");
   const savedSubdomainActive = savedSubdomain?.status === "active";
   const baseStoreSubdomain =
@@ -426,6 +451,9 @@ export default async function DomainsPage({
         domainPriceCents: selectedDomainLine.priceCents,
         plan: access?.plan ?? getBillingPlan("free")
       })
+    : null;
+  const selectedDomainAvailability = selectedDomainLine
+    ? domainAvailabilityByName.get(selectedDomainLine.domainName) ?? null
     : null;
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -684,11 +712,11 @@ export default async function DomainsPage({
               Search Custom Domain
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Custom domains are optional. Search a name to preview availability, plan credit, and any extra amount due before checkout is connected.
+              Custom domains are optional. Search a name to check live HTTPAPI availability before any registration, charge, DNS, SSL, or hosting action exists.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-muted">
-            Preview only
+            Availability only
           </span>
         </div>
         <form className="mt-6 grid gap-5">
@@ -816,8 +844,13 @@ export default async function DomainsPage({
               Results & Pricing
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Review each result before selecting one. Plan credit is applied in the preview only, and no payment or registration happens here.
+              Review each HTTPAPI availability result before selecting one. Pricing remains a preview only, and no payment or registration happens here.
             </p>
+            {domainAvailabilityError ? (
+              <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+                {domainAvailabilityError}
+              </p>
+            ) : null}
             <div className="mt-5 grid gap-3">
               {commercePreview.pricing.lines.map((line) => {
                 const lineCredit = calculateDomainLineCreditQuote({
@@ -825,6 +858,8 @@ export default async function DomainsPage({
                   plan: access?.plan ?? getBillingPlan("free")
                 });
                 const selected = selectedDomainLine?.domainName === line.domainName;
+                const availability = domainAvailabilityByName.get(line.domainName);
+                const canSelectDomain = availability?.available === true;
 
                 return (
                   <div
@@ -842,19 +877,25 @@ export default async function DomainsPage({
                           {line.domainName}
                         </p>
                       </div>
-                      <ButtonLink
-                        href={selectedDomainHref({
-                          domainName: line.domainName,
-                          domainSearch,
-                          extensions: commercePreview.selectedExtensions,
-                          idnSearch,
-                          showAll: showAllExtensions,
-                          storeId: activeStoreId
-                        })}
-                        variant={selected ? "primary" : "secondary"}
-                      >
-                        {selected ? "Selected" : "Select domain"}
-                      </ButtonLink>
+                      {canSelectDomain ? (
+                        <ButtonLink
+                          href={selectedDomainHref({
+                            domainName: line.domainName,
+                            domainSearch,
+                            extensions: commercePreview.selectedExtensions,
+                            idnSearch,
+                            showAll: showAllExtensions,
+                            storeId: activeStoreId
+                          })}
+                          variant={selected ? "primary" : "secondary"}
+                        >
+                          {selected ? "Selected" : "Select domain"}
+                        </ButtonLink>
+                      ) : (
+                        <Button disabled type="button" variant="secondary">
+                          {availability ? "Unavailable" : "Not checked"}
+                        </Button>
+                      )}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="rounded-2xl bg-white p-3">
@@ -863,7 +904,18 @@ export default async function DomainsPage({
                       </div>
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
-                        <p className="mt-1 text-sm font-black text-amber-700">Preview placeholder</p>
+                        <p className={`mt-1 text-sm font-black ${availability?.available ? "text-emerald-700" : "text-amber-700"}`}>
+                          {availability
+                            ? availability.available
+                              ? "Available"
+                              : "Unavailable"
+                            : "Not checked"}
+                        </p>
+                        {availability ? (
+                          <p className="mt-1 text-xs font-semibold text-muted">
+                            HTTPAPI: {availability.rawStatus}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain price</p>
@@ -889,14 +941,14 @@ export default async function DomainsPage({
                       </div>
                     </div>
                     <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                      Preview only. No purchase yet. No charge yet.
+                      Availability check only. No purchase, charge, registration, DNS, SSL, or hosting action runs here.
                     </p>
                   </div>
                 );
               })}
             </div>
           </Card>
-          {selectedDomainLine && selectedDomainCredit ? (
+          {selectedDomainLine && selectedDomainCredit && selectedDomainAvailability?.available ? (
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -976,6 +1028,12 @@ export default async function DomainsPage({
               </p>
             </Card>
           </div>
+          ) : selectedDomainLine ? (
+            <Card className="border-amber-200 bg-amber-50 p-6 lg:p-8">
+              <p className="text-sm font-bold text-amber-900">
+                Select an available HTTPAPI result before preparing a domain order draft. No registration, charge, DNS, SSL, or hosting action has run.
+              </p>
+            </Card>
           ) : null}
         </>
       ) : null}

@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
+import { getHttpApiReadiness } from "@/lib/domains/httpapi-client";
 import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
@@ -3405,7 +3406,7 @@ export async function getAdminIntegrationsControl(): Promise<AdminIntegrationsCo
       category: "Domain / Email / Hosting Providers",
       key: "domain_service",
       name: "Domain service",
-      requiredEnv: ["HOSTINSH_API_KEY"]
+      requiredEnv: ["HTTPAPI_BASE_URL", "HTTPAPI_RESELLER_ID", "HTTPAPI_API_KEY"]
     },
     {
       category: "Domain / Email / Hosting Providers",
@@ -6271,6 +6272,7 @@ export async function getAdminPlatformSettingsControl(): Promise<AdminPlatformSe
 
 export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHostingControl> {
   const { supabase, users } = await getAdminUsersBase();
+  const httpApiReadiness = getHttpApiReadiness();
   const owners = emailMap(users);
   const [stores, storeDomains] = await Promise.all([
     safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug, store_data, created_at"),
@@ -6424,7 +6426,13 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       status: "blocked_until_future_provider_balance_check"
     },
     providerHealth: [
-      { service: "Domain service health", status: "placeholder", note: "No registrar API is called in this phase." },
+      {
+        service: "Domain service health",
+        status: httpApiReadiness.enabled ? "ready" : "review",
+        note: httpApiReadiness.enabled
+          ? "HTTPAPI domain availability search is configured. Admin health does not call the provider."
+          : "Configure HTTPAPI_BASE_URL, HTTPAPI_RESELLER_ID, and HTTPAPI_API_KEY to enable domain availability search."
+      },
       { service: "Email service health", status: "placeholder", note: "Mailbox provider checks are reserved." },
       { service: "SSL service health", status: "placeholder", note: "SSL issuance checks are placeholders only." },
       { service: "Hosting service health", status: "placeholder", note: "Hosting provisioning is not implemented yet." }

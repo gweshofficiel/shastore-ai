@@ -95,6 +95,27 @@ const optionalEnv: EnvCheck[] = [
     note: "Base domain for free subdomains such as brand.shastore.ai."
   },
   {
+    key: "HTTPAPI_BASE_URL",
+    configured: Boolean(process.env.HTTPAPI_BASE_URL),
+    required: false,
+    scope: "domains",
+    note: "HTTPS base URL for HTTPAPI / Resell.biz domain availability search."
+  },
+  {
+    key: "HTTPAPI_RESELLER_ID",
+    configured: Boolean(process.env.HTTPAPI_RESELLER_ID),
+    required: false,
+    scope: "domains",
+    note: "Reseller userid for HTTPAPI / Resell.biz domain availability search."
+  },
+  {
+    key: "HTTPAPI_API_KEY",
+    configured: Boolean(process.env.HTTPAPI_API_KEY),
+    required: false,
+    scope: "domains",
+    note: "Server-only API key for HTTPAPI / Resell.biz domain availability search."
+  },
+  {
     key: "HOSTINSH_API_KEY",
     configured: Boolean(process.env.HOSTINSH_API_KEY),
     required: false,
