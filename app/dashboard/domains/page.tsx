@@ -39,7 +39,7 @@ import {
 } from "@/lib/domains/extension-catalog";
 import {
   HttpApiConfigurationError,
-  searchHttpApiDomainAvailability
+  searchHttpApiDomains
 } from "@/lib/domains/httpapi-client";
 import type { HttpApiDomainAvailabilityResult } from "@/lib/domains/httpapi-client";
 import {
@@ -383,7 +383,7 @@ export default async function DomainsPage({
 
   if (hasDomainSearch) {
     try {
-      domainAvailabilityResults = await searchHttpApiDomainAvailability({
+      domainAvailabilityResults = await searchHttpApiDomains({
         domainName: domainSearch || idnSearch,
         extensions: commercePreview.selectedExtensions
       });
@@ -395,9 +395,6 @@ export default async function DomainsPage({
     }
   }
 
-  const domainAvailabilityByName = new Map(
-    domainAvailabilityResults.map((result) => [result.domain, result])
-  );
   const savedSubdomain = data.domains.find((domain) => domain.domain_type === "subdomain");
   const savedSubdomainActive = savedSubdomain?.status === "active";
   const baseStoreSubdomain =
@@ -444,16 +441,13 @@ export default async function DomainsPage({
     hasSelectedStore && (savedSubdomainActive || derivedSubdomainValid);
   const selectedDomainLine =
     selectedDomainName
-      ? commercePreview.pricing.lines.find((line) => line.domainName === selectedDomainName) ?? null
+      ? domainAvailabilityResults.find((line) => line.domain === selectedDomainName) ?? null
       : null;
   const selectedDomainCredit = selectedDomainLine
     ? calculateDomainLineCreditQuote({
         domainPriceCents: selectedDomainLine.priceCents,
         plan: access?.plan ?? getBillingPlan("free")
       })
-    : null;
-  const selectedDomainAvailability = selectedDomainLine
-    ? domainAvailabilityByName.get(selectedDomainLine.domainName) ?? null
     : null;
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -844,7 +838,7 @@ export default async function DomainsPage({
               Results & Pricing
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Review each HTTPAPI availability result before selecting one. Pricing remains a preview only, and no payment or registration happens here.
+              Review each HTTPAPI availability result before selecting one. Registration prices come from your reseller account, and no payment or registration happens here.
             </p>
             {domainAvailabilityError ? (
               <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
@@ -852,21 +846,22 @@ export default async function DomainsPage({
               </p>
             ) : null}
             <div className="mt-5 grid gap-3">
-              {commercePreview.pricing.lines.map((line) => {
+              {domainAvailabilityError ? null : domainAvailabilityResults.length ? (
+              domainAvailabilityResults.map((line) => {
                 const lineCredit = calculateDomainLineCreditQuote({
                   domainPriceCents: line.priceCents,
                   plan: access?.plan ?? getBillingPlan("free")
                 });
-                const selected = selectedDomainLine?.domainName === line.domainName;
-                const availability = domainAvailabilityByName.get(line.domainName);
-                const canSelectDomain = availability?.available === true;
+                const selected = selectedDomainLine?.domain === line.domain;
+                const hasProviderError = line.rawStatus === "unknown";
+                const canSelectDomain = line.available === true && !hasProviderError;
 
                 return (
                   <div
                     className={`grid gap-4 rounded-3xl border p-4 ${
                       selected ? "border-ink bg-white" : "border-slate-200 bg-slate-50"
                     }`}
-                    key={line.domainName}
+                    key={line.domain}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -874,13 +869,13 @@ export default async function DomainsPage({
                           Full domain name
                         </p>
                         <p className="mt-1 break-all text-xl font-black tracking-[-0.03em] text-ink">
-                          {line.domainName}
+                          {line.domain}
                         </p>
                       </div>
                       {canSelectDomain ? (
                         <ButtonLink
                           href={selectedDomainHref({
-                            domainName: line.domainName,
+                            domainName: line.domain,
                             domainSearch,
                             extensions: commercePreview.selectedExtensions,
                             idnSearch,
@@ -893,7 +888,7 @@ export default async function DomainsPage({
                         </ButtonLink>
                       ) : (
                         <Button disabled type="button" variant="secondary">
-                          {availability ? "Unavailable" : "Not checked"}
+                          {hasProviderError ? "Error" : "Taken"}
                         </Button>
                       )}
                     </div>
@@ -904,22 +899,19 @@ export default async function DomainsPage({
                       </div>
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
-                        <p className={`mt-1 text-sm font-black ${availability?.available ? "text-emerald-700" : "text-amber-700"}`}>
-                          {availability
-                            ? availability.available
-                              ? "Available"
-                              : "Unavailable"
-                            : "Not checked"}
+                        <p className={`mt-1 text-sm font-black ${line.available ? "text-emerald-700" : hasProviderError ? "text-red-700" : "text-amber-700"}`}>
+                          {hasProviderError ? "Error" : line.available ? "Available" : "Taken"}
                         </p>
-                        {availability ? (
-                          <p className="mt-1 text-xs font-semibold text-muted">
-                            HTTPAPI: {availability.rawStatus}
-                          </p>
-                        ) : null}
+                        <p className="mt-1 text-xs font-semibold text-muted">
+                          HTTPAPI: {line.rawStatus}
+                        </p>
                       </div>
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Domain price</p>
                         <p className="mt-1 text-sm font-black text-ink">{formatDomainMoney(line.priceCents)}</p>
+                        <p className="mt-1 text-xs font-semibold text-muted">
+                          Reseller addnewdomain 1 year
+                        </p>
                       </div>
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Extra due</p>
@@ -936,7 +928,7 @@ export default async function DomainsPage({
                       <div className="rounded-2xl bg-white p-3 lg:col-span-2">
                         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Renewal note</p>
                         <p className="mt-1 text-sm font-semibold text-muted">
-                          Renewal pricing will be confirmed when live availability and checkout are enabled.
+                          Renewal pricing will be fetched in a later phase. No renewal, registration, or checkout action runs here.
                         </p>
                       </div>
                     </div>
@@ -945,10 +937,15 @@ export default async function DomainsPage({
                     </p>
                   </div>
                 );
-              })}
+              })
+              ) : (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold text-amber-900">
+                  No HTTPAPI results were returned. No static price fallback was used.
+                </div>
+              )}
             </div>
           </Card>
-          {selectedDomainLine && selectedDomainCredit && selectedDomainAvailability?.available ? (
+          {selectedDomainLine && selectedDomainCredit && selectedDomainLine.available ? (
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="p-6 lg:p-8">
               <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
@@ -969,7 +966,7 @@ export default async function DomainsPage({
                     </div>
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
                       <span>Selected domain</span>
-                      <span className="break-all font-black text-ink">{selectedDomainLine.domainName}</span>
+                      <span className="break-all font-black text-ink">{selectedDomainLine.domain}</span>
                     </div>
                     <div className="flex justify-between rounded-2xl bg-slate-50 p-3">
                       <span>Plan name</span>
@@ -997,12 +994,12 @@ export default async function DomainsPage({
                     </div>
                   </div>
                   <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                    Preview only. No payment, charge, or registration happens yet.
+                    Price verified through HTTPAPI. No payment, charge, or registration happens yet.
                   </p>
                   <form action={prepareDomainOrderDraft} className="mt-4">
                     <input name="storeId" type="hidden" value={activeStoreId} />
                     <input name="storeName" type="hidden" value={selectedStoreName} />
-                    <input name="selectedDomain" type="hidden" value={selectedDomainLine.domainName} />
+                    <input name="selectedDomain" type="hidden" value={selectedDomainLine.domain} />
                     <input name="extension" type="hidden" value={selectedDomainLine.extension} />
                     <Button className="w-full sm:w-fit" type="submit">Prepare domain order</Button>
                   </form>

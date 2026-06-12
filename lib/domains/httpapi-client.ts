@@ -5,14 +5,25 @@ export type HttpApiDomainAvailabilityResult = {
   available: boolean;
   domain: string;
   extension: string;
-  pricePreview: null;
+  priceCents: number;
   provider: "httpapi";
+  rawPrice: string;
   rawStatus: string;
 };
 
 type HttpApiAvailabilityInput = {
   domainName: string;
   extensions: string[];
+};
+
+type HttpApiResellerPricingInput = {
+  extensions: string[];
+};
+
+type HttpApiResellerPriceResult = {
+  extension: string;
+  priceCents: number;
+  rawPrice: string;
 };
 
 type HttpApiConfig = {
@@ -108,13 +119,128 @@ function isAvailableStatus(status: string) {
   return ["available", "avail"].includes(status.toLowerCase());
 }
 
+function parseMoneyToCents(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value * 100);
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.replace(/,/g, "").trim();
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : null;
+}
+
+function findAddNewDomainPrice(value: unknown): { cents: number; rawPrice: string } | null {
+  const record = responseRecord(value);
+
+  if (!Object.keys(record).length) {
+    return null;
+  }
+
+  const pricing = responseRecord(record.pricing);
+  const addNewDomain = responseRecord(pricing.addnewdomain ?? record.addnewdomain);
+  const rawPrice = addNewDomain["1"] ?? addNewDomain[1] ?? addNewDomain["1.0"];
+  const cents = parseMoneyToCents(rawPrice);
+
+  if (cents !== null) {
+    return {
+      cents,
+      rawPrice: String(rawPrice)
+    };
+  }
+
+  for (const nested of Object.values(record)) {
+    const found = findAddNewDomainPrice(nested);
+
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function pricingCandidateKeys(extension: string) {
+  const tld = extensionWithoutDot(extension);
+
+  return [
+    tld,
+    `.${tld}`,
+    tld.toUpperCase(),
+    `.${tld.toUpperCase()}`,
+    `dot${tld}`,
+    `dom${tld}`,
+    `domain${tld}`
+  ];
+}
+
+function priceForExtension({
+  extension,
+  raw,
+  singleExtension
+}: {
+  extension: string;
+  raw: Record<string, unknown>;
+  singleExtension: boolean;
+}): HttpApiResellerPriceResult | null {
+  for (const key of pricingCandidateKeys(extension)) {
+    const found = findAddNewDomainPrice(raw[key]);
+
+    if (found) {
+      return {
+        extension: normalizeDomainExtension(extension),
+        priceCents: found.cents,
+        rawPrice: found.rawPrice
+      };
+    }
+  }
+
+  const tld = extensionWithoutDot(extension);
+
+  for (const [key, value] of Object.entries(raw)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    if (normalizedKey === tld || normalizedKey === `dot${tld}` || normalizedKey === `dom${tld}`) {
+      const found = findAddNewDomainPrice(value);
+
+      if (found) {
+        return {
+          extension: normalizeDomainExtension(extension),
+          priceCents: found.cents,
+          rawPrice: found.rawPrice
+        };
+      }
+    }
+  }
+
+  if (singleExtension) {
+    const found = findAddNewDomainPrice(raw);
+
+    if (found) {
+      return {
+        extension: normalizeDomainExtension(extension),
+        priceCents: found.cents,
+        rawPrice: found.rawPrice
+      };
+    }
+  }
+
+  return null;
+}
+
 function resultForExtension({
   domainName,
   extension,
+  price,
   raw
 }: {
   domainName: string;
   extension: string;
+  price: HttpApiResellerPriceResult;
   raw: Record<string, unknown>;
 }): HttpApiDomainAvailabilityResult {
   const tld = extensionWithoutDot(extension);
@@ -127,8 +253,9 @@ function resultForExtension({
     available: isAvailableStatus(rawStatus),
     domain,
     extension: normalizedExtension,
-    pricePreview: null,
+    priceCents: price.priceCents,
     provider: "httpapi",
+    rawPrice: price.rawPrice,
     rawStatus
   };
 }
@@ -145,7 +272,7 @@ export async function searchHttpApiDomainAvailability({
     return [];
   }
 
-  console.info("domain_search_started", {
+  console.info("httpapi_availability_started", {
     domainName: normalizedDomainName,
     extensionCount: normalizedExtensions.length,
     provider: "httpapi"
@@ -170,9 +297,10 @@ export async function searchHttpApiDomainAvailability({
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-      console.error("domain_search_failed", {
+      console.error("httpapi_domain_search_failed", {
         domainName: normalizedDomainName,
         provider: "httpapi",
+        stage: "availability",
         status: response.status,
         statusText: response.statusText
       });
@@ -180,15 +308,21 @@ export async function searchHttpApiDomainAvailability({
     }
 
     const raw = responseRecord(data);
+    const placeholderPrice = {
+      extension: "",
+      priceCents: 0,
+      rawPrice: "0"
+    };
     const results = normalizedExtensions.map((extension) =>
       resultForExtension({
         domainName: normalizedDomainName,
         extension,
+        price: placeholderPrice,
         raw
       })
     );
 
-    console.info("domain_search_completed", {
+    console.info("httpapi_availability_completed", {
       availableCount: results.filter((result) => result.available).length,
       domainName: normalizedDomainName,
       resultCount: results.length,
@@ -197,11 +331,108 @@ export async function searchHttpApiDomainAvailability({
 
     return results;
   } catch (error) {
-    console.error("domain_search_failed", {
+    console.error("httpapi_domain_search_failed", {
       domainName: normalizedDomainName,
       message: error instanceof Error ? error.message : String(error),
-      provider: "httpapi"
+      provider: "httpapi",
+      stage: "availability"
     });
     throw error;
   }
+}
+
+export async function getHttpApiResellerPrices({
+  extensions
+}: HttpApiResellerPricingInput): Promise<HttpApiResellerPriceResult[]> {
+  const config = getHttpApiConfig();
+  const normalizedExtensions = Array.from(new Set(extensions.map(extensionWithoutDot))).filter(Boolean);
+
+  if (!normalizedExtensions.length) {
+    return [];
+  }
+
+  console.info("httpapi_pricing_started", {
+    extensionCount: normalizedExtensions.length,
+    provider: "httpapi"
+  });
+
+  const url = new URL(`${config.baseUrl}/api/products/reseller-price.json`);
+  url.searchParams.set("auth-userid", config.resellerId);
+  url.searchParams.set("api-key", config.apiKey);
+
+  for (const extension of normalizedExtensions) {
+    url.searchParams.append("tlds", extension);
+  }
+
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      console.error("httpapi_domain_search_failed", {
+        provider: "httpapi",
+        stage: "pricing",
+        status: response.status,
+        statusText: response.statusText
+      });
+      throw new Error("HTTPAPI reseller pricing request failed.");
+    }
+
+    const raw = responseRecord(data);
+    const results = normalizedExtensions.map((extension) => {
+      const price = priceForExtension({
+        extension,
+        raw,
+        singleExtension: normalizedExtensions.length === 1
+      });
+
+      if (!price) {
+        throw new Error(`HTTPAPI reseller price missing for .${extension}.`);
+      }
+
+      return price;
+    });
+
+    console.info("httpapi_pricing_completed", {
+      priceCount: results.length,
+      provider: "httpapi"
+    });
+
+    return results;
+  } catch (error) {
+    console.error("httpapi_domain_search_failed", {
+      message: error instanceof Error ? error.message : String(error),
+      provider: "httpapi",
+      stage: "pricing"
+    });
+    throw error;
+  }
+}
+
+export async function searchHttpApiDomains({
+  domainName,
+  extensions
+}: HttpApiAvailabilityInput): Promise<HttpApiDomainAvailabilityResult[]> {
+  const availability = await searchHttpApiDomainAvailability({ domainName, extensions });
+  const prices = await getHttpApiResellerPrices({ extensions });
+  const priceByExtension = new Map(prices.map((price) => [price.extension, price]));
+
+  return availability.map((result) => {
+    const price = priceByExtension.get(result.extension);
+
+    if (!price) {
+      throw new Error(`HTTPAPI reseller price missing for ${result.extension}.`);
+    }
+
+    return {
+      ...result,
+      priceCents: price.priceCents,
+      rawPrice: price.rawPrice
+    };
+  });
 }

@@ -42,6 +42,7 @@ import {
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
 import { getDomainExtension, normalizeDomainExtension } from "@/lib/domains/extension-catalog";
+import { searchHttpApiDomains } from "@/lib/domains/httpapi-client";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
 import { getDefaultDnsTarget, getDomainBase } from "@/lib/domains/hostinsh";
 import {
@@ -1112,10 +1113,29 @@ export async function prepareDomainOrderDraft(formData: FormData) {
     domainsRedirect(storeId, "invalid-domain");
   }
 
+  const domainLabel = selectedDomain
+    .slice(0, -extensionCatalogItem.extension.length)
+    .replace(/\.$/, "");
+  let providerDomainResult: Awaited<ReturnType<typeof searchHttpApiDomains>>[number] | null = null;
+
+  try {
+    providerDomainResult =
+      (await searchHttpApiDomains({
+        domainName: domainLabel,
+        extensions: [extensionCatalogItem.extension]
+      })).find((result) => result.domain === selectedDomain) ?? null;
+  } catch {
+    domainsRedirect(storeId, "domain-order-draft-failed");
+  }
+
+  if (!providerDomainResult?.available || providerDomainResult.rawStatus === "unknown") {
+    domainsRedirect(storeId, "domain-order-draft-failed");
+  }
+
   const access = await getCurrentUserSubscriptionAccess();
   const plan = access?.plan ?? getBillingPlan("free");
   const credit = calculateDomainLineCreditQuote({
-    domainPriceCents: extensionCatalogItem.registrationPriceCents,
+    domainPriceCents: providerDomainResult.priceCents,
     plan
   });
   const paymentPreparation = buildDomainPaymentPreparation(credit.customerDueCents);
