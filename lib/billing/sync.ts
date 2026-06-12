@@ -87,6 +87,32 @@ function stripeReferenceFromRecord(value: unknown) {
   return null;
 }
 
+function stripeReferenceByPrefix(value: unknown, prefix: string, seen = new WeakSet<object>()): string | null {
+  if (typeof value === "string") {
+    return value.startsWith(prefix) ? value : null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  if (seen.has(value)) {
+    return null;
+  }
+
+  seen.add(value);
+
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    const reference = stripeReferenceByPrefix(child, prefix, seen);
+
+    if (reference) {
+      return reference;
+    }
+  }
+
+  return null;
+}
+
 function invoiceSubscriptionId(invoice: Stripe.Invoice) {
   const record = invoice as unknown as Record<string, unknown>;
   const direct = stripeReferenceFromRecord(record.subscription);
@@ -114,7 +140,14 @@ function invoiceSubscriptionId(invoice: Stripe.Invoice) {
       ? (parent.subscription_details as Record<string, unknown>)
       : null;
 
-  return stripeReferenceFromRecord(parentSubscriptionDetails?.subscription);
+  return (
+    stripeReferenceFromRecord(parentSubscriptionDetails?.subscription) ??
+    stripeReferenceByPrefix(invoice, "sub_")
+  );
+}
+
+function invoiceCustomerId(invoice: Stripe.Invoice) {
+  return stripeId(invoice.customer) ?? stripeReferenceByPrefix(invoice, "cus_");
 }
 
 async function resolveStripeCustomerEmail(input: {
@@ -169,7 +202,7 @@ async function logBillingEvent(
   }
 ) {
   const supabase = getBillingSyncClient();
-  const { error } = await supabase.from("billing_events" as never).insert({
+  const { error } = await supabase.from("billing_events" as never).upsert({
     event_type: event.type,
     provider: "stripe",
     provider_event_id: event.id,
@@ -196,7 +229,7 @@ async function logBillingEvent(
       request_id: event.request?.id ?? null
     } as never,
     processed_at: new Date().toISOString()
-  } as never);
+  } as never, { onConflict: "provider_event_id" });
 
   if (error) {
     console.warn("[stripe-webhook] billing event log skipped", {
@@ -211,7 +244,7 @@ async function stripeEventAlreadyProcessed(eventId: string) {
   const supabase = getBillingSyncClient();
   const { data, error } = await supabase
     .from("billing_events" as never)
-    .select("id")
+    .select("id, payload")
     .eq("provider_event_id" as never, eventId as never)
     .maybeSingle();
 
@@ -223,7 +256,22 @@ async function stripeEventAlreadyProcessed(eventId: string) {
     return false;
   }
 
-  return Boolean(data);
+  if (!data) {
+    return false;
+  }
+
+  const row = data as { payload?: { outcome?: string | null } | null };
+  const outcome = row.payload?.outcome ?? null;
+
+  if (outcome === "skipped" || outcome === "failed") {
+    console.info("[stripe-webhook] retrying previously unmatched event", {
+      eventId,
+      outcome
+    });
+    return false;
+  }
+
+  return true;
 }
 
 function metadataValue(metadata: Stripe.Metadata | null | undefined, camelKey: string, snakeKey: string) {
@@ -280,6 +328,33 @@ async function retrievePlatformSubscription(
     console.warn("[stripe-webhook] subscription retrieve failed", {
       message: error instanceof Error ? error.message : String(error),
       subscriptionId
+    });
+    return null;
+  }
+}
+
+async function retrievePlatformSubscriptionForCustomer(stripeCustomerId: string | null | undefined) {
+  if (!stripeCustomerId) {
+    return null;
+  }
+
+  try {
+    const subscriptions = await getPlatformBillingStripe().subscriptions.list({
+      customer: stripeCustomerId,
+      limit: 3,
+      status: "all"
+    });
+
+    return (
+      subscriptions.data.find((subscription) => isPlatformBillingMetadata(subscription.metadata)) ??
+      subscriptions.data.find((subscription) => Boolean(paidPlanFromMetadata(subscription.metadata))) ??
+      subscriptions.data[0] ??
+      null
+    );
+  } catch (error) {
+    console.warn("[stripe-webhook] customer subscription lookup failed", {
+      message: error instanceof Error ? error.message : String(error),
+      stripeCustomerId
     });
     return null;
   }
@@ -437,6 +512,7 @@ async function upsertUserSubscription(input: {
   console.info("[stripe-webhook] user subscription upserted", {
     planId: plan.id,
     status: input.status,
+    stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
     userId: input.userId
   });
@@ -753,7 +829,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       stripeCustomerId,
       stripeSubscriptionId: subscription.id
     });
-    const billingUserId =
+    let billingUserId =
       metadataValue(subscription.metadata, "userId", "user_id") ??
       existingSubscription?.user_id ??
       null;
@@ -762,6 +838,7 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       eventType: event.type,
       stripeCustomerEmail: subscriptionCustomerEmail
     });
+    billingUserId = billingUserId ?? notificationUserId ?? null;
     if (
       !isPlatformBillingMetadata(subscription.metadata) &&
       !existingSubscription &&
@@ -972,8 +1049,8 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice & {
       subscription?: string | Stripe.Subscription | null;
     };
-    const stripeSubscriptionId = invoiceSubscriptionId(invoice);
-    const stripeCustomerId = stripeId(invoice.customer);
+    let stripeSubscriptionId = invoiceSubscriptionId(invoice);
+    const stripeCustomerId = invoiceCustomerId(invoice);
     const stripeCustomerEmail = await resolveStripeCustomerEmail({
       customer: invoice.customer,
       customerEmail: invoice.customer_email,
@@ -985,14 +1062,23 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       | { current_period_end?: string | null; id: string; user_id: string | null }
       | undefined;
 
-    if (stripeSubscriptionId || stripeCustomerId) {
-      const query = supabase
+    if (stripeSubscriptionId) {
+      const { data: subscriptions } = await supabase
         .from("user_subscriptions" as never)
         .select("id, user_id, current_period_end")
+        .eq("stripe_subscription_id", stripeSubscriptionId)
         .limit(1);
-      const { data: subscriptions } = stripeSubscriptionId
-        ? await query.eq("stripe_subscription_id", stripeSubscriptionId)
-        : await query.eq("stripe_customer_id", stripeCustomerId as string);
+      subscription = (subscriptions ?? [])[0] as
+        | { current_period_end?: string | null; id: string; user_id: string | null }
+        | undefined;
+    }
+
+    if (!subscription && stripeCustomerId) {
+      const { data: subscriptions } = await supabase
+        .from("user_subscriptions" as never)
+        .select("id, user_id, current_period_end")
+        .eq("stripe_customer_id", stripeCustomerId)
+        .limit(1);
       subscription = (subscriptions ?? [])[0] as
         | { current_period_end?: string | null; id: string; user_id: string | null }
         | undefined;
@@ -1000,16 +1086,32 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
     let billingUserId = subscription?.user_id ?? null;
 
+    console.info("[stripe-webhook] invoice subscription lookup completed", {
+      eventId: event.id,
+      eventType: event.type,
+      matchedUserId: billingUserId,
+      stripeCustomerId,
+      stripeSubscriptionId
+    });
+
     if (
       !billingUserId &&
       event.type === "invoice.payment_succeeded" &&
-      stripeSubscriptionId
+      (stripeSubscriptionId || stripeCustomerId)
     ) {
-      const stripeSubscription = await retrievePlatformSubscription(stripeSubscriptionId);
+      const stripeSubscription =
+        (await retrievePlatformSubscription(stripeSubscriptionId)) ??
+        (await retrievePlatformSubscriptionForCustomer(stripeCustomerId));
 
       if (stripeSubscription && isPlatformBillingMetadata(stripeSubscription.metadata)) {
-        const invoiceUserId =
+        stripeSubscriptionId = stripeSubscription.id;
+        const metadataUserId =
           metadataValue(stripeSubscription.metadata, "userId", "user_id") ?? null;
+        const invoiceUserId = await resolveNotificationUserId({
+          currentUserId: metadataUserId,
+          eventType: event.type,
+          stripeCustomerEmail
+        });
         const invoicePlanId =
           paidPlanFromMetadata(stripeSubscription.metadata) ??
           (await paidPlanFromSubscriptionPrice(stripeSubscription));
@@ -1027,6 +1129,14 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
             userId: invoiceUserId
           });
           billingUserId = invoiceUserId;
+
+          console.info("[stripe-webhook] invoice matched platform subscription", {
+            eventId: event.id,
+            eventType: event.type,
+            stripeCustomerId,
+            stripeSubscriptionId,
+            userId: invoiceUserId
+          });
 
           const { data: activatedSubscription } = await supabase
             .from("user_subscriptions" as never)
