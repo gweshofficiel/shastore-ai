@@ -494,12 +494,21 @@ export default async function BillingPage({
                   Current plan
                 </Button>
               ) : (
-                <BillingPlanChangeForm
-                  className="mt-6"
-                  label={planChangeLabel}
-                  planId={plan.id}
-                  variant={direction === "downgrade" ? "secondary" : "primary"}
-                />
+                <div className="mt-6 grid gap-2">
+                  <BillingPlanChangeForm
+                    label={planChangeLabel}
+                    planId={plan.id}
+                    variant={direction === "downgrade" ? "secondary" : "primary"}
+                  />
+                  {plan.id !== "free" ? (
+                    <form action="/api/nowpayments/platform-billing/checkout" method="POST">
+                      <input name="plan" type="hidden" value={plan.id} />
+                      <Button className="w-full" type="submit" variant="secondary">
+                        Pay with crypto
+                      </Button>
+                    </form>
+                  ) : null}
+                </div>
               )}
             </Card>
           );

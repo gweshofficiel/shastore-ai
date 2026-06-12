@@ -155,12 +155,20 @@ export default async function ResellerSubscriptionPage({
                     Current plan
                   </button>
                 ) : billingPlanId && rank > currentPlanRank ? (
-                  <form action="/api/reseller/billing/checkout" className="mt-5" method="POST">
-                    <input name="plan" type="hidden" value={billingPlanId} />
-                    <button className="h-10 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
-                      {direction.replace(" preview", "")}
-                    </button>
-                  </form>
+                  <div className="mt-5 grid gap-2">
+                    <form action="/api/reseller/billing/checkout" method="POST">
+                      <input name="plan" type="hidden" value={billingPlanId} />
+                      <button className="h-10 rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
+                        {direction.replace(" preview", "")}
+                      </button>
+                    </form>
+                    <form action="/api/reseller/billing/nowpayments/checkout" method="POST">
+                      <input name="plan" type="hidden" value={billingPlanId} />
+                      <button className="h-10 rounded-full bg-slate-100 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                        Pay with crypto
+                      </button>
+                    </form>
+                  </div>
                 ) : billingPlanId ? (
                   <button className="mt-5 h-10 rounded-full bg-slate-100 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400" disabled type="button">
                     Downgrade placeholder
