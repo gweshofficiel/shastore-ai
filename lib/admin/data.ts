@@ -3067,6 +3067,19 @@ export async function getAdminPaymentProviderControl(): Promise<AdminPaymentProv
       checks: [
         { label: "PayPal client ID", names: ["PAYPAL_CLIENT_ID"] },
         { label: "PayPal client secret", names: ["PAYPAL_CLIENT_SECRET"] },
+        { label: "PayPal webhook ID", names: ["PAYPAL_WEBHOOK_ID"] }
+      ],
+      connectedStoresCount: 0,
+      docsUrl: "https://developer.paypal.com/docs/api/orders/v2/",
+      key: "paypal_platform",
+      name: "PayPal Platform Billing",
+      scope: "platform_billing" as const,
+      webhookConfigured: envConfigured(["PAYPAL_WEBHOOK_ID"])
+    },
+    {
+      checks: [
+        { label: "PayPal client ID", names: ["PAYPAL_CLIENT_ID"] },
+        { label: "PayPal client secret", names: ["PAYPAL_CLIENT_SECRET"] },
         { label: "PayPal partner merchant ID", names: ["PAYPAL_PARTNER_MERCHANT_ID"] }
       ],
       connectedStoresCount: Math.max(
@@ -3350,6 +3363,12 @@ export async function getAdminIntegrationsControl(): Promise<AdminIntegrationsCo
       key: "nowpayments",
       name: "NOWPayments",
       requiredEnv: ["NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"]
+    },
+    {
+      category: "Payment Providers",
+      key: "paypal_platform",
+      name: "PayPal Platform Billing",
+      requiredEnv: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID"]
     },
     {
       category: "Payment Providers",

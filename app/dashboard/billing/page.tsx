@@ -1,4 +1,5 @@
 import { BillingCryptoCheckoutButton } from "@/components/billing/billing-crypto-checkout-button";
+import { BillingPayPalCheckoutButton } from "@/components/billing/billing-paypal-checkout-button";
 import { BillingPlanChangeForm } from "@/components/billing/billing-plan-change-form";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -231,6 +232,8 @@ export default async function BillingPage({
           <p className="text-sm font-bold text-emerald-700">
             {billingProvider === "nowpayments"
               ? "Crypto payment received. Your plan will update after NOWPayments confirms the payment."
+              : billingProvider === "paypal"
+                ? "PayPal payment received. Your plan will update after PayPal confirms the capture."
               : "Checkout completed. Your active plan and limits will update as soon as Stripe sends the platform billing webhook."}
           </p>
         </Card>
@@ -397,8 +400,8 @@ export default async function BillingPage({
             SaaS subscription checkout
           </h2>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Paid buttons use SHASTORE AI platform Stripe credentials only. Client store
-            buyer payments are kept separate and are not routed through this billing flow.
+            Paid buttons use SHASTORE AI platform billing providers only. Client store buyer
+            payments are kept separate and are not routed through this billing flow.
           </p>
           <div className="mt-5 rounded-3xl border border-slate-200 p-4 text-sm leading-6">
             <p className="font-black text-ink">Billing status</p>
@@ -507,7 +510,10 @@ export default async function BillingPage({
                     variant={direction === "downgrade" ? "secondary" : "primary"}
                   />
                   {plan.id !== "free" ? (
-                    <BillingCryptoCheckoutButton planId={plan.id} />
+                    <>
+                      <BillingPayPalCheckoutButton planId={plan.id} />
+                      <BillingCryptoCheckoutButton planId={plan.id} />
+                    </>
                   ) : null}
                 </div>
               )}
