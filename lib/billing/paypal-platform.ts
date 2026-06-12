@@ -30,6 +30,15 @@ type ParsedPlatformOrderId = {
   userId: string | null;
 };
 
+type PlatformOrderContext = {
+  captureId: string | null;
+  orderId: string | null;
+  orderReference: string | null;
+  parsedOrder: ParsedPlatformOrderId;
+  payerId: string | null;
+  resource: PayPalResource | null;
+};
+
 type PayPalApiOrderResponse = {
   id?: string;
   links?: Array<{ href?: string; rel?: string }>;
@@ -66,6 +75,12 @@ type PayPalResource = {
       order_id?: string;
     };
   };
+};
+
+type PayPalErrorResponse = {
+  details?: Array<{ issue?: string }>;
+  message?: string;
+  name?: string;
 };
 
 const PAYPAL_PROVIDER = "paypal" satisfies PlatformBillingProvider;
@@ -148,16 +163,8 @@ function parsePlatformOrderId(orderId?: string | null): ParsedPlatformOrderId {
   };
 }
 
-function stringValue(value: unknown) {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  return null;
+function paypalErrorIssue(data: PayPalErrorResponse | null) {
+  return data?.details?.find((detail) => detail.issue)?.issue ?? data?.name ?? null;
 }
 
 async function getPayPalAccessToken() {
@@ -262,12 +269,71 @@ function payerIdFromResource(resource: PayPalResource | undefined) {
 
 function captureIdFromResource(resource: PayPalResource | undefined) {
   return (
-    resource?.id ??
     resource?.purchase_units
       ?.flatMap((unit) => unit.payments?.captures ?? [])
       .find((capture) => capture.id)?.id ??
-    null
+    (resource?.supplementary_data?.related_ids?.order_id ? resource.id ?? null : null)
   );
+}
+
+async function fetchPayPalOrder(orderId: string) {
+  const accessToken = await getPayPalAccessToken();
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const response = await fetch(`${paypalApiBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    method: "GET"
+  });
+  const data = (await response.json().catch(() => null)) as PayPalResource | PayPalErrorResponse | null;
+
+  if (!response.ok) {
+    console.error("[paypal_activation_failed]", {
+      message: data && "message" in data ? data.message : response.statusText,
+      orderId,
+      reason: "fetch_order_failed",
+      status: response.status
+    });
+    return null;
+  }
+
+  return data as PayPalResource;
+}
+
+async function resolvePlatformOrderContext(input: {
+  paypalOrderId?: string | null;
+  resource?: PayPalResource;
+}): Promise<PlatformOrderContext> {
+  let resource = input.resource ?? null;
+  let orderId = resource?.id ?? input.paypalOrderId ?? null;
+  let orderReference = platformOrderIdFromResource(resource ?? undefined);
+
+  if (!orderReference && resource?.supplementary_data?.related_ids?.order_id) {
+    orderId = resource.supplementary_data.related_ids.order_id;
+    resource = await fetchPayPalOrder(orderId);
+    orderReference = platformOrderIdFromResource(resource ?? undefined);
+  }
+
+  if (!orderReference && orderId) {
+    resource = resource ?? (await fetchPayPalOrder(orderId));
+    orderReference = platformOrderIdFromResource(resource ?? undefined);
+  }
+
+  const parsedOrder = parsePlatformOrderId(orderReference);
+
+  return {
+    captureId: captureIdFromResource(resource ?? undefined),
+    orderId,
+    orderReference,
+    parsedOrder,
+    payerId: payerIdFromResource(resource ?? undefined),
+    resource
+  };
 }
 
 async function upsertPayPalSubscription(input: {
@@ -332,22 +398,201 @@ async function upsertPayPalSubscription(input: {
   } as never, { onConflict: "user_id" });
 
   if (error) {
-    console.error("[paypal-platform] user subscription upsert failed", {
+    console.error("[paypal_activation_failed]", {
       captureId: input.captureId ?? null,
       message: error.message,
       orderId: input.orderId ?? null,
       planId: input.planId,
+      reason: "user_subscription_upsert_failed",
       userId: input.userId
     });
     throw error;
   }
 
-  console.info("[paypal-platform] user subscription upserted", {
+  console.info("[paypal_activation_completed]", {
     captureId: input.captureId ?? null,
     orderId: input.orderId ?? null,
     planId: input.planId,
     provider: PAYPAL_PROVIDER,
     userId: input.userId
+  });
+}
+
+async function activatePayPalPlatformSubscription(input: {
+  accountRole: PlatformBillingAccountRole;
+  captureId?: string | null;
+  eventId: string;
+  eventType: string;
+  orderId?: string | null;
+  orderReference?: string | null;
+  payerId?: string | null;
+  planId: SubscriptionPlanId;
+  source: "checkout_return" | "webhook";
+  userId: string;
+}) {
+  console.info("[paypal_activation_started]", {
+    eventId: input.eventId,
+    eventType: input.eventType,
+    orderId: input.orderId ?? null,
+    orderReference: input.orderReference ?? null,
+    planId: input.planId,
+    source: input.source,
+    userId: input.userId
+  });
+
+  await upsertPayPalSubscription({
+    accountRole: input.accountRole,
+    captureId: input.captureId ?? null,
+    orderId: input.orderId ?? null,
+    payerId: input.payerId ?? null,
+    planId: input.planId,
+    userId: input.userId
+  });
+
+  await logPayPalBillingEvent({
+    eventType: `paypal.activation.${input.source}`,
+    outcome: "success",
+    payload: {
+      captureId: input.captureId ?? null,
+      eventType: input.eventType,
+      orderId: input.orderId ?? null,
+      orderReference: input.orderReference ?? null,
+      planId: input.planId,
+      source: input.source
+    },
+    providerEventId: `${input.source}:${input.eventId}`,
+    userId: input.userId
+  });
+}
+
+async function captureApprovedOrder(orderId: string, eventId: string | null) {
+  const accessToken = await getPayPalAccessToken();
+
+  if (!accessToken) {
+    throw new Error("Could not authenticate PayPal capture request.");
+  }
+
+  const response = await fetch(`${paypalApiBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+    body: "{}",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "PayPal-Request-Id": eventId ?? orderId
+    },
+    method: "POST"
+  });
+  const data = (await response.json().catch(() => null)) as PayPalResource | PayPalErrorResponse | null;
+
+  if (!response.ok) {
+    const issue = paypalErrorIssue(
+      data && "name" in data ? (data as PayPalErrorResponse) : null
+    );
+
+    if (issue === "ORDER_ALREADY_CAPTURED") {
+      console.info("[paypal-platform] order already captured, fetching order details", { orderId });
+      const existingOrder = await fetchPayPalOrder(orderId);
+
+      if (existingOrder) {
+        return existingOrder;
+      }
+    }
+
+    console.error("[paypal_activation_failed]", {
+      issue,
+      message: data && "message" in data ? data.message : response.statusText,
+      orderId,
+      reason: "order_capture_failed",
+      status: response.status
+    });
+    throw new Error("PayPal order capture failed.");
+  }
+
+  return data as PayPalResource;
+}
+
+async function activateFromOrderContext(input: {
+  context: PlatformOrderContext;
+  eventId: string;
+  eventType: string;
+  source: "checkout_return" | "webhook";
+}) {
+  const { context, eventId, eventType, source } = input;
+
+  if (!context.parsedOrder.userId || !context.parsedOrder.planId) {
+    console.error("[paypal_activation_failed]", {
+      eventId,
+      eventType,
+      orderId: context.orderId,
+      orderReference: context.orderReference,
+      reason: "invalid_platform_order_reference"
+    });
+    throw new Error("Invalid PayPal platform billing order reference.");
+  }
+
+  const captureId = context.captureId ?? context.orderId;
+
+  if (!captureId) {
+    console.error("[paypal_activation_failed]", {
+      eventId,
+      eventType,
+      orderId: context.orderId,
+      orderReference: context.orderReference,
+      reason: "missing_capture_reference"
+    });
+    throw new Error("PayPal capture reference is missing.");
+  }
+
+  await activatePayPalPlatformSubscription({
+    accountRole: context.parsedOrder.accountRole,
+    captureId,
+    eventId,
+    eventType,
+    orderId: context.orderId,
+    orderReference: context.orderReference,
+    payerId: context.payerId,
+    planId: context.parsedOrder.planId,
+    source,
+    userId: context.parsedOrder.userId
+  });
+
+  return {
+    activated: true,
+    planId: context.parsedOrder.planId,
+    userId: context.parsedOrder.userId
+  };
+}
+
+export async function completePayPalPlatformCheckoutFromReturn(input: {
+  paypalOrderId: string;
+  userId: string;
+}) {
+  console.info("[paypal_activation_started]", {
+    paypalOrderId: input.paypalOrderId,
+    source: "checkout_return",
+    userId: input.userId
+  });
+
+  const capturedOrder = await captureApprovedOrder(input.paypalOrderId, `return:${input.paypalOrderId}`);
+  const context = await resolvePlatformOrderContext({
+    paypalOrderId: input.paypalOrderId,
+    resource: capturedOrder ?? undefined
+  });
+
+  if (context.parsedOrder.userId && context.parsedOrder.userId !== input.userId) {
+    console.error("[paypal_activation_failed]", {
+      expectedUserId: input.userId,
+      orderReference: context.orderReference,
+      parsedUserId: context.parsedOrder.userId,
+      reason: "checkout_return_user_mismatch"
+    });
+    throw new Error("PayPal order does not belong to the authenticated user.");
+  }
+
+  return activateFromOrderContext({
+    context,
+    eventId: input.paypalOrderId,
+    eventType: "CHECKOUT.ORDER.RETURN",
+    source: "checkout_return"
   });
 }
 
@@ -390,6 +635,7 @@ export async function createPayPalPlatformCheckout(
     billing: "cancelled",
     provider: PAYPAL_PROVIDER
   });
+  const returnUrl = `${baseUrl}/api/paypal/platform-billing/checkout/return`;
 
   if (!successUrl || !cancelUrl) {
     return {
@@ -419,7 +665,7 @@ export async function createPayPalPlatformCheckout(
           brand_name: "SHASTORE AI",
           cancel_url: cancelUrl,
           landing_page: "BILLING",
-          return_url: successUrl,
+          return_url: returnUrl,
           shipping_preference: "NO_SHIPPING",
           user_action: "PAY_NOW"
         },
@@ -481,7 +727,8 @@ export async function createPayPalPlatformCheckout(
         orderReference,
         planId: input.plan,
         priceAmount: amount,
-        priceCurrency: "USD"
+        priceCurrency: "USD",
+        returnUrl
       },
       providerEventId: `checkout:${orderReference}`,
       userId: input.userId
@@ -507,6 +754,11 @@ export async function verifyPayPalWebhookSignature(rawBody: string, request: Req
   const accessToken = await getPayPalAccessToken();
 
   if (!webhookId || !accessToken) {
+    console.error("[paypal_activation_failed]", {
+      hasAccessToken: Boolean(accessToken),
+      hasWebhookId: Boolean(webhookId),
+      reason: "missing_paypal_webhook_config"
+    });
     return false;
   }
 
@@ -528,127 +780,101 @@ export async function verifyPayPalWebhookSignature(rawBody: string, request: Req
     method: "POST"
   });
   const data = (await response.json().catch(() => null)) as { verification_status?: string } | null;
+  const verified = response.ok && data?.verification_status === "SUCCESS";
 
-  return response.ok && data?.verification_status === "SUCCESS";
-}
-
-async function captureApprovedOrder(resource: PayPalResource, eventId: string | null) {
-  const orderId = resource.id;
-
-  if (!orderId) {
-    throw new Error("PayPal approved order event is missing resource.id.");
-  }
-
-  const accessToken = await getPayPalAccessToken();
-
-  if (!accessToken) {
-    throw new Error("Could not authenticate PayPal capture request.");
-  }
-
-  const response = await fetch(`${paypalApiBaseUrl()}/v2/checkout/orders/${orderId}/capture`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "PayPal-Request-Id": eventId ?? orderId
-    },
-    method: "POST"
-  });
-  const data = (await response.json().catch(() => null)) as PayPalResource | { message?: string } | null;
-
-  if (!response.ok) {
-    console.error("[paypal-platform] order capture failed", {
-      message: data && "message" in data ? data.message : response.statusText,
-      orderId,
-      status: response.status
+  if (!verified) {
+    console.error("[paypal_activation_failed]", {
+      reason: "webhook_signature_verification_failed",
+      status: response.status,
+      verificationStatus: data?.verification_status ?? null,
+      webhookIdConfigured: Boolean(webhookId)
     });
-    throw new Error("PayPal order capture failed.");
   }
 
-  return data as PayPalResource | null;
+  return verified;
 }
 
 export async function syncPayPalPlatformWebhook(event: PayPalWebhookEvent) {
   const eventType = event.event_type ?? "paypal.event.unknown";
   const resource = event.resource;
   const eventId = event.id ?? `${eventType}:${Date.now()}`;
-  const orderReference = platformOrderIdFromResource(resource);
-  const parsedOrder = parsePlatformOrderId(orderReference);
+
+  console.info("[paypal_activation_event_type]", {
+    eventId,
+    eventType
+  });
 
   if (eventType === "CHECKOUT.ORDER.APPROVED") {
+    const orderId = resource?.id;
+
+    if (!orderId) {
+      console.error("[paypal_activation_failed]", {
+        eventId,
+        eventType,
+        reason: "missing_order_id"
+      });
+      throw new Error("PayPal approved order event is missing resource.id.");
+    }
+
+    const capturedOrder = await captureApprovedOrder(orderId, event.id ?? null);
+    const context = await resolvePlatformOrderContext({
+      paypalOrderId: orderId,
+      resource: capturedOrder ?? resource
+    });
+
+    const result = await activateFromOrderContext({
+      context,
+      eventId,
+      eventType,
+      source: "webhook"
+    });
+
     await logPayPalBillingEvent({
       eventType,
       outcome: "success",
       payload: {
-        orderId: resource?.id ?? null,
-        orderReference,
-        orderTimestamp: parsedOrder.orderTimestamp,
-        planId: parsedOrder.planId
+        captureId: context.captureId,
+        orderId: context.orderId,
+        orderReference: context.orderReference,
+        planId: context.parsedOrder.planId,
+        status: capturedOrder?.status ?? resource?.status ?? null
       },
       providerEventId: eventId,
-      userId: parsedOrder.userId
+      userId: context.parsedOrder.userId
     });
 
-    const capturedOrder = await captureApprovedOrder(resource ?? {}, event.id ?? null);
-    const captureId = captureIdFromResource(capturedOrder ?? undefined) ?? captureIdFromResource(resource);
-
-    if (parsedOrder.userId && parsedOrder.planId && captureId) {
-      await upsertPayPalSubscription({
-        accountRole: parsedOrder.accountRole,
-        captureId,
-        orderId: resource?.id ?? null,
-        payerId: payerIdFromResource(capturedOrder ?? undefined) ?? payerIdFromResource(resource),
-        planId: parsedOrder.planId,
-        userId: parsedOrder.userId
-      });
-    }
-
-    return { activated: Boolean(parsedOrder.userId && parsedOrder.planId && captureId), reason: "order_approved" };
+    return { activated: result.activated, reason: "order_approved" };
   }
 
   if (eventType === "PAYMENT.CAPTURE.COMPLETED") {
-    const orderId = resource?.supplementary_data?.related_ids?.order_id ?? null;
-    const captureId = captureIdFromResource(resource) ?? eventId;
+    const context = await resolvePlatformOrderContext({
+      paypalOrderId: resource?.supplementary_data?.related_ids?.order_id ?? null,
+      resource
+    });
 
-    if (!parsedOrder.userId || !parsedOrder.planId) {
-      await logPayPalBillingEvent({
-        eventType,
-        outcome: "failed",
-        payload: {
-          captureId,
-          orderId,
-          orderReference
-        },
-        providerEventId: eventId,
-        reason: "invalid_platform_order_id"
-      });
-      throw new Error("Invalid PayPal platform billing order reference.");
-    }
-
-    await upsertPayPalSubscription({
-      accountRole: parsedOrder.accountRole,
-      captureId,
-      orderId,
-      payerId: payerIdFromResource(resource),
-      planId: parsedOrder.planId,
-      userId: parsedOrder.userId
+    const result = await activateFromOrderContext({
+      context,
+      eventId,
+      eventType,
+      source: "webhook"
     });
 
     await logPayPalBillingEvent({
       eventType,
       outcome: "success",
       payload: {
-        captureId,
-        orderId,
-        orderReference,
-        orderTimestamp: parsedOrder.orderTimestamp,
-        planId: parsedOrder.planId,
+        captureId: context.captureId,
+        orderId: context.orderId,
+        orderReference: context.orderReference,
+        orderTimestamp: context.parsedOrder.orderTimestamp,
+        planId: context.parsedOrder.planId,
         status: resource?.status ?? null
       },
       providerEventId: eventId,
-      userId: parsedOrder.userId
+      userId: context.parsedOrder.userId
     });
 
-    return { activated: true, reason: "payment_capture_completed" };
+    return { activated: result.activated, reason: "payment_capture_completed" };
   }
 
   await logPayPalBillingEvent({
@@ -656,12 +882,10 @@ export async function syncPayPalPlatformWebhook(event: PayPalWebhookEvent) {
     outcome: "skipped",
     payload: {
       orderId: resource?.id ?? null,
-      orderReference,
       status: resource?.status ?? null
     },
     providerEventId: eventId,
-    reason: "unsupported_paypal_event",
-    userId: parsedOrder.userId
+    reason: "unsupported_paypal_event"
   });
 
   return { activated: false, reason: "unsupported_paypal_event" };
