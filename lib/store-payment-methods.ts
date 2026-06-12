@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { youCanPayCustomerBranding } from "@/lib/commerce/youcan-pay-branding";
 import {
   getStorePaymentProviderConnections,
   isPayPalReady,
@@ -243,8 +244,8 @@ export async function getEnabledPublicStorePaymentMethods(client: SupabaseClient
 
   if (enabledMethodNames.has("youcan_pay") && isYouCanPayReady(youCanConnection)) {
     providerMethods.push({
-      displayName: "YouCan Pay",
-      instructions: "Pay with this store's configured YouCan Pay account.",
+      displayName: youCanPayCustomerBranding.primaryLabel,
+      instructions: youCanPayCustomerBranding.description,
       method: "youcan_pay"
     });
   }

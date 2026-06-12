@@ -21,6 +21,7 @@ import type {
   PublicStorePaymentMethod,
   PublicStorePaymentMethodKey
 } from "@/lib/store-payment-methods";
+import { youCanPayCustomerBranding } from "@/lib/commerce/youcan-pay-branding";
 
 export type CartItem = {
   categoryName: string | null;
@@ -493,6 +494,10 @@ function paymentMethodDescription(method: PublicStorePaymentMethodKey) {
 
   if (method === "paypal") {
     return "Pay securely with this store's connected PayPal account.";
+  }
+
+  if (method === "youcan_pay") {
+    return youCanPayCustomerBranding.description;
   }
 
   return "Foundation method only. No online payment is processed yet.";
@@ -2353,39 +2358,65 @@ export function CartPageClient({
           <div className="grid gap-2">
             <p className="text-sm font-semibold text-ink">Payment method *</p>
             <div className="grid gap-2">
-              {paymentMethods.map((method) => (
-                <button
-                  className={`rounded-2xl border p-3 text-left transition ${
-                    paymentMethod === method.method
-                      ? "border-ink bg-ink text-white"
-                      : "border-slate-200 bg-white text-ink hover:border-slate-300"
-                  }`}
-                  key={method.method}
-                  onClick={() => setPaymentMethod(method.method)}
-                  type="button"
-                >
-                  <span className="block text-sm font-black">{method.displayName}</span>
-                  <span
-                    className={`mt-1 block text-xs font-semibold ${
-                      paymentMethod === method.method ? "text-white/70" : "text-muted"
+              {paymentMethods.map((method) => {
+                const isSelected = paymentMethod === method.method;
+
+                return (
+                  <button
+                    className={`rounded-2xl border p-3 text-left transition ${
+                      isSelected
+                        ? "border-ink bg-ink text-white"
+                        : "border-slate-200 bg-white text-ink hover:border-slate-300"
                     }`}
+                    key={method.method}
+                    onClick={() => setPaymentMethod(method.method)}
+                    type="button"
                   >
-                    {method.instructions || paymentMethodDescription(method.method)}
-                  </span>
-                  {method.method === "card" ? (
-                    <span
-                      className={`mt-3 flex flex-wrap gap-2 text-[0.65rem] font-black uppercase tracking-[0.14em] ${
-                        paymentMethod === method.method ? "text-white/80" : "text-slate-500"
-                      }`}
-                    >
-                      <span>Visa</span>
-                      <span>Mastercard</span>
-                      <span>Credit card</span>
-                      <span>Debit card</span>
-                    </span>
-                  ) : null}
-                </button>
-              ))}
+                    {method.method === "youcan_pay" ? (
+                      <>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-black">{youCanPayCustomerBranding.primaryLabel}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[0.65rem] font-black uppercase tracking-[0.14em] ${isSelected ? "border-orange-300 bg-orange-400/20 text-orange-100" : youCanPayCustomerBranding.accentClassName}`}>
+                            {youCanPayCustomerBranding.badge}
+                          </span>
+                        </span>
+                        <span className={`mt-3 grid gap-2 text-xs font-semibold ${isSelected ? "text-white/75" : "text-slate-600"}`}>
+                          {youCanPayCustomerBranding.methods.map((paymentOption) => (
+                            <span key={paymentOption.label}>
+                              <span className="font-black">{paymentOption.label}</span>
+                              {" — "}
+                              {paymentOption.description}
+                            </span>
+                          ))}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="block text-sm font-black">{method.displayName}</span>
+                        <span
+                          className={`mt-1 block text-xs font-semibold ${
+                            isSelected ? "text-white/70" : "text-muted"
+                          }`}
+                        >
+                          {method.instructions || paymentMethodDescription(method.method)}
+                        </span>
+                      </>
+                    )}
+                    {method.method === "card" ? (
+                      <span
+                        className={`mt-3 flex flex-wrap gap-2 text-[0.65rem] font-black uppercase tracking-[0.14em] ${
+                          isSelected ? "text-white/80" : "text-slate-500"
+                        }`}
+                      >
+                        <span>Visa</span>
+                        <span>Mastercard</span>
+                        <span>Credit card</span>
+                        <span>Debit card</span>
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
           {draftState.error ? (
@@ -2427,8 +2458,11 @@ export function CartPageClient({
           </form>
         ) : null}
         {paymentMethods.some((method) => method.method === "youcan_pay") ? (
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-900">
-            YouCan Pay is a selectable foundation method only. No online payment is processed yet.
+          <div className="mt-6 rounded-2xl border border-orange-200 bg-orange-50 p-3 text-sm font-bold leading-6 text-orange-900">
+            <span className="mr-2 rounded-full border border-orange-200 bg-white px-2 py-0.5 text-[0.65rem] font-black uppercase tracking-[0.14em] text-orange-700">
+              {youCanPayCustomerBranding.badge}
+            </span>
+            Credit Card (Morocco) and Cash Plus are selectable foundation methods. No online payment is processed yet.
           </div>
         ) : null}
       </aside>

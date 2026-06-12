@@ -6,6 +6,7 @@ import { createBuyerCheckoutOrder } from "@/lib/commerce/buyer-checkout-actions"
 import { calculateCheckoutTotal, formatCheckoutMoney } from "@/lib/commerce/checkout";
 import type { BuyerCheckoutSource } from "@/lib/commerce/buyer-checkout";
 import type { CommercePaymentMethod } from "@/lib/commerce/types";
+import { youCanPayCustomerBranding } from "@/lib/commerce/youcan-pay-branding";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -30,7 +31,7 @@ function getPaymentMethodLabel(method: CommercePaymentMethod) {
     stripe: "Credit / Debit Card",
     whatsapp: "Order via WhatsApp",
     whatsapp_order: "Order via WhatsApp",
-    youcan_pay: "YouCan Pay"
+    youcan_pay: youCanPayCustomerBranding.primaryLabel
   };
 
   return labels[method];
@@ -51,6 +52,10 @@ function getPaymentMethodDescription(method: CommercePaymentMethod) {
 
   if (method === "stripe") {
     return "Pay securely with Visa or Mastercard.";
+  }
+
+  if (method === "youcan_pay") {
+    return youCanPayCustomerBranding.description;
   }
 
   return "Integration foundation only. The seller will confirm payment instructions after order submission.";
@@ -146,29 +151,56 @@ export function BuyerCheckoutForm({ source }: { source: BuyerCheckoutSource }) {
               Payment method
             </p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {source.paymentMethods.map((method) => (
-                <button
-                  className={`rounded-3xl border p-4 text-left transition ${
-                    paymentMethod === method
-                      ? "border-slate-950 bg-slate-950 text-white"
-                      : "border-slate-200 bg-slate-50 text-slate-950 hover:border-slate-300"
-                  }`}
-                  key={method}
-                  onClick={() => setPaymentMethod(method)}
-                  type="button"
-                >
-                  <span className="block text-sm font-black">
-                    {source.paymentMethodDetails.find((item) => item.method === method || item.provider_internal === method)?.displayName || getPaymentMethodLabel(method)}
-                  </span>
-                  <span
-                    className={`mt-1 block text-xs font-semibold ${
-                      paymentMethod === method ? "text-white/70" : "text-slate-500"
+              {source.paymentMethods.map((method) => {
+                const isSelected = paymentMethod === method;
+                const details = source.paymentMethodDetails.find((item) => item.method === method || item.provider_internal === method);
+
+                return (
+                  <button
+                    className={`rounded-3xl border p-4 text-left transition ${
+                      isSelected
+                        ? "border-slate-950 bg-slate-950 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-950 hover:border-slate-300"
                     }`}
+                    key={method}
+                    onClick={() => setPaymentMethod(method)}
+                    type="button"
                   >
-                    {source.paymentMethodDetails.find((item) => item.method === method || item.provider_internal === method)?.instructions || getPaymentMethodDescription(method)}
-                  </span>
-                </button>
-              ))}
+                    {method === "youcan_pay" ? (
+                      <span className="block">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-black">{youCanPayCustomerBranding.primaryLabel}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[0.65rem] font-black uppercase tracking-[0.14em] ${isSelected ? "border-orange-300 bg-orange-400/20 text-orange-100" : youCanPayCustomerBranding.accentClassName}`}>
+                            {youCanPayCustomerBranding.badge}
+                          </span>
+                        </span>
+                        <span className={`mt-3 grid gap-2 text-xs font-semibold ${isSelected ? "text-white/75" : "text-slate-600"}`}>
+                          {youCanPayCustomerBranding.methods.map((paymentOption) => (
+                            <span key={paymentOption.label}>
+                              <span className="font-black">{paymentOption.label}</span>
+                              {" — "}
+                              {paymentOption.description}
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="block text-sm font-black">
+                          {details?.displayName || getPaymentMethodLabel(method)}
+                        </span>
+                        <span
+                          className={`mt-1 block text-xs font-semibold ${
+                            isSelected ? "text-white/70" : "text-slate-500"
+                          }`}
+                        >
+                          {details?.instructions || getPaymentMethodDescription(method)}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
               Online card payments, PayPal seller accounts, crypto checkout, and digital

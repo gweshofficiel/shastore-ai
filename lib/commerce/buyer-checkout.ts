@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { youCanPayCustomerBranding } from "@/lib/commerce/youcan-pay-branding";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getEnabledPublicStorePaymentMethods, type PublicStorePaymentMethod } from "@/lib/store-payment-methods";
 import {
@@ -120,7 +121,7 @@ export function getPaymentMethodLabel(method: CommercePaymentMethod) {
     stripe: "Credit / Debit Card",
     whatsapp: "Order via WhatsApp",
     whatsapp_order: "Order via WhatsApp",
-    youcan_pay: "YouCan Pay"
+    youcan_pay: youCanPayCustomerBranding.primaryLabel
   };
 
   return labels[method];
