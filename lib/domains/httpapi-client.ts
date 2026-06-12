@@ -447,21 +447,23 @@ export async function getHttpApiResellerPrices({
   });
 
   try {
-    const response = await fetch(url, {
+    const pricingResponse = await fetch(url, {
       cache: "no-store",
       headers: {
         Accept: "application/json"
       }
     });
+    console.log('PRICING_STATUS', pricingResponse.status);
+    console.log('PRICING_TEXT', await pricingResponse.clone().text());
     logHttpApiUpstreamStatus({
-      response,
+      response: pricingResponse,
       stage: "pricing",
       url
     });
-    const rawBody = response.ok ? await response.text().catch(() => "") : "";
+    const rawBody = pricingResponse.ok ? await pricingResponse.text().catch(() => "") : "";
 
-    if (!response.ok) {
-      const responseBody = await readSafeHttpApiErrorBody(response);
+    if (!pricingResponse.ok) {
+      const responseBody = await readSafeHttpApiErrorBody(pricingResponse);
 
       // Vercel outbound IPs can change unless traffic uses a fixed egress IP/proxy.
       // Production HTTPAPI access therefore requires a whitelisted fixed egress path.
@@ -469,8 +471,8 @@ export async function getHttpApiResellerPrices({
         provider: "httpapi",
         responseBody,
         stage: "pricing",
-        status: response.status,
-        statusText: response.statusText
+        status: pricingResponse.status,
+        statusText: pricingResponse.statusText
       });
       throw new HttpApiProviderError();
     }
