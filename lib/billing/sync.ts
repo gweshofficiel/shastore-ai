@@ -4,7 +4,8 @@ import { getBillingPlan, type SubscriptionPlanId } from "@/lib/billing/plans";
 import {
   isPaidSubscriptionPlan,
   type PlatformBillingAccountRole,
-  resolvePlatformPlanByPriceId
+  resolvePlatformPlanByPriceId,
+  resolvePlatformPlanByPriceIdAsync
 } from "@/lib/billing/platform-checkout";
 import { createBillingNotification } from "@/lib/notifications/billing-notifications";
 import { resolveNotificationUserId } from "@/lib/notifications/resolve-user";
@@ -157,13 +158,22 @@ function getBillingSyncClient() {
   return supabase;
 }
 
-async function logBillingEvent(event: Stripe.Event, userId?: string | null) {
+type BillingEventLogOutcome = "failed" | "skipped" | "success";
+
+async function logBillingEvent(
+  event: Stripe.Event,
+  options?: {
+    outcome?: BillingEventLogOutcome;
+    reason?: string | null;
+    userId?: string | null;
+  }
+) {
   const supabase = getBillingSyncClient();
   const { error } = await supabase.from("billing_events" as never).insert({
     event_type: event.type,
     provider: "stripe",
     provider_event_id: event.id,
-    user_id: userId ?? null,
+    user_id: options?.userId ?? null,
     payload: {
       api_version: event.api_version ?? null,
       created: event.created,
@@ -180,7 +190,9 @@ async function logBillingEvent(event: Stripe.Event, userId?: string | null) {
       event_type: event.type,
       livemode: event.livemode,
       object: event.object,
+      outcome: options?.outcome ?? "success",
       pending_webhooks: event.pending_webhooks ?? null,
+      reason: options?.reason ?? null,
       request_id: event.request?.id ?? null
     } as never,
     processed_at: new Date().toISOString()
@@ -233,9 +245,127 @@ function platformBillingAccountIdFromMetadata(metadata: Stripe.Metadata | null |
   return metadataValue(metadata, "accountId", "account_id");
 }
 
-function paidPlanFromSubscriptionPrice(subscription: Stripe.Subscription) {
+async function paidPlanFromSubscriptionPrice(subscription: Stripe.Subscription) {
   const priceId = subscription.items.data[0]?.price?.id ?? null;
-  return resolvePlatformPlanByPriceId(priceId);
+  return (
+    resolvePlatformPlanByPriceId(priceId) ?? (await resolvePlatformPlanByPriceIdAsync(priceId))
+  );
+}
+
+function isPlatformBillingMetadata(metadata: Stripe.Metadata | null | undefined) {
+  const scope = metadataValue(metadata, "billingScope", "billing_scope");
+
+  if (scope === "platform_subscription") {
+    return true;
+  }
+
+  return Boolean(
+    paidPlanFromMetadata(metadata) && metadataValue(metadata, "userId", "user_id")
+  );
+}
+
+async function retrievePlatformSubscription(
+  subscriptionRef: string | Stripe.Subscription | null | undefined
+) {
+  const subscriptionId =
+    typeof subscriptionRef === "string" ? subscriptionRef : subscriptionRef?.id ?? null;
+
+  if (!subscriptionId) {
+    return null;
+  }
+
+  try {
+    return await getPlatformBillingStripe().subscriptions.retrieve(subscriptionId);
+  } catch (error) {
+    console.warn("[stripe-webhook] subscription retrieve failed", {
+      message: error instanceof Error ? error.message : String(error),
+      subscriptionId
+    });
+    return null;
+  }
+}
+
+async function resolvePlatformCheckoutActivation(session: Stripe.Checkout.Session) {
+  const sessionMetadata = session.metadata ?? {};
+  let userId =
+    metadataValue(sessionMetadata, "userId", "user_id") ?? session.client_reference_id ?? null;
+  let planId = paidPlanFromMetadata(sessionMetadata);
+  let metadata: Stripe.Metadata = sessionMetadata;
+  let accountId = platformBillingAccountIdFromMetadata(sessionMetadata);
+  const accountRole = platformBillingRoleFromMetadata(sessionMetadata);
+  const subscription = await retrievePlatformSubscription(session.subscription);
+
+  if (subscription) {
+    const subscriptionMetadata = subscription.metadata ?? {};
+    userId =
+      userId ?? metadataValue(subscriptionMetadata, "userId", "user_id") ?? null;
+    planId =
+      planId ??
+      paidPlanFromMetadata(subscriptionMetadata) ??
+      (await paidPlanFromSubscriptionPrice(subscription));
+    accountId = accountId ?? platformBillingAccountIdFromMetadata(subscriptionMetadata);
+
+    if (!metadataValue(metadata, "billingScope", "billing_scope")) {
+      metadata = {
+        ...subscriptionMetadata,
+        ...metadata
+      };
+    }
+  }
+
+  if (!planId && session.id) {
+    try {
+      const expandedSession = await getPlatformBillingStripe().checkout.sessions.retrieve(session.id, {
+        expand: ["line_items.data.price"]
+      });
+      planId = await resolvePlatformPlanByPriceIdAsync(
+        expandedSession.line_items?.data?.[0]?.price?.id ?? null
+      );
+    } catch (error) {
+      console.warn("[stripe-webhook] checkout session line item lookup failed", {
+        message: error instanceof Error ? error.message : String(error),
+        sessionId: session.id
+      });
+    }
+  }
+
+  return {
+    accountId,
+    accountRole,
+    metadata,
+    planId,
+    subscription,
+    userId
+  };
+}
+
+async function activatePlatformSubscriptionFromStripe(input: {
+  accountId?: string | null;
+  accountRole?: PlatformBillingAccountRole;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string | null;
+  currentPeriodStart?: string | null;
+  gracePeriodUntil?: string | null;
+  planId: SubscriptionPlanId;
+  status: SubscriptionStatus;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  userId: string;
+}) {
+  await upsertUserSubscription({
+    accountId: input.accountId,
+    accountRole: input.accountRole,
+    billingScope: "platform_subscription",
+    cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+    currentPeriodEnd: input.currentPeriodEnd,
+    currentPeriodStart: input.currentPeriodStart,
+    gracePeriodUntil: input.gracePeriodUntil,
+    planId: input.planId,
+    status: input.status,
+    stripeCustomerId: input.stripeCustomerId,
+    stripeSubscriptionId: input.stripeSubscriptionId,
+    userId: input.userId
+  });
 }
 
 async function upsertUserSubscription(input: {
@@ -519,51 +649,89 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const userId =
-      metadataValue(session.metadata, "userId", "user_id") ?? session.client_reference_id;
-    const planId = paidPlanFromMetadata(session.metadata);
+
+    if (session.mode !== "subscription") {
+      await logBillingEvent(event, {
+        outcome: "skipped",
+        reason: "non_subscription_checkout"
+      });
+      return;
+    }
+
+    const activation = await resolvePlatformCheckoutActivation(session);
+
+    if (!isPlatformBillingMetadata(activation.metadata)) {
+      await logBillingEvent(event, {
+        outcome: "skipped",
+        reason: "non_platform_billing_checkout"
+      });
+      return;
+    }
+
+    const { accountId, accountRole, planId, subscription, userId } = activation;
 
     if (!userId || !planId) {
       console.error("[stripe-webhook] checkout.session.completed missing required metadata", {
         eventId: event.id,
         hasPlan: Boolean(planId),
         hasUserId: Boolean(userId),
-        metadata: session.metadata ?? null,
+        metadata: activation.metadata ?? null,
         sessionId: session.id
       });
-      await logBillingEvent(event);
+      await logBillingEvent(event, {
+        outcome: "skipped",
+        reason: "missing_checkout_activation_metadata"
+      });
       return;
     }
 
-    await upsertUserSubscription({
-      accountId: platformBillingAccountIdFromMetadata(session.metadata),
-      accountRole: platformBillingRoleFromMetadata(session.metadata),
-      billingScope: "platform_subscription",
-      currentPeriodEnd: null,
-      currentPeriodStart: null,
+    const stripeCustomerId =
+      typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+    const stripeSubscriptionId =
+      subscription?.id ??
+      (typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id ?? null);
+
+    await activatePlatformSubscriptionFromStripe({
+      accountId,
+      accountRole,
+      currentPeriodEnd: subscription
+        ? subscriptionPeriodDate(subscription, "current_period_end")
+        : null,
+      currentPeriodStart: subscription
+        ? subscriptionPeriodDate(subscription, "current_period_start")
+        : null,
       planId,
       status: "active",
-      stripeCustomerId:
-        typeof session.customer === "string" ? session.customer : session.customer?.id ?? null,
-      stripeSubscriptionId:
-        typeof session.subscription === "string"
-          ? session.subscription
-          : session.subscription?.id ?? null,
+      stripeCustomerId,
+      stripeSubscriptionId,
       userId
     });
 
-    await createBillingNotification({
-      metadata: {
-        eventType: event.type,
-        planId,
-        status: "active"
-      },
-      providerEventId: event.id,
-      type: "subscription_activated",
+    try {
+      await createBillingNotification({
+        metadata: {
+          eventType: event.type,
+          planId,
+          status: "active"
+        },
+        providerEventId: event.id,
+        type: "subscription_activated",
+        userId
+      });
+    } catch (error) {
+      console.warn("[stripe-webhook] subscription activation notification skipped", {
+        eventId: event.id,
+        message: error instanceof Error ? error.message : String(error),
+        userId
+      });
+    }
+
+    await logBillingEvent(event, {
+      outcome: "success",
       userId
     });
-
-    await logBillingEvent(event, userId);
     return;
   }
 
@@ -594,7 +762,19 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       eventType: event.type,
       stripeCustomerEmail: subscriptionCustomerEmail
     });
-    const pricePlanId = paidPlanFromSubscriptionPrice(subscription);
+    if (
+      !isPlatformBillingMetadata(subscription.metadata) &&
+      !existingSubscription &&
+      event.type !== "customer.subscription.deleted"
+    ) {
+      await logBillingEvent(event, {
+        outcome: "skipped",
+        reason: "non_platform_subscription"
+      });
+      return;
+    }
+
+    const pricePlanId = await paidPlanFromSubscriptionPrice(subscription);
     const planId =
       pricePlanId ??
       paidPlanFromMetadata(subscription.metadata) ??
@@ -655,7 +835,10 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
           webhookType: event.type
         });
       }
-      await logBillingEvent(event);
+      await logBillingEvent(event, {
+        outcome: "skipped",
+        reason: "missing_subscription_activation_metadata"
+      });
       return;
     }
 
@@ -774,7 +957,10 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       });
     }
 
-    await logBillingEvent(event, billingUserId);
+    await logBillingEvent(event, {
+      outcome: "success",
+      userId: billingUserId
+    });
     return;
   }
 
@@ -812,7 +998,47 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
         | undefined;
     }
 
-    const billingUserId = subscription?.user_id ?? null;
+    let billingUserId = subscription?.user_id ?? null;
+
+    if (
+      !billingUserId &&
+      event.type === "invoice.payment_succeeded" &&
+      stripeSubscriptionId
+    ) {
+      const stripeSubscription = await retrievePlatformSubscription(stripeSubscriptionId);
+
+      if (stripeSubscription && isPlatformBillingMetadata(stripeSubscription.metadata)) {
+        const invoiceUserId =
+          metadataValue(stripeSubscription.metadata, "userId", "user_id") ?? null;
+        const invoicePlanId =
+          paidPlanFromMetadata(stripeSubscription.metadata) ??
+          (await paidPlanFromSubscriptionPrice(stripeSubscription));
+
+        if (invoiceUserId && invoicePlanId) {
+          await activatePlatformSubscriptionFromStripe({
+            accountId: platformBillingAccountIdFromMetadata(stripeSubscription.metadata),
+            accountRole: platformBillingRoleFromMetadata(stripeSubscription.metadata),
+            currentPeriodEnd: subscriptionPeriodDate(stripeSubscription, "current_period_end"),
+            currentPeriodStart: subscriptionPeriodDate(stripeSubscription, "current_period_start"),
+            planId: invoicePlanId,
+            status: "active",
+            stripeCustomerId,
+            stripeSubscriptionId,
+            userId: invoiceUserId
+          });
+          billingUserId = invoiceUserId;
+
+          const { data: activatedSubscription } = await supabase
+            .from("user_subscriptions" as never)
+            .select("id, user_id, current_period_end")
+            .eq("user_id" as never, invoiceUserId as never)
+            .maybeSingle();
+          subscription = (activatedSubscription ?? undefined) as
+            | { current_period_end?: string | null; id: string; user_id: string | null }
+            | undefined;
+        }
+      }
+    }
 
     if (!billingUserId) {
       console.warn("[billing-notification-skip] invoice event has no matching user subscription", {
@@ -937,9 +1163,13 @@ export async function syncStripeSubscriptionEvent(event: Stripe.Event) {
       });
     }
 
-    await logBillingEvent(event, billingUserId);
+    await logBillingEvent(event, {
+      outcome: billingUserId ? "success" : "skipped",
+      reason: billingUserId ? null : "invoice_without_user_subscription",
+      userId: billingUserId
+    });
     return;
   }
 
-  await logBillingEvent(event);
+  await logBillingEvent(event, { outcome: "skipped", reason: "unhandled_event_type" });
 }

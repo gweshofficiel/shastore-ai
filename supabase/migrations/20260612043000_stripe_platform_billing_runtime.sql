@@ -108,3 +108,13 @@ grant select on public.billing_events to authenticated;
 grant select on public.invoices to authenticated;
 grant all on public.billing_events to service_role;
 grant all on public.invoices to service_role;
+
+drop policy if exists "Service role manages user subscriptions" on public.user_subscriptions;
+create policy "Service role manages user subscriptions"
+on public.user_subscriptions
+for all
+to service_role
+using (true)
+with check (true);
+
+grant all on public.user_subscriptions to service_role;

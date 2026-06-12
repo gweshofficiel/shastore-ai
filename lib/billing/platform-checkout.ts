@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { getAppBaseUrl } from "@/lib/deployment/config";
 import { getBillingPlan } from "@/lib/billing/plans";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const PAID_PLANS = ["starter", "pro", "agency"] as const;
@@ -182,6 +183,59 @@ export function resolvePlatformPlanByPriceId(priceId: string | null | undefined)
   }
 
   return PAID_PLANS.find((plan) => resolvePlatformPriceId(plan).priceId === priceId) ?? null;
+}
+
+async function resolvePlatformPlanByPriceIdFromDatabase(
+  priceId: string
+): Promise<PaidSubscriptionPlanId | null> {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("subscription_plans" as never)
+    .select("id, stripe_price_id")
+    .eq("stripe_price_id" as never, priceId as never)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingSubscriptionPlansTable(error)) {
+      return null;
+    }
+
+    console.warn("[platform-checkout] subscription_plans price lookup failed", {
+      message: error.message,
+      priceId
+    });
+    return null;
+  }
+
+  const row = data as { id?: string | null; stripe_price_id?: string | null } | null;
+  const planId = row?.id?.trim() || null;
+
+  if (planId === "business") {
+    return "agency";
+  }
+
+  return planId && isPaidSubscriptionPlan(planId) ? planId : null;
+}
+
+export async function resolvePlatformPlanByPriceIdAsync(
+  priceId: string | null | undefined
+): Promise<PaidSubscriptionPlanId | null> {
+  if (!priceId) {
+    return null;
+  }
+
+  const fromEnv = resolvePlatformPlanByPriceId(priceId);
+
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  return resolvePlatformPlanByPriceIdFromDatabase(priceId);
 }
 
 export type CreatePlatformCheckoutInput = {
