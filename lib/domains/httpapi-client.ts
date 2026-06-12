@@ -74,8 +74,8 @@ function getHttpApiConfig(): HttpApiConfig {
 
   const url = new URL(baseUrl);
 
-  if (url.protocol !== "https:") {
-    throw new HttpApiConfigurationError("HTTPAPI_BASE_URL must use HTTPS.");
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new HttpApiConfigurationError("HTTPAPI_BASE_URL must use HTTP or HTTPS.");
   }
 
   return {
@@ -83,6 +83,39 @@ function getHttpApiConfig(): HttpApiConfig {
     baseUrl: url.toString().replace(/\/+$/, ""),
     resellerId
   };
+}
+
+function logHttpApiProxyBaseUrlUsed({
+  baseUrl,
+  stage
+}: {
+  baseUrl: string;
+  stage: "availability" | "pricing";
+}) {
+  console.info("httpapi_proxy_base_url_used", {
+    baseUrl,
+    provider: "httpapi",
+    stage
+  });
+}
+
+function logHttpApiUpstreamStatus({
+  response,
+  stage,
+  url
+}: {
+  response: Response;
+  stage: "availability" | "pricing";
+  url: URL;
+}) {
+  console.info("httpapi_upstream_status", {
+    endpoint: `${url.origin}${url.pathname}`,
+    ok: response.ok,
+    provider: "httpapi",
+    stage,
+    status: response.status,
+    statusText: response.statusText
+  });
 }
 
 function normalizeSearchLabel(value: string) {
@@ -315,12 +348,22 @@ export async function searchHttpApiDomainAvailability({
     url.searchParams.append("tlds", extension);
   }
 
+  logHttpApiProxyBaseUrlUsed({
+    baseUrl: config.baseUrl,
+    stage: "availability"
+  });
+
   try {
     const response = await fetch(url, {
       cache: "no-store",
       headers: {
         Accept: "application/json"
       }
+    });
+    logHttpApiUpstreamStatus({
+      response,
+      stage: "availability",
+      url
     });
     const rawBody = response.ok ? await response.text().catch(() => "") : "";
 
@@ -398,12 +441,22 @@ export async function getHttpApiResellerPrices({
     url.searchParams.append("tlds", extension);
   }
 
+  logHttpApiProxyBaseUrlUsed({
+    baseUrl: config.baseUrl,
+    stage: "pricing"
+  });
+
   try {
     const response = await fetch(url, {
       cache: "no-store",
       headers: {
         Accept: "application/json"
       }
+    });
+    logHttpApiUpstreamStatus({
+      response,
+      stage: "pricing",
+      url
     });
     const rawBody = response.ok ? await response.text().catch(() => "") : "";
 
