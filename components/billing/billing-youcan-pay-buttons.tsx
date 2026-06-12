@@ -10,17 +10,93 @@ type BillingYouCanPayButtonsProps = {
 };
 
 const provider = "youcan_pay" as const;
+const methodByLabel = {
+  "Cash Plus": "cashplus",
+  "Credit Card (Morocco)": "card"
+} as const;
+
+type YouCanCheckoutJsonResponse = {
+  code?: string;
+  error?: string;
+  message?: string;
+  ok?: boolean;
+  url?: string;
+};
 
 export function BillingYouCanPayButtons({ planId }: BillingYouCanPayButtonsProps) {
-  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingMethod, setPendingMethod] = useState<string | null>(null);
 
-  function handleClick(methodLabel: string) {
-    console.info("[youcan_pay_billing_method_selected]", {
+  async function handleClick(methodLabel: keyof typeof methodByLabel) {
+    const method = methodByLabel[methodLabel];
+
+    console.info("youcan method selected", {
+      method,
       methodLabel,
       planId,
       provider
     });
-    setSelectedMethod(methodLabel);
+    setPendingMethod(method);
+    setError(null);
+
+    try {
+      console.info("youcan checkout started", {
+        method,
+        planId,
+        provider
+      });
+
+      const response = await fetch("/api/billing/checkout/youcan-pay", {
+        body: JSON.stringify({
+          method,
+          plan_id: planId,
+          provider
+        }),
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const payload = (await response.json().catch(() => null)) as YouCanCheckoutJsonResponse | null;
+
+      if (response.ok && payload?.ok && payload.url) {
+        console.info("youcan checkout created", {
+          method,
+          planId,
+          provider,
+          url: payload.url
+        });
+        window.location.href = payload.url;
+        return;
+      }
+
+      const failureMessage =
+        payload?.error ??
+        payload?.message ??
+        "YouCan Pay checkout could not be started. Please try again.";
+
+      console.error("youcan checkout failed", {
+        code: payload?.code ?? null,
+        message: failureMessage,
+        method,
+        planId,
+        provider,
+        status: response.status
+      });
+      setError(failureMessage);
+    } catch (caughtError) {
+      console.error("youcan checkout failed", {
+        message: caughtError instanceof Error ? caughtError.message : String(caughtError),
+        method,
+        planId,
+        provider
+      });
+      setError("YouCan Pay checkout could not be started. Please try again.");
+    } finally {
+      setPendingMethod(null);
+    }
   }
 
   return (
@@ -37,20 +113,25 @@ export function BillingYouCanPayButtons({ planId }: BillingYouCanPayButtonsProps
         {youCanPayCustomerBranding.methods.map((method) => (
           <Button
             className="w-full border-orange-200 bg-white text-orange-900 hover:border-orange-300 hover:bg-orange-100"
+            disabled={Boolean(pendingMethod)}
             key={method.label}
             onClick={() => handleClick(method.label)}
             type="button"
             variant="secondary"
           >
-            {method.label}
+            {pendingMethod === methodByLabel[method.label] ? "Starting checkout..." : method.label}
           </Button>
         ))}
       </div>
-      <p className="mt-3 text-xs font-semibold leading-5 text-orange-900">
-        {selectedMethod
-          ? `${selectedMethod} selected. Checkout processing is not connected yet.`
-          : youCanPayCustomerBranding.description}
-      </p>
+      {error ? (
+        <p className="mt-3 text-xs font-bold leading-5 text-red-700" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p className="mt-3 text-xs font-semibold leading-5 text-orange-900">
+          {youCanPayCustomerBranding.description}
+        </p>
+      )}
     </div>
   );
 }
