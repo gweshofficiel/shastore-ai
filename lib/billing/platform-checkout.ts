@@ -59,7 +59,11 @@ export type CreatePlatformCheckoutResult =
   | { ok: true; url: string }
   | {
       ok: false;
-      code: "missing_stripe_key" | "missing_price" | "checkout_url_unavailable";
+      code:
+        | "checkout_failed"
+        | "checkout_url_unavailable"
+        | "missing_price"
+        | "missing_stripe_key";
       message: string;
     };
 
@@ -116,26 +120,41 @@ export async function createPlatformCheckoutSession(
   const { cancelUrl, successUrl } = platformCheckoutUrls(input.accountRole);
   const metadata = checkoutMetadata(input);
 
-  const session = await stripe.checkout.sessions.create({
-    cancel_url: cancelUrl,
-    client_reference_id: input.userId,
-    customer_email: input.customerEmail ?? undefined,
-    line_items: [{ price: priceId, quantity: 1 }],
-    metadata,
-    mode: "subscription",
-    subscription_data: {
-      metadata
-    },
-    success_url: successUrl
-  });
+  try {
+    const session = await stripe.checkout.sessions.create({
+      cancel_url: cancelUrl,
+      client_reference_id: input.userId,
+      customer_email: input.customerEmail ?? undefined,
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata,
+      mode: "subscription",
+      subscription_data: {
+        metadata
+      },
+      success_url: successUrl
+    });
 
-  if (!session.url) {
+    if (!session.url) {
+      return {
+        ok: false,
+        code: "checkout_url_unavailable",
+        message: "Stripe checkout session was created without a redirect URL."
+      };
+    }
+
+    return { ok: true, url: session.url };
+  } catch (error) {
+    console.error("[platform-checkout] checkout session create failed", {
+      accountRole: input.accountRole,
+      message: error instanceof Error ? error.message : String(error),
+      plan: input.plan,
+      userId: input.userId
+    });
+
     return {
       ok: false,
-      code: "checkout_url_unavailable",
-      message: "Stripe checkout session was created without a redirect URL."
+      code: "checkout_failed",
+      message: "Could not start Stripe checkout. Verify platform billing Stripe price IDs and try again."
     };
   }
-
-  return { ok: true, url: session.url };
 }
