@@ -1,3 +1,4 @@
+import { BillingPlanChangeForm } from "@/components/billing/billing-plan-change-form";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
@@ -148,7 +149,7 @@ export default async function BillingPage({
     );
   }
 
-  const access = await getUserSubscriptionAccessForClient(supabase, workspaceId);
+  const access = await getUserSubscriptionAccessForClient(supabase, user.id);
 
   const currentPlan = access.plan;
   const isPaid = currentPlan.id !== "free";
@@ -493,16 +494,12 @@ export default async function BillingPage({
                   Current plan
                 </Button>
               ) : (
-                <form action="/api/billing/change-plan" className="mt-6" method="POST">
-                  <input name="plan" type="hidden" value={plan.id} />
-                  <Button
-                    className="w-full"
-                    type="submit"
-                    variant={direction === "downgrade" ? "secondary" : "primary"}
-                  >
-                    {planChangeLabel}
-                  </Button>
-                </form>
+                <BillingPlanChangeForm
+                  className="mt-6"
+                  label={planChangeLabel}
+                  planId={plan.id}
+                  variant={direction === "downgrade" ? "secondary" : "primary"}
+                />
               )}
             </Card>
           );
