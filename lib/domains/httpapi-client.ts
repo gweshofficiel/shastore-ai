@@ -475,6 +475,9 @@ export async function getHttpApiResellerPrices({
       throw new HttpApiProviderError();
     }
 
+    const responseBody = rawBody;
+    console.log('httpapi_pricing_raw_response', JSON.stringify(responseBody));
+
     const data = rawBody ? JSON.parse(rawBody) : null;
     const raw = responseRecord(data);
     const results = normalizedExtensions.map((extension) => {
