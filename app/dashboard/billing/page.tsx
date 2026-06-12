@@ -1,6 +1,7 @@
 import { BillingCryptoCheckoutButton } from "@/components/billing/billing-crypto-checkout-button";
 import { BillingPayPalCheckoutButton } from "@/components/billing/billing-paypal-checkout-button";
 import { BillingPlanChangeForm } from "@/components/billing/billing-plan-change-form";
+import { BillingYouCanPayButtons } from "@/components/billing/billing-youcan-pay-buttons";
 import { UpgradeRequiredCard } from "@/components/billing/UpgradeRequiredCard";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
@@ -513,6 +514,7 @@ export default async function BillingPage({
                     <>
                       <BillingPayPalCheckoutButton planId={plan.id} />
                       <BillingCryptoCheckoutButton planId={plan.id} />
+                      <BillingYouCanPayButtons planId={plan.id} />
                     </>
                   ) : null}
                 </div>
