@@ -41,6 +41,28 @@ type ProviderBalanceSummary = {
   status: ProviderFundingStatus;
 };
 
+type ContactRole = "admin" | "billing" | "registrant" | "tech";
+type ContactCompletenessStatus = "Complete" | "Missing contact ids" | "Missing registrant" | "Unknown";
+type ContactIssueType = "missing_contact_id" | "missing_registrant" | "ownership_risk" | "unknown_contact_data";
+
+type ContactSnapshot = {
+  email: string | null;
+  id: string | null;
+  name: string | null;
+};
+
+type DomainContactVisibility = {
+  admin: ContactSnapshot;
+  billing: ContactSnapshot;
+  completeness: ContactCompletenessStatus;
+  issueTypes: ContactIssueType[];
+  missingFields: string[];
+  order: DomainOrder;
+  ownershipRisk: boolean;
+  registrant: ContactSnapshot;
+  tech: ContactSnapshot;
+};
+
 type DomainDetailsDrawerProps = {
   clearDomainReview: DomainAction;
   domainOrders: DomainOrder[];
@@ -430,6 +452,193 @@ function providerFundingTone(status: ProviderFundingStatus) {
   if (status === "Critical" || status === "Error") return "red" as const;
 
   return "blue" as const;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function textFromUnknown(value: unknown) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function firstNestedText(value: unknown, keys: string[]): string | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = firstNestedText(item, keys);
+
+      if (nested) {
+        return nested;
+      }
+    }
+
+    return null;
+  }
+
+  if (!isRecordValue(value)) {
+    return null;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    if (keys.includes(normalizedKey)) {
+      const direct = textFromUnknown(nestedValue);
+
+      if (direct) {
+        return direct;
+      }
+    }
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const nested = firstNestedText(nestedValue, keys);
+
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+const contactNameKeys = ["contactname", "customername", "name", "registrantname"];
+const contactEmailKeys = ["contactemail", "customeremail", "email", "registrantemail"];
+
+function contactResponseSection(value: unknown, role: ContactRole): unknown {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const section = contactResponseSection(item, role);
+
+      if (section) {
+        return section;
+      }
+    }
+
+    return null;
+  }
+
+  if (!isRecordValue(value)) {
+    return null;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    if (normalizedKey.includes(role) && isRecordValue(nestedValue)) {
+      return nestedValue;
+    }
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const section = contactResponseSection(nestedValue, role);
+
+    if (section) {
+      return section;
+    }
+  }
+
+  return null;
+}
+
+function roleContactDetails(order: DomainOrder, role: ContactRole, id: string | null): ContactSnapshot {
+  const roleSection = contactResponseSection(order.providerResponse, role);
+  const fallbackResponse = role === "registrant" ? order.providerResponse : null;
+
+  return {
+    email: firstNestedText(roleSection, contactEmailKeys) ?? firstNestedText(fallbackResponse, contactEmailKeys),
+    id,
+    name: firstNestedText(roleSection, contactNameKeys) ?? firstNestedText(fallbackResponse, contactNameKeys)
+  };
+}
+
+function contactCompleteness(order: DomainOrder): ContactCompletenessStatus {
+  const contactIds = [
+    order.registrantContactId,
+    order.adminContactId,
+    order.techContactId,
+    order.billingContactId
+  ];
+
+  if (!order.providerCustomerId && contactIds.every((id) => !id)) {
+    return "Unknown";
+  }
+
+  if (!order.registrantContactId) {
+    return "Missing registrant";
+  }
+
+  if (contactIds.some((id) => !id)) {
+    return "Missing contact ids";
+  }
+
+  return "Complete";
+}
+
+function ownershipRisk(order: DomainOrder, registrant: ContactSnapshot) {
+  const registrantEmail = normalizedText(registrant.email);
+  const ownerEmail = normalizedText(order.ownerEmail);
+  const registrantText = `${normalizedText(registrant.name)} ${registrantEmail}`;
+  const platformSignals = ["httpapi", "resell.biz", "shastore", "provider", "platform"];
+
+  if (registrantEmail && ownerEmail && ownerEmail !== "unknown owner" && registrantEmail !== ownerEmail) {
+    return true;
+  }
+
+  return platformSignals.some((signal) => registrantText.includes(signal));
+}
+
+function contactVisibilityForOrder(order: DomainOrder): DomainContactVisibility {
+  const registrant = roleContactDetails(order, "registrant", order.registrantContactId);
+  const admin = roleContactDetails(order, "admin", order.adminContactId);
+  const tech = roleContactDetails(order, "tech", order.techContactId);
+  const billing = roleContactDetails(order, "billing", order.billingContactId);
+  const completeness = contactCompleteness(order);
+  const missingFields = [
+    !order.providerCustomerId ? "customer id" : null,
+    !order.registrantContactId ? "registrant contact id" : null,
+    !order.adminContactId ? "admin contact id" : null,
+    !order.techContactId ? "tech contact id" : null,
+    !order.billingContactId ? "billing contact id" : null
+  ].filter((field): field is string => Boolean(field));
+  const risk = ownershipRisk(order, registrant);
+  const issueTypes: ContactIssueType[] = [
+    completeness === "Missing contact ids" ? "missing_contact_id" : null,
+    completeness === "Missing registrant" ? "missing_registrant" : null,
+    completeness === "Unknown" ? "unknown_contact_data" : null,
+    risk ? "ownership_risk" : null
+  ].filter((issue): issue is ContactIssueType => Boolean(issue));
+
+  return {
+    admin,
+    billing,
+    completeness,
+    issueTypes,
+    missingFields,
+    order,
+    ownershipRisk: risk,
+    registrant,
+    tech
+  };
+}
+
+function contactCompletenessTone(status: ContactCompletenessStatus) {
+  if (status === "Complete") return "green" as const;
+  if (status === "Unknown") return "blue" as const;
+
+  return "amber" as const;
+}
+
+function contactIssueLabel(issue: ContactIssueType) {
+  return issue.replace(/_/g, " ");
 }
 
 function operationLabel(value: FailedOperationType) {
@@ -955,6 +1164,149 @@ function ProviderBalanceMonitoringPanel({
   );
 }
 
+function DomainOwnershipContactsPanel({
+  contacts,
+  setSelectedDomainId
+}: {
+  contacts: DomainContactVisibility[];
+  setSelectedDomainId: (id: string) => void;
+}) {
+  const issues = contacts.flatMap((contact) =>
+    contact.issueTypes.map((issueType) => ({
+      contact,
+      issueType
+    }))
+  );
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_60px_-55px_rgba(15,23,42,0.9)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Domain Ownership & Contacts
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">
+            Contact IDs used for domain registration
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+            Read-only view from stored domain order data and masked provider responses. No contacts are created or updated here.
+          </p>
+        </div>
+        <AdminBadge tone={issues.length ? "amber" : "green"}>{issues.length} issues</AdminBadge>
+      </div>
+
+      {contacts.some((contact) => contact.ownershipRisk) ? (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+          Registrant contact may not match the store owner.
+        </div>
+      ) : null}
+
+      <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1500px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Domain</th>
+                <th className="px-4 py-3">Store</th>
+                <th className="px-4 py-3">Owner</th>
+                <th className="px-4 py-3">Customer id</th>
+                <th className="px-4 py-3">Registrant contact</th>
+                <th className="px-4 py-3">Admin contact</th>
+                <th className="px-4 py-3">Tech contact</th>
+                <th className="px-4 py-3">Billing contact</th>
+                <th className="px-4 py-3">Registrant name/email</th>
+                <th className="px-4 py-3">Admin name/email</th>
+                <th className="px-4 py-3">Tech name/email</th>
+                <th className="px-4 py-3">Billing name/email</th>
+                <th className="px-4 py-3">Completeness</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {contacts.map((contact) => (
+                <tr key={contact.order.id}>
+                  <td className="px-4 py-3 font-black text-slate-950">{contact.order.domain}</td>
+                  <td className="px-4 py-3 text-slate-600">{contact.order.storeName}</td>
+                  <td className="px-4 py-3 text-slate-600">{contact.order.ownerEmail}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(contact.order.providerCustomerId)}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(contact.registrant.id)}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(contact.admin.id)}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(contact.tech.id)}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(contact.billing.id)}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue([contact.registrant.name, contact.registrant.email].filter(Boolean).join(" / "))}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue([contact.admin.name, contact.admin.email].filter(Boolean).join(" / "))}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue([contact.tech.name, contact.tech.email].filter(Boolean).join(" / "))}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue([contact.billing.name, contact.billing.email].filter(Boolean).join(" / "))}</td>
+                  <td className="px-4 py-3">
+                    <AdminBadge tone={contactCompletenessTone(contact.completeness)}>
+                      {contact.completeness}
+                    </AdminBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!contacts.length ? (
+          <div className="p-5 text-sm font-semibold leading-6 text-slate-500">
+            No domain orders match the current filters.
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Contact Issues
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Domain</th>
+                <th className="px-4 py-3">Store</th>
+                <th className="px-4 py-3">Owner</th>
+                <th className="px-4 py-3">Issue type</th>
+                <th className="px-4 py-3">Missing field</th>
+                <th className="px-4 py-3">Provider response</th>
+                <th className="px-4 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {issues.map(({ contact, issueType }) => (
+                <tr key={`${contact.order.id}-${issueType}`}>
+                  <td className="px-4 py-3 font-black text-slate-950">{contact.order.domain}</td>
+                  <td className="px-4 py-3 text-slate-600">{contact.order.storeName}</td>
+                  <td className="px-4 py-3 text-slate-600">{contact.order.ownerEmail}</td>
+                  <td className="px-4 py-3"><AdminBadge tone="amber">{contactIssueLabel(issueType)}</AdminBadge></td>
+                  <td className="px-4 py-3 text-slate-600">{contact.missingFields.length ? contact.missingFields.join(", ") : "None"}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {hasProviderResponse(contact.order.providerResponse) ? "Stored masked response available" : "Not captured"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                      onClick={() => setSelectedDomainId(contact.order.id)}
+                      type="button"
+                    >
+                      View details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!issues.length ? (
+          <div className="p-5 text-sm font-semibold leading-6 text-slate-500">
+            No contact ownership issues match the current filters.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function ConnectedDomainsTable({ sslStatuses }: { sslStatuses: SslStatus[] }) {
   return (
     <AdminTable
@@ -1008,10 +1360,15 @@ export function DomainDetailsDrawer({
         .filter((operation): operation is FailedOperation => Boolean(operation)),
     [filteredDomainOrders]
   );
+  const contactVisibility = useMemo(
+    () => filteredDomainOrders.map(contactVisibilityForOrder),
+    [filteredDomainOrders]
+  );
   const fundingSummary = useMemo(
     () => providerBalanceSummary(domainOrders),
     [domainOrders]
   );
+  const selectedContactVisibility = selectedDomain ? contactVisibilityForOrder(selectedDomain) : null;
   const activeCount = activeFilterCount(filters);
 
   return (
@@ -1028,6 +1385,11 @@ export function DomainDetailsDrawer({
       <ProviderBalanceMonitoringPanel
         setSelectedDomainId={setSelectedDomainId}
         summary={fundingSummary}
+      />
+
+      <DomainOwnershipContactsPanel
+        contacts={contactVisibility}
+        setSelectedDomainId={setSelectedDomainId}
       />
 
       <FailedOperationsCenter
@@ -1121,6 +1483,32 @@ export function DomainDetailsDrawer({
                 <DetailRow label="Tech contact id" value={selectedDomain.techContactId} />
                 <DetailRow label="Billing contact id" value={selectedDomain.billingContactId} />
               </DetailSection>
+
+              {selectedContactVisibility ? (
+                <DetailSection title="Domain Ownership & Contacts">
+                  <DetailRow label="Contact completeness" value={selectedContactVisibility.completeness} />
+                  <DetailRow
+                    label="Ownership risk"
+                    value={selectedContactVisibility.ownershipRisk ? "Registrant contact may not match the store owner." : "No visible ownership mismatch detected"}
+                  />
+                  <DetailRow
+                    label="Registrant name/email"
+                    value={[selectedContactVisibility.registrant.name, selectedContactVisibility.registrant.email].filter(Boolean).join(" / ")}
+                  />
+                  <DetailRow
+                    label="Admin name/email"
+                    value={[selectedContactVisibility.admin.name, selectedContactVisibility.admin.email].filter(Boolean).join(" / ")}
+                  />
+                  <DetailRow
+                    label="Tech name/email"
+                    value={[selectedContactVisibility.tech.name, selectedContactVisibility.tech.email].filter(Boolean).join(" / ")}
+                  />
+                  <DetailRow
+                    label="Billing name/email"
+                    value={[selectedContactVisibility.billing.name, selectedContactVisibility.billing.email].filter(Boolean).join(" / ")}
+                  />
+                </DetailSection>
+              ) : null}
 
               <DetailSection title="Registration Information">
                 <DetailRow label="Registration years" value={selectedDomain.registrationYears} />
