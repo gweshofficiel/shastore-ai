@@ -15,6 +15,10 @@ import {
 } from "@/lib/admin/integration-actions";
 import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminIntegrationsControl } from "@/lib/admin/data";
+import {
+  listIntegrationAuditLogs,
+  type IntegrationAuditStatus
+} from "@/lib/integrations/audit-log";
 
 function toneForStatus(status: string) {
   if (["configured", "enabled", "healthy", "live", "masked_configured"].includes(status)) {
@@ -32,7 +36,36 @@ function toneForStatus(status: string) {
   return "amber" as const;
 }
 
-export default async function AdminIntegrationsPage() {
+function firstParam(value: string | string[] | undefined, fallback = "all") {
+  if (Array.isArray(value)) {
+    return value[0] ?? fallback;
+  }
+
+  return value ?? fallback;
+}
+
+function safeSummaryText(value: Record<string, unknown> | null) {
+  if (!value || !Object.keys(value).length) {
+    return "No summary";
+  }
+
+  return JSON.stringify(value).slice(0, 300);
+}
+
+const auditStatuses: Array<IntegrationAuditStatus | "all"> = [
+  "all",
+  "started",
+  "success",
+  "failed",
+  "skipped",
+  "blocked"
+];
+
+export default async function AdminIntegrationsPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const access = await getAdminAccess();
 
   if (access.internalRole !== "super_admin") {
@@ -49,7 +82,18 @@ export default async function AdminIntegrationsPage() {
     );
   }
 
-  const control = await getAdminIntegrationsControl();
+  const params = searchParams ? await searchParams : {};
+  const auditProvider = firstParam(params.auditProvider);
+  const auditCategory = firstParam(params.auditCategory);
+  const auditStatus = firstParam(params.auditStatus) as IntegrationAuditStatus | "all";
+  const [control, auditLogs] = await Promise.all([
+    getAdminIntegrationsControl(),
+    listIntegrationAuditLogs({
+      category: auditCategory,
+      providerKey: auditProvider,
+      status: auditStatus
+    })
+  ]);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -220,6 +264,101 @@ export default async function AdminIntegrationsPage() {
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Integration Audit Logs
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Provider operation audit trail
+            </h2>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+              Safe summaries only. No API keys, tokens, webhook secrets, or raw provider responses are stored or displayed.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-3" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={auditProvider}
+                name="auditProvider"
+              >
+                <option value="all">All providers</option>
+                {control.integrations.map((integration) => (
+                  <option key={integration.key} value={integration.key}>
+                    {integration.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Category
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={auditCategory}
+                name="auditCategory"
+              >
+                <option value="all">All categories</option>
+                {control.categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={auditStatus}
+                name="auditStatus"
+              >
+                {auditStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700 sm:col-span-3"
+              type="submit"
+            >
+              Apply audit filters
+            </button>
+          </form>
+        </div>
+
+        <AdminTable
+          empty={!auditLogs.length ? "No integration audit logs match the current filters." : null}
+          headers={[
+            "Time",
+            "Provider",
+            "Category",
+            "Operation",
+            "Status",
+            "Error code",
+            "Safe summary"
+          ]}
+        >
+          {auditLogs.map((log) => (
+            <tr key={log.id}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(log.createdAt)}</td>
+              <td className="px-5 py-4 font-bold text-slate-950">{log.providerName}</td>
+              <td className="px-5 py-4 text-slate-600">{log.category}</td>
+              <td className="px-5 py-4 text-slate-600">{log.operation}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(log.status)}>{log.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{log.errorCode ?? "None"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{safeSummaryText(log.safeSummary)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (

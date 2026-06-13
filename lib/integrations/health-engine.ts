@@ -1,6 +1,11 @@
 import "server-only";
 import { getAdminAccess } from "@/lib/admin-access";
+import { recordIntegrationAuditLog } from "@/lib/integrations/audit-log";
 import { integrationDefinitions, type IntegrationDefinition } from "@/lib/integrations/catalog";
+import {
+  maskIntegrationDiagnostic,
+  maskSensitiveText
+} from "@/lib/integrations/safe-diagnostics";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type IntegrationHealthStatus =
@@ -65,21 +70,6 @@ type AdminClient = {
 };
 
 const HEALTH_CHECK_TIMEOUT_MS = 3000;
-const sensitiveKeyParts = [
-  "apikey",
-  "api_key",
-  "api-key",
-  "authorization",
-  "bearer",
-  "key",
-  "password",
-  "private_key",
-  "privatekey",
-  "secret",
-  "token",
-  "webhook_secret",
-  "webhooksecret"
-];
 const statusValues: IntegrationHealthStatus[] = [
   "not_checked",
   "healthy",
@@ -89,54 +79,6 @@ const statusValues: IntegrationHealthStatus[] = [
   "missing_config",
   "placeholder"
 ];
-
-function normalizedKey(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
-}
-
-function isSensitiveKey(value: string) {
-  const key = normalizedKey(value);
-
-  return sensitiveKeyParts.some((part) => key.includes(normalizedKey(part)));
-}
-
-function maskSensitiveText(value: string) {
-  return value
-    .replace(
-      /((?:api[-_]?key|apikey|key|token|secret|password|auth|authorization|bearer|private[-_]?key|webhook[-_]?secret)=)[^&\s"']+/gi,
-      "$1[redacted]"
-    )
-    .replace(
-      /((?:api[-_]?key|apikey|key|token|secret|password|auth|authorization|bearer|private[-_]?key|webhook[-_]?secret)["']?\s*:\s*["']?)[^"',}\s]+/gi,
-      "$1[redacted]"
-    )
-    .slice(0, 500);
-}
-
-export function maskIntegrationDiagnostic(value: unknown): unknown {
-  if (typeof value === "string") {
-    return maskSensitiveText(value);
-  }
-
-  if (typeof value === "number" || typeof value === "boolean" || value === null) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => maskIntegrationDiagnostic(item));
-  }
-
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [
-      key,
-      isSensitiveKey(key) ? "[redacted]" : maskIntegrationDiagnostic(nestedValue)
-    ])
-  );
-}
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -408,6 +350,19 @@ export async function runIntegrationHealthCheck(providerKey: string): Promise<In
   const admin = createAdminClient();
 
   if (!definition) {
+    await recordIntegrationAuditLog({
+      category: "Unknown",
+      errorCode: "unknown_provider",
+      errorMessage: "Unknown integration provider.",
+      operation: "provider_health_check",
+      providerKey,
+      providerName: providerKey || "Unknown provider",
+      safeSummary: {
+        providerKey
+      },
+      status: "skipped",
+      userId: access.user.id
+    });
     await logHealthEvent({
       access,
       eventStatus: "info",
@@ -438,6 +393,18 @@ export async function runIntegrationHealthCheck(providerKey: string): Promise<In
       category: definition.category,
       provider_key: definition.key
     }
+  });
+  await recordIntegrationAuditLog({
+    category: definition.category,
+    operation: "provider_health_check",
+    providerKey: definition.key,
+    providerName: definition.name,
+    safeSummary: {
+      checkType: "safe_presence_wrapper",
+      providerKey: definition.key
+    },
+    status: "started",
+    userId: access.user.id
   });
 
   let result: HealthCheckResult;
@@ -492,6 +459,20 @@ export async function runIntegrationHealthCheck(providerKey: string): Promise<In
       message: maskSensitiveText(error.message),
       providerKey: definition.key
     });
+    await recordIntegrationAuditLog({
+      category: definition.category,
+      errorCode: "integration_health_state_update_failed",
+      errorMessage: "Integration health state could not be updated.",
+      operation: "provider_health_check",
+      providerKey: definition.key,
+      providerName: definition.name,
+      safeSummary: {
+        providerKey: definition.key,
+        status: result.status
+      },
+      status: "failed",
+      userId: access.user.id
+    });
     throw new Error("Integration health state could not be updated.");
   }
 
@@ -513,6 +494,21 @@ export async function runIntegrationHealthCheck(providerKey: string): Promise<In
       response_time_ms: result.responseTimeMs,
       status: result.status
     }
+  });
+  await recordIntegrationAuditLog({
+    category: definition.category,
+    errorCode: result.errorCode,
+    errorMessage: result.errorMessage,
+    operation: "provider_health_check",
+    providerKey: definition.key,
+    providerName: definition.name,
+    safeSummary: {
+      ...result.safeSummary,
+      responseTimeMs: result.responseTimeMs,
+      status: result.status
+    },
+    status: failed ? "failed" : "success",
+    userId: access.user.id
   });
 
   return {
