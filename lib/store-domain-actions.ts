@@ -46,6 +46,7 @@ import {
   updateDomainOrderRecord,
   type DomainOrderStatus
 } from "@/lib/domains/domain-orders";
+import { seedDomainDnsRecords } from "@/lib/domains/dns-records";
 import {
   extractHttpApiErrorMessage,
   registerDomainOrder,
@@ -1511,15 +1512,17 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
     domainsRedirect(storeId, "domain-registration-workflow-failed");
   }
 
+  const dnsVerificationToken = `shastore-${createDomainVerificationToken().slice(0, 24)}`;
+  const dnsSetup = buildDomainDnsSetup({
+    domain,
+    targetStore,
+    verificationToken: dnsVerificationToken
+  });
   const workflow: DomainRegistrationWorkflowRecord = {
     createdAt,
     customerDue,
     customerDueCents: customerDue,
-    dnsSetup: buildDomainDnsSetup({
-      domain,
-      targetStore,
-      verificationToken: `shastore-${createDomainVerificationToken().slice(0, 24)}`
-    }),
+    dnsSetup,
     dnsSslFutureHookPoints: domainDnsSslFutureHooks(),
     domain,
     domainCheckoutPreviewId: checkoutPreviewId,
@@ -1565,6 +1568,14 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
     storeId,
     supabase,
     workflow
+  });
+
+  await seedDomainDnsRecords({
+    domainName: domain,
+    domainOrderId: registrationOrderId,
+    dnsSetup,
+    supabase,
+    verificationToken: dnsVerificationToken
   });
 
   await recordStoreAuditLogSafe({

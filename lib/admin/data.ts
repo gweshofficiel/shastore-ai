@@ -13,6 +13,10 @@ import { createClient } from "@/lib/supabase/server";
 import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
 import { getHttpApiReadiness } from "@/lib/domains/httpapi-client";
+import {
+  buildDefaultDomainDnsRecords,
+  type DomainDnsRuntimeRecord
+} from "@/lib/domains/dns-records";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
@@ -300,7 +304,10 @@ export type AdminPaymentProviderControl = {
 export type AdminDomainsHostingControl = {
   overview: {
     connectedDomains: number;
+    dnsConfigured: number;
+    dnsFailed: number;
     dnsPending: number;
+    dnsVerified: number;
     domainDrafts: number;
     emailMailboxDrafts: number;
     failedOperations: number;
@@ -316,6 +323,7 @@ export type AdminDomainsHostingControl = {
     customerDueCents: number;
     domain: string;
     domainOrderId: string | null;
+    dnsRecords: DomainDnsRuntimeRecord[];
     extension: string;
     id: string;
     nameserverCount: number;
@@ -6639,7 +6647,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
   const { supabase, users } = await getAdminUsersBase();
   const httpApiReadiness = getHttpApiReadiness();
   const owners = emailMap(users);
-  const [stores, storeDomains, runtimeDomainOrders] = await Promise.all([
+  const [stores, storeDomains, runtimeDomainOrders, runtimeDnsRecords] = await Promise.all([
     safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug, store_data, created_at"),
     safeSelect(
       supabase,
@@ -6650,10 +6658,47 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       supabase,
       "domain_orders",
       "id, store_id, domain_name, tld, provider, provider_order_id, provider_entity_id, registration_years, status, raw_response, created_at"
+    ),
+    safeSelect(
+      supabase,
+      "domain_dns_records",
+      "id, domain_order_id, domain_name, record_type, name, value, ttl, priority, status, verification_status, created_at, updated_at"
     )
   ]);
   const storeById = new Map(stores.map((store) => [text(store.id), store]));
   const runtimeDomainOrderById = new Map(runtimeDomainOrders.map((order) => [text(order.id), order]));
+  const dnsRecordsByOrderId = new Map<string, DomainDnsRuntimeRecord[]>();
+
+  for (const record of runtimeDnsRecords) {
+    const domainOrderId = text(record.domain_order_id);
+    const recordType = text(record.record_type, "TXT") as DomainDnsRuntimeRecord["recordType"];
+
+    if (!domainOrderId || !["A", "ALIAS", "CNAME", "TXT"].includes(recordType)) {
+      continue;
+    }
+
+    const records = dnsRecordsByOrderId.get(domainOrderId) ?? [];
+    records.push({
+      createdAt: text(record.created_at) || null,
+      domainName: text(record.domain_name),
+      domainOrderId,
+      id: text(record.id, `${domainOrderId}-${recordType}-${text(record.name)}`),
+      name: text(record.name),
+      priority: numberValue(record.priority),
+      recordType,
+      status: (["pending", "configured", "verified", "failed"].includes(text(record.status))
+        ? text(record.status)
+        : "pending") as DomainDnsRuntimeRecord["status"],
+      ttl: numberValue(record.ttl) || 3600,
+      updatedAt: text(record.updated_at) || null,
+      value: text(record.value),
+      verificationStatus: (["pending", "configured", "verified", "failed"].includes(text(record.verification_status))
+        ? text(record.verification_status)
+        : "pending") as DomainDnsRuntimeRecord["verificationStatus"]
+    });
+    dnsRecordsByOrderId.set(domainOrderId, records);
+  }
+
   const projectedRuntimeDomainOrderIds = new Set<string>();
   const domainOrders: AdminDomainsHostingControl["domainOrders"] = [];
   const emailOrders: AdminDomainsHostingControl["emailOrders"] = [];
@@ -6676,6 +6721,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         customerDueCents: centsValue(draft.customerDueCents ?? draft.customerDue),
         domain,
         domainOrderId: null,
+        dnsRecords: [],
         extension: text(draft.extension, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
         id: text(draft.id, `${storeId}-domain-draft-${domain}`),
         nameserverCount: 0,
@@ -6721,6 +6767,19 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const runtimeRawResponse = runtimeOrder?.raw_response;
       const runtimeStatusSync = responseRecord(runtimeRawResponse);
       const providerStatusSyncedAt = firstTextValue(runtimeStatusSync, ["providerStatusSyncedAt", "syncedAt"]);
+      const dnsRecords = domainOrderId
+        ? dnsRecordsByOrderId.get(domainOrderId) ??
+          buildDefaultDomainDnsRecords({
+            domainName: domain,
+            domainOrderId,
+            dnsSetup: {
+              domain,
+              records: [],
+              status: "pending",
+              targetStore: storeName
+            }
+          })
+        : [];
 
       if (domainOrderId) {
         projectedRuntimeDomainOrderIds.add(domainOrderId);
@@ -6734,6 +6793,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         customerDueCents: centsValue(workflow.customerDueCents ?? workflow.customerDue),
         domain,
         domainOrderId,
+        dnsRecords,
         extension: domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown",
         id: text(workflow.id, `${storeId}-domain-workflow-${domain}`),
         nameserverCount: nameservers.length,
@@ -6815,6 +6875,12 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       firstTextValue(statusSync, ["syncedAt"]);
     const providerOrderId = text(order.provider_order_id) || firstTextValue(rawRecord, ["orderid", "orderId"]);
     const providerEntityId = text(order.provider_entity_id) || firstTextValue(rawRecord, ["entityid", "entityId"]);
+    const dnsRecords =
+      dnsRecordsByOrderId.get(domainOrderId) ??
+      buildDefaultDomainDnsRecords({
+        domainName: domain,
+        domainOrderId
+      });
 
     domainOrders.push({
       adminContactId: firstTextValue(rawRecord, ["adminContactId", "admin-contact-id"]),
@@ -6824,6 +6890,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       customerDueCents: 0,
       domain,
       domainOrderId,
+      dnsRecords,
       extension: text(order.tld, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
       id: domainOrderId,
       nameserverCount: 0,
@@ -6905,6 +6972,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
     })
   );
   const allSslStatuses = [...sslStatuses, ...workflowSslStatuses];
+  const allDnsRecords = domainOrders.flatMap((order) => order.dnsRecords);
   const failedDomainOperations = domainOrders.filter((order) => order.status.includes("failed")).length;
   const failedEmailOperations = emailOrders.filter(
     (order) => order.status.includes("failed") || order.activationStatus.includes("failed")
@@ -6926,8 +6994,12 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
           text(domain.dns_status) === "verified"
       ).length,
       dnsPending:
+        allDnsRecords.filter((record) => record.status === "pending").length +
         storeDomains.filter((domain) => ["pending", "verifying", "not_configured"].includes(text(domain.dns_status))).length +
         workflowSslStatuses.filter((status) => status.dnsStatus !== "verified").length,
+      dnsConfigured: allDnsRecords.filter((record) => record.status === "configured").length,
+      dnsFailed: allDnsRecords.filter((record) => record.status === "failed" || record.verificationStatus === "failed").length,
+      dnsVerified: allDnsRecords.filter((record) => record.status === "verified" || record.verificationStatus === "verified").length,
       domainDrafts: stores.reduce(
         (total, store) => total + recordsFromStoreData(store.store_data, "domainOrderDrafts").length,
         0

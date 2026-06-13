@@ -120,7 +120,7 @@ type DomainFilters = {
 };
 
 function statusTone(status: string) {
-  if (["active", "connected", "ready_for_registration", "ready", "verified", "ssl_active"].includes(status)) {
+  if (["active", "configured", "connected", "ready_for_registration", "ready", "verified", "ssl_active"].includes(status)) {
     return "green" as const;
   }
 
@@ -549,6 +549,13 @@ function isRetryVisibleForOrder(order: DomainOrder) {
   }
 
   return status === "failed" || providerStatus === "locked_processing";
+}
+
+function missingDnsRecordNames(order: DomainOrder) {
+  const required = new Set(["CNAME:www", "ALIAS:@", "TXT:_shastore-verification"]);
+  const present = new Set(order.dnsRecords.map((record) => `${record.recordType}:${record.name}`));
+
+  return Array.from(required).filter((record) => !present.has(record));
 }
 
 const contactNameKeys = ["contactname", "customername", "name", "registrantname"];
@@ -1437,6 +1444,70 @@ function DomainRegistrationRetryControl({
   );
 }
 
+function DomainDnsRecordsSection({ order }: { order: DomainOrder }) {
+  const missingRecords = missingDnsRecordNames(order);
+
+  return (
+    <DetailSection title="DNS Runtime Records">
+      <p className="text-sm font-semibold leading-6 text-slate-500">
+        Read-only DNS setup instructions and status tracking for this existing domain order. No DNS provider write is performed here.
+      </p>
+
+      {missingRecords.length ? (
+        <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
+          Missing records warning: {missingRecords.join(", ")}.
+        </p>
+      ) : null}
+
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Host/name</th>
+                <th className="px-4 py-3">Value/target</th>
+                <th className="px-4 py-3">TTL</th>
+                <th className="px-4 py-3">Priority</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Verification</th>
+                <th className="px-4 py-3">Last updated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {order.dnsRecords.map((record) => (
+                <tr key={record.id}>
+                  <td className="px-4 py-3 font-black text-slate-950">{record.recordType}</td>
+                  <td className="px-4 py-3 text-slate-600">{record.name}</td>
+                  <td className="px-4 py-3 break-all text-slate-600">{record.value}</td>
+                  <td className="px-4 py-3 text-slate-600">{record.ttl}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(record.priority)}</td>
+                  <td className="px-4 py-3">
+                    <AdminBadge tone={statusTone(record.status)}>{record.status}</AdminBadge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <AdminBadge tone={statusTone(record.verificationStatus)}>
+                      {record.verificationStatus}
+                    </AdminBadge>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {record.updatedAt ? formatAdminDate(record.updatedAt) : "Not updated"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!order.dnsRecords.length ? (
+          <div className="p-5 text-sm font-semibold leading-6 text-slate-500">
+            No DNS runtime records are stored for this domain order yet.
+          </div>
+        ) : null}
+      </div>
+    </DetailSection>
+  );
+}
+
 function FailedOperationsCenter({
   operations,
   setSelectedDomainId
@@ -1963,6 +2034,8 @@ export function DomainDetailsDrawer({
                 order={selectedDomain}
                 retryDomainRegistrationAction={retryDomainRegistrationAction}
               />
+
+              <DomainDnsRecordsSection order={selectedDomain} />
 
               {selectedContactVisibility ? (
                 <DetailSection title="Domain Ownership & Contacts">

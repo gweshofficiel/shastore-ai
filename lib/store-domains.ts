@@ -31,6 +31,10 @@ import {
   type DomainSslSetup,
   type DomainSslStatus
 } from "@/lib/domains/domain-dns-ssl";
+import {
+  listDomainDnsRecordsByOrderIds,
+  type DomainDnsRuntimeRecord
+} from "@/lib/domains/dns-records";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import type {
   ConnectedDomainStatus,
@@ -154,6 +158,7 @@ export type DomainRegistrationWorkflow = {
   createdAt: string;
   customerDue: number;
   customerDueCents: number;
+  dnsRecords: DomainDnsRuntimeRecord[];
   dnsSetup: DomainDnsSetup;
   domain: string;
   domainCheckoutPreviewId: string;
@@ -162,6 +167,7 @@ export type DomainRegistrationWorkflow = {
   paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
   providerErrorMessage: string | null;
   providerRawResponse: unknown;
+  registrationOrderId: string | null;
   registrationError: {
     code?: string;
     message?: string;
@@ -561,6 +567,7 @@ function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWork
     createdAt: value.createdAt,
     customerDue,
     customerDueCents: value.customerDueCents,
+    dnsRecords: [],
     dnsSetup,
     domain: value.domain,
     domainCheckoutPreviewId: value.domainCheckoutPreviewId,
@@ -569,6 +576,7 @@ function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWork
     paymentConfirmationStatus,
     providerErrorMessage,
     providerRawResponse,
+    registrationOrderId: typeof value.registrationOrderId === "string" ? value.registrationOrderId : null,
     registrationError,
     sslSetup,
     status: value.status,
@@ -1191,7 +1199,27 @@ export async function getStoreDomainsDashboardData(
 
   const domainCheckoutPreviews = parseDomainCheckoutPreviews(storeData);
   const domainOrderDrafts = parseDomainOrderDrafts(storeData);
-  const domainRegistrationWorkflows = parseDomainRegistrationWorkflows(storeData);
+  const parsedDomainRegistrationWorkflows = parseDomainRegistrationWorkflows(storeData);
+  const dnsRecords = await listDomainDnsRecordsByOrderIds({
+    domainOrderIds: parsedDomainRegistrationWorkflows
+      .map((workflow) => workflow.registrationOrderId)
+      .filter((id): id is string => Boolean(id)),
+    supabase
+  });
+  const dnsRecordsByOrderId = new Map<string, DomainDnsRuntimeRecord[]>();
+
+  for (const record of dnsRecords) {
+    const records = dnsRecordsByOrderId.get(record.domainOrderId) ?? [];
+    records.push(record);
+    dnsRecordsByOrderId.set(record.domainOrderId, records);
+  }
+
+  const domainRegistrationWorkflows = parsedDomainRegistrationWorkflows.map((workflow) => ({
+    ...workflow,
+    dnsRecords: workflow.registrationOrderId
+      ? dnsRecordsByOrderId.get(workflow.registrationOrderId) ?? []
+      : []
+  }));
   const domainRoutingPreparations = parseDomainRoutingPreparations(storeData);
   const professionalEmailMailboxDrafts = parseProfessionalEmailMailboxDrafts(storeData);
   const professionalEmailOrderDrafts = parseProfessionalEmailOrderDrafts(storeData);

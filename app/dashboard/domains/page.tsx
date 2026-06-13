@@ -19,6 +19,7 @@ import {
 } from "@/lib/store-domain-actions";
 import {
   getStoreDomainsDashboardData,
+  type DomainRegistrationWorkflow,
   storeDomainsMigrationMessage
 } from "@/lib/store-domains";
 import { getCurrentUserSubscriptionAccess } from "@/lib/billing/access";
@@ -120,6 +121,7 @@ const badgeStyles: Record<string, string> = {
   awaiting_payment: "bg-amber-50 text-amber-700",
   available: "bg-emerald-50 text-emerald-700",
   checkout_preview: "bg-blue-50 text-blue-700",
+  configured: "bg-emerald-50 text-emerald-700",
   connected: "bg-emerald-50 text-emerald-700",
   draft: "bg-amber-50 text-amber-700",
   dns_pending: "bg-amber-50 text-amber-700",
@@ -148,6 +150,55 @@ const badgeStyles: Record<string, string> = {
   verified: "bg-emerald-50 text-emerald-700",
   verifying: "bg-blue-50 text-blue-700"
 };
+
+type DnsInstructionView = {
+  name: string;
+  note: string;
+  recordType: string;
+  required: boolean;
+  status: string;
+  ttl: number;
+  value: string;
+  verificationStatus: string;
+};
+
+function dnsInstructionsForWorkflow(workflow: DomainRegistrationWorkflow): DnsInstructionView[] {
+  if (workflow.dnsRecords.length) {
+    return workflow.dnsRecords.map((record) => ({
+      name: record.name,
+      note: "Runtime DNS instruction stored for this domain order.",
+      recordType: record.recordType,
+      required: true,
+      status: record.status,
+      ttl: record.ttl,
+      value: record.value,
+      verificationStatus: record.verificationStatus
+    }));
+  }
+
+  return workflow.dnsSetup.records.map((record) => ({
+    name: record.host,
+    note: record.note,
+    recordType: record.type,
+    required: record.required,
+    status: record.status,
+    ttl: record.ttl ?? 3600,
+    value: record.value,
+    verificationStatus: record.verificationStatus ?? record.status
+  }));
+}
+
+function dnsVerificationLabel(status: string) {
+  if (status === "verified") {
+    return "Verified";
+  }
+
+  if (status === "failed") {
+    return "Not verified yet";
+  }
+
+  return "Pending verification";
+}
 
 function StatusBadge({ label, value }: { label: string; value: string }) {
   return (
@@ -1241,7 +1292,7 @@ export default async function DomainsPage({
                         Registration timeline
                       </p>
                       <p className="mt-1 text-sm font-semibold leading-6 text-muted">
-                        Domain registration is submitted through the reseller runtime; DNS and SSL remain placeholder steps for later phases.
+                        Domain registration is submitted through the reseller runtime; DNS instructions and status are tracked read-only here.
                       </p>
                     </div>
                     {workflow ? <StatusBadge label="Registration" value={workflow.status} /> : null}
@@ -1267,7 +1318,7 @@ export default async function DomainsPage({
                       >
                         {providerErrorMessage
                           ? `Provider error: ${providerErrorMessage}`
-                          : "Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders."}
+                          : "Registration is ready for DNS setup. Follow the read-only DNS instructions below; no DNS provider write is performed by SHASTORE in this phase."}
                       </p>
                       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1288,22 +1339,36 @@ export default async function DomainsPage({
                           </div>
                         </div>
                         <div className="mt-4 grid gap-3">
-                          {workflow.dnsSetup.records.map((record) => (
-                            <div className="rounded-2xl bg-white p-3" key={`${record.type}-${record.host}`}>
+                          {dnsInstructionsForWorkflow(workflow).map((record) => (
+                            <div className="rounded-2xl bg-white p-3" key={`${record.recordType}-${record.name}`}>
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-black text-ink">
-                                  {record.type} record {record.required ? "required" : "placeholder"}
-                                </p>
-                                <StatusBadge label="Record" value={record.status} />
+                                <div>
+                                  <p className="text-sm font-black text-ink">
+                                    {record.recordType} record
+                                  </p>
+                                  <p className="mt-1 text-xs font-black uppercase tracking-[0.16em] text-amber-600">
+                                    {record.required ? "Required" : "Optional placeholder"}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <StatusBadge label="Record" value={record.status} />
+                                  <StatusBadge label="Verification" value={record.verificationStatus} />
+                                </div>
                               </div>
-                              <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-2">
+                              <div className="mt-3 grid gap-2 text-sm font-semibold text-muted sm:grid-cols-3">
                                 <p>
-                                  Host <span className="block break-all font-black text-ink">{record.host}</span>
+                                  Host/name <span className="block break-all font-black text-ink">{record.name}</span>
                                 </p>
                                 <p>
-                                  Value <span className="block break-all font-black text-ink">{record.value}</span>
+                                  Value/target <span className="block break-all font-black text-ink">{record.value}</span>
+                                </p>
+                                <p>
+                                  TTL <span className="block break-all font-black text-ink">{record.ttl}</span>
                                 </p>
                               </div>
+                              <p className="mt-3 text-sm font-black text-amber-700">
+                                {dnsVerificationLabel(record.verificationStatus)}
+                              </p>
                               <p className="mt-3 text-sm leading-6 text-muted">{record.note}</p>
                             </div>
                           ))}
@@ -1327,7 +1392,7 @@ export default async function DomainsPage({
                           </div>
                         </div>
                         <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                          DNS verification and SSL activation are not running yet. These instructions are placeholders for the future connection workflow.
+                          DNS verification is read-only in this phase. No DNS provider writes, SSL activation, email provisioning, or hosting provisioning are running.
                         </p>
                       </div>
                     </div>

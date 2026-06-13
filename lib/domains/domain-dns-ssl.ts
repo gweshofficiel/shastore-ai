@@ -11,8 +11,10 @@ export type DomainDnsRecordInstruction = {
   note: string;
   required: boolean;
   status: DomainDnsSetupStatus;
-  type: "CNAME" | "A" | "TXT";
+  ttl?: number;
+  type: "CNAME" | "A" | "ALIAS" | "TXT";
   value: string;
+  verificationStatus?: DomainDnsSetupStatus;
 };
 
 export type DomainDnsSetup = {
@@ -53,28 +55,43 @@ export function buildDomainDnsSetup({
     domain,
     records: [
       {
-        host: "@",
-        note: "Route the root domain to the SHASTORE storefront connection target.",
+        host: "www",
+        note: "Required storefront record for the www hostname.",
         required: true,
         status,
+        ttl: 3600,
         type: "CNAME",
+        value: neutralDomainConnectionTarget,
+        verificationStatus: status
+      },
+      {
+        host: "@",
+        note: "Apex/root instruction placeholder. Use ALIAS/ANAME flattening if your DNS provider supports it.",
+        required: true,
+        status,
+        ttl: 3600,
+        type: "ALIAS",
         value: neutralDomainConnectionTarget
       },
       {
         host: "@",
-        note: "Reserved only if a root-domain address record is required later.",
+        note: "Reserved only if a root-domain address record is required later by the platform.",
         required: false,
         status: "not_started",
+        ttl: 3600,
         type: "A",
-        value: "pending"
+        value: neutralDomainConnectionTarget,
+        verificationStatus: "not_started"
       },
       {
-        host: `_shastore-verification.${domain}`,
-        note: "Used later to confirm domain ownership before connection.",
+        host: "_shastore-verification",
+        note: "Required ownership verification record.",
         required: true,
         status,
+        ttl: 3600,
         type: "TXT",
-        value: verificationToken
+        value: verificationToken,
+        verificationStatus: status
       }
     ],
     status,
