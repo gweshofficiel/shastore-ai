@@ -453,6 +453,11 @@ export async function createHttpApiContact(
       url.searchParams.set(param, value);
     }
 
+    console.log(
+      "CONTACT_CREATE_FINAL_URL",
+      url.toString()
+    );
+
     const response = await fetch(url, {
       cache: "no-store",
       headers: {
