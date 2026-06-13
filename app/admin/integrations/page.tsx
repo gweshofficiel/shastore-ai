@@ -12,6 +12,9 @@ import {
   markIntegrationUnderReview,
   markIntegrationErrorResolvedAction,
   reopenIntegrationErrorAction,
+  runAllProviderDiagnosticsAction,
+  syncIntegrationProviderStatusAction,
+  testIntegrationConnectionAction,
   viewIntegrationLogs,
   viewIntegrationSetupChecklist
 } from "@/lib/admin/integration-actions";
@@ -27,7 +30,7 @@ import {
 } from "@/lib/integrations/audit-log";
 
 function toneForStatus(status: string) {
-  if (["configured", "enabled", "healthy", "live", "masked_configured"].includes(status)) {
+  if (["configured", "connected", "enabled", "healthy", "live", "masked_configured"].includes(status)) {
     return "green" as const;
   }
 
@@ -35,7 +38,7 @@ function toneForStatus(status: string) {
     return "red" as const;
   }
 
-  if (["not_checked", "placeholder", "no_secret_required"].includes(status)) {
+  if (["not_checked", "placeholder", "skipped", "no_secret_required"].includes(status)) {
     return "blue" as const;
   }
 
@@ -56,6 +59,16 @@ function safeSummaryText(value: Record<string, unknown> | null) {
   }
 
   return JSON.stringify(value).slice(0, 300);
+}
+
+function diagnosticMessage(value: Record<string, unknown>) {
+  const safeMessage = typeof value.safeMessage === "string" ? value.safeMessage : "";
+  const diagnosticStatus = typeof value.diagnosticStatus === "string" ? value.diagnosticStatus : "";
+
+  return {
+    safeMessage: safeMessage || "No diagnostic message recorded.",
+    status: diagnosticStatus || "not_checked"
+  };
 }
 
 const auditStatuses: Array<IntegrationAuditStatus | "all"> = [
@@ -173,6 +186,7 @@ export default async function AdminIntegrationsPage({
                 "Response time",
                 "Consecutive failures",
                 "Health",
+                "Diagnostic",
                 "Last safe error",
                 "Secret status",
                 "Actions"
@@ -204,6 +218,14 @@ export default async function AdminIntegrationsPage({
                     <AdminBadge tone={toneForStatus(integration.healthStatus)}>{integration.healthStatus}</AdminBadge>
                   </td>
                   <td className="px-5 py-4 text-slate-600">
+                    <AdminBadge tone={toneForStatus(diagnosticMessage(integration.lastSafeResponseSummary).status)}>
+                      {diagnosticMessage(integration.lastSafeResponseSummary).status}
+                    </AdminBadge>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                      {diagnosticMessage(integration.lastSafeResponseSummary).safeMessage}
+                    </p>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
                     {integration.lastErrorMessage ?? "No safe error recorded"}
                     {integration.lastErrorCode ? (
                       <p className="mt-2 text-xs font-semibold text-slate-500">
@@ -223,6 +245,18 @@ export default async function AdminIntegrationsPage({
                         <input name="integrationKey" type="hidden" value={integration.key} />
                         <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
                           Check provider
+                        </button>
+                      </form>
+                      <form action={testIntegrationConnectionAction}>
+                        <input name="integrationKey" type="hidden" value={integration.key} />
+                        <button className="h-9 w-full rounded-full border border-indigo-200 bg-indigo-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-indigo-700" type="submit">
+                          Test connection
+                        </button>
+                      </form>
+                      <form action={syncIntegrationProviderStatusAction}>
+                        <input name="integrationKey" type="hidden" value={integration.key} />
+                        <button className="h-9 w-full rounded-full border border-cyan-200 bg-cyan-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-cyan-700" type="submit">
+                          Sync provider status
                         </button>
                       </form>
                       <form action={markIntegrationUnderReview}>
@@ -565,13 +599,24 @@ export default async function AdminIntegrationsPage({
           <tr key={hook}>
             <td className="px-5 py-4 font-bold text-slate-950">{hook}</td>
             <td className="px-5 py-4">
-              <button
-                className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-                disabled
-                type="button"
-              >
-                Reserved placeholder
-              </button>
+              {hook === "Test connection" || hook === "Sync provider status" ? (
+                <form action={runAllProviderDiagnosticsAction}>
+                  <button
+                    className="h-8 rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                    type="submit"
+                  >
+                    Run safe diagnostics
+                  </button>
+                </form>
+              ) : (
+                <button
+                  className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  type="button"
+                >
+                  Reserved placeholder
+                </button>
+              )}
             </td>
           </tr>
         ))}

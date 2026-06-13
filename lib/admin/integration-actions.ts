@@ -10,6 +10,10 @@ import {
   markIntegrationErrorResolved,
   reopenIntegrationError
 } from "@/lib/integrations/error-center";
+import {
+  runAllProviderDiagnostics,
+  runProviderDiagnostic
+} from "@/lib/integrations/provider-diagnostics";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type IntegrationAction =
@@ -94,5 +98,20 @@ export async function markIntegrationErrorResolvedAction(formData: FormData) {
 
 export async function reopenIntegrationErrorAction(formData: FormData) {
   await reopenIntegrationError(cleanText(formData.get("errorId")));
+  revalidatePath("/admin/integrations");
+}
+
+export async function testIntegrationConnectionAction(formData: FormData) {
+  await runProviderDiagnostic(cleanText(formData.get("integrationKey")));
+  revalidatePath("/admin/integrations");
+}
+
+export async function syncIntegrationProviderStatusAction(formData: FormData) {
+  await runProviderDiagnostic(cleanText(formData.get("integrationKey")));
+  revalidatePath("/admin/integrations");
+}
+
+export async function runAllProviderDiagnosticsAction() {
+  await runAllProviderDiagnostics();
   revalidatePath("/admin/integrations");
 }
