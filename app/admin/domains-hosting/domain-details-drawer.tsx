@@ -31,6 +31,16 @@ type FailedOperation = {
   order: DomainOrder;
 };
 
+type ProviderFundingStatus = "Critical" | "Error" | "Healthy" | "Low balance" | "Unknown";
+
+type ProviderBalanceSummary = {
+  availableBalance: string | null;
+  blockedOrders: DomainOrder[];
+  lastChecked: string | null;
+  lastFundingError: string | null;
+  status: ProviderFundingStatus;
+};
+
 type DomainDetailsDrawerProps = {
   clearDomainReview: DomainAction;
   domainOrders: DomainOrder[];
@@ -275,6 +285,151 @@ function hasProviderResponse(value: unknown) {
   }
 
   return true;
+}
+
+function providerResponseText(value: unknown): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value).toLowerCase();
+  } catch {
+    return String(value).toLowerCase();
+  }
+}
+
+function isFundingErrorText(value: string | null | undefined) {
+  const text = normalizedText(value);
+
+  return (
+    text.includes("insufficient funds") ||
+    text.includes("debit account") ||
+    text.includes("order locked for processing") ||
+    text.includes("locked for processing")
+  );
+}
+
+function isFundingBlockedOrder(order: DomainOrder) {
+  const combined = [
+    order.providerErrorMessage,
+    order.nextStep,
+    order.status,
+    providerResponseText(order.providerResponse),
+    ...order.timelineEvents.flatMap((event) => [
+      event.label,
+      event.providerError,
+      event.providerMessage
+    ])
+  ]
+    .map((value) => normalizedText(value))
+    .join(" ");
+
+  return isFundingErrorText(combined);
+}
+
+function latestDate(values: Array<string | null | undefined>) {
+  return values
+    .map((value) => {
+      const date = dateForFilter(value);
+
+      return date ? { date, value: value ?? null } : null;
+    })
+    .filter((item): item is { date: Date; value: string | null } => Boolean(item))
+    .sort((left, right) => right.date.getTime() - left.date.getTime())[0]?.value ?? null;
+}
+
+function findBalanceValue(value: unknown): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const balance = findBalanceValue(item);
+
+      if (balance) {
+        return balance;
+      }
+    }
+
+    return null;
+  }
+
+  if (typeof value !== "object") {
+    return null;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase();
+
+    if (
+      normalizedKey.includes("balance") ||
+      normalizedKey.includes("availablefunds") ||
+      normalizedKey.includes("available-funds")
+    ) {
+      const direct = displayValue(nestedValue as string | number | null | undefined);
+
+      if (direct !== "Not captured") {
+        return direct;
+      }
+    }
+
+    const nestedBalance = findBalanceValue(nestedValue);
+
+    if (nestedBalance) {
+      return nestedBalance;
+    }
+  }
+
+  return null;
+}
+
+function numericBalance(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function providerBalanceSummary(domainOrders: DomainOrder[]): ProviderBalanceSummary {
+  const blockedOrders = domainOrders.filter(isFundingBlockedOrder);
+  const availableBalance =
+    domainOrders.map((order) => findBalanceValue(order.providerResponse)).find(Boolean) ?? null;
+  const balanceAmount = numericBalance(availableBalance);
+  const lastFundingError =
+    blockedOrders.find((order) => order.providerErrorMessage)?.providerErrorMessage ??
+    blockedOrders.flatMap((order) => order.timelineEvents).find((event) => isFundingErrorText(event.providerError ?? event.providerMessage))?.providerError ??
+    blockedOrders.flatMap((order) => order.timelineEvents).find((event) => isFundingErrorText(event.providerMessage))?.providerMessage ??
+    null;
+  const status: ProviderFundingStatus = blockedOrders.length
+    ? "Critical"
+    : balanceAmount === null
+      ? "Unknown"
+      : balanceAmount <= 0
+        ? "Critical"
+        : balanceAmount < 50
+          ? "Low balance"
+          : "Healthy";
+
+  return {
+    availableBalance,
+    blockedOrders,
+    lastChecked: latestDate(domainOrders.map((order) => order.updatedAt || order.createdAt)),
+    lastFundingError,
+    status
+  };
+}
+
+function providerFundingTone(status: ProviderFundingStatus) {
+  if (status === "Healthy") return "green" as const;
+  if (status === "Low balance") return "amber" as const;
+  if (status === "Critical" || status === "Error") return "red" as const;
+
+  return "blue" as const;
 }
 
 function operationLabel(value: FailedOperationType) {
@@ -706,6 +861,100 @@ function FailedOperationsCenter({
   );
 }
 
+function ProviderBalanceMonitoringPanel({
+  setSelectedDomainId,
+  summary
+}: {
+  setSelectedDomainId: (id: string) => void;
+  summary: ProviderBalanceSummary;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_60px_-55px_rgba(15,23,42,0.9)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Provider Balance & Funds Monitoring
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">
+            HTTPAPI / Resell.biz funding risk
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+            Provider balance check not connected yet. Risk is derived from stored provider responses and errors only.
+          </p>
+        </div>
+        <AdminBadge tone={providerFundingTone(summary.status)}>{summary.status}</AdminBadge>
+      </div>
+
+      {summary.blockedOrders.length ? (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+          Some domain registrations are blocked because the provider account may have insufficient funds.
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <DetailRow label="Provider" value="HTTPAPI / Resell.biz" />
+        <DetailRow label="Available balance" value={summary.availableBalance ?? "Provider balance check not connected yet"} />
+        <DetailRow label="Last checked" value={summary.lastChecked ? formatTimelineTimestamp(summary.lastChecked) : "Provider balance check not connected yet"} />
+        <DetailRow label="Last funding error" value={summary.lastFundingError} />
+        <DetailRow label="Blocked orders" value={summary.blockedOrders.length} />
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Blocked Funding Orders
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Domain</th>
+                <th className="px-4 py-3">Provider order</th>
+                <th className="px-4 py-3">Store</th>
+                <th className="px-4 py-3">Owner</th>
+                <th className="px-4 py-3">Error message</th>
+                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3">Updated</th>
+                <th className="px-4 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {summary.blockedOrders.map((order) => (
+                <tr key={order.id}>
+                  <td className="px-4 py-3 font-black text-slate-950">{order.domain}</td>
+                  <td className="px-4 py-3 text-slate-600">{displayValue(order.providerOrderId)}</td>
+                  <td className="px-4 py-3 text-slate-600">{order.storeName}</td>
+                  <td className="px-4 py-3 text-slate-600">{order.ownerEmail}</td>
+                  <td className="max-w-xs px-4 py-3 text-slate-600">
+                    <span className="line-clamp-2">{displayValue(order.providerErrorMessage ?? summary.lastFundingError)}</span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{formatAdminDate(order.createdAt)}</td>
+                  <td className="px-4 py-3 text-slate-600">{formatAdminDate(order.updatedAt)}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                      onClick={() => setSelectedDomainId(order.id)}
+                      type="button"
+                    >
+                      View details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!summary.blockedOrders.length ? (
+          <div className="p-5 text-sm font-semibold leading-6 text-slate-500">
+            No stored domain orders currently indicate insufficient funds or locked provider processing.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function ConnectedDomainsTable({ sslStatuses }: { sslStatuses: SslStatus[] }) {
   return (
     <AdminTable
@@ -759,6 +1008,10 @@ export function DomainDetailsDrawer({
         .filter((operation): operation is FailedOperation => Boolean(operation)),
     [filteredDomainOrders]
   );
+  const fundingSummary = useMemo(
+    () => providerBalanceSummary(domainOrders),
+    [domainOrders]
+  );
   const activeCount = activeFilterCount(filters);
 
   return (
@@ -770,6 +1023,11 @@ export function DomainDetailsDrawer({
         resetFilters={() => setFilters(defaultDomainFilters)}
         setFilters={setFilters}
         storeOptions={storeOptions}
+      />
+
+      <ProviderBalanceMonitoringPanel
+        setSelectedDomainId={setSelectedDomainId}
+        summary={fundingSummary}
       />
 
       <FailedOperationsCenter
