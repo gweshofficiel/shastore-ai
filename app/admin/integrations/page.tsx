@@ -6,11 +6,14 @@ import {
   formatAdminDate
 } from "@/components/admin/admin-control";
 import {
+  checkAllIntegrationProviders,
+  checkIntegrationProvider,
   clearIntegrationReview,
   markIntegrationUnderReview,
   viewIntegrationLogs,
   viewIntegrationSetupChecklist
 } from "@/lib/admin/integration-actions";
+import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminIntegrationsControl } from "@/lib/admin/data";
 
 function toneForStatus(status: string) {
@@ -18,11 +21,11 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
-  if (["missing", "missing_config", "disabled"].includes(status)) {
+  if (["failed", "missing", "missing_config", "disabled"].includes(status)) {
     return "red" as const;
   }
 
-  if (["placeholder", "no_secret_required"].includes(status)) {
+  if (["not_checked", "placeholder", "no_secret_required"].includes(status)) {
     return "blue" as const;
   }
 
@@ -30,14 +33,39 @@ function toneForStatus(status: string) {
 }
 
 export default async function AdminIntegrationsPage() {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    return (
+      <div className="grid gap-6 lg:gap-8">
+        <AdminHeader
+          description="Integration runtime health is restricted to Super Admin users."
+          title="Platform Integrations Center"
+        />
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold text-amber-800">
+          Super Admin access is required to view or run integration health checks.
+        </div>
+      </div>
+    );
+  }
+
   const control = await getAdminIntegrationsControl();
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Central Super Admin status layer for external service integrations. This page shows only configured, missing, partial, or masked secret status. It does not reveal credentials or call provider APIs."
+        description="Central Super Admin status layer for external service integrations. Manual checks are safe runtime wrappers that do not mutate providers, trigger billing, or expose secrets."
         title="Platform Integrations Center"
       />
+
+      <form action={checkAllIntegrationProviders}>
+        <button
+          className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+          type="submit"
+        >
+          Check all providers
+        </button>
+      </form>
 
       <AdminStatGrid
         stats={[
@@ -70,7 +98,12 @@ export default async function AdminIntegrationsPage() {
                 "Configuration",
                 "Mode",
                 "Last checked",
+                "Last success",
+                "Last failure",
+                "Response time",
+                "Consecutive failures",
                 "Health",
+                "Last safe error",
                 "Secret status",
                 "Actions"
               ]}
@@ -91,8 +124,22 @@ export default async function AdminIntegrationsPage() {
                     <AdminBadge tone={toneForStatus(integration.mode)}>{integration.mode}</AdminBadge>
                   </td>
                   <td className="px-5 py-4 text-slate-600">{formatAdminDate(integration.lastChecked)}</td>
+                  <td className="px-5 py-4 text-slate-600">{formatAdminDate(integration.lastSuccessAt)}</td>
+                  <td className="px-5 py-4 text-slate-600">{formatAdminDate(integration.lastFailureAt)}</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    {integration.responseTimeMs === null ? "Not checked" : `${integration.responseTimeMs} ms`}
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{integration.consecutiveFailures}</td>
                   <td className="px-5 py-4">
                     <AdminBadge tone={toneForStatus(integration.healthStatus)}>{integration.healthStatus}</AdminBadge>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    {integration.lastErrorMessage ?? "No safe error recorded"}
+                    {integration.lastErrorCode ? (
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        Code: {integration.lastErrorCode}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-5 py-4">
                     <AdminBadge tone={toneForStatus(integration.secretStatus)}>{integration.secretStatus}</AdminBadge>
@@ -102,6 +149,12 @@ export default async function AdminIntegrationsPage() {
                   </td>
                   <td className="px-5 py-4">
                     <div className="grid min-w-56 gap-2">
+                      <form action={checkIntegrationProvider}>
+                        <input name="integrationKey" type="hidden" value={integration.key} />
+                        <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                          Check provider
+                        </button>
+                      </form>
                       <form action={markIntegrationUnderReview}>
                         <input name="integrationKey" type="hidden" value={integration.key} />
                         <input name="integrationName" type="hidden" value={integration.name} />

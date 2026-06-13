@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
+import {
+  runAllIntegrationHealthChecks,
+  runIntegrationHealthCheck
+} from "@/lib/integrations/health-engine";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type IntegrationAction =
@@ -64,4 +68,14 @@ export async function viewIntegrationLogs(formData: FormData) {
 
 export async function viewIntegrationSetupChecklist(formData: FormData) {
   await recordIntegrationAction(formData, "admin_integration_setup_checklist_viewed");
+}
+
+export async function checkIntegrationProvider(formData: FormData) {
+  await runIntegrationHealthCheck(cleanText(formData.get("integrationKey")));
+  revalidatePath("/admin/integrations");
+}
+
+export async function checkAllIntegrationProviders() {
+  await runAllIntegrationHealthChecks();
+  revalidatePath("/admin/integrations");
 }
