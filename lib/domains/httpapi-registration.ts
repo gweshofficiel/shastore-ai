@@ -64,7 +64,9 @@ function responseRecord(value: unknown) {
 
 function stringValue(value: unknown) {
   if (typeof value === "string") {
-    return value;
+    const trimmed = value.trim();
+
+    return trimmed ? trimmed : null;
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -80,6 +82,97 @@ function safeRawText(value: string) {
     .replace(/"api-key"\s*:\s*"[^"]+"/gi, '"api-key":"[redacted]"')
     .replace(/"api_key"\s*:\s*"[^"]+"/gi, '"api_key":"[redacted]"')
     .slice(0, 5000);
+}
+
+function safeResponseForLog(value: unknown) {
+  if (typeof value === "string") {
+    return safeRawText(value);
+  }
+
+  try {
+    return JSON.parse(safeRawText(JSON.stringify(value)));
+  } catch {
+    return null;
+  }
+}
+
+function providerResponseFromText({
+  response,
+  responseText
+}: {
+  response: Response;
+  responseText: string;
+}) {
+  const rawText = safeRawText(responseText);
+
+  return {
+    rawText,
+    status: response.status,
+    statusText: response.statusText
+  };
+}
+
+export function extractHttpApiErrorMessage(rawResponse: unknown): string | null {
+  const visited = new Set<unknown>();
+  const preferredKeys = [
+    "message",
+    "error",
+    "errorMessage",
+    "error_message",
+    "statusText",
+    "status",
+    "rawText",
+    "description",
+    "detail"
+  ];
+
+  function visit(value: unknown): string | null {
+    const directValue = stringValue(value);
+
+    if (directValue) {
+      return directValue;
+    }
+
+    if (!value || typeof value !== "object" || visited.has(value)) {
+      return null;
+    }
+
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const message = visit(item);
+
+        if (message) {
+          return message;
+        }
+      }
+
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+
+    for (const key of preferredKeys) {
+      const message = stringValue(record[key]);
+
+      if (message && message.toLowerCase() !== "error") {
+        return message;
+      }
+    }
+
+    for (const nestedValue of Object.values(record)) {
+      const message = visit(nestedValue);
+
+      if (message && message.toLowerCase() !== "error") {
+        return message;
+      }
+    }
+
+    return null;
+  }
+
+  return visit(rawResponse);
 }
 
 function normalizeDomainName(value: string) {
@@ -199,23 +292,40 @@ export async function registerDomainOrder(
     try {
       rawResponse = responseText ? JSON.parse(responseText) : null;
     } catch {
-      rawResponse = safeRawText(responseText);
+      rawResponse = providerResponseFromText({ response, responseText });
     }
 
     const raw = responseRecord(rawResponse);
+    const providerStatus = stringValue(raw.status)?.toLowerCase() ?? null;
+    const loggedResponse = safeResponseForLog(rawResponse);
 
-    if (!response.ok || raw.status === "ERROR") {
+    console.info("httpapi_registration_response", {
+      domainName,
+      provider: "httpapi",
+      response: loggedResponse,
+      status: response.status,
+      statusText: response.statusText
+    });
+
+    if (!response.ok || providerStatus === "error") {
       const message =
-        stringValue(raw.message) ??
-        stringValue(raw.error) ??
-        stringValue(raw.status) ??
+        extractHttpApiErrorMessage(rawResponse) ??
         response.statusText ??
         "HTTPAPI domain registration failed.";
       const result = failedRegistrationResult({
-        code: raw.status === "ERROR" ? "httpapi_registration_error" : "httpapi_registration_http_error",
+        code: providerStatus === "error" ? "httpapi_registration_error" : "httpapi_registration_http_error",
         message,
-        rawResponse: rawResponse ?? safeRawText(responseText),
+        rawResponse: rawResponse ?? providerResponseFromText({ response, responseText }),
         status: response.status
+      });
+
+      console.error("httpapi_registration_failed_response", {
+        domainName,
+        message: result.error?.message,
+        provider: "httpapi",
+        response: loggedResponse,
+        status: response.status,
+        statusText: response.statusText
       });
 
       console.error("domain_registration_failed", {
@@ -233,10 +343,22 @@ export async function registerDomainOrder(
     const actionType = stringValue(raw.actiontype ?? raw.actionType);
 
     if (!entityId && !orderId) {
+      const message =
+        extractHttpApiErrorMessage(rawResponse) ??
+        "HTTPAPI registration succeeded without a provider order identifier.";
       const result = failedRegistrationResult({
         code: "httpapi_registration_missing_order_id",
-        message: "HTTPAPI registration succeeded without a provider order identifier.",
+        message,
         rawResponse
+      });
+
+      console.error("httpapi_registration_failed_response", {
+        domainName,
+        message: result.error?.message,
+        provider: "httpapi",
+        response: loggedResponse,
+        status: response.status,
+        statusText: response.statusText
       });
 
       console.error("domain_registration_failed", {

@@ -47,6 +47,7 @@ import {
   type DomainOrderStatus
 } from "@/lib/domains/domain-orders";
 import {
+  extractHttpApiErrorMessage,
   registerDomainOrder,
   type HttpApiRegistrationResult
 } from "@/lib/domains/httpapi-registration";
@@ -220,8 +221,24 @@ function cleanText(value: FormDataEntryValue | null, maxLength = 240) {
   return value.trim().slice(0, maxLength);
 }
 
-function domainsRedirect(storeId: string, status: string): never {
-  redirect(`/dashboard/domains?storeId=${encodeURIComponent(storeId)}&domains=${encodeURIComponent(status)}`);
+function domainsRedirect(
+  storeId: string,
+  status: string,
+  details?: {
+    providerError?: string | null;
+  }
+): never {
+  const params = new URLSearchParams({
+    domains: status,
+    storeId
+  });
+  const providerError = details?.providerError?.trim();
+
+  if (providerError) {
+    params.set("providerError", providerError.slice(0, 500));
+  }
+
+  redirect(`/dashboard/domains?${params.toString()}`);
 }
 
 function cleanPreviewDomain(value: FormDataEntryValue | null) {
@@ -1600,7 +1617,12 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   revalidatePath("/dashboard/domains");
   domainsRedirect(
     storeId,
-    registrationStatus === "failed" ? "domain-registration-failed" : "domain-registration-submitted"
+    registrationStatus === "failed" ? "domain-registration-failed" : "domain-registration-submitted",
+    {
+      providerError:
+        registrationResult.error?.message ??
+        extractHttpApiErrorMessage(registrationResult.rawResponse)
+    }
   );
 }
 

@@ -31,6 +31,7 @@ import {
   type DomainSslSetup,
   type DomainSslStatus
 } from "@/lib/domains/domain-dns-ssl";
+import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import type {
   ConnectedDomainStatus,
   ConnectedDomainSummary,
@@ -159,6 +160,13 @@ export type DomainRegistrationWorkflow = {
   domainOrderDraftId: string;
   id: string;
   paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  providerErrorMessage: string | null;
+  providerRawResponse: unknown;
+  registrationError: {
+    code?: string;
+    message?: string;
+    status?: number;
+  } | null;
   sslSetup: DomainSslSetup;
   status: DomainRegistrationWorkflowStatus;
   statuses: DomainRegistrationWorkflowStatus[];
@@ -532,6 +540,22 @@ function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWork
     : domainRegistrationWorkflowStatuses;
   const dnsSetup = parseDomainDnsSetup(value.dnsSetup, value.domain, "Selected store");
   const sslSetup = parseDomainSslSetup(value.sslSetup, value.domain);
+  const providerRawResponse = value.providerRawResponse ?? null;
+  const registrationError = isRecord(value.registrationError)
+    ? {
+        code: typeof value.registrationError.code === "string" ? value.registrationError.code : undefined,
+        message:
+          typeof value.registrationError.message === "string"
+            ? value.registrationError.message
+            : undefined,
+        status:
+          typeof value.registrationError.status === "number"
+            ? value.registrationError.status
+            : undefined
+      }
+    : null;
+  const providerErrorMessage =
+    registrationError?.message ?? extractHttpApiErrorMessage(providerRawResponse);
 
   return {
     createdAt: value.createdAt,
@@ -543,6 +567,9 @@ function parseDomainRegistrationWorkflow(value: unknown): DomainRegistrationWork
     domainOrderDraftId: value.domainOrderDraftId,
     id: value.id,
     paymentConfirmationStatus,
+    providerErrorMessage,
+    providerRawResponse,
+    registrationError,
     sslSetup,
     status: value.status,
     statuses: statuses.length ? statuses : domainRegistrationWorkflowStatuses,

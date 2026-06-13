@@ -161,7 +161,7 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Toast({ status }: { status: string }) {
+function Toast({ detail, status }: { detail?: string; status: string }) {
   const message = statusMessages[status];
 
   if (!message) {
@@ -179,7 +179,12 @@ function Toast({ status }: { status: string }) {
       }`}
       role="status"
     >
-      {message}
+      <p>{message}</p>
+      {detail ? (
+        <p className="mt-2 break-words rounded-2xl bg-white/70 p-3 text-xs font-black">
+          Provider error: {detail}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -300,6 +305,7 @@ export default async function DomainsPage({
     domains?: string;
     extensions?: string | string[];
     idnSearch?: string;
+    providerError?: string;
     selectedDomain?: string;
     storeId?: string;
     viewMoreExtensions?: string;
@@ -369,6 +375,7 @@ export default async function DomainsPage({
   const customDomainsAvailable = access ? canUseCustomDomains(access) : false;
   const domainSearch = queryValue(params.domainSearch);
   const idnSearch = queryValue(params.idnSearch);
+  const providerError = queryValue(params.providerError);
   const selectedDomainName = queryValue(params.selectedDomain);
   const selectedExtensions = queryValues(params.extensions);
   const showAllExtensions = params.viewMoreExtensions === "true";
@@ -469,7 +476,7 @@ export default async function DomainsPage({
         </Card>
       ) : null}
       {params.domains && params.domains !== "limit-reached" ? (
-        <Toast status={params.domains} />
+        <Toast detail={providerError} status={params.domains} />
       ) : null}
       {data.error ? (
         <Card className="border-red-200 bg-red-50 p-5">
@@ -1149,6 +1156,7 @@ export default async function DomainsPage({
             </p>
             {data.domainCheckoutPreviews.map((preview) => {
               const workflow = registrationWorkflowByPreviewId.get(preview.id);
+              const providerErrorMessage = workflow?.providerErrorMessage;
               const paymentConfirmed = preview.customerDueCents === 0 || Boolean(workflow);
               const registrationMoved =
                 workflow?.status === "awaiting_dns" ||
@@ -1250,8 +1258,16 @@ export default async function DomainsPage({
                   </div>
                   {workflow ? (
                     <div className="mt-4 grid gap-4">
-                      <p className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
-                        Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders.
+                      <p
+                        className={`rounded-2xl border p-3 text-sm font-bold ${
+                          providerErrorMessage
+                            ? "border-red-200 bg-red-50 text-red-800"
+                            : "border-emerald-100 bg-emerald-50 text-emerald-900"
+                        }`}
+                      >
+                        {providerErrorMessage
+                          ? `Provider error: ${providerErrorMessage}`
+                          : "Registration is ready for the future activation workflow. DNS setup and SSL activation remain placeholders."}
                       </p>
                       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
