@@ -4,8 +4,8 @@ import {
   AdminStatGrid,
   AdminTable,
   formatAdminDate,
-  formatAdminMoney
 } from "@/components/admin/admin-control";
+import { DomainDetailsDrawer } from "@/app/admin/domains-hosting/domain-details-drawer";
 import {
   clearDomainReview,
   clearEmailReview,
@@ -95,52 +95,12 @@ export default async function AdminDomainsHostingPage() {
         ))}
       </AdminTable>
 
-      <AdminTable
-        empty={!control.domainOrders.length ? "No domain drafts or registration workflows found." : null}
-        headers={["Store", "Owner", "Domain", "Extension", "Status", "Plan credit", "Customer due", "Created", "Next step", "Actions"]}
-      >
-        {control.domainOrders.map((order) => (
-          <tr key={order.id}>
-            <td className="px-5 py-4 font-bold text-slate-950">{order.storeName}</td>
-            <td className="px-5 py-4 text-slate-600">{order.ownerEmail}</td>
-            <td className="px-5 py-4 font-bold text-slate-950">{order.domain}</td>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{order.extension}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={statusTone(order.status)}>{order.status}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminMoney(order.planCreditUsedCents / 100)}</td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminMoney(order.customerDueCents / 100)}</td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminDate(order.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{order.nextStep}</td>
-            <td className="px-5 py-4">
-              <div className="grid min-w-48 gap-2">
-                <form action={markDomainUnderReview}>
-                  <input name="storeId" type="hidden" value={order.storeId} />
-                  <input name="targetId" type="hidden" value={order.id} />
-                  <input name="targetType" type="hidden" value="domain" />
-                  <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                    Mark review
-                  </button>
-                </form>
-                <form action={clearDomainReview}>
-                  <input name="storeId" type="hidden" value={order.storeId} />
-                  <input name="targetId" type="hidden" value={order.id} />
-                  <input name="targetType" type="hidden" value="domain" />
-                  <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                    Clear review
-                  </button>
-                </form>
-                <form action={viewInternalTimeline}>
-                  <input name="storeId" type="hidden" value={order.storeId} />
-                  <input name="targetId" type="hidden" value={order.id} />
-                  <input name="targetType" type="hidden" value="domain" />
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
-                    View timeline
-                  </button>
-                </form>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </AdminTable>
+      <DomainDetailsDrawer
+        clearDomainReview={clearDomainReview}
+        domainOrders={control.domainOrders}
+        markDomainUnderReview={markDomainUnderReview}
+        viewInternalTimeline={viewInternalTimeline}
+      />
 
       <AdminTable
         empty={!control.emailOrders.length ? "No professional email mailbox drafts found." : null}

@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { aiVisualQueueFromStoreData } from "@/lib/storefront/ai-visual-queue";
 import { getAIVisualProviderRuntimeConfig } from "@/lib/storefront/ai-visual-provider";
 import { getHttpApiReadiness } from "@/lib/domains/httpapi-client";
+import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
@@ -308,17 +309,30 @@ export type AdminDomainsHostingControl = {
     sslPending: number;
   };
   domainOrders: Array<{
+    adminContactId: string | null;
+    autoRenew: string | null;
+    billingContactId: string | null;
     createdAt: string;
     customerDueCents: number;
     domain: string;
     extension: string;
     id: string;
+    nameserverCount: number;
+    nameservers: string[];
     nextStep: string;
     ownerEmail: string;
     planCreditUsedCents: number;
+    provider: string | null;
+    providerCustomerId: string | null;
+    providerErrorMessage: string | null;
+    providerOrderId: string | null;
+    registrantContactId: string | null;
+    registrationYears: number | null;
     status: string;
     storeId: string;
     storeName: string;
+    techContactId: string | null;
+    updatedAt: string;
   }>;
   emailOrders: Array<{
     activationStatus: string;
@@ -2756,6 +2770,57 @@ function recordsFromStoreData(storeData: unknown, key: string): AnyRecord[] {
   }
 
   return Object.values(storeData[key]).filter(isRecord);
+}
+
+function firstTextValue(record: AnyRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = text(record[key]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function nestedRecord(value: unknown, key: string) {
+  return isRecord(value) && isRecord(value[key]) ? value[key] : {};
+}
+
+function providerRegistrationResponse(providerRawResponse: unknown) {
+  return isRecord(providerRawResponse) && isRecord(providerRawResponse.registration)
+    ? providerRawResponse.registration
+    : responseRecord(providerRawResponse);
+}
+
+function responseRecord(value: unknown): AnyRecord {
+  return isRecord(value) ? value : {};
+}
+
+function nameserverListFromWorkflow(workflow: AnyRecord) {
+  const candidates = [
+    workflow.nameservers,
+    workflow.nameServers,
+    workflow.providerNameservers,
+    nestedRecord(workflow.providerRawResponse, "registration").nameservers,
+    nestedRecord(workflow.providerRawResponse, "registration").ns
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.map((value) => text(value)).filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+function providerErrorFromWorkflow(workflow: AnyRecord) {
+  const registrationError = isRecord(workflow.registrationError) ? workflow.registrationError : {};
+  const directMessage = text(registrationError.message);
+
+  return directMessage || extractHttpApiErrorMessage(workflow.providerRawResponse);
 }
 
 function centsValue(value: unknown) {
@@ -6297,17 +6362,30 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const domain = text(draft.selectedDomain);
 
       domainOrders.push({
+        adminContactId: null,
+        autoRenew: null,
+        billingContactId: null,
         createdAt: text(draft.createdAt),
         customerDueCents: centsValue(draft.customerDueCents ?? draft.customerDue),
         domain,
         extension: text(draft.extension, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
         id: text(draft.id, `${storeId}-domain-draft-${domain}`),
+        nameserverCount: 0,
+        nameservers: [],
         nextStep: text(isRecord(draft.paymentPreparation) ? draft.paymentPreparation.nextStep : null, "Prepare payment or registration workflow"),
         ownerEmail,
         planCreditUsedCents: centsValue(draft.creditUsedCents ?? draft.creditUsed),
+        provider: null,
+        providerCustomerId: null,
+        providerErrorMessage: null,
+        providerOrderId: null,
+        registrantContactId: null,
+        registrationYears: null,
         status: text(draft.status, "draft"),
         storeId,
-        storeName
+        storeName,
+        techContactId: null,
+        updatedAt: text(draft.updatedAt, text(draft.createdAt))
       });
     }
 
@@ -6315,19 +6393,37 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const domain = text(workflow.domain);
       const dnsSetup = isRecord(workflow.dnsSetup) ? workflow.dnsSetup : {};
       const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
+      const providerRawResponse = workflow.providerRawResponse;
+      const registrationResponse = providerRegistrationResponse(providerRawResponse);
+      const contactCreateResponse = nestedRecord(providerRawResponse, "contactCreate");
+      const nameservers = nameserverListFromWorkflow(workflow);
+      const contactId = firstTextValue(contactCreateResponse, ["contactid", "contact-id", "entityid", "id"]);
 
       domainOrders.push({
+        adminContactId: firstTextValue(workflow, ["adminContactId", "admin-contact-id"]) ?? contactId,
+        autoRenew: firstTextValue(registrationResponse, ["auto-renew", "autoRenew"]),
+        billingContactId: firstTextValue(workflow, ["billingContactId", "billing-contact-id"]) ?? contactId,
         createdAt: text(workflow.createdAt),
         customerDueCents: centsValue(workflow.customerDueCents ?? workflow.customerDue),
         domain,
         extension: domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown",
         id: text(workflow.id, `${storeId}-domain-workflow-${domain}`),
+        nameserverCount: nameservers.length,
+        nameservers,
         nextStep: text(dnsSetup.status) === "verified" ? "Request SSL placeholder" : "Verify DNS placeholder",
         ownerEmail,
         planCreditUsedCents: 0,
+        provider: text(workflow.provider) || null,
+        providerCustomerId: firstTextValue(workflow, ["customerId", "customer-id"]) ?? firstTextValue(registrationResponse, ["customerid", "customer-id", "customerId"]),
+        providerErrorMessage: providerErrorFromWorkflow(workflow),
+        providerOrderId: text(workflow.providerOrderId) || firstTextValue(registrationResponse, ["orderid", "orderId", "entityid", "entityId"]),
+        registrantContactId: firstTextValue(workflow, ["registrantContactId", "reg-contact-id"]) ?? contactId,
+        registrationYears: numberValue(workflow.registrationYears) || null,
         status: text(workflow.status, "ready_for_registration"),
         storeId,
-        storeName
+        storeName,
+        techContactId: firstTextValue(workflow, ["techContactId", "tech-contact-id"]) ?? contactId,
+        updatedAt: text(workflow.updatedAt, text(workflow.createdAt))
       });
 
       if (text(sslSetup.status) || text(dnsSetup.status)) {
