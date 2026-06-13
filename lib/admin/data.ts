@@ -326,12 +326,21 @@ export type AdminDomainsHostingControl = {
     providerCustomerId: string | null;
     providerErrorMessage: string | null;
     providerOrderId: string | null;
+    providerResponse: unknown;
     registrantContactId: string | null;
     registrationYears: number | null;
     status: string;
     storeId: string;
     storeName: string;
     techContactId: string | null;
+    timelineEvents: Array<{
+      label: string;
+      providerError: string | null;
+      providerMessage: string | null;
+      providerOrderId: string | null;
+      status: "failed" | "info" | "pending" | "success";
+      timestamp: string | null;
+    }>;
     updatedAt: string;
   }>;
   emailOrders: Array<{
@@ -2772,6 +2781,10 @@ function recordsFromStoreData(storeData: unknown, key: string): AnyRecord[] {
   return Object.values(storeData[key]).filter(isRecord);
 }
 
+function recordFromStoreDataById(storeData: unknown, key: string, id: string) {
+  return recordsFromStoreData(storeData, key).find((record) => text(record.id) === id) ?? null;
+}
+
 function firstTextValue(record: AnyRecord, keys: string[]) {
   for (const key of keys) {
     const value = text(record[key]);
@@ -2784,14 +2797,12 @@ function firstTextValue(record: AnyRecord, keys: string[]) {
   return null;
 }
 
-function nestedRecord(value: unknown, key: string) {
-  return isRecord(value) && isRecord(value[key]) ? value[key] : {};
+function nestedRecord(value: unknown, key: string): AnyRecord | null {
+  return isRecord(value) && isRecord(value[key]) ? value[key] : null;
 }
 
 function providerRegistrationResponse(providerRawResponse: unknown) {
-  return isRecord(providerRawResponse) && isRecord(providerRawResponse.registration)
-    ? providerRawResponse.registration
-    : responseRecord(providerRawResponse);
+  return nestedRecord(providerRawResponse, "registration") ?? responseRecord(providerRawResponse);
 }
 
 function responseRecord(value: unknown): AnyRecord {
@@ -2799,12 +2810,13 @@ function responseRecord(value: unknown): AnyRecord {
 }
 
 function nameserverListFromWorkflow(workflow: AnyRecord) {
+  const registrationResponse = nestedRecord(workflow.providerRawResponse, "registration");
   const candidates = [
     workflow.nameservers,
     workflow.nameServers,
     workflow.providerNameservers,
-    nestedRecord(workflow.providerRawResponse, "registration").nameservers,
-    nestedRecord(workflow.providerRawResponse, "registration").ns
+    registrationResponse?.nameservers,
+    registrationResponse?.ns
   ];
 
   for (const candidate of candidates) {
@@ -2821,6 +2833,287 @@ function providerErrorFromWorkflow(workflow: AnyRecord) {
   const directMessage = text(registrationError.message);
 
   return directMessage || extractHttpApiErrorMessage(workflow.providerRawResponse);
+}
+
+const sensitiveProviderResponseKeys = new Set([
+  "address-line-1",
+  "address-line-2",
+  "address-line-3",
+  "address1",
+  "api-key",
+  "api_key",
+  "authorization",
+  "auth",
+  "city",
+  "company",
+  "country",
+  "email",
+  "name",
+  "phone",
+  "phone-cc",
+  "state",
+  "token",
+  "zipcode",
+  "zip"
+]);
+
+function sanitizedProviderResponse(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizedProviderResponse(item));
+  }
+
+  if (typeof value === "string") {
+    return value
+      .replace(/api-key=([^&\s]+)/gi, "api-key=[redacted]")
+      .replace(/authorization=([^&\s]+)/gi, "authorization=[redacted]")
+      .replace(/token=([^&\s]+)/gi, "token=[redacted]");
+  }
+
+  if (!isRecord(value)) {
+    return value ?? null;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      sensitiveProviderResponseKeys.has(key.toLowerCase())
+        ? "[redacted]"
+        : sanitizedProviderResponse(nestedValue)
+    ])
+  );
+}
+
+function timelineEvent({
+  label,
+  providerError = null,
+  providerMessage = null,
+  providerOrderId = null,
+  status,
+  timestamp = null
+}: {
+  label: string;
+  providerError?: string | null;
+  providerMessage?: string | null;
+  providerOrderId?: string | null;
+  status: "failed" | "info" | "pending" | "success";
+  timestamp?: string | null;
+}) {
+  return {
+    label,
+    providerError,
+    providerMessage,
+    providerOrderId,
+    status,
+    timestamp
+  };
+}
+
+function domainTimelineFromDraft({
+  draft,
+  providerMessage
+}: {
+  draft: AnyRecord;
+  providerMessage?: string | null;
+}) {
+  const createdAt = text(draft.createdAt) || null;
+
+  return [
+    timelineEvent({
+      label: "Draft created",
+      providerMessage: providerMessage ?? (text(draft.paymentPreparationStatus) || null),
+      status: "success",
+      timestamp: createdAt
+    }),
+    timelineEvent({
+      label: "Availability checked",
+      providerMessage: providerMessage ?? "Domain availability confirmed before draft creation.",
+      status: "success",
+      timestamp: createdAt
+    }),
+    timelineEvent({
+      label: "Waiting provider balance / locked processing",
+      providerMessage: text(draft.platformBalanceSafetyStatus) || null,
+      status: "info",
+      timestamp: createdAt
+    })
+  ];
+}
+
+function idText(value: unknown) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function contactCreateId(contactCreateResponse: unknown) {
+  const direct = idText(contactCreateResponse);
+
+  if (direct) {
+    return direct;
+  }
+
+  return firstTextValue(responseRecord(contactCreateResponse), ["contactid", "contact-id", "entityid", "id"]);
+}
+
+function workflowTimelineEvents({
+  contactCreateResponse,
+  dnsSetup,
+  draft,
+  preview,
+  providerErrorMessage,
+  providerOrderId,
+  registrationResponse,
+  sslSetup,
+  workflow
+}: {
+  contactCreateResponse: unknown;
+  dnsSetup: AnyRecord;
+  draft: AnyRecord | null;
+  preview: AnyRecord | null;
+  providerErrorMessage: string | null;
+  providerOrderId: string | null;
+  registrationResponse: AnyRecord;
+  sslSetup: AnyRecord;
+  workflow: AnyRecord;
+}) {
+  const status = text(workflow.status);
+  const workflowCreatedAt = text(workflow.createdAt) || null;
+  const orderId = providerOrderId;
+  const providerStatus = firstTextValue(registrationResponse, ["status", "actionstatus", "actionStatus"]);
+  const contactId = contactCreateId(contactCreateResponse);
+  const dnsStatus = text(dnsSetup.status);
+  const sslStatus = text(sslSetup.status);
+  const events = [
+    ...domainTimelineFromDraft({
+      draft: draft ?? workflow,
+      providerMessage: null
+    })
+  ];
+
+  if (preview) {
+    events.push(
+      timelineEvent({
+        label: "Checkout preview prepared",
+        providerMessage: text(preview.status) || null,
+        status: "success",
+        timestamp: text(preview.createdAt) || null
+      })
+    );
+  }
+
+  events.push(
+    timelineEvent({
+      label: "Registration submitted",
+      providerMessage: text(workflow.registrationStatus, status) || null,
+      providerOrderId: orderId,
+      status: "success",
+      timestamp: workflowCreatedAt
+    })
+  );
+
+  if (contactId || (isRecord(contactCreateResponse) && Object.keys(contactCreateResponse).length > 0)) {
+    events.push(
+      timelineEvent({
+        label: "Provider contact created",
+        providerMessage: contactId ? `Contact ID ${contactId}` : null,
+        providerOrderId: orderId,
+        status: contactId ? "success" : "info",
+        timestamp: workflowCreatedAt
+      })
+    );
+  }
+
+  if (orderId || isRecord(registrationResponse)) {
+    events.push(
+      timelineEvent({
+        label: "Provider order submitted",
+        providerMessage: providerStatus,
+        providerOrderId: orderId,
+        status: providerErrorMessage ? "failed" : "success",
+        timestamp: workflowCreatedAt
+      })
+    );
+  }
+
+  if (["registration_completed", "awaiting_dns", "ssl_pending", "ssl_active"].includes(status) && !providerErrorMessage) {
+    events.push(
+      timelineEvent({
+        label: "Provider accepted",
+        providerMessage: providerStatus ?? "Registration accepted by provider.",
+        providerOrderId: orderId,
+        status: "success",
+        timestamp: workflowCreatedAt
+      })
+    );
+  }
+
+  if (providerErrorMessage || status === "registration_failed") {
+    events.push(
+      timelineEvent({
+        label: "Provider failed",
+        providerError: providerErrorMessage,
+        providerOrderId: orderId,
+        status: "failed",
+        timestamp: workflowCreatedAt
+      })
+    );
+  }
+
+  if (["ready_for_registration", "registration_pending", "registration_processing"].includes(status)) {
+    events.push(
+      timelineEvent({
+        label: "Waiting provider balance / locked processing",
+        providerMessage: text(workflow.paymentConfirmationStatus) || null,
+        providerOrderId: orderId,
+        status: status === "registration_processing" ? "pending" : "info",
+        timestamp: workflowCreatedAt
+      })
+    );
+  }
+
+  if (dnsStatus || ["awaiting_dns", "ssl_pending", "ssl_active"].includes(status)) {
+    events.push(
+      timelineEvent({
+        label: "DNS pending",
+        providerMessage: dnsStatus || null,
+        providerOrderId: orderId,
+        status: dnsStatus === "verified" ? "success" : "pending",
+        timestamp: text(workflow.updatedAt) || workflowCreatedAt
+      })
+    );
+  }
+
+  if (sslStatus || ["ssl_pending", "ssl_active"].includes(status)) {
+    events.push(
+      timelineEvent({
+        label: "SSL pending",
+        providerMessage: sslStatus || null,
+        providerOrderId: orderId,
+        status: sslStatus === "ssl_active" ? "success" : "pending",
+        timestamp: text(workflow.updatedAt) || workflowCreatedAt
+      })
+    );
+  }
+
+  if (status === "ssl_active" || sslStatus === "ssl_active") {
+    events.push(
+      timelineEvent({
+        label: "Connected to store",
+        providerMessage: text(workflow.status) || null,
+        providerOrderId: orderId,
+        status: "success",
+        timestamp: text(workflow.updatedAt) || workflowCreatedAt
+      })
+    );
+  }
+
+  return events;
 }
 
 function centsValue(value: unknown) {
@@ -6379,12 +6672,14 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         providerCustomerId: null,
         providerErrorMessage: null,
         providerOrderId: null,
+        providerResponse: null,
         registrantContactId: null,
         registrationYears: null,
         status: text(draft.status, "draft"),
         storeId,
         storeName,
         techContactId: null,
+        timelineEvents: domainTimelineFromDraft({ draft }),
         updatedAt: text(draft.updatedAt, text(draft.createdAt))
       });
     }
@@ -6395,9 +6690,15 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
       const providerRawResponse = workflow.providerRawResponse;
       const registrationResponse = providerRegistrationResponse(providerRawResponse);
-      const contactCreateResponse = nestedRecord(providerRawResponse, "contactCreate");
+      const contactCreateResponse = isRecord(providerRawResponse)
+        ? providerRawResponse.contactCreate
+        : null;
       const nameservers = nameserverListFromWorkflow(workflow);
-      const contactId = firstTextValue(contactCreateResponse, ["contactid", "contact-id", "entityid", "id"]);
+      const contactId = contactCreateId(contactCreateResponse);
+      const providerErrorMessage = providerErrorFromWorkflow(workflow);
+      const providerOrderId = text(workflow.providerOrderId) || firstTextValue(registrationResponse, ["orderid", "orderId", "entityid", "entityId"]);
+      const draft = recordFromStoreDataById(storeData, "domainOrderDrafts", text(workflow.domainOrderDraftId));
+      const preview = recordFromStoreDataById(storeData, "domainCheckoutPreviews", text(workflow.domainCheckoutPreviewId));
 
       domainOrders.push({
         adminContactId: firstTextValue(workflow, ["adminContactId", "admin-contact-id"]) ?? contactId,
@@ -6415,14 +6716,26 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         planCreditUsedCents: 0,
         provider: text(workflow.provider) || null,
         providerCustomerId: firstTextValue(workflow, ["customerId", "customer-id"]) ?? firstTextValue(registrationResponse, ["customerid", "customer-id", "customerId"]),
-        providerErrorMessage: providerErrorFromWorkflow(workflow),
-        providerOrderId: text(workflow.providerOrderId) || firstTextValue(registrationResponse, ["orderid", "orderId", "entityid", "entityId"]),
+        providerErrorMessage,
+        providerOrderId,
+        providerResponse: sanitizedProviderResponse(providerRawResponse),
         registrantContactId: firstTextValue(workflow, ["registrantContactId", "reg-contact-id"]) ?? contactId,
         registrationYears: numberValue(workflow.registrationYears) || null,
         status: text(workflow.status, "ready_for_registration"),
         storeId,
         storeName,
         techContactId: firstTextValue(workflow, ["techContactId", "tech-contact-id"]) ?? contactId,
+        timelineEvents: workflowTimelineEvents({
+          contactCreateResponse,
+          dnsSetup,
+          draft,
+          preview,
+          providerErrorMessage,
+          providerOrderId,
+          registrationResponse,
+          sslSetup,
+          workflow
+        }),
         updatedAt: text(workflow.updatedAt, text(workflow.createdAt))
       });
 

@@ -44,6 +44,53 @@ function displayValue(value: string | number | null | undefined) {
   return String(value);
 }
 
+function timelineTone(status: DomainOrder["timelineEvents"][number]["status"]) {
+  const tones = {
+    failed: "red",
+    info: "blue",
+    pending: "amber",
+    success: "green"
+  } as const;
+
+  return tones[status];
+}
+
+function formatTimelineTimestamp(value: string | null) {
+  if (!value) {
+    return "Timestamp unavailable";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Timestamp unavailable";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(date);
+}
+
+function hasProviderResponse(value: unknown) {
+  if (!value) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return true;
+}
+
 function DetailRow({
   label,
   value
@@ -60,6 +107,65 @@ function DetailRow({
         {displayValue(value)}
       </p>
     </div>
+  );
+}
+
+function RegistrationTimeline({ order }: { order: DomainOrder }) {
+  const providerResponse = hasProviderResponse(order.providerResponse)
+    ? JSON.stringify(order.providerResponse, null, 2)
+    : null;
+
+  return (
+    <DetailSection title="Registration Timeline">
+      <div className="grid gap-3">
+        {order.timelineEvents.length ? (
+          order.timelineEvents.map((event, index) => (
+            <div
+              className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+              key={`${event.label}-${index}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-black text-slate-900">{event.label}</p>
+                <AdminBadge tone={timelineTone(event.status)}>{event.status}</AdminBadge>
+              </div>
+              <p className="mt-1 text-xs font-bold text-slate-500">
+                {formatTimelineTimestamp(event.timestamp)}
+              </p>
+              {event.providerMessage ? (
+                <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
+                  Provider message: {event.providerMessage}
+                </p>
+              ) : null}
+              {event.providerOrderId ? (
+                <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
+                  Provider order id: {event.providerOrderId}
+                </p>
+              ) : null}
+              {event.providerError ? (
+                <p className="mt-2 break-words rounded-xl border border-red-100 bg-red-50 p-2 text-xs font-bold leading-5 text-red-700">
+                  Provider error: {event.providerError}
+                </p>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500">
+            No registration timeline events are stored for this domain yet.
+          </p>
+        )}
+      </div>
+
+      {providerResponse ? (
+        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 p-3 text-slate-100">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-slate-300">
+            Provider response
+          </summary>
+          <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-100">
+            {providerResponse}
+          </pre>
+        </details>
+      ) : null}
+    </DetailSection>
   );
 }
 
@@ -243,6 +349,8 @@ export function DomainDetailsDrawer({
               <DetailSection title="Provider Error">
                 <DetailRow label="Provider error message" value={selectedDomain.providerErrorMessage} />
               </DetailSection>
+
+              <RegistrationTimeline order={selectedDomain} />
             </div>
           </aside>
         </div>
