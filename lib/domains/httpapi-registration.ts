@@ -1,13 +1,17 @@
 import "server-only";
 
 export type HttpApiRegistrationInput = {
-  customerContactId: string;
+  adminContactId: string;
+  billingContactId: string;
+  customerId: string;
   domainName: string;
   nameserver1: string;
   nameserver2: string;
   nameserver3?: string;
   nameserver4?: string;
   nameserver5?: string;
+  registrantContactId: string;
+  techContactId: string;
   years: number;
 };
 
@@ -175,6 +179,60 @@ export function extractHttpApiErrorMessage(rawResponse: unknown): string | null 
   return visit(rawResponse);
 }
 
+function missingRegistrationEnvNames({
+  adminContactId,
+  billingContactId,
+  customerId,
+  nameserver1,
+  nameserver2,
+  nameservers,
+  registrantContactId,
+  techContactId
+}: {
+  adminContactId: string;
+  billingContactId: string;
+  customerId: string;
+  nameserver1: string;
+  nameserver2: string;
+  nameservers: string[];
+  registrantContactId: string;
+  techContactId: string;
+}) {
+  const missing: string[] = [];
+
+  if (!customerId) {
+    missing.push("HTTPAPI_REGISTRATION_CUSTOMER_ID");
+  }
+
+  if (!registrantContactId) {
+    missing.push("HTTPAPI_REGISTRATION_REGISTRANT_CONTACT_ID");
+  }
+
+  if (!adminContactId) {
+    missing.push("HTTPAPI_REGISTRATION_ADMIN_CONTACT_ID");
+  }
+
+  if (!techContactId) {
+    missing.push("HTTPAPI_REGISTRATION_TECH_CONTACT_ID");
+  }
+
+  if (!billingContactId) {
+    missing.push("HTTPAPI_REGISTRATION_BILLING_CONTACT_ID");
+  }
+
+  if (nameservers.length < 2) {
+    if (!nameserver1) {
+      missing.push("HTTPAPI_REGISTRATION_NAMESERVER_1");
+    }
+
+    if (!nameserver2) {
+      missing.push("HTTPAPI_REGISTRATION_NAMESERVER_2");
+    }
+  }
+
+  return Array.from(new Set(missing));
+}
+
 function normalizeDomainName(value: string) {
   return value
     .trim()
@@ -230,9 +288,15 @@ function failedRegistrationResult({
 export async function registerDomainOrder(
   input: HttpApiRegistrationInput
 ): Promise<HttpApiRegistrationResult> {
+  const adminContactId = input.adminContactId.trim();
+  const billingContactId = input.billingContactId.trim();
+  const customerId = input.customerId.trim();
   const domainName = normalizeDomainName(input.domainName);
+  const registrantContactId = input.registrantContactId.trim();
+  const techContactId = input.techContactId.trim();
   const years = normalizeYears(input.years);
-  const customerContactId = input.customerContactId.trim();
+  const nameserver1 = input.nameserver1.trim();
+  const nameserver2 = input.nameserver2.trim();
   const nameservers = normalizeNameservers(input);
 
   console.info("domain_registration_started", {
@@ -242,11 +306,38 @@ export async function registerDomainOrder(
     years
   });
 
-  if (!domainName || !customerContactId || nameservers.length < 2) {
+  console.info("httpapi_registration_input_ready", {
+    hasAdminContactId: Boolean(adminContactId),
+    hasBillingContactId: Boolean(billingContactId),
+    hasCustomerId: Boolean(customerId),
+    hasRegistrantContactId: Boolean(registrantContactId),
+    hasTechContactId: Boolean(techContactId),
+    nameserverCount: nameservers.length
+  });
+
+  const missingEnvNames = missingRegistrationEnvNames({
+    adminContactId,
+    billingContactId,
+    customerId,
+    nameserver1,
+    nameserver2,
+    nameservers,
+    registrantContactId,
+    techContactId
+  });
+
+  if (!domainName || missingEnvNames.length > 0) {
+    const missingMessage = missingEnvNames.length
+      ? `Missing HTTPAPI registration environment variables: ${missingEnvNames.join(", ")}.`
+      : "Domain registration requires a domain name.";
     const result = failedRegistrationResult({
       code: "missing_registration_input",
-      message: "Domain registration requires a domain, customer contact ID, and at least two nameservers.",
-      rawResponse: null
+      message: missingMessage,
+      rawResponse: {
+        code: "missing_registration_input",
+        missingEnvNames,
+        status: "ERROR"
+      }
     });
 
     console.error("domain_registration_failed", {
@@ -266,11 +357,11 @@ export async function registerDomainOrder(
     url.searchParams.set("api-key", config.apiKey);
     url.searchParams.set("domain-name", domainName);
     url.searchParams.set("years", String(years));
-    url.searchParams.set("customer-id", customerContactId);
-    url.searchParams.set("reg-contact-id", customerContactId);
-    url.searchParams.set("admin-contact-id", customerContactId);
-    url.searchParams.set("tech-contact-id", customerContactId);
-    url.searchParams.set("billing-contact-id", customerContactId);
+    url.searchParams.set("customer-id", customerId);
+    url.searchParams.set("reg-contact-id", registrantContactId);
+    url.searchParams.set("admin-contact-id", adminContactId);
+    url.searchParams.set("tech-contact-id", techContactId);
+    url.searchParams.set("billing-contact-id", billingContactId);
     url.searchParams.set("invoice-option", "NoInvoice");
     url.searchParams.set("auto-renew", "false");
     url.searchParams.set("purchase-privacy", "false");

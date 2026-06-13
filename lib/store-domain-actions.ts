@@ -269,20 +269,6 @@ function readServerEnv(keys: string[]) {
   return "";
 }
 
-function registrationRuntimeText({
-  envKeys,
-  formData,
-  name,
-  maxLength = 253
-}: {
-  envKeys: string[];
-  formData: FormData;
-  maxLength?: number;
-  name: string;
-}) {
-  return cleanText(formData.get(name), maxLength) || readServerEnv(envKeys).slice(0, maxLength);
-}
-
 function cleanRegistrationYears(value: FormDataEntryValue | null) {
   const parsed = typeof value === "string" ? Number.parseInt(value, 10) : 1;
 
@@ -1453,37 +1439,20 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   const createdAt = new Date().toISOString();
   const registrationYears = cleanRegistrationYears(formData.get("years"));
   const registrationOrderId = randomUUID();
-  const customerContactId = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID", "HTTPAPI_CUSTOMER_CONTACT_ID"],
-    formData,
-    maxLength: 80,
-    name: "customerContactId"
-  });
-  const nameserver1 = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_1", "HTTPAPI_NAMESERVER_1"],
-    formData,
-    name: "nameserver1"
-  });
-  const nameserver2 = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_2", "HTTPAPI_NAMESERVER_2"],
-    formData,
-    name: "nameserver2"
-  });
-  const nameserver3 = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_3", "HTTPAPI_NAMESERVER_3"],
-    formData,
-    name: "nameserver3"
-  });
-  const nameserver4 = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_4", "HTTPAPI_NAMESERVER_4"],
-    formData,
-    name: "nameserver4"
-  });
-  const nameserver5 = registrationRuntimeText({
-    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_5", "HTTPAPI_NAMESERVER_5"],
-    formData,
-    name: "nameserver5"
-  });
+  const customerId = readServerEnv([
+    "HTTPAPI_REGISTRATION_CUSTOMER_ID",
+    "HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID",
+    "HTTPAPI_CUSTOMER_CONTACT_ID"
+  ]).slice(0, 80);
+  const registrantContactId = readServerEnv(["HTTPAPI_REGISTRATION_REGISTRANT_CONTACT_ID"]).slice(0, 80);
+  const adminContactId = readServerEnv(["HTTPAPI_REGISTRATION_ADMIN_CONTACT_ID"]).slice(0, 80);
+  const techContactId = readServerEnv(["HTTPAPI_REGISTRATION_TECH_CONTACT_ID"]).slice(0, 80);
+  const billingContactId = readServerEnv(["HTTPAPI_REGISTRATION_BILLING_CONTACT_ID"]).slice(0, 80);
+  const nameserver1 = readServerEnv(["HTTPAPI_REGISTRATION_NAMESERVER_1", "HTTPAPI_NAMESERVER_1"]).slice(0, 253);
+  const nameserver2 = readServerEnv(["HTTPAPI_REGISTRATION_NAMESERVER_2", "HTTPAPI_NAMESERVER_2"]).slice(0, 253);
+  const nameserver3 = readServerEnv(["HTTPAPI_REGISTRATION_NAMESERVER_3", "HTTPAPI_NAMESERVER_3"]).slice(0, 253);
+  const nameserver4 = readServerEnv(["HTTPAPI_REGISTRATION_NAMESERVER_4", "HTTPAPI_NAMESERVER_4"]).slice(0, 253);
+  const nameserver5 = readServerEnv(["HTTPAPI_REGISTRATION_NAMESERVER_5", "HTTPAPI_NAMESERVER_5"]).slice(0, 253);
 
   const initialOrder = await createDomainOrderRecord({
     createdAt,
@@ -1510,13 +1479,17 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   }
 
   const registrationResult = await registerDomainOrder({
-    customerContactId,
+    adminContactId,
+    billingContactId,
+    customerId,
     domainName: domain,
     nameserver1,
     nameserver2,
     nameserver3,
     nameserver4,
     nameserver5,
+    registrantContactId,
+    techContactId,
     years: registrationYears
   });
   const registrationStatus = domainOrderStatusFromRegistrationResult(registrationResult);
