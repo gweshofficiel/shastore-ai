@@ -662,10 +662,15 @@ function isSensitiveProviderKey(key: string) {
 }
 
 function maskSensitiveString(value: string) {
-  return value.replace(
-    /((?:api[-_]?key|api_key|token|secret|password|auth|authorization|private[-_]?key)=)[^&\s"']+/gi,
-    "$1[REDACTED]"
-  );
+  return value
+    .replace(
+      /((?:api[-_]?key|api_key|token|secret|password|auth|authorization|private[-_]?key)=)[^&\s"']+/gi,
+      "$1[REDACTED]"
+    )
+    .replace(
+      /((?:api[-_]?key|api_key|token|secret|password|auth|authorization|private[-_]?key)["']?\s*:\s*["']?)[^"',}\s]+/gi,
+      "$1[REDACTED]"
+    );
 }
 
 function sanitizeProviderPayload(value: unknown, key = ""): unknown {
@@ -867,6 +872,17 @@ const timeFilterOptions: Array<{ label: string; value: TimeFilter }> = [
   { label: "Last 7 days", value: "last_7_days" },
   { label: "Last 30 days", value: "last_30_days" }
 ];
+
+const domainOperationsCertification = [
+  { label: "Details Drawer", status: "Ready" },
+  { label: "Timeline", status: "Ready" },
+  { label: "Failed Operations", status: "Ready" },
+  { label: "Search & Filters", status: "Ready" },
+  { label: "Provider Funds Monitoring", status: "Ready" },
+  { label: "Contact Visibility", status: "Ready" },
+  { label: "Raw Response Viewer", status: "Ready" },
+  { label: "Audit Export", status: "Ready" }
+] as const;
 
 function DetailRow({
   label,
@@ -1136,6 +1152,39 @@ function DomainGlobalFilters({
           options={timeFilterOptions}
           value={filters.time}
         />
+      </div>
+    </section>
+  );
+}
+
+function DomainOperationsCertificationCard() {
+  return (
+    <section className="rounded-3xl border border-emerald-100 bg-emerald-50/50 p-5 shadow-[0_18px_60px_-55px_rgba(15,23,42,0.9)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-500">
+            Domain Operations Center v1
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">
+            Read-only observability certification
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+            Super Admin monitoring only. No provider calls, retries, DNS/SSL automation, payments, migrations, or policy changes.
+          </p>
+        </div>
+        <AdminBadge tone="green">Certified</AdminBadge>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {domainOperationsCertification.map((item) => (
+          <div
+            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-white p-3"
+            key={item.label}
+          >
+            <span className="text-sm font-black text-slate-800">{item.label}</span>
+            <AdminBadge tone="green">{item.status}</AdminBadge>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -1592,6 +1641,8 @@ export function DomainDetailsDrawer({
 
   return (
     <>
+      <DomainOperationsCertificationCard />
+
       <DomainGlobalFilters
         activeCount={activeCount}
         filters={filters}
