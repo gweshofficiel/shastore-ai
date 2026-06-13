@@ -290,6 +290,28 @@ function contactIdFromResponse(raw: Record<string, unknown>) {
   return stringValue(raw.contactid ?? raw["contact-id"] ?? raw.entityid ?? raw.id);
 }
 
+function contactIdFromHttpApiContactCreateResponse(rawResponse: unknown): string | null {
+  const direct = stringValue(rawResponse);
+
+  if (direct && /^\d+$/.test(direct)) {
+    return direct;
+  }
+
+  const fromRecord = contactIdFromResponse(responseRecord(rawResponse));
+
+  if (fromRecord) {
+    return fromRecord;
+  }
+
+  const rawText = stringValue(responseRecord(rawResponse).rawText)?.trim();
+
+  if (rawText && /^\d+$/.test(rawText)) {
+    return rawText;
+  }
+
+  return null;
+}
+
 function readRegistrationCustomerId(fallbackCustomerId?: string) {
   return (
     fallbackCustomerId?.trim() ||
@@ -453,11 +475,6 @@ export async function createHttpApiContact(
       url.searchParams.set(param, value);
     }
 
-    console.log(
-      "CONTACT_CREATE_FINAL_URL",
-      url.toString()
-    );
-
     const response = await fetch(url, {
       cache: "no-store",
       headers: {
@@ -476,7 +493,7 @@ export async function createHttpApiContact(
 
     const raw = responseRecord(rawResponse);
     const providerStatus = stringValue(raw.status)?.toLowerCase() ?? null;
-    const contactId = contactIdFromResponse(raw);
+    const contactId = contactIdFromHttpApiContactCreateResponse(rawResponse);
     const loggedResponse = safeContactResponseForLog(rawResponse);
 
     console.info("httpapi_contact_create_response", {
