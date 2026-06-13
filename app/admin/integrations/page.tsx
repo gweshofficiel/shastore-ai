@@ -10,11 +10,17 @@ import {
   checkIntegrationProvider,
   clearIntegrationReview,
   markIntegrationUnderReview,
+  markIntegrationErrorResolvedAction,
+  reopenIntegrationErrorAction,
   viewIntegrationLogs,
   viewIntegrationSetupChecklist
 } from "@/lib/admin/integration-actions";
 import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminIntegrationsControl } from "@/lib/admin/data";
+import {
+  listIntegrationErrors,
+  type IntegrationErrorStatus
+} from "@/lib/integrations/error-center";
 import {
   listIntegrationAuditLogs,
   type IntegrationAuditStatus
@@ -60,6 +66,12 @@ const auditStatuses: Array<IntegrationAuditStatus | "all"> = [
   "skipped",
   "blocked"
 ];
+const errorStatuses: Array<IntegrationErrorStatus | "all"> = [
+  "all",
+  "failed",
+  "degraded",
+  "blocked"
+];
 
 export default async function AdminIntegrationsPage({
   searchParams
@@ -86,12 +98,26 @@ export default async function AdminIntegrationsPage({
   const auditProvider = firstParam(params.auditProvider);
   const auditCategory = firstParam(params.auditCategory);
   const auditStatus = firstParam(params.auditStatus) as IntegrationAuditStatus | "all";
-  const [control, auditLogs] = await Promise.all([
+  const errorProvider = firstParam(params.errorProvider);
+  const errorCategory = firstParam(params.errorCategory);
+  const errorStatus = firstParam(params.errorStatus) as IntegrationErrorStatus | "all";
+  const errorFrom = firstParam(params.errorFrom, "");
+  const errorTo = firstParam(params.errorTo, "");
+  const unresolvedOnly = firstParam(params.unresolvedOnly, "true") !== "false";
+  const [control, auditLogs, integrationErrors] = await Promise.all([
     getAdminIntegrationsControl(),
     listIntegrationAuditLogs({
       category: auditCategory,
       providerKey: auditProvider,
       status: auditStatus
+    }),
+    listIntegrationErrors({
+      category: errorCategory,
+      from: errorFrom,
+      providerKey: errorProvider,
+      status: errorStatus,
+      to: errorTo,
+      unresolvedOnly
     })
   ]);
 
@@ -264,6 +290,180 @@ export default async function AdminIntegrationsPage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
+              Integration Error Center
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Provider errors needing review
+            </h2>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+              Built from failed integration audit logs and current degraded/failed health states. No provider API calls or retries run from this section.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-3" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorProvider}
+                name="errorProvider"
+              >
+                <option value="all">All providers</option>
+                {control.integrations.map((integration) => (
+                  <option key={integration.key} value={integration.key}>
+                    {integration.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Category
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorCategory}
+                name="errorCategory"
+              >
+                <option value="all">All categories</option>
+                {control.categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorStatus}
+                name="errorStatus"
+              >
+                {errorStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              From
+              <input
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorFrom}
+                name="errorFrom"
+                type="date"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              To
+              <input
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorTo}
+                name="errorTo"
+                type="date"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              <input name="unresolvedOnly" type="hidden" value="false" />
+              <input
+                className="h-4 w-4 rounded border-slate-300"
+                defaultChecked={unresolvedOnly}
+                name="unresolvedOnly"
+                type="checkbox"
+                value="true"
+              />
+              Unresolved only
+            </label>
+            <button
+              className="h-10 rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700 sm:col-span-3"
+              type="submit"
+            >
+              Apply error filters
+            </button>
+          </form>
+        </div>
+
+        <AdminTable
+          empty={!integrationErrors.length ? "No integration errors match the current filters." : null}
+          headers={[
+            "Provider",
+            "Category",
+            "Operation",
+            "Status",
+            "Error",
+            "Related",
+            "Created",
+            "Resolved",
+            "Actions"
+          ]}
+        >
+          {integrationErrors.map((error) => (
+            <tr key={`${error.source}-${error.errorId}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{error.providerName}</td>
+              <td className="px-5 py-4 text-slate-600">{error.category}</td>
+              <td className="px-5 py-4 text-slate-600">{error.operation}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(error.status)}>{error.status}</AdminBadge>
+                <p className="mt-2 text-xs font-semibold text-slate-500">{error.source.replace(/_/g, " ")}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {error.errorCode ?? "No code"}
+                <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                  {error.errorMessage ?? "No safe error message"}
+                </p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {error.storeId ? `Store: ${error.storeId}` : "No store"}
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  {error.relatedEntityType && error.relatedEntityId
+                    ? `${error.relatedEntityType}: ${error.relatedEntityId}`
+                    : "No related entity"}
+                </p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(error.createdAt)}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {error.resolvedAt ? formatAdminDate(error.resolvedAt) : "Unresolved"}
+                {error.resolutionNote ? (
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{error.resolutionNote}</p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-56 gap-2">
+                  {error.source === "health_state" ? (
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500">
+                      Health state errors resolve after a future healthy check.
+                    </p>
+                  ) : error.resolvedAt ? (
+                    <form action={reopenIntegrationErrorAction}>
+                      <input name="errorId" type="hidden" value={error.errorId} />
+                      <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
+                        Reopen
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={markIntegrationErrorResolvedAction} className="grid gap-2">
+                      <input name="errorId" type="hidden" value={error.errorId} />
+                      <input
+                        className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
+                        name="resolutionNote"
+                        placeholder="Resolution note"
+                        type="text"
+                      />
+                      <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                        Mark resolved
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">

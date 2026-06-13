@@ -6,6 +6,10 @@ import {
   runAllIntegrationHealthChecks,
   runIntegrationHealthCheck
 } from "@/lib/integrations/health-engine";
+import {
+  markIntegrationErrorResolved,
+  reopenIntegrationError
+} from "@/lib/integrations/error-center";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type IntegrationAction =
@@ -77,5 +81,18 @@ export async function checkIntegrationProvider(formData: FormData) {
 
 export async function checkAllIntegrationProviders() {
   await runAllIntegrationHealthChecks();
+  revalidatePath("/admin/integrations");
+}
+
+export async function markIntegrationErrorResolvedAction(formData: FormData) {
+  await markIntegrationErrorResolved(
+    cleanText(formData.get("errorId")),
+    cleanText(formData.get("resolutionNote"))
+  );
+  revalidatePath("/admin/integrations");
+}
+
+export async function reopenIntegrationErrorAction(formData: FormData) {
+  await reopenIntegrationError(cleanText(formData.get("errorId")));
   revalidatePath("/admin/integrations");
 }
