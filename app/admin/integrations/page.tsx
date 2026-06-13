@@ -9,12 +9,15 @@ import {
   checkAllIntegrationProviders,
   checkIntegrationProvider,
   clearIntegrationReview,
+  markRotationRequiredAction,
   markIntegrationUnderReview,
   markIntegrationErrorResolvedAction,
+  markSecretRotatedAction,
   reopenIntegrationErrorAction,
   runAllProviderDiagnosticsAction,
   syncIntegrationProviderStatusAction,
   testIntegrationConnectionAction,
+  updateSecretRotationNoteAction,
   viewIntegrationLogs,
   viewIntegrationSetupChecklist
 } from "@/lib/admin/integration-actions";
@@ -28,6 +31,7 @@ import {
   listIntegrationAuditLogs,
   type IntegrationAuditStatus
 } from "@/lib/integrations/audit-log";
+import { listSecretRotationRecords } from "@/lib/integrations/secret-rotation";
 
 function toneForStatus(status: string) {
   if (["configured", "connected", "enabled", "healthy", "live", "masked_configured"].includes(status)) {
@@ -117,7 +121,7 @@ export default async function AdminIntegrationsPage({
   const errorFrom = firstParam(params.errorFrom, "");
   const errorTo = firstParam(params.errorTo, "");
   const unresolvedOnly = firstParam(params.unresolvedOnly, "true") !== "false";
-  const [control, auditLogs, integrationErrors] = await Promise.all([
+  const [control, auditLogs, integrationErrors, secretRotationRecords] = await Promise.all([
     getAdminIntegrationsControl(),
     listIntegrationAuditLogs({
       category: auditCategory,
@@ -131,8 +135,19 @@ export default async function AdminIntegrationsPage({
       status: errorStatus,
       to: errorTo,
       unresolvedOnly
-    })
+    }),
+    listSecretRotationRecords()
   ]);
+  const rotationRequiredByProvider = new Map<string, number>();
+
+  for (const record of secretRotationRecords) {
+    if (record.rotationRequired) {
+      rotationRequiredByProvider.set(
+        record.providerKey,
+        (rotationRequiredByProvider.get(record.providerKey) ?? 0) + 1
+      );
+    }
+  }
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -216,6 +231,11 @@ export default async function AdminIntegrationsPage({
                   <td className="px-5 py-4 text-slate-600">{integration.consecutiveFailures}</td>
                   <td className="px-5 py-4">
                     <AdminBadge tone={toneForStatus(integration.healthStatus)}>{integration.healthStatus}</AdminBadge>
+                    {rotationRequiredByProvider.has(integration.key) ? (
+                      <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-amber-700">
+                        Secret rotation required
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     <AdminBadge tone={toneForStatus(diagnosticMessage(integration.lastSafeResponseSummary).status)}>
@@ -324,6 +344,101 @@ export default async function AdminIntegrationsPage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Super Admin metadata only</p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">Secret Rotation Center</h2>
+          <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Tracks rotation metadata for named integration secret keys only. This page never reads, displays, edits, or rotates actual environment variable values.
+          </p>
+        </div>
+        <AdminTable
+          empty={!secretRotationRecords.length ? "No integration secret key names are registered in the catalog." : null}
+          headers={[
+            "Provider",
+            "Secret key name",
+            "Category",
+            "Status",
+            "Last rotated",
+            "Next due",
+            "Rotation required",
+            "Note",
+            "Actions"
+          ]}
+        >
+          {secretRotationRecords.map((record) => (
+            <tr key={`${record.providerKey}:${record.secretKeyName}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{record.providerName}</td>
+              <td className="px-5 py-4 font-mono text-xs font-black text-slate-700">{record.secretKeyName}</td>
+              <td className="px-5 py-4 text-slate-600">{record.secretCategory}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(record.status)}>{record.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(record.lastRotatedAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(record.nextRotationDueAt)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={record.rotationRequired ? "amber" : "green"}>
+                  {record.rotationRequired ? "required" : "not_required"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{record.rotationNote ?? "No note"}</td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-72 gap-3">
+                  <form action={markSecretRotatedAction} className="grid gap-2 rounded-2xl border border-green-100 bg-green-50 p-3">
+                    <input name="providerKey" type="hidden" value={record.providerKey} />
+                    <input name="secretKeyName" type="hidden" value={record.secretKeyName} />
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-green-700">
+                      Next due
+                      <input
+                        className="h-9 rounded-xl border border-green-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-700"
+                        name="nextRotationDueAt"
+                        type="date"
+                      />
+                    </label>
+                    <input
+                      className="h-9 rounded-xl border border-green-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                      maxLength={500}
+                      name="rotationNote"
+                      placeholder="Optional safe note"
+                    />
+                    <button className="h-9 rounded-full bg-green-600 px-3 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
+                      Mark as rotated
+                    </button>
+                  </form>
+                  <form action={markRotationRequiredAction} className="grid gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+                    <input name="providerKey" type="hidden" value={record.providerKey} />
+                    <input name="secretKeyName" type="hidden" value={record.secretKeyName} />
+                    <input
+                      className="h-9 rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                      maxLength={500}
+                      name="rotationNote"
+                      placeholder="Why rotation is required"
+                    />
+                    <button className="h-9 rounded-full bg-amber-500 px-3 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
+                      Mark rotation required
+                    </button>
+                  </form>
+                  <form action={updateSecretRotationNoteAction} className="grid gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <input name="providerKey" type="hidden" value={record.providerKey} />
+                    <input name="secretKeyName" type="hidden" value={record.secretKeyName} />
+                    <input
+                      className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                      defaultValue={record.rotationNote ?? ""}
+                      maxLength={500}
+                      name="rotationNote"
+                      placeholder="Safe metadata note only"
+                    />
+                    <button className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                      Add rotation note
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">

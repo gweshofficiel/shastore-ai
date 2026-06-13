@@ -14,6 +14,11 @@ import {
   runAllProviderDiagnostics,
   runProviderDiagnostic
 } from "@/lib/integrations/provider-diagnostics";
+import {
+  markRotationRequired,
+  markSecretRotated,
+  updateSecretRotationNote
+} from "@/lib/integrations/secret-rotation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type IntegrationAction =
@@ -113,5 +118,34 @@ export async function syncIntegrationProviderStatusAction(formData: FormData) {
 
 export async function runAllProviderDiagnosticsAction() {
   await runAllProviderDiagnostics();
+  revalidatePath("/admin/integrations");
+}
+
+export async function markSecretRotatedAction(formData: FormData) {
+  await markSecretRotated({
+    nextRotationDueAt: cleanText(formData.get("nextRotationDueAt")),
+    providerKey: cleanText(formData.get("providerKey")),
+    rotationNote: cleanText(formData.get("rotationNote")),
+    secretKeyName: cleanText(formData.get("secretKeyName"))
+  });
+  revalidatePath("/admin/integrations");
+}
+
+export async function markRotationRequiredAction(formData: FormData) {
+  await markRotationRequired({
+    nextRotationDueAt: cleanText(formData.get("nextRotationDueAt")),
+    providerKey: cleanText(formData.get("providerKey")),
+    rotationNote: cleanText(formData.get("rotationNote")),
+    secretKeyName: cleanText(formData.get("secretKeyName"))
+  });
+  revalidatePath("/admin/integrations");
+}
+
+export async function updateSecretRotationNoteAction(formData: FormData) {
+  await updateSecretRotationNote({
+    providerKey: cleanText(formData.get("providerKey")),
+    rotationNote: cleanText(formData.get("rotationNote")),
+    secretKeyName: cleanText(formData.get("secretKeyName"))
+  });
   revalidatePath("/admin/integrations");
 }
