@@ -10,6 +10,7 @@ import {
 import type { AdminDomainsHostingControl } from "@/lib/admin/data";
 
 type DomainOrder = AdminDomainsHostingControl["domainOrders"][number];
+type SslStatus = AdminDomainsHostingControl["sslStatuses"][number];
 
 type DomainAction = (formData: FormData) => void | Promise<void>;
 
@@ -25,16 +26,7 @@ type FailedOperationType =
   | "ssl_failed"
   | "dns_ssl_pending";
 
-type FailedOperationFilter =
-  | "all_failed"
-  | "registration_failed"
-  | "provider_error"
-  | "locked_processing"
-  | "missing_provider_data"
-  | "dns_ssl_pending";
-
 type FailedOperation = {
-  filterTags: FailedOperationFilter[];
   operationType: FailedOperationType;
   order: DomainOrder;
 };
@@ -43,7 +35,32 @@ type DomainDetailsDrawerProps = {
   clearDomainReview: DomainAction;
   domainOrders: DomainOrder[];
   markDomainUnderReview: DomainAction;
+  sslStatuses: SslStatus[];
   viewInternalTimeline: DomainAction;
+};
+
+type StatusFilter =
+  | "all"
+  | "connected"
+  | "dns_pending"
+  | "draft"
+  | "failed"
+  | "locked_processing"
+  | "pending"
+  | "registered"
+  | "ssl_pending"
+  | "submitted";
+
+type ProviderFilter = "all" | "httpapi" | "unknown";
+type TimeFilter = "all" | "today" | "last_7_days" | "last_30_days";
+
+type DomainFilters = {
+  owner: string;
+  provider: ProviderFilter;
+  search: string;
+  status: StatusFilter;
+  store: string;
+  time: TimeFilter;
 };
 
 function statusTone(status: string) {
@@ -68,6 +85,149 @@ function displayValue(value: string | number | null | undefined) {
   }
 
   return String(value);
+}
+
+function normalizedText(value: string | number | null | undefined) {
+  return String(value ?? "").toLowerCase();
+}
+
+function dateForFilter(value: string | null | undefined) {
+  const date = new Date(value ?? "");
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function matchesTimeFilter(value: string | null | undefined, filter: TimeFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  const date = dateForFilter(value);
+
+  if (!date) {
+    return false;
+  }
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (filter === "today") {
+    return date >= startOfToday;
+  }
+
+  const days = filter === "last_7_days" ? 7 : 30;
+  const cutoff = new Date(now);
+  cutoff.setDate(now.getDate() - days);
+
+  return date >= cutoff;
+}
+
+function domainSearchText(order: DomainOrder) {
+  return [
+    order.domain,
+    order.storeName,
+    order.ownerEmail,
+    order.providerOrderId,
+    order.providerCustomerId,
+    order.registrantContactId,
+    order.adminContactId,
+    order.techContactId,
+    order.billingContactId,
+    order.providerErrorMessage,
+    order.status
+  ]
+    .map((value) => normalizedText(value))
+    .join(" ");
+}
+
+function sslSearchText(domain: SslStatus) {
+  return [
+    domain.domain,
+    domain.storeName,
+    domain.ownerEmail,
+    domain.dnsStatus,
+    domain.sslStatus,
+    domain.primaryDomainStatus
+  ]
+    .map((value) => normalizedText(value))
+    .join(" ");
+}
+
+function orderProvider(order: DomainOrder) {
+  return order.provider?.toLowerCase() || "unknown";
+}
+
+function sslProvider(domain: SslStatus) {
+  return domain.provider?.toLowerCase() || "unknown";
+}
+
+function orderStatusMatches(order: DomainOrder, filter: StatusFilter) {
+  const status = order.status.toLowerCase();
+
+  if (filter === "all") return true;
+  if (filter === "draft") return status === "draft";
+  if (filter === "pending") return status.includes("pending");
+  if (filter === "submitted") return status === "submitted" || status === "registration_pending";
+  if (filter === "registered") return status === "registration_completed";
+  if (filter === "failed") return status.includes("failed") || Boolean(order.providerErrorMessage);
+  if (filter === "locked_processing") return ["ready_for_registration", "registration_pending", "registration_processing"].includes(status);
+  if (filter === "dns_pending") return status === "awaiting_dns" || order.nextStep.toLowerCase().includes("verify dns");
+  if (filter === "ssl_pending") return status === "ssl_pending" || order.nextStep.toLowerCase().includes("request ssl");
+  if (filter === "connected") return status === "connected" || status === "active" || status === "ssl_active";
+
+  return true;
+}
+
+function sslStatusMatches(domain: SslStatus, filter: StatusFilter) {
+  const dnsStatus = domain.dnsStatus.toLowerCase();
+  const sslStatus = domain.sslStatus.toLowerCase();
+  const primaryStatus = domain.primaryDomainStatus.toLowerCase();
+
+  if (filter === "all") return true;
+  if (filter === "failed") return dnsStatus.includes("failed") || sslStatus.includes("failed");
+  if (filter === "dns_pending") return dnsStatus !== "verified";
+  if (filter === "ssl_pending") return sslStatus !== "ssl_active";
+  if (filter === "connected") return sslStatus === "ssl_active" || primaryStatus === "primary";
+  if (filter === "pending") return dnsStatus.includes("pending") || sslStatus.includes("pending");
+
+  return false;
+}
+
+function domainMatchesFilters(order: DomainOrder, filters: DomainFilters) {
+  const query = filters.search.trim().toLowerCase();
+
+  return (
+    (!query || domainSearchText(order).includes(query)) &&
+    orderStatusMatches(order, filters.status) &&
+    (filters.provider === "all" || orderProvider(order) === filters.provider) &&
+    (filters.store === "all" || order.storeName === filters.store) &&
+    (filters.owner === "all" || order.ownerEmail === filters.owner) &&
+    matchesTimeFilter(order.updatedAt || order.createdAt, filters.time)
+  );
+}
+
+function sslMatchesFilters(domain: SslStatus, filters: DomainFilters) {
+  const query = filters.search.trim().toLowerCase();
+
+  return (
+    (!query || sslSearchText(domain).includes(query)) &&
+    sslStatusMatches(domain, filters.status) &&
+    (filters.provider === "all" || sslProvider(domain) === filters.provider) &&
+    (filters.store === "all" || domain.storeName === filters.store) &&
+    (filters.owner === "all" || domain.ownerEmail === filters.owner) &&
+    matchesTimeFilter(domain.createdAt, filters.time)
+  );
+}
+
+function activeFilterCount(filters: DomainFilters) {
+  return [
+    filters.search.trim(),
+    filters.status !== "all",
+    filters.provider !== "all",
+    filters.store !== "all",
+    filters.owner !== "all",
+    filters.time !== "all"
+  ].filter(Boolean).length;
 }
 
 function timelineTone(status: DomainOrder["timelineEvents"][number]["status"]) {
@@ -127,32 +287,24 @@ function operationFromDomain(order: DomainOrder): FailedOperation | null {
   const nextStep = order.nextStep.toLowerCase();
   const timelineLabels = order.timelineEvents.map((event) => event.label.toLowerCase()).join(" ");
   const hasProviderData = Boolean(order.providerOrderId || order.providerResponse || order.providerErrorMessage);
-  const filterTags: FailedOperationFilter[] = ["all_failed"];
   let operationType: FailedOperationType | null = null;
 
   if (status.includes("ssl_failed")) {
     operationType = "ssl_failed";
-    filterTags.push("dns_ssl_pending");
   } else if (status.includes("dns_failed")) {
     operationType = "dns_failed";
-    filterTags.push("dns_ssl_pending");
   } else if (error.includes("contact") || timelineLabels.includes("provider contact created")) {
     operationType = error ? "contact_create_failed" : null;
-    filterTags.push("provider_error");
   } else if (order.providerErrorMessage) {
     operationType = order.providerOrderId ? "provider_order_failed" : "registration_failed";
-    filterTags.push("provider_error", "registration_failed");
   } else if (status.includes("registration_failed")) {
     operationType = "registration_failed";
-    filterTags.push("registration_failed");
   } else if (status.includes("failed")) {
     operationType = status.includes("draft") ? "checkout_draft_failed" : "availability_failed";
   } else if (["ready_for_registration", "registration_pending", "registration_processing"].includes(status)) {
     operationType = "locked_for_processing";
-    filterTags.push("locked_processing");
   } else if (!hasProviderData && order.provider && status !== "draft") {
     operationType = "missing_provider_data";
-    filterTags.push("missing_provider_data");
   } else if (
     status === "awaiting_dns" ||
     status === "ssl_pending" ||
@@ -160,39 +312,51 @@ function operationFromDomain(order: DomainOrder): FailedOperation | null {
     nextStep.includes("request ssl")
   ) {
     operationType = "dns_ssl_pending";
-    filterTags.push("dns_ssl_pending");
   }
 
   if (!operationType) {
     return null;
   }
 
-  if (operationType === "missing_provider_data") {
-    filterTags.push("missing_provider_data");
-  }
-
-  if (operationType === "locked_for_processing") {
-    filterTags.push("locked_processing");
-  }
-
-  if (operationType === "dns_ssl_pending" || operationType === "dns_failed" || operationType === "ssl_failed") {
-    filterTags.push("dns_ssl_pending");
-  }
-
   return {
-    filterTags: Array.from(new Set(filterTags)),
     operationType,
     order
   };
 }
 
-const failedOperationFilters: Array<{ label: string; value: FailedOperationFilter }> = [
-  { label: "All failed", value: "all_failed" },
-  { label: "Registration failed", value: "registration_failed" },
-  { label: "Provider error", value: "provider_error" },
-  { label: "Locked processing", value: "locked_processing" },
-  { label: "Missing provider data", value: "missing_provider_data" },
-  { label: "DNS/SSL pending", value: "dns_ssl_pending" }
+const defaultDomainFilters: DomainFilters = {
+  owner: "all",
+  provider: "all",
+  search: "",
+  status: "all",
+  store: "all",
+  time: "all"
+};
+
+const statusFilterOptions: Array<{ label: string; value: StatusFilter }> = [
+  { label: "All", value: "all" },
+  { label: "Draft", value: "draft" },
+  { label: "Pending", value: "pending" },
+  { label: "Submitted", value: "submitted" },
+  { label: "Registered", value: "registered" },
+  { label: "Failed", value: "failed" },
+  { label: "Locked Processing", value: "locked_processing" },
+  { label: "DNS Pending", value: "dns_pending" },
+  { label: "SSL Pending", value: "ssl_pending" },
+  { label: "Connected", value: "connected" }
+];
+
+const providerFilterOptions: Array<{ label: string; value: ProviderFilter }> = [
+  { label: "All", value: "all" },
+  { label: "HTTPAPI", value: "httpapi" },
+  { label: "Unknown", value: "unknown" }
+];
+
+const timeFilterOptions: Array<{ label: string; value: TimeFilter }> = [
+  { label: "All time", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Last 7 days", value: "last_7_days" },
+  { label: "Last 30 days", value: "last_30_days" }
 ];
 
 function DetailRow({
@@ -290,6 +454,125 @@ function DetailSection({
   );
 }
 
+function FilterSelect<T extends string>({
+  label,
+  onChange,
+  options,
+  value
+}: {
+  label: string;
+  onChange: (value: T) => void;
+  options: Array<{ label: string; value: T }>;
+  value: T;
+}) {
+  return (
+    <label className="grid gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+      {label}
+      <select
+        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700 outline-none transition focus:border-blue-200 focus:ring-4 focus:ring-blue-100"
+        onChange={(event) => onChange(event.target.value as T)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function DomainGlobalFilters({
+  activeCount,
+  filters,
+  ownerOptions,
+  resetFilters,
+  setFilters,
+  storeOptions
+}: {
+  activeCount: number;
+  filters: DomainFilters;
+  ownerOptions: string[];
+  resetFilters: () => void;
+  setFilters: (filters: DomainFilters) => void;
+  storeOptions: string[];
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_60px_-55px_rgba(15,23,42,0.9)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Domain operations filters
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">
+            Search and filter all domain observability tables
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+            Active filters: {activeCount}
+          </p>
+        </div>
+        <button
+          className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+          onClick={resetFilters}
+          type="button"
+        >
+          Reset filters
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-6">
+        <label className="grid gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400 lg:col-span-2">
+          Global search
+          <input
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold normal-case tracking-normal text-slate-700 outline-none transition focus:border-blue-200 focus:ring-4 focus:ring-blue-100"
+            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+            placeholder="Domain, store, owner, provider ids, error, status"
+            type="search"
+            value={filters.search}
+          />
+        </label>
+        <FilterSelect
+          label="Status"
+          onChange={(status) => setFilters({ ...filters, status })}
+          options={statusFilterOptions}
+          value={filters.status}
+        />
+        <FilterSelect
+          label="Provider"
+          onChange={(provider) => setFilters({ ...filters, provider })}
+          options={providerFilterOptions}
+          value={filters.provider}
+        />
+        <FilterSelect
+          label="Store"
+          onChange={(store) => setFilters({ ...filters, store })}
+          options={[
+            { label: "All stores", value: "all" },
+            ...storeOptions.map((store) => ({ label: store, value: store }))
+          ]}
+          value={filters.store}
+        />
+        <FilterSelect
+          label="Owner"
+          onChange={(owner) => setFilters({ ...filters, owner })}
+          options={[
+            { label: "All owners", value: "all" },
+            ...ownerOptions.map((owner) => ({ label: owner, value: owner }))
+          ]}
+          value={filters.owner}
+        />
+        <FilterSelect
+          label="Time"
+          onChange={(time) => setFilters({ ...filters, time })}
+          options={timeFilterOptions}
+          value={filters.time}
+        />
+      </div>
+    </section>
+  );
+}
+
 function DomainActions({
   clearDomainReview,
   markDomainUnderReview,
@@ -345,18 +628,10 @@ function DomainActions({
 }
 
 function FailedOperationsCenter({
-  activeFilter,
   operations,
-  search,
-  setActiveFilter,
-  setSearch,
   setSelectedDomainId
 }: {
-  activeFilter: FailedOperationFilter;
   operations: FailedOperation[];
-  search: string;
-  setActiveFilter: (filter: FailedOperationFilter) => void;
-  setSearch: (value: string) => void;
   setSelectedDomainId: (id: string) => void;
 }) {
   return (
@@ -373,36 +648,7 @@ function FailedOperationsCenter({
             Read-only view built from stored domain drafts, workflows, provider responses, and DNS/SSL status.
           </p>
         </div>
-        <div className="min-w-64 flex-1 sm:max-w-sm">
-          <label className="text-xs font-black uppercase tracking-[0.16em] text-slate-400" htmlFor="failed-domain-search">
-            Search failed operations
-          </label>
-          <input
-            className="mt-2 h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-red-200 focus:ring-4 focus:ring-red-100"
-            id="failed-domain-search"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Domain, store, owner, provider order id"
-            type="search"
-            value={search}
-          />
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {failedOperationFilters.map((filter) => (
-          <button
-            className={`rounded-full border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
-              activeFilter === filter.value
-                ? "border-red-200 bg-red-100 text-red-700"
-                : "border-slate-200 bg-white text-slate-500"
-            }`}
-            key={filter.value}
-            onClick={() => setActiveFilter(filter.value)}
-            type="button"
-          >
-            {filter.label}
-          </button>
-        ))}
+        <AdminBadge tone="red">{operations.length} visible</AdminBadge>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white">
@@ -460,58 +706,82 @@ function FailedOperationsCenter({
   );
 }
 
+function ConnectedDomainsTable({ sslStatuses }: { sslStatuses: SslStatus[] }) {
+  return (
+    <AdminTable
+      empty={!sslStatuses.length ? "No DNS or SSL status records match the current filters." : null}
+      headers={["Domain", "Store", "Owner", "DNS status", "SSL status", "Primary status"]}
+    >
+      {sslStatuses.map((domain) => (
+        <tr key={domain.id}>
+          <td className="px-5 py-4 font-bold text-slate-950">{domain.domain}</td>
+          <td className="px-5 py-4 text-slate-600">{domain.storeName}</td>
+          <td className="px-5 py-4 text-slate-600">{domain.ownerEmail}</td>
+          <td className="px-5 py-4"><AdminBadge tone={statusTone(domain.dnsStatus)}>{domain.dnsStatus}</AdminBadge></td>
+          <td className="px-5 py-4"><AdminBadge tone={statusTone(domain.sslStatus)}>{domain.sslStatus}</AdminBadge></td>
+          <td className="px-5 py-4"><AdminBadge>{domain.primaryDomainStatus}</AdminBadge></td>
+        </tr>
+      ))}
+    </AdminTable>
+  );
+}
+
 export function DomainDetailsDrawer({
   clearDomainReview,
   domainOrders,
   markDomainUnderReview,
+  sslStatuses,
   viewInternalTimeline
 }: DomainDetailsDrawerProps) {
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
-  const [activeFailedFilter, setActiveFailedFilter] = useState<FailedOperationFilter>("all_failed");
-  const [failedSearch, setFailedSearch] = useState("");
+  const [filters, setFilters] = useState<DomainFilters>(defaultDomainFilters);
   const selectedDomain = domainOrders.find((order) => order.id === selectedDomainId) ?? null;
+  const storeOptions = useMemo(
+    () => Array.from(new Set([...domainOrders.map((order) => order.storeName), ...sslStatuses.map((domain) => domain.storeName)])).sort(),
+    [domainOrders, sslStatuses]
+  );
+  const ownerOptions = useMemo(
+    () => Array.from(new Set([...domainOrders.map((order) => order.ownerEmail), ...sslStatuses.map((domain) => domain.ownerEmail)])).sort(),
+    [domainOrders, sslStatuses]
+  );
+  const filteredDomainOrders = useMemo(
+    () => domainOrders.filter((order) => domainMatchesFilters(order, filters)),
+    [domainOrders, filters]
+  );
+  const filteredSslStatuses = useMemo(
+    () => sslStatuses.filter((domain) => sslMatchesFilters(domain, filters)),
+    [filters, sslStatuses]
+  );
   const failedOperations = useMemo(
     () =>
-      domainOrders
+      filteredDomainOrders
         .map(operationFromDomain)
         .filter((operation): operation is FailedOperation => Boolean(operation)),
-    [domainOrders]
+    [filteredDomainOrders]
   );
-  const visibleFailedOperations = useMemo(() => {
-    const query = failedSearch.trim().toLowerCase();
-
-    return failedOperations.filter((operation) => {
-      const { order } = operation;
-      const matchesFilter = operation.filterTags.includes(activeFailedFilter);
-      const matchesSearch =
-        !query ||
-        [
-          order.domain,
-          order.storeName,
-          order.ownerEmail,
-          order.providerOrderId ?? ""
-        ].some((value) => value.toLowerCase().includes(query));
-
-      return matchesFilter && matchesSearch;
-    });
-  }, [activeFailedFilter, failedOperations, failedSearch]);
+  const activeCount = activeFilterCount(filters);
 
   return (
     <>
+      <DomainGlobalFilters
+        activeCount={activeCount}
+        filters={filters}
+        ownerOptions={ownerOptions}
+        resetFilters={() => setFilters(defaultDomainFilters)}
+        setFilters={setFilters}
+        storeOptions={storeOptions}
+      />
+
       <FailedOperationsCenter
-        activeFilter={activeFailedFilter}
-        operations={visibleFailedOperations}
-        search={failedSearch}
-        setActiveFilter={setActiveFailedFilter}
-        setSearch={setFailedSearch}
+        operations={failedOperations}
         setSelectedDomainId={setSelectedDomainId}
       />
 
       <AdminTable
-        empty={!domainOrders.length ? "No domain drafts or registration workflows found." : null}
+        empty={!filteredDomainOrders.length ? "No domain drafts or registration workflows match the current filters." : null}
         headers={["Store", "Owner", "Domain", "Extension", "Status", "Plan credit", "Customer due", "Created", "Next step", "Actions"]}
       >
-        {domainOrders.map((order) => (
+        {filteredDomainOrders.map((order) => (
           <tr
             className="cursor-pointer transition hover:bg-slate-50"
             key={order.id}
@@ -544,6 +814,8 @@ export function DomainDetailsDrawer({
           </tr>
         ))}
       </AdminTable>
+
+      <ConnectedDomainsTable sslStatuses={filteredSslStatuses} />
 
       {selectedDomain ? (
         <div className="fixed inset-0 z-50">

@@ -99,6 +99,7 @@ export default async function AdminDomainsHostingPage() {
         clearDomainReview={clearDomainReview}
         domainOrders={control.domainOrders}
         markDomainUnderReview={markDomainUnderReview}
+        sslStatuses={control.sslStatuses}
         viewInternalTimeline={viewInternalTimeline}
       />
 
@@ -141,21 +142,6 @@ export default async function AdminDomainsHostingPage() {
                 </form>
               </div>
             </td>
-          </tr>
-        ))}
-      </AdminTable>
-
-      <AdminTable
-        empty={!control.sslStatuses.length ? "No DNS or SSL status records found." : null}
-        headers={["Domain", "Store", "DNS status", "SSL status", "Primary status"]}
-      >
-        {control.sslStatuses.map((domain) => (
-          <tr key={domain.id}>
-            <td className="px-5 py-4 font-bold text-slate-950">{domain.domain}</td>
-            <td className="px-5 py-4 text-slate-600">{domain.storeName}</td>
-            <td className="px-5 py-4"><AdminBadge tone={statusTone(domain.dnsStatus)}>{domain.dnsStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={statusTone(domain.sslStatus)}>{domain.sslStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge>{domain.primaryDomainStatus}</AdminBadge></td>
           </tr>
         ))}
       </AdminTable>

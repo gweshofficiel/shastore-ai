@@ -357,11 +357,15 @@ export type AdminDomainsHostingControl = {
     storeName: string;
   }>;
   sslStatuses: Array<{
+    createdAt: string;
     dnsStatus: string;
     domain: string;
     id: string;
+    ownerEmail: string;
     primaryDomainStatus: string;
+    provider: string | null;
     sslStatus: string;
+    storeId: string;
     storeName: string;
   }>;
   providerHealth: Array<{
@@ -6769,13 +6773,18 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
 
   const sslStatuses: AdminDomainsHostingControl["sslStatuses"] = storeDomains.map((domain) => {
     const store = storeById.get(text(domain.store_id)) ?? storeById.get(text(domain.store_instance_id));
+    const ownerId = store ? ownerUserId(store) : text(domain.owner_user_id);
 
     return {
+      createdAt: text(domain.created_at),
       dnsStatus: text(domain.dns_status, text(domain.verification_status, "pending")),
       domain: text(domain.hostname, text(domain.primary_domain, "Unknown domain")),
       id: text(domain.id),
+      ownerEmail: owners.get(ownerId) ?? text(ownerId, "Unknown owner"),
       primaryDomainStatus: domain.is_primary === true ? "primary" : "secondary",
+      provider: null,
       sslStatus: text(domain.ssl_status, "pending"),
+      storeId: store ? text(store.id) : text(domain.store_id, text(domain.store_instance_id)),
       storeName: store ? text(store.store_name, text(store.name, "Untitled store")) : "Unknown store"
     };
   });
@@ -6785,11 +6794,15 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const sslSetup = isRecord(workflow.sslSetup) ? workflow.sslSetup : {};
 
       return {
+        createdAt: text(workflow.createdAt),
         dnsStatus: text(dnsSetup.status, "not_started"),
         domain: text(workflow.domain, "Pending domain"),
         id: text(workflow.id, `${text(store.id)}-workflow-ssl`),
+        ownerEmail: owners.get(ownerUserId(store)) ?? text(ownerUserId(store), "Unknown owner"),
         primaryDomainStatus: "workflow placeholder",
+        provider: text(workflow.provider) || null,
         sslStatus: text(sslSetup.status, "ssl_pending"),
+        storeId: text(store.id),
         storeName: text(store.store_name, text(store.name, "Untitled store"))
       };
     })
