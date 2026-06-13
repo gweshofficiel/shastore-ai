@@ -23,6 +23,17 @@ type DomainStatusSyncAction = (
   prevState: DomainStatusSyncState,
   formData: FormData
 ) => DomainStatusSyncState | Promise<DomainStatusSyncState>;
+type DomainRegistrationRetryState = {
+  attemptedAt: string | null;
+  message: string | null;
+  ok: boolean;
+  providerOrderId: string | null;
+  status: string | null;
+};
+type DomainRegistrationRetryAction = (
+  prevState: DomainRegistrationRetryState,
+  formData: FormData
+) => DomainRegistrationRetryState | Promise<DomainRegistrationRetryState>;
 
 type FailedOperationType =
   | "availability_failed"
@@ -74,9 +85,11 @@ type DomainContactVisibility = {
 };
 
 type DomainDetailsDrawerProps = {
+  canRetryDomainRegistration: boolean;
   clearDomainReview: DomainAction;
   domainOrders: DomainOrder[];
   markDomainUnderReview: DomainAction;
+  retryDomainRegistrationAction: DomainRegistrationRetryAction;
   sslStatuses: SslStatus[];
   syncDomainOrderStatusAction: DomainStatusSyncAction;
   viewInternalTimeline: DomainAction;
@@ -523,6 +536,21 @@ function firstNestedText(value: unknown, keys: string[]): string | null {
   return null;
 }
 
+function latestProviderStatus(order: DomainOrder) {
+  return firstNestedText(order.providerResponse, ["latestproviderstatus", "providerstatus"]);
+}
+
+function isRetryVisibleForOrder(order: DomainOrder) {
+  const status = order.status.toLowerCase();
+  const providerStatus = latestProviderStatus(order)?.toLowerCase() ?? "";
+
+  if (status === "active" || providerStatus === "active") {
+    return false;
+  }
+
+  return status === "failed" || providerStatus === "locked_processing";
+}
+
 const contactNameKeys = ["contactname", "customername", "name", "registrantname"];
 const contactEmailKeys = ["contactemail", "customeremail", "email", "registrantemail"];
 
@@ -902,6 +930,14 @@ const initialDomainStatusSyncState: DomainStatusSyncState = {
   ok: false,
   providerStatus: null,
   syncedAt: null
+};
+
+const initialDomainRegistrationRetryState: DomainRegistrationRetryState = {
+  attemptedAt: null,
+  message: null,
+  ok: false,
+  providerOrderId: null,
+  status: null
 };
 
 function DetailRow({
@@ -1315,6 +1351,92 @@ function DomainStatusSyncControl({
   );
 }
 
+function DomainRegistrationRetryControl({
+  canRetryDomainRegistration,
+  order,
+  retryDomainRegistrationAction
+}: {
+  canRetryDomainRegistration: boolean;
+  order: DomainOrder;
+  retryDomainRegistrationAction: DomainRegistrationRetryAction;
+}) {
+  const [state, formAction, isPending] = useActionState(
+    retryDomainRegistrationAction,
+    initialDomainRegistrationRetryState
+  );
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const canRetry = canRetryDomainRegistration && Boolean(order.domainOrderId) && isRetryVisibleForOrder(order);
+
+  if (!canRetry) {
+    return null;
+  }
+
+  return (
+    <DetailSection title="Registration Retry">
+      <p className="text-sm font-semibold leading-6 text-slate-500">
+        Super Admin-only manual retry for failed runtime domain orders. The server verifies provider status before submitting a new provider request.
+      </p>
+
+      <button
+        className="h-10 rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={isPending}
+        onClick={() => setIsConfirmOpen(true)}
+        type="button"
+      >
+        {isPending ? "Retrying registration..." : "Retry registration"}
+      </button>
+
+      {state.message ? (
+        <p className={`rounded-2xl border p-3 text-sm font-bold leading-6 ${
+          state.ok
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-amber-100 bg-amber-50 text-amber-700"
+        }`}>
+          {state.message}
+          {state.status ? ` Status: ${state.status}.` : ""}
+          {state.providerOrderId ? ` Provider order: ${state.providerOrderId}.` : ""}
+          {state.attemptedAt ? ` Attempted: ${formatTimelineTimestamp(state.attemptedAt)}.` : ""}
+        </p>
+      ) : null}
+
+      {isConfirmOpen ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
+              Confirm registration retry
+            </p>
+            <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950">
+              Retry registration?
+            </h3>
+            <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">
+              Retrying may submit a new provider registration request. Continue?
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button
+                className="h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                onClick={() => setIsConfirmOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <form action={formAction} onSubmit={() => setIsConfirmOpen(false)}>
+                <input name="domainOrderId" type="hidden" value={order.domainOrderId ?? ""} />
+                <button
+                  className="h-10 rounded-full border border-red-200 bg-red-600 px-4 text-xs font-black uppercase tracking-[0.14em] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isPending}
+                  type="submit"
+                >
+                  Continue retry
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </DetailSection>
+  );
+}
+
 function FailedOperationsCenter({
   operations,
   setSelectedDomainId
@@ -1667,9 +1789,11 @@ function ConnectedDomainsTable({ sslStatuses }: { sslStatuses: SslStatus[] }) {
 }
 
 export function DomainDetailsDrawer({
+  canRetryDomainRegistration,
   clearDomainReview,
   domainOrders,
   markDomainUnderReview,
+  retryDomainRegistrationAction,
   sslStatuses,
   syncDomainOrderStatusAction,
   viewInternalTimeline
@@ -1832,6 +1956,12 @@ export function DomainDetailsDrawer({
               <DomainStatusSyncControl
                 order={selectedDomain}
                 syncDomainOrderStatusAction={syncDomainOrderStatusAction}
+              />
+
+              <DomainRegistrationRetryControl
+                canRetryDomainRegistration={canRetryDomainRegistration}
+                order={selectedDomain}
+                retryDomainRegistrationAction={retryDomainRegistrationAction}
               />
 
               {selectedContactVisibility ? (

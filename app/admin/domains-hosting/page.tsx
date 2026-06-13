@@ -11,9 +11,11 @@ import {
   clearEmailReview,
   markDomainUnderReview,
   markEmailUnderReview,
+  retryDomainRegistrationAction,
   syncDomainOrderStatusAction,
   viewInternalTimeline
 } from "@/lib/admin/domain-hosting-actions";
+import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminDomainsHostingControl } from "@/lib/admin/data";
 
 function statusTone(status: string) {
@@ -45,12 +47,15 @@ const futureHooks = [
 ];
 
 export default async function AdminDomainsHostingPage() {
-  const control = await getAdminDomainsHostingControl();
+  const [access, control] = await Promise.all([
+    getAdminAccess(),
+    getAdminDomainsHostingControl()
+  ]);
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Global Super Admin monitoring for Owner Domains, Professional Email, DNS, SSL, and future Hosting foundations. No provider APIs, registrations, mailboxes, hosting, charges, or secrets are used here."
+        description="Global Super Admin monitoring for Owner Domains, Professional Email, DNS, SSL, and future Hosting foundations, with controlled provider status sync and failed-registration retry controls only. No mailboxes, hosting, charges, DNS, SSL, or secrets are exposed here."
         title="Domain & Hosting Control Center"
       />
 
@@ -97,9 +102,11 @@ export default async function AdminDomainsHostingPage() {
       </AdminTable>
 
       <DomainDetailsDrawer
+        canRetryDomainRegistration={access.internalRole === "super_admin"}
         clearDomainReview={clearDomainReview}
         domainOrders={control.domainOrders}
         markDomainUnderReview={markDomainUnderReview}
+        retryDomainRegistrationAction={retryDomainRegistrationAction}
         sslStatuses={control.sslStatuses}
         syncDomainOrderStatusAction={syncDomainOrderStatusAction}
         viewInternalTimeline={viewInternalTimeline}
