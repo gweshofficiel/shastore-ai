@@ -299,6 +299,10 @@ function readRegistrationCustomerId(fallbackCustomerId?: string) {
   );
 }
 
+function readRegistrationContactType() {
+  return readEnv("HTTPAPI_REGISTRATION_CONTACT_TYPE") || "Contact";
+}
+
 function contactEnvValues() {
   const values = new Map<string, string>();
   const missingEnvNames: string[] = [];
@@ -398,6 +402,7 @@ export async function createHttpApiContact(
   input: HttpApiContactCreateInput = {}
 ): Promise<HttpApiContactCreateResult> {
   const customerId = readRegistrationCustomerId(input.customerId);
+  const contactType = readRegistrationContactType();
   const { missingEnvNames, values } = contactEnvValues();
 
   if (!customerId) {
@@ -408,7 +413,9 @@ export async function createHttpApiContact(
   }
 
   console.info("httpapi_contact_create_started", {
+    contactType,
     hasCustomerId: Boolean(customerId),
+    hasType: Boolean(contactType),
     missingEnvCount: missingEnvNames.length,
     provider: "httpapi"
   });
@@ -440,6 +447,7 @@ export async function createHttpApiContact(
     url.searchParams.set("auth-userid", config.resellerId);
     url.searchParams.set("api-key", config.apiKey);
     url.searchParams.set("customer-id", customerId);
+    url.searchParams.set("type", contactType);
 
     for (const [param, value] of values.entries()) {
       url.searchParams.set(param, value);
