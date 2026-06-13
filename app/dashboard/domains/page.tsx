@@ -69,6 +69,8 @@ const statusMessages: Record<string, string> = {
   "domain-order-draft-failed": "Domain order draft could not be prepared.",
   "domain-order-draft-prepared": "Draft prepared. Awaiting payment / future activation.",
   "domain-registration-awaiting-payment": "Payment confirmation is required before registration can be prepared.",
+  "domain-registration-failed": "Domain registration was submitted but the provider returned an error. Review the stored domain order response.",
+  "domain-registration-submitted": "Domain registration submitted to the reseller provider. Status tracking has started.",
   "domain-registration-workflow-failed": "Domain registration workflow could not be prepared.",
   "domain-registration-workflow-prepared": "Domain registration workflow prepared. No domain has been registered yet.",
   "domain-primary-routing-failed": "Primary domain routing preparation could not be saved.",
@@ -103,6 +105,7 @@ const successStatuses = new Set([
   "domain-activated",
   "domain-checkout-preview-prepared",
   "domain-order-draft-prepared",
+  "domain-registration-submitted",
   "domain-registration-workflow-prepared",
   "domain-primary-routing-prepared",
   "professional-email-draft-prepared",
@@ -1230,7 +1233,7 @@ export default async function DomainsPage({
                         Registration timeline
                       </p>
                       <p className="mt-1 text-sm font-semibold leading-6 text-muted">
-                        This timeline is a preparation workflow only. No real domain registration starts here.
+                        Domain registration is submitted through the reseller runtime; DNS and SSL remain placeholder steps for later phases.
                       </p>
                     </div>
                     {workflow ? <StatusBadge label="Registration" value={workflow.status} /> : null}

@@ -41,6 +41,15 @@ import {
   buildDomainPaymentPreparation,
   type DomainPaymentPreparationStatus
 } from "@/lib/domains/domain-payment-preparation";
+import {
+  createDomainOrderRecord,
+  updateDomainOrderRecord,
+  type DomainOrderStatus
+} from "@/lib/domains/domain-orders";
+import {
+  registerDomainOrder,
+  type HttpApiRegistrationResult
+} from "@/lib/domains/httpapi-registration";
 import { getDomainExtension, normalizeDomainExtension } from "@/lib/domains/extension-catalog";
 import { searchHttpApiDomains } from "@/lib/domains/httpapi-client";
 import { getUserPrimaryWorkspaceId, requirePermission } from "@/lib/permissions/rbac";
@@ -178,6 +187,15 @@ type DomainRegistrationWorkflowRecord = {
   };
   id: string;
   paymentConfirmationStatus: "covered_by_credit" | "future_payment_confirmed";
+  provider: "httpapi";
+  providerActionType: string | null;
+  providerEntityId: string | null;
+  providerOrderId: string | null;
+  providerRawResponse: unknown;
+  registrationError: HttpApiRegistrationResult["error"] | null;
+  registrationOrderId: string;
+  registrationStatus: DomainOrderStatus;
+  registrationYears: number;
   sslSetup: DomainSslSetup;
   status: DomainRegistrationWorkflowStatus;
   statuses: DomainRegistrationWorkflowStatus[];
@@ -220,6 +238,68 @@ function cleanPreviewDomain(value: FormDataEntryValue | null) {
     .replace(/\s+/g, "-")
     .replace(/(^\.|\.$)+/g, "")
     .slice(0, 253);
+}
+
+function readServerEnv(keys: string[]) {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function registrationRuntimeText({
+  envKeys,
+  formData,
+  name,
+  maxLength = 253
+}: {
+  envKeys: string[];
+  formData: FormData;
+  maxLength?: number;
+  name: string;
+}) {
+  return cleanText(formData.get(name), maxLength) || readServerEnv(envKeys).slice(0, maxLength);
+}
+
+function cleanRegistrationYears(value: FormDataEntryValue | null) {
+  const parsed = typeof value === "string" ? Number.parseInt(value, 10) : 1;
+
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 10 ? parsed : 1;
+}
+
+function tldFromDomain(domain: string) {
+  const parts = domain.split(".").filter(Boolean);
+  const tld = parts.at(-1);
+
+  return tld ? `.${tld.toLowerCase()}` : "";
+}
+
+function domainOrderStatusFromRegistrationResult(result: HttpApiRegistrationResult): DomainOrderStatus {
+  if (!result.success) {
+    return "failed";
+  }
+
+  const raw = isRecord(result.rawResponse) ? result.rawResponse : {};
+  const providerStatus = String(raw.actionstatus ?? raw.actionStatus ?? raw.actionstatusdesc ?? "").toLowerCase();
+
+  return providerStatus.includes("success") || providerStatus.includes("complete") ? "active" : "pending";
+}
+
+function workflowStatusFromDomainOrderStatus(status: DomainOrderStatus): DomainRegistrationWorkflowStatus {
+  if (status === "active") {
+    return "registration_completed";
+  }
+
+  if (status === "failed") {
+    return "registration_failed";
+  }
+
+  return "registration_pending";
 }
 
 function createDomainVerificationToken() {
@@ -1354,6 +1434,94 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   }
 
   const createdAt = new Date().toISOString();
+  const registrationYears = cleanRegistrationYears(formData.get("years"));
+  const registrationOrderId = randomUUID();
+  const customerContactId = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID", "HTTPAPI_CUSTOMER_CONTACT_ID"],
+    formData,
+    maxLength: 80,
+    name: "customerContactId"
+  });
+  const nameserver1 = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_1", "HTTPAPI_NAMESERVER_1"],
+    formData,
+    name: "nameserver1"
+  });
+  const nameserver2 = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_2", "HTTPAPI_NAMESERVER_2"],
+    formData,
+    name: "nameserver2"
+  });
+  const nameserver3 = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_3", "HTTPAPI_NAMESERVER_3"],
+    formData,
+    name: "nameserver3"
+  });
+  const nameserver4 = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_4", "HTTPAPI_NAMESERVER_4"],
+    formData,
+    name: "nameserver4"
+  });
+  const nameserver5 = registrationRuntimeText({
+    envKeys: ["HTTPAPI_REGISTRATION_NAMESERVER_5", "HTTPAPI_NAMESERVER_5"],
+    formData,
+    name: "nameserver5"
+  });
+
+  const initialOrder = await createDomainOrderRecord({
+    createdAt,
+    domainName: domain,
+    id: registrationOrderId,
+    provider: "httpapi",
+    rawResponse: {
+      status: "submitted"
+    },
+    registrationYears,
+    status: "submitted",
+    storeId,
+    supabase,
+    tld: tldFromDomain(domain)
+  });
+
+  if (initialOrder.error) {
+    console.error("[store-domains] domain order record create failed", {
+      domain,
+      message: initialOrder.error.message,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+
+  const registrationResult = await registerDomainOrder({
+    customerContactId,
+    domainName: domain,
+    nameserver1,
+    nameserver2,
+    nameserver3,
+    nameserver4,
+    nameserver5,
+    years: registrationYears
+  });
+  const registrationStatus = domainOrderStatusFromRegistrationResult(registrationResult);
+  const finalOrder = await updateDomainOrderRecord({
+    id: registrationOrderId,
+    providerEntityId: registrationResult.entityId,
+    providerOrderId: registrationResult.orderId,
+    rawResponse: registrationResult.rawResponse,
+    status: registrationStatus,
+    supabase
+  });
+
+  if (finalOrder.error) {
+    console.error("[store-domains] domain order record update failed", {
+      domain,
+      message: finalOrder.error.message,
+      registrationOrderId,
+      storeId
+    });
+    domainsRedirect(storeId, "domain-registration-workflow-failed");
+  }
+
   const workflow: DomainRegistrationWorkflowRecord = {
     createdAt,
     customerDue,
@@ -1377,10 +1545,19 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
     },
     id: randomUUID(),
     paymentConfirmationStatus: coveredByCredit ? "covered_by_credit" : "future_payment_confirmed",
+    provider: "httpapi",
+    providerActionType: registrationResult.actionType,
+    providerEntityId: registrationResult.entityId,
+    providerOrderId: registrationResult.orderId,
+    providerRawResponse: registrationResult.rawResponse,
+    registrationError: registrationResult.error ?? null,
+    registrationOrderId,
+    registrationStatus,
+    registrationYears,
     sslSetup: buildDomainSslSetup({
       targetDomain: domain
     }),
-    status: "ready_for_registration",
+    status: workflowStatusFromDomainOrderStatus(registrationStatus),
     statuses: [
       "ready_for_registration",
       "registration_pending",
@@ -1408,6 +1585,11 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
       checkoutPreviewStatus: preview.status,
       customerDueCents: customerDue,
       paymentConfirmationStatus: workflow.paymentConfirmationStatus,
+      provider: workflow.provider,
+      providerEntityId: workflow.providerEntityId,
+      providerOrderId: workflow.providerOrderId,
+      registrationOrderId,
+      registrationStatus,
       source: "store_data_domain_registration_workflows",
       status: workflow.status
     },
@@ -1416,7 +1598,10 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   });
 
   revalidatePath("/dashboard/domains");
-  domainsRedirect(storeId, "domain-registration-workflow-prepared");
+  domainsRedirect(
+    storeId,
+    registrationStatus === "failed" ? "domain-registration-failed" : "domain-registration-submitted"
+  );
 }
 
 export async function preparePrimaryDomainRouting(formData: FormData) {
