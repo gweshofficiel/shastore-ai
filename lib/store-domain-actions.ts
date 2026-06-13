@@ -1441,8 +1441,7 @@ export async function prepareDomainRegistrationWorkflow(formData: FormData) {
   const registrationOrderId = randomUUID();
   const customerId = readServerEnv([
     "HTTPAPI_REGISTRATION_CUSTOMER_ID",
-    "HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID",
-    "HTTPAPI_CUSTOMER_CONTACT_ID"
+    "HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID"
   ]).slice(0, 80);
   const registrantContactId = readServerEnv(["HTTPAPI_REGISTRATION_REGISTRANT_CONTACT_ID"]).slice(0, 80);
   const adminContactId = readServerEnv(["HTTPAPI_REGISTRATION_ADMIN_CONTACT_ID"]).slice(0, 80);

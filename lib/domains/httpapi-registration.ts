@@ -28,11 +28,59 @@ export type HttpApiRegistrationResult = {
   success: boolean;
 };
 
+export type HttpApiContactCreateInput = {
+  customerId?: string;
+};
+
+type HttpApiContactCreateResult = {
+  contactId: string | null;
+  error?: {
+    code: string;
+    message: string;
+    status?: number;
+  };
+  rawResponse: unknown;
+  success: boolean;
+};
+
 type HttpApiRegistrationConfig = {
   apiKey: string;
   baseUrl: string;
   resellerId: string;
 };
+
+type HttpApiContactEnvField = {
+  envKey: string;
+  param: string;
+};
+
+const CONTACT_ENV_FIELDS: readonly HttpApiContactEnvField[] = [
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_NAME", param: "name" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_COMPANY", param: "company" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_EMAIL", param: "email" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_ADDRESS1", param: "address-line-1" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_CITY", param: "city" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_STATE", param: "state" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_COUNTRY", param: "country" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_ZIP", param: "zipcode" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_PHONE_CC", param: "phone-cc" },
+  { envKey: "HTTPAPI_REGISTRATION_CONTACT_PHONE", param: "phone" }
+];
+
+const CONTACT_RESPONSE_PRIVATE_KEYS = new Set([
+  "address-line-1",
+  "address1",
+  "city",
+  "company",
+  "country",
+  "email",
+  "name",
+  "phone",
+  "phone-cc",
+  "state",
+  "zipcode",
+  "zip"
+]);
 
 function readEnv(key: string) {
   return process.env[key]?.trim() || null;
@@ -83,6 +131,10 @@ function stringValue(value: unknown) {
 function safeRawText(value: string) {
   return value
     .replace(/api-key=([^&\s]+)/gi, "api-key=[redacted]")
+    .replace(
+      /(name|company|email|address-line-1|city|state|country|zipcode|phone-cc|phone)=([^&\s]+)/gi,
+      "$1=[redacted]"
+    )
     .replace(/"api-key"\s*:\s*"[^"]+"/gi, '"api-key":"[redacted]"')
     .replace(/"api_key"\s*:\s*"[^"]+"/gi, '"api_key":"[redacted]"')
     .slice(0, 5000);
@@ -98,6 +150,30 @@ function safeResponseForLog(value: unknown) {
   } catch {
     return null;
   }
+}
+
+function safeContactResponseForLog(value: unknown): unknown {
+  if (typeof value === "string") {
+    return safeRawText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => safeContactResponseForLog(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    sanitized[key] = CONTACT_RESPONSE_PRIVATE_KEYS.has(key.toLowerCase())
+      ? "[redacted]"
+      : safeContactResponseForLog(nestedValue);
+  }
+
+  return sanitized;
 }
 
 function providerResponseFromText({
@@ -180,44 +256,21 @@ export function extractHttpApiErrorMessage(rawResponse: unknown): string | null 
 }
 
 function missingRegistrationEnvNames({
-  adminContactId,
-  billingContactId,
   customerId,
   nameserver1,
   nameserver2,
-  nameservers,
-  registrantContactId,
-  techContactId
+  nameservers
 }: {
-  adminContactId: string;
-  billingContactId: string;
   customerId: string;
   nameserver1: string;
   nameserver2: string;
   nameservers: string[];
-  registrantContactId: string;
-  techContactId: string;
 }) {
   const missing: string[] = [];
 
   if (!customerId) {
     missing.push("HTTPAPI_REGISTRATION_CUSTOMER_ID");
-  }
-
-  if (!registrantContactId) {
-    missing.push("HTTPAPI_REGISTRATION_REGISTRANT_CONTACT_ID");
-  }
-
-  if (!adminContactId) {
-    missing.push("HTTPAPI_REGISTRATION_ADMIN_CONTACT_ID");
-  }
-
-  if (!techContactId) {
-    missing.push("HTTPAPI_REGISTRATION_TECH_CONTACT_ID");
-  }
-
-  if (!billingContactId) {
-    missing.push("HTTPAPI_REGISTRATION_BILLING_CONTACT_ID");
+    missing.push("HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID");
   }
 
   if (nameservers.length < 2) {
@@ -231,6 +284,62 @@ function missingRegistrationEnvNames({
   }
 
   return Array.from(new Set(missing));
+}
+
+function contactIdFromResponse(raw: Record<string, unknown>) {
+  return stringValue(raw.contactid ?? raw["contact-id"] ?? raw.entityid ?? raw.id);
+}
+
+function readRegistrationCustomerId(fallbackCustomerId?: string) {
+  return (
+    fallbackCustomerId?.trim() ||
+    readEnv("HTTPAPI_REGISTRATION_CUSTOMER_ID") ||
+    readEnv("HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID") ||
+    ""
+  );
+}
+
+function contactEnvValues() {
+  const values = new Map<string, string>();
+  const missingEnvNames: string[] = [];
+
+  for (const field of CONTACT_ENV_FIELDS) {
+    const value = readEnv(field.envKey) ?? "";
+
+    if (!value) {
+      missingEnvNames.push(field.envKey);
+    }
+
+    values.set(field.param, value);
+  }
+
+  return {
+    missingEnvNames,
+    values
+  };
+}
+
+function failedContactCreateResult({
+  code,
+  message,
+  rawResponse,
+  status
+}: {
+  code: string;
+  message: string;
+  rawResponse: unknown;
+  status?: number;
+}): HttpApiContactCreateResult {
+  return {
+    contactId: null,
+    error: {
+      code,
+      message,
+      status
+    },
+    rawResponse,
+    success: false
+  };
 }
 
 function normalizeDomainName(value: string) {
@@ -285,19 +394,170 @@ function failedRegistrationResult({
   };
 }
 
+export async function createHttpApiContact(
+  input: HttpApiContactCreateInput = {}
+): Promise<HttpApiContactCreateResult> {
+  const customerId = readRegistrationCustomerId(input.customerId);
+  const { missingEnvNames, values } = contactEnvValues();
+
+  if (!customerId) {
+    missingEnvNames.unshift(
+      "HTTPAPI_REGISTRATION_CUSTOMER_ID",
+      "HTTPAPI_REGISTRATION_CUSTOMER_CONTACT_ID"
+    );
+  }
+
+  console.info("httpapi_contact_create_started", {
+    hasCustomerId: Boolean(customerId),
+    missingEnvCount: missingEnvNames.length,
+    provider: "httpapi"
+  });
+
+  if (missingEnvNames.length > 0) {
+    const uniqueMissingEnvNames = Array.from(new Set(missingEnvNames));
+    const result = failedContactCreateResult({
+      code: "missing_contact_create_input",
+      message: `Missing HTTPAPI contact creation environment variables: ${uniqueMissingEnvNames.join(", ")}.`,
+      rawResponse: {
+        code: "missing_contact_create_input",
+        missingEnvNames: uniqueMissingEnvNames,
+        status: "ERROR"
+      }
+    });
+
+    console.error("httpapi_contact_create_failed", {
+      code: result.error?.code,
+      message: result.error?.message,
+      provider: "httpapi"
+    });
+
+    return result;
+  }
+
+  try {
+    const config = getHttpApiRegistrationConfig();
+    const url = new URL(`${config.baseUrl}/api/contacts/add.json`);
+    url.searchParams.set("auth-userid", config.resellerId);
+    url.searchParams.set("api-key", config.apiKey);
+    url.searchParams.set("customer-id", customerId);
+
+    for (const [param, value] of values.entries()) {
+      url.searchParams.set(param, value);
+    }
+
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json"
+      },
+      method: "POST"
+    });
+    const responseText = await response.text().catch(() => "");
+    let rawResponse: unknown = null;
+
+    try {
+      rawResponse = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      rawResponse = providerResponseFromText({ response, responseText });
+    }
+
+    const raw = responseRecord(rawResponse);
+    const providerStatus = stringValue(raw.status)?.toLowerCase() ?? null;
+    const contactId = contactIdFromResponse(raw);
+    const loggedResponse = safeContactResponseForLog(rawResponse);
+
+    console.info("httpapi_contact_create_response", {
+      hasContactId: Boolean(contactId),
+      provider: "httpapi",
+      response: loggedResponse,
+      status: response.status,
+      statusText: response.statusText
+    });
+
+    if (!response.ok || providerStatus === "error") {
+      const message =
+        extractHttpApiErrorMessage(rawResponse) ??
+        response.statusText ??
+        "HTTPAPI contact creation failed.";
+      const result = failedContactCreateResult({
+        code: providerStatus === "error" ? "httpapi_contact_create_error" : "httpapi_contact_create_http_error",
+        message,
+        rawResponse: safeContactResponseForLog(
+          rawResponse ?? providerResponseFromText({ response, responseText })
+        ),
+        status: response.status
+      });
+
+      console.error("httpapi_contact_create_failed", {
+        message: result.error?.message,
+        provider: "httpapi",
+        response: loggedResponse,
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      return result;
+    }
+
+    if (!contactId) {
+      const message =
+        extractHttpApiErrorMessage(rawResponse) ??
+        "HTTPAPI contact creation succeeded without a contact id.";
+      const result = failedContactCreateResult({
+        code: "httpapi_contact_create_missing_contact_id",
+        message,
+        rawResponse: safeContactResponseForLog(rawResponse)
+      });
+
+      console.error("httpapi_contact_create_failed", {
+        code: result.error?.code,
+        message: result.error?.message,
+        provider: "httpapi",
+        response: loggedResponse,
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      return result;
+    }
+
+    return {
+      contactId,
+      rawResponse: safeContactResponseForLog(rawResponse),
+      success: true
+    };
+  } catch (error) {
+    const result = failedContactCreateResult({
+      code: "httpapi_contact_create_exception",
+      message: error instanceof Error ? error.message : String(error),
+      rawResponse: null
+    });
+
+    console.error("httpapi_contact_create_failed", {
+      message: result.error?.message,
+      provider: "httpapi"
+    });
+
+    return result;
+  }
+}
+
 export async function registerDomainOrder(
   input: HttpApiRegistrationInput
 ): Promise<HttpApiRegistrationResult> {
-  const adminContactId = input.adminContactId.trim();
-  const billingContactId = input.billingContactId.trim();
+  let adminContactId = input.adminContactId.trim();
+  let billingContactId = input.billingContactId.trim();
   const customerId = input.customerId.trim();
   const domainName = normalizeDomainName(input.domainName);
-  const registrantContactId = input.registrantContactId.trim();
-  const techContactId = input.techContactId.trim();
+  let registrantContactId = input.registrantContactId.trim();
+  let techContactId = input.techContactId.trim();
   const years = normalizeYears(input.years);
   const nameserver1 = input.nameserver1.trim();
   const nameserver2 = input.nameserver2.trim();
   const nameservers = normalizeNameservers(input);
+  const hasExplicitContactIds = Boolean(
+    registrantContactId && adminContactId && techContactId && billingContactId
+  );
 
   console.info("domain_registration_started", {
     domainName,
@@ -310,20 +570,17 @@ export async function registerDomainOrder(
     hasAdminContactId: Boolean(adminContactId),
     hasBillingContactId: Boolean(billingContactId),
     hasCustomerId: Boolean(customerId),
+    hasExplicitContactIds,
     hasRegistrantContactId: Boolean(registrantContactId),
     hasTechContactId: Boolean(techContactId),
     nameserverCount: nameservers.length
   });
 
   const missingEnvNames = missingRegistrationEnvNames({
-    adminContactId,
-    billingContactId,
     customerId,
     nameserver1,
     nameserver2,
-    nameservers,
-    registrantContactId,
-    techContactId
+    nameservers
   });
 
   if (!domainName || missingEnvNames.length > 0) {
@@ -351,6 +608,40 @@ export async function registerDomainOrder(
   }
 
   try {
+    let contactCreateRawResponse: unknown = null;
+
+    if (!hasExplicitContactIds) {
+      const contactCreateResult = await createHttpApiContact({ customerId });
+
+      contactCreateRawResponse = contactCreateResult.rawResponse;
+
+      if (!contactCreateResult.success || !contactCreateResult.contactId) {
+        const result = failedRegistrationResult({
+          code: contactCreateResult.error?.code ?? "httpapi_contact_create_failed",
+          message: contactCreateResult.error?.message ?? "HTTPAPI contact creation failed.",
+          rawResponse: {
+            contactCreate: contactCreateResult.rawResponse,
+            status: "ERROR"
+          },
+          status: contactCreateResult.error?.status
+        });
+
+        console.error("domain_registration_failed", {
+          code: result.error?.code,
+          domainName,
+          message: result.error?.message,
+          provider: "httpapi"
+        });
+
+        return result;
+      }
+
+      registrantContactId = contactCreateResult.contactId;
+      adminContactId = contactCreateResult.contactId;
+      techContactId = contactCreateResult.contactId;
+      billingContactId = contactCreateResult.contactId;
+    }
+
     const config = getHttpApiRegistrationConfig();
     const url = new URL(`${config.baseUrl}/api/domains/register.json`);
     url.searchParams.set("auth-userid", config.resellerId);
@@ -406,7 +697,12 @@ export async function registerDomainOrder(
       const result = failedRegistrationResult({
         code: providerStatus === "error" ? "httpapi_registration_error" : "httpapi_registration_http_error",
         message,
-        rawResponse: rawResponse ?? providerResponseFromText({ response, responseText }),
+        rawResponse: contactCreateRawResponse
+          ? {
+              contactCreate: contactCreateRawResponse,
+              registration: rawResponse ?? providerResponseFromText({ response, responseText })
+            }
+          : rawResponse ?? providerResponseFromText({ response, responseText }),
         status: response.status
       });
 
@@ -440,7 +736,12 @@ export async function registerDomainOrder(
       const result = failedRegistrationResult({
         code: "httpapi_registration_missing_order_id",
         message,
-        rawResponse
+        rawResponse: contactCreateRawResponse
+          ? {
+              contactCreate: contactCreateRawResponse,
+              registration: rawResponse
+            }
+          : rawResponse
       });
 
       console.error("httpapi_registration_failed_response", {
@@ -475,7 +776,12 @@ export async function registerDomainOrder(
       actionType,
       entityId,
       orderId,
-      rawResponse,
+      rawResponse: contactCreateRawResponse
+        ? {
+            contactCreate: contactCreateRawResponse,
+            registration: rawResponse
+          }
+        : rawResponse,
       success: true
     };
   } catch (error) {
