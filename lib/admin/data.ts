@@ -315,6 +315,7 @@ export type AdminDomainsHostingControl = {
     createdAt: string;
     customerDueCents: number;
     domain: string;
+    domainOrderId: string | null;
     extension: string;
     id: string;
     nameserverCount: number;
@@ -324,9 +325,11 @@ export type AdminDomainsHostingControl = {
     planCreditUsedCents: number;
     provider: string | null;
     providerCustomerId: string | null;
+    providerEntityId: string | null;
     providerErrorMessage: string | null;
     providerOrderId: string | null;
     providerResponse: unknown;
+    providerStatusSyncedAt: string | null;
     registrantContactId: string | null;
     registrationYears: number | null;
     status: string;
@@ -6636,15 +6639,22 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
   const { supabase, users } = await getAdminUsersBase();
   const httpApiReadiness = getHttpApiReadiness();
   const owners = emailMap(users);
-  const [stores, storeDomains] = await Promise.all([
+  const [stores, storeDomains, runtimeDomainOrders] = await Promise.all([
     safeSelect(supabase, "stores", "id, owner_user_id, user_id, name, store_name, slug, store_data, created_at"),
     safeSelect(
       supabase,
       "store_domains",
       "id, store_id, store_instance_id, owner_user_id, hostname, domain_type, status, verification_status, dns_status, ssl_status, is_primary, primary_domain, created_at"
+    ),
+    safeSelect(
+      supabase,
+      "domain_orders",
+      "id, store_id, domain_name, tld, provider, provider_order_id, provider_entity_id, registration_years, status, raw_response, created_at"
     )
   ]);
   const storeById = new Map(stores.map((store) => [text(store.id), store]));
+  const runtimeDomainOrderById = new Map(runtimeDomainOrders.map((order) => [text(order.id), order]));
+  const projectedRuntimeDomainOrderIds = new Set<string>();
   const domainOrders: AdminDomainsHostingControl["domainOrders"] = [];
   const emailOrders: AdminDomainsHostingControl["emailOrders"] = [];
 
@@ -6665,6 +6675,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         createdAt: text(draft.createdAt),
         customerDueCents: centsValue(draft.customerDueCents ?? draft.customerDue),
         domain,
+        domainOrderId: null,
         extension: text(draft.extension, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
         id: text(draft.id, `${storeId}-domain-draft-${domain}`),
         nameserverCount: 0,
@@ -6674,9 +6685,11 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         planCreditUsedCents: centsValue(draft.creditUsedCents ?? draft.creditUsed),
         provider: null,
         providerCustomerId: null,
+        providerEntityId: null,
         providerErrorMessage: null,
         providerOrderId: null,
         providerResponse: null,
+        providerStatusSyncedAt: null,
         registrantContactId: null,
         registrationYears: null,
         status: text(draft.status, "draft"),
@@ -6703,6 +6716,15 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
       const providerOrderId = text(workflow.providerOrderId) || firstTextValue(registrationResponse, ["orderid", "orderId", "entityid", "entityId"]);
       const draft = recordFromStoreDataById(storeData, "domainOrderDrafts", text(workflow.domainOrderDraftId));
       const preview = recordFromStoreDataById(storeData, "domainCheckoutPreviews", text(workflow.domainCheckoutPreviewId));
+      const domainOrderId = text(workflow.registrationOrderId) || null;
+      const runtimeOrder = domainOrderId ? runtimeDomainOrderById.get(domainOrderId) : null;
+      const runtimeRawResponse = runtimeOrder?.raw_response;
+      const runtimeStatusSync = responseRecord(runtimeRawResponse);
+      const providerStatusSyncedAt = firstTextValue(runtimeStatusSync, ["providerStatusSyncedAt", "syncedAt"]);
+
+      if (domainOrderId) {
+        projectedRuntimeDomainOrderIds.add(domainOrderId);
+      }
 
       domainOrders.push({
         adminContactId: firstTextValue(workflow, ["adminContactId", "admin-contact-id"]) ?? contactId,
@@ -6711,6 +6733,7 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         createdAt: text(workflow.createdAt),
         customerDueCents: centsValue(workflow.customerDueCents ?? workflow.customerDue),
         domain,
+        domainOrderId,
         extension: domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown",
         id: text(workflow.id, `${storeId}-domain-workflow-${domain}`),
         nameserverCount: nameservers.length,
@@ -6720,12 +6743,14 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         planCreditUsedCents: 0,
         provider: text(workflow.provider) || null,
         providerCustomerId: firstTextValue(workflow, ["customerId", "customer-id"]) ?? firstTextValue(registrationResponse, ["customerid", "customer-id", "customerId"]),
+        providerEntityId: text(workflow.providerEntityId) || text(runtimeOrder?.provider_entity_id) || firstTextValue(registrationResponse, ["entityid", "entityId"]),
         providerErrorMessage,
-        providerOrderId,
-        providerResponse: sanitizedProviderResponse(providerRawResponse),
+        providerOrderId: providerOrderId || text(runtimeOrder?.provider_order_id) || null,
+        providerResponse: sanitizedProviderResponse(runtimeRawResponse ?? providerRawResponse),
+        providerStatusSyncedAt,
         registrantContactId: firstTextValue(workflow, ["registrantContactId", "reg-contact-id"]) ?? contactId,
         registrationYears: numberValue(workflow.registrationYears) || null,
-        status: text(workflow.status, "ready_for_registration"),
+        status: text(runtimeOrder?.status, text(workflow.status, "ready_for_registration")),
         storeId,
         storeName,
         techContactId: firstTextValue(workflow, ["techContactId", "tech-contact-id"]) ?? contactId,
@@ -6769,6 +6794,78 @@ export async function getAdminDomainsHostingControl(): Promise<AdminDomainsHosti
         storeName
       });
     }
+  }
+
+  for (const order of runtimeDomainOrders) {
+    const domainOrderId = text(order.id);
+
+    if (projectedRuntimeDomainOrderIds.has(domainOrderId)) {
+      continue;
+    }
+
+    const store = storeById.get(text(order.store_id));
+    const ownerId = store ? ownerUserId(store) : "";
+    const domain = text(order.domain_name, "Unknown domain");
+    const rawResponse = order.raw_response;
+    const rawRecord = responseRecord(rawResponse);
+    const statusSync = responseRecord(rawRecord.statusSync);
+    const providerStatus = firstTextValue(rawRecord, ["latestProviderStatus", "providerStatus", "currentstatus", "status"]);
+    const providerStatusSyncedAt =
+      firstTextValue(rawRecord, ["providerStatusSyncedAt", "syncedAt"]) ??
+      firstTextValue(statusSync, ["syncedAt"]);
+    const providerOrderId = text(order.provider_order_id) || firstTextValue(rawRecord, ["orderid", "orderId"]);
+    const providerEntityId = text(order.provider_entity_id) || firstTextValue(rawRecord, ["entityid", "entityId"]);
+
+    domainOrders.push({
+      adminContactId: firstTextValue(rawRecord, ["adminContactId", "admin-contact-id"]),
+      autoRenew: firstTextValue(rawRecord, ["auto-renew", "autoRenew"]),
+      billingContactId: firstTextValue(rawRecord, ["billingContactId", "billing-contact-id"]),
+      createdAt: text(order.created_at),
+      customerDueCents: 0,
+      domain,
+      domainOrderId,
+      extension: text(order.tld, domain.includes(".") ? `.${domain.split(".").pop()}` : "unknown"),
+      id: domainOrderId,
+      nameserverCount: 0,
+      nameservers: [],
+      nextStep: providerStatusSyncedAt ? "Provider status synced" : "Sync provider status",
+      ownerEmail: store ? owners.get(ownerId) ?? text(ownerId, "Unknown owner") : "Unknown owner",
+      planCreditUsedCents: 0,
+      provider: text(order.provider, "httpapi") || null,
+      providerCustomerId: firstTextValue(rawRecord, ["customerid", "customer-id", "customerId"]),
+      providerEntityId,
+      providerErrorMessage: providerErrorFromWorkflow({ providerRawResponse: rawResponse, registrationError: null }),
+      providerOrderId,
+      providerResponse: sanitizedProviderResponse(rawResponse),
+      providerStatusSyncedAt,
+      registrantContactId: firstTextValue(rawRecord, ["registrantContactId", "reg-contact-id"]),
+      registrationYears: numberValue(order.registration_years) || null,
+      status: text(order.status, providerStatus ?? "unknown"),
+      storeId: text(order.store_id),
+      storeName: store ? text(store.store_name, text(store.name, "Untitled store")) : "Unknown store",
+      techContactId: firstTextValue(rawRecord, ["techContactId", "tech-contact-id"]),
+      timelineEvents: [
+        timelineEvent({
+          label: "Runtime domain order created",
+          providerMessage: text(order.status) || null,
+          providerOrderId,
+          status: text(order.status) === "failed" ? "failed" : "info",
+          timestamp: text(order.created_at) || null
+        }),
+        ...(providerStatusSyncedAt
+          ? [
+              timelineEvent({
+                label: "Provider status synced",
+                providerMessage: providerStatus,
+                providerOrderId,
+                status: providerStatus === "active" ? "success" : providerStatus === "failed" ? "failed" : "info",
+                timestamp: providerStatusSyncedAt
+              })
+            ]
+          : [])
+      ],
+      updatedAt: providerStatusSyncedAt ?? text(order.created_at)
+    });
   }
 
   const sslStatuses: AdminDomainsHostingControl["sslStatuses"] = storeDomains.map((domain) => {

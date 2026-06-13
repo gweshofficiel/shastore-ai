@@ -11,6 +11,7 @@ import {
   clearEmailReview,
   markDomainUnderReview,
   markEmailUnderReview,
+  syncDomainOrderStatusAction,
   viewInternalTimeline
 } from "@/lib/admin/domain-hosting-actions";
 import { getAdminDomainsHostingControl } from "@/lib/admin/data";
@@ -100,6 +101,7 @@ export default async function AdminDomainsHostingPage() {
         domainOrders={control.domainOrders}
         markDomainUnderReview={markDomainUnderReview}
         sslStatuses={control.sslStatuses}
+        syncDomainOrderStatusAction={syncDomainOrderStatusAction}
         viewInternalTimeline={viewInternalTimeline}
       />
 

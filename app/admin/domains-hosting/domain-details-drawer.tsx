@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useActionState, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import {
   AdminBadge,
   AdminTable,
@@ -13,6 +13,16 @@ type DomainOrder = AdminDomainsHostingControl["domainOrders"][number];
 type SslStatus = AdminDomainsHostingControl["sslStatuses"][number];
 
 type DomainAction = (formData: FormData) => void | Promise<void>;
+type DomainStatusSyncState = {
+  message: string | null;
+  ok: boolean;
+  providerStatus: "active" | "failed" | "locked_processing" | "pending" | "suspended" | "unknown" | null;
+  syncedAt: string | null;
+};
+type DomainStatusSyncAction = (
+  prevState: DomainStatusSyncState,
+  formData: FormData
+) => DomainStatusSyncState | Promise<DomainStatusSyncState>;
 
 type FailedOperationType =
   | "availability_failed"
@@ -68,6 +78,7 @@ type DomainDetailsDrawerProps = {
   domainOrders: DomainOrder[];
   markDomainUnderReview: DomainAction;
   sslStatuses: SslStatus[];
+  syncDomainOrderStatusAction: DomainStatusSyncAction;
   viewInternalTimeline: DomainAction;
 };
 
@@ -160,6 +171,8 @@ function domainSearchText(order: DomainOrder) {
     order.storeName,
     order.ownerEmail,
     order.providerOrderId,
+    order.providerEntityId,
+    order.providerStatusSyncedAt,
     order.providerCustomerId,
     order.registrantContactId,
     order.adminContactId,
@@ -884,6 +897,13 @@ const domainOperationsCertification = [
   { label: "Audit Export", status: "Ready" }
 ] as const;
 
+const initialDomainStatusSyncState: DomainStatusSyncState = {
+  message: null,
+  ok: false,
+  providerStatus: null,
+  syncedAt: null
+};
+
 function DetailRow({
   label,
   value
@@ -1244,6 +1264,57 @@ function DomainActions({
   );
 }
 
+function DomainStatusSyncControl({
+  order,
+  syncDomainOrderStatusAction
+}: {
+  order: DomainOrder;
+  syncDomainOrderStatusAction: DomainStatusSyncAction;
+}) {
+  const [state, formAction, isPending] = useActionState(
+    syncDomainOrderStatusAction,
+    initialDomainStatusSyncState
+  );
+  const canSync = Boolean(order.domainOrderId && (order.providerOrderId || order.providerEntityId));
+
+  return (
+    <DetailSection title="Provider Status Sync">
+      <p className="text-sm font-semibold leading-6 text-slate-500">
+        Syncs the current provider status for this existing domain order only. It does not retry registration, charge, or mutate DNS/SSL.
+      </p>
+
+      <form action={formAction} className="grid gap-3">
+        <input name="domainOrderId" type="hidden" value={order.domainOrderId ?? ""} />
+        <button
+          className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!canSync || isPending}
+          type="submit"
+        >
+          {isPending ? "Syncing provider status..." : "Sync provider status"}
+        </button>
+      </form>
+
+      {!canSync ? (
+        <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500">
+          Sync requires an existing runtime domain order with a stored provider order id or provider entity id.
+        </p>
+      ) : null}
+
+      {state.message ? (
+        <p className={`rounded-2xl border p-3 text-sm font-bold leading-6 ${
+          state.ok
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-amber-100 bg-amber-50 text-amber-700"
+        }`}>
+          {state.message}
+          {state.providerStatus ? ` Provider status: ${state.providerStatus}.` : ""}
+          {state.syncedAt ? ` Synced: ${formatTimelineTimestamp(state.syncedAt)}.` : ""}
+        </p>
+      ) : null}
+    </DetailSection>
+  );
+}
+
 function FailedOperationsCenter({
   operations,
   setSelectedDomainId
@@ -1600,6 +1671,7 @@ export function DomainDetailsDrawer({
   domainOrders,
   markDomainUnderReview,
   sslStatuses,
+  syncDomainOrderStatusAction,
   viewInternalTimeline
 }: DomainDetailsDrawerProps) {
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
@@ -1747,12 +1819,20 @@ export function DomainDetailsDrawer({
               <DetailSection title="Provider Information">
                 <DetailRow label="Provider" value={selectedDomain.provider} />
                 <DetailRow label="Provider order id" value={selectedDomain.providerOrderId} />
+                <DetailRow label="Provider entity id" value={selectedDomain.providerEntityId} />
                 <DetailRow label="Provider customer id" value={selectedDomain.providerCustomerId} />
+                <DetailRow label="Runtime domain order id" value={selectedDomain.domainOrderId} />
+                <DetailRow label="Provider status synced" value={selectedDomain.providerStatusSyncedAt ? formatTimelineTimestamp(selectedDomain.providerStatusSyncedAt) : null} />
                 <DetailRow label="Registrant contact id" value={selectedDomain.registrantContactId} />
                 <DetailRow label="Admin contact id" value={selectedDomain.adminContactId} />
                 <DetailRow label="Tech contact id" value={selectedDomain.techContactId} />
                 <DetailRow label="Billing contact id" value={selectedDomain.billingContactId} />
               </DetailSection>
+
+              <DomainStatusSyncControl
+                order={selectedDomain}
+                syncDomainOrderStatusAction={syncDomainOrderStatusAction}
+              />
 
               {selectedContactVisibility ? (
                 <DetailSection title="Domain Ownership & Contacts">
