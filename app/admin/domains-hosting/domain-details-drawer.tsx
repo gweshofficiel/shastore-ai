@@ -641,6 +641,151 @@ function contactIssueLabel(issue: ContactIssueType) {
   return issue.replace(/_/g, " ");
 }
 
+const sensitiveProviderKeyParts = [
+  "apikey",
+  "auth",
+  "authorization",
+  "password",
+  "privatekey",
+  "secret",
+  "token"
+];
+
+function normalizedSensitiveKey(key: string) {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSensitiveProviderKey(key: string) {
+  const normalizedKey = normalizedSensitiveKey(key);
+
+  return sensitiveProviderKeyParts.some((part) => normalizedKey.includes(part));
+}
+
+function maskSensitiveString(value: string) {
+  return value.replace(
+    /((?:api[-_]?key|api_key|token|secret|password|auth|authorization|private[-_]?key)=)[^&\s"']+/gi,
+    "$1[REDACTED]"
+  );
+}
+
+function sanitizeProviderPayload(value: unknown, key = ""): unknown {
+  if (key && isSensitiveProviderKey(key)) {
+    return "[REDACTED]";
+  }
+
+  if (typeof value === "string") {
+    return maskSensitiveString(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeProviderPayload(item));
+  }
+
+  if (!isRecordValue(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([entryKey, entryValue]) => [
+      entryKey,
+      sanitizeProviderPayload(entryValue, entryKey)
+    ])
+  );
+}
+
+function sanitizedProviderJson(value: unknown) {
+  if (!hasProviderResponse(value)) {
+    return null;
+  }
+
+  return JSON.stringify(sanitizeProviderPayload(value), null, 2);
+}
+
+function safeDownloadName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "") || "domain-audit";
+}
+
+function downloadTextFile(filename: string, contents: string, type: string) {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function auditJsonForOrder(order: DomainOrder) {
+  return {
+    contact_ids: {
+      admin_contact_id: order.adminContactId,
+      billing_contact_id: order.billingContactId,
+      registrant_contact_id: order.registrantContactId,
+      tech_contact_id: order.techContactId
+    },
+    created_at: order.createdAt,
+    domain_overview: {
+      domain: order.domain,
+      extension: order.extension,
+      registration_years: order.registrationYears
+    },
+    error_message: order.providerErrorMessage,
+    owner_info: {
+      owner_email: order.ownerEmail
+    },
+    provider_ids: {
+      customer_id: order.providerCustomerId,
+      order_id: order.providerOrderId,
+      provider: order.provider
+    },
+    sanitized_provider_response: sanitizeProviderPayload(order.providerResponse),
+    status: order.status,
+    store_info: {
+      store_id: order.storeId,
+      store_name: order.storeName
+    },
+    timeline_events: order.timelineEvents,
+    updated_at: order.updatedAt
+  };
+}
+
+function csvValue(value: string | number | null | undefined) {
+  const text = String(value ?? "");
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function failedOperationsCsv(operations: FailedOperation[]) {
+  const headers = [
+    "domain",
+    "store",
+    "owner email",
+    "provider",
+    "provider order id",
+    "status",
+    "operation type",
+    "error message",
+    "created at",
+    "updated at"
+  ];
+  const rows = operations.map(({ operationType, order }) => [
+    order.domain,
+    order.storeName,
+    order.ownerEmail,
+    order.provider,
+    order.providerOrderId,
+    order.status,
+    operationLabel(operationType),
+    order.providerErrorMessage,
+    order.createdAt,
+    order.updatedAt
+  ]);
+
+  return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+}
+
 function operationLabel(value: FailedOperationType) {
   return value.replace(/_/g, " ");
 }
@@ -743,9 +888,7 @@ function DetailRow({
 }
 
 function RegistrationTimeline({ order }: { order: DomainOrder }) {
-  const providerResponse = hasProviderResponse(order.providerResponse)
-    ? JSON.stringify(order.providerResponse, null, 2)
-    : null;
+  const providerResponse = sanitizedProviderJson(order.providerResponse);
 
   return (
     <DetailSection title="Registration Timeline">
@@ -797,6 +940,67 @@ function RegistrationTimeline({ order }: { order: DomainOrder }) {
           </pre>
         </details>
       ) : null}
+    </DetailSection>
+  );
+}
+
+function RawProviderResponseSection({ order }: { order: DomainOrder }) {
+  const [copyStatus, setCopyStatus] = useState<"copied" | "idle" | "unavailable">("idle");
+  const providerJson = sanitizedProviderJson(order.providerResponse);
+  const auditJson = JSON.stringify(auditJsonForOrder(order), null, 2);
+
+  function copySanitizedJson() {
+    if (!providerJson || !navigator.clipboard) {
+      setCopyStatus("unavailable");
+      return;
+    }
+
+    void navigator.clipboard.writeText(providerJson).then(
+      () => setCopyStatus("copied"),
+      () => setCopyStatus("unavailable")
+    );
+  }
+
+  return (
+    <DetailSection title="Raw Provider Response">
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!providerJson}
+          onClick={copySanitizedJson}
+          type="button"
+        >
+          Copy sanitized JSON
+        </button>
+        <button
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+          onClick={() =>
+            downloadTextFile(
+              `${safeDownloadName(order.domain)}-domain-audit.json`,
+              auditJson,
+              "application/json;charset=utf-8"
+            )
+          }
+          type="button"
+        >
+          Download audit JSON
+        </button>
+        {copyStatus !== "idle" ? (
+          <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            {copyStatus === "copied" ? "Copied" : "Copy unavailable"}
+          </span>
+        ) : null}
+      </div>
+
+      {providerJson ? (
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+          {providerJson}
+        </pre>
+      ) : (
+        <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500">
+          No provider response stored yet.
+        </p>
+      )}
     </DetailSection>
   );
 }
@@ -1012,7 +1216,22 @@ function FailedOperationsCenter({
             Read-only view built from stored domain drafts, workflows, provider responses, and DNS/SSL status.
           </p>
         </div>
-        <AdminBadge tone="red">{operations.length} visible</AdminBadge>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="rounded-full border border-red-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-red-700"
+            onClick={() =>
+              downloadTextFile(
+                "domain-failed-operations-audit.csv",
+                failedOperationsCsv(operations),
+                "text/csv;charset=utf-8"
+              )
+            }
+            type="button"
+          >
+            Download audit CSV
+          </button>
+          <AdminBadge tone="red">{operations.length} visible</AdminBadge>
+        </div>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white">
@@ -1525,6 +1744,7 @@ export function DomainDetailsDrawer({
               </DetailSection>
 
               <RegistrationTimeline order={selectedDomain} />
+              <RawProviderResponseSection order={selectedDomain} />
             </div>
           </aside>
         </div>
