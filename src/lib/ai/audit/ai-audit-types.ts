@@ -40,6 +40,8 @@ export type AiAuditEventType =
   | "openai_job_failed"
   | "openai_job_locked"
   | "openai_job_running"
+  | "openai_incident_detected"
+  | "openai_production_monitoring_loaded"
   | "openai_timeout_detected";
 
 export type AiAuditStatus = "blocked" | "failed" | "skipped" | "started" | "success";

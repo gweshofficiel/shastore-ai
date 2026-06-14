@@ -68,6 +68,8 @@ const aiAuditEventTypes: AiAuditEventType[] = [
   "openai_job_failed",
   "openai_job_locked",
   "openai_job_running",
+  "openai_incident_detected",
+  "openai_production_monitoring_loaded",
   "openai_timeout_detected"
 ];
 const aiAuditStatuses: AiAuditStatus[] = ["blocked", "failed", "skipped", "started", "success"];

@@ -47,6 +47,12 @@ import type {
   AIQueueJobStatus
 } from "@/src/lib/ai/queue/ai-queue-types";
 import {
+  getOpenAIProductionMonitoringSnapshot
+} from "@/src/lib/ai/production/openai-production-monitoring";
+import type {
+  OpenAIProductionDateRange
+} from "@/src/lib/ai/production/openai-production-types";
+import {
   createJob,
   type OpenAIJobProvider
 } from "@/src/lib/ai/runtime/openai-job-model";
@@ -98,6 +104,21 @@ function isWithinHours(value: string | null | undefined, hours: number) {
 
 function percentage(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+function durationLabel(ms: number | null) {
+  if (!ms || ms < 0) {
+    return "Not available";
+  }
+
+  const seconds = Math.round(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 function severityRank(severity: string) {
@@ -181,6 +202,8 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "openai_credit_deducted",
   "openai_credit_refunded",
   "openai_credit_blocked_insufficient",
+  "openai_production_monitoring_loaded",
+  "openai_incident_detected",
   "openai_executor_finished"
 ];
 const errorDateRanges = ["24h", "7d", "30d", "all"];
@@ -202,6 +225,12 @@ const usageDateRanges: Array<AIUsageDateRange> = [
   "all_time"
 ];
 const costDateRanges: Array<AICostDateRange> = [
+  "today",
+  "last_7_days",
+  "last_30_days",
+  "all_time"
+];
+const openAIProductionDateRanges: Array<OpenAIProductionDateRange> = [
   "today",
   "last_7_days",
   "last_30_days",
@@ -247,6 +276,7 @@ export default async function AdminAIPage({
   const openAIObsAssetType = firstParam(params.openAIObsAssetType);
   const openAIObsStore = firstParam(params.openAIObsStore);
   const openAIObsDateRange = firstParam(params.openAIObsDateRange, "7d") as AIQueueDateRange;
+  const openAIProductionDateRange = firstParam(params.openAIProductionDateRange, "today") as OpenAIProductionDateRange;
   const usageDateRange = firstParam(params.usageDateRange, "last_30_days") as AIUsageDateRange;
   const usageProvider = firstParam(params.usageProvider);
   const usageStore = firstParam(params.usageStore);
@@ -271,6 +301,7 @@ export default async function AdminAIPage({
     diagnosticsSnapshot,
     operationsQueueSnapshot,
     queueSnapshot,
+    openAIProductionSnapshot,
     openAIObservabilitySnapshot,
     openAICreditSnapshot,
     openAIAssetSnapshot,
@@ -330,6 +361,9 @@ export default async function AdminAIPage({
       status: queueStatus,
       storeId: queueStore
     }, { audit: true }),
+    getOpenAIProductionMonitoringSnapshot({
+      dateRange: openAIProductionDateRange
+    }),
     getOpenAIObservabilitySnapshot({
       assetType: openAIObsAssetType,
       dateRange: openAIObsDateRange,
@@ -1352,6 +1386,134 @@ export default async function AdminAIPage({
               <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.completedAt)}</td>
               <td className="px-5 py-4 text-slate-600">{job.durationText}</td>
               <td className="px-5 py-4 text-slate-600">{job.errorMessage ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-production-monitoring">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+              OpenAI Production Monitoring
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Production runtime status
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              OpenAI-only production indicators composed from queue, audit, error, credit, cost, usage, and asset persistence snapshots. No prompts, raw responses, private asset URLs, R2 paths, tokens, or secrets are displayed.
+            </p>
+          </div>
+          <form className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(180px,1fr)_auto]">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={openAIProductionDateRange}
+                name="openAIProductionDateRange"
+              >
+                {openAIProductionDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 self-end rounded-full border border-cyan-200 bg-cyan-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-cyan-700"
+              type="submit"
+            >
+              Apply
+            </button>
+          </form>
+        </div>
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Production status
+              </p>
+              <h3 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">
+                {openAIProductionSnapshot.status}
+              </h3>
+              <p className="mt-2 text-sm font-semibold text-slate-500">
+                Generated {formatAdminDate(openAIProductionSnapshot.generatedAt)} · {openAIProductionSnapshot.dateRange}
+              </p>
+            </div>
+            <AdminBadge tone={toneForStatus(openAIProductionSnapshot.status)}>
+              {openAIProductionSnapshot.status}
+            </AdminBadge>
+          </div>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Total OpenAI jobs", value: openAIProductionSnapshot.metrics.totalOpenAIJobs },
+            { label: "Queued jobs", value: openAIProductionSnapshot.metrics.queuedJobs },
+            { label: "Running jobs", value: openAIProductionSnapshot.metrics.runningJobs },
+            { label: "Completed jobs", value: openAIProductionSnapshot.metrics.completedJobs },
+            { label: "Failed jobs", value: openAIProductionSnapshot.metrics.failedJobs },
+            { label: "Stale jobs", value: openAIProductionSnapshot.metrics.staleJobs },
+            { label: "Success rate", value: `${openAIProductionSnapshot.metrics.successRate}%` },
+            { label: "Failure rate", value: `${openAIProductionSnapshot.metrics.failureRate}%` },
+            { label: "Avg duration", value: durationLabel(openAIProductionSnapshot.metrics.averageDurationMs) },
+            { label: "P95 duration", value: durationLabel(openAIProductionSnapshot.metrics.p95DurationMs) }
+          ]}
+        />
+        <AdminStatGrid
+          stats={[
+            { label: "Credits reserved", value: openAIProductionSnapshot.metrics.creditsReserved },
+            { label: "Credits charged", value: openAIProductionSnapshot.metrics.creditsCharged },
+            { label: "Credits refunded", value: openAIProductionSnapshot.metrics.creditsRefunded },
+            { label: "Credit failures", value: openAIProductionSnapshot.metrics.creditFailures },
+            { label: "Assets generated", value: openAIProductionSnapshot.metrics.assetsGenerated },
+            { label: "Assets stored", value: openAIProductionSnapshot.metrics.assetsStored },
+            { label: "Storage failures", value: openAIProductionSnapshot.metrics.storageFailures },
+            { label: "Exports ready", value: openAIProductionSnapshot.metrics.exportsReady },
+            { label: "Export failures", value: openAIProductionSnapshot.metrics.exportFailures }
+          ]}
+        />
+        <AdminTable
+          empty={!openAIProductionSnapshot.incidents.length ? "No OpenAI production incidents detected for this range." : null}
+          headers={["Detected", "Incident", "Severity", "Message", "Evidence"]}
+        >
+          {openAIProductionSnapshot.incidents.map((incident) => (
+            <tr key={`${incident.type}:${incident.detectedAt}`}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(incident.detectedAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{incident.type}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(incident.severity)}>{incident.severity}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{incident.message}</td>
+              <td className="px-5 py-4 text-slate-600">{JSON.stringify(incident.evidence).slice(0, 220)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!openAIProductionSnapshot.recentFailedJobs.length ? "No recent failed OpenAI jobs for this range." : null}
+          headers={["Observed", "Job ID", "Status", "Asset type", "Store", "Safe error"]}
+        >
+          {openAIProductionSnapshot.recentFailedJobs.map((job) => (
+            <tr key={`${job.jobId}:${job.status}`}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.observedAt)}</td>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{job.jobId}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(job.status)}>{job.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{job.assetType ?? "No asset type"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{job.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 text-slate-600">{job.errorMessage ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!openAIProductionSnapshot.recentStorageFailures.length ? "No recent OpenAI storage failures found." : null}
+          headers={["Observed", "Job ID", "Status", "Asset type", "Store", "Error code", "Safe error"]}
+        >
+          {openAIProductionSnapshot.recentStorageFailures.map((failure) => (
+            <tr key={`${failure.jobId}:${failure.observedAt}`}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(failure.observedAt)}</td>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{failure.jobId}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(failure.status)}>{failure.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{failure.assetType ?? "No asset type"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{failure.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 text-slate-600">{failure.errorCode ?? "No code"}</td>
+              <td className="px-5 py-4 text-slate-600">{failure.errorMessage ?? "No error"}</td>
             </tr>
           ))}
         </AdminTable>
