@@ -10,6 +10,8 @@ import {
 import {
   clearAIJobReview,
   markAIJobUnderReview,
+  runAIDiagnosticAction,
+  runAllAIDiagnosticsAction,
   viewAIJobDetails,
   viewAIPublicAsset
 } from "@/lib/admin/ai-actions";
@@ -28,10 +30,11 @@ import type {
   AIErrorGroup,
   AIErrorSeverity
 } from "@/src/lib/ai/errors/error-types";
+import { getAIDiagnosticsSnapshot } from "@/src/lib/ai/diagnostics/diagnostics-service";
 import { getAIProviderHealthSnapshot } from "@/src/lib/ai/health/health-service";
 
 function toneForStatus(status: string) {
-  if (["completed", "configured", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
+  if (["completed", "configured", "connected", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
@@ -39,7 +42,7 @@ function toneForStatus(status: string) {
     return "red" as const;
   }
 
-  if (["processing", "active", "placeholder", "no_secret_required", "unknown"].includes(status)) {
+  if (["disabled", "processing", "active", "placeholder", "no_secret_required", "skipped", "unknown"].includes(status)) {
     return "blue" as const;
   }
 
@@ -72,6 +75,10 @@ const auditStatuses: Array<AiAuditStatus | "all"> = [
 ];
 const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "all",
+  "ai_diagnostic_started",
+  "ai_diagnostic_success",
+  "ai_diagnostic_failed",
+  "ai_diagnostic_skipped",
   "ai_job_requested",
   "ai_job_queued",
   "ai_job_started",
@@ -115,7 +122,7 @@ export default async function AdminAIPage({
   const errorGroup = firstParam(params.errorGroup) as AIErrorGroup | "all";
   const errorDateRange = firstParam(params.errorDateRange, "7d") as "24h" | "7d" | "30d" | "all";
   const errorStore = firstParam(params.errorStore);
-  const [control, healthSnapshot, auditLogs, errorSnapshot] = await Promise.all([
+  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     listAiAuditLogs({
@@ -130,7 +137,8 @@ export default async function AdminAIPage({
       provider: errorProvider,
       severity: errorSeverity,
       storeId: errorStore
-    })
+    }),
+    getAIDiagnosticsSnapshot()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
   const auditAssetTypes = [...new Set(auditLogs.map((log) => log.assetType).filter(Boolean))].sort();
@@ -228,6 +236,83 @@ export default async function AdminAIPage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-400">
+              AI Diagnostics Center
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Safe AI provider diagnostics
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Diagnostics validate configuration and runtime readiness with env/config presence checks only. No provider calls, generation, credit deduction, raw responses, prompts, or secrets are used.
+            </p>
+          </div>
+          <form action={runAllAIDiagnosticsAction}>
+            <button
+              className="h-10 rounded-full border border-indigo-200 bg-indigo-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-indigo-700"
+              type="submit"
+            >
+              Run all diagnostics
+            </button>
+          </form>
+        </div>
+        <AdminTable
+          empty={!diagnosticsSnapshot.providers.length ? "No AI diagnostics are available." : null}
+          headers={[
+            "Provider",
+            "Configured",
+            "Enabled",
+            "Status",
+            "Last Checked",
+            "Response Time",
+            "Safe Message",
+            "Actions"
+          ]}
+        >
+          {diagnosticsSnapshot.providers.map((diagnostic) => (
+            <tr key={diagnostic.provider}>
+              <td className="px-5 py-4 font-bold text-slate-950">{diagnostic.provider_name}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={diagnostic.configured ? "green" : "red"}>
+                  {diagnostic.configured ? "configured" : "missing_config"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={diagnostic.enabled ? "green" : "blue"}>
+                  {diagnostic.enabled ? "enabled" : "disabled"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(diagnostic.status)}>{diagnostic.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(diagnostic.last_checked_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{diagnostic.response_time_ms}ms</td>
+              <td className="px-5 py-4 text-slate-600">
+                {diagnostic.safe_message}
+                {diagnostic.error_message ? (
+                  <p className="mt-2 text-xs font-semibold text-red-500">
+                    {diagnostic.error_code ?? "diagnostic_error"}: {diagnostic.error_message}
+                  </p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4">
+                <form action={runAIDiagnosticAction}>
+                  <input name="provider" type="hidden" value={diagnostic.provider} />
+                  <button
+                    className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                    type="submit"
+                  >
+                    Run diagnostic
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <AdminTable
         empty={!control.jobs.length ? "No AI jobs found." : null}

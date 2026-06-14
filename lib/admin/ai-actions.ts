@@ -5,6 +5,11 @@ import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
 import type { AiAuditEventType } from "@/src/lib/ai/audit/ai-audit-types";
+import {
+  runAIDiagnostic,
+  runAllAIDiagnostics
+} from "@/src/lib/ai/diagnostics/diagnostics-service";
+import type { AIDiagnosticsProviderKey } from "@/src/lib/ai/diagnostics/diagnostics-types";
 
 type AIAdminAction =
   | "admin_ai_job_clear_review"
@@ -14,6 +19,25 @@ type AIAdminAction =
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+const diagnosticProviders: AIDiagnosticsProviderKey[] = [
+  "openai",
+  "fal",
+  "replicate",
+  "runway",
+  "kling",
+  "elevenlabs",
+  "deepgram",
+  "gemini"
+];
+
+function diagnosticProvider(value: string): AIDiagnosticsProviderKey {
+  if (diagnosticProviders.includes(value as AIDiagnosticsProviderKey)) {
+    return value as AIDiagnosticsProviderKey;
+  }
+
+  throw new Error("Unsupported AI diagnostics provider.");
 }
 
 async function recordAIAdminAction(formData: FormData, action: AIAdminAction) {
@@ -89,4 +113,16 @@ export async function viewAIJobDetails(formData: FormData) {
 
 export async function viewAIPublicAsset(formData: FormData) {
   await recordAIAdminAction(formData, "admin_ai_public_asset_viewed");
+}
+
+export async function runAIDiagnosticAction(formData: FormData) {
+  const provider = diagnosticProvider(cleanText(formData.get("provider")));
+
+  await runAIDiagnostic(provider, { audit: true });
+  revalidatePath("/admin/ai");
+}
+
+export async function runAllAIDiagnosticsAction() {
+  await runAllAIDiagnostics({ audit: true });
+  revalidatePath("/admin/ai");
 }
