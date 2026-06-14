@@ -113,9 +113,26 @@ const usageRanges: Array<{ label: string; value: ProviderUsageRange }> = [
   { label: "Last 30 days", value: "last_30_days" },
   { label: "All time", value: "all_time" }
 ];
+const healthSortOptions = [
+  "provider",
+  "health_status",
+  "last_check",
+  "response_time",
+  "consecutive_failures"
+] as const;
+
+type HealthSortKey = (typeof healthSortOptions)[number];
 
 function formatPercent(value: number) {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
+}
+
+function safeHealthSort(value: string): HealthSortKey {
+  return healthSortOptions.includes(value as HealthSortKey) ? (value as HealthSortKey) : "health_status";
+}
+
+function dateSortValue(value: string | null) {
+  return value ? Date.parse(value) || 0 : 0;
 }
 
 export default async function AdminIntegrationsPage({
@@ -157,6 +174,7 @@ export default async function AdminIntegrationsPage({
   const usageRange = firstParam(params.usageRange, "last_7_days") as ProviderUsageRange;
   const usageProvider = firstParam(params.usageProvider);
   const usageCategory = firstParam(params.usageCategory) as ProviderUsageCategory | "all";
+  const healthSort = safeHealthSort(firstParam(params.healthSort, "health_status"));
   const [
     control,
     auditLogs,
@@ -164,7 +182,10 @@ export default async function AdminIntegrationsPage({
     secretRotationRecords,
     webhookEvents,
     webhookStats,
-    providerUsage
+    providerUsage,
+    failedAuditLogs,
+    unresolvedIntegrationErrors,
+    failedWebhookEvents
   ] = await Promise.all([
     getAdminIntegrationsControl(),
     listIntegrationAuditLogs({
@@ -189,7 +210,10 @@ export default async function AdminIntegrationsPage({
       window: webhookWindow
     }),
     getWebhookStats(),
-    getProviderUsageSummary(usageRange)
+    getProviderUsageSummary(usageRange),
+    listIntegrationAuditLogs({ status: "failed" }),
+    listIntegrationErrors({ unresolvedOnly: true }),
+    listWebhookEvents({ status: "failed", window: "7d" })
   ]);
   const rotationRequiredByProvider = new Map<string, number>();
   const webhookEventTypes = [...new Set(webhookEvents.map((event) => event.eventType))].sort();
@@ -199,6 +223,86 @@ export default async function AdminIntegrationsPage({
     .filter((provider) => usageCategory === "all" || provider.category === usageCategory);
   const filteredFailureBreakdown = providerUsage.failureBreakdown
     .filter((failure) => usageProvider === "all" || failure.providerKey === usageProvider);
+  const healthCounts = {
+    degraded: control.integrations.filter((integration) => ["degraded", "needs_review", "warning"].includes(integration.healthStatus)).length,
+    failed: control.integrations.filter((integration) => integration.healthStatus === "failed").length,
+    healthy: control.integrations.filter((integration) => integration.healthStatus === "healthy").length,
+    missingConfig: control.integrations.filter((integration) => integration.healthStatus === "missing_config").length,
+    placeholder: control.integrations.filter((integration) => integration.healthStatus === "placeholder").length,
+    total: control.integrations.length
+  };
+  const sortedHealthIntegrations = [...control.integrations].sort((left, right) => {
+    if (healthSort === "provider") {
+      return left.name.localeCompare(right.name);
+    }
+
+    if (healthSort === "last_check") {
+      return dateSortValue(right.lastChecked) - dateSortValue(left.lastChecked);
+    }
+
+    if (healthSort === "response_time") {
+      return (right.responseTimeMs ?? -1) - (left.responseTimeMs ?? -1);
+    }
+
+    if (healthSort === "consecutive_failures") {
+      return right.consecutiveFailures - left.consecutiveFailures;
+    }
+
+    return String(left.healthStatus).localeCompare(String(right.healthStatus)) || left.name.localeCompare(right.name);
+  });
+  const secretRotationWarnings = secretRotationRecords.filter((record) => record.rotationRequired);
+  const recentCriticalEvents = [
+    ...failedAuditLogs.map((log) => ({
+      event: log.operation,
+      provider: log.providerName,
+      severity: "failed",
+      timestamp: log.createdAt
+    })),
+    ...unresolvedIntegrationErrors.map((error) => ({
+      event: error.operation || error.errorCode || "integration_error",
+      provider: error.providerName,
+      severity: error.status,
+      timestamp: error.createdAt
+    })),
+    ...failedWebhookEvents.map((event) => ({
+      event: event.eventType,
+      provider: event.providerKey,
+      severity: "failed_webhook",
+      timestamp: event.createdAt
+    }))
+  ]
+    .sort((left, right) => dateSortValue(right.timestamp) - dateSortValue(left.timestamp))
+    .slice(0, 12);
+  const certificationItems = [
+    {
+      name: "Health Engine",
+      ready: healthCounts.failed === 0 && healthCounts.degraded === 0
+    },
+    {
+      name: "Audit Logs",
+      ready: failedAuditLogs.length === 0
+    },
+    {
+      name: "Error Center",
+      ready: unresolvedIntegrationErrors.length === 0
+    },
+    {
+      name: "Diagnostics",
+      ready: control.integrations.every((integration) => !["failed", "missing_config"].includes(diagnosticMessage(integration.lastSafeResponseSummary).status))
+    },
+    {
+      name: "Secret Rotation",
+      ready: secretRotationWarnings.length === 0
+    },
+    {
+      name: "Webhooks",
+      ready: webhookStats.failed === 0 && webhookStats.retryPending === 0
+    },
+    {
+      name: "Usage Analytics",
+      ready: providerUsage.failureRate === 0
+    }
+  ];
 
   for (const record of secretRotationRecords) {
     if (record.rotationRequired) {
@@ -238,7 +342,172 @@ export default async function AdminIntegrationsPage({
         ]}
       />
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="operations-dashboard">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-500">
+              Unified Integration Operations Dashboard
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Runtime operations overview
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Consolidates health, audit logs, error center, diagnostics, secret rotation, webhooks, and usage analytics without duplicating provider workflows or exposing secrets.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <form action={checkAllIntegrationProviders}>
+              <button className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                Check all providers
+              </button>
+            </form>
+            <a className="grid h-10 place-items-center rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700" href="#integration-error-center">
+              Open Error Center
+            </a>
+            <a className="grid h-10 place-items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700" href="#webhook-monitoring-center">
+              Open Webhook Center
+            </a>
+            <a className="grid h-10 place-items-center rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-700" href="#secret-rotation-center">
+              Open Secret Rotation
+            </a>
+            <a className="grid h-10 place-items-center rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700" href="#integration-audit-logs">
+              Open Audit Logs
+            </a>
+          </div>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total Providers", value: healthCounts.total },
+            { label: "Healthy Providers", value: healthCounts.healthy },
+            { label: "Degraded Providers", value: healthCounts.degraded },
+            { label: "Failed Providers", value: healthCounts.failed },
+            { label: "Missing Config Providers", value: healthCounts.missingConfig },
+            { label: "Placeholder Providers", value: healthCounts.placeholder }
+          ]}
+        />
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <section className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Operations Health Summary</h3>
+              <form method="get">
+                <select
+                  className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700"
+                  defaultValue={healthSort}
+                  name="healthSort"
+                >
+                  <option value="health_status">Sort by health</option>
+                  <option value="provider">Sort by provider</option>
+                  <option value="last_check">Sort by last check</option>
+                  <option value="response_time">Sort by response time</option>
+                  <option value="consecutive_failures">Sort by failures</option>
+                </select>
+                <button className="ml-2 h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                  Sort
+                </button>
+              </form>
+            </div>
+            <AdminTable headers={["Provider", "Health", "Last check", "Response", "Failures"]}>
+              {sortedHealthIntegrations.map((integration) => (
+                <tr key={`health-${integration.key}`}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{integration.name}</td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={toneForStatus(integration.healthStatus)}>{integration.healthStatus}</AdminBadge>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{formatAdminDate(integration.lastChecked)}</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    {integration.responseTimeMs === null ? "n/a" : `${integration.responseTimeMs} ms`}
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{integration.consecutiveFailures}</td>
+                </tr>
+              ))}
+            </AdminTable>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Recent Critical Events</h3>
+            <AdminTable
+              empty={!recentCriticalEvents.length ? "No recent critical integration events found." : null}
+              headers={["Provider", "Event", "Severity", "Timestamp"]}
+            >
+              {recentCriticalEvents.map((event) => (
+                <tr key={`${event.provider}-${event.event}-${event.timestamp}`}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{event.provider}</td>
+                  <td className="px-5 py-4 text-slate-600">{event.event}</td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={toneForStatus(event.severity)}>{event.severity}</AdminBadge>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{formatAdminDate(event.timestamp)}</td>
+                </tr>
+              ))}
+            </AdminTable>
+          </section>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-3">
+          <section className="grid gap-3">
+            <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Secret Rotation Warnings</h3>
+            <AdminTable
+              empty={!secretRotationWarnings.length ? "No providers currently require secret rotation." : null}
+              headers={["Provider", "Secret", "Next due"]}
+            >
+              {secretRotationWarnings.slice(0, 10).map((record) => (
+                <tr key={`warning-${record.providerKey}-${record.secretKeyName}`}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{record.providerName}</td>
+                  <td className="px-5 py-4 font-mono text-xs font-black text-slate-700">{record.secretKeyName}</td>
+                  <td className="px-5 py-4 text-slate-600">{formatAdminDate(record.nextRotationDueAt)}</td>
+                </tr>
+              ))}
+            </AdminTable>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Webhook Health Summary</h3>
+            <AdminStatGrid
+              stats={[
+                { label: "Total events", value: webhookStats.total },
+                { label: "Processed", value: webhookStats.processed },
+                { label: "Failed", value: webhookStats.failed },
+                { label: "Retry pending", value: webhookStats.retryPending }
+              ]}
+            />
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Provider Usage Summary</h3>
+            <AdminStatGrid
+              stats={[
+                { label: "Operations", value: providerUsage.totalOperations },
+                { label: "Failures", value: providerUsage.failedOperations },
+                { label: "Failure rate", value: formatPercent(providerUsage.failureRate) },
+                {
+                  label: "Avg response",
+                  value: providerUsage.averageResponseTimeMs === null ? "n/a" : `${providerUsage.averageResponseTimeMs} ms`
+                }
+              ]}
+            />
+          </section>
+        </div>
+
+        <section className="grid gap-3">
+          <h3 className="text-lg font-black tracking-[-0.02em] text-slate-950">Integration Runtime Certification</h3>
+          <AdminTable headers={["Runtime section", "Status"]}>
+            {certificationItems.map((item) => (
+              <tr key={item.name}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.name}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.ready ? "green" : "amber"}>
+                    {item.ready ? "Ready" : "Needs Attention"}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))}
+          </AdminTable>
+        </section>
+      </section>
+
+      <section className="grid gap-4" id="provider-usage-analytics">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-400">
@@ -546,7 +815,7 @@ export default async function AdminIntegrationsPage({
         ))}
       </AdminTable>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="webhook-monitoring-center">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">
@@ -694,7 +963,7 @@ export default async function AdminIntegrationsPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="secret-rotation-center">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Super Admin metadata only</p>
           <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">Secret Rotation Center</h2>
@@ -789,7 +1058,7 @@ export default async function AdminIntegrationsPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="integration-error-center">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
@@ -963,7 +1232,7 @@ export default async function AdminIntegrationsPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="integration-audit-logs">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
