@@ -19,6 +19,7 @@ import {
   viewAIPublicAsset
 } from "@/lib/admin/ai-actions";
 import { getAdminAIControl } from "@/lib/admin/data";
+import { getOpenAIAssetRuntimeSnapshot } from "@/src/lib/ai/assets/openai-asset-persistence";
 import { getAIUsageAnalyticsSnapshot } from "@/src/lib/ai/analytics/ai-usage-analytics";
 import type { AIUsageDateRange } from "@/src/lib/ai/analytics/ai-usage-types";
 import { listAiAuditLogs } from "@/src/lib/ai/audit/ai-audit-log";
@@ -167,6 +168,11 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "openai_call_started",
   "openai_call_completed",
   "openai_asset_stored",
+  "openai_asset_persistence_started",
+  "openai_asset_persisted",
+  "openai_asset_storage_failed",
+  "openai_asset_export_prepared",
+  "openai_asset_export_failed",
   "openai_job_completed",
   "openai_job_failed",
   "openai_timeout_detected",
@@ -267,6 +273,7 @@ export default async function AdminAIPage({
     queueSnapshot,
     openAIObservabilitySnapshot,
     openAICreditSnapshot,
+    openAIAssetSnapshot,
     secretsSnapshot
   ] = await Promise.all([
     getAdminAIControl(),
@@ -330,6 +337,7 @@ export default async function AdminAIPage({
       storeId: openAIObsStore
     }),
     getOpenAICreditRuntimeSnapshot(),
+    getOpenAIAssetRuntimeSnapshot(),
     listAISecretsMonitoring()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
@@ -1561,6 +1569,54 @@ export default async function AdminAIPage({
               <td className="px-5 py-4 break-all text-slate-600">{entry.storeId ?? "No store"}</td>
               <td className="px-5 py-4 break-all text-slate-600">{entry.userId ?? "No user"}</td>
               <td className="px-5 py-4 text-slate-600">{entry.safeErrorMessage ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-assets-runtime">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+            OpenAI Asset Persistence &amp; Exports
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            Persisted OpenAI assets
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Durable OpenAI asset records and export readiness. This view never displays prompts, raw OpenAI responses, private R2 paths, unsigned private URLs, tokens, or secrets.
+          </p>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Generated assets", value: openAIAssetSnapshot.generatedAssets },
+            { label: "Stored assets", value: openAIAssetSnapshot.storedAssets },
+            { label: "Storage failures", value: openAIAssetSnapshot.storageFailures },
+            { label: "Export ready", value: openAIAssetSnapshot.exportReady },
+            { label: "Export failed", value: openAIAssetSnapshot.exportFailed },
+            { label: "Total assets", value: openAIAssetSnapshot.totalAssets }
+          ]}
+        />
+        <AdminTable
+          empty={!openAIAssetSnapshot.recentAssets.length ? "No persisted OpenAI assets found." : null}
+          headers={["Created", "Job ID", "Asset type", "Status", "Storage", "Export", "Store", "User", "Target", "Dimensions", "Safe error"]}
+        >
+          {openAIAssetSnapshot.recentAssets.map((asset) => (
+            <tr key={asset.id}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(asset.createdAt)}</td>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{asset.jobId}</td>
+              <td className="px-5 py-4 text-slate-600">{asset.assetType ?? "No asset type"}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(asset.status)}>{asset.status}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(asset.storageStatus)}>{asset.storageStatus}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(asset.exportStatus)}>{asset.exportStatus}</AdminBadge></td>
+              <td className="px-5 py-4 break-all text-slate-600">{asset.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{asset.userId ?? "No user"}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {asset.targetType ?? "No target"}{asset.slot ? ` / ${asset.slot}` : ""}
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {asset.width && asset.height ? `${asset.width}x${asset.height}` : "Not recorded"}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{asset.safeErrorMessage ?? "No error"}</td>
             </tr>
           ))}
         </AdminTable>

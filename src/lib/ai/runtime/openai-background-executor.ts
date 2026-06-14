@@ -12,6 +12,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
 import type { AiAuditEventType, AiAuditStatus } from "@/src/lib/ai/audit/ai-audit-types";
 import {
+  persistOpenAIAssetForJob,
+  prepareOpenAIAssetExportForJob
+} from "@/src/lib/ai/assets/openai-asset-persistence";
+import {
   deductReservedOpenAICredits,
   refundReservedOpenAICredits,
   releaseOpenAICreditReservation,
@@ -509,11 +513,15 @@ export async function runOpenAIBackgroundExecutor(
     if (result.status === "completed" && result.job) {
       const completedJob = completeJob(executorJobRecord({ ...candidate, job: result.job }, "running"));
       const deduction = await deductReservedOpenAICredits(creditInput);
+      const assetPersistence = await persistOpenAIAssetForJob(result.job);
+      const exportPreparation = assetPersistence.ok
+        ? await prepareOpenAIAssetExportForJob(result.job)
+        : { error: assetPersistence.error, ok: false };
       summary.jobsCompleted += 1;
       summary.jobs.push({
         creditStatus: deduction.creditStatus,
         durationMs,
-        errorSummary: null,
+        errorSummary: assetPersistence.error ?? exportPreparation.error ?? null,
         jobId: completedJob.job_id,
         outcome: "completed",
         provider: completedJob.provider,
@@ -540,7 +548,7 @@ export async function runOpenAIBackgroundExecutor(
           cost_estimate: creditInput.amount,
           duration_ms: durationMs,
           retry_count: result.job.attempts,
-          storage_status: "stored"
+          storage_status: assetPersistence.asset?.storageStatus ?? "stored"
         },
         workspaceId: candidate.workspaceId
       });
@@ -551,7 +559,7 @@ export async function runOpenAIBackgroundExecutor(
           cost_estimate: creditInput.amount,
           duration_ms: durationMs,
           retry_count: result.job.attempts,
-          storage_status: "stored"
+          storage_status: assetPersistence.asset?.storageStatus ?? "stored"
         },
         workspaceId: candidate.workspaceId
       });

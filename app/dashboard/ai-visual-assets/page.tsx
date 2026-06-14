@@ -36,6 +36,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchStoresForAuthUser, type UserStoreRow } from "@/lib/stores/user-stores";
 import { getActiveWorkspaceForUser } from "@/lib/workspaces/active-workspace";
 import { assertStoreAccessInWorkspace } from "@/lib/workspaces/data-access";
+import { listOpenAIAssetsForStore } from "@/src/lib/ai/assets/openai-asset-persistence";
+import type { OpenAIAssetRecord } from "@/src/lib/ai/assets/openai-asset-types";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +58,7 @@ type AIVisualAssetsDashboardData = {
   categories: CategoryTarget[];
   error: string | null;
   jobs: AIVisualGenerationJob[];
+  persistedAssets: OpenAIAssetRecord[];
   products: ProductTarget[];
   queuePaused: boolean;
   stores: UserStoreRow[];
@@ -204,10 +207,6 @@ function completedAssetUrl(job: AIVisualGenerationJob) {
   return job.result?.publicUrl || job.result?.asset?.url || job.result?.asset?.publicUrl || null;
 }
 
-function completedAssetStorageKey(job: AIVisualGenerationJob) {
-  return job.result?.asset?.storageKey || job.result?.asset?.r2Key || null;
-}
-
 function completedAssetApprovalStatus(job: AIVisualGenerationJob) {
   const status = job.result?.asset?.approvalStatus;
   return status === "approved" || status === "rejected" || status === "disabled" || status === "generated"
@@ -259,6 +258,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: "Sign in to manage AI visual assets.",
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores: [],
@@ -281,6 +281,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: "Only workspace owners and admins can access AI visual generation controls.",
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores: [],
@@ -301,6 +302,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: "Stores could not be loaded. Please try again.",
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores: [],
@@ -317,6 +319,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: null,
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores,
@@ -339,6 +342,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: access.reason,
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores,
@@ -347,7 +351,7 @@ async function getAIVisualAssetsDashboardData(
   }
 
   const auditClient = createAdminClient() ?? supabase;
-  const [storeResult, productsResult, categoriesResult, auditResult] = await Promise.all([
+  const [storeResult, productsResult, categoriesResult, auditResult, persistedAssets] = await Promise.all([
     supabase
       .from("stores" as never)
       .select("id, store_data")
@@ -374,7 +378,11 @@ async function getAIVisualAssetsDashboardData(
       .eq("store_id" as never, activeStore.id as never)
       .like("action" as never, "ai_visual.%")
       .order("created_at", { ascending: false })
-      .limit(10)
+      .limit(10),
+    listOpenAIAssetsForStore({
+      storeId: activeStore.id,
+      workspaceId
+    })
   ]);
 
   if (storeResult.error || !storeResult.data) {
@@ -384,6 +392,7 @@ async function getAIVisualAssetsDashboardData(
       categories: [],
       error: storeResult.error?.message ?? "Store AI visual data could not be loaded.",
       jobs: [],
+      persistedAssets: [],
       products: [],
       queuePaused: false,
       stores,
@@ -410,6 +419,7 @@ async function getAIVisualAssetsDashboardData(
       ? "Targets could not be fully loaded. You can still review existing jobs."
       : null,
     jobs,
+    persistedAssets,
     products: (productsResult.data ?? []) as unknown as ProductTarget[],
     queuePaused: Boolean(queue.pausedAt),
     stores,
@@ -506,7 +516,7 @@ export default async function AIVisualAssetsDashboard({
   searchParams: Promise<{ storeId?: string }>;
 }) {
   const query = await searchParams;
-  const { activeStore, activity, categories, error, jobs, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
+  const { activeStore, activity, categories, error, jobs, persistedAssets, products, queuePaused, stores, usageSummary } = await getAIVisualAssetsDashboardData(query.storeId);
   const providerConfig = getAIVisualProviderRuntimeConfig();
   const providerReady = providerConfig.status === "configured";
   const generationAllowed = providerReady && usageSummary.remainingDailyAllowance > 0 && (
@@ -709,6 +719,56 @@ export default async function AIVisualAssetsDashboard({
             </div>
           </Card>
 
+          <Card>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Persisted assets
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-ink">
+                  OpenAI asset persistence
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-muted">
+                  Store-scoped persisted OpenAI assets and export readiness. Private storage paths, prompts, raw responses, and secrets are not shown.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3">
+              {persistedAssets.length ? persistedAssets.slice(0, 8).map((asset) => (
+                <div className="grid gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_auto]" key={asset.id}>
+                  <div>
+                    <p className="text-sm font-black text-ink">
+                      {asset.assetType?.replaceAll("_", " ") ?? "OpenAI asset"}
+                    </p>
+                    <p className="mt-1 break-all text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                      Job: {asset.jobId}
+                    </p>
+                    <p className="mt-2 text-xs font-semibold text-slate-500">
+                      Target: {asset.targetType ?? "not recorded"}{asset.slot ? ` / ${asset.slot}` : ""} · Dimensions: {asset.width && asset.height ? `${asset.width}x${asset.height}` : "not recorded"}
+                    </p>
+                    {asset.safeErrorMessage ? (
+                      <p className="mt-2 rounded-2xl bg-red-50 p-2 text-xs font-bold text-red-700">
+                        {asset.safeErrorMessage}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="grid content-start gap-2 text-left md:text-right">
+                    <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${auditStatusClass(asset.status === "storage_failed" || asset.status === "export_failed" ? "failed" : "completed")}`}>
+                      {asset.status}
+                    </span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${auditStatusClass(asset.exportStatus === "export_failed" ? "failed" : asset.exportStatus === "export_ready" ? "completed" : "started")}`}>
+                      {asset.exportStatus}
+                    </span>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold text-muted">
+                  No persisted OpenAI assets have been recorded for this store yet.
+                </div>
+              )}
+            </div>
+          </Card>
+
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {requestCards.map((card) => {
               const disabled =
@@ -796,7 +856,6 @@ export default async function AIVisualAssetsDashboard({
                 {jobs.length ? jobs.map((job) => {
                   const assetUrl = completedAssetUrl(job);
                   const approvalStatus = completedAssetApprovalStatus(job);
-                  const storageKey = completedAssetStorageKey(job);
 
                   return (
                     <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4" key={job.requestId}>
@@ -827,11 +886,6 @@ export default async function AIVisualAssetsDashboard({
                             >
                               Open asset
                             </a>
-                            {storageKey ? (
-                              <p className="break-all rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500">
-                                Storage key: {storageKey}
-                              </p>
-                            ) : null}
                             {approvalStatus ? (
                               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                                 Approval: {approvalStatus}
