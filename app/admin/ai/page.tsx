@@ -28,6 +28,7 @@ import type {
 } from "@/src/lib/ai/audit/ai-audit-types";
 import { getAICostAnalyticsSnapshot } from "@/src/lib/ai/costs/ai-cost-analytics";
 import type { AICostDateRange } from "@/src/lib/ai/costs/ai-cost-types";
+import { getOpenAICreditRuntimeSnapshot } from "@/src/lib/ai/credits/openai-credit-service";
 import {
   aiErrorGroups,
   aiErrorSeverities
@@ -160,10 +161,20 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "ai_asset_review_marked",
   "ai_asset_review_cleared",
   "openai_executor_started",
+  "openai_job_created",
   "openai_job_locked",
   "openai_job_running",
+  "openai_call_started",
+  "openai_call_completed",
+  "openai_asset_stored",
   "openai_job_completed",
   "openai_job_failed",
+  "openai_timeout_detected",
+  "openai_credit_check_started",
+  "openai_credit_reserved",
+  "openai_credit_deducted",
+  "openai_credit_refunded",
+  "openai_credit_blocked_insufficient",
   "openai_executor_finished"
 ];
 const errorDateRanges = ["24h", "7d", "30d", "all"];
@@ -255,6 +266,7 @@ export default async function AdminAIPage({
     operationsQueueSnapshot,
     queueSnapshot,
     openAIObservabilitySnapshot,
+    openAICreditSnapshot,
     secretsSnapshot
   ] = await Promise.all([
     getAdminAIControl(),
@@ -317,6 +329,7 @@ export default async function AdminAIPage({
       status: openAIObsStatus,
       storeId: openAIObsStore
     }),
+    getOpenAICreditRuntimeSnapshot(),
     listAISecretsMonitoring()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
@@ -1505,6 +1518,49 @@ export default async function AdminAIPage({
               <td className="px-5 py-4 break-all text-slate-600">{error.storeId ?? "No store"}</td>
               <td className="px-5 py-4 text-slate-600">{error.errorCode ?? "No code"}</td>
               <td className="px-5 py-4 text-slate-600">{error.message ?? "No message"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-credits-runtime">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+            OpenAI Credits Runtime
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            OpenAI credit ledger
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            OpenAI-only credit operations from the additive ledger. This view does not expose prompts, raw responses, checkout data, payment providers, subscription records, or secrets.
+          </p>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Reserved credits", value: openAICreditSnapshot.reservedCredits },
+            { label: "Charged credits", value: openAICreditSnapshot.chargedCredits },
+            { label: "Refunded credits", value: openAICreditSnapshot.refundedCredits },
+            { label: "Released credits", value: openAICreditSnapshot.releasedCredits },
+            { label: "Failed operations", value: openAICreditSnapshot.failedOperations },
+            { label: "Ledger entries", value: openAICreditSnapshot.totalEntries }
+          ]}
+        />
+        <AdminTable
+          empty={!openAICreditSnapshot.recentEntries.length ? "No OpenAI credit ledger entries found." : null}
+          headers={["Created", "Job ID", "Operation", "Status", "Amount", "Balance before", "Balance after", "Store", "User", "Safe error"]}
+        >
+          {openAICreditSnapshot.recentEntries.map((entry) => (
+            <tr key={entry.id}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(entry.createdAt)}</td>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{entry.jobId}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.operation}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(entry.status)}>{entry.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{entry.amount}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.balanceBefore ?? "Not recorded"}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.balanceAfter ?? "Not recorded"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{entry.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{entry.userId ?? "No user"}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.safeErrorMessage ?? "No error"}</td>
             </tr>
           ))}
         </AdminTable>

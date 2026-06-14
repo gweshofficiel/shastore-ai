@@ -7,9 +7,17 @@ import {
   type AIVisualGenerationJob
 } from "@/lib/storefront/ai-visual-queue";
 import { processPendingAIVisualAssetJob } from "@/lib/storefront/ai-visual-worker";
+import { estimatedCreditsForAIVisualJob } from "@/lib/storefront/ai-visual-usage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
 import type { AiAuditEventType, AiAuditStatus } from "@/src/lib/ai/audit/ai-audit-types";
+import {
+  deductReservedOpenAICredits,
+  refundReservedOpenAICredits,
+  releaseOpenAICreditReservation,
+  reserveOpenAICredits
+} from "@/src/lib/ai/credits/openai-credit-service";
+import type { OpenAIJobCreditStatus } from "@/src/lib/ai/credits/openai-credit-types";
 import {
   createJob,
   failJob,
@@ -46,6 +54,7 @@ export type OpenAIExecutorJobOutcome =
   | "timeout";
 
 export type OpenAIExecutorJobSummary = {
+  creditStatus: OpenAIJobCreditStatus | null;
   durationMs: number | null;
   errorSummary: string | null;
   jobId: string;
@@ -232,6 +241,7 @@ function openAIVisualCandidates(rows: StoreRow[]): ExecutorCandidate[] {
 
 function skippedJobSummary(candidate: ExecutorCandidate, errorSummary: string): OpenAIExecutorJobSummary {
   return {
+    creditStatus: null,
     durationMs: null,
     errorSummary: safeError(errorSummary),
     jobId: candidate.job.jobId,
@@ -240,6 +250,17 @@ function skippedJobSummary(candidate: ExecutorCandidate, errorSummary: string): 
     requestId: candidate.job.requestId,
     status: candidate.job.status,
     storeId: candidate.storeId
+  };
+}
+
+function creditInputForCandidate(candidate: ExecutorCandidate) {
+  return {
+    amount: estimatedCreditsForAIVisualJob(candidate.job),
+    assetType: candidate.job.kind,
+    jobId: candidate.job.jobId,
+    storeId: candidate.storeId,
+    userId: candidate.job.requestedByUserId,
+    workspaceId: candidate.workspaceId
   };
 }
 
@@ -286,6 +307,7 @@ export async function runOpenAIBackgroundExecutor(
   if (readError) {
     summary.jobsFailed += 1;
     summary.jobs.push({
+      creditStatus: null,
       durationMs: null,
       errorSummary: safeError(readError),
       jobId: "openai-executor-scan",
@@ -340,6 +362,7 @@ export async function runOpenAIBackgroundExecutor(
       summary.jobsTimedOut += 1;
       summary.jobsSkipped += 1;
       summary.jobs.push({
+      creditStatus: "released",
         durationMs: null,
         errorSummary: timeoutJob.error_summary,
         jobId: timeoutJob.job_id,
@@ -385,6 +408,40 @@ export async function runOpenAIBackgroundExecutor(
     const queuedJob = executorJobRecord(candidate, "queued");
     const runningJob = startJob(queuedJob);
     const jobStartedMs = Date.now();
+    const creditInput = creditInputForCandidate(candidate);
+    const reservation = await reserveOpenAICredits(creditInput);
+
+    if (!reservation.ok) {
+      summary.jobsSkipped += 1;
+      summary.jobs.push({
+        creditStatus: reservation.creditStatus,
+        durationMs: null,
+        errorSummary: reservation.error,
+        jobId: candidate.job.jobId,
+        outcome: "skipped",
+        provider: candidate.job.provider,
+        requestId: candidate.job.requestId,
+        status: "blocked",
+        storeId: candidate.storeId
+      });
+      continue;
+    }
+
+    if (reservation.creditStatus === "charged") {
+      summary.jobsSkipped += 1;
+      summary.jobs.push({
+        creditStatus: "charged",
+        durationMs: null,
+        errorSummary: "OpenAI executor skipped an already charged job.",
+        jobId: candidate.job.jobId,
+        outcome: "skipped",
+        provider: candidate.job.provider,
+        requestId: candidate.job.requestId,
+        status: "already_charged",
+        storeId: candidate.storeId
+      });
+      continue;
+    }
 
     summary.jobsStarted += 1;
 
@@ -451,8 +508,10 @@ export async function runOpenAIBackgroundExecutor(
 
     if (result.status === "completed" && result.job) {
       const completedJob = completeJob(executorJobRecord({ ...candidate, job: result.job }, "running"));
+      const deduction = await deductReservedOpenAICredits(creditInput);
       summary.jobsCompleted += 1;
       summary.jobs.push({
+        creditStatus: deduction.creditStatus,
         durationMs,
         errorSummary: null,
         jobId: completedJob.job_id,
@@ -478,6 +537,7 @@ export async function runOpenAIBackgroundExecutor(
         hook: "asset_stored",
         job: completedJob,
         metadata: {
+          cost_estimate: creditInput.amount,
           duration_ms: durationMs,
           retry_count: result.job.attempts,
           storage_status: "stored"
@@ -488,6 +548,7 @@ export async function runOpenAIBackgroundExecutor(
         hook: "job_completed",
         job: completedJob,
         metadata: {
+          cost_estimate: creditInput.amount,
           duration_ms: durationMs,
           retry_count: result.job.attempts,
           storage_status: "stored"
@@ -498,12 +559,14 @@ export async function runOpenAIBackgroundExecutor(
     }
 
     if (result.status === "failed") {
+      const refund = await refundReservedOpenAICredits(creditInput);
       const failedJob = failJob(
         executorJobRecord({ ...candidate, job: result.job ?? candidate.job }, "running"),
         { error_summary: result.error ?? "OpenAI executor job failed." }
       );
       summary.jobsFailed += 1;
       summary.jobs.push({
+        creditStatus: refund.creditStatus,
         durationMs,
         errorSummary: failedJob.error_summary,
         jobId: failedJob.job_id,
@@ -546,7 +609,9 @@ export async function runOpenAIBackgroundExecutor(
     }
 
     summary.jobsSkipped += 1;
+    const release = await releaseOpenAICreditReservation(creditInput);
     summary.jobs.push({
+      creditStatus: release.creditStatus,
       durationMs,
       errorSummary: safeError(result.error ?? "OpenAI executor worker skipped job."),
       jobId: candidate.job.jobId,
