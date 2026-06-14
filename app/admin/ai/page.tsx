@@ -7,6 +7,7 @@ import {
   formatAdminDate,
   formatAdminMoney
 } from "@/components/admin/admin-control";
+import { OpenAIExecutorRunButton } from "@/components/admin/openai-executor-run-button";
 import {
   clearAIJobReview,
   markAISecretRotatedAction,
@@ -156,7 +157,13 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "ai_asset_created",
   "ai_asset_published",
   "ai_asset_review_marked",
-  "ai_asset_review_cleared"
+  "ai_asset_review_cleared",
+  "openai_executor_started",
+  "openai_job_locked",
+  "openai_job_running",
+  "openai_job_completed",
+  "openai_job_failed",
+  "openai_executor_finished"
 ];
 const errorDateRanges = ["24h", "7d", "30d", "all"];
 const queueStatuses: Array<AIQueueJobStatus | "all"> = [
@@ -1330,6 +1337,7 @@ export default async function AdminAIPage({
         <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm font-semibold leading-6 text-slate-500">
           Lifecycle validation blocks terminal restarts such as completed → running, failed → running, cancelled → running, and timeout → running. Retry state is represented as retry_pending before a job can move back to queued or running.
         </div>
+        <OpenAIExecutorRunButton />
         <AdminTable
           empty={!openAIJobLifecycleRows.length ? "No OpenAI lifecycle jobs match the current queue filters." : null}
           headers={["job_id", "provider", "model", "store_id", "owner_id", "asset_type", "status", "cost_estimate", "created_at", "started_at", "completed_at", "error_summary"]}

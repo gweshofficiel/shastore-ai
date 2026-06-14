@@ -19,7 +19,13 @@ export type AiAuditEventType =
   | "ai_job_requested"
   | "ai_job_retry_pending"
   | "ai_job_started"
-  | "ai_job_timeout";
+  | "ai_job_timeout"
+  | "openai_executor_finished"
+  | "openai_executor_started"
+  | "openai_job_completed"
+  | "openai_job_failed"
+  | "openai_job_locked"
+  | "openai_job_running";
 
 export type AiAuditStatus = "blocked" | "failed" | "skipped" | "started" | "success";
 
