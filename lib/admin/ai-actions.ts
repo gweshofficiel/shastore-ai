@@ -10,6 +10,11 @@ import {
   runAllAIDiagnostics
 } from "@/src/lib/ai/diagnostics/diagnostics-service";
 import type { AIDiagnosticsProviderKey } from "@/src/lib/ai/diagnostics/diagnostics-types";
+import {
+  markAISecretRotated,
+  markAISecretRotationRequired
+} from "@/src/lib/ai/secrets/ai-secrets-monitoring";
+import type { AISecretsProviderKey } from "@/src/lib/ai/secrets/ai-secrets-types";
 
 type AIAdminAction =
   | "admin_ai_job_clear_review"
@@ -31,6 +36,16 @@ const diagnosticProviders: AIDiagnosticsProviderKey[] = [
   "deepgram",
   "gemini"
 ];
+const secretProviders: AISecretsProviderKey[] = [
+  "openai",
+  "fal",
+  "replicate",
+  "runway",
+  "kling",
+  "elevenlabs",
+  "deepgram",
+  "gemini"
+];
 
 function diagnosticProvider(value: string): AIDiagnosticsProviderKey {
   if (diagnosticProviders.includes(value as AIDiagnosticsProviderKey)) {
@@ -38,6 +53,14 @@ function diagnosticProvider(value: string): AIDiagnosticsProviderKey {
   }
 
   throw new Error("Unsupported AI diagnostics provider.");
+}
+
+function secretProvider(value: string): AISecretsProviderKey {
+  if (secretProviders.includes(value as AISecretsProviderKey)) {
+    return value as AISecretsProviderKey;
+  }
+
+  throw new Error("Unsupported AI secrets provider.");
 }
 
 async function recordAIAdminAction(formData: FormData, action: AIAdminAction) {
@@ -124,5 +147,19 @@ export async function runAIDiagnosticAction(formData: FormData) {
 
 export async function runAllAIDiagnosticsAction() {
   await runAllAIDiagnostics({ audit: true });
+  revalidatePath("/admin/ai");
+}
+
+export async function markAISecretRotationRequiredAction(formData: FormData) {
+  const provider = secretProvider(cleanText(formData.get("provider")));
+
+  await markAISecretRotationRequired({ provider });
+  revalidatePath("/admin/ai");
+}
+
+export async function markAISecretRotatedAction(formData: FormData) {
+  const provider = secretProvider(cleanText(formData.get("provider")));
+
+  await markAISecretRotated({ provider });
   revalidatePath("/admin/ai");
 }

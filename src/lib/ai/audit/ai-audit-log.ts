@@ -31,6 +31,8 @@ const aiAuditEventTypes: AiAuditEventType[] = [
   "ai_diagnostic_skipped",
   "ai_diagnostic_started",
   "ai_diagnostic_success",
+  "ai_secret_marked_rotated",
+  "ai_secret_rotation_required",
   "ai_asset_created",
   "ai_asset_published",
   "ai_asset_review_cleared",

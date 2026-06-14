@@ -9,6 +9,8 @@ import {
 } from "@/components/admin/admin-control";
 import {
   clearAIJobReview,
+  markAISecretRotatedAction,
+  markAISecretRotationRequiredAction,
   markAIJobUnderReview,
   runAIDiagnosticAction,
   runAllAIDiagnosticsAction,
@@ -32,13 +34,14 @@ import type {
 } from "@/src/lib/ai/errors/error-types";
 import { getAIDiagnosticsSnapshot } from "@/src/lib/ai/diagnostics/diagnostics-service";
 import { getAIProviderHealthSnapshot } from "@/src/lib/ai/health/health-service";
+import { listAISecretsMonitoring } from "@/src/lib/ai/secrets/ai-secrets-monitoring";
 
 function toneForStatus(status: string) {
   if (["completed", "configured", "connected", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
-  if (["critical", "failed", "high", "missing", "missing_config", "offline"].includes(status)) {
+  if (["critical", "failed", "high", "missing", "missing_config", "offline", "rotation_required"].includes(status)) {
     return "red" as const;
   }
 
@@ -75,6 +78,8 @@ const auditStatuses: Array<AiAuditStatus | "all"> = [
 ];
 const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "all",
+  "ai_secret_rotation_required",
+  "ai_secret_marked_rotated",
   "ai_diagnostic_started",
   "ai_diagnostic_success",
   "ai_diagnostic_failed",
@@ -122,7 +127,7 @@ export default async function AdminAIPage({
   const errorGroup = firstParam(params.errorGroup) as AIErrorGroup | "all";
   const errorDateRange = firstParam(params.errorDateRange, "7d") as "24h" | "7d" | "30d" | "all";
   const errorStore = firstParam(params.errorStore);
-  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot] = await Promise.all([
+  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, secretsSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     listAiAuditLogs({
@@ -138,7 +143,8 @@ export default async function AdminAIPage({
       severity: errorSeverity,
       storeId: errorStore
     }),
-    getAIDiagnosticsSnapshot()
+    getAIDiagnosticsSnapshot(),
+    listAISecretsMonitoring()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
   const auditAssetTypes = [...new Set(auditLogs.map((log) => log.assetType).filter(Boolean))].sort();
@@ -308,6 +314,80 @@ export default async function AdminAIPage({
                     Run diagnostic
                   </button>
                 </form>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-400">
+            AI Provider Secrets Monitoring
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            AI provider configuration and rotation metadata
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Displays secret key names and rotation state only. Secret values, tokens, passwords, authorization headers, private keys, and raw env values are never displayed or modified.
+          </p>
+        </div>
+        <AdminTable
+          empty={!secretsSnapshot.providers.length ? "No AI provider secret metadata is available." : null}
+          headers={[
+            "Provider",
+            "Status",
+            "Required keys",
+            "Missing keys",
+            "Rotation required",
+            "Last rotated",
+            "Actions"
+          ]}
+        >
+          {secretsSnapshot.providers.map((secret) => (
+            <tr key={secret.provider}>
+              <td className="px-5 py-4 font-bold text-slate-950">{secret.provider_name}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(secret.status)}>{secret.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {secret.required_secret_names.join(", ")}
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {secret.missing_required_secrets.length ? secret.missing_required_secrets.join(", ") : "No required keys missing"}
+                {secret.optional_secrets_missing.length ? (
+                  <p className="mt-2 text-xs font-semibold text-slate-500">
+                    Optional missing: {secret.optional_secrets_missing.join(", ")}
+                  </p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={secret.rotation_required ? "red" : "green"}>
+                  {secret.rotation_required ? "required" : "not_required"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(secret.last_rotated_at)}</td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-48 gap-2">
+                  <form action={markAISecretRotationRequiredAction}>
+                    <input name="provider" type="hidden" value={secret.provider} />
+                    <button
+                      className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700"
+                      type="submit"
+                    >
+                      Mark rotation required
+                    </button>
+                  </form>
+                  <form action={markAISecretRotatedAction}>
+                    <input name="provider" type="hidden" value={secret.provider} />
+                    <button
+                      className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+                      type="submit"
+                    >
+                      Mark rotated
+                    </button>
+                  </form>
+                </div>
               </td>
             </tr>
           ))}
