@@ -33,6 +33,11 @@ import {
 } from "@/lib/integrations/audit-log";
 import { listSecretRotationRecords } from "@/lib/integrations/secret-rotation";
 import {
+  getProviderUsageSummary,
+  type ProviderUsageCategory,
+  type ProviderUsageRange
+} from "@/lib/integrations/provider-usage-analytics";
+import {
   getWebhookStats,
   listWebhookEvents,
   type WebhookEventStatus
@@ -102,6 +107,16 @@ const webhookStatuses: Array<WebhookEventStatus | "all"> = [
   "ignored",
   "retry_pending"
 ];
+const usageRanges: Array<{ label: string; value: ProviderUsageRange }> = [
+  { label: "Today", value: "today" },
+  { label: "Last 7 days", value: "last_7_days" },
+  { label: "Last 30 days", value: "last_30_days" },
+  { label: "All time", value: "all_time" }
+];
+
+function formatPercent(value: number) {
+  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
+}
 
 export default async function AdminIntegrationsPage({
   searchParams
@@ -139,13 +154,17 @@ export default async function AdminIntegrationsPage({
   const webhookEventType = firstParam(params.webhookEventType);
   const webhookWindow = firstParam(params.webhookWindow, "7d") as "24h" | "7d" | "all";
   const webhookFailedOnly = firstParam(params.webhookFailedOnly, "false") === "true";
+  const usageRange = firstParam(params.usageRange, "last_7_days") as ProviderUsageRange;
+  const usageProvider = firstParam(params.usageProvider);
+  const usageCategory = firstParam(params.usageCategory) as ProviderUsageCategory | "all";
   const [
     control,
     auditLogs,
     integrationErrors,
     secretRotationRecords,
     webhookEvents,
-    webhookStats
+    webhookStats,
+    providerUsage
   ] = await Promise.all([
     getAdminIntegrationsControl(),
     listIntegrationAuditLogs({
@@ -169,10 +188,17 @@ export default async function AdminIntegrationsPage({
       status: webhookStatus,
       window: webhookWindow
     }),
-    getWebhookStats()
+    getWebhookStats(),
+    getProviderUsageSummary(usageRange)
   ]);
   const rotationRequiredByProvider = new Map<string, number>();
   const webhookEventTypes = [...new Set(webhookEvents.map((event) => event.eventType))].sort();
+  const usageCategories = [...new Set(providerUsage.providers.map((provider) => provider.category))].sort();
+  const filteredUsageProviders = providerUsage.providers
+    .filter((provider) => usageProvider === "all" || provider.providerKey === usageProvider)
+    .filter((provider) => usageCategory === "all" || provider.category === usageCategory);
+  const filteredFailureBreakdown = providerUsage.failureBreakdown
+    .filter((failure) => usageProvider === "all" || failure.providerKey === usageProvider);
 
   for (const record of secretRotationRecords) {
     if (record.rotationRequired) {
@@ -211,6 +237,147 @@ export default async function AdminIntegrationsPage({
           { label: "Secrets exposed", value: 0 }
         ]}
       />
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-400">
+              Provider Usage Analytics
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Integration operations by provider
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Aggregated from integration health states, audit logs, webhook monitoring records, billing events, and monitoring events. No raw payloads or secrets are displayed.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-3" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={providerUsage.range}
+                name="usageRange"
+              >
+                {usageRanges.map((range) => (
+                  <option key={range.value} value={range.value}>
+                    {range.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageProvider}
+                name="usageProvider"
+              >
+                <option value="all">All providers</option>
+                {providerUsage.providers.map((provider) => (
+                  <option key={provider.providerKey} value={provider.providerKey}>
+                    {provider.providerName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Category
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageCategory}
+                name="usageCategory"
+              >
+                <option value="all">All categories</option>
+                {usageCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-violet-200 bg-violet-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-violet-700 sm:col-span-3"
+              type="submit"
+            >
+              Apply usage filters
+            </button>
+          </form>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total Provider Operations", value: providerUsage.totalOperations },
+            { label: "Successful Operations", value: providerUsage.successfulOperations },
+            { label: "Failed Operations", value: providerUsage.failedOperations },
+            { label: "Failure Rate", value: formatPercent(providerUsage.failureRate) },
+            { label: "Webhook Events", value: providerUsage.webhookEvents },
+            {
+              label: "Average Response Time",
+              value: providerUsage.averageResponseTimeMs === null ? "n/a" : `${providerUsage.averageResponseTimeMs} ms`
+            }
+          ]}
+        />
+
+        <AdminTable
+          empty={!filteredUsageProviders.length ? "No provider usage metrics match the current filters." : null}
+          headers={[
+            "Provider",
+            "Category",
+            "Operations",
+            "Success",
+            "Failed",
+            "Failure rate",
+            "Avg response",
+            "Last success",
+            "Last failure"
+          ]}
+        >
+          {filteredUsageProviders.map((provider) => (
+            <tr key={provider.providerKey}>
+              <td className="px-5 py-4 font-bold text-slate-950">{provider.providerName}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(provider.category)}>{provider.category}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {provider.totalOperations}
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  Webhooks: {provider.webhookEvents} · Health: {provider.healthChecks} · Diagnostics: {provider.diagnosticsRuns}
+                </p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{provider.successfulOperations}</td>
+              <td className="px-5 py-4 text-slate-600">{provider.failedOperations}</td>
+              <td className="px-5 py-4 text-slate-600">{formatPercent(provider.failureRate)}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {provider.averageResponseTimeMs === null ? "n/a" : `${provider.averageResponseTimeMs} ms`}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(provider.lastSuccess)}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {formatAdminDate(provider.lastFailure)}
+                {provider.consecutiveFailures ? (
+                  <p className="mt-2 text-xs font-semibold text-red-500">
+                    Consecutive failures: {provider.consecutiveFailures}
+                  </p>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!filteredFailureBreakdown.length ? "No provider failures match the current filters." : null}
+          headers={["Provider", "Error code", "Count", "Last seen"]}
+        >
+          {filteredFailureBreakdown.map((failure) => (
+            <tr key={`${failure.providerKey}:${failure.errorCode}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{failure.providerName}</td>
+              <td className="px-5 py-4 text-slate-600">{failure.errorCode}</td>
+              <td className="px-5 py-4 text-slate-600">{failure.count}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(failure.lastSeen)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       {control.categories.map((category) => {
         const integrations = control.integrations.filter((integration) => integration.category === category);
