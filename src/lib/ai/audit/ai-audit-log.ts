@@ -33,6 +33,8 @@ const aiAuditEventTypes: AiAuditEventType[] = [
   "ai_diagnostic_success",
   "ai_secret_marked_rotated",
   "ai_secret_rotation_required",
+  "ai_queue_monitor_viewed",
+  "ai_stale_job_detected",
   "ai_asset_created",
   "ai_asset_published",
   "ai_asset_review_cleared",

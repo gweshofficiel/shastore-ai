@@ -34,18 +34,23 @@ import type {
 } from "@/src/lib/ai/errors/error-types";
 import { getAIDiagnosticsSnapshot } from "@/src/lib/ai/diagnostics/diagnostics-service";
 import { getAIProviderHealthSnapshot } from "@/src/lib/ai/health/health-service";
+import { getAIQueueMonitoringSnapshot } from "@/src/lib/ai/queue/ai-queue-monitoring";
+import type {
+  AIQueueDateRange,
+  AIQueueJobStatus
+} from "@/src/lib/ai/queue/ai-queue-types";
 import { listAISecretsMonitoring } from "@/src/lib/ai/secrets/ai-secrets-monitoring";
 
 function toneForStatus(status: string) {
-  if (["completed", "configured", "connected", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
+  if (["completed", "configured", "connected", "fresh", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
-  if (["critical", "failed", "high", "missing", "missing_config", "offline", "rotation_required"].includes(status)) {
+  if (["critical", "failed", "high", "missing", "missing_config", "offline", "rotation_required", "stale_queue", "stale_running", "timeout"].includes(status)) {
     return "red" as const;
   }
 
-  if (["disabled", "processing", "active", "placeholder", "no_secret_required", "skipped", "unknown"].includes(status)) {
+  if (["disabled", "processing", "active", "placeholder", "no_secret_required", "queued", "retry_pending", "running", "skipped", "unknown"].includes(status)) {
     return "blue" as const;
   }
 
@@ -80,6 +85,8 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "all",
   "ai_secret_rotation_required",
   "ai_secret_marked_rotated",
+  "ai_queue_monitor_viewed",
+  "ai_stale_job_detected",
   "ai_diagnostic_started",
   "ai_diagnostic_success",
   "ai_diagnostic_failed",
@@ -96,6 +103,17 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "ai_asset_review_cleared"
 ];
 const errorDateRanges = ["24h", "7d", "30d", "all"];
+const queueStatuses: Array<AIQueueJobStatus | "all"> = [
+  "all",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+  "timeout",
+  "retry_pending"
+];
+const queueDateRanges: Array<AIQueueDateRange> = ["24h", "7d", "30d", "all"];
 
 function AIJobHiddenFields({
   job
@@ -127,7 +145,12 @@ export default async function AdminAIPage({
   const errorGroup = firstParam(params.errorGroup) as AIErrorGroup | "all";
   const errorDateRange = firstParam(params.errorDateRange, "7d") as "24h" | "7d" | "30d" | "all";
   const errorStore = firstParam(params.errorStore);
-  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, secretsSnapshot] = await Promise.all([
+  const queueStatus = firstParam(params.queueStatus) as AIQueueJobStatus | "all";
+  const queueProvider = firstParam(params.queueProvider);
+  const queueAssetType = firstParam(params.queueAssetType);
+  const queueStore = firstParam(params.queueStore);
+  const queueDateRange = firstParam(params.queueDateRange, "7d") as AIQueueDateRange;
+  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     listAiAuditLogs({
@@ -144,6 +167,13 @@ export default async function AdminAIPage({
       storeId: errorStore
     }),
     getAIDiagnosticsSnapshot(),
+    getAIQueueMonitoringSnapshot({
+      assetType: queueAssetType,
+      dateRange: queueDateRange,
+      provider: queueProvider,
+      status: queueStatus,
+      storeId: queueStore
+    }, { audit: true }),
     listAISecretsMonitoring()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
@@ -155,6 +185,18 @@ export default async function AdminAIPage({
   const errorStores = [...new Set([
     ...errorSnapshot.errors.map((error) => error.storeId).filter(Boolean),
     errorStore !== "all" ? errorStore : null
+  ].filter(Boolean))].sort();
+  const queueProviders = [...new Set([
+    ...queueSnapshot.jobs.map((job) => job.provider).filter(Boolean),
+    queueProvider !== "all" ? queueProvider : null
+  ].filter(Boolean))].sort();
+  const queueAssetTypes = [...new Set([
+    ...queueSnapshot.jobs.map((job) => job.assetType).filter(Boolean),
+    queueAssetType !== "all" ? queueAssetType : null
+  ].filter(Boolean))].sort();
+  const queueStores = [...new Set([
+    ...queueSnapshot.jobs.map((job) => job.storeId).filter(Boolean),
+    queueStore !== "all" ? queueStore : null
   ].filter(Boolean))].sort();
 
   return (
@@ -215,6 +257,161 @@ export default async function AdminAIPage({
                   {provider.recentFailures}
                 </AdminBadge>
               </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+              AI Queue Monitoring
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              AI queue runtime overview
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Read-only monitoring for existing AI jobs and queues. Stale jobs are flagged in this dashboard only; no worker, retry, cancellation, provider call, generation, or credit behavior is changed.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-5" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={queueStatus}
+                name="queueStatus"
+              >
+                {queueStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={queueProvider}
+                name="queueProvider"
+              >
+                <option value="all">All providers</option>
+                {queueProviders.map((provider) => (
+                  <option key={provider} value={provider ?? ""}>
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Asset type
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={queueAssetType}
+                name="queueAssetType"
+              >
+                <option value="all">All asset types</option>
+                {queueAssetTypes.map((assetType) => (
+                  <option key={assetType} value={assetType ?? ""}>
+                    {assetType}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Store
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={queueStore}
+                name="queueStore"
+              >
+                <option value="all">All stores</option>
+                {queueStores.map((storeId) => (
+                  <option key={storeId} value={storeId ?? ""}>
+                    {storeId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={queueDateRange}
+                name="queueDateRange"
+              >
+                {queueDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-cyan-200 bg-cyan-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-cyan-700 sm:col-span-5"
+              type="submit"
+            >
+              Apply queue filters
+            </button>
+          </form>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Total jobs", value: queueSnapshot.summary.totalJobs },
+            { label: "Queued", value: queueSnapshot.summary.queued },
+            { label: "Running", value: queueSnapshot.summary.running },
+            { label: "Completed", value: queueSnapshot.summary.completed },
+            { label: "Failed", value: queueSnapshot.summary.failed },
+            { label: "Cancelled", value: queueSnapshot.summary.cancelled },
+            { label: "Timeout/stale", value: queueSnapshot.summary.timeout },
+            { label: "Retry pending", value: queueSnapshot.summary.retryPending },
+            { label: "Oldest queued", value: formatAdminDate(queueSnapshot.summary.oldestQueuedJob) },
+            { label: "Avg processing time", value: queueSnapshot.summary.averageProcessingTimeText }
+          ]}
+        />
+        <AdminTable
+          empty={!queueSnapshot.jobs.length ? "No AI queue jobs match the current filters." : null}
+          headers={[
+            "Job ID",
+            "Provider",
+            "Store",
+            "User",
+            "Asset type",
+            "Status",
+            "Created",
+            "Started",
+            "Completed",
+            "Duration",
+            "Error summary"
+          ]}
+        >
+          {queueSnapshot.jobs.map((job) => (
+            <tr key={`${job.source}:${job.jobId}`}>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{job.jobId}</td>
+              <td className="px-5 py-4 text-slate-600">{job.provider}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {job.storeName}
+                {job.storeId ? (
+                  <p className="mt-1 break-all text-xs font-semibold text-slate-400">{job.storeId}</p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4 break-all text-slate-600">{job.userId ?? "Unknown user"}</td>
+              <td className="px-5 py-4 text-slate-600">{job.assetType ?? "No asset type"}</td>
+              <td className="px-5 py-4">
+                <div className="grid gap-2">
+                  <AdminBadge tone={toneForStatus(job.status)}>{job.status}</AdminBadge>
+                  {job.staleState !== "fresh" ? (
+                    <AdminBadge tone={toneForStatus(job.staleState)}>{job.staleState}</AdminBadge>
+                  ) : null}
+                </div>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.createdAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.startedAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.completedAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{job.durationText}</td>
+              <td className="px-5 py-4 text-slate-600">{job.errorMessage ?? "No error"}</td>
             </tr>
           ))}
         </AdminTable>
