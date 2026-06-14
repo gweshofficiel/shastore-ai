@@ -18,6 +18,7 @@ import {
   completeJob,
   type OpenAIJobRecord
 } from "@/src/lib/ai/runtime/openai-job-model";
+import { recordOpenAIObservabilityHook } from "@/src/lib/ai/runtime/openai-observability";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -362,6 +363,16 @@ export async function runOpenAIBackgroundExecutor(
         status: "failed",
         workspaceId: candidate.workspaceId
       });
+      await recordOpenAIObservabilityHook({
+        errorCode: "openai_executor_stale_running",
+        hook: "timeout_detected",
+        job: timeoutJob,
+        metadata: {
+          safe_error_message: timeoutJob.error_summary,
+          storage_status: "unknown"
+        },
+        workspaceId: candidate.workspaceId
+      });
       continue;
     }
 
@@ -398,6 +409,24 @@ export async function runOpenAIBackgroundExecutor(
       status: "started",
       workspaceId: candidate.workspaceId
     });
+    await recordOpenAIObservabilityHook({
+      hook: "job_started",
+      job: runningJob,
+      metadata: {
+        retry_count: candidate.job.attempts,
+        storage_status: "pending"
+      },
+      workspaceId: candidate.workspaceId
+    });
+    await recordOpenAIObservabilityHook({
+      hook: "openai_call_started",
+      job: runningJob,
+      metadata: {
+        retry_count: candidate.job.attempts,
+        storage_status: "pending"
+      },
+      workspaceId: candidate.workspaceId
+    });
 
     const result = await processPendingAIVisualAssetJob({
       requestedByUserId: options.requestedByUserId ?? "openai-background-executor",
@@ -407,6 +436,18 @@ export async function runOpenAIBackgroundExecutor(
       workspaceId: candidate.workspaceId
     });
     const durationMs = Date.now() - jobStartedMs;
+    await recordOpenAIObservabilityHook({
+      hook: result.status === "completed" ? "openai_call_completed" : "job_failed",
+      job: runningJob,
+      metadata: {
+        duration_ms: durationMs,
+        retry_count: candidate.job.attempts,
+        safe_error_message: result.error,
+        status: result.status,
+        storage_status: result.status === "completed" ? "stored" : "unknown"
+      },
+      workspaceId: candidate.workspaceId
+    });
 
     if (result.status === "completed" && result.job) {
       const completedJob = completeJob(executorJobRecord({ ...candidate, job: result.job }, "running"));
@@ -431,6 +472,26 @@ export async function runOpenAIBackgroundExecutor(
           requestId: result.requestId
         },
         status: "success",
+        workspaceId: candidate.workspaceId
+      });
+      await recordOpenAIObservabilityHook({
+        hook: "asset_stored",
+        job: completedJob,
+        metadata: {
+          duration_ms: durationMs,
+          retry_count: result.job.attempts,
+          storage_status: "stored"
+        },
+        workspaceId: candidate.workspaceId
+      });
+      await recordOpenAIObservabilityHook({
+        hook: "job_completed",
+        job: completedJob,
+        metadata: {
+          duration_ms: durationMs,
+          retry_count: result.job.attempts,
+          storage_status: "stored"
+        },
         workspaceId: candidate.workspaceId
       });
       continue;
@@ -465,6 +526,20 @@ export async function runOpenAIBackgroundExecutor(
           workerStatus: result.status
         },
         status: "failed",
+        workspaceId: candidate.workspaceId
+      });
+      await recordOpenAIObservabilityHook({
+        errorCode: "openai_executor_job_failed",
+        hook: "job_failed",
+        job: failedJob,
+        metadata: {
+          duration_ms: durationMs,
+          retry_count: result.job?.attempts ?? candidate.job.attempts,
+          safe_error_message: failedJob.error_summary,
+          storage_status: failedJob.error_summary?.toLowerCase().includes("upload") || failedJob.error_summary?.toLowerCase().includes("r2")
+            ? "failed"
+            : "unknown"
+        },
         workspaceId: candidate.workspaceId
       });
       continue;

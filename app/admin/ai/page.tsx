@@ -48,6 +48,7 @@ import {
   createJob,
   type OpenAIJobProvider
 } from "@/src/lib/ai/runtime/openai-job-model";
+import { getOpenAIObservabilitySnapshot } from "@/src/lib/ai/runtime/openai-observability";
 import { openAIJobStatuses } from "@/src/lib/ai/runtime/openai-job-status";
 import { listAISecretsMonitoring } from "@/src/lib/ai/secrets/ai-secrets-monitoring";
 
@@ -225,6 +226,10 @@ export default async function AdminAIPage({
   const queueAssetType = firstParam(params.queueAssetType);
   const queueStore = firstParam(params.queueStore);
   const queueDateRange = firstParam(params.queueDateRange, "7d") as AIQueueDateRange;
+  const openAIObsStatus = firstParam(params.openAIObsStatus) as AIQueueJobStatus | "all";
+  const openAIObsAssetType = firstParam(params.openAIObsAssetType);
+  const openAIObsStore = firstParam(params.openAIObsStore);
+  const openAIObsDateRange = firstParam(params.openAIObsDateRange, "7d") as AIQueueDateRange;
   const usageDateRange = firstParam(params.usageDateRange, "last_30_days") as AIUsageDateRange;
   const usageProvider = firstParam(params.usageProvider);
   const usageStore = firstParam(params.usageStore);
@@ -249,6 +254,7 @@ export default async function AdminAIPage({
     diagnosticsSnapshot,
     operationsQueueSnapshot,
     queueSnapshot,
+    openAIObservabilitySnapshot,
     secretsSnapshot
   ] = await Promise.all([
     getAdminAIControl(),
@@ -305,6 +311,12 @@ export default async function AdminAIPage({
       status: queueStatus,
       storeId: queueStore
     }, { audit: true }),
+    getOpenAIObservabilitySnapshot({
+      assetType: openAIObsAssetType,
+      dateRange: openAIObsDateRange,
+      status: openAIObsStatus,
+      storeId: openAIObsStore
+    }),
     listAISecretsMonitoring()
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
@@ -328,6 +340,14 @@ export default async function AdminAIPage({
   const queueStores = [...new Set([
     ...queueSnapshot.jobs.map((job) => job.storeId).filter(Boolean),
     queueStore !== "all" ? queueStore : null
+  ].filter(Boolean))].sort();
+  const openAIObsAssetTypes = [...new Set([
+    ...openAIObservabilitySnapshot.assetTypes,
+    openAIObsAssetType !== "all" ? openAIObsAssetType : null
+  ].filter(Boolean))].sort();
+  const openAIObsStores = [...new Set([
+    ...openAIObservabilitySnapshot.stores.map((store) => store.id),
+    openAIObsStore !== "all" ? openAIObsStore : null
   ].filter(Boolean))].sort();
   const openAIJobLifecycleRows = queueSnapshot.jobs
     .filter((job) => isOpenAIProvider(job.provider))
@@ -1356,6 +1376,135 @@ export default async function AdminAIPage({
               <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.started_at)}</td>
               <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.completed_at)}</td>
               <td className="px-5 py-4 text-slate-600">{job.error_summary ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-runtime-observability">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+              OpenAI Runtime Observability
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Safe OpenAI execution telemetry
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Reuses existing audit logs, error center, usage analytics, cost analytics, and queue monitoring. No prompts, raw OpenAI responses, secrets, private asset URLs, token text, or credit state are exposed.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-4" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={openAIObsStatus}
+                name="openAIObsStatus"
+              >
+                {openAIObservabilitySnapshot.statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Asset type
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={openAIObsAssetType}
+                name="openAIObsAssetType"
+              >
+                <option value="all">All asset types</option>
+                {openAIObsAssetTypes.map((assetType) => (
+                  <option key={assetType} value={assetType ?? ""}>
+                    {assetType}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Store
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={openAIObsStore}
+                name="openAIObsStore"
+              >
+                <option value="all">All stores</option>
+                {openAIObsStores.map((storeId) => (
+                  <option key={storeId} value={storeId ?? ""}>
+                    {storeId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={openAIObsDateRange}
+                name="openAIObsDateRange"
+              >
+                {queueDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-cyan-200 bg-cyan-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-cyan-700 sm:col-span-4"
+              type="submit"
+            >
+              Apply OpenAI observability filters
+            </button>
+          </form>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Recent executions", value: openAIObservabilitySnapshot.totalExecutions },
+            { label: "Average duration", value: openAIObservabilitySnapshot.averageDurationText },
+            { label: "Success rate", value: `${openAIObservabilitySnapshot.successRate}%` },
+            { label: "Failure rate", value: `${openAIObservabilitySnapshot.failureRate}%` },
+            { label: "Storage stored", value: openAIObservabilitySnapshot.storageStored },
+            { label: "Storage failed", value: openAIObservabilitySnapshot.storageFailed },
+            { label: "Safe errors", value: openAIObservabilitySnapshot.errorCount },
+            { label: "Cost metadata", value: openAIObservabilitySnapshot.costCoverageStatus }
+          ]}
+        />
+        <AdminTable
+          empty={!openAIObservabilitySnapshot.recentExecutions.length ? "No OpenAI executions match the current observability filters." : null}
+          headers={["Job ID", "Model", "Asset type", "Status", "Started", "Completed", "Duration", "Storage", "Token usage", "Cost estimate", "Retry count", "Safe error"]}
+        >
+          {openAIObservabilitySnapshot.recentExecutions.map((execution) => (
+            <tr key={execution.job_id}>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{execution.job_id}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.model ?? "Not recorded"}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.asset_type ?? "No asset type"}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(execution.status)}>{execution.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(execution.started_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(execution.completed_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.duration_ms === null ? "Not recorded" : `${Math.round(execution.duration_ms / 1000)}s`}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(execution.storage_status)}>{execution.storage_status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{execution.token_usage ? "Available" : "Not recorded"}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.cost_estimate === null ? "Not recorded" : formatAdminMoney(execution.cost_estimate)}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.retry_count ?? "Not recorded"}</td>
+              <td className="px-5 py-4 text-slate-600">{execution.safe_error_message ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!openAIObservabilitySnapshot.recentErrors.length ? "No recent safe OpenAI errors found." : null}
+          headers={["Observed", "Job ID", "Store", "Error code", "Safe message"]}
+        >
+          {openAIObservabilitySnapshot.recentErrors.map((error) => (
+            <tr key={`${error.observedAt}:${error.jobId ?? error.errorCode ?? "openai-error"}`}>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(error.observedAt)}</td>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{error.jobId ?? "No job"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{error.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 text-slate-600">{error.errorCode ?? "No code"}</td>
+              <td className="px-5 py-4 text-slate-600">{error.message ?? "No message"}</td>
             </tr>
           ))}
         </AdminTable>

@@ -6,6 +6,7 @@ import type {
   AiAuditStatus
 } from "@/src/lib/ai/audit/ai-audit-types";
 import type { OpenAIJobRecord } from "@/src/lib/ai/runtime/openai-job-model";
+import { recordOpenAIObservabilityHook, type OpenAIObservabilityHook } from "@/src/lib/ai/runtime/openai-observability";
 
 export type OpenAIJobLifecycleEvent =
   | "job_created"
@@ -34,6 +35,16 @@ const auditStatusByLifecycleEvent: Record<OpenAIJobLifecycleEvent, AiAuditStatus
   job_retry_pending: "skipped",
   job_started: "started",
   job_timeout: "failed"
+};
+
+const observabilityHookByLifecycleEvent: Record<OpenAIJobLifecycleEvent, OpenAIObservabilityHook> = {
+  job_cancelled: "job_failed",
+  job_completed: "job_completed",
+  job_created: "job_created",
+  job_failed: "job_failed",
+  job_retry_pending: "job_started",
+  job_started: "job_started",
+  job_timeout: "timeout_detected"
 };
 
 function safeLifecycleSummary(job: OpenAIJobRecord, eventType: OpenAIJobLifecycleEvent) {
@@ -72,6 +83,12 @@ export async function recordOpenAIJobLifecycleEvent({
     status: auditStatusByLifecycleEvent[eventType],
     storeId: job.store_id,
     userId: job.owner_id,
+    workspaceId
+  });
+  await recordOpenAIObservabilityHook({
+    errorCode: eventType === "job_failed" || eventType === "job_timeout" ? eventType : null,
+    hook: observabilityHookByLifecycleEvent[eventType],
+    job,
     workspaceId
   });
 }

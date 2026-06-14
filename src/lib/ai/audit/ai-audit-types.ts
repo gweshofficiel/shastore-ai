@@ -22,10 +22,15 @@ export type AiAuditEventType =
   | "ai_job_timeout"
   | "openai_executor_finished"
   | "openai_executor_started"
+  | "openai_asset_stored"
+  | "openai_call_completed"
+  | "openai_call_started"
   | "openai_job_completed"
+  | "openai_job_created"
   | "openai_job_failed"
   | "openai_job_locked"
-  | "openai_job_running";
+  | "openai_job_running"
+  | "openai_timeout_detected";
 
 export type AiAuditStatus = "blocked" | "failed" | "skipped" | "started" | "success";
 
