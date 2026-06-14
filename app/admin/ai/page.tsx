@@ -19,14 +19,23 @@ import type {
   AiAuditEventType,
   AiAuditStatus
 } from "@/src/lib/ai/audit/ai-audit-types";
+import {
+  aiErrorGroups,
+  aiErrorSeverities
+} from "@/src/lib/ai/errors/error-center";
+import { getAIErrorCenterSnapshot } from "@/src/lib/ai/errors/error-service";
+import type {
+  AIErrorGroup,
+  AIErrorSeverity
+} from "@/src/lib/ai/errors/error-types";
 import { getAIProviderHealthSnapshot } from "@/src/lib/ai/health/health-service";
 
 function toneForStatus(status: string) {
-  if (["completed", "configured", "healthy", "masked_configured", "succeeded"].includes(status)) {
+  if (["completed", "configured", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
-  if (["failed", "missing", "missing_config", "offline"].includes(status)) {
+  if (["critical", "failed", "high", "missing", "missing_config", "offline"].includes(status)) {
     return "red" as const;
   }
 
@@ -74,6 +83,7 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "ai_asset_review_marked",
   "ai_asset_review_cleared"
 ];
+const errorDateRanges = ["24h", "7d", "30d", "all"];
 
 function AIJobHiddenFields({
   job
@@ -100,7 +110,12 @@ export default async function AdminAIPage({
   const auditProvider = firstParam(params.auditProvider);
   const auditAssetType = firstParam(params.auditAssetType);
   const auditEventType = firstParam(params.auditEventType) as AiAuditEventType | "all";
-  const [control, healthSnapshot, auditLogs] = await Promise.all([
+  const errorProvider = firstParam(params.errorProvider);
+  const errorSeverity = firstParam(params.errorSeverity) as AIErrorSeverity | "all";
+  const errorGroup = firstParam(params.errorGroup) as AIErrorGroup | "all";
+  const errorDateRange = firstParam(params.errorDateRange, "7d") as "24h" | "7d" | "30d" | "all";
+  const errorStore = firstParam(params.errorStore);
+  const [control, healthSnapshot, auditLogs, errorSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     listAiAuditLogs({
@@ -108,10 +123,25 @@ export default async function AdminAIPage({
       eventType: auditEventType,
       providerKey: auditProvider,
       status: auditStatus
+    }),
+    getAIErrorCenterSnapshot({
+      dateRange: errorDateRange,
+      errorGroup,
+      provider: errorProvider,
+      severity: errorSeverity,
+      storeId: errorStore
     })
   ]);
   const auditProviders = [...new Set(auditLogs.map((log) => log.providerKey).filter(Boolean))].sort();
   const auditAssetTypes = [...new Set(auditLogs.map((log) => log.assetType).filter(Boolean))].sort();
+  const errorProviders = [...new Set([
+    ...errorSnapshot.errors.map((error) => error.provider).filter(Boolean),
+    errorProvider !== "all" ? errorProvider : null
+  ].filter(Boolean))].sort();
+  const errorStores = [...new Set([
+    ...errorSnapshot.errors.map((error) => error.storeId).filter(Boolean),
+    errorStore !== "all" ? errorStore : null
+  ].filter(Boolean))].sort();
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -270,6 +300,144 @@ export default async function AdminAIPage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
+              AI Error Center
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Aggregated AI runtime failures
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Repeated AI failures are grouped from existing audit logs, queue metadata, and visual job metadata. This view never exposes prompts, raw provider responses, secrets, tokens, or private asset URLs.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-5" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorProvider}
+                name="errorProvider"
+              >
+                <option value="all">All providers</option>
+                {errorProviders.map((provider) => (
+                  <option key={provider} value={provider ?? ""}>
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Severity
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorSeverity}
+                name="errorSeverity"
+              >
+                <option value="all">All severities</option>
+                {aiErrorSeverities.map((severity) => (
+                  <option key={severity} value={severity}>
+                    {severity}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Group
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorGroup}
+                name="errorGroup"
+              >
+                <option value="all">All groups</option>
+                {aiErrorGroups.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorDateRange}
+                name="errorDateRange"
+              >
+                {errorDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Store
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={errorStore}
+                name="errorStore"
+              >
+                <option value="all">All stores</option>
+                {errorStores.map((storeId) => (
+                  <option key={storeId} value={storeId ?? ""}>
+                    {storeId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700 sm:col-span-5"
+              type="submit"
+            >
+              Apply error filters
+            </button>
+          </form>
+        </div>
+        <AdminTable
+          empty={!errorSnapshot.errors.length ? "No AI errors match the current filters." : null}
+          headers={[
+            "Error Group",
+            "Provider",
+            "Severity",
+            "Occurrences",
+            "First Seen",
+            "Last Seen",
+            "Store",
+            "Asset Type"
+          ]}
+        >
+          {errorSnapshot.errors.map((error) => (
+            <tr key={error.id}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{error.errorGroup}</p>
+                <p className="mt-2 max-w-sm text-xs font-semibold text-slate-500">
+                  {error.errorMessage ?? "No safe error message"}
+                </p>
+                {error.errorCode ? (
+                  <p className="mt-1 text-xs font-semibold text-slate-400">Code: {error.errorCode}</p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{error.provider ?? "No provider"}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(error.severity)}>{error.severity}</AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={error.occurrences >= 10 ? "red" : error.occurrences >= 3 ? "amber" : "blue"}>
+                  {error.occurrences}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(error.firstSeenAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(error.lastSeenAt)}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{error.storeId ?? "No store"}</td>
+              <td className="px-5 py-4 text-slate-600">{error.assetType ?? "No asset type"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
