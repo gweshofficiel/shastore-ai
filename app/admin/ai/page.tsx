@@ -77,6 +77,40 @@ function safeSummaryText(value: Record<string, unknown> | null) {
   return JSON.stringify(value).slice(0, 300);
 }
 
+function dateValue(value: string | null | undefined) {
+  return value ? Date.parse(value) || 0 : 0;
+}
+
+function isWithinHours(value: string | null | undefined, hours: number) {
+  const timestamp = dateValue(value);
+
+  return timestamp > 0 && Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function percentage(part: number, total: number) {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+function severityRank(severity: string) {
+  if (severity === "critical") {
+    return 4;
+  }
+
+  if (severity === "high") {
+    return 3;
+  }
+
+  if (severity === "medium") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function certificationStatus(needsAttention: boolean) {
+  return needsAttention ? "Needs Attention" : "Ready";
+}
+
 const auditStatuses: Array<AiAuditStatus | "all"> = [
   "all",
   "started",
@@ -176,7 +210,22 @@ export default async function AdminAIPage({
   const costStore = firstParam(params.costStore);
   const costAssetType = firstParam(params.costAssetType);
   const costStatus = firstParam(params.costStatus);
-  const [control, healthSnapshot, usageSnapshot, costSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
+  const [
+    control,
+    healthSnapshot,
+    usageSnapshot,
+    usageTodaySnapshot,
+    costSnapshot,
+    operationsCostSnapshot,
+    operationsAuditLogs,
+    auditLogs,
+    operationsErrorSnapshot,
+    errorSnapshot,
+    diagnosticsSnapshot,
+    operationsQueueSnapshot,
+    queueSnapshot,
+    secretsSnapshot
+  ] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     getAIUsageAnalyticsSnapshot({
@@ -186,6 +235,9 @@ export default async function AdminAIPage({
       status: usageStatus,
       storeId: usageStore
     }),
+    getAIUsageAnalyticsSnapshot({
+      dateRange: "today"
+    }),
     getAICostAnalyticsSnapshot({
       assetType: costAssetType,
       dateRange: costDateRange,
@@ -193,11 +245,22 @@ export default async function AdminAIPage({
       status: costStatus,
       storeId: costStore
     }),
+    getAICostAnalyticsSnapshot({
+      dateRange: "all_time"
+    }),
+    listAiAuditLogs(),
     listAiAuditLogs({
       assetType: auditAssetType,
       eventType: auditEventType,
       providerKey: auditProvider,
       status: auditStatus
+    }),
+    getAIErrorCenterSnapshot({
+      dateRange: "24h",
+      errorGroup: "all",
+      provider: "all",
+      severity: "all",
+      storeId: "all"
     }),
     getAIErrorCenterSnapshot({
       dateRange: errorDateRange,
@@ -207,6 +270,9 @@ export default async function AdminAIPage({
       storeId: errorStore
     }),
     getAIDiagnosticsSnapshot(),
+    getAIQueueMonitoringSnapshot({
+      dateRange: "24h"
+    }),
     getAIQueueMonitoringSnapshot({
       assetType: queueAssetType,
       dateRange: queueDateRange,
@@ -246,6 +312,117 @@ export default async function AdminAIPage({
     "all",
     ...costSnapshot.statusOptions
   ];
+  const healthyProviders = healthSnapshot.providers.filter((provider) => provider.health === "healthy").length;
+  const degradedProviders = healthSnapshot.providers.filter((provider) => provider.health === "degraded" || provider.health === "unknown").length;
+  const offlineProviders = healthSnapshot.providers.filter((provider) => provider.health === "offline").length;
+  const queueNeedsAttention = operationsQueueSnapshot.summary.failed + operationsQueueSnapshot.summary.timeout > 0;
+  const activeErrors = operationsErrorSnapshot.errors.filter((error) => error.severity === "critical" || error.severity === "high").length;
+  const recentFailures = operationsQueueSnapshot.summary.failed + operationsQueueSnapshot.summary.timeout;
+  const secretsNeedingAttention = secretsSnapshot.providers.filter((provider) =>
+    provider.status === "missing_config" || provider.status === "partial_config" || provider.status === "rotation_required"
+  ).length;
+  const diagnosticsNeedingAttention = diagnosticsSnapshot.providers.filter((provider) =>
+    provider.status === "failed" || provider.status === "missing_config"
+  ).length;
+  const providerRuntimeRows = [...new Set([
+    ...healthSnapshot.providers.map((provider) => provider.provider),
+    ...operationsQueueSnapshot.jobs.map((job) => job.provider),
+    ...usageTodaySnapshot.usageByProvider.map((row) => row.key),
+    ...operationsCostSnapshot.usageByProvider.map((row) => row.key)
+  ].filter(Boolean))].sort().map((providerKey) => {
+    const health = healthSnapshot.providers.find((provider) => provider.provider === providerKey);
+    const queueJobs = operationsQueueSnapshot.jobs.filter((job) => job.provider === providerKey);
+    const usage = usageTodaySnapshot.usageByProvider.find((row) => row.key === providerKey);
+    const cost = operationsCostSnapshot.usageByProvider.find((row) => row.key === providerKey);
+    const failures24h = operationsErrorSnapshot.errors
+      .filter((error) => error.provider === providerKey)
+      .reduce((total, error) => total + error.occurrences, 0) + queueJobs.filter((job) => job.status === "failed" || job.status === "timeout").length;
+    const lastQueueActivity = queueJobs
+      .map((job) => job.createdAt)
+      .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+
+    return {
+      configured: health?.configured ?? false,
+      enabled: health?.enabled ?? false,
+      estimatedCost: cost?.estimatedCost ?? 0,
+      failures24h,
+      health: health?.health ?? "unknown",
+      lastActivity: health?.lastActivity ?? lastQueueActivity,
+      provider: providerKey,
+      queueCount: queueJobs.filter((job) => job.status === "queued" || job.status === "retry_pending" || job.status === "running").length,
+      usage24h: usage?.totalJobs ?? queueJobs.length
+    };
+  });
+  const recentCriticalEvents = [
+    ...operationsErrorSnapshot.errors
+      .filter((error) => error.severity === "critical" || error.severity === "high")
+      .map((error) => ({
+        eventType: error.errorGroup,
+        id: `error:${error.id}`,
+        provider: error.provider ?? "unknown",
+        safeMessage: error.errorMessage ?? error.errorCode ?? `${error.occurrences} occurrence(s) recorded.`,
+        severity: error.severity,
+        timestamp: error.lastSeenAt
+      })),
+    ...operationsAuditLogs
+      .filter((log) => (log.status === "failed" || log.status === "blocked" || log.eventType === "ai_job_failed") && isWithinHours(log.createdAt, 24))
+      .map((log) => ({
+        eventType: log.eventType,
+        id: `audit:${log.id}`,
+        provider: log.providerKey ?? "unknown",
+        safeMessage: log.errorMessage ?? safeSummaryText(log.safeSummary),
+        severity: log.status === "failed" ? "high" : "medium",
+        timestamp: log.createdAt
+      })),
+    ...operationsQueueSnapshot.jobs
+      .filter((job) => job.status === "failed" || job.status === "timeout" || job.staleState !== "fresh")
+      .map((job) => ({
+        eventType: job.staleState !== "fresh" ? job.staleState : `job_${job.status}`,
+        id: `queue:${job.jobId}`,
+        provider: job.provider,
+        safeMessage: job.errorMessage ?? `${job.status} job from ${job.source}`,
+        severity: job.status === "timeout" || job.staleState !== "fresh" ? "critical" : "high",
+        timestamp: job.createdAt ?? operationsQueueSnapshot.generatedAt
+      }))
+  ].sort((left, right) => {
+    const severityDelta = severityRank(right.severity) - severityRank(left.severity);
+
+    return severityDelta || dateValue(right.timestamp) - dateValue(left.timestamp);
+  }).slice(0, 12);
+  const certificationRows = [
+    {
+      name: "Health Engine",
+      status: certificationStatus(degradedProviders > 0 || offlineProviders > 0)
+    },
+    {
+      name: "Audit Logs",
+      status: certificationStatus(false)
+    },
+    {
+      name: "Error Center",
+      status: certificationStatus(activeErrors > 0)
+    },
+    {
+      name: "Diagnostics",
+      status: certificationStatus(diagnosticsNeedingAttention > 0)
+    },
+    {
+      name: "Secrets Monitoring",
+      status: certificationStatus(secretsNeedingAttention > 0)
+    },
+    {
+      name: "Queue Monitoring",
+      status: certificationStatus(queueNeedsAttention)
+    },
+    {
+      name: "Usage Analytics",
+      status: certificationStatus(false)
+    },
+    {
+      name: "Cost Analytics",
+      status: certificationStatus(!operationsCostSnapshot.costDataConnected)
+    }
+  ];
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -267,7 +444,129 @@ export default async function AdminAIPage({
         ]}
       />
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-operations-overview">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              AI Runtime Operations Dashboard
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Operations Overview
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Unified read-only status across AI health, audit logs, errors, diagnostics, secrets, queue, usage, and cost analytics. This view does not call providers, trigger generation, expose secrets, or change credits.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <form action={runAllAIDiagnosticsAction}>
+              <button
+                className="rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-indigo-700"
+                type="submit"
+              >
+                Run all diagnostics
+              </button>
+            </form>
+            <a className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-red-700" href="#ai-error-center">
+              Open Error Center
+            </a>
+            <a className="rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-700" href="#ai-queue-monitoring">
+              Open Queue Monitoring
+            </a>
+            <a className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" href="#ai-usage-analytics">
+              Open Usage Analytics
+            </a>
+            <a className="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-violet-700" href="#ai-cost-analytics">
+              Open Cost Analytics
+            </a>
+            <a className="rounded-full border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-purple-700" href="#ai-secrets-monitoring">
+              Open Secrets Monitoring
+            </a>
+          </div>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Provider Health", value: offlineProviders > 0 ? "offline" : degradedProviders > 0 ? "degraded" : "healthy" },
+            { label: "Queue Status", value: queueNeedsAttention ? "needs attention" : operationsQueueSnapshot.summary.running > 0 ? "running" : "stable" },
+            { label: "Active Errors", value: activeErrors },
+            { label: "Recent Failures", value: recentFailures },
+            { label: "Usage Today", value: usageTodaySnapshot.summary.totalAiJobs },
+            { label: "Estimated Cost", value: formatAdminMoney(operationsCostSnapshot.summary.estimatedTotalCost) },
+            { label: "Secrets Status", value: secretsNeedingAttention ? `${secretsNeedingAttention} need review` : "ready" },
+            { label: "Diagnostics Status", value: diagnosticsNeedingAttention ? `${diagnosticsNeedingAttention} need review` : "ready" }
+          ]}
+        />
+        <AdminStatGrid
+          stats={[
+            { label: "Healthy providers", value: healthyProviders },
+            { label: "Degraded providers", value: degradedProviders },
+            { label: "Offline providers", value: offlineProviders },
+            { label: "Queued jobs", value: operationsQueueSnapshot.summary.queued + operationsQueueSnapshot.summary.retryPending },
+            { label: "Running jobs", value: operationsQueueSnapshot.summary.running },
+            { label: "Failed jobs", value: operationsQueueSnapshot.summary.failed + operationsQueueSnapshot.summary.timeout },
+            { label: "Success rate", value: `${percentage(operationsQueueSnapshot.summary.completed, operationsQueueSnapshot.summary.totalJobs)}%` },
+            { label: "Failure rate", value: `${percentage(operationsQueueSnapshot.summary.failed + operationsQueueSnapshot.summary.timeout, operationsQueueSnapshot.summary.totalJobs)}%` }
+          ]}
+        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <AdminTable
+            empty={!recentCriticalEvents.length ? "No recent critical AI events detected from audit logs, errors, failed jobs, or stale jobs." : null}
+            headers={["Timestamp", "Provider", "Event", "Severity", "Safe message"]}
+          >
+            {recentCriticalEvents.map((event) => (
+              <tr key={event.id}>
+                <td className="px-5 py-4 text-slate-600">{formatAdminDate(event.timestamp)}</td>
+                <td className="px-5 py-4 text-slate-600">{event.provider}</td>
+                <td className="px-5 py-4 font-bold text-slate-950">{event.eventType}</td>
+                <td className="px-5 py-4"><AdminBadge tone={toneForStatus(event.severity)}>{event.severity}</AdminBadge></td>
+                <td className="px-5 py-4 text-slate-600">{event.safeMessage}</td>
+              </tr>
+            ))}
+          </AdminTable>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  Certification Status
+                </p>
+                <h3 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">
+                  AI Runtime Foundation
+                </h3>
+              </div>
+              <AdminBadge tone={certificationRows.some((row) => row.status === "Needs Attention") ? "amber" : "green"}>
+                {certificationRows.some((row) => row.status === "Needs Attention") ? "Needs Attention" : "Ready"}
+              </AdminBadge>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {certificationRows.map((row) => (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3" key={row.name}>
+                  <span className="text-sm font-bold text-slate-700">{row.name}</span>
+                  <AdminBadge tone={row.status === "Ready" ? "green" : "amber"}>{row.status}</AdminBadge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <AdminTable
+          empty={!providerRuntimeRows.length ? "No provider runtime metadata is available." : null}
+          headers={["Provider", "Health", "Configured", "Enabled", "Queue", "Failures 24h", "Usage 24h", "Estimated cost", "Last activity"]}
+        >
+          {providerRuntimeRows.map((provider) => (
+            <tr key={provider.provider}>
+              <td className="px-5 py-4 font-bold text-slate-950">{provider.provider}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(provider.health)}>{provider.health}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={provider.configured ? "green" : "blue"}>{provider.configured ? "configured" : "not_configured"}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={provider.enabled ? "green" : "red"}>{provider.enabled ? "enabled" : "disabled"}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{provider.queueCount}</td>
+              <td className="px-5 py-4"><AdminBadge tone={provider.failures24h > 0 ? "red" : "green"}>{provider.failures24h}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{provider.usage24h}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(provider.estimatedCost)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(provider.lastActivity)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="ai-provider-health">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">
             AI Runtime Health Engine
@@ -310,7 +609,7 @@ export default async function AdminAIPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-usage-analytics">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-400">
@@ -484,7 +783,7 @@ export default async function AdminAIPage({
         </div>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-cost-analytics">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-400">
@@ -678,7 +977,7 @@ export default async function AdminAIPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-queue-monitoring">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
@@ -856,7 +1155,7 @@ export default async function AdminAIPage({
         ))}
       </AdminTable>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-diagnostics-center">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-400">
@@ -933,7 +1232,7 @@ export default async function AdminAIPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-secrets-monitoring">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-400">
             AI Provider Secrets Monitoring
@@ -1079,7 +1378,7 @@ export default async function AdminAIPage({
         ))}
       </AdminTable>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-error-center">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
@@ -1217,7 +1516,7 @@ export default async function AdminAIPage({
         </AdminTable>
       </section>
 
-      <section className="grid gap-4">
+      <section className="grid gap-4" id="ai-audit-logs">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
