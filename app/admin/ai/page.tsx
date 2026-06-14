@@ -47,6 +47,9 @@ import type {
   AIQueueJobStatus
 } from "@/src/lib/ai/queue/ai-queue-types";
 import {
+  buildOpenAIProductionCertificationSnapshot
+} from "@/src/lib/ai/production/openai-production-certification";
+import {
   getOpenAIProductionMonitoringSnapshot
 } from "@/src/lib/ai/production/openai-production-monitoring";
 import type {
@@ -61,11 +64,11 @@ import { openAIJobStatuses } from "@/src/lib/ai/runtime/openai-job-status";
 import { listAISecretsMonitoring } from "@/src/lib/ai/secrets/ai-secrets-monitoring";
 
 function toneForStatus(status: string) {
-  if (["completed", "configured", "connected", "fresh", "healthy", "low", "masked_configured", "succeeded"].includes(status)) {
+  if (["completed", "configured", "connected", "fresh", "healthy", "low", "masked_configured", "ready", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
-  if (["critical", "failed", "high", "missing", "missing_config", "offline", "rotation_required", "stale_queue", "stale_running", "timeout"].includes(status)) {
+  if (["blocked", "critical", "failed", "high", "missing", "missing_config", "offline", "rotation_required", "stale_queue", "stale_running", "timeout"].includes(status)) {
     return "red" as const;
   }
 
@@ -432,6 +435,14 @@ export default async function AdminAIPage({
     "all",
     ...costSnapshot.statusOptions
   ];
+  const openAIProductionCertificationSnapshot = buildOpenAIProductionCertificationSnapshot({
+    assetSnapshot: openAIAssetSnapshot,
+    creditSnapshot: openAICreditSnapshot,
+    errorSnapshot,
+    healthSnapshot,
+    monitoringSnapshot: openAIProductionSnapshot,
+    observabilitySnapshot: openAIObservabilitySnapshot
+  });
   const healthyProviders = healthSnapshot.providers.filter((provider) => provider.health === "healthy").length;
   const degradedProviders = healthSnapshot.providers.filter((provider) => provider.health === "degraded" || provider.health === "unknown").length;
   const offlineProviders = healthSnapshot.providers.filter((provider) => provider.health === "offline").length;
@@ -1517,6 +1528,92 @@ export default async function AdminAIPage({
             </tr>
           ))}
         </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-production-certification">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+            OpenAI Production Certification
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            Production readiness certification
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Final OpenAI-only readiness review across lifecycle, executor, credits, assets, exports, monitoring, error handling, and security masking. This section does not call OpenAI, trigger jobs, mutate credits, or mutate assets.
+          </p>
+        </div>
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Certification status
+              </p>
+              <h3 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">
+                {openAIProductionCertificationSnapshot.status}
+              </h3>
+              <p className="mt-2 text-sm font-semibold text-slate-500">
+                Readiness score: {openAIProductionCertificationSnapshot.readinessScore}/100 · Reviewed {formatAdminDate(openAIProductionCertificationSnapshot.generatedAt)}
+              </p>
+            </div>
+            <AdminBadge tone={toneForStatus(openAIProductionCertificationSnapshot.status)}>
+              {openAIProductionCertificationSnapshot.status}
+            </AdminBadge>
+          </div>
+          {openAIProductionCertificationSnapshot.noProductionJobsMessage ? (
+            <p className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm font-bold text-blue-700">
+              {openAIProductionCertificationSnapshot.noProductionJobsMessage}
+            </p>
+          ) : null}
+        </div>
+        <AdminTable
+          empty={!openAIProductionCertificationSnapshot.checklist.length ? "No certification checklist items available." : null}
+          headers={["Checklist item", "Status", "Certification note"]}
+        >
+          {openAIProductionCertificationSnapshot.checklist.map((item) => (
+            <tr key={item.key}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{item.message}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!openAIProductionCertificationSnapshot.blockers.length ? "No OpenAI production certification blockers found." : null}
+          headers={["Type", "Severity", "Message", "Related job", "Related store/provider", "Suggested action"]}
+        >
+          {openAIProductionCertificationSnapshot.blockers.map((blocker) => (
+            <tr key={`${blocker.type}:${blocker.relatedJobId ?? blocker.relatedStoreId ?? blocker.message}`}>
+              <td className="px-5 py-4 text-slate-600">{blocker.type}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(blocker.severity)}>{blocker.severity}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{blocker.message}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{blocker.relatedJobId ?? "No job"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">
+                {blocker.relatedStoreId ?? "No store"} / {blocker.provider ?? "No provider"}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{blocker.suggestedAction}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                Safe final review
+              </p>
+              <h3 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">
+                {openAIProductionCertificationSnapshot.securityReview.result}
+              </h3>
+            </div>
+            <AdminBadge tone={openAIProductionCertificationSnapshot.securityReview.passed ? "green" : "red"}>
+              {openAIProductionCertificationSnapshot.securityReview.passed ? "passed" : "failed"}
+            </AdminBadge>
+          </div>
+          <div className="mt-4 grid gap-2 text-sm font-semibold leading-6 text-slate-500">
+            {openAIProductionCertificationSnapshot.securityReview.checkedItems.map((item) => (
+              <p key={item}>{item}</p>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-4" id="openai-job-lifecycle">
