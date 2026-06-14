@@ -14,17 +14,18 @@ import {
   viewAIPublicAsset
 } from "@/lib/admin/ai-actions";
 import { getAdminAIControl } from "@/lib/admin/data";
+import { getAIProviderHealthSnapshot } from "@/src/lib/ai/health/health-service";
 
 function toneForStatus(status: string) {
   if (["completed", "configured", "healthy", "masked_configured", "succeeded"].includes(status)) {
     return "green" as const;
   }
 
-  if (["failed", "missing", "missing_config"].includes(status)) {
+  if (["failed", "missing", "missing_config", "offline"].includes(status)) {
     return "red" as const;
   }
 
-  if (["processing", "active", "placeholder", "no_secret_required"].includes(status)) {
+  if (["processing", "active", "placeholder", "no_secret_required", "unknown"].includes(status)) {
     return "blue" as const;
   }
 
@@ -47,7 +48,10 @@ function AIJobHiddenFields({
 }
 
 export default async function AdminAIPage() {
-  const control = await getAdminAIControl();
+  const [control, healthSnapshot] = await Promise.all([
+    getAdminAIControl(),
+    getAIProviderHealthSnapshot()
+  ]);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -68,6 +72,49 @@ export default async function AdminAIPage() {
           { label: "Top AI asset types", value: control.overview.topAssetTypes }
         ]}
       />
+
+      <section className="grid gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">
+            AI Runtime Health Engine
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            AI Provider Health
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Calculated from existing AI jobs, logs, provider configuration status, and runtime metadata. No provider calls, generations, raw responses, or secret values are used.
+          </p>
+        </div>
+        <AdminTable
+          empty={!healthSnapshot.providers.length ? "No AI provider health metadata is available." : null}
+          headers={["Provider", "Configured", "Enabled", "Health", "Last Activity", "Recent Failures"]}
+        >
+          {healthSnapshot.providers.map((provider) => (
+            <tr key={provider.provider}>
+              <td className="px-5 py-4 font-bold text-slate-950">{provider.providerName}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={provider.configured ? "green" : "blue"}>
+                  {provider.configured ? "configured" : "not_configured"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={provider.enabled ? "green" : "red"}>
+                  {provider.enabled ? "enabled" : "disabled"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(provider.health)}>{provider.health}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(provider.lastActivity)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={provider.recentFailures > 0 ? "red" : "green"}>
+                  {provider.recentFailures}
+                </AdminBadge>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <AdminTable
         empty={!control.providers.length ? "No AI provider status records found." : null}
