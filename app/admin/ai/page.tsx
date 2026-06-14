@@ -25,6 +25,8 @@ import type {
   AiAuditEventType,
   AiAuditStatus
 } from "@/src/lib/ai/audit/ai-audit-types";
+import { getAICostAnalyticsSnapshot } from "@/src/lib/ai/costs/ai-cost-analytics";
+import type { AICostDateRange } from "@/src/lib/ai/costs/ai-cost-types";
 import {
   aiErrorGroups,
   aiErrorSeverities
@@ -122,6 +124,12 @@ const usageDateRanges: Array<AIUsageDateRange> = [
   "last_30_days",
   "all_time"
 ];
+const costDateRanges: Array<AICostDateRange> = [
+  "today",
+  "last_7_days",
+  "last_30_days",
+  "all_time"
+];
 
 function AIJobHiddenFields({
   job
@@ -163,7 +171,12 @@ export default async function AdminAIPage({
   const usageStore = firstParam(params.usageStore);
   const usageAssetType = firstParam(params.usageAssetType);
   const usageStatus = firstParam(params.usageStatus);
-  const [control, healthSnapshot, usageSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
+  const costDateRange = firstParam(params.costDateRange, "last_30_days") as AICostDateRange;
+  const costProvider = firstParam(params.costProvider);
+  const costStore = firstParam(params.costStore);
+  const costAssetType = firstParam(params.costAssetType);
+  const costStatus = firstParam(params.costStatus);
+  const [control, healthSnapshot, usageSnapshot, costSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
     getAIUsageAnalyticsSnapshot({
@@ -172,6 +185,13 @@ export default async function AdminAIPage({
       provider: usageProvider,
       status: usageStatus,
       storeId: usageStore
+    }),
+    getAICostAnalyticsSnapshot({
+      assetType: costAssetType,
+      dateRange: costDateRange,
+      provider: costProvider,
+      status: costStatus,
+      storeId: costStore
     }),
     listAiAuditLogs({
       assetType: auditAssetType,
@@ -221,6 +241,10 @@ export default async function AdminAIPage({
   const usageStatuses = [
     "all",
     ...usageSnapshot.usageByStatus.map((row) => row.status)
+  ];
+  const costStatuses = [
+    "all",
+    ...costSnapshot.statusOptions
   ];
 
   return (
@@ -458,6 +482,200 @@ export default async function AdminAIPage({
             ))}
           </AdminTable>
         </div>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-400">
+              AI Cost Analytics
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              Estimated AI cost analytics
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Uses only existing stored cost estimate metadata. Values are estimates, and no provider pricing, billing, credits, prompts, provider responses, private URLs, or secrets are read or changed.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-5" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={costDateRange}
+                name="costDateRange"
+              >
+                {costDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={costProvider}
+                name="costProvider"
+              >
+                <option value="all">All providers</option>
+                {costSnapshot.providers.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Store
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={costStore}
+                name="costStore"
+              >
+                <option value="all">All stores</option>
+                {costSnapshot.stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Asset type
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={costAssetType}
+                name="costAssetType"
+              >
+                <option value="all">All asset types</option>
+                {costSnapshot.assetTypes.map((assetType) => (
+                  <option key={assetType} value={assetType}>
+                    {assetType}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Job status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={costStatus}
+                name="costStatus"
+              >
+                {costStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-violet-200 bg-violet-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-violet-700 sm:col-span-5"
+              type="submit"
+            >
+              Apply cost filters
+            </button>
+          </form>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Total estimated cost", value: formatAdminMoney(costSnapshot.summary.estimatedTotalCost) },
+            { label: "Successful job cost", value: formatAdminMoney(costSnapshot.summary.estimatedSuccessfulJobCost) },
+            { label: "Failed job cost", value: formatAdminMoney(costSnapshot.summary.estimatedFailedJobCost) },
+            { label: "Average cost / job", value: formatAdminMoney(costSnapshot.summary.averageCostPerJob) },
+            { label: "Jobs with cost data", value: costSnapshot.summary.jobsWithCostData },
+            { label: "Cost coverage", value: `${costSnapshot.summary.costDataCoveragePercent}%` },
+            { label: "Coverage status", value: costSnapshot.summary.costDataCoverageStatus }
+          ]}
+        />
+        {costSnapshot.emptyStateMessage ? (
+          <div className="rounded-3xl border border-dashed border-violet-200 bg-violet-50/60 p-6">
+            <p className="text-sm font-black text-violet-900">{costSnapshot.emptyStateMessage}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-violet-700">
+              This dashboard will populate when existing AI job metadata includes stored cost estimate fields.
+            </p>
+          </div>
+        ) : null}
+        <AdminTable
+          empty={!costSnapshot.usageByProvider.length ? "No provider cost data found for the current filters." : null}
+          headers={["Provider", "Estimated cost", "Jobs with cost", "Total jobs", "Average cost / job"]}
+        >
+          {costSnapshot.usageByProvider.map((row) => (
+            <tr key={row.key}>
+              <td className="px-5 py-4 font-bold text-slate-950">{row.label}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.estimatedCost)}</td>
+              <td className="px-5 py-4 text-slate-600">{row.jobsWithCostData}</td>
+              <td className="px-5 py-4 text-slate-600">{row.totalJobs}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.averageCostPerJob)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!costSnapshot.usageByStore.length ? "No store cost data found for the current filters." : null}
+          headers={["Store", "Estimated cost", "Jobs with cost", "Total jobs", "Average cost / job"]}
+        >
+          {costSnapshot.usageByStore.map((row) => (
+            <tr key={row.key}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{row.label}</p>
+                <p className="mt-1 break-all text-xs font-semibold text-slate-400">{row.key}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.estimatedCost)}</td>
+              <td className="px-5 py-4 text-slate-600">{row.jobsWithCostData}</td>
+              <td className="px-5 py-4 text-slate-600">{row.totalJobs}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.averageCostPerJob)}</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <AdminTable
+            empty={!costSnapshot.usageByAssetType.length ? "No asset type cost data found for the current filters." : null}
+            headers={["Asset type", "Estimated cost", "Jobs with cost", "Average cost / job"]}
+          >
+            {costSnapshot.usageByAssetType.map((row) => (
+              <tr key={row.key}>
+                <td className="px-5 py-4 font-bold text-slate-950">{row.label}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.estimatedCost)}</td>
+                <td className="px-5 py-4 text-slate-600">{row.jobsWithCostData}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.averageCostPerJob)}</td>
+              </tr>
+            ))}
+          </AdminTable>
+          <AdminTable
+            empty={!costSnapshot.usageByUser.length ? "No user cost data found for the current filters." : null}
+            headers={["User", "Estimated cost", "Jobs with cost", "Average cost / job"]}
+          >
+            {costSnapshot.usageByUser.map((row) => (
+              <tr key={row.key}>
+                <td className="px-5 py-4 break-all font-bold text-slate-950">{row.label}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.estimatedCost)}</td>
+                <td className="px-5 py-4 text-slate-600">{row.jobsWithCostData}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(row.averageCostPerJob)}</td>
+              </tr>
+            ))}
+          </AdminTable>
+        </div>
+        <AdminTable
+          empty={!costSnapshot.highestCostJobs.length ? "No safe highest-cost job metadata is available." : null}
+          headers={["Job", "Store", "Provider", "Asset type", "Status", "Estimated cost", "Created"]}
+        >
+          {costSnapshot.highestCostJobs.map((job) => (
+            <tr key={job.jobId}>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{job.jobId}</td>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{job.storeName}</p>
+                <p className="mt-1 break-all text-xs font-semibold text-slate-400">{job.storeId ?? "No store"}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{job.provider}</td>
+              <td className="px-5 py-4 text-slate-600">{job.assetType}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(job.status)}>{job.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminMoney(job.estimatedCost)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.createdAt)}</td>
+            </tr>
+          ))}
+        </AdminTable>
       </section>
 
       <section className="grid gap-4">
