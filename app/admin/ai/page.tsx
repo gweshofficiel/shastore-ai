@@ -18,6 +18,8 @@ import {
   viewAIPublicAsset
 } from "@/lib/admin/ai-actions";
 import { getAdminAIControl } from "@/lib/admin/data";
+import { getAIUsageAnalyticsSnapshot } from "@/src/lib/ai/analytics/ai-usage-analytics";
+import type { AIUsageDateRange } from "@/src/lib/ai/analytics/ai-usage-types";
 import { listAiAuditLogs } from "@/src/lib/ai/audit/ai-audit-log";
 import type {
   AiAuditEventType,
@@ -114,6 +116,12 @@ const queueStatuses: Array<AIQueueJobStatus | "all"> = [
   "retry_pending"
 ];
 const queueDateRanges: Array<AIQueueDateRange> = ["24h", "7d", "30d", "all"];
+const usageDateRanges: Array<AIUsageDateRange> = [
+  "today",
+  "last_7_days",
+  "last_30_days",
+  "all_time"
+];
 
 function AIJobHiddenFields({
   job
@@ -150,9 +158,21 @@ export default async function AdminAIPage({
   const queueAssetType = firstParam(params.queueAssetType);
   const queueStore = firstParam(params.queueStore);
   const queueDateRange = firstParam(params.queueDateRange, "7d") as AIQueueDateRange;
-  const [control, healthSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
+  const usageDateRange = firstParam(params.usageDateRange, "last_30_days") as AIUsageDateRange;
+  const usageProvider = firstParam(params.usageProvider);
+  const usageStore = firstParam(params.usageStore);
+  const usageAssetType = firstParam(params.usageAssetType);
+  const usageStatus = firstParam(params.usageStatus);
+  const [control, healthSnapshot, usageSnapshot, auditLogs, errorSnapshot, diagnosticsSnapshot, queueSnapshot, secretsSnapshot] = await Promise.all([
     getAdminAIControl(),
     getAIProviderHealthSnapshot(),
+    getAIUsageAnalyticsSnapshot({
+      assetType: usageAssetType,
+      dateRange: usageDateRange,
+      provider: usageProvider,
+      status: usageStatus,
+      storeId: usageStore
+    }),
     listAiAuditLogs({
       assetType: auditAssetType,
       eventType: auditEventType,
@@ -198,6 +218,10 @@ export default async function AdminAIPage({
     ...queueSnapshot.jobs.map((job) => job.storeId).filter(Boolean),
     queueStore !== "all" ? queueStore : null
   ].filter(Boolean))].sort();
+  const usageStatuses = [
+    "all",
+    ...usageSnapshot.usageByStatus.map((row) => row.status)
+  ];
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -260,6 +284,180 @@ export default async function AdminAIPage({
             </tr>
           ))}
         </AdminTable>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-400">
+              AI Usage Analytics
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+              AI usage and asset activity
+            </h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Aggregated from existing AI jobs, queue rows, result rows, and AI audit logs. No provider calls, generation, credit changes, prompts, raw responses, private URLs, or secrets are used.
+            </p>
+          </div>
+          <form className="grid gap-2 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-5" method="get">
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Date range
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageDateRange}
+                name="usageDateRange"
+              >
+                {usageDateRanges.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Provider
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageProvider}
+                name="usageProvider"
+              >
+                <option value="all">All providers</option>
+                {usageSnapshot.providers.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Store
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageStore}
+                name="usageStore"
+              >
+                <option value="all">All stores</option>
+                {usageSnapshot.stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Asset type
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageAssetType}
+                name="usageAssetType"
+              >
+                <option value="all">All asset types</option>
+                {usageSnapshot.assetTypes.map((assetType) => (
+                  <option key={assetType} value={assetType}>
+                    {assetType}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Status
+              <select
+                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700"
+                defaultValue={usageStatus}
+                name="usageStatus"
+              >
+                {usageStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="h-10 rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700 sm:col-span-5"
+              type="submit"
+            >
+              Apply usage filters
+            </button>
+          </form>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "Total AI jobs", value: usageSnapshot.summary.totalAiJobs },
+            { label: "Successful jobs", value: usageSnapshot.summary.successfulJobs },
+            { label: "Failed jobs", value: usageSnapshot.summary.failedJobs },
+            { label: "Cancelled jobs", value: usageSnapshot.summary.cancelledJobs },
+            { label: "Success rate", value: `${usageSnapshot.summary.successRate}%` },
+            { label: "Failure rate", value: `${usageSnapshot.summary.failureRate}%` },
+            { label: "Unique stores", value: usageSnapshot.summary.uniqueStoresUsingAi },
+            { label: "Unique users", value: usageSnapshot.summary.uniqueUsersUsingAi },
+            { label: "Generated assets", value: usageSnapshot.summary.generatedAssetsCount },
+            { label: "Reviewed assets", value: usageSnapshot.summary.reviewedAssetsCount },
+            { label: "Published assets", value: usageSnapshot.summary.publishedAssetsCount }
+          ]}
+        />
+        <AdminTable
+          empty={!usageSnapshot.usageByProvider.length ? "No provider usage found for the current filters." : null}
+          headers={["Provider", "Total jobs", "Successful", "Failed", "Cancelled", "Generated assets", "Success rate"]}
+        >
+          {usageSnapshot.usageByProvider.map((row) => (
+            <tr key={row.key}>
+              <td className="px-5 py-4 font-bold text-slate-950">{row.label}</td>
+              <td className="px-5 py-4 text-slate-600">{row.totalJobs}</td>
+              <td className="px-5 py-4"><AdminBadge tone="green">{row.successfulJobs}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={row.failedJobs > 0 ? "red" : "green"}>{row.failedJobs}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{row.cancelledJobs}</td>
+              <td className="px-5 py-4 text-slate-600">{row.generatedAssets}</td>
+              <td className="px-5 py-4 text-slate-600">{row.successRate}%</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <AdminTable
+          empty={!usageSnapshot.usageByStore.length ? "No store usage found for the current filters." : null}
+          headers={["Store", "Total jobs", "Successful", "Failed", "Cancelled", "Generated assets", "Success rate"]}
+        >
+          {usageSnapshot.usageByStore.map((row) => (
+            <tr key={row.key}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{row.label}</p>
+                <p className="mt-1 break-all text-xs font-semibold text-slate-400">{row.key}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{row.totalJobs}</td>
+              <td className="px-5 py-4"><AdminBadge tone="green">{row.successfulJobs}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={row.failedJobs > 0 ? "red" : "green"}>{row.failedJobs}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{row.cancelledJobs}</td>
+              <td className="px-5 py-4 text-slate-600">{row.generatedAssets}</td>
+              <td className="px-5 py-4 text-slate-600">{row.successRate}%</td>
+            </tr>
+          ))}
+        </AdminTable>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <AdminTable
+            empty={!usageSnapshot.usageByAssetType.length ? "No asset type usage found for the current filters." : null}
+            headers={["Asset type", "Total jobs", "Successful", "Failed", "Generated assets"]}
+          >
+            {usageSnapshot.usageByAssetType.map((row) => (
+              <tr key={row.key}>
+                <td className="px-5 py-4 font-bold text-slate-950">{row.label}</td>
+                <td className="px-5 py-4 text-slate-600">{row.totalJobs}</td>
+                <td className="px-5 py-4 text-slate-600">{row.successfulJobs}</td>
+                <td className="px-5 py-4 text-slate-600">{row.failedJobs}</td>
+                <td className="px-5 py-4 text-slate-600">{row.generatedAssets}</td>
+              </tr>
+            ))}
+          </AdminTable>
+          <AdminTable
+            empty={!usageSnapshot.usageByStatus.length ? "No status breakdown found for the current filters." : null}
+            headers={["Status", "Count"]}
+          >
+            {usageSnapshot.usageByStatus.map((row) => (
+              <tr key={row.status}>
+                <td className="px-5 py-4"><AdminBadge tone={toneForStatus(row.status)}>{row.status}</AdminBadge></td>
+                <td className="px-5 py-4 text-slate-600">{row.count}</td>
+              </tr>
+            ))}
+          </AdminTable>
+        </div>
       </section>
 
       <section className="grid gap-4">
