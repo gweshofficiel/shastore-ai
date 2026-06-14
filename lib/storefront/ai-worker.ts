@@ -14,6 +14,7 @@ import {
   type AIWorkflowStepKey
 } from "@/lib/storefront/ai-workflow";
 import { createClient } from "@/lib/supabase/server";
+import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
 
 export type SimulatedAIQueueItem = {
   attempts: number;
@@ -158,7 +159,27 @@ export async function lockAIQueuedJob(queue: SimulatedAIQueueItem) {
     .select("id")
     .maybeSingle();
 
-  return { error: error?.message ?? null, locked: Boolean(data), attempts };
+  const locked = Boolean(data);
+
+  if (!error && locked) {
+    await recordAiAuditLog({
+      assetType: "store_generation",
+      eventType: "ai_job_started",
+      jobId: queue.job_id ?? queue.id,
+      providerKey: "workflow_placeholder",
+      safeSummary: {
+        attempts,
+        generationId: queue.generation_id,
+        queueId: queue.id,
+        worker: "simulated"
+      },
+      status: "started",
+      storeId: queue.store_instance_id,
+      userId: queue.owner_user_id
+    });
+  }
+
+  return { error: error?.message ?? null, locked, attempts };
 }
 
 async function writeSimulationLog(

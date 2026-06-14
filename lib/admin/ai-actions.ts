@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
+import type { AiAuditEventType } from "@/src/lib/ai/audit/ai-audit-types";
 
 type AIAdminAction =
   | "admin_ai_job_clear_review"
@@ -47,6 +49,28 @@ async function recordAIAdminAction(formData: FormData, action: AIAdminAction) {
     user_id: access.user.id,
     workspace_id: null
   } as never);
+
+  const eventTypeByAction: Partial<Record<AIAdminAction, AiAuditEventType>> = {
+    admin_ai_job_clear_review: "ai_asset_review_cleared",
+    admin_ai_job_mark_review: "ai_asset_review_marked"
+  };
+  const eventType = eventTypeByAction[action];
+
+  if (eventType) {
+    await recordAiAuditLog({
+      eventType,
+      jobId,
+      providerKey: provider || null,
+      safeSummary: {
+        action,
+        source: "super_admin_ai_control_center",
+        status
+      },
+      status: "success",
+      storeId: storeId || null,
+      userId: access.user.id
+    });
+  }
 
   revalidatePath("/admin/ai");
 }

@@ -3,6 +3,11 @@ import {
   recordStoreAuditLogSafe,
   type StoreAuditAction
 } from "@/lib/audit/store-audit";
+import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
+import type {
+  AiAuditEventType,
+  AiAuditStatus
+} from "@/src/lib/ai/audit/ai-audit-types";
 import type {
   AIVisualGenerationJob,
   AIVisualJobLifecycleStatus
@@ -96,6 +101,54 @@ function auditMetadataForJob({
   };
 }
 
+function centralizedEventType(actionType: AIVisualAuditAction): AiAuditEventType | null {
+  if (actionType === "ai_visual.job_queued" || actionType === "ai_visual.job_retried") {
+    return "ai_job_queued";
+  }
+
+  if (actionType === "ai_visual.job_processed") {
+    return "ai_job_started";
+  }
+
+  if (actionType === "ai_visual.job_completed") {
+    return "ai_job_completed";
+  }
+
+  if (actionType === "ai_visual.job_failed") {
+    return "ai_job_failed";
+  }
+
+  if (actionType === "ai_visual.job_cancelled") {
+    return "ai_job_cancelled";
+  }
+
+  if (actionType === "ai_visual.visual_approved" || actionType === "ai_visual.visual_rejected" || actionType === "ai_visual.visual_disabled") {
+    return "ai_asset_review_marked";
+  }
+
+  return null;
+}
+
+function centralizedStatus(actionType: AIVisualAuditAction, status?: AIVisualJobLifecycleStatus | string | null): AiAuditStatus {
+  if (actionType === "ai_visual.job_failed") {
+    return "failed";
+  }
+
+  if (actionType === "ai_visual.job_processed") {
+    return "started";
+  }
+
+  if (actionType === "ai_visual.job_cancelled") {
+    return "skipped";
+  }
+
+  if (status === "failed") {
+    return "failed";
+  }
+
+  return "success";
+}
+
 export async function recordAIVisualAuditLogSafe({
   actionType,
   actorUserId,
@@ -115,6 +168,29 @@ export async function recordAIVisualAuditLogSafe({
   storeId?: string | null;
   supabase?: SupabaseClient;
 }) {
+  const centralizedType = centralizedEventType(actionType);
+
+  if (centralizedType) {
+    await recordAiAuditLog({
+      assetType: job.kind,
+      errorCode: actionType === "ai_visual.job_failed" ? "ai_visual_job_failed" : null,
+      errorMessage: sanitizeAuditText(errorMessage ?? job.error),
+      eventType: centralizedType,
+      jobId: job.jobId,
+      providerKey: job.provider,
+      safeSummary: {
+        actionType,
+        requestId: job.requestId,
+        status: status ?? job.status,
+        targetType: job.attachTarget.type
+      },
+      status: centralizedStatus(actionType, status ?? job.status),
+      storeId: storeId ?? job.storeId,
+      userId: actorUserId,
+      workspaceId: job.workspaceId
+    });
+  }
+
   await recordStoreAuditLogSafe({
     action: actionType as StoreAuditAction,
     actorUserId,

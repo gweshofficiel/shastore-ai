@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { recordAiAuditLog } from "@/src/lib/ai/audit/ai-audit-log";
 
 export type AIWorkflowState =
   | "queued"
@@ -80,6 +81,29 @@ function queueStatusForState(state: AIWorkflowState): AIQueueStatus {
   }
 
   return state === "queued" ? "waiting" : "active";
+}
+
+async function readQueueAuditContext(queueId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("ai_generation_queue" as never)
+    .select("id, generation_id, job_id, owner_user_id, store_instance_id, workflow_state, queue_status")
+    .eq("id", queueId)
+    .maybeSingle();
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  return data as {
+    generation_id?: string | null;
+    id?: string | null;
+    job_id?: string | null;
+    owner_user_id?: string | null;
+    queue_status?: string | null;
+    store_instance_id?: string | null;
+    workflow_state?: string | null;
+  };
 }
 
 function normalizeStep(value: unknown): AIWorkflowStep | null {
@@ -189,6 +213,21 @@ export async function enqueueAIStoreGeneration({
     store_instance_id: storeInstanceId
   } as never);
 
+  await recordAiAuditLog({
+    assetType: "store_generation",
+    eventType: "ai_job_queued",
+    jobId: jobId ?? queueId,
+    providerKey: "workflow_placeholder",
+    safeSummary: {
+      generationId,
+      queueId,
+      workflowState: "queued"
+    },
+    status: "success",
+    storeId: storeInstanceId,
+    userId: ownerUserId
+  });
+
   return { error: null, queueId };
 }
 
@@ -294,6 +333,27 @@ export async function markAIWorkflowFailed(queueId: string, errorMessage: string
     } as never)
     .eq("id", queueId);
 
+  if (!error) {
+    const context = await readQueueAuditContext(queueId);
+
+    await recordAiAuditLog({
+      assetType: "store_generation",
+      errorCode: "ai_workflow_failed",
+      errorMessage,
+      eventType: "ai_job_failed",
+      jobId: context?.job_id ?? queueId,
+      providerKey: "workflow_placeholder",
+      safeSummary: {
+        generationId: context?.generation_id ?? null,
+        queueId,
+        workflowState: "failed"
+      },
+      status: "failed",
+      storeId: context?.store_instance_id ?? null,
+      userId: context?.owner_user_id ?? null
+    });
+  }
+
   return { error: error?.message ?? null };
 }
 
@@ -307,6 +367,25 @@ export async function markAIWorkflowCompleted(queueId: string) {
       workflow_state: "completed"
     } as never)
     .eq("id", queueId);
+
+  if (!error) {
+    const context = await readQueueAuditContext(queueId);
+
+    await recordAiAuditLog({
+      assetType: "store_generation",
+      eventType: "ai_job_completed",
+      jobId: context?.job_id ?? queueId,
+      providerKey: "workflow_placeholder",
+      safeSummary: {
+        generationId: context?.generation_id ?? null,
+        queueId,
+        workflowState: "completed"
+      },
+      status: "success",
+      storeId: context?.store_instance_id ?? null,
+      userId: context?.owner_user_id ?? null
+    });
+  }
 
   return { error: error?.message ?? null };
 }
@@ -332,6 +411,25 @@ export async function cancelAIWorkflow(queueId: string) {
       workflow_state: "cancelled"
     } as never)
     .eq("id", queueId);
+
+  if (!error) {
+    const context = await readQueueAuditContext(queueId);
+
+    await recordAiAuditLog({
+      assetType: "store_generation",
+      eventType: "ai_job_cancelled",
+      jobId: context?.job_id ?? queueId,
+      providerKey: "workflow_placeholder",
+      safeSummary: {
+        generationId: context?.generation_id ?? null,
+        queueId,
+        workflowState: "cancelled"
+      },
+      status: "skipped",
+      storeId: context?.store_instance_id ?? null,
+      userId: context?.owner_user_id ?? null
+    });
+  }
 
   return { error: error?.message ?? null };
 }
