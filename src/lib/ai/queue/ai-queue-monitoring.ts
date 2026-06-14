@@ -12,6 +12,7 @@ import type {
   AIQueueStaleState,
   AIQueueSummary
 } from "@/src/lib/ai/queue/ai-queue-types";
+import { normalizeOpenAIJobStatus } from "@/src/lib/ai/runtime/openai-job-status";
 
 type QueryResult = PromiseLike<{
   data: unknown[] | null;
@@ -92,35 +93,17 @@ function durationText(ms: number | null) {
 function normalizeStatus(value: string, attempts = 0, maxAttempts = 0): AIQueueJobStatus {
   const status = value.toLowerCase();
 
-  if (status === "waiting" || status === "pending" || status === "queued" || status === "paused") {
-    return attempts > 0 ? "retry_pending" : "queued";
-  }
-
-  if (status === "active" || status === "running" || status === "processing" || status === "generating" || status === "validating" || status === "planning" || status === "saving_draft" || status === "mapping_to_builder" || status === "generating_schema") {
-    return "running";
-  }
-
-  if (status === "completed" || status === "succeeded" || status === "ready") {
-    return "completed";
-  }
-
-  if (status === "cancelled" || status === "canceled") {
-    return "cancelled";
-  }
-
   if ((status === "failed" || status.includes("error")) && maxAttempts > attempts) {
     return "retry_pending";
   }
 
-  if (status === "timeout" || status.includes("timeout")) {
-    return "timeout";
+  const normalized = normalizeOpenAIJobStatus(status);
+
+  if (normalized === "queued" && attempts > 0) {
+    return "retry_pending";
   }
 
-  if (status === "failed") {
-    return "failed";
-  }
-
-  return "queued";
+  return normalized;
 }
 
 function staleStateForJob(job: Pick<AIQueueJob, "createdAt" | "startedAt" | "status">): AIQueueStaleState {

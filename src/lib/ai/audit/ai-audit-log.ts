@@ -41,10 +41,13 @@ const aiAuditEventTypes: AiAuditEventType[] = [
   "ai_asset_review_marked",
   "ai_job_cancelled",
   "ai_job_completed",
+  "ai_job_created",
   "ai_job_failed",
   "ai_job_queued",
   "ai_job_requested",
-  "ai_job_started"
+  "ai_job_retry_pending",
+  "ai_job_started",
+  "ai_job_timeout"
 ];
 const aiAuditStatuses: AiAuditStatus[] = ["blocked", "failed", "skipped", "started", "success"];
 

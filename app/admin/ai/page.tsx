@@ -43,6 +43,11 @@ import type {
   AIQueueDateRange,
   AIQueueJobStatus
 } from "@/src/lib/ai/queue/ai-queue-types";
+import {
+  createJob,
+  type OpenAIJobProvider
+} from "@/src/lib/ai/runtime/openai-job-model";
+import { openAIJobStatuses } from "@/src/lib/ai/runtime/openai-job-status";
 import { listAISecretsMonitoring } from "@/src/lib/ai/secrets/ai-secrets-monitoring";
 
 function toneForStatus(status: string) {
@@ -111,6 +116,16 @@ function certificationStatus(needsAttention: boolean) {
   return needsAttention ? "Needs Attention" : "Ready";
 }
 
+function isOpenAIProvider(provider: string | null | undefined) {
+  const normalized = provider?.toLowerCase() ?? "";
+
+  return normalized === "openai" || normalized === "openai-image" || normalized.includes("openai");
+}
+
+function openAIJobProvider(provider: string): OpenAIJobProvider {
+  return provider === "openai-image" ? "openai-image" : "openai";
+}
+
 const auditStatuses: Array<AiAuditStatus | "all"> = [
   "all",
   "started",
@@ -130,11 +145,14 @@ const auditEventTypes: Array<AiAuditEventType | "all"> = [
   "ai_diagnostic_failed",
   "ai_diagnostic_skipped",
   "ai_job_requested",
+  "ai_job_created",
   "ai_job_queued",
   "ai_job_started",
   "ai_job_completed",
   "ai_job_failed",
   "ai_job_cancelled",
+  "ai_job_timeout",
+  "ai_job_retry_pending",
   "ai_asset_created",
   "ai_asset_published",
   "ai_asset_review_marked",
@@ -304,6 +322,26 @@ export default async function AdminAIPage({
     ...queueSnapshot.jobs.map((job) => job.storeId).filter(Boolean),
     queueStore !== "all" ? queueStore : null
   ].filter(Boolean))].sort();
+  const openAIJobLifecycleRows = queueSnapshot.jobs
+    .filter((job) => isOpenAIProvider(job.provider))
+    .map((job) => createJob({
+      asset_type: job.assetType,
+      completed_at: job.completedAt,
+      cost_estimate: null,
+      created_at: job.createdAt,
+      error_summary: job.errorMessage,
+      job_id: job.jobId,
+      model: job.provider === "openai-image" ? "gpt-image-1" : null,
+      owner_id: job.userId,
+      provider: openAIJobProvider(job.provider),
+      started_at: job.startedAt,
+      status: job.staleState !== "fresh" ? "timeout" : job.status,
+      store_id: job.storeId
+    }));
+  const openAIJobLifecycleStats = openAIJobStatuses.map((status) => ({
+    label: status,
+    value: openAIJobLifecycleRows.filter((job) => job.status === status).length
+  }));
   const usageStatuses = [
     "all",
     ...usageSnapshot.usageByStatus.map((row) => row.status)
@@ -1266,6 +1304,50 @@ export default async function AdminAIPage({
               <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.completedAt)}</td>
               <td className="px-5 py-4 text-slate-600">{job.durationText}</td>
               <td className="px-5 py-4 text-slate-600">{job.errorMessage ?? "No error"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-4" id="openai-job-lifecycle">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
+            OpenAI Job Lifecycle
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">
+            Unified OpenAI job model
+          </h2>
+          <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Safe normalized lifecycle state for OpenAI jobs only. This view exposes job IDs, status, model, store, owner, timestamps, cost estimates, and sanitized errors; it never exposes prompts, raw responses, secrets, tokens, provider payloads, or credit state.
+          </p>
+        </div>
+        <AdminStatGrid
+          stats={[
+            { label: "OpenAI jobs", value: openAIJobLifecycleRows.length },
+            ...openAIJobLifecycleStats
+          ]}
+        />
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm font-semibold leading-6 text-slate-500">
+          Lifecycle validation blocks terminal restarts such as completed → running, failed → running, cancelled → running, and timeout → running. Retry state is represented as retry_pending before a job can move back to queued or running.
+        </div>
+        <AdminTable
+          empty={!openAIJobLifecycleRows.length ? "No OpenAI lifecycle jobs match the current queue filters." : null}
+          headers={["job_id", "provider", "model", "store_id", "owner_id", "asset_type", "status", "cost_estimate", "created_at", "started_at", "completed_at", "error_summary"]}
+        >
+          {openAIJobLifecycleRows.map((job) => (
+            <tr key={job.job_id}>
+              <td className="px-5 py-4 break-all font-bold text-slate-950">{job.job_id}</td>
+              <td className="px-5 py-4 text-slate-600">{job.provider}</td>
+              <td className="px-5 py-4 text-slate-600">{job.model ?? "Not recorded"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{job.store_id ?? "No store"}</td>
+              <td className="px-5 py-4 break-all text-slate-600">{job.owner_id ?? "No owner"}</td>
+              <td className="px-5 py-4 text-slate-600">{job.asset_type ?? "No asset type"}</td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(job.status)}>{job.status}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{job.cost_estimate === null ? "Not recorded" : formatAdminMoney(job.cost_estimate)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.created_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.started_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.completed_at)}</td>
+              <td className="px-5 py-4 text-slate-600">{job.error_summary ?? "No error"}</td>
             </tr>
           ))}
         </AdminTable>
