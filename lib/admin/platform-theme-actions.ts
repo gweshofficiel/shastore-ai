@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -10,13 +11,19 @@ import {
   updateThemeDraft,
   validateThemeDraft
 } from "@/src/lib/platform-theme/platform-theme-draft-runtime";
+import { publishThemeDraft } from "@/src/lib/platform-theme/platform-theme-publish-runtime";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
   | "admin_platform_theme_publish_placeholder"
   | "admin_platform_theme_reset_placeholder"
   | "admin_platform_theme_save_draft"
-  | "admin_platform_theme_discard_draft";
+  | "admin_platform_theme_discard_draft"
+  | "admin_platform_theme_publish";
+
+function platformThemeRedirect(status: "error" | "success", message: string): never {
+  redirect(`/admin/platform-theme?publishStatus=${status}&publishMessage=${encodeURIComponent(message)}`);
+}
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
   const access = await getAdminAccess();
@@ -80,7 +87,23 @@ export async function resetPlatformBrandingPlaceholder() {
 }
 
 export async function publishPlatformBrandingPlaceholder() {
-  await recordPlatformThemeAction("admin_platform_theme_publish_placeholder");
+  try {
+    const publishedTheme = await publishThemeDraft();
+    await recordPlatformThemeAction("admin_platform_theme_publish", {
+      public_theme_changed: false,
+      published_settings: publishedTheme.settings.length,
+      store_themes_touched: 0
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_publish_placeholder", {
+      error_message: error instanceof Error ? error.message : "Platform theme publish failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformThemeRedirect("error", error instanceof Error ? error.message : "Platform theme publish failed.");
+  }
+
+  platformThemeRedirect("success", "Publish successful.");
 }
 
 export async function discardPlatformBrandingDraft() {

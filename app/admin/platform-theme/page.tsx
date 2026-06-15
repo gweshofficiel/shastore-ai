@@ -29,11 +29,18 @@ function toneForStatus(status: string) {
   return "blue" as const;
 }
 
-export default async function AdminPlatformThemePage() {
+export default async function AdminPlatformThemePage({
+  searchParams
+}: {
+  searchParams?: Promise<{ publishMessage?: string; publishStatus?: string }>;
+}) {
+  const params = await searchParams;
   const control = await getAdminPlatformThemeControl();
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
   const readyAdminPreviews = control.previews.adminDashboard.filter((preview) => preview.status === "ready").length;
+  const publishStatus = params?.publishStatus === "success" ? "success" : params?.publishStatus === "error" ? "error" : null;
+  const publishMessage = params?.publishMessage;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -54,6 +61,19 @@ export default async function AdminPlatformThemePage() {
           { label: "Store themes touched", value: 0 }
         ]}
       />
+
+      {publishStatus && publishMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            publishStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={publishStatus === "success" ? "status" : "alert"}
+        >
+          {publishMessage}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-4">
         <button
@@ -80,10 +100,31 @@ export default async function AdminPlatformThemePage() {
         </form>
         <form action={publishPlatformBrandingPlaceholder}>
           <button className="h-11 w-full rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-            Publish placeholder
+            Publish branding
           </button>
         </form>
       </div>
+
+      <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <AdminBadge tone={control.publishReadiness.canPublish ? "green" : "amber"}>
+            {control.publishReadiness.canPublish ? "Ready to publish" : "Publish needs attention"}
+          </AdminBadge>
+          <AdminBadge tone={control.publishReadiness.hasChanges ? "amber" : "blue"}>
+            {control.publishReadiness.hasChanges ? "Draft changes available" : "No draft changes to publish"}
+          </AdminBadge>
+        </div>
+        <p className="text-sm leading-6 text-slate-500">
+          Publishing copies draft values into published values only. Public website, admin dashboard styling, storefronts, and customer stores are still not connected to these values.
+        </p>
+        {control.publishReadiness.invalidSettings.length ? (
+          <div className="grid gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {control.publishReadiness.invalidSettings.map((item) => (
+              <p key={`publish-invalid-${item.settingKey}`}>{item.settingKey}: {item.message}</p>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center gap-3">
@@ -164,6 +205,18 @@ export default async function AdminPlatformThemePage() {
             <td className="px-5 py-4">
               <AdminBadge tone={item.hasChanged ? "amber" : "green"}>{item.hasChanged ? "changed" : "same"}</AdminBadge>
             </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Publish readiness", "Status", "Message"]}>
+        {control.publishReadiness.checklist.map((item) => (
+          <tr key={`publish-readiness-${item.key}`}>
+            <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={item.ready ? "green" : "red"}>{item.ready ? "ready" : "blocked"}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-sm leading-6 text-slate-600">{item.message}</td>
           </tr>
         ))}
       </AdminTable>
