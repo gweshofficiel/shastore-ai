@@ -9,7 +9,6 @@ import {
 import { getAdminPlatformWebsiteControl } from "@/lib/admin/data";
 import {
   archivePlatformPagePlaceholder,
-  editPlatformPagePlaceholder,
   markPlatformPageDraft,
   markPlatformPagePublished,
   previewPlatformPage
@@ -163,12 +162,12 @@ export default async function AdminPlatformWebsitePage() {
                     </button>
                   </form>
                 ) : null}
-                <form action={editPlatformPagePlaceholder}>
-                  <PageHiddenFields page={page} />
-                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                    Edit placeholder
-                  </button>
-                </form>
+                <Link
+                  className="inline-flex h-9 w-full items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                  href={`/admin/platform-website/pages/${page.id}`}
+                >
+                  Edit content
+                </Link>
                 {page.status === "draft" || page.status === "published" ? (
                   <form action={archivePlatformPagePlaceholder}>
                     <PageHiddenFields page={page} />

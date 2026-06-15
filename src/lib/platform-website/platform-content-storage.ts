@@ -14,6 +14,7 @@ export type PlatformPageContentInput = {
   seoDescription?: string | null;
   seoTitle?: string | null;
   subtitle?: string | null;
+  title?: string;
   translations?: unknown;
 };
 
@@ -31,6 +32,14 @@ export type PlatformPageContentRecord = {
   translations: Record<"ar" | "en" | "fr", Record<string, unknown>>;
 };
 
+export type PlatformPageEditorRecord = PlatformPageContentRecord & {
+  pageType: string;
+  routePath: string;
+  status: "archived" | "draft" | "published";
+  title: string;
+  updatedAt: string | null;
+};
+
 type PlatformContentRow = {
   body?: unknown;
   canonical_path?: string | null;
@@ -41,8 +50,13 @@ type PlatformContentRow = {
   seo_description?: string | null;
   seo_title?: string | null;
   slug?: string | null;
+  status?: string | null;
   subtitle?: string | null;
+  page_type?: string | null;
+  route_path?: string | null;
   translations?: unknown;
+  title?: string | null;
+  updated_at?: string | null;
 };
 
 const contentStatuses: PlatformContentStatus[] = ["placeholder", "draft_ready", "ready", "needs_attention"];
@@ -121,6 +135,10 @@ function isContentStatus(value: unknown): value is PlatformContentStatus {
   return contentStatuses.includes(value as PlatformContentStatus);
 }
 
+function parsePublishStatus(value: unknown): PlatformPageEditorRecord["status"] {
+  return value === "archived" || value === "published" ? value : "draft";
+}
+
 function parseContentRow(row: unknown): PlatformPageContentRecord | null {
   if (!isRecord(row)) {
     return null;
@@ -147,6 +165,31 @@ function parseContentRow(row: unknown): PlatformPageContentRecord | null {
     slug,
     subtitle: nullableText(value.subtitle, 500),
     translations: safeTranslations(value.translations)
+  };
+}
+
+function parseEditorRow(row: unknown): PlatformPageEditorRecord | null {
+  const content = parseContentRow(row);
+
+  if (!content || !isRecord(row)) {
+    return null;
+  }
+
+  const value = row as PlatformContentRow;
+  const title = text(value.title, 180);
+  const routePath = text(value.route_path, 240);
+
+  if (!title || !routePath) {
+    return null;
+  }
+
+  return {
+    ...content,
+    pageType: text(value.page_type, 120) || "platform_page",
+    routePath,
+    status: parsePublishStatus(value.status),
+    title,
+    updatedAt: text(value.updated_at, 80) || null
   };
 }
 
@@ -196,7 +239,37 @@ export function validatePlatformPageContent(input: unknown): PlatformPageContent
     seoDescription: "seoDescription" in input ? nullableText(input.seoDescription, 500) : undefined,
     seoTitle: "seoTitle" in input ? nullableText(input.seoTitle, 180) : undefined,
     subtitle: "subtitle" in input ? nullableText(input.subtitle, 500) : undefined,
+    title: "title" in input ? text(input.title, 180) : undefined,
     translations: "translations" in input ? safeTranslations(input.translations) : undefined
+  };
+}
+
+export function validatePlatformPageEditorDraft(input: unknown): PlatformPageContentInput & { title: string } {
+  const content = validatePlatformPageContent(input);
+
+  if (!content.title) {
+    throw new Error("Platform page title is required.");
+  }
+
+  if (content.seoTitle && content.seoTitle.length > 70) {
+    throw new Error("SEO title must be 70 characters or fewer.");
+  }
+
+  if (content.seoDescription && content.seoDescription.length > 160) {
+    throw new Error("SEO description must be 160 characters or fewer.");
+  }
+
+  if (content.canonicalPath && (!content.canonicalPath.startsWith("/") || content.canonicalPath.startsWith("//"))) {
+    throw new Error("Canonical path must be a relative platform path.");
+  }
+
+  if (content.canonicalPath && /^(?:https?:|javascript:|data:)/i.test(content.canonicalPath)) {
+    throw new Error("Canonical path must not be an absolute or executable URL.");
+  }
+
+  return {
+    ...content,
+    title: content.title
   };
 }
 
@@ -222,6 +295,28 @@ export async function getPlatformPageContent(slug: string) {
   return parseContentRow(data);
 }
 
+export async function getPlatformPageEditorContent(pageId: string) {
+  await requireSuperAdmin();
+  const cleanedPageId = text(pageId, 120);
+
+  if (!cleanedPageId) {
+    return null;
+  }
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("platform_pages" as never)
+    .select("id, slug, title, status, route_path, page_type, headline, subtitle, body, seo_title, seo_description, canonical_path, open_graph, translations, content_status, updated_at")
+    .eq("id" as never, cleanedPageId as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Platform page editor content could not be loaded: ${error.message}`);
+  }
+
+  return parseEditorRow(data);
+}
+
 export async function updatePlatformPageContent(pageId: string, input: unknown) {
   await requireSuperAdmin();
   const cleanedPageId = text(pageId, 120);
@@ -242,6 +337,7 @@ export async function updatePlatformPageContent(pageId: string, input: unknown) 
   if (content.openGraph !== undefined) update.open_graph = content.openGraph;
   if (content.translations !== undefined) update.translations = content.translations;
   if (content.contentStatus !== undefined) update.content_status = content.contentStatus;
+  if (content.title !== undefined) update.title = content.title;
 
   if (!Object.keys(update).length) {
     throw new Error("No platform page content fields were provided.");
