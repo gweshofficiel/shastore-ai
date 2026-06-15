@@ -41,6 +41,10 @@ import {
   type PlatformThemePublishValidation
 } from "@/src/lib/platform-theme/platform-theme-publish-runtime";
 import {
+  getCurrentPlatformLogo,
+  type PlatformLogoReference
+} from "@/src/lib/platform-theme/platform-logo-upload";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -624,6 +628,7 @@ export type AdminPlatformThemeControl = {
   };
   draft: PlatformThemeDraft;
   futureHooks: string[];
+  logo: PlatformLogoReference;
   publishReadiness: PlatformThemePublishValidation;
   previews: {
     adminDashboard: Array<{
@@ -4370,10 +4375,11 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
-    validateThemeBeforePublish()
+    validateThemeBeforePublish(),
+    getCurrentPlatformLogo()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4398,6 +4404,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       "White-label platform branding",
       "Reseller branding inheritance"
     ],
+    logo: currentLogo.logo,
     publishReadiness,
     previews: {
       adminDashboard: [

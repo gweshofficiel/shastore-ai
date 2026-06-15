@@ -12,6 +12,11 @@ import {
   validateThemeDraft
 } from "@/src/lib/platform-theme/platform-theme-draft-runtime";
 import { publishThemeDraft } from "@/src/lib/platform-theme/platform-theme-publish-runtime";
+import {
+  deleteDraftPlatformLogo,
+  getCurrentPlatformLogo,
+  uploadPlatformLogo
+} from "@/src/lib/platform-theme/platform-logo-upload";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -19,10 +24,17 @@ type PlatformThemeAction =
   | "admin_platform_theme_reset_placeholder"
   | "admin_platform_theme_save_draft"
   | "admin_platform_theme_discard_draft"
-  | "admin_platform_theme_publish";
+  | "admin_platform_theme_publish"
+  | "admin_platform_theme_logo_upload"
+  | "admin_platform_theme_logo_remove_draft"
+  | "admin_platform_theme_logo_preview";
 
 function platformThemeRedirect(status: "error" | "success", message: string): never {
   redirect(`/admin/platform-theme?publishStatus=${status}&publishMessage=${encodeURIComponent(message)}`);
+}
+
+function platformLogoRedirect(status: "error" | "success", message: string): never {
+  redirect(`/admin/platform-theme?logoStatus=${status}&logoMessage=${encodeURIComponent(message)}#platform-logo`);
 }
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
@@ -117,4 +129,66 @@ export async function discardPlatformBrandingDraft() {
     public_theme_changed: false,
     store_themes_touched: 0
   });
+}
+
+export async function uploadPlatformLogoAction(formData: FormData) {
+  const file = formData.get("platformLogo");
+
+  if (!(file instanceof File)) {
+    platformLogoRedirect("error", "Select a PNG, SVG, or WEBP logo to upload.");
+  }
+
+  try {
+    const result = await uploadPlatformLogo(file);
+    await recordPlatformThemeAction("admin_platform_theme_logo_upload", {
+      draft_only: true,
+      file_name: result.logo.fileName,
+      mime_type: result.logo.mimeType,
+      public_theme_changed: false,
+      size_bytes: result.logo.size,
+      storage_bucket: result.logo.storageBucket,
+      store_themes_touched: 0
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_logo_upload", {
+      error_message: error instanceof Error ? error.message : "Platform logo upload failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformLogoRedirect("error", error instanceof Error ? error.message : "Platform logo upload failed.");
+  }
+
+  platformLogoRedirect("success", "Logo uploaded to draft branding.");
+}
+
+export async function removeDraftPlatformLogoAction() {
+  try {
+    await deleteDraftPlatformLogo();
+    await recordPlatformThemeAction("admin_platform_theme_logo_remove_draft", {
+      draft_only: true,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_logo_remove_draft", {
+      error_message: error instanceof Error ? error.message : "Draft platform logo could not be removed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformLogoRedirect("error", error instanceof Error ? error.message : "Draft platform logo could not be removed.");
+  }
+
+  platformLogoRedirect("success", "Draft logo removed.");
+}
+
+export async function previewPlatformLogoAction() {
+  const currentLogo = await getCurrentPlatformLogo();
+
+  await recordPlatformThemeAction("admin_platform_theme_logo_preview", {
+    draft_only: true,
+    has_logo: Boolean(currentLogo.logo.previewUrl),
+    public_theme_changed: false,
+    store_themes_touched: 0
+  });
+  platformLogoRedirect("success", "Logo preview refreshed.");
 }

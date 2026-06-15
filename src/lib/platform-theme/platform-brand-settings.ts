@@ -248,7 +248,20 @@ function normalizeInputValue(setting: PlatformBrandSettingRecord, value: unknown
   if (setting.settingType === "color") return { hex: raw };
   if (setting.settingType === "typography") return { stack: raw };
   if (setting.settingType === "logo" || setting.settingType === "favicon") {
-    return raw.startsWith("http://") || raw.startsWith("https://") ? { url: raw } : { path: raw };
+    const normalizedReference = raw.startsWith("http://") || raw.startsWith("https://") ? { url: raw } : { path: raw };
+    const metadata = {
+      fileName: text(record.fileName, 240),
+      mimeType: text(record.mimeType, 120),
+      size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,
+      storageBucket: text(record.storageBucket, 120),
+      storageKey: text(record.storageKey, 500),
+      uploadedAt: text(record.uploadedAt, 80)
+    };
+
+    return {
+      ...normalizedReference,
+      ...Object.fromEntries(Object.entries(metadata).filter(([, metadataValue]) => Boolean(metadataValue)))
+    };
   }
   if (setting.settingType === "mode") return { mode: raw };
 
