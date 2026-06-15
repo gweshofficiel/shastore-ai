@@ -24,6 +24,10 @@ import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
+  listPlatformBlogPosts,
+  type PlatformBlogPostRecord
+} from "@/src/lib/platform-website/blog/platform-blog-service";
+import {
   ensurePlatformPagesRegistry,
   type PlatformPageRegistryRecord
 } from "@/src/lib/platform-website/platform-pages-registry";
@@ -498,6 +502,13 @@ export type AdminAIControl = {
 };
 
 export type AdminPlatformWebsiteControl = {
+  blogFoundation: {
+    archivedPosts: number;
+    draftPosts: number;
+    publishedPosts: number;
+    recentPosts: PlatformBlogPostRecord[];
+    totalPosts: number;
+  };
   futureHooks: string[];
   landingStatus: Array<{
     label: string;
@@ -4215,7 +4226,10 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
 }
 
 export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
-  const registryPages = await ensurePlatformPagesRegistry();
+  const [registryPages, blogPosts] = await Promise.all([
+    ensurePlatformPagesRegistry(),
+    listPlatformBlogPosts()
+  ]);
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
   const readyRoutes = new Set(pages.filter((page) => page.status === "published").map((page) => page.canonical));
@@ -4229,6 +4243,13 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
   ];
 
   return {
+    blogFoundation: {
+      archivedPosts: blogPosts.filter((post) => post.status === "archived").length,
+      draftPosts: blogPosts.filter((post) => post.status === "draft").length,
+      publishedPosts: blogPosts.filter((post) => post.status === "published").length,
+      recentPosts: blogPosts.slice(0, 10),
+      totalPosts: blogPosts.length
+    },
     futureHooks: [
       "Platform page editor",
       "Platform blog editor",

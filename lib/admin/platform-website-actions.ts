@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  archivePlatformBlogPost,
+  createPlatformBlogDraft,
+  updatePlatformBlogDraft,
+  type PlatformBlogPostRecord
+} from "@/src/lib/platform-website/blog/platform-blog-service";
+import {
   createPageBlock,
   deleteDraftPageBlock,
   duplicatePageBlock,
@@ -30,6 +36,9 @@ import {
 import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platform-translation-management";
 
 type PlatformWebsiteAction =
+  | "admin_platform_blog_archive"
+  | "admin_platform_blog_create_draft"
+  | "admin_platform_blog_update_draft"
   | "admin_platform_page_block_create"
   | "admin_platform_page_block_delete_draft"
   | "admin_platform_page_block_duplicate"
@@ -122,6 +131,35 @@ async function recordPlatformWebsiteAction(
   revalidatePath("/admin/platform-website");
 }
 
+async function recordPlatformBlogAction(action: PlatformWebsiteAction, post: PlatformBlogPostRecord | null) {
+  const access = await getAdminAccess();
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for platform blog controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: null,
+    entity_type: "admin_platform_blog_post",
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      note: "Super Admin platform blog foundation action only. Customer store blogs and public blog routes were not changed.",
+      postId: post?.id ?? null,
+      slug: post?.slug ?? null,
+      source: "super_admin_platform_blog_foundation",
+      status: post?.status ?? null,
+      title: post?.title ?? null
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/platform-website");
+}
+
 function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
   const source = cleanText(value);
 
@@ -162,6 +200,20 @@ function parseSeoDraft(value: FormDataEntryValue | null) {
 
     throw new Error("SEO draft must be valid JSON.");
   }
+}
+
+function blogInputFromFormData(formData: FormData) {
+  return {
+    authorName: cleanText(formData.get("authorName")),
+    content: parseJsonObject(formData.get("content"), "Blog content"),
+    coverImageUrl: cleanText(formData.get("coverImageUrl")),
+    excerpt: cleanText(formData.get("excerpt")),
+    seoDescription: cleanText(formData.get("seoDescription")),
+    seoTitle: cleanText(formData.get("seoTitle")),
+    slug: cleanText(formData.get("postSlug")),
+    title: cleanText(formData.get("postTitle")),
+    translations: parseJsonObject(formData.get("translations"), "Blog translations")
+  };
 }
 
 function parseOptionalJsonObject(value: FormDataEntryValue | null, fieldName: string) {
@@ -343,6 +395,54 @@ export async function archivePlatformPagePlaceholder(formData: FormData) {
   } catch (error) {
     status = "error";
     message = error instanceof Error ? error.message : "Could not archive platform page.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function createPlatformBlogDraftAction(formData: FormData) {
+  let message = "Blog draft created";
+  let status: "error" | "success" = "success";
+
+  try {
+    const post = await createPlatformBlogDraft(blogInputFromFormData(formData));
+    await recordPlatformBlogAction("admin_platform_blog_create_draft", post);
+    message = `Blog draft created: ${post?.title ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not create platform blog draft.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function updatePlatformBlogDraftAction(formData: FormData) {
+  let message = "Blog draft updated";
+  let status: "error" | "success" = "success";
+
+  try {
+    const post = await updatePlatformBlogDraft(cleanText(formData.get("postId")), blogInputFromFormData(formData));
+    await recordPlatformBlogAction("admin_platform_blog_update_draft", post);
+    message = `Blog draft updated: ${post?.title ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not update platform blog draft.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function archivePlatformBlogPostAction(formData: FormData) {
+  let message = "Blog post archived";
+  let status: "error" | "success" = "success";
+
+  try {
+    const post = await archivePlatformBlogPost(cleanText(formData.get("postId")));
+    await recordPlatformBlogAction("admin_platform_blog_archive", post);
+    message = `Blog post archived: ${post?.title ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not archive platform blog post.";
   }
 
   platformWebsiteRedirect(status, message);
