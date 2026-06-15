@@ -227,6 +227,34 @@ function normalizeBlockInput(input: PlatformPageBlockInput, options: { requirePa
   };
 }
 
+async function getPageBlockForAdmin(blockId: string) {
+  await requireSuperAdmin();
+  const cleanedBlockId = text(blockId, 120);
+
+  if (!cleanedBlockId) {
+    throw new Error("Platform page block id is required.");
+  }
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("platform_page_blocks" as never)
+    .select(blockSelect())
+    .eq("id" as never, cleanedBlockId as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Platform page block could not be loaded: ${error.message}`);
+  }
+
+  const block = parseBlockRow(data);
+
+  if (!block) {
+    throw new Error("Platform page block was not found.");
+  }
+
+  return block;
+}
+
 export async function listPageBlocks(pageId: string) {
   await requireSuperAdmin();
   const cleanedPageId = text(pageId, 120);
@@ -340,6 +368,14 @@ export async function reorderPageBlocks(pageId: string, order: PlatformPageBlock
     throw new Error("Platform page id is required for block reordering.");
   }
 
+  const existingBlocks = await listPageBlocks(cleanedPageId);
+  const existingIds = new Set(existingBlocks.map((block) => block.id));
+  const orderedIds = new Set(order.map((item) => text(item.blockId, 120)).filter(Boolean));
+
+  if (existingIds.size !== orderedIds.size || existingBlocks.some((block) => !orderedIds.has(block.id))) {
+    throw new Error("Block reorder must include every existing block exactly once.");
+  }
+
   const admin = requireAdminClient();
 
   for (const item of order) {
@@ -367,8 +403,48 @@ export async function hidePageBlock(blockId: string) {
   return updatePageBlock(blockId, { status: "hidden" });
 }
 
+export async function showPageBlock(blockId: string) {
+  return updatePageBlock(blockId, { status: "draft" });
+}
+
 export async function publishPageBlock(blockId: string) {
   return updatePageBlock(blockId, { status: "published" });
+}
+
+export async function duplicatePageBlock(blockId: string) {
+  const block = await getPageBlockForAdmin(blockId);
+
+  return createPageBlock({
+    blockType: block.blockType,
+    content: block.content,
+    pageId: block.pageId,
+    settings: block.settings,
+    sortOrder: block.sortOrder + 1,
+    status: "draft",
+    subtitle: block.subtitle,
+    title: block.title ? `${block.title} Copy` : "Copied block"
+  });
+}
+
+export async function deleteDraftPageBlock(blockId: string) {
+  const block = await getPageBlockForAdmin(blockId);
+
+  if (block.status !== "draft") {
+    throw new Error("Only draft platform page blocks can be deleted. Published or hidden blocks can be hidden instead.");
+  }
+
+  const admin = requireAdminClient();
+  const { error } = await admin
+    .from("platform_page_blocks" as never)
+    .delete()
+    .eq("id" as never, block.id as never)
+    .eq("status" as never, "draft" as never);
+
+  if (error) {
+    throw new Error(`Draft platform page block could not be deleted: ${error.message}`);
+  }
+
+  return block;
 }
 
 export function translatePlatformPageBlock(block: PlatformPageBlockRecord, locale?: string): PlatformPageBlockRecord {

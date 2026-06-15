@@ -6,9 +6,12 @@ import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createPageBlock,
+  deleteDraftPageBlock,
+  duplicatePageBlock,
   hidePageBlock,
   publishPageBlock,
   reorderPageBlocks,
+  showPageBlock,
   updatePageBlock,
   type PlatformPageBlockType
 } from "@/src/lib/platform-website/platform-blocks-runtime";
@@ -22,9 +25,12 @@ import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platfo
 
 type PlatformWebsiteAction =
   | "admin_platform_page_block_create"
+  | "admin_platform_page_block_delete_draft"
+  | "admin_platform_page_block_duplicate"
   | "admin_platform_page_block_hide"
   | "admin_platform_page_block_publish"
   | "admin_platform_page_block_reorder"
+  | "admin_platform_page_block_show"
   | "admin_platform_page_block_update"
   | "admin_platform_page_archive"
   | "admin_platform_page_edit_placeholder"
@@ -125,6 +131,36 @@ function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
   }
 }
 
+function parseOptionalJsonObject(value: FormDataEntryValue | null, fieldName: string) {
+  const source = cleanText(value);
+
+  return source ? parseJsonObject(value, fieldName) : null;
+}
+
+function parseJsonArray(value: FormDataEntryValue | null, fieldName: string) {
+  const source = cleanText(value);
+
+  if (!source) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(source) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      throw new Error(`${fieldName} must be a JSON array.`);
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof Error && error.message === `${fieldName} must be a JSON array.`) {
+      throw error;
+    }
+
+    throw new Error(`${fieldName} must be valid JSON.`);
+  }
+}
+
 function parseNumber(value: FormDataEntryValue | null) {
   const cleaned = cleanText(value);
   const parsed = Number.parseInt(cleaned, 10);
@@ -133,13 +169,34 @@ function parseNumber(value: FormDataEntryValue | null) {
 }
 
 function blockInputFromFormData(formData: FormData) {
+  const baseSettings = parseOptionalJsonObject(formData.get("settings"), "Block settings") ?? {};
+  const blockType = cleanText(formData.get("blockType")) as PlatformPageBlockType;
+  const blockSettings = {
+    ...baseSettings,
+    button_label: cleanText(formData.get("buttonLabel")) || undefined,
+    button_url: cleanText(formData.get("buttonUrl")) || undefined,
+    items: parseJsonArray(formData.get("items"), "Feature items"),
+    links: parseJsonArray(formData.get("links"), "Footer links"),
+    metrics: parseJsonArray(formData.get("metrics"), "Stats metrics"),
+    plan_refs: parseJsonArray(formData.get("planRefs"), "Pricing plan refs"),
+    primary_cta_label: cleanText(formData.get("primaryCtaLabel")) || undefined,
+    primary_cta_url: cleanText(formData.get("primaryCtaUrl")) || undefined,
+    questions: parseJsonArray(formData.get("questions"), "FAQ questions"),
+    quotes: parseJsonArray(formData.get("quotes"), "Testimonial quotes"),
+    secondary_cta_label: cleanText(formData.get("secondaryCtaLabel")) || undefined,
+    secondary_cta_url: cleanText(formData.get("secondaryCtaUrl")) || undefined,
+    static_items: parseJsonArray(formData.get("staticItems"), "Pricing static items")
+  };
+
   return {
-    blockType: cleanText(formData.get("blockType")) as PlatformPageBlockType,
+    blockType,
     content: parseJsonObject(formData.get("content"), "Block content"),
     pageId: cleanText(formData.get("pageId")),
-    settings: parseJsonObject(formData.get("settings"), "Block settings"),
+    settings: Object.fromEntries(Object.entries(blockSettings).filter(([, value]) => value !== undefined)),
     sortOrder: parseNumber(formData.get("sortOrder")),
-    status: "draft" as const,
+    status: cleanText(formData.get("blockStatus")) === "published" || cleanText(formData.get("blockStatus")) === "hidden"
+      ? cleanText(formData.get("blockStatus")) as "hidden" | "published"
+      : "draft" as const,
     subtitle: cleanText(formData.get("blockSubtitle")),
     title: cleanText(formData.get("blockTitle"))
   };
@@ -148,6 +205,7 @@ function blockInputFromFormData(formData: FormData) {
 async function recordBlockAction(formData: FormData, action: PlatformWebsiteAction) {
   await recordPlatformWebsiteAction(formData, action);
   revalidatePath(`/admin/platform-website/pages/${cleanText(formData.get("pageId"))}`);
+  revalidatePath(`/admin/platform-website/builder/${cleanText(formData.get("pageId"))}`);
 }
 
 function translationInputFromFormData(formData: FormData, status: "needs_review" | "partial" | "ready") {
@@ -328,9 +386,24 @@ export async function hidePlatformPageBlock(formData: FormData) {
   await recordBlockAction(formData, "admin_platform_page_block_hide");
 }
 
+export async function showPlatformPageBlock(formData: FormData) {
+  await showPageBlock(cleanText(formData.get("blockId")));
+  await recordBlockAction(formData, "admin_platform_page_block_show");
+}
+
 export async function publishPlatformPageBlock(formData: FormData) {
   await publishPageBlock(cleanText(formData.get("blockId")));
   await recordBlockAction(formData, "admin_platform_page_block_publish");
+}
+
+export async function duplicatePlatformPageBlock(formData: FormData) {
+  await duplicatePageBlock(cleanText(formData.get("blockId")));
+  await recordBlockAction(formData, "admin_platform_page_block_duplicate");
+}
+
+export async function deleteDraftPlatformPageBlock(formData: FormData) {
+  await deleteDraftPageBlock(cleanText(formData.get("blockId")));
+  await recordBlockAction(formData, "admin_platform_page_block_delete_draft");
 }
 
 export async function reorderPlatformPageBlocks(formData: FormData) {

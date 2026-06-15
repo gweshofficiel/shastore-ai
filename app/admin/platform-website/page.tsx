@@ -223,6 +223,12 @@ export default async function AdminPlatformWebsitePage({
                 >
                   Edit content
                 </Link>
+                <Link
+                  className="inline-flex h-9 w-full items-center justify-center rounded-full border border-purple-200 bg-purple-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-purple-700"
+                  href={`/admin/platform-website/builder/${page.id}`}
+                >
+                  Landing builder
+                </Link>
                 {page.status === "draft" || page.status === "published" ? (
                   <form action={archivePlatformPagePlaceholder}>
                     <PageHiddenFields page={page} />
