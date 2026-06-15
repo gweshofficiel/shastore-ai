@@ -101,16 +101,42 @@ function AnalyticsRows({
   );
 }
 
+function monitoringToneForSeverity(severity: string) {
+  if (severity === "critical" || severity === "high") return "red" as const;
+  if (severity === "medium") return "amber" as const;
+  return "blue" as const;
+}
+
+function optionLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 export default async function AdminPlatformWebsitePage({
   searchParams
 }: {
-  searchParams?: Promise<{ analyticsRange?: string; message?: string; status?: string }>;
+  searchParams?: Promise<{
+    analyticsRange?: string;
+    message?: string;
+    monitoringContentType?: string;
+    monitoringIssueType?: string;
+    monitoringLanguage?: string;
+    monitoringPage?: string;
+    monitoringSeverity?: string;
+    status?: string;
+  }>;
 }) {
   const params = await searchParams;
-  const control = await getAdminPlatformWebsiteControl(params?.analyticsRange);
+  const control = await getAdminPlatformWebsiteControl(params?.analyticsRange, {
+    contentType: params?.monitoringContentType,
+    issueType: params?.monitoringIssueType,
+    language: params?.monitoringLanguage,
+    page: params?.monitoringPage,
+    severity: params?.monitoringSeverity
+  });
   const actionMessage = params?.message;
   const actionStatus = params?.status === "error" ? "error" : params?.status === "success" ? "success" : null;
   const analyticsRange = control.analytics.range;
+  const monitoring = control.monitoring;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -224,6 +250,126 @@ export default async function AdminPlatformWebsitePage({
             <AnalyticsRows empty="No tag views yet." metrics={control.analytics.blog.topTags} />
           </AdminTable>
         </div>
+      </section>
+
+      <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:p-6">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Website Monitoring</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Platform website health checks</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Read-only monitoring for platform pages, platform blog posts, SEO metadata, translations, routes, and landing block links. No customer store data is included.
+          </p>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Critical Issues", value: monitoring.cards.criticalIssues },
+            { label: "SEO Issues", value: monitoring.cards.seoIssues },
+            { label: "Translation Issues", value: monitoring.cards.translationIssues },
+            { label: "Broken Links", value: monitoring.cards.brokenLinks },
+            { label: "Missing Content", value: monitoring.cards.missingContent },
+            { label: "Route Issues", value: monitoring.cards.routeIssues }
+          ]}
+        />
+
+        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+          Checked {monitoring.source.checkedPages} platform pages, {monitoring.source.checkedBlocks} landing blocks, and {monitoring.source.checkedPosts} blog posts.
+          Platform analytics observed {monitoring.source.analyticsObservedViews} page/blog views in the last 30 days.
+          Detected at {formatAdminDate(monitoring.detectedAt)}.
+        </div>
+
+        <form className="grid gap-3 rounded-[1.5rem] border border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-5">
+          <input name="analyticsRange" type="hidden" value={analyticsRange} />
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            Severity
+            <select className="h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700" name="monitoringSeverity" defaultValue={monitoring.filters.severity}>
+              <option value="all">All severities</option>
+              {monitoring.filterOptions.severities.map((severity) => (
+                <option key={severity} value={severity}>{optionLabel(severity)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            Issue type
+            <select className="h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700" name="monitoringIssueType" defaultValue={monitoring.filters.issueType}>
+              <option value="all">All issue types</option>
+              {monitoring.filterOptions.issueTypes.map((issueType) => (
+                <option key={issueType} value={issueType}>{optionLabel(issueType)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            Content type
+            <select className="h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700" name="monitoringContentType" defaultValue={monitoring.filters.contentType}>
+              <option value="all">All content types</option>
+              {monitoring.filterOptions.contentTypes.map((contentType) => (
+                <option key={contentType} value={contentType}>{optionLabel(contentType)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            Page
+            <select className="h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700" name="monitoringPage" defaultValue={monitoring.filters.page}>
+              <option value="all">All pages</option>
+              {monitoring.filterOptions.pages.map((page) => (
+                <option key={page} value={page}>{page}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            Language
+            <select className="h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-700" name="monitoringLanguage" defaultValue={monitoring.filters.language}>
+              <option value="all">All languages</option>
+              {monitoring.filterOptions.languages.map((language) => (
+                <option key={language} value={language}>{language}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-end gap-2 md:col-span-2 xl:col-span-5">
+            <button className="h-10 rounded-full bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.14em] text-white" type="submit">
+              Apply filters
+            </button>
+            <Link
+              className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+              href={`/admin/platform-website?analyticsRange=${analyticsRange}`}
+            >
+              Reset filters
+            </Link>
+          </div>
+        </form>
+
+        <AdminTable
+          empty={!monitoring.issues.length ? "No platform website monitoring issues match the current filters." : null}
+          headers={[
+            "Issue type",
+            "Severity",
+            "Page/post/block",
+            "Message",
+            "Suggested action",
+            "Detected at"
+          ]}
+        >
+          {monitoring.issues.map((issue) => (
+            <tr key={`${issue.issueType}-${issue.contentId}-${issue.language ?? "base"}-${issue.message}`}>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(issue.issueType)}>{optionLabel(issue.issueType)}</AdminBadge>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{optionLabel(issue.contentType)}</p>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={monitoringToneForSeverity(issue.severity)}>{issue.severity}</AdminBadge>
+                {issue.language ? (
+                  <div className="mt-2">
+                    <AdminBadge tone="blue">{issue.language}</AdminBadge>
+                  </div>
+                ) : null}
+              </td>
+              <td className="px-5 py-4 font-bold text-slate-950">{issue.contentLabel}</td>
+              <td className="max-w-md px-5 py-4 text-sm leading-6 text-slate-600">{issue.message}</td>
+              <td className="max-w-md px-5 py-4 text-sm leading-6 text-slate-600">{issue.suggestedAction}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(issue.detectedAt)}</td>
+            </tr>
+          ))}
+        </AdminTable>
       </section>
 
       <AdminTable headers={["Landing area", "Route", "Readiness"]}>

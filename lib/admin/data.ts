@@ -36,6 +36,11 @@ import {
   type PlatformAnalyticsSummary
 } from "@/src/lib/platform-website/analytics/platform-analytics-service";
 import {
+  getPlatformWebsiteMonitoring,
+  type PlatformWebsiteMonitoringFilters,
+  type PlatformWebsiteMonitoringSummary
+} from "@/src/lib/platform-website/monitoring/platform-website-monitoring";
+import {
   listCategories,
   type PlatformBlogCategoryRecord
 } from "@/src/lib/platform-website/blog/categories-service";
@@ -520,6 +525,7 @@ export type AdminAIControl = {
 export type AdminPlatformWebsiteControl = {
   advancedPublishing: PlatformAdvancedPublishingDashboard;
   analytics: PlatformAnalyticsSummary;
+  monitoring: PlatformWebsiteMonitoringSummary;
   blogFoundation: {
     archivedPosts: number;
     categories: PlatformBlogCategoryRecord[];
@@ -4247,14 +4253,18 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
   };
 }
 
-export async function getAdminPlatformWebsiteControl(analyticsRange?: string | null): Promise<AdminPlatformWebsiteControl> {
-  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing, analytics] = await Promise.all([
+export async function getAdminPlatformWebsiteControl(
+  analyticsRange?: string | null,
+  monitoringFilters?: PlatformWebsiteMonitoringFilters
+): Promise<AdminPlatformWebsiteControl> {
+  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing, analytics, monitoring] = await Promise.all([
     ensurePlatformPagesRegistry(),
     listPlatformBlogPosts(),
     listCategories(),
     listTags(),
     getAdvancedPublishingDashboard(),
-    getPlatformAnalyticsSummary(analyticsRange)
+    getPlatformAnalyticsSummary(analyticsRange),
+    getPlatformWebsiteMonitoring(monitoringFilters)
   ]);
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
@@ -4271,6 +4281,7 @@ export async function getAdminPlatformWebsiteControl(analyticsRange?: string | n
   return {
     advancedPublishing,
     analytics,
+    monitoring,
     blogFoundation: {
       archivedPosts: blogPosts.filter((post) => post.status === "archived").length,
       categories: blogCategories,
