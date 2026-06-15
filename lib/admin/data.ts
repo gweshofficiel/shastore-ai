@@ -511,6 +511,7 @@ export type AdminPlatformWebsiteControl = {
     previewHref: string | null;
     section: string;
     seoStatus: "missing" | "needs_metadata" | "placeholder" | "ready";
+    contentStatus: "draft_ready" | "needs_attention" | "placeholder" | "ready";
     slug: string;
     status: "archived" | "draft" | "published";
     title: string;
@@ -4117,24 +4118,48 @@ export async function getAdminAIControl(): Promise<AdminAIControl> {
   };
 }
 
-function platformLanguageRows(languageStatus: PlatformPageRegistryRecord["languageStatus"]) {
+function translationStatus(value: unknown) {
+  if (!isRecord(value)) {
+    return "placeholder";
+  }
+
+  const status = text(value.status);
+
+  if (status === "ready") {
+    return "ready";
+  }
+
+  return Object.values(value).some((entry) => typeof entry === "string" && entry.trim())
+    ? "ready"
+    : "placeholder";
+}
+
+function platformLanguageRows(page: PlatformPageRegistryRecord) {
+  const translations = isRecord(page.translations) ? page.translations : {};
+
   return (["Arabic", "English", "French"] as const).map((language) => ({
     language,
-    status: languageStatus[language] === "ready" ? "ready" as const : "placeholder" as const
+    status: translationStatus(translations[language === "Arabic" ? "ar" : language === "French" ? "fr" : "en"]) === "ready" ||
+      page.languageStatus[language] === "ready"
+      ? "ready" as const
+      : "placeholder" as const
   }));
 }
 
 function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
+  const openGraphStatus = isRecord(page.openGraph) && Object.keys(page.openGraph).length
+    ? text(page.openGraph.status) || "ready"
+    : "missing";
+
   return {
-    canonical: page.routePath,
+    canonical: page.canonicalPath || page.routePath,
+    contentStatus: page.contentStatus,
     id: page.id,
-    languages: platformLanguageRows(page.languageStatus),
+    languages: platformLanguageRows(page),
     lastUpdated: page.updatedAt,
-    metaDescription: page.seoStatus === "missing"
-      ? "Platform SEO metadata is missing from the runtime registry."
-      : `${page.title} runtime registry placeholder for SHASTORE AI platform website.`,
-    metaTitle: `${page.title} - SHASTORE AI`,
-    openGraph: `${page.title} OG placeholder`,
+    metaDescription: page.seoDescription || "Platform SEO metadata is missing from content storage.",
+    metaTitle: page.seoTitle || `${page.title} - SHASTORE AI`,
+    openGraph: openGraphStatus,
     previewHref: page.status === "published" ? page.routePath : null,
     section: page.pageType.replaceAll("_", " "),
     seoStatus: page.seoStatus,

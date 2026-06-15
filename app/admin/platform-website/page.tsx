@@ -98,7 +98,12 @@ export default async function AdminPlatformWebsitePage() {
               <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{page.section}</p>
             </td>
             <td className="px-5 py-4 text-slate-600">{page.slug}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.status)}>{page.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <AdminBadge tone={toneForStatus(page.status)}>{page.status}</AdminBadge>
+                <AdminBadge tone={toneForStatus(page.contentStatus)}>{page.contentStatus}</AdminBadge>
+              </div>
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(page.seoStatus)}>{page.seoStatus}</AdminBadge>

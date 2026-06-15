@@ -6,36 +6,55 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export type PlatformPageStatus = "archived" | "draft" | "published";
 export type PlatformPageReadinessStatus = "needs_attention" | "placeholder" | "ready";
 export type PlatformPageSeoStatus = "missing" | "placeholder" | "ready";
+export type PlatformPageContentStatus = "draft_ready" | "needs_attention" | "placeholder" | "ready";
 
 export type PlatformPageRegistryRecord = {
+  body: Record<string, unknown>;
+  canonicalPath: string | null;
+  contentStatus: PlatformPageContentStatus;
   createdAt: string | null;
+  headline: string | null;
   id: string;
   isSystem: boolean;
   languageStatus: Record<string, string>;
+  openGraph: Record<string, unknown>;
   pageType: string;
   readinessStatus: PlatformPageReadinessStatus;
   routePath: string;
+  seoDescription: string | null;
   seoStatus: PlatformPageSeoStatus;
+  seoTitle: string | null;
   slug: string;
   sortOrder: number;
   status: PlatformPageStatus;
+  subtitle: string | null;
   title: string;
+  translations: Record<string, unknown>;
   updatedAt: string | null;
 };
 
 type PlatformPageRow = {
+  body?: unknown;
+  canonical_path?: string | null;
+  content_status?: string | null;
   created_at?: string | null;
+  headline?: string | null;
   id?: string | null;
   is_system?: boolean | null;
   language_status?: unknown;
+  open_graph?: unknown;
   page_type?: string | null;
   readiness_status?: string | null;
   route_path?: string | null;
+  seo_description?: string | null;
   seo_status?: string | null;
+  seo_title?: string | null;
   slug?: string | null;
   sort_order?: number | null;
   status?: string | null;
+  subtitle?: string | null;
   title?: string | null;
+  translations?: unknown;
   updated_at?: string | null;
 };
 
@@ -182,6 +201,12 @@ function languageStatus(value: unknown) {
   );
 }
 
+function jsonRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 function parsePlatformPage(row: unknown): PlatformPageRegistryRecord | null {
   if (!row || typeof row !== "object" || Array.isArray(row)) {
     return null;
@@ -201,18 +226,27 @@ function parsePlatformPage(row: unknown): PlatformPageRegistryRecord | null {
   }
 
   return {
+    body: jsonRecord(value.body),
+    canonicalPath: text(value.canonical_path, 200) || null,
+    contentStatus: (text(value.content_status, 40) || "placeholder") as PlatformPageContentStatus,
     createdAt: text(value.created_at, 80) || null,
+    headline: text(value.headline, 240) || null,
     id,
     isSystem: value.is_system !== false,
     languageStatus: languageStatus(value.language_status),
+    openGraph: jsonRecord(value.open_graph),
     pageType: text(value.page_type, 120) || "platform_page",
     readinessStatus,
     routePath,
+    seoDescription: text(value.seo_description, 500) || null,
     seoStatus,
+    seoTitle: text(value.seo_title, 180) || null,
     slug,
     sortOrder: typeof value.sort_order === "number" ? value.sort_order : 0,
     status,
+    subtitle: text(value.subtitle, 500) || null,
     title,
+    translations: jsonRecord(value.translations),
     updatedAt: text(value.updated_at, 80) || null
   };
 }
