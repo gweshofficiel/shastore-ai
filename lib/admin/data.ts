@@ -32,6 +32,10 @@ import {
   type PlatformAdvancedPublishingDashboard
 } from "@/src/lib/platform-website/publishing/revisions-service";
 import {
+  getPlatformAnalyticsSummary,
+  type PlatformAnalyticsSummary
+} from "@/src/lib/platform-website/analytics/platform-analytics-service";
+import {
   listCategories,
   type PlatformBlogCategoryRecord
 } from "@/src/lib/platform-website/blog/categories-service";
@@ -515,6 +519,7 @@ export type AdminAIControl = {
 
 export type AdminPlatformWebsiteControl = {
   advancedPublishing: PlatformAdvancedPublishingDashboard;
+  analytics: PlatformAnalyticsSummary;
   blogFoundation: {
     archivedPosts: number;
     categories: PlatformBlogCategoryRecord[];
@@ -4242,13 +4247,14 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
   };
 }
 
-export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
-  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing] = await Promise.all([
+export async function getAdminPlatformWebsiteControl(analyticsRange?: string | null): Promise<AdminPlatformWebsiteControl> {
+  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing, analytics] = await Promise.all([
     ensurePlatformPagesRegistry(),
     listPlatformBlogPosts(),
     listCategories(),
     listTags(),
-    getAdvancedPublishingDashboard()
+    getAdvancedPublishingDashboard(),
+    getPlatformAnalyticsSummary(analyticsRange)
   ]);
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
@@ -4264,6 +4270,7 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
 
   return {
     advancedPublishing,
+    analytics,
     blogFoundation: {
       archivedPosts: blogPosts.filter((post) => post.status === "archived").length,
       categories: blogCategories,

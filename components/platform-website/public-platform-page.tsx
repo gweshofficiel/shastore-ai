@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { ButtonLink } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
   unpublishedPlatformPageMetadata
 } from "@/src/lib/platform-website/platform-seo-runtime";
 import { getPlatformPageTranslation } from "@/src/lib/platform-website/platform-translations-runtime";
+import { trackPlatformPageView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -177,6 +179,15 @@ export async function renderPublicPlatformPage(path: string, locale?: string) {
   }
 
   const blocks = (await getPublishedPageBlocks(page.id)).map((block) => translatePlatformPageBlock(block, locale));
+  const requestHeaders = await headers();
+  await trackPlatformPageView({
+    contentId: page.id,
+    locale,
+    path,
+    referrer: requestHeaders.get("referer"),
+    routePath: page.routePath,
+    title: page.title
+  });
 
   return <PublicPlatformPageView blocks={blocks} page={locale ? getPlatformPageTranslation(page, locale) : page} />;
 }

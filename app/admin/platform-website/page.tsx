@@ -76,15 +76,41 @@ function contentTypeLabel(contentType: string) {
   return contentType.replace("platform_", "").replaceAll("_", " ");
 }
 
+function AnalyticsRows({
+  empty,
+  metrics
+}: {
+  empty: string;
+  metrics: Array<{ label: string; value: number }>;
+}) {
+  return (
+    <>
+      {metrics.length ? (
+        metrics.map((metric) => (
+          <tr key={metric.label}>
+            <td className="px-5 py-4 font-bold text-slate-950">{metric.label}</td>
+            <td className="px-5 py-4 text-slate-600">{metric.value}</td>
+          </tr>
+        ))
+      ) : (
+        <tr>
+          <td className="px-5 py-4 text-sm text-slate-500" colSpan={2}>{empty}</td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default async function AdminPlatformWebsitePage({
   searchParams
 }: {
-  searchParams?: Promise<{ message?: string; status?: string }>;
+  searchParams?: Promise<{ analyticsRange?: string; message?: string; status?: string }>;
 }) {
   const params = await searchParams;
-  const control = await getAdminPlatformWebsiteControl();
+  const control = await getAdminPlatformWebsiteControl(params?.analyticsRange);
   const actionMessage = params?.message;
   const actionStatus = params?.status === "error" ? "error" : params?.status === "success" ? "success" : null;
+  const analyticsRange = control.analytics.range;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -116,6 +142,89 @@ export default async function AdminPlatformWebsitePage({
           {actionMessage}
         </div>
       ) : null}
+
+      <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:p-6">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Website Analytics</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Platform website performance</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Platform website and platform blog events only. Customer store analytics and visitor personal data are not included.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {(["today", "last_7_days", "last_30_days"] as const).map((range) => (
+            <Link
+              className={`inline-flex h-9 items-center rounded-full border px-3 text-xs font-black uppercase tracking-[0.14em] ${
+                analyticsRange === range
+                  ? "border-slate-950 bg-slate-950 text-white"
+                  : "border-slate-200 bg-white text-slate-600"
+              }`}
+              href={`/admin/platform-website?analyticsRange=${range}`}
+              key={range}
+            >
+              {range.replaceAll("_", " ")}
+            </Link>
+          ))}
+          <span className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+            Custom range reserved
+          </span>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Homepage views", value: control.analytics.cards.homepageViews },
+            { label: "Pricing views", value: control.analytics.cards.pricingViews },
+            { label: "Blog views", value: control.analytics.cards.blogViews },
+            { label: "Top landing page", value: control.analytics.cards.topLandingPage },
+            { label: "Top locale", value: control.analytics.cards.topLocale },
+            { label: "Page views", value: control.analytics.pages.totalViews },
+            { label: "Post views", value: control.analytics.blog.totalViews },
+            { label: "Unique visitors", value: control.analytics.pages.uniqueVisitors ?? "Not tracked" }
+          ]}
+        />
+
+        <AdminTable headers={["Traffic window", "Views"]}>
+          <tr>
+            <td className="px-5 py-4 font-bold text-slate-950">Last 24h</td>
+            <td className="px-5 py-4 text-slate-600">{control.analytics.traffic.last24h}</td>
+          </tr>
+          <tr>
+            <td className="px-5 py-4 font-bold text-slate-950">Last 7 days</td>
+            <td className="px-5 py-4 text-slate-600">{control.analytics.traffic.last7Days}</td>
+          </tr>
+          <tr>
+            <td className="px-5 py-4 font-bold text-slate-950">Last 30 days</td>
+            <td className="px-5 py-4 text-slate-600">{control.analytics.traffic.last30Days}</td>
+          </tr>
+        </AdminTable>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <AdminTable headers={["Top pages", "Views"]}>
+            <AnalyticsRows empty="No platform page views yet." metrics={control.analytics.pages.topPages} />
+          </AdminTable>
+
+          <AdminTable headers={["Views by locale", "Views"]}>
+            <AnalyticsRows empty="No locale analytics yet." metrics={control.analytics.pages.viewsByLocale} />
+          </AdminTable>
+
+          <AdminTable headers={["Top posts", "Views"]}>
+            <AnalyticsRows empty="No platform blog post views yet." metrics={control.analytics.blog.topPosts} />
+          </AdminTable>
+
+          <AdminTable headers={["Top referrers", "Views"]}>
+            <AnalyticsRows empty="No referrer data yet." metrics={control.analytics.traffic.topReferrers} />
+          </AdminTable>
+
+          <AdminTable headers={["Top categories", "Views"]}>
+            <AnalyticsRows empty="No category views yet." metrics={control.analytics.blog.topCategories} />
+          </AdminTable>
+
+          <AdminTable headers={["Top tags", "Views"]}>
+            <AnalyticsRows empty="No tag views yet." metrics={control.analytics.blog.topTags} />
+          </AdminTable>
+        </div>
+      </section>
 
       <AdminTable headers={["Landing area", "Route", "Readiness"]}>
         {control.landingStatus.map((item) => (

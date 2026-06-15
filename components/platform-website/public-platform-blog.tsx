@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MarketingNavbar } from "@/components/marketing/navbar";
@@ -25,6 +26,7 @@ import {
   type PlatformBlogTagRecord
 } from "@/src/lib/platform-website/blog/tags-service";
 import { isPlatformLocale } from "@/src/lib/platform-website/platform-translations-runtime";
+import { trackPlatformBlogView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -316,6 +318,13 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   const categories = rawCategories.map((category) => locale ? translateCategory(category, locale) : category);
   const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
   const direction = locale === "ar" ? "rtl" : "ltr";
+  const requestHeaders = await headers();
+  await trackPlatformBlogView({
+    locale,
+    path: platformBlogCanonicalPath("/blog", locale),
+    referrer: requestHeaders.get("referer"),
+    title: blogIndexTitle(locale)
+  });
 
   return (
     <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
@@ -366,6 +375,15 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
     locale ? translatePlatformBlogPost(post, locale) : post
   );
   const direction = locale === "ar" ? "rtl" : "ltr";
+  const requestHeaders = await headers();
+  await trackPlatformBlogView({
+    categorySlug: category.slug,
+    contentId: category.id,
+    locale,
+    path: platformBlogCanonicalPath(`/blog/category/${category.slug}`, locale),
+    referrer: requestHeaders.get("referer"),
+    title: category.name
+  });
 
   return (
     <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
@@ -410,6 +428,15 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
     locale ? translatePlatformBlogPost(post, locale) : post
   );
   const direction = locale === "ar" ? "rtl" : "ltr";
+  const requestHeaders = await headers();
+  await trackPlatformBlogView({
+    contentId: tag.id,
+    locale,
+    path: platformBlogCanonicalPath(`/blog/tag/${tag.slug}`, locale),
+    referrer: requestHeaders.get("referer"),
+    tagSlug: tag.slug,
+    title: tag.name
+  });
 
   return (
     <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
@@ -452,6 +479,15 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   const translatedPost = locale ? translatePlatformBlogPost(post, locale) : post;
   const sections = bodySections(translatedPost.content);
   const direction = locale === "ar" ? "rtl" : "ltr";
+  const requestHeaders = await headers();
+  await trackPlatformBlogView({
+    contentId: post.id,
+    locale,
+    path: platformBlogCanonicalPath(post, locale),
+    postSlug: post.slug,
+    referrer: requestHeaders.get("referer"),
+    title: post.title
+  });
 
   return (
     <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
