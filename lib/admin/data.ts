@@ -27,6 +27,7 @@ import {
   ensurePlatformPagesRegistry,
   type PlatformPageRegistryRecord
 } from "@/src/lib/platform-website/platform-pages-registry";
+import { isConnectedPlatformRoute } from "@/src/lib/platform-website/public-page-resolver";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -500,6 +501,7 @@ export type AdminPlatformWebsiteControl = {
   pages: Array<{
     canonical: string;
     id: string;
+    isLive: boolean;
     languages: Array<{
       language: "Arabic" | "English" | "French";
       status: "placeholder" | "ready";
@@ -4176,6 +4178,7 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     canonical: page.canonicalPath || page.routePath,
     contentStatus: page.contentStatus,
     id: page.id,
+    isLive: page.status === "published" && isConnectedPlatformRoute(page.routePath),
     languages,
     lastUpdated: page.updatedAt,
     metaDescription: page.seoDescription || "Platform SEO metadata is missing from content storage.",

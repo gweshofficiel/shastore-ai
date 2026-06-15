@@ -117,6 +117,11 @@ export default async function AdminPlatformWebsitePage({
             <td className="px-5 py-4">
               <p className="font-bold text-slate-950">{page.title}</p>
               <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{page.section}</p>
+              {page.isLive ? (
+                <div className="mt-2">
+                  <AdminBadge tone="green">LIVE</AdminBadge>
+                </div>
+              ) : null}
             </td>
             <td className="px-5 py-4 text-slate-600">{page.slug}</td>
             <td className="px-5 py-4">

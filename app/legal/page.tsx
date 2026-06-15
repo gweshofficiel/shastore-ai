@@ -6,9 +6,9 @@ import {
 export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
-  return generatePublicPlatformPageMetadata("/");
+  return generatePublicPlatformPageMetadata("/legal");
 }
 
-export default function HomePage() {
-  return renderPublicPlatformPage("/");
+export default function LegalPage() {
+  return renderPublicPlatformPage("/legal");
 }

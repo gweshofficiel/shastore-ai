@@ -1,0 +1,167 @@
+import "server-only";
+
+import type { Metadata } from "next";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export type PublicPlatformPage = {
+  body: Record<string, unknown>;
+  canonicalPath: string;
+  headline: string;
+  id: string;
+  routePath: string;
+  seoDescription: string;
+  seoTitle: string;
+  slug: string;
+  subtitle: string | null;
+  title: string;
+};
+
+type PublicPlatformPageRow = {
+  body?: unknown;
+  canonical_path?: string | null;
+  headline?: string | null;
+  id?: string | null;
+  route_path?: string | null;
+  seo_description?: string | null;
+  seo_title?: string | null;
+  slug?: string | null;
+  status?: string | null;
+  subtitle?: string | null;
+  title?: string | null;
+};
+
+const connectedPlatformRoutes = new Set([
+  "/",
+  "/about",
+  "/affiliates",
+  "/blog",
+  "/careers",
+  "/contact",
+  "/features",
+  "/legal",
+  "/pricing",
+  "/reseller"
+]);
+
+function text(value: unknown, maxLength = 2000) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/\bjavascript:/gi, "")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizePath(path: string) {
+  const cleaned = text(path, 240);
+
+  if (!cleaned || cleaned === "/") {
+    return "/";
+  }
+
+  const relative = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+
+  return relative.replace(/\/+$/, "") || "/";
+}
+
+function jsonRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function parsePublicPage(row: unknown): PublicPlatformPage | null {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    return null;
+  }
+
+  const value = row as PublicPlatformPageRow;
+  const id = text(value.id, 120);
+  const slug = text(value.slug, 120);
+  const title = text(value.title, 180);
+  const routePath = normalizePath(text(value.route_path, 240));
+  const seoTitle = text(value.seo_title, 180);
+  const seoDescription = text(value.seo_description, 500);
+
+  if (!id || !slug || !title || !connectedPlatformRoutes.has(routePath)) {
+    return null;
+  }
+
+  return {
+    body: jsonRecord(value.body),
+    canonicalPath: normalizePath(text(value.canonical_path, 240) || routePath),
+    headline: text(value.headline, 240) || title,
+    id,
+    routePath,
+    seoDescription: seoDescription || `SHASTORE AI platform page: ${title}.`,
+    seoTitle: seoTitle || `${title} - SHASTORE AI`,
+    slug,
+    subtitle: text(value.subtitle, 500) || null,
+    title
+  };
+}
+
+async function readPublishedPlatformPage(column: "route_path" | "slug", value: string) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data, error } = await admin
+    .from("platform_pages" as never)
+    .select("id, slug, title, route_path, headline, subtitle, body, seo_title, seo_description, canonical_path, status")
+    .eq(column as never, value as never)
+    .eq("status" as never, "published" as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Published platform page could not be loaded: ${error.message}`);
+  }
+
+  return parsePublicPage(data);
+}
+
+export function isConnectedPlatformRoute(path: string) {
+  return connectedPlatformRoutes.has(normalizePath(path));
+}
+
+export async function getPublishedPlatformPageBySlug(slug: string) {
+  const cleanedSlug = text(slug, 120);
+
+  if (!cleanedSlug) {
+    return null;
+  }
+
+  return readPublishedPlatformPage("slug", cleanedSlug);
+}
+
+export async function resolvePlatformPageRoute(path: string) {
+  const routePath = normalizePath(path);
+
+  if (!connectedPlatformRoutes.has(routePath)) {
+    return null;
+  }
+
+  return readPublishedPlatformPage("route_path", routePath);
+}
+
+export function metadataForPlatformPage(page: PublicPlatformPage): Metadata {
+  return {
+    alternates: {
+      canonical: page.canonicalPath
+    },
+    description: page.seoDescription,
+    openGraph: {
+      description: page.seoDescription,
+      title: page.seoTitle,
+      type: "website",
+      url: page.canonicalPath
+    },
+    title: page.seoTitle
+  };
+}
