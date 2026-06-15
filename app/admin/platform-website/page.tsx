@@ -13,6 +13,8 @@ import {
   createPlatformBlogDraftAction,
   markPlatformPageDraft,
   markPlatformPagePublished,
+  publishPlatformBlogPostAction,
+  revertPlatformBlogPostDraftAction,
   updatePlatformBlogDraftAction
 } from "@/lib/admin/platform-website-actions";
 
@@ -298,7 +300,7 @@ export default async function AdminPlatformWebsitePage({
           <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Platform Blog Foundation</p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">SHASTORE Platform Blog</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Foundation only. Draft metadata is stored for platform public website blog posts, but public `/blog` article routes are not connected in this phase.
+            Platform public website blog posts only. Published posts render on `/blog`; draft and archived posts stay admin-only.
           </p>
         </div>
 
@@ -333,7 +335,7 @@ export default async function AdminPlatformWebsitePage({
 
         <AdminTable
           empty={!control.blogFoundation.recentPosts.length ? "No platform blog posts yet." : null}
-          headers={["Post", "Status", "Author", "Updated", "Edit metadata", "Archive"]}
+          headers={["Post", "Status", "Author", "Updated", "Edit metadata", "Open", "Workflow"]}
         >
           {control.blogFoundation.recentPosts.map((post) => (
             <tr key={post.id}>
@@ -369,16 +371,48 @@ export default async function AdminPlatformWebsitePage({
                 </form>
               </td>
               <td className="px-5 py-4">
-                {post.status !== "archived" ? (
+                <div className="grid min-w-40 gap-2">
+                  <Link
+                    className="inline-flex h-9 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                    href={`/admin/platform-website/blog/${post.id}`}
+                  >
+                    Edit
+                  </Link>
+                  <Link
+                    className="inline-flex h-9 items-center justify-center rounded-full border border-purple-200 bg-purple-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-purple-700"
+                    href={`/admin/platform-website/blog/preview/${post.id}`}
+                  >
+                    Preview
+                  </Link>
+                </div>
+              </td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-40 gap-2">
+                {post.status === "draft" ? (
+                  <form action={publishPlatformBlogPostAction}>
+                    <input name="postId" type="hidden" value={post.id} />
+                    <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                      Publish
+                    </button>
+                  </form>
+                ) : null}
+                {post.status === "published" ? (
                   <form action={archivePlatformBlogPostAction}>
                     <input name="postId" type="hidden" value={post.id} />
-                    <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                    <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
                       Archive
                     </button>
                   </form>
-                ) : (
-                  <AdminBadge tone="red">archived</AdminBadge>
-                )}
+                ) : null}
+                {post.status === "archived" ? (
+                  <form action={revertPlatformBlogPostDraftAction}>
+                    <input name="postId" type="hidden" value={post.id} />
+                    <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
+                      Revert to Draft
+                    </button>
+                  </form>
+                ) : null}
+                </div>
               </td>
             </tr>
           ))}

@@ -1,14 +1,14 @@
 import {
-  generatePublicPlatformPageMetadata,
-  renderPublicPlatformPage
-} from "@/components/platform-website/public-platform-page";
+  generatePublicPlatformBlogIndexMetadata,
+  renderPublicPlatformBlogIndex
+} from "@/components/platform-website/public-platform-blog";
 
 export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
-  return generatePublicPlatformPageMetadata("/blog");
+  return generatePublicPlatformBlogIndexMetadata();
 }
 
 export default function BlogPage() {
-  return renderPublicPlatformPage("/blog");
+  return renderPublicPlatformBlogIndex();
 }

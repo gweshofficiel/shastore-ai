@@ -7,6 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   archivePlatformBlogPost,
   createPlatformBlogDraft,
+  publishPlatformBlogPost,
+  revertPlatformBlogPostToDraft,
   updatePlatformBlogDraft,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -38,6 +40,9 @@ import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platfo
 type PlatformWebsiteAction =
   | "admin_platform_blog_archive"
   | "admin_platform_blog_create_draft"
+  | "admin_platform_blog_publish"
+  | "admin_platform_blog_revert_draft"
+  | "admin_platform_blog_save_editor"
   | "admin_platform_blog_update_draft"
   | "admin_platform_page_block_create"
   | "admin_platform_page_block_delete_draft"
@@ -73,6 +78,7 @@ export type PlatformSeoGeneratorActionState = {
 
 export type PlatformTranslationActionState = PlatformPageEditorActionState;
 export type PlatformPageBlockActionState = PlatformPageEditorActionState;
+export type PlatformBlogEditorActionState = PlatformPageEditorActionState;
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
@@ -446,6 +452,62 @@ export async function archivePlatformBlogPostAction(formData: FormData) {
   }
 
   platformWebsiteRedirect(status, message);
+}
+
+export async function publishPlatformBlogPostAction(formData: FormData) {
+  let message = "Blog post published";
+  let status: "error" | "success" = "success";
+
+  try {
+    const post = await publishPlatformBlogPost(cleanText(formData.get("postId")));
+    await recordPlatformBlogAction("admin_platform_blog_publish", post);
+    message = `Blog post published: ${post?.title ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not publish platform blog post.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function revertPlatformBlogPostDraftAction(formData: FormData) {
+  let message = "Blog post reverted to draft";
+  let status: "error" | "success" = "success";
+
+  try {
+    const post = await revertPlatformBlogPostToDraft(cleanText(formData.get("postId")));
+    await recordPlatformBlogAction("admin_platform_blog_revert_draft", post);
+    message = `Blog post reverted to draft: ${post?.title ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not revert platform blog post to draft.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function savePlatformBlogEditorDraft(
+  previousState: PlatformBlogEditorActionState,
+  formData: FormData
+): Promise<PlatformBlogEditorActionState> {
+  void previousState;
+
+  try {
+    const postId = cleanText(formData.get("postId"));
+    const post = await updatePlatformBlogDraft(postId, blogInputFromFormData(formData));
+    await recordPlatformBlogAction("admin_platform_blog_save_editor", post);
+    revalidatePath(`/admin/platform-website/blog/${postId}`);
+
+    return {
+      message: "Blog post saved. Publish status and public route visibility were not changed.",
+      status: "success"
+    };
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "Platform blog post could not be saved.",
+      status: "error"
+    };
+  }
 }
 
 export async function savePlatformPageEditorDraft(

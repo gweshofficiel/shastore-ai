@@ -1,7 +1,13 @@
 import "server-only";
 
 import { getAdminAccess } from "@/lib/admin-access";
+import { getAppBaseUrl } from "@/lib/deployment/config";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getPlatformPageFallbackLocale,
+  isPlatformLocale,
+  type PlatformLocale
+} from "@/src/lib/platform-website/platform-translations-runtime";
 
 export type PlatformBlogPostStatus = "archived" | "draft" | "published";
 
@@ -32,6 +38,13 @@ export type PlatformBlogDraftInput = {
   slug?: string | null;
   title?: string | null;
   translations?: unknown;
+};
+
+export type PlatformTranslatedBlogPost = PlatformBlogPostRecord & {
+  direction: "ltr" | "rtl";
+  fallbackLocale: PlatformLocale | "base";
+  locale: PlatformLocale;
+  requestedLocale: PlatformLocale;
 };
 
 type PlatformBlogPostRow = {
@@ -73,7 +86,7 @@ function nullableText(value: unknown, maxLength = 2000) {
   return cleaned || null;
 }
 
-function slug(value: unknown) {
+export function normalizePlatformBlogSlug(value: unknown) {
   return text(value, 120)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -120,6 +133,18 @@ function safeJsonRecord(value: unknown) {
   return isRecord(sanitized) ? sanitized : {};
 }
 
+function translationRecord(post: Pick<PlatformBlogPostRecord, "translations">, locale: PlatformLocale) {
+  return isRecord(post.translations[locale]) ? post.translations[locale] as Record<string, unknown> : {};
+}
+
+function translationText(record: Record<string, unknown>, camelKey: string, snakeKey: string, maxLength = 2000) {
+  return text(record[camelKey] ?? record[snakeKey], maxLength);
+}
+
+function hasReadyTranslation(record: Record<string, unknown>) {
+  return text(record.status, 40) === "ready";
+}
+
 function parseStatus(value: unknown): PlatformBlogPostStatus {
   return statuses.includes(value as PlatformBlogPostStatus) ? value as PlatformBlogPostStatus : "draft";
 }
@@ -132,7 +157,7 @@ function parsePost(row: unknown): PlatformBlogPostRecord | null {
   const value = row as PlatformBlogPostRow;
   const id = text(value.id, 120);
   const title = text(value.title, 180);
-  const postSlug = slug(value.slug);
+  const postSlug = normalizePlatformBlogSlug(value.slug);
 
   if (!id || !title || !postSlug) {
     return null;
@@ -180,7 +205,8 @@ function postSelect() {
 
 function normalizeDraftInput(input: PlatformBlogDraftInput, options: { requireTitle?: boolean }) {
   const title = nullableText(input.title, 180);
-  const postSlug = slug(input.slug) || slug(title);
+  const rawSlug = text(input.slug, 120);
+  const postSlug = normalizePlatformBlogSlug(input.slug) || normalizePlatformBlogSlug(title);
 
   if (options.requireTitle && !title) {
     throw new Error("Platform blog draft title is required.");
@@ -198,6 +224,10 @@ function normalizeDraftInput(input: PlatformBlogDraftInput, options: { requireTi
     throw new Error("Platform blog draft slug cannot be empty.");
   }
 
+  if (rawSlug && rawSlug !== postSlug) {
+    throw new Error("Platform blog slug must be URL-safe lowercase text with hyphens.");
+  }
+
   const update: Record<string, unknown> = {};
 
   if (input.title !== undefined) update.title = title;
@@ -211,6 +241,46 @@ function normalizeDraftInput(input: PlatformBlogDraftInput, options: { requireTi
   if (input.translations !== undefined) update.translations = safeJsonRecord(input.translations);
 
   return update;
+}
+
+async function ensureUniqueSlug(postSlug: string, currentPostId?: string) {
+  const admin = requireAdminClient();
+  const query = admin
+    .from("platform_blog_posts" as never)
+    .select("id")
+    .eq("slug" as never, postSlug as never);
+  const { data, error } = currentPostId
+    ? await query.neq("id" as never, currentPostId as never).maybeSingle()
+    : await query.maybeSingle();
+
+  if (error) {
+    throw new Error(`Platform blog slug could not be validated: ${error.message}`);
+  }
+
+  if (data) {
+    throw new Error("Platform blog slug must be unique.");
+  }
+}
+
+async function readPostById(postId: string) {
+  const cleanedPostId = text(postId, 120);
+
+  if (!cleanedPostId) {
+    throw new Error("Platform blog post id is required.");
+  }
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("platform_blog_posts" as never)
+    .select(postSelect())
+    .eq("id" as never, cleanedPostId as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Platform blog post could not be loaded: ${error.message}`);
+  }
+
+  return parsePost(data);
 }
 
 export async function listPlatformBlogPosts() {
@@ -233,7 +303,7 @@ export async function listPlatformBlogPosts() {
 
 export async function getPlatformBlogPostBySlug(postSlug: string) {
   await requireSuperAdmin();
-  const cleanedSlug = slug(postSlug);
+  const cleanedSlug = normalizePlatformBlogSlug(postSlug);
 
   if (!cleanedSlug) {
     return null;
@@ -256,6 +326,7 @@ export async function getPlatformBlogPostBySlug(postSlug: string) {
 export async function createPlatformBlogDraft(input: PlatformBlogDraftInput) {
   await requireSuperAdmin();
   const update = normalizeDraftInput(input, { requireTitle: true });
+  await ensureUniqueSlug(String(update.slug ?? ""));
   const admin = requireAdminClient();
   const { data, error } = await admin
     .from("platform_blog_posts" as never)
@@ -289,6 +360,10 @@ export async function updatePlatformBlogDraft(postId: string, input: PlatformBlo
     throw new Error("No platform blog draft fields were provided.");
   }
 
+  if (typeof update.slug === "string") {
+    await ensureUniqueSlug(update.slug, cleanedPostId);
+  }
+
   const admin = requireAdminClient();
   const { data, error } = await admin
     .from("platform_blog_posts" as never)
@@ -305,19 +380,63 @@ export async function updatePlatformBlogDraft(postId: string, input: PlatformBlo
   return parsePost(data);
 }
 
+export async function getPlatformBlogPostForAdmin(postId: string) {
+  await requireSuperAdmin();
+
+  return readPostById(postId);
+}
+
+export async function publishPlatformBlogPost(postId: string) {
+  await requireSuperAdmin();
+  const current = await readPostById(postId);
+
+  if (!current) {
+    throw new Error("Platform blog post was not found.");
+  }
+
+  if (current.status !== "draft") {
+    throw new Error("Only draft platform blog posts can be published.");
+  }
+
+  if (!current.title || !current.slug) {
+    throw new Error("Title and slug are required before publishing.");
+  }
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("platform_blog_posts" as never)
+    .update({
+      published_at: current.publishedAt ?? new Date().toISOString(),
+      status: "published"
+    } as never)
+    .eq("id" as never, current.id as never)
+    .select(postSelect())
+    .single();
+
+  if (error) {
+    throw new Error(`Platform blog post could not be published: ${error.message}`);
+  }
+
+  return parsePost(data);
+}
+
 export async function archivePlatformBlogPost(postId: string) {
   await requireSuperAdmin();
-  const cleanedPostId = text(postId, 120);
+  const current = await readPostById(postId);
 
-  if (!cleanedPostId) {
-    throw new Error("Platform blog post id is required.");
+  if (!current) {
+    throw new Error("Platform blog post was not found.");
+  }
+
+  if (current.status !== "published") {
+    throw new Error("Only published platform blog posts can be archived.");
   }
 
   const admin = requireAdminClient();
   const { data, error } = await admin
     .from("platform_blog_posts" as never)
     .update({ status: "archived" } as never)
-    .eq("id" as never, cleanedPostId as never)
+    .eq("id" as never, current.id as never)
     .select(postSelect())
     .single();
 
@@ -326,4 +445,137 @@ export async function archivePlatformBlogPost(postId: string) {
   }
 
   return parsePost(data);
+}
+
+export async function revertPlatformBlogPostToDraft(postId: string) {
+  await requireSuperAdmin();
+  const current = await readPostById(postId);
+
+  if (!current) {
+    throw new Error("Platform blog post was not found.");
+  }
+
+  if (current.status !== "archived") {
+    throw new Error("Only archived platform blog posts can be reverted to draft.");
+  }
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("platform_blog_posts" as never)
+    .update({ status: "draft" } as never)
+    .eq("id" as never, current.id as never)
+    .select(postSelect())
+    .single();
+
+  if (error) {
+    throw new Error(`Platform blog post could not be reverted to draft: ${error.message}`);
+  }
+
+  return parsePost(data);
+}
+
+export async function listPublishedPlatformBlogPosts() {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return [];
+  }
+
+  const { data, error } = await admin
+    .from("platform_blog_posts" as never)
+    .select(postSelect())
+    .eq("status" as never, "published" as never)
+    .order("published_at" as never, { ascending: false, nullsFirst: false } as never)
+    .order("created_at" as never, { ascending: false })
+    .limit(100);
+
+  if (error) {
+    throw new Error(`Published platform blog posts could not be loaded: ${error.message}`);
+  }
+
+  return (Array.isArray(data) ? data : [])
+    .map((row) => parsePost(row))
+    .filter((post): post is PlatformBlogPostRecord => Boolean(post));
+}
+
+export async function getPublishedPlatformBlogPostBySlug(postSlug: string) {
+  const cleanedSlug = normalizePlatformBlogSlug(postSlug);
+
+  if (!cleanedSlug) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data, error } = await admin
+    .from("platform_blog_posts" as never)
+    .select(postSelect())
+    .eq("slug" as never, cleanedSlug as never)
+    .eq("status" as never, "published" as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Published platform blog post could not be loaded: ${error.message}`);
+  }
+
+  return parsePost(data);
+}
+
+export function translatePlatformBlogPost(
+  post: PlatformBlogPostRecord,
+  locale: string | null | undefined
+): PlatformTranslatedBlogPost {
+  const requestedLocale = getPlatformPageFallbackLocale(locale);
+  const requestedRecord = translationRecord(post, requestedLocale);
+  const englishRecord = translationRecord(post, "en");
+  const fallbackLocale: PlatformLocale | "base" = hasReadyTranslation(requestedRecord)
+    ? requestedLocale
+    : hasReadyTranslation(englishRecord)
+      ? "en"
+      : "base";
+  const record = fallbackLocale === "base"
+    ? {}
+    : fallbackLocale === requestedLocale
+      ? requestedRecord
+      : englishRecord;
+  const title = translationText(record, "title", "title", 180) || post.title;
+  const excerpt = translationText(record, "excerpt", "excerpt", 500) || post.excerpt;
+  const seoTitle = translationText(record, "seoTitle", "seo_title", 70) || post.seoTitle;
+  const seoDescription = translationText(record, "seoDescription", "seo_description", 160) || post.seoDescription;
+  const translatedContent = isRecord(record.content) || isRecord(record.body)
+    ? safeJsonRecord(record.content ?? record.body)
+    : post.content;
+
+  return {
+    ...post,
+    content: translatedContent,
+    direction: requestedLocale === "ar" ? "rtl" : "ltr",
+    excerpt,
+    fallbackLocale,
+    locale: requestedLocale,
+    requestedLocale,
+    seoDescription,
+    seoTitle,
+    title
+  };
+}
+
+export function platformBlogCanonicalPath(postOrPath: PlatformBlogPostRecord | string, locale?: string | null) {
+  const prefix = locale && isPlatformLocale(locale) ? `/${locale}` : "";
+
+  if (typeof postOrPath === "string") {
+    return `${prefix}${postOrPath.startsWith("/") ? postOrPath : `/${postOrPath}`}`;
+  }
+
+  return `${prefix}/blog/${postOrPath.slug}`;
+}
+
+export function platformBlogCanonicalUrl(postOrPath: PlatformBlogPostRecord | string, locale?: string | null) {
+  const baseUrl = getAppBaseUrl().replace(/\/+$/, "");
+
+  return `${baseUrl}${platformBlogCanonicalPath(postOrPath, locale)}`;
 }
