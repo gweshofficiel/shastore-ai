@@ -6,6 +6,7 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminPlatformThemeControl } from "@/lib/admin/data";
 import {
+  discardPlatformBrandingDraft,
   previewPlatformBranding,
   publishPlatformBrandingPlaceholder,
   resetPlatformBrandingPlaceholder,
@@ -45,6 +46,8 @@ export default async function AdminPlatformThemePage() {
         stats={[
           { label: "Brand sections", value: control.sections.length },
           { label: "Ready sections", value: readySections },
+          { label: "Draft changes", value: control.draft.changedCount },
+          { label: "Validation errors", value: control.draft.validationErrors.length },
           { label: "Public previews", value: `${readyPublicPreviews}/${control.previews.publicWebsite.length}` },
           { label: "Admin previews", value: `${readyAdminPreviews}/${control.previews.adminDashboard.length}` },
           { label: "RTL languages", value: control.readiness.filter((item) => item.direction === "RTL").length },
@@ -70,6 +73,11 @@ export default async function AdminPlatformThemePage() {
             Reset placeholder
           </button>
         </form>
+        <form action={discardPlatformBrandingDraft}>
+          <button className="h-11 w-full rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+            Discard draft
+          </button>
+        </form>
         <form action={publishPlatformBrandingPlaceholder}>
           <button className="h-11 w-full rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
             Publish placeholder
@@ -77,13 +85,42 @@ export default async function AdminPlatformThemePage() {
         </form>
       </div>
 
+      <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <AdminBadge tone={control.draft.hasChanges ? "amber" : "green"}>
+            {control.draft.hasChanges ? "Draft changed" : "No draft changes"}
+          </AdminBadge>
+          <AdminBadge tone={control.draft.validationErrors.length ? "red" : "green"}>
+            {control.draft.validationErrors.length ? "Validation errors" : "Validation clear"}
+          </AdminBadge>
+          <span className="text-sm font-semibold text-slate-500">
+            Last saved: {control.draft.lastSavedAt ?? "Not saved yet"}
+          </span>
+        </div>
+        {control.draft.validationErrors.length ? (
+          <div className="grid gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {control.draft.validationErrors.map((error) => (
+              <p key={`${error.settingKey}-${error.message}`}>{error.settingKey}: {error.message}</p>
+            ))}
+          </div>
+        ) : null}
+        <p className="text-sm leading-6 text-slate-500">
+          Preview Branding uses these draft values inside this Super Admin screen only. Public website, admin dashboard theme, storefronts, and customer stores are not changed.
+        </p>
+      </section>
+
       <form action={savePlatformBrandingDraft} id="platform-brand-settings-form">
-        <AdminTable headers={["Branding section", "Draft value", "Registry status", "Validation", "Description"]}>
+        <AdminTable headers={["Branding section", "Draft value", "Published value", "Registry status", "Validation", "Description"]}>
           {control.sections.map((section) => (
             <tr key={section.label}>
               <td className="px-5 py-4">
                 <p className="font-bold text-slate-950">{section.label}</p>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{section.settingType}</p>
+                {section.draftChanged ? (
+                  <div className="mt-2">
+                    <AdminBadge tone="amber">changed</AdminBadge>
+                  </div>
+                ) : null}
               </td>
               <td className="px-5 py-4">
                 <div className="flex min-w-72 items-center gap-3">
@@ -101,13 +138,35 @@ export default async function AdminPlatformThemePage() {
                   />
                 </div>
               </td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{section.publishedValue}</td>
               <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.status)}>{section.status}</AdminBadge></td>
-              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.validationStatus)}>{section.validationStatus}</AdminBadge></td>
-              <td className="px-5 py-4 text-slate-600">{section.description}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(section.validationStatus)}>{section.validationStatus}</AdminBadge>
+                {section.validationMessage ? (
+                  <p className="mt-2 text-xs font-semibold leading-5 text-red-600">{section.validationMessage}</p>
+                ) : null}
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                <p>{section.description}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-400">Saved: {section.lastSavedAt ?? "not saved"}</p>
+              </td>
             </tr>
           ))}
         </AdminTable>
       </form>
+
+      <AdminTable headers={["Setting", "Draft", "Published", "Changed"]}>
+        {control.draft.comparisons.map((item) => (
+          <tr key={`compare-${item.settingKey}`}>
+            <td className="px-5 py-4 font-bold text-slate-950">{item.settingKey}</td>
+            <td className="px-5 py-4 text-sm font-semibold text-slate-600">{item.draftDisplayValue}</td>
+            <td className="px-5 py-4 text-sm font-semibold text-slate-600">{item.publishedDisplayValue}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={item.hasChanged ? "amber" : "green"}>{item.hasChanged ? "changed" : "same"}</AdminBadge>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-slate-200 bg-white p-5">

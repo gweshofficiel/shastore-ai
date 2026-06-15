@@ -4,15 +4,19 @@ import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  listBrandSettings,
-  updateBrandSettingDraft
-} from "@/src/lib/platform-theme/platform-brand-settings";
+  compareDraftWithPublished,
+  discardThemeDraft,
+  getThemeDraft,
+  updateThemeDraft,
+  validateThemeDraft
+} from "@/src/lib/platform-theme/platform-theme-draft-runtime";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
   | "admin_platform_theme_publish_placeholder"
   | "admin_platform_theme_reset_placeholder"
-  | "admin_platform_theme_save_draft";
+  | "admin_platform_theme_save_draft"
+  | "admin_platform_theme_discard_draft";
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
   const access = await getAdminAccess();
@@ -41,27 +45,34 @@ async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: 
 }
 
 export async function savePlatformBrandingDraft(formData: FormData) {
-  const settings = await listBrandSettings();
-  const updates = await Promise.all(
-    settings.map(async (setting) => {
+  const draft = await getThemeDraft();
+  const input = Object.fromEntries(
+    draft.settings.map((setting) => {
       const value = formData.get(`setting_${setting.settingKey}`);
-      if (typeof value !== "string") return null;
-
-      return updateBrandSettingDraft(setting.settingKey, { value });
+      return [setting.settingKey, typeof value === "string" ? value : ""];
     })
   );
-  const updatedSettings = updates.filter(Boolean);
+  const validation = validateThemeDraft(input);
+  const updatedDraft = await updateThemeDraft(input);
 
   await recordPlatformThemeAction("admin_platform_theme_save_draft", {
-    changed_settings: updatedSettings.length,
+    changed_settings: updatedDraft.changedCount,
     draft_only: true,
+    invalid_settings: Object.values(validation).filter((item) => item.status === "invalid").length,
     public_theme_changed: false,
     store_themes_touched: 0
   });
 }
 
 export async function previewPlatformBranding() {
-  await recordPlatformThemeAction("admin_platform_theme_preview");
+  const draft = await getThemeDraft();
+  await recordPlatformThemeAction("admin_platform_theme_preview", {
+    draft_only: true,
+    invalid_settings: draft.validationErrors.length,
+    preview_uses: "admin_only_draft_values",
+    public_theme_changed: false,
+    store_themes_touched: 0
+  });
 }
 
 export async function resetPlatformBrandingPlaceholder() {
@@ -70,4 +81,17 @@ export async function resetPlatformBrandingPlaceholder() {
 
 export async function publishPlatformBrandingPlaceholder() {
   await recordPlatformThemeAction("admin_platform_theme_publish_placeholder");
+}
+
+export async function discardPlatformBrandingDraft() {
+  const before = await compareDraftWithPublished();
+  const draft = await discardThemeDraft();
+
+  await recordPlatformThemeAction("admin_platform_theme_discard_draft", {
+    discarded_settings: before.filter((item) => item.hasChanged).length,
+    draft_only: true,
+    remaining_changes: draft.changedCount,
+    public_theme_changed: false,
+    store_themes_touched: 0
+  });
 }

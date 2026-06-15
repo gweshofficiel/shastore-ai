@@ -24,7 +24,6 @@ import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
-  listBrandSettings,
   type PlatformBrandSettingRecord,
   type PlatformBrandValidationStatus
 } from "@/src/lib/platform-theme/platform-brand-settings";
@@ -33,6 +32,10 @@ import {
   type PlatformThemeRegistrySection,
   type PlatformThemeSectionStatus
 } from "@/src/lib/platform-theme/platform-theme-registry";
+import {
+  getThemeDraft,
+  type PlatformThemeDraft
+} from "@/src/lib/platform-theme/platform-theme-draft-runtime";
 import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
@@ -615,6 +618,7 @@ export type AdminPlatformThemeControl = {
     secondaryColor: string;
     typography: string;
   };
+  draft: PlatformThemeDraft;
   futureHooks: string[];
   previews: {
     adminDashboard: Array<{
@@ -635,10 +639,14 @@ export type AdminPlatformThemeControl = {
   }>;
   sections: Array<{
     description: string;
+    draftChanged: boolean;
     label: string;
+    lastSavedAt: string | null;
+    publishedValue: string;
     settingKey: string;
     settingType: string;
     status: PlatformThemeSectionStatus;
+    validationMessage: string | null;
     validationStatus: PlatformBrandValidationStatus;
     value: string;
   }>;
@@ -4357,12 +4365,12 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, brandSettings] = await Promise.all([
+  const [registrySections, draft] = await Promise.all([
     ensurePlatformThemeRegistry(),
-    listBrandSettings()
+    getThemeDraft()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
-  const settingsByKey = new Map(brandSettings.map((setting) => [setting.settingKey, setting]));
+  const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
   const branding: AdminPlatformThemeControl["branding"] = {
     accentColor: platformThemeValue(sectionsByKey.get("accent_color"), settingsByKey.get("accent_color"), "#f97316"),
     darkMode: platformThemeValue(sectionsByKey.get("dark_mode"), settingsByKey.get("dark_mode"), "placeholder"),
@@ -4376,6 +4384,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
   return {
     branding,
+    draft,
     futureHooks: [
       "Upload logo",
       "Upload favicon",
@@ -4436,11 +4445,15 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     ],
     sections: registrySections.map((section) => ({
       description: section.description ?? "Platform theme registry section.",
+      draftChanged: settingsByKey.get(section.sectionKey)?.hasChanged ?? false,
+      lastSavedAt: settingsByKey.get(section.sectionKey)?.updatedAt ?? null,
       label: section.sectionLabel,
+      publishedValue: settingsByKey.get(section.sectionKey)?.publishedDisplayValue ?? "Not published",
       settingKey: section.sectionKey,
       settingType: section.sectionType,
       status: section.status,
       validationStatus: settingsByKey.get(section.sectionKey)?.validationStatus ?? "placeholder",
+      validationMessage: settingsByKey.get(section.sectionKey)?.validationMessage ?? null,
       value: platformThemeValue(section, settingsByKey.get(section.sectionKey), "Not configured")
     }))
   };
