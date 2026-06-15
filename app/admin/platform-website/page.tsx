@@ -107,6 +107,12 @@ function monitoringToneForSeverity(severity: string) {
   return "blue" as const;
 }
 
+function certificationTone(status: string) {
+  if (status === "ready") return "green" as const;
+  if (status === "blocked") return "red" as const;
+  return "amber" as const;
+}
+
 function optionLabel(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -136,6 +142,7 @@ export default async function AdminPlatformWebsitePage({
   const actionMessage = params?.message;
   const actionStatus = params?.status === "error" ? "error" : params?.status === "success" ? "success" : null;
   const analyticsRange = control.analytics.range;
+  const certification = control.certification;
   const monitoring = control.monitoring;
 
   return (
@@ -370,6 +377,87 @@ export default async function AdminPlatformWebsitePage({
             </tr>
           ))}
         </AdminTable>
+      </section>
+
+      <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:p-6">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Platform Website Runtime Certification</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Certification readiness</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Final read-only certification for platform website runtime systems from PW-1 through PW-19. This does not auto-fix, publish, or change public content.
+          </p>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Readiness score", value: `${certification.readinessScore}/100` },
+            { label: "Readiness status", value: certification.readinessStatus },
+            { label: "Checklist ready", value: certification.checklist.filter((item) => item.status === "ready").length },
+            { label: "Needs attention", value: certification.checklist.filter((item) => item.status === "needs_attention").length },
+            { label: "Blocked", value: certification.checklist.filter((item) => item.status === "blocked").length },
+            { label: "Blockers", value: certification.blockers.length }
+          ]}
+        />
+
+        {certification.analyticsEmptyState ? (
+          <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-700">
+            {certification.analyticsEmptyState}
+          </div>
+        ) : null}
+
+        <AdminTable headers={["Checklist item", "Status", "Certification note"]}>
+          {certification.checklist.map((item) => (
+            <tr key={item.key}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={certificationTone(item.status)}>{optionLabel(item.status)}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-sm leading-6 text-slate-600">{item.message}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!certification.blockers.length ? "No certification blockers found." : null}
+          headers={["Blocker type", "Severity", "Related page/post/block", "Message", "Suggested action"]}
+        >
+          {certification.blockers.map((blocker) => (
+            <tr key={`${blocker.blockerType}-${blocker.relatedEntity}-${blocker.message}`}>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(blocker.blockerType)}>{optionLabel(blocker.blockerType)}</AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={monitoringToneForSeverity(blocker.severity)}>{blocker.severity}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 font-bold text-slate-950">{blocker.relatedEntity}</td>
+              <td className="max-w-md px-5 py-4 text-sm leading-6 text-slate-600">{blocker.message}</td>
+              <td className="max-w-md px-5 py-4 text-sm leading-6 text-slate-600">{blocker.suggestedAction}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <div className="grid gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Final Security Review</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <AdminBadge tone={certificationTone(certification.securityReview.result)}>
+                {optionLabel(certification.securityReview.result)}
+              </AdminBadge>
+              <p className="text-sm font-semibold leading-6 text-slate-600">{certification.securityReview.summary}</p>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {certification.securityReview.items.map((item) => (
+              <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4" key={item.label}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-black text-slate-950">{item.label}</p>
+                  <AdminBadge tone={certificationTone(item.status)}>{optionLabel(item.status)}</AdminBadge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{item.message}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       <AdminTable headers={["Landing area", "Route", "Readiness"]}>

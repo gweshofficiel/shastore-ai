@@ -36,6 +36,10 @@ import {
   type PlatformAnalyticsSummary
 } from "@/src/lib/platform-website/analytics/platform-analytics-service";
 import {
+  getPlatformWebsiteCertification,
+  type PlatformWebsiteCertificationSummary
+} from "@/src/lib/platform-website/certification/platform-website-certification";
+import {
   getPlatformWebsiteMonitoring,
   type PlatformWebsiteMonitoringFilters,
   type PlatformWebsiteMonitoringSummary
@@ -525,6 +529,7 @@ export type AdminAIControl = {
 export type AdminPlatformWebsiteControl = {
   advancedPublishing: PlatformAdvancedPublishingDashboard;
   analytics: PlatformAnalyticsSummary;
+  certification: PlatformWebsiteCertificationSummary;
   monitoring: PlatformWebsiteMonitoringSummary;
   blogFoundation: {
     archivedPosts: number;
@@ -4257,14 +4262,15 @@ export async function getAdminPlatformWebsiteControl(
   analyticsRange?: string | null,
   monitoringFilters?: PlatformWebsiteMonitoringFilters
 ): Promise<AdminPlatformWebsiteControl> {
-  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing, analytics, monitoring] = await Promise.all([
+  const [registryPages, blogPosts, blogCategories, blogTags, advancedPublishing, analytics, monitoring, certification] = await Promise.all([
     ensurePlatformPagesRegistry(),
     listPlatformBlogPosts(),
     listCategories(),
     listTags(),
     getAdvancedPublishingDashboard(),
     getPlatformAnalyticsSummary(analyticsRange),
-    getPlatformWebsiteMonitoring(monitoringFilters)
+    getPlatformWebsiteMonitoring(monitoringFilters),
+    getPlatformWebsiteCertification()
   ]);
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
@@ -4281,6 +4287,7 @@ export async function getAdminPlatformWebsiteControl(
   return {
     advancedPublishing,
     analytics,
+    certification,
     monitoring,
     blogFoundation: {
       archivedPosts: blogPosts.filter((post) => post.status === "archived").length,
