@@ -300,6 +300,12 @@ export function LandingPageBuilderForm({
           >
             Edit page content
           </Link>
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.16em] text-blue-700"
+            href={`/admin/platform-website/preview/${page.id}`}
+          >
+            Preview page
+          </Link>
         </Card>
       </aside>
     </div>

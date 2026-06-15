@@ -10,8 +10,7 @@ import { getAdminPlatformWebsiteControl } from "@/lib/admin/data";
 import {
   archivePlatformPagePlaceholder,
   markPlatformPageDraft,
-  markPlatformPagePublished,
-  previewPlatformPage
+  markPlatformPagePublished
 } from "@/lib/admin/platform-website-actions";
 
 function toneForStatus(status: string) {
@@ -178,26 +177,12 @@ export default async function AdminPlatformWebsitePage({
               </div>
             </td>
             <td className="px-5 py-4">
-              {page.previewHref ? (
-                <form action={previewPlatformPage}>
-                  <PageHiddenFields page={page} />
-                  <Link
-                    className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                    href={page.previewHref}
-                    target="_blank"
-                  >
-                    Preview page
-                  </Link>
-                </form>
-              ) : (
-                <button
-                  className="h-9 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-                  disabled
-                  type="button"
-                >
-                  Preview placeholder
-                </button>
-              )}
+              <Link
+                className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                href={`/admin/platform-website/preview/${page.id}`}
+              >
+                Preview page
+              </Link>
             </td>
             <td className="px-5 py-4">
               <div className="grid min-w-52 gap-2">

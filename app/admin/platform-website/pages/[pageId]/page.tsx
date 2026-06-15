@@ -51,12 +51,20 @@ export default async function AdminPlatformPageEditorPage({
         <p><span className="font-black text-slate-800">Slug:</span> {page.slug}</p>
         <p><span className="font-black text-slate-800">Platform route:</span> {page.routePath}</p>
         <p><span className="font-black text-slate-800">Last updated:</span> {formatAdminDate(page.updatedAt)}</p>
-        <Link
-          className="mt-2 inline-flex h-10 w-fit items-center rounded-full border border-purple-200 bg-purple-50 px-4 text-xs font-black uppercase tracking-[0.16em] text-purple-700"
-          href={`/admin/platform-website/builder/${page.id}`}
-        >
-          Open landing builder
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link
+            className="inline-flex h-10 w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.16em] text-blue-700"
+            href={`/admin/platform-website/preview/${page.id}`}
+          >
+            Preview page
+          </Link>
+          <Link
+            className="inline-flex h-10 w-fit items-center rounded-full border border-purple-200 bg-purple-50 px-4 text-xs font-black uppercase tracking-[0.16em] text-purple-700"
+            href={`/admin/platform-website/builder/${page.id}`}
+          >
+            Open landing builder
+          </Link>
+        </div>
       </Card>
 
       <PlatformPageEditorForm blocks={blocks} page={page} />
