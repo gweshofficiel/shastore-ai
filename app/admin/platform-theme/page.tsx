@@ -17,6 +17,10 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
+  if (status === "disabled" || status === "needs_attention") {
+    return "red" as const;
+  }
+
   if (status === "draft") {
     return "amber" as const;
   }

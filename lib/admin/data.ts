@@ -24,6 +24,11 @@ import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
+  ensurePlatformThemeRegistry,
+  type PlatformThemeRegistrySection,
+  type PlatformThemeSectionStatus
+} from "@/src/lib/platform-theme/platform-theme-registry";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -597,9 +602,9 @@ export type AdminPlatformWebsiteControl = {
 export type AdminPlatformThemeControl = {
   branding: {
     accentColor: string;
-    darkMode: "placeholder";
+    darkMode: string;
     favicon: string;
-    lightMode: "placeholder";
+    lightMode: string;
     logo: string;
     primaryColor: string;
     secondaryColor: string;
@@ -626,7 +631,7 @@ export type AdminPlatformThemeControl = {
   sections: Array<{
     description: string;
     label: string;
-    status: "draft" | "placeholder" | "ready";
+    status: PlatformThemeSectionStatus;
     value: string;
   }>;
 };
@@ -4321,27 +4326,28 @@ export async function getAdminPlatformWebsiteControl(
   };
 }
 
+function platformThemeValue(section: PlatformThemeRegistrySection | undefined, fallback: string) {
+  if (!section) return fallback;
+
+  return text(section.value.text) ||
+    text(section.value.hex) ||
+    text(section.value.stack) ||
+    text(section.value.mode) ||
+    fallback;
+}
+
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const { supabase } = await getAdminUsersBase();
-  const monitoringEvents = await safeSelect(
-    supabase,
-    "monitoring_events",
-    "event_type, event_status, entity_type, metadata, created_at",
-    100
-  );
-  const latestThemeAction = monitoringEvents
-    .filter((event) => text(event.event_type).startsWith("admin_platform_theme_"))
-    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))[0];
-  const isDraftSaved = Boolean(latestThemeAction);
+  const registrySections = await ensurePlatformThemeRegistry();
+  const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const branding: AdminPlatformThemeControl["branding"] = {
-    accentColor: "#f97316",
-    darkMode: "placeholder",
-    favicon: "Platform favicon placeholder",
-    lightMode: "placeholder",
-    logo: "SHASTORE AI",
-    primaryColor: "#0f172a",
-    secondaryColor: "#2563eb",
-    typography: "Inter / system sans"
+    accentColor: platformThemeValue(sectionsByKey.get("accent_color"), "#f97316"),
+    darkMode: platformThemeValue(sectionsByKey.get("dark_mode"), "placeholder"),
+    favicon: platformThemeValue(sectionsByKey.get("favicon"), "Platform favicon placeholder"),
+    lightMode: platformThemeValue(sectionsByKey.get("light_mode"), "placeholder"),
+    logo: platformThemeValue(sectionsByKey.get("platform_logo"), "SHASTORE AI"),
+    primaryColor: platformThemeValue(sectionsByKey.get("primary_color"), "#0f172a"),
+    secondaryColor: platformThemeValue(sectionsByKey.get("secondary_color"), "#2563eb"),
+    typography: platformThemeValue(sectionsByKey.get("typography"), "Inter / system sans")
   };
 
   return {
@@ -4404,56 +4410,12 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       { direction: "LTR", language: "English", status: "ready" },
       { direction: "LTR", language: "French", status: "placeholder" }
     ],
-    sections: [
-      {
-        description: "Text/logo mark for SHASTORE SaaS interface and public platform website.",
-        label: "Platform logo",
-        status: isDraftSaved ? "draft" : "ready",
-        value: branding.logo
-      },
-      {
-        description: "Favicon placeholder only; upload workflow is not connected yet.",
-        label: "Favicon",
-        status: "placeholder",
-        value: branding.favicon
-      },
-      {
-        description: "Primary platform brand color for admin/public chrome.",
-        label: "Primary color",
-        status: "ready",
-        value: branding.primaryColor
-      },
-      {
-        description: "Secondary platform brand color for links and supporting CTAs.",
-        label: "Secondary color",
-        status: "ready",
-        value: branding.secondaryColor
-      },
-      {
-        description: "Accent color reserved for highlights and marketing moments.",
-        label: "Accent color",
-        status: "ready",
-        value: branding.accentColor
-      },
-      {
-        description: "Platform typography stack for SaaS UI and marketing pages.",
-        label: "Typography",
-        status: "ready",
-        value: branding.typography
-      },
-      {
-        description: "Dark mode is reserved and does not change live UI yet.",
-        label: "Dark mode placeholder",
-        status: "placeholder",
-        value: branding.darkMode
-      },
-      {
-        description: "Light mode is the current platform baseline.",
-        label: "Light mode placeholder",
-        status: "placeholder",
-        value: branding.lightMode
-      }
-    ]
+    sections: registrySections.map((section) => ({
+      description: section.description ?? "Platform theme registry section.",
+      label: section.sectionLabel,
+      status: section.status,
+      value: platformThemeValue(section, "Not configured")
+    }))
   };
 }
 
