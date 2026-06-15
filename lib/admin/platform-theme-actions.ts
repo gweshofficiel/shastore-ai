@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  listBrandSettings,
+  updateBrandSettingDraft
+} from "@/src/lib/platform-theme/platform-brand-settings";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -10,7 +14,7 @@ type PlatformThemeAction =
   | "admin_platform_theme_reset_placeholder"
   | "admin_platform_theme_save_draft";
 
-async function recordPlatformThemeAction(action: PlatformThemeAction) {
+async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
   const access = await getAdminAccess();
   const admin = createAdminClient();
 
@@ -24,6 +28,7 @@ async function recordPlatformThemeAction(action: PlatformThemeAction) {
     event_status: "info",
     event_type: action,
     metadata: {
+      ...metadata,
       note: "Placeholder platform branding action only. Store owner themes and storefront runtime were not changed.",
       source: "super_admin_platform_theme_branding_center"
     },
@@ -35,8 +40,24 @@ async function recordPlatformThemeAction(action: PlatformThemeAction) {
   revalidatePath("/admin/platform-theme");
 }
 
-export async function savePlatformBrandingDraft() {
-  await recordPlatformThemeAction("admin_platform_theme_save_draft");
+export async function savePlatformBrandingDraft(formData: FormData) {
+  const settings = await listBrandSettings();
+  const updates = await Promise.all(
+    settings.map(async (setting) => {
+      const value = formData.get(`setting_${setting.settingKey}`);
+      if (typeof value !== "string") return null;
+
+      return updateBrandSettingDraft(setting.settingKey, { value });
+    })
+  );
+  const updatedSettings = updates.filter(Boolean);
+
+  await recordPlatformThemeAction("admin_platform_theme_save_draft", {
+    changed_settings: updatedSettings.length,
+    draft_only: true,
+    public_theme_changed: false,
+    store_themes_touched: 0
+  });
 }
 
 export async function previewPlatformBranding() {

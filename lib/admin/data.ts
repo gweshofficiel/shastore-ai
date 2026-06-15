@@ -24,6 +24,11 @@ import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
+  listBrandSettings,
+  type PlatformBrandSettingRecord,
+  type PlatformBrandValidationStatus
+} from "@/src/lib/platform-theme/platform-brand-settings";
+import {
   ensurePlatformThemeRegistry,
   type PlatformThemeRegistrySection,
   type PlatformThemeSectionStatus
@@ -631,7 +636,10 @@ export type AdminPlatformThemeControl = {
   sections: Array<{
     description: string;
     label: string;
+    settingKey: string;
+    settingType: string;
     status: PlatformThemeSectionStatus;
+    validationStatus: PlatformBrandValidationStatus;
     value: string;
   }>;
 };
@@ -4326,28 +4334,44 @@ export async function getAdminPlatformWebsiteControl(
   };
 }
 
-function platformThemeValue(section: PlatformThemeRegistrySection | undefined, fallback: string) {
-  if (!section) return fallback;
-
-  return text(section.value.text) ||
-    text(section.value.hex) ||
-    text(section.value.stack) ||
-    text(section.value.mode) ||
+function platformThemeJsonValue(value: Record<string, unknown>, fallback: string) {
+  return text(value.value) ||
+    text(value.text) ||
+    text(value.hex) ||
+    text(value.path) ||
+    text(value.url) ||
+    text(value.stack) ||
+    text(value.mode) ||
     fallback;
 }
 
+function platformThemeValue(
+  section: PlatformThemeRegistrySection | undefined,
+  setting: PlatformBrandSettingRecord | undefined,
+  fallback: string
+) {
+  if (setting) return platformThemeJsonValue(setting.draftValue, fallback);
+  if (!section) return fallback;
+
+  return platformThemeJsonValue(section.value, fallback);
+}
+
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const registrySections = await ensurePlatformThemeRegistry();
+  const [registrySections, brandSettings] = await Promise.all([
+    ensurePlatformThemeRegistry(),
+    listBrandSettings()
+  ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
+  const settingsByKey = new Map(brandSettings.map((setting) => [setting.settingKey, setting]));
   const branding: AdminPlatformThemeControl["branding"] = {
-    accentColor: platformThemeValue(sectionsByKey.get("accent_color"), "#f97316"),
-    darkMode: platformThemeValue(sectionsByKey.get("dark_mode"), "placeholder"),
-    favicon: platformThemeValue(sectionsByKey.get("favicon"), "Platform favicon placeholder"),
-    lightMode: platformThemeValue(sectionsByKey.get("light_mode"), "placeholder"),
-    logo: platformThemeValue(sectionsByKey.get("platform_logo"), "SHASTORE AI"),
-    primaryColor: platformThemeValue(sectionsByKey.get("primary_color"), "#0f172a"),
-    secondaryColor: platformThemeValue(sectionsByKey.get("secondary_color"), "#2563eb"),
-    typography: platformThemeValue(sectionsByKey.get("typography"), "Inter / system sans")
+    accentColor: platformThemeValue(sectionsByKey.get("accent_color"), settingsByKey.get("accent_color"), "#f97316"),
+    darkMode: platformThemeValue(sectionsByKey.get("dark_mode"), settingsByKey.get("dark_mode"), "placeholder"),
+    favicon: platformThemeValue(sectionsByKey.get("favicon"), settingsByKey.get("favicon"), "Platform favicon placeholder"),
+    lightMode: platformThemeValue(sectionsByKey.get("light_mode"), settingsByKey.get("light_mode"), "placeholder"),
+    logo: platformThemeValue(sectionsByKey.get("platform_logo"), settingsByKey.get("platform_logo"), "SHASTORE AI"),
+    primaryColor: platformThemeValue(sectionsByKey.get("primary_color"), settingsByKey.get("primary_color"), "#0f172a"),
+    secondaryColor: platformThemeValue(sectionsByKey.get("secondary_color"), settingsByKey.get("secondary_color"), "#2563eb"),
+    typography: platformThemeValue(sectionsByKey.get("typography"), settingsByKey.get("typography"), "Inter / system sans")
   };
 
   return {
@@ -4413,8 +4437,11 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     sections: registrySections.map((section) => ({
       description: section.description ?? "Platform theme registry section.",
       label: section.sectionLabel,
+      settingKey: section.sectionKey,
+      settingType: section.sectionType,
       status: section.status,
-      value: platformThemeValue(section, "Not configured")
+      validationStatus: settingsByKey.get(section.sectionKey)?.validationStatus ?? "placeholder",
+      value: platformThemeValue(section, settingsByKey.get(section.sectionKey), "Not configured")
     }))
   };
 }

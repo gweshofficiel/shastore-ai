@@ -17,7 +17,7 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
-  if (status === "disabled" || status === "needs_attention") {
+  if (status === "disabled" || status === "invalid" || status === "needs_attention") {
     return "red" as const;
   }
 
@@ -53,11 +53,13 @@ export default async function AdminPlatformThemePage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
-        <form action={savePlatformBrandingDraft}>
-          <button className="h-11 w-full rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-            Save draft placeholder
-          </button>
-        </form>
+        <button
+          className="h-11 w-full rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-700"
+          form="platform-brand-settings-form"
+          type="submit"
+        >
+          Save draft
+        </button>
         <form action={previewPlatformBranding}>
           <button className="h-11 w-full rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
             Preview branding
@@ -75,26 +77,37 @@ export default async function AdminPlatformThemePage() {
         </form>
       </div>
 
-      <AdminTable headers={["Branding section", "Value", "Status", "Description"]}>
-        {control.sections.map((section) => (
-          <tr key={section.label}>
-            <td className="px-5 py-4 font-bold text-slate-950">{section.label}</td>
-            <td className="px-5 py-4">
-              <div className="flex items-center gap-3">
-                {section.value.startsWith("#") ? (
-                  <span
-                    className="h-8 w-8 rounded-full border border-slate-200"
-                    style={{ backgroundColor: section.value }}
+      <form action={savePlatformBrandingDraft} id="platform-brand-settings-form">
+        <AdminTable headers={["Branding section", "Draft value", "Registry status", "Validation", "Description"]}>
+          {control.sections.map((section) => (
+            <tr key={section.label}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{section.label}</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{section.settingType}</p>
+              </td>
+              <td className="px-5 py-4">
+                <div className="flex min-w-72 items-center gap-3">
+                  {section.value.startsWith("#") ? (
+                    <span
+                      className="h-8 w-8 rounded-full border border-slate-200"
+                      style={{ backgroundColor: section.value }}
+                    />
+                  ) : null}
+                  <input
+                    className="h-10 w-full rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700"
+                    name={`setting_${section.settingKey}`}
+                    type="text"
+                    defaultValue={section.value}
                   />
-                ) : null}
-                <span className="font-semibold text-slate-600">{section.value}</span>
-              </div>
-            </td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.status)}>{section.status}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{section.description}</td>
-          </tr>
-        ))}
-      </AdminTable>
+                </div>
+              </td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.status)}>{section.status}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.validationStatus)}>{section.validationStatus}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{section.description}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </form>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-slate-200 bg-white p-5">
