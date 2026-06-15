@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { ButtonLink } from "@/components/ui/button";
 import {
-  metadataForPlatformPage,
   resolvePlatformPageRoute,
   type PublicPlatformPage
 } from "@/src/lib/platform-website/public-page-resolver";
+import {
+  buildPlatformPageMetadata,
+  unpublishedPlatformPageMetadata
+} from "@/src/lib/platform-website/platform-seo-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -88,10 +91,10 @@ export async function generatePublicPlatformPageMetadata(path: string): Promise<
   const page = await resolvePlatformPageRoute(path);
 
   if (!page) {
-    return {};
+    return unpublishedPlatformPageMetadata();
   }
 
-  return metadataForPlatformPage(page);
+  return buildPlatformPageMetadata(page);
 }
 
 export async function renderPublicPlatformPage(path: string) {

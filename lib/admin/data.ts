@@ -520,6 +520,13 @@ export type AdminPlatformWebsiteControl = {
     publishingStatus: "Archived" | "Draft" | "Needs Content" | "Needs SEO" | "Published";
     section: string;
     seoStatus: "missing" | "needs_metadata" | "placeholder" | "ready";
+    seoReadiness: {
+      isReady: boolean;
+      missingCanonical: boolean;
+      missingDescription: boolean;
+      missingOpenGraph: boolean;
+      missingTitle: boolean;
+    };
     contentStatus: "draft_ready" | "needs_attention" | "placeholder" | "ready";
     slug: string;
     status: "archived" | "draft" | "published";
@@ -4163,6 +4170,10 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
   const contentReady = page.contentStatus !== "placeholder";
   const routeReady = Boolean(page.routePath);
   const seoReady = Boolean(page.seoTitle && page.seoDescription);
+  const missingOpenGraph = !isRecord(page.openGraph) ||
+    !text(page.openGraph.title) ||
+    !text(page.openGraph.description) ||
+    !text(page.openGraph.image_url);
   const translationReady = languages.some((language) => language.status === "ready");
   const publishingStatus: AdminPlatformWebsiteControl["pages"][number]["publishingStatus"] = page.status === "published"
     ? "Published"
@@ -4193,6 +4204,13 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     },
     publishingStatus,
     section: page.pageType.replaceAll("_", " "),
+    seoReadiness: {
+      isReady: Boolean(page.seoTitle && page.seoDescription && page.canonicalPath && !missingOpenGraph),
+      missingCanonical: !page.canonicalPath,
+      missingDescription: !page.seoDescription,
+      missingOpenGraph,
+      missingTitle: !page.seoTitle
+    },
     seoStatus: page.seoStatus,
     slug: page.slug,
     status: page.status,

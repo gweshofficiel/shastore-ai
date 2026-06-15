@@ -1,16 +1,16 @@
 import "server-only";
 
-import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PublicPlatformPage = {
   body: Record<string, unknown>;
-  canonicalPath: string;
+  canonicalPath: string | null;
   headline: string;
   id: string;
+  openGraph: Record<string, unknown>;
   routePath: string;
-  seoDescription: string;
-  seoTitle: string;
+  seoDescription: string | null;
+  seoTitle: string | null;
   slug: string;
   subtitle: string | null;
   title: string;
@@ -21,6 +21,7 @@ type PublicPlatformPageRow = {
   canonical_path?: string | null;
   headline?: string | null;
   id?: string | null;
+  open_graph?: unknown;
   route_path?: string | null;
   seo_description?: string | null;
   seo_title?: string | null;
@@ -93,12 +94,13 @@ function parsePublicPage(row: unknown): PublicPlatformPage | null {
 
   return {
     body: jsonRecord(value.body),
-    canonicalPath: normalizePath(text(value.canonical_path, 240) || routePath),
+    canonicalPath: text(value.canonical_path, 240) ? normalizePath(text(value.canonical_path, 240)) : null,
     headline: text(value.headline, 240) || title,
     id,
+    openGraph: jsonRecord(value.open_graph),
     routePath,
-    seoDescription: seoDescription || `SHASTORE AI platform page: ${title}.`,
-    seoTitle: seoTitle || `${title} - SHASTORE AI`,
+    seoDescription: seoDescription || null,
+    seoTitle: seoTitle || null,
     slug,
     subtitle: text(value.subtitle, 500) || null,
     title
@@ -114,7 +116,7 @@ async function readPublishedPlatformPage(column: "route_path" | "slug", value: s
 
   const { data, error } = await admin
     .from("platform_pages" as never)
-    .select("id, slug, title, route_path, headline, subtitle, body, seo_title, seo_description, canonical_path, status")
+    .select("id, slug, title, route_path, headline, subtitle, body, seo_title, seo_description, canonical_path, open_graph, status")
     .eq(column as never, value as never)
     .eq("status" as never, "published" as never)
     .maybeSingle();
@@ -150,18 +152,3 @@ export async function resolvePlatformPageRoute(path: string) {
   return readPublishedPlatformPage("route_path", routePath);
 }
 
-export function metadataForPlatformPage(page: PublicPlatformPage): Metadata {
-  return {
-    alternates: {
-      canonical: page.canonicalPath
-    },
-    description: page.seoDescription,
-    openGraph: {
-      description: page.seoDescription,
-      title: page.seoTitle,
-      type: "website",
-      url: page.canonicalPath
-    },
-    title: page.seoTitle
-  };
-}

@@ -136,6 +136,15 @@ export default async function AdminPlatformWebsitePage({
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(page.seoStatus)}>{page.seoStatus}</AdminBadge>
+              <div className="mt-3 flex max-w-sm flex-wrap gap-2">
+                <AdminBadge tone={page.seoReadiness.isReady ? "green" : "amber"}>
+                  SEO {page.seoReadiness.isReady ? "ready" : "needs work"}
+                </AdminBadge>
+                {page.seoReadiness.missingTitle ? <AdminBadge tone="red">Missing title</AdminBadge> : null}
+                {page.seoReadiness.missingDescription ? <AdminBadge tone="red">Missing description</AdminBadge> : null}
+                {page.seoReadiness.missingCanonical ? <AdminBadge tone="red">Missing canonical</AdminBadge> : null}
+                {page.seoReadiness.missingOpenGraph ? <AdminBadge tone="red">Missing OpenGraph</AdminBadge> : null}
+              </div>
               <div className="mt-3 max-w-sm text-xs leading-5 text-slate-500">
                 <p><span className="font-black text-slate-700">Meta title:</span> {page.metaTitle}</p>
                 <p><span className="font-black text-slate-700">Description:</span> {page.metaDescription}</p>
