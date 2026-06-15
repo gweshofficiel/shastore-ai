@@ -499,6 +499,7 @@ export type AdminPlatformWebsiteControl = {
   }>;
   pages: Array<{
     canonical: string;
+    id: string;
     languages: Array<{
       language: "Arabic" | "English" | "French";
       status: "placeholder" | "ready";
@@ -4126,6 +4127,7 @@ function platformLanguageRows(languageStatus: PlatformPageRegistryRecord["langua
 function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
   return {
     canonical: page.routePath,
+    id: page.id,
     languages: platformLanguageRows(page.languageStatus),
     lastUpdated: page.updatedAt,
     metaDescription: page.seoStatus === "missing"
@@ -4143,47 +4145,9 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
 }
 
 export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
-  const { supabase } = await getAdminUsersBase();
-  const monitoringEvents = await safeSelect(
-    supabase,
-    "monitoring_events",
-    "event_type, event_status, entity_type, metadata, created_at",
-    300
-  );
-  const controlEvents = monitoringEvents
-    .filter((event) => text(event.event_type).startsWith("admin_platform_page_"))
-    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
-  const latestBySlug = new Map<string, AnyRecord>();
-
-  for (const event of controlEvents) {
-    const metadata = isRecord(event.metadata) ? event.metadata : {};
-    const slug = text(metadata.slug);
-
-    if (slug && !latestBySlug.has(slug)) {
-      latestBySlug.set(slug, event);
-    }
-  }
-
   const registryPages = await ensurePlatformPagesRegistry();
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
-  const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions.map((page) => {
-    const event = latestBySlug.get(page.slug);
-    const eventType = text(event?.event_type);
-    const eventStatus =
-      eventType === "admin_platform_page_mark_draft"
-        ? "draft"
-        : eventType === "admin_platform_page_mark_published"
-          ? "published"
-          : eventType === "admin_platform_page_archive"
-            ? "archived"
-            : page.status;
-
-    return {
-      ...page,
-      lastUpdated: text(event?.created_at) || page.lastUpdated,
-      status: eventStatus
-    };
-  });
+  const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
   const readyRoutes = new Set(pages.filter((page) => page.status === "published").map((page) => page.canonical));
   const landingStatus = [
     { label: "Homepage ready", ready: readyRoutes.has("/"), route: "/" },

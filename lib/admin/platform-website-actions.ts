@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  archivePlatformPage,
+  markPlatformPageDraft as markPlatformPageDraftStatus,
+  publishPlatformPage
+} from "@/src/lib/platform-website/platform-page-status";
 
 type PlatformWebsiteAction =
   | "admin_platform_page_archive"
@@ -15,8 +20,16 @@ function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function recordPlatformWebsiteAction(formData: FormData, action: PlatformWebsiteAction) {
+async function recordPlatformWebsiteAction(
+  formData: FormData,
+  action: PlatformWebsiteAction,
+  statusChange?: {
+    nextStatus: string;
+    previousStatus: string;
+  }
+) {
   const access = await getAdminAccess();
+  const pageId = cleanText(formData.get("pageId"));
   const slug = cleanText(formData.get("slug"));
   const title = cleanText(formData.get("title"));
 
@@ -37,8 +50,10 @@ async function recordPlatformWebsiteAction(formData: FormData, action: PlatformW
     event_type: action,
     metadata: {
       note: "Placeholder platform website action only. Store owner pages and storefront runtime were not changed.",
+      pageId,
       slug,
       source: "super_admin_platform_website_management",
+      statusChange: statusChange ?? null,
       title
     },
     store_id: null,
@@ -54,11 +69,13 @@ export async function previewPlatformPage(formData: FormData) {
 }
 
 export async function markPlatformPageDraft(formData: FormData) {
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_draft");
+  const result = await markPlatformPageDraftStatus(cleanText(formData.get("pageId")));
+  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_draft", result);
 }
 
 export async function markPlatformPagePublished(formData: FormData) {
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_published");
+  const result = await publishPlatformPage(cleanText(formData.get("pageId")));
+  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_published", result);
 }
 
 export async function editPlatformPagePlaceholder(formData: FormData) {
@@ -66,5 +83,6 @@ export async function editPlatformPagePlaceholder(formData: FormData) {
 }
 
 export async function archivePlatformPagePlaceholder(formData: FormData) {
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_archive");
+  const result = await archivePlatformPage(cleanText(formData.get("pageId")));
+  await recordPlatformWebsiteAction(formData, "admin_platform_page_archive", result);
 }

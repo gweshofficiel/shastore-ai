@@ -38,6 +38,7 @@ function PageHiddenFields({
 }) {
   return (
     <>
+      <input name="pageId" type="hidden" value={page.id} />
       <input name="slug" type="hidden" value={page.slug} />
       <input name="title" type="hidden" value={page.title} />
     </>
@@ -141,30 +142,36 @@ export default async function AdminPlatformWebsitePage() {
             </td>
             <td className="px-5 py-4">
               <div className="grid min-w-52 gap-2">
-                <form action={markPlatformPageDraft}>
-                  <PageHiddenFields page={page} />
-                  <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                    Mark draft
-                  </button>
-                </form>
-                <form action={markPlatformPagePublished}>
-                  <PageHiddenFields page={page} />
-                  <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                    Publish placeholder
-                  </button>
-                </form>
+                {page.status === "published" || page.status === "archived" ? (
+                  <form action={markPlatformPageDraft}>
+                    <PageHiddenFields page={page} />
+                    <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
+                      Mark draft
+                    </button>
+                  </form>
+                ) : null}
+                {page.status === "draft" ? (
+                  <form action={markPlatformPagePublished}>
+                    <PageHiddenFields page={page} />
+                    <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                      Publish
+                    </button>
+                  </form>
+                ) : null}
                 <form action={editPlatformPagePlaceholder}>
                   <PageHiddenFields page={page} />
                   <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
                     Edit placeholder
                   </button>
                 </form>
-                <form action={archivePlatformPagePlaceholder}>
-                  <PageHiddenFields page={page} />
-                  <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                    Archive placeholder
-                  </button>
-                </form>
+                {page.status === "draft" || page.status === "published" ? (
+                  <form action={archivePlatformPagePlaceholder}>
+                    <PageHiddenFields page={page} />
+                    <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                      Archive
+                    </button>
+                  </form>
+                ) : null}
               </div>
             </td>
           </tr>
