@@ -10,6 +10,7 @@ import {
   revertPlatformPageToDraft
 } from "@/src/lib/platform-website/platform-publishing-workflow";
 import { updatePlatformPageContent, validatePlatformPageEditorDraft } from "@/src/lib/platform-website/platform-content-storage";
+import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platform-translation-management";
 
 type PlatformWebsiteAction =
   | "admin_platform_page_archive"
@@ -17,12 +18,17 @@ type PlatformWebsiteAction =
   | "admin_platform_page_mark_draft"
   | "admin_platform_page_mark_published"
   | "admin_platform_page_preview"
-  | "admin_platform_page_save_draft";
+  | "admin_platform_page_save_draft"
+  | "admin_platform_translation_mark_needs_review"
+  | "admin_platform_translation_mark_ready"
+  | "admin_platform_translation_save_draft";
 
 export type PlatformPageEditorActionState = {
   message: string;
   status: "error" | "idle" | "success";
 };
+
+export type PlatformTranslationActionState = PlatformPageEditorActionState;
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
@@ -102,6 +108,57 @@ function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
     }
 
     throw new Error(`${fieldName} must be valid JSON.`);
+  }
+}
+
+function translationInputFromFormData(formData: FormData, status: "needs_review" | "partial" | "ready") {
+  return {
+    body: parseJsonObject(formData.get("body"), "Body"),
+    headline: cleanText(formData.get("headline")),
+    openGraph: {
+      description: cleanText(formData.get("openGraphDescription")),
+      title: cleanText(formData.get("openGraphTitle"))
+    },
+    seoDescription: cleanText(formData.get("seoDescription")),
+    seoTitle: cleanText(formData.get("seoTitle")),
+    status,
+    subtitle: cleanText(formData.get("subtitle")),
+    title: cleanText(formData.get("title"))
+  };
+}
+
+async function savePlatformTranslationWithStatus(
+  formData: FormData,
+  status: "needs_review" | "partial" | "ready"
+): Promise<PlatformTranslationActionState> {
+  try {
+    const locale = cleanText(formData.get("locale"));
+    const pageId = cleanText(formData.get("pageId"));
+
+    await updatePlatformPageTranslation(pageId, locale, translationInputFromFormData(formData, status));
+    await recordPlatformWebsiteAction(
+      formData,
+      status === "ready"
+        ? "admin_platform_translation_mark_ready"
+        : status === "needs_review"
+          ? "admin_platform_translation_mark_needs_review"
+          : "admin_platform_translation_save_draft"
+    );
+    revalidatePath(`/admin/platform-website/translations/${pageId}/${locale}`);
+
+    return {
+      message: status === "ready"
+        ? "Translation marked ready."
+        : status === "needs_review"
+          ? "Translation marked needs review."
+          : "Translation draft saved.",
+      status: "success"
+    };
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "Platform translation could not be saved.",
+      status: "error"
+    };
   }
 }
 
@@ -215,4 +272,31 @@ export async function savePlatformPageEditorDraft(
       status: "error"
     };
   }
+}
+
+export async function savePlatformTranslationDraft(
+  previousState: PlatformTranslationActionState,
+  formData: FormData
+): Promise<PlatformTranslationActionState> {
+  void previousState;
+
+  return savePlatformTranslationWithStatus(formData, "partial");
+}
+
+export async function markPlatformTranslationReady(
+  previousState: PlatformTranslationActionState,
+  formData: FormData
+): Promise<PlatformTranslationActionState> {
+  void previousState;
+
+  return savePlatformTranslationWithStatus(formData, "ready");
+}
+
+export async function markPlatformTranslationNeedsReview(
+  previousState: PlatformTranslationActionState,
+  formData: FormData
+): Promise<PlatformTranslationActionState> {
+  void previousState;
+
+  return savePlatformTranslationWithStatus(formData, "needs_review");
 }

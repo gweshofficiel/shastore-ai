@@ -28,7 +28,12 @@ import {
   type PlatformPageRegistryRecord
 } from "@/src/lib/platform-website/platform-pages-registry";
 import { isConnectedPlatformRoute } from "@/src/lib/platform-website/public-page-resolver";
-import { getPlatformTranslationStatus, type PlatformTranslationReadiness } from "@/src/lib/platform-website/platform-translations-runtime";
+import {
+  getPlatformTranslationStatus,
+  validatePlatformTranslations,
+  type PlatformLocale,
+  type PlatformTranslationReadiness
+} from "@/src/lib/platform-website/platform-translations-runtime";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -512,6 +517,7 @@ export type AdminPlatformWebsiteControl = {
     metaTitle: string;
     openGraph: string;
     previewHref: string | null;
+    route: string;
     publishingReadiness: {
       contentReady: boolean;
       routeReady: boolean;
@@ -532,6 +538,7 @@ export type AdminPlatformWebsiteControl = {
     slug: string;
     status: "archived" | "draft" | "published";
     title: string;
+    translationMissingFields: Record<PlatformLocale, string[]>;
   }>;
   overview: {
     archivedPages: number;
@@ -4149,6 +4156,7 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     ? text(page.openGraph.status) || "ready"
     : "missing";
   const languages = platformLanguageRows(page);
+  const translationValidation = validatePlatformTranslations(page);
   const contentReady = page.contentStatus !== "placeholder";
   const routeReady = Boolean(page.routePath);
   const seoReady = Boolean(page.seoTitle && page.seoDescription);
@@ -4182,6 +4190,7 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     metaTitle: page.seoTitle || `${page.title} - SHASTORE AI`,
     openGraph: openGraphStatus,
     previewHref: page.status === "published" ? page.routePath : null,
+    route: page.routePath,
     publishingReadiness: {
       contentReady,
       routeReady,
@@ -4200,7 +4209,8 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     seoStatus: page.seoStatus,
     slug: page.slug,
     status: page.status,
-    title: page.title
+    title: page.title,
+    translationMissingFields: translationValidation.missingFields
   };
 }
 

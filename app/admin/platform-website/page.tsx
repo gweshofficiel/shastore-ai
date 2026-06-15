@@ -237,6 +237,68 @@ export default async function AdminPlatformWebsitePage({
         ))}
       </AdminTable>
 
+      <AdminTable
+        empty={!control.pages.length ? "No platform page translations configured." : null}
+        headers={[
+          "Page",
+          "Slug",
+          "Route",
+          "EN",
+          "AR",
+          "FR",
+          "Missing fields",
+          "Last updated",
+          "Edit"
+        ]}
+      >
+        {control.pages.map((page) => (
+          <tr key={`translation-${page.slug}`}>
+            <td className="px-5 py-4 font-bold text-slate-950">{page.title}</td>
+            <td className="px-5 py-4 text-slate-600">{page.slug}</td>
+            <td className="px-5 py-4 text-slate-600">{page.route}</td>
+            {(["en", "ar", "fr"] as const).map((locale) => {
+              const language = page.languages.find((item) => item.language === locale);
+
+              return (
+                <td className="px-5 py-4" key={`${page.slug}-${locale}`}>
+                  <AdminBadge tone={toneForStatus(language?.status ?? "missing")}>
+                    {locale}: {language?.status ?? "missing"}
+                  </AdminBadge>
+                </td>
+              );
+            })}
+            <td className="px-5 py-4">
+              <div className="flex min-w-64 flex-wrap gap-2">
+                {(["en", "ar", "fr"] as const).flatMap((locale) =>
+                  page.translationMissingFields[locale].map((field) => (
+                    <AdminBadge key={`${locale}-${field}`} tone="red">
+                      {locale}: {field}
+                    </AdminBadge>
+                  ))
+                ).slice(0, 8)}
+                {(["en", "ar", "fr"] as const).every((locale) => !page.translationMissingFields[locale].length) ? (
+                  <AdminBadge tone="green">complete</AdminBadge>
+                ) : null}
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>
+            <td className="px-5 py-4">
+              <div className="grid min-w-40 gap-2">
+                {(["en", "ar", "fr"] as const).map((locale) => (
+                  <Link
+                    className="inline-flex h-8 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                    href={`/admin/platform-website/translations/${page.id}/${locale}`}
+                    key={`${page.id}-edit-${locale}`}
+                  >
+                    Edit {locale}
+                  </Link>
+                ))}
+              </div>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
           <tr key={hook}>

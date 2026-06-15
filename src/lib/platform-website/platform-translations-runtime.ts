@@ -3,7 +3,7 @@ import "server-only";
 import type { PublicPlatformPage } from "@/src/lib/platform-website/public-page-resolver";
 
 export type PlatformLocale = "ar" | "en" | "fr";
-export type PlatformTranslationReadiness = "missing" | "partial" | "ready";
+export type PlatformTranslationReadiness = "missing" | "needs_review" | "partial" | "ready";
 
 export type PlatformTranslatedPage = PublicPlatformPage & {
   direction: "ltr" | "rtl";
@@ -16,7 +16,7 @@ type PlatformTranslationPageLike = {
   translations?: unknown;
 };
 
-const platformLocales: PlatformLocale[] = ["en", "ar", "fr"];
+export const platformLocales: PlatformLocale[] = ["en", "ar", "fr"];
 
 function text(value: unknown, maxLength = 2000) {
   if (typeof value !== "string") {
@@ -106,7 +106,24 @@ function localeStatus(record: Record<string, unknown>): PlatformTranslationReadi
     return "ready";
   }
 
+  if (status === "needs_review") {
+    return "needs_review";
+  }
+
   return "partial";
+}
+
+function missingFields(record: Record<string, unknown>) {
+  return [
+    !translationText(record, "title", "title", 180) ? "title" : null,
+    !translationText(record, "headline", "headline", 240) ? "headline" : null,
+    !translationText(record, "subtitle", "subtitle", 500) ? "subtitle" : null,
+    !isRecord(record.body) && !text(record.content, 5000) ? "body" : null,
+    !translationText(record, "seoTitle", "seo_title", 180) ? "seo_title" : null,
+    !translationText(record, "seoDescription", "seo_description", 500) ? "seo_description" : null,
+    !text(recordValue(record.openGraph ?? record.open_graph).title, 180) ? "open_graph.title" : null,
+    !text(recordValue(record.openGraph ?? record.open_graph).description, 300) ? "open_graph.description" : null
+  ].filter((field): field is string => Boolean(field));
 }
 
 export function getPlatformPageFallbackLocale(locale: string | null | undefined): PlatformLocale {
@@ -124,10 +141,17 @@ export function validatePlatformTranslations(page: PlatformTranslationPageLike) 
       localeStatus(translationRecord(page, locale))
     ])
   ) as Record<PlatformLocale, PlatformTranslationReadiness>;
+  const missingFieldsByLocale = Object.fromEntries(
+    platformLocales.map((locale) => [
+      locale,
+      missingFields(translationRecord(page, locale))
+    ])
+  ) as Record<PlatformLocale, string[]>;
 
   return {
     isReady: platformLocales.every((locale) => locales[locale] === "ready"),
-    locales
+    locales,
+    missingFields: missingFieldsByLocale
   };
 }
 
