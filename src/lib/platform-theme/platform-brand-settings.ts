@@ -250,6 +250,7 @@ function normalizeInputValue(setting: PlatformBrandSettingRecord, value: unknown
   if (setting.settingType === "logo" || setting.settingType === "favicon") {
     const normalizedReference = raw.startsWith("http://") || raw.startsWith("https://") ? { url: raw } : { path: raw };
     const metadata = {
+      assetId: text(record.assetId, 120),
       fileName: text(record.fileName, 240),
       mimeType: text(record.mimeType, 120),
       size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,

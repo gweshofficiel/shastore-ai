@@ -8,6 +8,7 @@ import {
   updateBrandSettingDraft,
   type PlatformBrandSettingRecord
 } from "@/src/lib/platform-theme/platform-brand-settings";
+import { registerPlatformThemeAsset } from "@/src/lib/platform-theme/platform-theme-assets";
 
 const platformAssetBucket = "product-images";
 const platformLogoPrefix = "platform/theme/logos";
@@ -157,7 +158,18 @@ export async function uploadPlatformLogo(file: File) {
     data: { publicUrl }
   } = admin.storage.from(platformAssetBucket).getPublicUrl(storageKey);
   const uploadedAt = new Date().toISOString();
+  const themeAsset = await registerPlatformThemeAsset({
+    assetType: "logo",
+    fileSize: file.size,
+    mimeType: file.type,
+    originalFilename: text(file.name, 240),
+    publicUrl,
+    status: "draft",
+    storageKey,
+    storageProvider: "supabase-storage"
+  });
   const logoDraft = await updateBrandSettingDraft("platform_logo", {
+    assetId: themeAsset?.id,
     fileName: text(file.name, 240),
     mimeType: file.type,
     size: file.size,

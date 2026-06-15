@@ -8,6 +8,7 @@ import {
   updateBrandSettingDraft,
   type PlatformBrandSettingRecord
 } from "@/src/lib/platform-theme/platform-brand-settings";
+import { registerPlatformThemeAsset } from "@/src/lib/platform-theme/platform-theme-assets";
 
 const platformAssetBucket = "product-images";
 const platformFaviconPrefix = "platform/theme/favicons";
@@ -157,7 +158,18 @@ export async function uploadPlatformFavicon(file: File) {
     data: { publicUrl }
   } = admin.storage.from(platformAssetBucket).getPublicUrl(storageKey);
   const uploadedAt = new Date().toISOString();
+  const themeAsset = await registerPlatformThemeAsset({
+    assetType: "favicon",
+    fileSize: file.size,
+    mimeType: file.type,
+    originalFilename: text(file.name, 240),
+    publicUrl,
+    status: "draft",
+    storageKey,
+    storageProvider: "supabase-storage"
+  });
   const faviconDraft = await updateBrandSettingDraft("favicon", {
+    assetId: themeAsset?.id,
     fileName: text(file.name, 240),
     mimeType: file.type,
     size: file.size,

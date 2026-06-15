@@ -49,6 +49,10 @@ import {
   type PlatformFaviconReference
 } from "@/src/lib/platform-theme/platform-favicon-upload";
 import {
+  listPlatformThemeAssets,
+  type PlatformThemeAssetRecord
+} from "@/src/lib/platform-theme/platform-theme-assets";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -620,6 +624,7 @@ export type AdminPlatformWebsiteControl = {
 };
 
 export type AdminPlatformThemeControl = {
+  assets: PlatformThemeAssetRecord[];
   branding: {
     accentColor: string;
     darkMode: string;
@@ -4380,12 +4385,13 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
     getCurrentPlatformLogo(),
-    getCurrentPlatformFavicon()
+    getCurrentPlatformFavicon(),
+    listPlatformThemeAssets()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4401,6 +4407,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
   };
 
   return {
+    assets,
     branding,
     draft,
     favicon: currentFavicon.favicon,

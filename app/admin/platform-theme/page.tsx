@@ -74,6 +74,7 @@ export default async function AdminPlatformThemePage({
 
       <AdminStatGrid
         stats={[
+          { label: "Theme assets", value: control.assets.length },
           { label: "Brand sections", value: control.sections.length },
           { label: "Ready sections", value: readySections },
           { label: "Draft changes", value: control.draft.changedCount },
@@ -321,6 +322,53 @@ export default async function AdminPlatformThemePage({
             )}
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-assets">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Assets</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform theme asset storage</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Unified registry for platform theme assets uploaded by Super Admins. This table does not list customer store assets and does not expose private storage keys.
+          </p>
+        </div>
+        <AdminTable headers={["Preview", "Asset type", "Filename", "MIME type", "Size", "Status", "Uploaded at"]}>
+          {control.assets.map((asset) => (
+            <tr key={`theme-asset-${asset.id}`}>
+              <td className="px-5 py-4">
+                {asset.previewUrl ? (
+                  <object
+                    aria-label={`${asset.assetType} preview`}
+                    className="h-14 w-14 rounded-2xl border border-slate-200 bg-white p-2"
+                    data={asset.previewUrl}
+                    type={asset.mimeType}
+                  >
+                    <span className="text-xs font-semibold text-slate-500">Preview unavailable</span>
+                  </object>
+                ) : (
+                  <div className="grid h-14 w-14 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                    <span className="text-xs font-black text-slate-400">N/A</span>
+                  </div>
+                )}
+              </td>
+              <td className="px-5 py-4 font-bold text-slate-950">{asset.assetType}</td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{asset.originalFilename}</td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{asset.mimeType}</td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{formatBytes(asset.fileSize)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(asset.status)}>{asset.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{asset.createdAt ?? "Not recorded"}</td>
+            </tr>
+          ))}
+          {!control.assets.length ? (
+            <tr>
+              <td className="px-5 py-6 text-sm font-semibold text-slate-500" colSpan={7}>
+                No platform theme assets have been registered yet. Logo and favicon uploads will appear here.
+              </td>
+            </tr>
+          ) : null}
+        </AdminTable>
       </section>
 
       <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5">

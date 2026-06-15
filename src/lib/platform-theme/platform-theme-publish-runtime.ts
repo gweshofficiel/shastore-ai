@@ -12,6 +12,7 @@ import {
   getThemeDraft,
   type PlatformThemeDraftComparison
 } from "@/src/lib/platform-theme/platform-theme-draft-runtime";
+import { markThemeAssetPublished } from "@/src/lib/platform-theme/platform-theme-assets";
 
 export type PlatformThemePublishReadinessItem = {
   key: string;
@@ -43,6 +44,16 @@ const requiredColorSettings = new Set(["primary_color", "secondary_color", "acce
 
 function isEmpty(value: Record<string, unknown>) {
   return !Object.keys(value).length;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function text(value: unknown, maxLength = 240) {
+  return typeof value === "string" && value.trim()
+    ? value.trim().replace(/\s+/g, " ").slice(0, maxLength)
+    : "";
 }
 
 function readinessLabel(settingKey: string) {
@@ -131,6 +142,11 @@ export async function publishThemeDraft() {
 
       if (error) {
         throw new Error(`Platform theme draft could not be published: ${error.message}`);
+      }
+
+      const assetId = isRecord(setting.draftValue) ? text(setting.draftValue.assetId, 120) : "";
+      if ((setting.settingKey === "platform_logo" || setting.settingKey === "favicon") && assetId) {
+        await markThemeAssetPublished(assetId);
       }
     })
   );
