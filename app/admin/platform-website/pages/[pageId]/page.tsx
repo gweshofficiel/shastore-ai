@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminHeader, formatAdminDate } from "@/components/admin/admin-control";
 import { Card } from "@/components/ui/card";
+import { listPageBlocks } from "@/src/lib/platform-website/platform-blocks-runtime";
 import { getPlatformPageEditorContent } from "@/src/lib/platform-website/platform-content-storage";
 import { PlatformPageEditorForm } from "./platform-page-editor-form";
 
@@ -10,7 +11,10 @@ export default async function AdminPlatformPageEditorPage({
   params: Promise<{ pageId: string }>;
 }) {
   const { pageId } = await params;
-  const page = await getPlatformPageEditorContent(pageId);
+  const [page, blocks] = await Promise.all([
+    getPlatformPageEditorContent(pageId),
+    listPageBlocks(pageId)
+  ]);
 
   if (!page) {
     return (
@@ -49,7 +53,7 @@ export default async function AdminPlatformPageEditorPage({
         <p><span className="font-black text-slate-800">Last updated:</span> {formatAdminDate(page.updatedAt)}</p>
       </Card>
 
-      <PlatformPageEditorForm page={page} />
+      <PlatformPageEditorForm blocks={blocks} page={page} />
     </div>
   );
 }

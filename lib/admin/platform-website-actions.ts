@@ -5,6 +5,14 @@ import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  createPageBlock,
+  hidePageBlock,
+  publishPageBlock,
+  reorderPageBlocks,
+  updatePageBlock,
+  type PlatformPageBlockType
+} from "@/src/lib/platform-website/platform-blocks-runtime";
+import {
   archivePlatformPage,
   publishPlatformPage,
   revertPlatformPageToDraft
@@ -13,6 +21,11 @@ import { updatePlatformPageContent, validatePlatformPageEditorDraft } from "@/sr
 import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platform-translation-management";
 
 type PlatformWebsiteAction =
+  | "admin_platform_page_block_create"
+  | "admin_platform_page_block_hide"
+  | "admin_platform_page_block_publish"
+  | "admin_platform_page_block_reorder"
+  | "admin_platform_page_block_update"
   | "admin_platform_page_archive"
   | "admin_platform_page_edit_placeholder"
   | "admin_platform_page_mark_draft"
@@ -29,6 +42,7 @@ export type PlatformPageEditorActionState = {
 };
 
 export type PlatformTranslationActionState = PlatformPageEditorActionState;
+export type PlatformPageBlockActionState = PlatformPageEditorActionState;
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
@@ -109,6 +123,31 @@ function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
 
     throw new Error(`${fieldName} must be valid JSON.`);
   }
+}
+
+function parseNumber(value: FormDataEntryValue | null) {
+  const cleaned = cleanText(value);
+  const parsed = Number.parseInt(cleaned, 10);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function blockInputFromFormData(formData: FormData) {
+  return {
+    blockType: cleanText(formData.get("blockType")) as PlatformPageBlockType,
+    content: parseJsonObject(formData.get("content"), "Block content"),
+    pageId: cleanText(formData.get("pageId")),
+    settings: parseJsonObject(formData.get("settings"), "Block settings"),
+    sortOrder: parseNumber(formData.get("sortOrder")),
+    status: "draft" as const,
+    subtitle: cleanText(formData.get("blockSubtitle")),
+    title: cleanText(formData.get("blockTitle"))
+  };
+}
+
+async function recordBlockAction(formData: FormData, action: PlatformWebsiteAction) {
+  await recordPlatformWebsiteAction(formData, action);
+  revalidatePath(`/admin/platform-website/pages/${cleanText(formData.get("pageId"))}`);
 }
 
 function translationInputFromFormData(formData: FormData, status: "needs_review" | "partial" | "ready") {
@@ -272,6 +311,39 @@ export async function savePlatformPageEditorDraft(
       status: "error"
     };
   }
+}
+
+export async function createPlatformPageBlock(formData: FormData) {
+  await createPageBlock(blockInputFromFormData(formData));
+  await recordBlockAction(formData, "admin_platform_page_block_create");
+}
+
+export async function updatePlatformPageBlock(formData: FormData) {
+  await updatePageBlock(cleanText(formData.get("blockId")), blockInputFromFormData(formData));
+  await recordBlockAction(formData, "admin_platform_page_block_update");
+}
+
+export async function hidePlatformPageBlock(formData: FormData) {
+  await hidePageBlock(cleanText(formData.get("blockId")));
+  await recordBlockAction(formData, "admin_platform_page_block_hide");
+}
+
+export async function publishPlatformPageBlock(formData: FormData) {
+  await publishPageBlock(cleanText(formData.get("blockId")));
+  await recordBlockAction(formData, "admin_platform_page_block_publish");
+}
+
+export async function reorderPlatformPageBlocks(formData: FormData) {
+  const pageId = cleanText(formData.get("pageId"));
+  const order = Array.from(formData.entries())
+    .filter(([key]) => key.startsWith("blockOrder:"))
+    .map(([key, value]) => ({
+      blockId: key.replace("blockOrder:", ""),
+      sortOrder: parseNumber(value)
+    }));
+
+  await reorderPageBlocks(pageId, order);
+  await recordBlockAction(formData, "admin_platform_page_block_reorder");
 }
 
 export async function savePlatformTranslationDraft(

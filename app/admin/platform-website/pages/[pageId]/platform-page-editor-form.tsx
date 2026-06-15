@@ -3,9 +3,18 @@
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { savePlatformPageEditorDraft, type PlatformPageEditorActionState } from "@/lib/admin/platform-website-actions";
+import {
+  createPlatformPageBlock,
+  hidePlatformPageBlock,
+  publishPlatformPageBlock,
+  reorderPlatformPageBlocks,
+  savePlatformPageEditorDraft,
+  updatePlatformPageBlock,
+  type PlatformPageEditorActionState
+} from "@/lib/admin/platform-website-actions";
 import { AdminBadge } from "@/components/admin/admin-control";
 import { Card } from "@/components/ui/card";
+import type { PlatformPageBlockRecord, PlatformPageBlockType } from "@/src/lib/platform-website/platform-blocks-runtime";
 
 type EditorPage = {
   body: Record<string, unknown>;
@@ -77,8 +86,145 @@ function Field({
 
 const inputClass = "h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100";
 const textareaClass = "min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100";
+const blockTypes: PlatformPageBlockType[] = ["hero", "features", "pricing", "cta", "faq", "testimonials", "stats", "footer", "custom"];
 
-export function PlatformPageEditorForm({ page }: { page: EditorPage }) {
+function toneForBlockStatus(status: string) {
+  if (status === "published") {
+    return "green" as const;
+  }
+
+  if (status === "hidden") {
+    return "red" as const;
+  }
+
+  return "amber" as const;
+}
+
+function BlockHiddenFields({ page }: { page: EditorPage }) {
+  return (
+    <>
+      <input name="pageId" type="hidden" value={page.id} />
+      <input name="slug" type="hidden" value={page.slug} />
+      <input name="title" type="hidden" value={page.title} />
+    </>
+  );
+}
+
+function BlockEditorFields({ block }: { block?: PlatformPageBlockRecord }) {
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Field label="Block type">
+          <select className={inputClass} name="blockType" defaultValue={block?.blockType ?? "custom"}>
+            {blockTypes.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Sort order">
+          <input className={inputClass} name="sortOrder" type="number" defaultValue={block?.sortOrder ?? 0} />
+        </Field>
+        <Field label="Title">
+          <input className={inputClass} maxLength={180} name="blockTitle" type="text" defaultValue={block?.title ?? ""} />
+        </Field>
+      </div>
+      <Field label="Subtitle">
+        <textarea className={textareaClass} maxLength={500} name="blockSubtitle" defaultValue={block?.subtitle ?? ""} />
+      </Field>
+      <Field help="Must be a JSON object. Optional `translations.en/ar/fr` can override block title, subtitle, content, or settings." label="Content JSON">
+        <textarea className={`${textareaClass} font-mono text-xs`} name="content" defaultValue={jsonText(block?.content ?? {})} />
+      </Field>
+      <Field help="Must be a JSON object for layout/display settings only." label="Settings JSON">
+        <textarea className={`${textareaClass} min-h-20 font-mono text-xs`} name="settings" defaultValue={jsonText(block?.settings ?? {})} />
+      </Field>
+    </div>
+  );
+}
+
+function PlatformPageBlocksManager({
+  blocks,
+  page
+}: {
+  blocks: PlatformPageBlockRecord[];
+  page: EditorPage;
+}) {
+  return (
+    <Card className="grid gap-5 p-5 lg:p-6">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Landing blocks</p>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Structured page blocks</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Blocks are platform-only. Public pages render published blocks by sort order and fall back to body JSON when no published blocks exist.
+        </p>
+      </div>
+
+      <form action={createPlatformPageBlock} className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4">
+        <BlockHiddenFields page={page} />
+        <BlockEditorFields />
+        <button className="mt-4 h-10 rounded-full bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.16em] text-white" type="submit">
+          Add block
+        </button>
+      </form>
+
+      {blocks.length ? (
+        <form action={reorderPlatformPageBlocks} className="rounded-[2rem] border border-blue-100 bg-blue-50 p-4">
+          <BlockHiddenFields page={page} />
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Reorder blocks</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {blocks.map((block) => (
+              <label className="grid gap-2" key={`order-${block.id}`}>
+                <span className="text-xs font-bold text-blue-700">{block.title || block.blockType}</span>
+                <input className={inputClass} name={`blockOrder:${block.id}`} type="number" defaultValue={block.sortOrder} />
+              </label>
+            ))}
+          </div>
+          <button className="mt-4 h-10 rounded-full border border-blue-200 bg-white px-4 text-xs font-black uppercase tracking-[0.16em] text-blue-700" type="submit">
+            Save order
+          </button>
+        </form>
+      ) : null}
+
+      <div className="grid gap-4">
+        {blocks.map((block) => (
+          <article className="rounded-[2rem] border border-slate-200 bg-white p-4" key={block.id}>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{block.blockType}</p>
+                <h3 className="mt-1 text-lg font-black text-slate-950">{block.title || "Untitled block"}</h3>
+              </div>
+              <AdminBadge tone={toneForBlockStatus(block.status)}>{block.status}</AdminBadge>
+            </div>
+
+            <form action={updatePlatformPageBlock} className="grid gap-4">
+              <BlockHiddenFields page={page} />
+              <input name="blockId" type="hidden" value={block.id} />
+              <BlockEditorFields block={block} />
+              <div className="flex flex-wrap gap-2">
+                <button className="h-9 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                  Save block
+                </button>
+                <button className="h-9 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" formAction={publishPlatformPageBlock} type="submit">
+                  Publish block
+                </button>
+                <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" formAction={hidePlatformPageBlock} type="submit">
+                  Hide block
+                </button>
+              </div>
+            </form>
+          </article>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+export function PlatformPageEditorForm({
+  blocks,
+  page
+}: {
+  blocks: PlatformPageBlockRecord[];
+  page: EditorPage;
+}) {
   const [state, formAction] = useActionState(savePlatformPageEditorDraft, initialState);
   const [isDirty, setIsDirty] = useState(false);
   const previewBody = useMemo(() => jsonText(page.body), [page.body]);
@@ -119,9 +265,10 @@ export function PlatformPageEditorForm({ page }: { page: EditorPage }) {
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <form action={formAction} className="grid gap-6" onChange={() => setIsDirty(true)}>
-        <input name="pageId" type="hidden" value={page.id} />
-        <input name="slug" type="hidden" value={page.slug} />
+      <div className="grid gap-6">
+        <form action={formAction} className="grid gap-6" onChange={() => setIsDirty(true)}>
+          <input name="pageId" type="hidden" value={page.id} />
+          <input name="slug" type="hidden" value={page.slug} />
 
         <Card className="grid gap-5 p-5 lg:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -230,7 +377,10 @@ export function PlatformPageEditorForm({ page }: { page: EditorPage }) {
             Back to platform pages
           </Link>
         </div>
-      </form>
+        </form>
+
+        <PlatformPageBlocksManager blocks={blocks} page={page} />
+      </div>
 
       <aside className="grid gap-4 self-start xl:sticky xl:top-6">
         <Card className="p-5 lg:p-6">

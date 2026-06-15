@@ -7,6 +7,11 @@ import {
   type PublicPlatformPage
 } from "@/src/lib/platform-website/public-page-resolver";
 import {
+  getPublishedPageBlocks,
+  translatePlatformPageBlock,
+  type PlatformPageBlockRecord
+} from "@/src/lib/platform-website/platform-blocks-runtime";
+import {
   buildPlatformPageMetadata,
   unpublishedPlatformPageMetadata
 } from "@/src/lib/platform-website/platform-seo-runtime";
@@ -36,7 +41,65 @@ function bodySections(body: Record<string, unknown>) {
     .filter((section): section is { content: string; heading: string } => Boolean(section));
 }
 
-export function PublicPlatformPageView({ page }: { page: PublicPlatformPage }) {
+function blockItems(content: Record<string, unknown>) {
+  const items = Array.isArray(content.items) ? content.items : [];
+
+  return items
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+
+      const value = item as Record<string, unknown>;
+      const title = text(value.title ?? value.heading ?? value.label, 180);
+      const description = text(value.description ?? value.text ?? value.content, 1200);
+
+      return title || description ? { description, title } : null;
+    })
+    .filter((item): item is { description: string; title: string } => Boolean(item));
+}
+
+function PublicPlatformBlock({ block }: { block: PlatformPageBlockRecord }) {
+  const items = blockItems(block.content);
+  const body = text(block.content.text ?? block.content.body ?? block.content.description, 3000);
+
+  return (
+    <section className="border-t border-line bg-white py-14">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">{block.blockType}</p>
+          {block.title ? (
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-ink">{block.title}</h2>
+          ) : null}
+          {block.subtitle ? (
+            <p className="mt-3 text-base leading-8 text-muted">{block.subtitle}</p>
+          ) : null}
+          {body ? (
+            <p className="mt-4 whitespace-pre-line text-base leading-8 text-muted">{body}</p>
+          ) : null}
+        </div>
+        {items.length ? (
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {items.map((item, index) => (
+              <article className="rounded-[2rem] border border-line bg-canvas p-5" key={`${item.title}-${index}`}>
+                {item.title ? <h3 className="font-black text-ink">{item.title}</h3> : null}
+                {item.description ? <p className="mt-2 text-sm leading-7 text-muted">{item.description}</p> : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export function PublicPlatformPageView({
+  blocks = [],
+  page
+}: {
+  blocks?: PlatformPageBlockRecord[];
+  page: PublicPlatformPage;
+}) {
   const sections = bodySections(page.body);
   const direction = "direction" in page && page.direction === "rtl" ? "rtl" : "ltr";
   const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
@@ -62,9 +125,14 @@ export function PublicPlatformPageView({ page }: { page: PublicPlatformPage }) {
           </div>
         </section>
 
-        <section className="border-t border-line bg-white py-16">
-          <div className="mx-auto grid max-w-4xl gap-6 px-4 sm:px-6 lg:px-8">
-            {sections.length ? (
+        {blocks.length ? (
+          blocks.map((block) => (
+            <PublicPlatformBlock block={block} key={block.id} />
+          ))
+        ) : (
+          <section className="border-t border-line bg-white py-16">
+            <div className="mx-auto grid max-w-4xl gap-6 px-4 sm:px-6 lg:px-8">
+              {sections.length ? (
               sections.map((section, index) => (
                 <article className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm" key={`${section.heading}-${index}`}>
                   {section.heading ? (
@@ -75,16 +143,17 @@ export function PublicPlatformPageView({ page }: { page: PublicPlatformPage }) {
                   ) : null}
                 </article>
               ))
-            ) : (
-              <article className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm">
-                <h2 className="text-2xl font-black tracking-tight text-ink">{page.title}</h2>
-                <p className="mt-3 text-base leading-8 text-muted">
-                  This platform page is live. Content sections are being prepared.
-                </p>
-              </article>
-            )}
-          </div>
-        </section>
+              ) : (
+                <article className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm">
+                  <h2 className="text-2xl font-black tracking-tight text-ink">{page.title}</h2>
+                  <p className="mt-3 text-base leading-8 text-muted">
+                    This platform page is live. Content sections are being prepared.
+                  </p>
+                </article>
+              )}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
@@ -107,5 +176,7 @@ export async function renderPublicPlatformPage(path: string, locale?: string) {
     notFound();
   }
 
-  return <PublicPlatformPageView page={locale ? getPlatformPageTranslation(page, locale) : page} />;
+  const blocks = (await getPublishedPageBlocks(page.id)).map((block) => translatePlatformPageBlock(block, locale));
+
+  return <PublicPlatformPageView blocks={blocks} page={locale ? getPlatformPageTranslation(page, locale) : page} />;
 }
