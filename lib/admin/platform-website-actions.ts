@@ -21,6 +21,12 @@ import {
   revertPlatformPageToDraft
 } from "@/src/lib/platform-website/platform-publishing-workflow";
 import { updatePlatformPageContent, validatePlatformPageEditorDraft } from "@/src/lib/platform-website/platform-content-storage";
+import {
+  applySeoDraft,
+  generateSeoDraft,
+  validateSeoDraft,
+  type PlatformSeoDraft
+} from "@/src/lib/platform-website/platform-seo-generator";
 import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platform-translation-management";
 
 type PlatformWebsiteAction =
@@ -38,11 +44,20 @@ type PlatformWebsiteAction =
   | "admin_platform_page_mark_published"
   | "admin_platform_page_preview"
   | "admin_platform_page_save_draft"
+  | "admin_platform_seo_draft_applied"
+  | "admin_platform_seo_draft_discarded"
+  | "admin_platform_seo_draft_generated"
   | "admin_platform_translation_mark_needs_review"
   | "admin_platform_translation_mark_ready"
   | "admin_platform_translation_save_draft";
 
 export type PlatformPageEditorActionState = {
+  message: string;
+  status: "error" | "idle" | "success";
+};
+
+export type PlatformSeoGeneratorActionState = {
+  draft: PlatformSeoDraft | null;
   message: string;
   status: "error" | "idle" | "success";
 };
@@ -128,6 +143,24 @@ function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
     }
 
     throw new Error(`${fieldName} must be valid JSON.`);
+  }
+}
+
+function parseSeoDraft(value: FormDataEntryValue | null) {
+  const source = cleanText(value);
+
+  if (!source) {
+    throw new Error("SEO draft is required before applying.");
+  }
+
+  try {
+    return validateSeoDraft(JSON.parse(source) as unknown);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("SEO draft must be valid JSON.");
   }
 }
 
@@ -366,6 +399,56 @@ export async function savePlatformPageEditorDraft(
   } catch (error) {
     return {
       message: error instanceof Error ? error.message : "Platform page draft could not be saved.",
+      status: "error"
+    };
+  }
+}
+
+export async function managePlatformSeoDraft(
+  previousState: PlatformSeoGeneratorActionState,
+  formData: FormData
+): Promise<PlatformSeoGeneratorActionState> {
+  const intent = cleanText(formData.get("seoIntent"));
+  const pageId = cleanText(formData.get("pageId"));
+
+  try {
+    if (intent === "discard") {
+      await recordPlatformWebsiteAction(formData, "admin_platform_seo_draft_discarded");
+
+      return {
+        draft: null,
+        message: "SEO draft discarded. No platform page content was changed.",
+        status: "idle"
+      };
+    }
+
+    if (intent === "apply") {
+      const draft = parseSeoDraft(formData.get("seoDraft"));
+
+      await applySeoDraft(pageId, draft);
+      await recordPlatformWebsiteAction(formData, "admin_platform_seo_draft_applied");
+      revalidatePath(`/admin/platform-website/pages/${pageId}`);
+
+      return {
+        draft: null,
+        message: "SEO draft applied. Page publish status and public route behavior were not changed.",
+        status: "success"
+      };
+    }
+
+    const draft = await generateSeoDraft(pageId);
+
+    await recordPlatformWebsiteAction(formData, "admin_platform_seo_draft_generated");
+
+    return {
+      draft,
+      message: previousState.draft ? "SEO draft regenerated for review." : "SEO draft generated for review.",
+      status: "success"
+    };
+  } catch (error) {
+    return {
+      draft: previousState.draft,
+      message: error instanceof Error ? error.message : "SEO draft action could not be completed.",
       status: "error"
     };
   }

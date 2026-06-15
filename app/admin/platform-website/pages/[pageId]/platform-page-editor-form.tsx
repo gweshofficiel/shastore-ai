@@ -8,9 +8,11 @@ import {
   hidePlatformPageBlock,
   publishPlatformPageBlock,
   reorderPlatformPageBlocks,
+  managePlatformSeoDraft,
   savePlatformPageEditorDraft,
   updatePlatformPageBlock,
-  type PlatformPageEditorActionState
+  type PlatformPageEditorActionState,
+  type PlatformSeoGeneratorActionState
 } from "@/lib/admin/platform-website-actions";
 import { AdminBadge } from "@/components/admin/admin-control";
 import { Card } from "@/components/ui/card";
@@ -39,6 +41,11 @@ const initialState: PlatformPageEditorActionState = {
   message: "",
   status: "idle"
 };
+const initialSeoState: PlatformSeoGeneratorActionState = {
+  draft: null,
+  message: "",
+  status: "idle"
+};
 
 function text(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -62,6 +69,26 @@ function SubmitButton() {
       type="submit"
     >
       {pending ? "Saving draft..." : "Save draft"}
+    </button>
+  );
+}
+
+function SeoSubmitButton({
+  children
+}: {
+  children: React.ReactNode;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      className="h-10 rounded-full bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.16em] text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+      disabled={pending}
+      name="seoIntent"
+      type="submit"
+      value="generate"
+    >
+      {pending ? "Working..." : children}
     </button>
   );
 }
@@ -94,6 +121,39 @@ function toneForBlockStatus(status: string) {
   }
 
   if (status === "hidden") {
+    return "red" as const;
+  }
+
+  return "amber" as const;
+}
+
+function seoScore(input: {
+  canonicalPath: string | null;
+  openGraph: Record<string, unknown>;
+  seoDescription: string | null;
+  seoTitle: string | null;
+}) {
+  const missing = [
+    !text(input.seoTitle),
+    !text(input.seoDescription),
+    !text(input.canonicalPath),
+    !text(input.openGraph.title),
+    !text(input.openGraph.description)
+  ].filter(Boolean).length;
+
+  if (missing === 0) {
+    return "Ready";
+  }
+
+  return missing >= 3 ? "Missing SEO" : "Needs Improvement";
+}
+
+function toneForSeoScore(score: string) {
+  if (score === "Ready") {
+    return "green" as const;
+  }
+
+  if (score === "Missing SEO") {
     return "red" as const;
   }
 
@@ -214,6 +274,114 @@ function PlatformPageBlocksManager({
           </article>
         ))}
       </div>
+    </Card>
+  );
+}
+
+function PlatformSeoGenerator({ page }: { page: EditorPage }) {
+  const [seoState, seoAction] = useActionState(managePlatformSeoDraft, initialSeoState);
+  const currentScore = seoScore({
+    canonicalPath: page.canonicalPath,
+    openGraph: page.openGraph,
+    seoDescription: page.seoDescription,
+    seoTitle: page.seoTitle
+  });
+  const draftJson = seoState.draft ? JSON.stringify(seoState.draft) : "";
+
+  return (
+    <Card className="grid gap-5 p-5 lg:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">SEO Generator</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Generate SEO draft suggestions</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Suggestions are generated from this platform page&apos;s title, headline, subtitle, body, and translations only. Nothing is saved until Apply Draft.
+          </p>
+        </div>
+        <AdminBadge tone={toneForSeoScore(currentScore)}>Current: {currentScore}</AdminBadge>
+      </div>
+
+      <form action={seoAction} className="grid gap-4">
+        <input name="pageId" type="hidden" value={page.id} />
+        <input name="slug" type="hidden" value={page.slug} />
+        <input name="title" type="hidden" value={page.title} />
+        {draftJson ? <input name="seoDraft" type="hidden" value={draftJson} /> : null}
+
+        <div className="flex flex-wrap gap-2">
+          <SeoSubmitButton>Generate Draft</SeoSubmitButton>
+          <a
+            className={`inline-flex h-10 items-center rounded-full border px-4 text-xs font-black uppercase tracking-[0.16em] ${
+              seoState.draft
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "pointer-events-none border-slate-200 bg-slate-50 text-slate-400"
+            }`}
+            href="#seo-draft-review"
+          >
+            Review Draft
+          </a>
+          <button
+            className="h-10 rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.16em] text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!seoState.draft}
+            name="seoIntent"
+            type="submit"
+            value="apply"
+          >
+            Apply Draft
+          </button>
+          <button
+            className="h-10 rounded-full border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-[0.16em] text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!seoState.draft}
+            name="seoIntent"
+            type="submit"
+            value="discard"
+          >
+            Discard Draft
+          </button>
+        </div>
+
+        {seoState.message ? (
+          <p
+            className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
+              seoState.status === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+            role={seoState.status === "error" ? "alert" : "status"}
+          >
+            {seoState.message}
+          </p>
+        ) : null}
+      </form>
+
+      {seoState.draft ? (
+        <div className="grid gap-4" id="seo-draft-review">
+          <div className="flex flex-wrap gap-2">
+            <AdminBadge tone={toneForSeoScore(seoState.draft.score)}>Draft: {seoState.draft.score}</AdminBadge>
+            <AdminBadge tone="blue">Generated draft</AdminBadge>
+          </div>
+          <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Base SEO draft</p>
+            <div className="mt-3 grid gap-2 text-sm leading-6 text-slate-600">
+              <p><span className="font-black text-slate-800">SEO title:</span> {seoState.draft.base.seoTitle}</p>
+              <p><span className="font-black text-slate-800">Description:</span> {seoState.draft.base.seoDescription}</p>
+              <p><span className="font-black text-slate-800">Canonical:</span> {seoState.draft.base.canonicalPath}</p>
+              <p><span className="font-black text-slate-800">OpenGraph title:</span> {seoState.draft.base.openGraphTitle}</p>
+              <p><span className="font-black text-slate-800">OpenGraph description:</span> {seoState.draft.base.openGraphDescription}</p>
+            </div>
+          </div>
+          {Object.entries(seoState.draft.locales).length ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {Object.entries(seoState.draft.locales).map(([locale, draft]) => (
+                <article className="rounded-[2rem] border border-blue-100 bg-blue-50 p-4" key={locale}>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">{locale}</p>
+                  <p className="mt-3 text-sm font-black text-slate-900">{draft?.seoTitle}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{draft?.seoDescription}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -378,6 +546,8 @@ export function PlatformPageEditorForm({
           </Link>
         </div>
         </form>
+
+        <PlatformSeoGenerator page={page} />
 
         <PlatformPageBlocksManager blocks={blocks} page={page} />
       </div>
