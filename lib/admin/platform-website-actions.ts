@@ -41,6 +41,14 @@ import {
   publishPlatformPage,
   revertPlatformPageToDraft
 } from "@/src/lib/platform-website/platform-publishing-workflow";
+import {
+  cancelScheduledPublish,
+  createRevision,
+  rollbackToRevision,
+  schedulePublish,
+  updateApprovalStatus,
+  type PlatformContentType
+} from "@/src/lib/platform-website/publishing/revisions-service";
 import { updatePlatformPageContent, validatePlatformPageEditorDraft } from "@/src/lib/platform-website/platform-content-storage";
 import {
   applySeoDraft,
@@ -51,6 +59,12 @@ import {
 import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platform-translation-management";
 
 type PlatformWebsiteAction =
+  | "admin_platform_advanced_approval_approved"
+  | "admin_platform_advanced_approval_pending_review"
+  | "admin_platform_advanced_approval_rejected"
+  | "admin_platform_advanced_rollback"
+  | "admin_platform_advanced_schedule_cancelled"
+  | "admin_platform_advanced_schedule_saved"
   | "admin_platform_blog_archive"
   | "admin_platform_blog_category_archive"
   | "admin_platform_blog_category_create"
@@ -110,6 +124,16 @@ function platformWebsiteRedirect(status: "error" | "success", message: string) {
   });
 
   redirect(`/admin/platform-website?${params.toString()}`);
+}
+
+function platformEditorRedirect(contentType: string, contentId: string, status: "error" | "success", message: string) {
+  const params = new URLSearchParams({ message, status });
+
+  if (contentType === "platform_blog_post") {
+    redirect(`/admin/platform-website/blog/${contentId}?${params.toString()}`);
+  }
+
+  redirect(`/admin/platform-website/pages/${contentId}?${params.toString()}`);
 }
 
 async function recordPlatformWebsiteAction(
@@ -219,6 +243,33 @@ async function recordPlatformBlogTaxonomyAction(
   revalidatePath("/blog");
 }
 
+async function recordAdvancedPublishingAction(formData: FormData, action: PlatformWebsiteAction) {
+  const access = await getAdminAccess();
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for platform advanced publishing controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: null,
+    entity_type: "admin_platform_advanced_publishing",
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      contentId: cleanText(formData.get("contentId")),
+      contentType: cleanText(formData.get("contentType")),
+      note: "Super Admin advanced platform publishing action only. Customer store content and automatic scheduling were not changed.",
+      source: "super_admin_platform_advanced_publishing"
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/platform-website");
+}
+
 function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
   const source = cleanText(value);
 
@@ -296,6 +347,26 @@ function tagInputFromFormData(formData: FormData) {
 
 function taxonomyIds(formData: FormData, key: string) {
   return formData.getAll(key).map((value) => cleanText(value)).filter(Boolean);
+}
+
+function workflowContentType(formData: FormData): "platform_blog_post" | "platform_page" {
+  const contentType = cleanText(formData.get("contentType"));
+
+  if (contentType !== "platform_blog_post" && contentType !== "platform_page") {
+    throw new Error("Invalid platform workflow content type.");
+  }
+
+  return contentType;
+}
+
+function revisionContentType(formData: FormData): PlatformContentType {
+  const contentType = cleanText(formData.get("contentType"));
+
+  if (contentType !== "platform_blog_post" && contentType !== "platform_page" && contentType !== "platform_page_block") {
+    throw new Error("Invalid platform revision content type.");
+  }
+
+  return contentType;
 }
 
 function parseOptionalJsonObject(value: FormDataEntryValue | null, fieldName: string) {
@@ -451,7 +522,9 @@ export async function markPlatformPagePublished(formData: FormData) {
   let status: "error" | "success" = "success";
 
   try {
-    const result = await publishPlatformPage(cleanText(formData.get("pageId")));
+    const pageId = cleanText(formData.get("pageId"));
+    await createRevision("platform_page", pageId, undefined, "Snapshot before platform page publish");
+    const result = await publishPlatformPage(pageId);
     await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_published", result);
     message = result.message;
   } catch (error) {
@@ -631,7 +704,9 @@ export async function publishPlatformBlogPostAction(formData: FormData) {
   let status: "error" | "success" = "success";
 
   try {
-    const post = await publishPlatformBlogPost(cleanText(formData.get("postId")));
+    const postId = cleanText(formData.get("postId"));
+    await createRevision("platform_blog_post", postId, undefined, "Snapshot before platform blog publish");
+    const post = await publishPlatformBlogPost(postId);
     await recordPlatformBlogAction("admin_platform_blog_publish", post);
     message = `Blog post published: ${post?.title ?? "Untitled"}`;
   } catch (error) {
@@ -640,6 +715,112 @@ export async function publishPlatformBlogPostAction(formData: FormData) {
   }
 
   platformWebsiteRedirect(status, message);
+}
+
+export async function submitPlatformContentForReviewAction(formData: FormData) {
+  const contentType = workflowContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Submitted for review";
+  let status: "error" | "success" = "success";
+
+  try {
+    await updateApprovalStatus(contentType, contentId, "pending_review");
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_approval_pending_review");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not submit platform content for review.";
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
+}
+
+export async function approvePlatformContentAction(formData: FormData) {
+  const contentType = workflowContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Approved";
+  let status: "error" | "success" = "success";
+
+  try {
+    await updateApprovalStatus(contentType, contentId, "approved");
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_approval_approved");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not approve platform content.";
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
+}
+
+export async function rejectPlatformContentAction(formData: FormData) {
+  const contentType = workflowContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Rejected";
+  let status: "error" | "success" = "success";
+
+  try {
+    await updateApprovalStatus(contentType, contentId, "rejected");
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_approval_rejected");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not reject platform content.";
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
+}
+
+export async function schedulePlatformContentPublishAction(formData: FormData) {
+  const contentType = workflowContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Scheduled publish date saved. No automatic publishing was started.";
+  let status: "error" | "success" = "success";
+
+  try {
+    await schedulePublish(contentType, contentId, cleanText(formData.get("scheduledPublishAt")));
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_schedule_saved");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not save scheduled publish date.";
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
+}
+
+export async function cancelPlatformContentScheduleAction(formData: FormData) {
+  const contentType = workflowContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Scheduled publish cancelled.";
+  let status: "error" | "success" = "success";
+
+  try {
+    await cancelScheduledPublish(contentType, contentId);
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_schedule_cancelled");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not cancel scheduled publish.";
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
+}
+
+export async function rollbackPlatformContentRevisionAction(formData: FormData) {
+  const contentType = revisionContentType(formData);
+  const contentId = cleanText(formData.get("contentId"));
+  let message = "Rolled back to revision.";
+  let status: "error" | "success" = "success";
+
+  try {
+    await rollbackToRevision(cleanText(formData.get("revisionId")));
+    await recordAdvancedPublishingAction(formData, "admin_platform_advanced_rollback");
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not roll back platform content.";
+  }
+
+  if (contentType === "platform_page_block") {
+    platformWebsiteRedirect(status, message);
+  }
+
+  platformEditorRedirect(contentType, contentId, status, message);
 }
 
 export async function revertPlatformBlogPostDraftAction(formData: FormData) {
@@ -813,7 +994,9 @@ export async function showPlatformPageBlock(formData: FormData) {
 }
 
 export async function publishPlatformPageBlock(formData: FormData) {
-  await publishPageBlock(cleanText(formData.get("blockId")));
+  const blockId = cleanText(formData.get("blockId"));
+  await createRevision("platform_page_block", blockId, undefined, "Snapshot before platform page block publish");
+  await publishPageBlock(blockId);
   await recordBlockAction(formData, "admin_platform_page_block_publish");
 }
 

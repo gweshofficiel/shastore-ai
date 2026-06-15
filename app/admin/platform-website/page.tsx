@@ -8,16 +8,19 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminPlatformWebsiteControl } from "@/lib/admin/data";
 import {
+  approvePlatformContentAction,
   archivePlatformPagePlaceholder,
   archivePlatformBlogCategoryAction,
   archivePlatformBlogPostAction,
   archivePlatformBlogTagAction,
+  cancelPlatformContentScheduleAction,
   createPlatformBlogCategoryAction,
   createPlatformBlogDraftAction,
   createPlatformBlogTagAction,
   markPlatformPageDraft,
   markPlatformPagePublished,
   publishPlatformBlogPostAction,
+  rejectPlatformContentAction,
   revertPlatformBlogPostDraftAction,
   updatePlatformBlogCategoryAction,
   updatePlatformBlogDraftAction,
@@ -52,6 +55,25 @@ function PageHiddenFields({
       <input name="title" type="hidden" value={page.title} />
     </>
   );
+}
+
+function AdvancedPublishingHiddenFields({
+  contentId,
+  contentType
+}: {
+  contentId: string;
+  contentType: "platform_blog_post" | "platform_page";
+}) {
+  return (
+    <>
+      <input name="contentId" type="hidden" value={contentId} />
+      <input name="contentType" type="hidden" value={contentType} />
+    </>
+  );
+}
+
+function contentTypeLabel(contentType: string) {
+  return contentType.replace("platform_", "").replaceAll("_", " ");
 }
 
 export default async function AdminPlatformWebsitePage({
@@ -300,6 +322,120 @@ export default async function AdminPlatformWebsitePage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:p-6">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Advanced Publishing</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950">Revisions, approval, and scheduling</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Metadata-only workflow controls for platform pages and platform blog posts. Scheduled publishing does not run automatically in this phase.
+          </p>
+        </div>
+
+        <AdminStatGrid
+          stats={[
+            { label: "Pending review", value: control.advancedPublishing.pendingReviewItems.length },
+            { label: "Scheduled", value: control.advancedPublishing.scheduledItems.length },
+            { label: "Rejected", value: control.advancedPublishing.rejectedItems.length },
+            { label: "Recent revisions", value: control.advancedPublishing.recentRevisions.length }
+          ]}
+        />
+
+        <AdminTable
+          empty={!control.advancedPublishing.pendingReviewItems.length ? "No platform content is pending review." : null}
+          headers={["Item", "Type", "Status", "Updated", "Actions"]}
+        >
+          {control.advancedPublishing.pendingReviewItems.map((item) => (
+            <tr key={`pending-${item.contentType}-${item.contentId}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{contentTypeLabel(item.contentType)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone="amber">{item.approvalStatus}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.updatedAt)}</td>
+              <td className="px-5 py-4">
+                <div className="flex min-w-48 flex-wrap gap-2">
+                  <form action={approvePlatformContentAction}>
+                    <AdvancedPublishingHiddenFields contentId={item.contentId} contentType={item.contentType} />
+                    <button className="h-9 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                      Approve
+                    </button>
+                  </form>
+                  <form action={rejectPlatformContentAction}>
+                    <AdvancedPublishingHiddenFields contentId={item.contentId} contentType={item.contentType} />
+                    <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                      Reject
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!control.advancedPublishing.scheduledItems.length ? "No platform content has a scheduled publish date." : null}
+          headers={["Item", "Type", "Scheduled", "Approval", "Actions"]}
+        >
+          {control.advancedPublishing.scheduledItems.map((item) => (
+            <tr key={`scheduled-${item.contentType}-${item.contentId}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{contentTypeLabel(item.contentType)}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.scheduledPublishAt)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForStatus(item.approvalStatus)}>{item.approvalStatus}</AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <form action={cancelPlatformContentScheduleAction}>
+                  <AdvancedPublishingHiddenFields contentId={item.contentId} contentType={item.contentType} />
+                  <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                    Cancel schedule
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!control.advancedPublishing.rejectedItems.length ? "No platform content is rejected." : null}
+          headers={["Item", "Type", "Status", "Updated", "Actions"]}
+        >
+          {control.advancedPublishing.rejectedItems.map((item) => (
+            <tr key={`rejected-${item.contentType}-${item.contentId}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{contentTypeLabel(item.contentType)}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone="red">{item.approvalStatus}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.updatedAt)}</td>
+              <td className="px-5 py-4">
+                <form action={approvePlatformContentAction}>
+                  <AdvancedPublishingHiddenFields contentId={item.contentId} contentType={item.contentType} />
+                  <button className="h-9 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                    Approve
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!control.advancedPublishing.recentRevisions.length ? "No platform content revisions yet." : null}
+          headers={["Revision", "Type", "Content ID", "Created", "Note"]}
+        >
+          {control.advancedPublishing.recentRevisions.map((revision) => (
+            <tr key={revision.id}>
+              <td className="px-5 py-4 font-bold text-slate-950">#{revision.revisionNumber}</td>
+              <td className="px-5 py-4 text-slate-600">{contentTypeLabel(revision.contentType)}</td>
+              <td className="px-5 py-4 text-xs font-semibold text-slate-500">{revision.contentId}</td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(revision.createdAt)}</td>
+              <td className="px-5 py-4 text-slate-600">{revision.note ?? "Snapshot"}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:p-6">
         <div>
