@@ -15,11 +15,11 @@ import {
 } from "@/lib/admin/platform-website-actions";
 
 function toneForStatus(status: string) {
-  if (["published", "ready"].includes(status)) {
+  if (["Published", "published", "ready"].includes(status)) {
     return "green" as const;
   }
 
-  if (["archived", "missing", "needs_metadata", "needs_attention"].includes(status)) {
+  if (["Archived", "Needs Content", "Needs SEO", "archived", "missing", "needs_metadata", "needs_attention"].includes(status)) {
     return "red" as const;
   }
 
@@ -44,8 +44,15 @@ function PageHiddenFields({
   );
 }
 
-export default async function AdminPlatformWebsitePage() {
+export default async function AdminPlatformWebsitePage({
+  searchParams
+}: {
+  searchParams?: Promise<{ message?: string; status?: string }>;
+}) {
+  const params = await searchParams;
   const control = await getAdminPlatformWebsiteControl();
+  const actionMessage = params?.message;
+  const actionStatus = params?.status === "error" ? "error" : params?.status === "success" ? "success" : null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -65,6 +72,19 @@ export default async function AdminPlatformWebsitePage() {
         ]}
       />
 
+      {actionMessage && actionStatus ? (
+        <div
+          className={`rounded-[2rem] border p-5 text-sm font-bold leading-6 ${
+            actionStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={actionStatus === "success" ? "status" : "alert"}
+        >
+          {actionMessage}
+        </div>
+      ) : null}
+
       <AdminTable headers={["Landing area", "Route", "Readiness"]}>
         {control.landingStatus.map((item) => (
           <tr key={item.route}>
@@ -83,8 +103,10 @@ export default async function AdminPlatformWebsitePage() {
           "Page",
           "Slug",
           "Status",
+          "Publishing Status",
           "Last updated",
           "SEO",
+          "Readiness",
           "Languages",
           "Preview",
           "Actions"
@@ -103,6 +125,9 @@ export default async function AdminPlatformWebsitePage() {
                 <AdminBadge tone={toneForStatus(page.contentStatus)}>{page.contentStatus}</AdminBadge>
               </div>
             </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(page.publishingStatus)}>{page.publishingStatus}</AdminBadge>
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(page.seoStatus)}>{page.seoStatus}</AdminBadge>
@@ -111,6 +136,22 @@ export default async function AdminPlatformWebsitePage() {
                 <p><span className="font-black text-slate-700">Description:</span> {page.metaDescription}</p>
                 <p><span className="font-black text-slate-700">Canonical:</span> {page.canonical}</p>
                 <p><span className="font-black text-slate-700">Open Graph:</span> {page.openGraph}</p>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <div className="flex min-w-56 flex-wrap gap-2">
+                <AdminBadge tone={page.publishingReadiness.contentReady ? "green" : "amber"}>
+                  Content {page.publishingReadiness.contentReady ? "ready" : "needed"}
+                </AdminBadge>
+                <AdminBadge tone={page.publishingReadiness.seoReady ? "green" : "amber"}>
+                  SEO {page.publishingReadiness.seoReady ? "ready" : "needed"}
+                </AdminBadge>
+                <AdminBadge tone={page.publishingReadiness.routeReady ? "green" : "red"}>
+                  Route {page.publishingReadiness.routeReady ? "ready" : "missing"}
+                </AdminBadge>
+                <AdminBadge tone={toneForStatus(page.publishingReadiness.translationStatus)}>
+                  Translation {page.publishingReadiness.translationStatus}
+                </AdminBadge>
               </div>
             </td>
             <td className="px-5 py-4">
@@ -150,7 +191,7 @@ export default async function AdminPlatformWebsitePage() {
                   <form action={markPlatformPageDraft}>
                     <PageHiddenFields page={page} />
                     <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                      Mark draft
+                      Revert to Draft
                     </button>
                   </form>
                 ) : null}

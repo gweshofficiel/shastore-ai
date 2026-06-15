@@ -1,13 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   archivePlatformPage,
-  markPlatformPageDraft as markPlatformPageDraftStatus,
-  publishPlatformPage
-} from "@/src/lib/platform-website/platform-page-status";
+  publishPlatformPage,
+  revertPlatformPageToDraft
+} from "@/src/lib/platform-website/platform-publishing-workflow";
 import { updatePlatformPageContent, validatePlatformPageEditorDraft } from "@/src/lib/platform-website/platform-content-storage";
 
 type PlatformWebsiteAction =
@@ -25,6 +26,15 @@ export type PlatformPageEditorActionState = {
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function platformWebsiteRedirect(status: "error" | "success", message: string) {
+  const params = new URLSearchParams({
+    message,
+    status
+  });
+
+  redirect(`/admin/platform-website?${params.toString()}`);
 }
 
 async function recordPlatformWebsiteAction(
@@ -56,7 +66,7 @@ async function recordPlatformWebsiteAction(
     event_status: "info",
     event_type: action,
     metadata: {
-      note: "Placeholder platform website action only. Store owner pages and storefront runtime were not changed.",
+      note: "Super Admin platform website action only. Store owner pages, storefront runtime, and public rendering were not changed.",
       pageId,
       slug,
       source: "super_admin_platform_website_management",
@@ -100,13 +110,35 @@ export async function previewPlatformPage(formData: FormData) {
 }
 
 export async function markPlatformPageDraft(formData: FormData) {
-  const result = await markPlatformPageDraftStatus(cleanText(formData.get("pageId")));
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_draft", result);
+  let message = "Reverted to draft";
+  let status: "error" | "success" = "success";
+
+  try {
+    const result = await revertPlatformPageToDraft(cleanText(formData.get("pageId")));
+    await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_draft", result);
+    message = result.message;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not revert platform page to draft.";
+  }
+
+  platformWebsiteRedirect(status, message);
 }
 
 export async function markPlatformPagePublished(formData: FormData) {
-  const result = await publishPlatformPage(cleanText(formData.get("pageId")));
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_published", result);
+  let message = "Published";
+  let status: "error" | "success" = "success";
+
+  try {
+    const result = await publishPlatformPage(cleanText(formData.get("pageId")));
+    await recordPlatformWebsiteAction(formData, "admin_platform_page_mark_published", result);
+    message = result.message;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not publish platform page.";
+  }
+
+  platformWebsiteRedirect(status, message);
 }
 
 export async function editPlatformPagePlaceholder(formData: FormData) {
@@ -114,8 +146,19 @@ export async function editPlatformPagePlaceholder(formData: FormData) {
 }
 
 export async function archivePlatformPagePlaceholder(formData: FormData) {
-  const result = await archivePlatformPage(cleanText(formData.get("pageId")));
-  await recordPlatformWebsiteAction(formData, "admin_platform_page_archive", result);
+  let message = "Archived";
+  let status: "error" | "success" = "success";
+
+  try {
+    const result = await archivePlatformPage(cleanText(formData.get("pageId")));
+    await recordPlatformWebsiteAction(formData, "admin_platform_page_archive", result);
+    message = result.message;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not archive platform page.";
+  }
+
+  platformWebsiteRedirect(status, message);
 }
 
 export async function savePlatformPageEditorDraft(

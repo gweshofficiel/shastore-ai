@@ -509,6 +509,13 @@ export type AdminPlatformWebsiteControl = {
     metaTitle: string;
     openGraph: string;
     previewHref: string | null;
+    publishingReadiness: {
+      contentReady: boolean;
+      routeReady: boolean;
+      seoReady: boolean;
+      translationStatus: "placeholder" | "ready";
+    };
+    publishingStatus: "Archived" | "Draft" | "Needs Content" | "Needs SEO" | "Published";
     section: string;
     seoStatus: "missing" | "needs_metadata" | "placeholder" | "ready";
     contentStatus: "draft_ready" | "needs_attention" | "placeholder" | "ready";
@@ -4150,17 +4157,38 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
   const openGraphStatus = isRecord(page.openGraph) && Object.keys(page.openGraph).length
     ? text(page.openGraph.status) || "ready"
     : "missing";
+  const languages = platformLanguageRows(page);
+  const contentReady = page.contentStatus !== "placeholder";
+  const routeReady = Boolean(page.routePath);
+  const seoReady = Boolean(page.seoTitle && page.seoDescription);
+  const translationReady = languages.some((language) => language.status === "ready");
+  const publishingStatus: AdminPlatformWebsiteControl["pages"][number]["publishingStatus"] = page.status === "published"
+    ? "Published"
+    : page.status === "archived"
+      ? "Archived"
+      : !contentReady
+        ? "Needs Content"
+        : !seoReady
+          ? "Needs SEO"
+          : "Draft";
 
   return {
     canonical: page.canonicalPath || page.routePath,
     contentStatus: page.contentStatus,
     id: page.id,
-    languages: platformLanguageRows(page),
+    languages,
     lastUpdated: page.updatedAt,
     metaDescription: page.seoDescription || "Platform SEO metadata is missing from content storage.",
     metaTitle: page.seoTitle || `${page.title} - SHASTORE AI`,
     openGraph: openGraphStatus,
     previewHref: page.status === "published" ? page.routePath : null,
+    publishingReadiness: {
+      contentReady,
+      routeReady,
+      seoReady,
+      translationStatus: translationReady ? "ready" as const : "placeholder" as const
+    },
+    publishingStatus,
     section: page.pageType.replaceAll("_", " "),
     seoStatus: page.seoStatus,
     slug: page.slug,
