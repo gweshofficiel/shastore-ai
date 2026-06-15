@@ -23,6 +23,10 @@ import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import { getTemplateLibrary } from "@/lib/storefront/template-library";
 import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
+import {
+  ensurePlatformPagesRegistry,
+  type PlatformPageRegistryRecord
+} from "@/src/lib/platform-website/platform-pages-registry";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -505,7 +509,7 @@ export type AdminPlatformWebsiteControl = {
     openGraph: string;
     previewHref: string | null;
     section: string;
-    seoStatus: "needs_metadata" | "placeholder" | "ready";
+    seoStatus: "missing" | "needs_metadata" | "placeholder" | "ready";
     slug: string;
     status: "archived" | "draft" | "published";
     title: string;
@@ -4112,6 +4116,32 @@ export async function getAdminAIControl(): Promise<AdminAIControl> {
   };
 }
 
+function platformLanguageRows(languageStatus: PlatformPageRegistryRecord["languageStatus"]) {
+  return (["Arabic", "English", "French"] as const).map((language) => ({
+    language,
+    status: languageStatus[language] === "ready" ? "ready" as const : "placeholder" as const
+  }));
+}
+
+function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
+  return {
+    canonical: page.routePath,
+    languages: platformLanguageRows(page.languageStatus),
+    lastUpdated: page.updatedAt,
+    metaDescription: page.seoStatus === "missing"
+      ? "Platform SEO metadata is missing from the runtime registry."
+      : `${page.title} runtime registry placeholder for SHASTORE AI platform website.`,
+    metaTitle: `${page.title} - SHASTORE AI`,
+    openGraph: `${page.title} OG placeholder`,
+    previewHref: page.status === "published" ? page.routePath : null,
+    section: page.pageType.replaceAll("_", " "),
+    seoStatus: page.seoStatus,
+    slug: page.slug,
+    status: page.status,
+    title: page.title
+  };
+}
+
 export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
   const { supabase } = await getAdminUsersBase();
   const monitoringEvents = await safeSelect(
@@ -4134,128 +4164,8 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
     }
   }
 
-  const pageDefinitions = [
-    {
-      canonical: "/",
-      metaDescription: "SHASTORE AI helps sellers launch ecommerce storefronts with templates, AI visuals, billing, domains, and checkout foundations.",
-      metaTitle: "SHASTORE AI - AI ecommerce storefront platform",
-      openGraph: "Homepage OG placeholder",
-      previewHref: "/",
-      section: "Homepage",
-      seoStatus: "ready" as const,
-      slug: "/",
-      status: "published" as const,
-      title: "Homepage"
-    },
-    {
-      canonical: "/pricing",
-      metaDescription: "Simple SHASTORE AI plans for launching and scaling ecommerce stores.",
-      metaTitle: "Pricing - SHASTORE AI",
-      openGraph: "Pricing OG placeholder",
-      previewHref: "/pricing",
-      section: "Pricing Page",
-      seoStatus: "ready" as const,
-      slug: "/pricing",
-      status: "published" as const,
-      title: "Pricing Page"
-    },
-    {
-      canonical: "/features",
-      metaDescription: "Platform features overview placeholder for SHASTORE AI.",
-      metaTitle: "Features - SHASTORE AI",
-      openGraph: "Features OG placeholder",
-      previewHref: null,
-      section: "Features Page",
-      seoStatus: "placeholder" as const,
-      slug: "/features",
-      status: "draft" as const,
-      title: "Features Page"
-    },
-    {
-      canonical: "/about",
-      metaDescription: "About SHASTORE AI platform placeholder.",
-      metaTitle: "About Us - SHASTORE AI",
-      openGraph: "About OG placeholder",
-      previewHref: null,
-      section: "About Us",
-      seoStatus: "placeholder" as const,
-      slug: "/about",
-      status: "draft" as const,
-      title: "About Us"
-    },
-    {
-      canonical: "/contact",
-      metaDescription: "Contact SHASTORE AI platform placeholder.",
-      metaTitle: "Contact Us - SHASTORE AI",
-      openGraph: "Contact OG placeholder",
-      previewHref: null,
-      section: "Contact Us",
-      seoStatus: "placeholder" as const,
-      slug: "/contact",
-      status: "draft" as const,
-      title: "Contact Us"
-    },
-    {
-      canonical: "/blog",
-      metaDescription: "SHASTORE AI blog placeholder.",
-      metaTitle: "Blog - SHASTORE AI",
-      openGraph: "Blog OG placeholder",
-      previewHref: null,
-      section: "Blog",
-      seoStatus: "placeholder" as const,
-      slug: "/blog",
-      status: "draft" as const,
-      title: "Blog"
-    },
-    {
-      canonical: "/affiliates",
-      metaDescription: "SHASTORE AI affiliate program placeholder.",
-      metaTitle: "Affiliates - SHASTORE AI",
-      openGraph: "Affiliates OG placeholder",
-      previewHref: null,
-      section: "Affiliates Page",
-      seoStatus: "placeholder" as const,
-      slug: "/affiliates",
-      status: "draft" as const,
-      title: "Affiliates Page"
-    },
-    {
-      canonical: "/reseller",
-      metaDescription: "SHASTORE AI reseller program public entry point.",
-      metaTitle: "Reseller Program - SHASTORE AI",
-      openGraph: "Reseller OG placeholder",
-      previewHref: "/reseller",
-      section: "Reseller Program Page",
-      seoStatus: "placeholder" as const,
-      slug: "/reseller",
-      status: "published" as const,
-      title: "Reseller Program Page"
-    },
-    {
-      canonical: "/careers",
-      metaDescription: "SHASTORE AI careers placeholder.",
-      metaTitle: "Careers - SHASTORE AI",
-      openGraph: "Careers OG placeholder",
-      previewHref: null,
-      section: "Careers Page",
-      seoStatus: "placeholder" as const,
-      slug: "/careers",
-      status: "draft" as const,
-      title: "Careers Page"
-    },
-    {
-      canonical: "/legal",
-      metaDescription: "Platform legal pages placeholder for SHASTORE AI.",
-      metaTitle: "Legal - SHASTORE AI",
-      openGraph: "Legal OG placeholder",
-      previewHref: null,
-      section: "Legal Pages",
-      seoStatus: "needs_metadata" as const,
-      slug: "/legal",
-      status: "draft" as const,
-      title: "Legal Pages"
-    }
-  ];
+  const registryPages = await ensurePlatformPagesRegistry();
+  const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions.map((page) => {
     const event = latestBySlug.get(page.slug);
     const eventType = text(event?.event_type);
@@ -4270,23 +4180,18 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
 
     return {
       ...page,
-      languages: [
-        { language: "Arabic", status: "placeholder" },
-        { language: "English", status: page.status === "published" ? "ready" : "placeholder" },
-        { language: "French", status: "placeholder" }
-      ],
-      lastUpdated: text(event?.created_at) || null,
+      lastUpdated: text(event?.created_at) || page.lastUpdated,
       status: eventStatus
     };
   });
-  const readySlugs = new Set(pages.filter((page) => page.status === "published").map((page) => page.slug));
+  const readyRoutes = new Set(pages.filter((page) => page.status === "published").map((page) => page.canonical));
   const landingStatus = [
-    { label: "Homepage ready", ready: readySlugs.has("/"), route: "/" },
-    { label: "Pricing ready", ready: readySlugs.has("/pricing"), route: "/pricing" },
-    { label: "Features ready", ready: readySlugs.has("/features"), route: "/features" },
-    { label: "Contact ready", ready: readySlugs.has("/contact"), route: "/contact" },
-    { label: "Legal ready", ready: readySlugs.has("/legal"), route: "/legal" },
-    { label: "Reseller page ready", ready: readySlugs.has("/reseller"), route: "/reseller" }
+    { label: "Homepage ready", ready: readyRoutes.has("/"), route: "/" },
+    { label: "Pricing ready", ready: readyRoutes.has("/pricing"), route: "/pricing" },
+    { label: "Features ready", ready: readyRoutes.has("/features"), route: "/features" },
+    { label: "Contact ready", ready: readyRoutes.has("/contact"), route: "/contact" },
+    { label: "Legal ready", ready: readyRoutes.has("/legal"), route: "/legal" },
+    { label: "Reseller page ready", ready: readyRoutes.has("/reseller"), route: "/reseller" }
   ];
 
   return {

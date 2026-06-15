@@ -20,7 +20,7 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
-  if (["archived", "needs_metadata"].includes(status)) {
+  if (["archived", "missing", "needs_metadata", "needs_attention"].includes(status)) {
     return "red" as const;
   }
 
