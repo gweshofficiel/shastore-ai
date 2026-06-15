@@ -17,6 +17,11 @@ import {
   getCurrentPlatformLogo,
   uploadPlatformLogo
 } from "@/src/lib/platform-theme/platform-logo-upload";
+import {
+  deleteDraftPlatformFavicon,
+  getCurrentPlatformFavicon,
+  uploadPlatformFavicon
+} from "@/src/lib/platform-theme/platform-favicon-upload";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -25,6 +30,9 @@ type PlatformThemeAction =
   | "admin_platform_theme_save_draft"
   | "admin_platform_theme_discard_draft"
   | "admin_platform_theme_publish"
+  | "admin_platform_theme_favicon_upload"
+  | "admin_platform_theme_favicon_remove_draft"
+  | "admin_platform_theme_favicon_preview"
   | "admin_platform_theme_logo_upload"
   | "admin_platform_theme_logo_remove_draft"
   | "admin_platform_theme_logo_preview";
@@ -35,6 +43,10 @@ function platformThemeRedirect(status: "error" | "success", message: string): ne
 
 function platformLogoRedirect(status: "error" | "success", message: string): never {
   redirect(`/admin/platform-theme?logoStatus=${status}&logoMessage=${encodeURIComponent(message)}#platform-logo`);
+}
+
+function platformFaviconRedirect(status: "error" | "success", message: string): never {
+  redirect(`/admin/platform-theme?faviconStatus=${status}&faviconMessage=${encodeURIComponent(message)}#platform-favicon`);
 }
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
@@ -191,4 +203,66 @@ export async function previewPlatformLogoAction() {
     store_themes_touched: 0
   });
   platformLogoRedirect("success", "Logo preview refreshed.");
+}
+
+export async function uploadPlatformFaviconAction(formData: FormData) {
+  const file = formData.get("platformFavicon");
+
+  if (!(file instanceof File)) {
+    platformFaviconRedirect("error", "Select an ICO, PNG, SVG, or WEBP favicon to upload.");
+  }
+
+  try {
+    const result = await uploadPlatformFavicon(file);
+    await recordPlatformThemeAction("admin_platform_theme_favicon_upload", {
+      draft_only: true,
+      file_name: result.favicon.fileName,
+      mime_type: result.favicon.mimeType,
+      public_theme_changed: false,
+      size_bytes: result.favicon.size,
+      storage_bucket: result.favicon.storageBucket,
+      store_themes_touched: 0
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_favicon_upload", {
+      error_message: error instanceof Error ? error.message : "Platform favicon upload failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformFaviconRedirect("error", error instanceof Error ? error.message : "Platform favicon upload failed.");
+  }
+
+  platformFaviconRedirect("success", "Favicon uploaded to draft branding.");
+}
+
+export async function removeDraftPlatformFaviconAction() {
+  try {
+    await deleteDraftPlatformFavicon();
+    await recordPlatformThemeAction("admin_platform_theme_favicon_remove_draft", {
+      draft_only: true,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_favicon_remove_draft", {
+      error_message: error instanceof Error ? error.message : "Draft platform favicon could not be removed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformFaviconRedirect("error", error instanceof Error ? error.message : "Draft platform favicon could not be removed.");
+  }
+
+  platformFaviconRedirect("success", "Draft favicon removed.");
+}
+
+export async function previewPlatformFaviconAction() {
+  const currentFavicon = await getCurrentPlatformFavicon();
+
+  await recordPlatformThemeAction("admin_platform_theme_favicon_preview", {
+    draft_only: true,
+    has_favicon: Boolean(currentFavicon.favicon.previewUrl),
+    public_theme_changed: false,
+    store_themes_touched: 0
+  });
+  platformFaviconRedirect("success", "Favicon preview refreshed.");
 }

@@ -7,12 +7,15 @@ import {
 import { getAdminPlatformThemeControl } from "@/lib/admin/data";
 import {
   discardPlatformBrandingDraft,
+  previewPlatformFaviconAction,
   previewPlatformBranding,
   previewPlatformLogoAction,
   publishPlatformBrandingPlaceholder,
+  removeDraftPlatformFaviconAction,
   removeDraftPlatformLogoAction,
   resetPlatformBrandingPlaceholder,
   savePlatformBrandingDraft,
+  uploadPlatformFaviconAction,
   uploadPlatformLogoAction
 } from "@/lib/admin/platform-theme-actions";
 
@@ -42,6 +45,8 @@ export default async function AdminPlatformThemePage({
   searchParams
 }: {
   searchParams?: Promise<{
+    faviconMessage?: string;
+    faviconStatus?: string;
     logoMessage?: string;
     logoStatus?: string;
     publishMessage?: string;
@@ -55,6 +60,8 @@ export default async function AdminPlatformThemePage({
   const readyAdminPreviews = control.previews.adminDashboard.filter((preview) => preview.status === "ready").length;
   const publishStatus = params?.publishStatus === "success" ? "success" : params?.publishStatus === "error" ? "error" : null;
   const publishMessage = params?.publishMessage;
+  const faviconStatus = params?.faviconStatus === "success" ? "success" : params?.faviconStatus === "error" ? "error" : null;
+  const faviconMessage = params?.faviconMessage;
   const logoStatus = params?.logoStatus === "success" ? "success" : params?.logoStatus === "error" ? "error" : null;
   const logoMessage = params?.logoMessage;
 
@@ -101,6 +108,19 @@ export default async function AdminPlatformThemePage({
           role={logoStatus === "success" ? "status" : "alert"}
         >
           {logoMessage}
+        </div>
+      ) : null}
+
+      {faviconStatus && faviconMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            faviconStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={faviconStatus === "success" ? "status" : "alert"}
+        >
+          {faviconMessage}
         </div>
       ) : null}
 
@@ -213,6 +233,90 @@ export default async function AdminPlatformThemePage({
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
                 <p className="text-lg font-black text-slate-950">SHASTORE AI</p>
                 <p className="mt-2 text-xs font-semibold text-slate-500">Placeholder logo</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="platform-favicon">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Platform Favicon</p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Favicon upload runtime</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Uploading or removing a favicon updates the platform branding draft only. It does not auto-publish, does not change public website rendering, and does not touch customer storefront favicons.
+            </p>
+          </div>
+          <AdminBadge tone={control.favicon.previewUrl ? "green" : "blue"}>
+            {control.favicon.previewUrl ? "Draft favicon configured" : "Placeholder favicon"}
+          </AdminBadge>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_180px]">
+          <div className="grid gap-4">
+            <form action={uploadPlatformFaviconAction} className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                <span>Upload or replace favicon</span>
+                <input
+                  accept="image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,image/webp"
+                  className="rounded-2xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700"
+                  name="platformFavicon"
+                  required
+                  type="file"
+                />
+              </label>
+              <p className="text-xs font-semibold leading-5 text-slate-500">
+                Allowed formats: ICO, PNG, SVG, WEBP. Maximum size: 1 MB. SVG files with scripts, event handlers, JavaScript URLs, or embedded foreign objects are rejected.
+              </p>
+              <button className="h-11 rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                {control.favicon.previewUrl ? "Replace favicon" : "Upload favicon"}
+              </button>
+            </form>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <form action={removeDraftPlatformFaviconAction}>
+                <button className="h-11 w-full rounded-full border border-red-200 bg-red-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                  Remove draft favicon
+                </button>
+              </form>
+              <form action={previewPlatformFaviconAction}>
+                <button className="h-11 w-full rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                  Preview favicon
+                </button>
+              </form>
+            </div>
+
+            <AdminTable headers={["Metadata", "Value"]}>
+              {[
+                ["File name", control.favicon.fileName ?? "Placeholder"],
+                ["MIME type", control.favicon.mimeType ?? "Not recorded"],
+                ["Size", formatBytes(control.favicon.size)],
+                ["Uploaded", control.favicon.uploadedAt ?? "Not uploaded"],
+                ["Storage bucket", control.favicon.storageBucket ?? "Existing platform asset bucket"],
+                ["Storage key", control.favicon.storageKey ?? "Not stored"]
+              ].map(([label, value]) => (
+                <tr key={`favicon-metadata-${label}`}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{label}</td>
+                  <td className="px-5 py-4 text-sm font-semibold text-slate-600">{value}</td>
+                </tr>
+              ))}
+            </AdminTable>
+          </div>
+
+          <div className="grid place-items-center rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            {control.favicon.previewUrl ? (
+              <object
+                aria-label="Platform favicon preview"
+                className="h-16 w-16 rounded-2xl bg-white p-2"
+                data={control.favicon.previewUrl}
+                type={control.favicon.mimeType ?? "image/x-icon"}
+              >
+                <span className="text-sm font-semibold text-slate-500">Favicon preview unavailable.</span>
+              </object>
+            ) : (
+              <div className="grid h-16 w-16 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white">
+                <p className="text-sm font-black text-slate-950">S</p>
               </div>
             )}
           </div>

@@ -45,6 +45,10 @@ import {
   type PlatformLogoReference
 } from "@/src/lib/platform-theme/platform-logo-upload";
 import {
+  getCurrentPlatformFavicon,
+  type PlatformFaviconReference
+} from "@/src/lib/platform-theme/platform-favicon-upload";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -627,6 +631,7 @@ export type AdminPlatformThemeControl = {
     typography: string;
   };
   draft: PlatformThemeDraft;
+  favicon: PlatformFaviconReference;
   futureHooks: string[];
   logo: PlatformLogoReference;
   publishReadiness: PlatformThemePublishValidation;
@@ -4375,11 +4380,12 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
-    getCurrentPlatformLogo()
+    getCurrentPlatformLogo(),
+    getCurrentPlatformFavicon()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4397,6 +4403,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
   return {
     branding,
     draft,
+    favicon: currentFavicon.favicon,
     futureHooks: [
       "Upload logo",
       "Upload favicon",
