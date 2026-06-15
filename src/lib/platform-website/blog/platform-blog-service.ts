@@ -11,8 +11,15 @@ import {
 
 export type PlatformBlogPostStatus = "archived" | "draft" | "published";
 
+export type PlatformBlogTaxonomySummary = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type PlatformBlogPostRecord = {
   authorName: string;
+  categories: PlatformBlogTaxonomySummary[];
   content: Record<string, unknown>;
   coverImageUrl: string | null;
   createdAt: string | null;
@@ -25,6 +32,7 @@ export type PlatformBlogPostRecord = {
   status: PlatformBlogPostStatus;
   title: string;
   translations: Record<string, unknown>;
+  tags: PlatformBlogTaxonomySummary[];
   updatedAt: string | null;
 };
 
@@ -165,6 +173,7 @@ function parsePost(row: unknown): PlatformBlogPostRecord | null {
 
   return {
     authorName: text(value.author_name, 120) || "SHASTORE AI",
+    categories: [],
     content: safeJsonRecord(value.content),
     coverImageUrl: nullableText(value.cover_image_url, 1000),
     createdAt: text(value.created_at, 80) || null,
@@ -177,6 +186,7 @@ function parsePost(row: unknown): PlatformBlogPostRecord | null {
     status: parseStatus(value.status),
     title,
     translations: safeJsonRecord(value.translations),
+    tags: [],
     updatedAt: text(value.updated_at, 80) || null
   };
 }
@@ -283,6 +293,93 @@ async function readPostById(postId: string) {
   return parsePost(data);
 }
 
+function cleanIds(values: string[]) {
+  return Array.from(new Set(values.map((value) => text(value, 120)).filter(Boolean))).slice(0, 30);
+}
+
+async function readPostRelationIds(table: "platform_blog_post_categories" | "platform_blog_post_tags", postId: string) {
+  await requireSuperAdmin();
+  const admin = requireAdminClient();
+  const column = table === "platform_blog_post_categories" ? "category_id" : "tag_id";
+  const { data, error } = await admin
+    .from(table as never)
+    .select(column)
+    .eq("post_id" as never, text(postId, 120) as never);
+
+  if (error) {
+    throw new Error(`Platform blog post taxonomy could not be loaded: ${error.message}`);
+  }
+
+  return (Array.isArray(data) ? data : [])
+    .map((row) => isRecord(row) ? text(row[column], 120) : "")
+    .filter(Boolean);
+}
+
+async function readPublishedPostsByRelation(
+  relationTable: "platform_blog_post_categories" | "platform_blog_post_tags",
+  taxonomyTable: "platform_blog_categories" | "platform_blog_tags",
+  relationColumn: "category_id" | "tag_id",
+  taxonomySlug: string
+) {
+  const slug = normalizePlatformBlogSlug(taxonomySlug);
+
+  if (!slug) return [];
+
+  const admin = createAdminClient();
+
+  if (!admin) return [];
+
+  const { data: taxonomy, error: taxonomyError } = await admin
+    .from(taxonomyTable as never)
+    .select("id")
+    .eq("slug" as never, slug as never)
+    .eq("status" as never, "active" as never)
+    .maybeSingle();
+
+  if (taxonomyError) {
+    throw new Error(`Platform blog taxonomy could not be loaded: ${taxonomyError.message}`);
+  }
+
+  const taxonomyValue: Record<string, unknown> = isRecord(taxonomy) ? taxonomy : {};
+  const taxonomyId = text(taxonomyValue.id, 120);
+
+  if (!taxonomyId) return [];
+
+  const { data: relations, error: relationError } = await admin
+    .from(relationTable as never)
+    .select("post_id")
+    .eq(relationColumn as never, taxonomyId as never);
+
+  if (relationError) {
+    throw new Error(`Platform blog taxonomy relations could not be loaded: ${relationError.message}`);
+  }
+
+  const postIds = (Array.isArray(relations) ? relations : [])
+    .map((row) => {
+      const value: Record<string, unknown> = isRecord(row) ? row : {};
+      return text(value.post_id, 120);
+    })
+    .filter(Boolean);
+
+  if (!postIds.length) return [];
+
+  const { data: posts, error: postsError } = await admin
+    .from("platform_blog_posts" as never)
+    .select(postSelect())
+    .in("id" as never, postIds as never)
+    .eq("status" as never, "published" as never)
+    .order("published_at" as never, { ascending: false, nullsFirst: false } as never)
+    .order("created_at" as never, { ascending: false });
+
+  if (postsError) {
+    throw new Error(`Published platform blog posts could not be loaded: ${postsError.message}`);
+  }
+
+  return (Array.isArray(posts) ? posts : [])
+    .map((row) => parsePost(row))
+    .filter((post): post is PlatformBlogPostRecord => Boolean(post));
+}
+
 export async function listPlatformBlogPosts() {
   await requireSuperAdmin();
   const admin = requireAdminClient();
@@ -384,6 +481,76 @@ export async function getPlatformBlogPostForAdmin(postId: string) {
   await requireSuperAdmin();
 
   return readPostById(postId);
+}
+
+export async function getPlatformBlogPostCategoryIds(postId: string) {
+  return readPostRelationIds("platform_blog_post_categories", postId);
+}
+
+export async function getPlatformBlogPostTagIds(postId: string) {
+  return readPostRelationIds("platform_blog_post_tags", postId);
+}
+
+export async function updatePlatformBlogPostTaxonomy(
+  postId: string,
+  input: {
+    categoryIds: string[];
+    tagIds: string[];
+  }
+) {
+  await requireSuperAdmin();
+  const cleanedPostId = text(postId, 120);
+
+  if (!cleanedPostId) {
+    throw new Error("Platform blog post id is required.");
+  }
+
+  const categoryIds = cleanIds(input.categoryIds);
+  const tagIds = cleanIds(input.tagIds);
+  const admin = requireAdminClient();
+  const [categoryDelete, tagDelete] = await Promise.all([
+    admin.from("platform_blog_post_categories" as never).delete().eq("post_id" as never, cleanedPostId as never),
+    admin.from("platform_blog_post_tags" as never).delete().eq("post_id" as never, cleanedPostId as never)
+  ]);
+
+  if (categoryDelete.error) {
+    throw new Error(`Platform blog post categories could not be cleared: ${categoryDelete.error.message}`);
+  }
+
+  if (tagDelete.error) {
+    throw new Error(`Platform blog post tags could not be cleared: ${tagDelete.error.message}`);
+  }
+
+  const inserts = [];
+
+  if (categoryIds.length) {
+    inserts.push(
+      admin.from("platform_blog_post_categories" as never).insert(
+        categoryIds.map((categoryId) => ({
+          category_id: categoryId,
+          post_id: cleanedPostId
+        })) as never
+      )
+    );
+  }
+
+  if (tagIds.length) {
+    inserts.push(
+      admin.from("platform_blog_post_tags" as never).insert(
+        tagIds.map((tagId) => ({
+          post_id: cleanedPostId,
+          tag_id: tagId
+        })) as never
+      )
+    );
+  }
+
+  const results = await Promise.all(inserts);
+  const error = results.find((result) => result.error)?.error;
+
+  if (error) {
+    throw new Error(`Platform blog post taxonomy could not be saved: ${error.message}`);
+  }
 }
 
 export async function publishPlatformBlogPost(postId: string) {
@@ -523,6 +690,24 @@ export async function getPublishedPlatformBlogPostBySlug(postSlug: string) {
   }
 
   return parsePost(data);
+}
+
+export async function listPublishedPlatformBlogPostsByCategorySlug(categorySlug: string) {
+  return readPublishedPostsByRelation(
+    "platform_blog_post_categories",
+    "platform_blog_categories",
+    "category_id",
+    categorySlug
+  );
+}
+
+export async function listPublishedPlatformBlogPostsByTagSlug(tagSlug: string) {
+  return readPublishedPostsByRelation(
+    "platform_blog_post_tags",
+    "platform_blog_tags",
+    "tag_id",
+    tagSlug
+  );
 }
 
 export function translatePlatformBlogPost(

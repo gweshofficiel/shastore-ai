@@ -9,13 +9,19 @@ import {
 import { getAdminPlatformWebsiteControl } from "@/lib/admin/data";
 import {
   archivePlatformPagePlaceholder,
+  archivePlatformBlogCategoryAction,
   archivePlatformBlogPostAction,
+  archivePlatformBlogTagAction,
+  createPlatformBlogCategoryAction,
   createPlatformBlogDraftAction,
+  createPlatformBlogTagAction,
   markPlatformPageDraft,
   markPlatformPagePublished,
   publishPlatformBlogPostAction,
   revertPlatformBlogPostDraftAction,
-  updatePlatformBlogDraftAction
+  updatePlatformBlogCategoryAction,
+  updatePlatformBlogDraftAction,
+  updatePlatformBlogTagAction
 } from "@/lib/admin/platform-website-actions";
 
 function toneForStatus(status: string) {
@@ -309,7 +315,9 @@ export default async function AdminPlatformWebsitePage({
             { label: "Total posts", value: control.blogFoundation.totalPosts },
             { label: "Draft posts", value: control.blogFoundation.draftPosts },
             { label: "Published posts", value: control.blogFoundation.publishedPosts },
-            { label: "Archived posts", value: control.blogFoundation.archivedPosts }
+            { label: "Archived posts", value: control.blogFoundation.archivedPosts },
+            { label: "Categories", value: control.blogFoundation.totalCategories },
+            { label: "Tags", value: control.blogFoundation.totalTags }
           ]}
         />
 
@@ -412,6 +420,139 @@ export default async function AdminPlatformWebsitePage({
                     </button>
                   </form>
                 ) : null}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid gap-4 rounded-[2rem] border border-emerald-100 bg-emerald-50 p-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Categories Management</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-emerald-700">
+                Categories organize platform blog navigation and SEO only.
+              </p>
+            </div>
+            <form action={createPlatformBlogCategoryAction} className="grid gap-3">
+              <input className="h-10 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={120} name="categoryName" placeholder="Category name" required type="text" />
+              <input className="h-10 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={120} name="categorySlug" placeholder="category-slug" type="text" />
+              <textarea className="min-h-16 rounded-2xl border border-emerald-100 bg-white px-3 py-2 text-sm font-semibold leading-6 text-slate-700" maxLength={500} name="categoryDescription" placeholder="Description" />
+              <div className="grid gap-2 md:grid-cols-2">
+                <input className="h-10 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={70} name="categorySeoTitle" placeholder="SEO title" type="text" />
+                <input className="h-10 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={160} name="categorySeoDescription" placeholder="SEO description" type="text" />
+              </div>
+              <input name="categoryTranslations" type="hidden" value="{}" />
+              <button className="h-10 w-fit rounded-full bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.16em] text-white" type="submit">
+                Create category
+              </button>
+            </form>
+          </div>
+
+          <div className="grid gap-4 rounded-[2rem] border border-purple-100 bg-purple-50 p-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-700">Tags Management</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-purple-700">
+                Tags add lightweight filtering for platform blog posts.
+              </p>
+            </div>
+            <form action={createPlatformBlogTagAction} className="grid gap-3">
+              <input className="h-10 rounded-2xl border border-purple-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={120} name="tagName" placeholder="Tag name" required type="text" />
+              <input className="h-10 rounded-2xl border border-purple-100 bg-white px-3 text-sm font-semibold text-slate-700" maxLength={120} name="tagSlug" placeholder="tag-slug" type="text" />
+              <input name="tagTranslations" type="hidden" value="{}" />
+              <button className="h-10 w-fit rounded-full bg-slate-950 px-4 text-xs font-black uppercase tracking-[0.16em] text-white" type="submit">
+                Create tag
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <AdminTable
+          empty={!control.blogFoundation.categories.length ? "No platform blog categories yet." : null}
+          headers={["Category", "Status", "Posts", "SEO", "Translations", "Actions"]}
+        >
+          {control.blogFoundation.categories.map((category) => (
+            <tr key={category.id}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{category.name}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">/blog/category/{category.slug}</p>
+                {category.description ? <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{category.description}</p> : null}
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={category.status === "active" ? "green" : "red"}>{category.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{category.postCount}</td>
+              <td className="px-5 py-4 text-xs leading-5 text-slate-500">
+                <p><span className="font-black text-slate-700">Title:</span> {category.seoTitle ?? "Missing"}</p>
+                <p><span className="font-black text-slate-700">Description:</span> {category.seoDescription ?? "Missing"}</p>
+              </td>
+              <td className="px-5 py-4">
+                <textarea className="min-h-20 min-w-64 rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-600" form={`category-${category.id}`} name="categoryTranslations" defaultValue={JSON.stringify(category.translations, null, 2)} />
+              </td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-72 gap-2">
+                  <form action={updatePlatformBlogCategoryAction} className="grid gap-2" id={`category-${category.id}`}>
+                    <input name="categoryId" type="hidden" value={category.id} />
+                    <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={120} name="categoryName" placeholder="Name" type="text" defaultValue={category.name} />
+                    <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={120} name="categorySlug" placeholder="Slug" type="text" defaultValue={category.slug} />
+                    <textarea className="min-h-14 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold leading-5 text-slate-700" maxLength={500} name="categoryDescription" placeholder="Description" defaultValue={category.description ?? ""} />
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={70} name="categorySeoTitle" placeholder="SEO title" type="text" defaultValue={category.seoTitle ?? ""} />
+                      <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={160} name="categorySeoDescription" placeholder="SEO description" type="text" defaultValue={category.seoDescription ?? ""} />
+                    </div>
+                    <button className="h-9 w-fit rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" disabled={category.status === "archived"} type="submit">
+                      Save category
+                    </button>
+                  </form>
+                  {category.status === "active" ? (
+                    <form action={archivePlatformBlogCategoryAction}>
+                      <input name="categoryId" type="hidden" value={category.id} />
+                      <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                        Archive category
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty={!control.blogFoundation.tags.length ? "No platform blog tags yet." : null}
+          headers={["Tag", "Status", "Posts", "Translations", "Actions"]}
+        >
+          {control.blogFoundation.tags.map((tag) => (
+            <tr key={tag.id}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{tag.name}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">/blog/tag/{tag.slug}</p>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={tag.status === "active" ? "green" : "red"}>{tag.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{tag.postCount}</td>
+              <td className="px-5 py-4">
+                <textarea className="min-h-20 min-w-64 rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-600" form={`tag-${tag.id}`} name="tagTranslations" defaultValue={JSON.stringify(tag.translations, null, 2)} />
+              </td>
+              <td className="px-5 py-4">
+                <div className="grid min-w-64 gap-2">
+                  <form action={updatePlatformBlogTagAction} className="grid gap-2" id={`tag-${tag.id}`}>
+                    <input name="tagId" type="hidden" value={tag.id} />
+                    <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={120} name="tagName" placeholder="Name" type="text" defaultValue={tag.name} />
+                    <input className="h-9 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-700" maxLength={120} name="tagSlug" placeholder="Slug" type="text" defaultValue={tag.slug} />
+                    <button className="h-9 w-fit rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" disabled={tag.status === "archived"} type="submit">
+                      Save tag
+                    </button>
+                  </form>
+                  {tag.status === "active" ? (
+                    <form action={archivePlatformBlogTagAction}>
+                      <input name="tagId" type="hidden" value={tag.id} />
+                      <button className="h-9 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                        Archive tag
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </td>
             </tr>

@@ -4,12 +4,26 @@ import { notFound } from "next/navigation";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import {
   getPublishedPlatformBlogPostBySlug,
+  listPublishedPlatformBlogPostsByCategorySlug,
+  listPublishedPlatformBlogPostsByTagSlug,
   listPublishedPlatformBlogPosts,
   platformBlogCanonicalPath,
   platformBlogCanonicalUrl,
   translatePlatformBlogPost,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
+import {
+  getActiveCategoryBySlug,
+  listActiveCategories,
+  translateCategory,
+  type PlatformBlogCategoryRecord
+} from "@/src/lib/platform-website/blog/categories-service";
+import {
+  getActiveTagBySlug,
+  listActiveTags,
+  translateTag,
+  type PlatformBlogTagRecord
+} from "@/src/lib/platform-website/blog/tags-service";
 import { isPlatformLocale } from "@/src/lib/platform-website/platform-translations-runtime";
 
 function text(value: unknown, maxLength = 2000) {
@@ -60,6 +74,16 @@ function postDescription(post: PlatformBlogPostRecord) {
     `Read ${post.title} on the SHASTORE AI blog.`;
 }
 
+function categoryDescription(category: PlatformBlogCategoryRecord) {
+  return text(category.seoDescription, 160) ||
+    text(category.description, 160) ||
+    `Read SHASTORE AI platform blog posts in ${category.name}.`;
+}
+
+function tagDescription(tag: PlatformBlogTagRecord) {
+  return `Read SHASTORE AI platform blog posts tagged ${tag.name}.`;
+}
+
 function PublicBlogCard({
   locale,
   post
@@ -87,6 +111,55 @@ function PublicBlogCard({
         Read article
       </Link>
     </article>
+  );
+}
+
+function BlogFilters({
+  categories,
+  locale,
+  tags
+}: {
+  categories: PlatformBlogCategoryRecord[];
+  locale?: string | null;
+  tags: PlatformBlogTagRecord[];
+}) {
+  if (!categories.length && !tags.length) {
+    return null;
+  }
+
+  return (
+    <section className="border-t border-line bg-white py-8">
+      <div className="mx-auto grid max-w-5xl gap-4 px-4 sm:px-6 lg:px-8">
+        {categories.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted">Categories</span>
+            {categories.map((category) => (
+              <Link
+                className="rounded-full border border-line bg-canvas px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-ink"
+                href={platformBlogCanonicalPath(`/blog/category/${category.slug}`, locale)}
+                key={category.id}
+              >
+                {category.name}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+        {tags.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted">Tags</span>
+            {tags.map((tag) => (
+              <Link
+                className="rounded-full border border-line bg-canvas px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-ink"
+                href={platformBlogCanonicalPath(`/blog/tag/${tag.slug}`, locale)}
+                key={tag.id}
+              >
+                {tag.name}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -153,10 +226,95 @@ export async function generatePublicPlatformBlogPostMetadata(
   };
 }
 
+export async function generatePublicPlatformBlogCategoryMetadata(
+  slug: string,
+  locale?: string | null
+): Promise<Metadata> {
+  const category = await getActiveCategoryBySlug(slug);
+
+  if (!category) {
+    return {
+      robots: {
+        follow: false,
+        index: false
+      }
+    };
+  }
+
+  const translatedCategory = locale ? translateCategory(category, locale) : category;
+  const canonicalUrl = platformBlogCanonicalUrl(`/blog/category/${translatedCategory.slug}`, locale);
+  const title = text(translatedCategory.seoTitle, 70) || `${translatedCategory.name} | SHASTORE AI Blog`;
+  const description = categoryDescription(translatedCategory);
+
+  return {
+    alternates: {
+      canonical: canonicalUrl
+    },
+    description,
+    openGraph: {
+      description,
+      title,
+      type: "website",
+      url: canonicalUrl
+    },
+    robots: {
+      follow: true,
+      index: true
+    },
+    title
+  };
+}
+
+export async function generatePublicPlatformBlogTagMetadata(
+  slug: string,
+  locale?: string | null
+): Promise<Metadata> {
+  const tag = await getActiveTagBySlug(slug);
+
+  if (!tag) {
+    return {
+      robots: {
+        follow: false,
+        index: false
+      }
+    };
+  }
+
+  const translatedTag = locale ? translateTag(tag, locale) : tag;
+  const canonicalUrl = platformBlogCanonicalUrl(`/blog/tag/${translatedTag.slug}`, locale);
+  const title = `${translatedTag.name} | SHASTORE AI Blog`;
+  const description = tagDescription(translatedTag);
+
+  return {
+    alternates: {
+      canonical: canonicalUrl
+    },
+    description,
+    openGraph: {
+      description,
+      title,
+      type: "website",
+      url: canonicalUrl
+    },
+    robots: {
+      follow: true,
+      index: true
+    },
+    title
+  };
+}
+
 export async function renderPublicPlatformBlogIndex(locale?: string | null) {
-  const posts = (await listPublishedPlatformBlogPosts()).map((post) =>
+  const [rawPosts, rawCategories, rawTags] = await Promise.all([
+    listPublishedPlatformBlogPosts(),
+    listActiveCategories(),
+    listActiveTags()
+  ]);
+  const posts = rawPosts.map((post) =>
     locale ? translatePlatformBlogPost(post, locale) : post
   );
+  const categories = rawCategories.map((category) => locale ? translateCategory(category, locale) : category);
+  const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
   const direction = locale === "ar" ? "rtl" : "ltr";
 
   return (
@@ -173,6 +331,8 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
           </p>
         </section>
 
+        <BlogFilters categories={categories} locale={locale} tags={tags} />
+
         <section className="border-t border-line bg-canvas py-14">
           <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
             {posts.length ? (
@@ -185,6 +345,94 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
                 <p className="mt-3 text-base leading-8 text-muted">
                   Platform blog posts are being prepared.
                 </p>
+              </article>
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export async function renderPublicPlatformBlogCategory(slug: string, locale?: string | null) {
+  const category = await getActiveCategoryBySlug(slug);
+
+  if (!category) {
+    notFound();
+  }
+
+  const translatedCategory = locale ? translateCategory(category, locale) : category;
+  const posts = (await listPublishedPlatformBlogPostsByCategorySlug(category.slug)).map((post) =>
+    locale ? translatePlatformBlogPost(post, locale) : post
+  );
+  const direction = locale === "ar" ? "rtl" : "ltr";
+
+  return (
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
+      <MarketingNavbar />
+      <main className="bg-canvas">
+        <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">Blog category</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+            {translatedCategory.name}
+          </h1>
+          {translatedCategory.description ? (
+            <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">{translatedCategory.description}</p>
+          ) : null}
+        </section>
+        <section className="border-t border-line bg-canvas py-14">
+          <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
+            {posts.length ? (
+              posts.map((post) => (
+                <PublicBlogCard key={post.id} locale={locale} post={post} />
+              ))
+            ) : (
+              <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
+                <h2 className="text-2xl font-black tracking-tight text-ink">No published posts in this category yet</h2>
+              </article>
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export async function renderPublicPlatformBlogTag(slug: string, locale?: string | null) {
+  const tag = await getActiveTagBySlug(slug);
+
+  if (!tag) {
+    notFound();
+  }
+
+  const translatedTag = locale ? translateTag(tag, locale) : tag;
+  const posts = (await listPublishedPlatformBlogPostsByTagSlug(tag.slug)).map((post) =>
+    locale ? translatePlatformBlogPost(post, locale) : post
+  );
+  const direction = locale === "ar" ? "rtl" : "ltr";
+
+  return (
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
+      <MarketingNavbar />
+      <main className="bg-canvas">
+        <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">Blog tag</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+            {translatedTag.name}
+          </h1>
+          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
+            {tagDescription(translatedTag)}
+          </p>
+        </section>
+        <section className="border-t border-line bg-canvas py-14">
+          <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
+            {posts.length ? (
+              posts.map((post) => (
+                <PublicBlogCard key={post.id} locale={locale} post={post} />
+              ))
+            ) : (
+              <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
+                <h2 className="text-2xl font-black tracking-tight text-ink">No published posts with this tag yet</h2>
               </article>
             )}
           </div>

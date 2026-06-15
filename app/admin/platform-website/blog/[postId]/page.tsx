@@ -10,7 +10,13 @@ import {
   publishPlatformBlogPostAction,
   revertPlatformBlogPostDraftAction
 } from "@/lib/admin/platform-website-actions";
-import { getPlatformBlogPostForAdmin } from "@/src/lib/platform-website/blog/platform-blog-service";
+import {
+  getPlatformBlogPostCategoryIds,
+  getPlatformBlogPostForAdmin,
+  getPlatformBlogPostTagIds
+} from "@/src/lib/platform-website/blog/platform-blog-service";
+import { listCategories } from "@/src/lib/platform-website/blog/categories-service";
+import { listTags } from "@/src/lib/platform-website/blog/tags-service";
 import { PlatformBlogEditorForm } from "./platform-blog-editor-form";
 
 export default async function AdminPlatformBlogEditorPage({
@@ -19,7 +25,13 @@ export default async function AdminPlatformBlogEditorPage({
   params: Promise<{ postId: string }>;
 }) {
   const { postId } = await params;
-  const post = await getPlatformBlogPostForAdmin(postId);
+  const [post, categories, tags, selectedCategoryIds, selectedTagIds] = await Promise.all([
+    getPlatformBlogPostForAdmin(postId),
+    listCategories(),
+    listTags(),
+    getPlatformBlogPostCategoryIds(postId),
+    getPlatformBlogPostTagIds(postId)
+  ]);
 
   if (!post) {
     return (
@@ -102,7 +114,13 @@ export default async function AdminPlatformBlogEditorPage({
         </div>
       </Card>
 
-      <PlatformBlogEditorForm post={post} />
+      <PlatformBlogEditorForm
+        categories={categories.filter((category) => category.status === "active")}
+        post={post}
+        selectedCategoryIds={selectedCategoryIds}
+        selectedTagIds={selectedTagIds}
+        tags={tags.filter((tag) => tag.status === "active")}
+      />
     </div>
   );
 }

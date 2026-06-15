@@ -28,6 +28,14 @@ import {
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
 import {
+  listCategories,
+  type PlatformBlogCategoryRecord
+} from "@/src/lib/platform-website/blog/categories-service";
+import {
+  listTags,
+  type PlatformBlogTagRecord
+} from "@/src/lib/platform-website/blog/tags-service";
+import {
   ensurePlatformPagesRegistry,
   type PlatformPageRegistryRecord
 } from "@/src/lib/platform-website/platform-pages-registry";
@@ -504,10 +512,14 @@ export type AdminAIControl = {
 export type AdminPlatformWebsiteControl = {
   blogFoundation: {
     archivedPosts: number;
+    categories: PlatformBlogCategoryRecord[];
     draftPosts: number;
     publishedPosts: number;
     recentPosts: PlatformBlogPostRecord[];
+    tags: PlatformBlogTagRecord[];
+    totalCategories: number;
     totalPosts: number;
+    totalTags: number;
   };
   futureHooks: string[];
   landingStatus: Array<{
@@ -4226,9 +4238,11 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
 }
 
 export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWebsiteControl> {
-  const [registryPages, blogPosts] = await Promise.all([
+  const [registryPages, blogPosts, blogCategories, blogTags] = await Promise.all([
     ensurePlatformPagesRegistry(),
-    listPlatformBlogPosts()
+    listPlatformBlogPosts(),
+    listCategories(),
+    listTags()
   ]);
   const pageDefinitions = registryPages.map((page) => platformPageDefinitionFromRegistry(page));
   const pages: AdminPlatformWebsiteControl["pages"] = pageDefinitions;
@@ -4245,10 +4259,14 @@ export async function getAdminPlatformWebsiteControl(): Promise<AdminPlatformWeb
   return {
     blogFoundation: {
       archivedPosts: blogPosts.filter((post) => post.status === "archived").length,
+      categories: blogCategories,
       draftPosts: blogPosts.filter((post) => post.status === "draft").length,
       publishedPosts: blogPosts.filter((post) => post.status === "published").length,
       recentPosts: blogPosts.slice(0, 10),
-      totalPosts: blogPosts.length
+      tags: blogTags,
+      totalCategories: blogCategories.length,
+      totalPosts: blogPosts.length,
+      totalTags: blogTags.length
     },
     futureHooks: [
       "Platform page editor",

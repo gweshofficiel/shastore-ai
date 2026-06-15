@@ -9,9 +9,22 @@ import {
   createPlatformBlogDraft,
   publishPlatformBlogPost,
   revertPlatformBlogPostToDraft,
+  updatePlatformBlogPostTaxonomy,
   updatePlatformBlogDraft,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
+import {
+  archiveCategory,
+  createCategory,
+  updateCategory,
+  type PlatformBlogCategoryRecord
+} from "@/src/lib/platform-website/blog/categories-service";
+import {
+  archiveTag,
+  createTag,
+  updateTag,
+  type PlatformBlogTagRecord
+} from "@/src/lib/platform-website/blog/tags-service";
 import {
   createPageBlock,
   deleteDraftPageBlock,
@@ -39,10 +52,16 @@ import { updatePlatformPageTranslation } from "@/src/lib/platform-website/platfo
 
 type PlatformWebsiteAction =
   | "admin_platform_blog_archive"
+  | "admin_platform_blog_category_archive"
+  | "admin_platform_blog_category_create"
+  | "admin_platform_blog_category_update"
   | "admin_platform_blog_create_draft"
   | "admin_platform_blog_publish"
   | "admin_platform_blog_revert_draft"
   | "admin_platform_blog_save_editor"
+  | "admin_platform_blog_tag_archive"
+  | "admin_platform_blog_tag_create"
+  | "admin_platform_blog_tag_update"
   | "admin_platform_blog_update_draft"
   | "admin_platform_page_block_create"
   | "admin_platform_page_block_delete_draft"
@@ -166,6 +185,40 @@ async function recordPlatformBlogAction(action: PlatformWebsiteAction, post: Pla
   revalidatePath("/admin/platform-website");
 }
 
+async function recordPlatformBlogTaxonomyAction(
+  action: PlatformWebsiteAction,
+  item: PlatformBlogCategoryRecord | PlatformBlogTagRecord | null,
+  entityType: "admin_platform_blog_category" | "admin_platform_blog_tag"
+) {
+  const access = await getAdminAccess();
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for platform blog taxonomy controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: null,
+    entity_type: entityType,
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      id: item?.id ?? null,
+      name: item?.name ?? null,
+      note: "Super Admin platform blog taxonomy action only. Customer store blogs and public customer routes were not changed.",
+      slug: item?.slug ?? null,
+      source: "super_admin_platform_blog_taxonomy",
+      status: item?.status ?? null
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/platform-website");
+  revalidatePath("/blog");
+}
+
 function parseJsonObject(value: FormDataEntryValue | null, fieldName: string) {
   const source = cleanText(value);
 
@@ -220,6 +273,29 @@ function blogInputFromFormData(formData: FormData) {
     title: cleanText(formData.get("postTitle")),
     translations: parseJsonObject(formData.get("translations"), "Blog translations")
   };
+}
+
+function categoryInputFromFormData(formData: FormData) {
+  return {
+    description: cleanText(formData.get("categoryDescription")),
+    name: cleanText(formData.get("categoryName")),
+    seoDescription: cleanText(formData.get("categorySeoDescription")),
+    seoTitle: cleanText(formData.get("categorySeoTitle")),
+    slug: cleanText(formData.get("categorySlug")),
+    translations: parseJsonObject(formData.get("categoryTranslations"), "Category translations")
+  };
+}
+
+function tagInputFromFormData(formData: FormData) {
+  return {
+    name: cleanText(formData.get("tagName")),
+    slug: cleanText(formData.get("tagSlug")),
+    translations: parseJsonObject(formData.get("tagTranslations"), "Tag translations")
+  };
+}
+
+function taxonomyIds(formData: FormData, key: string) {
+  return formData.getAll(key).map((value) => cleanText(value)).filter(Boolean);
 }
 
 function parseOptionalJsonObject(value: FormDataEntryValue | null, fieldName: string) {
@@ -454,6 +530,102 @@ export async function archivePlatformBlogPostAction(formData: FormData) {
   platformWebsiteRedirect(status, message);
 }
 
+export async function createPlatformBlogCategoryAction(formData: FormData) {
+  let message = "Blog category created";
+  let status: "error" | "success" = "success";
+
+  try {
+    const category = await createCategory(categoryInputFromFormData(formData));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_category_create", category, "admin_platform_blog_category");
+    message = `Blog category created: ${category?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not create platform blog category.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function updatePlatformBlogCategoryAction(formData: FormData) {
+  let message = "Blog category updated";
+  let status: "error" | "success" = "success";
+
+  try {
+    const category = await updateCategory(cleanText(formData.get("categoryId")), categoryInputFromFormData(formData));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_category_update", category, "admin_platform_blog_category");
+    message = `Blog category updated: ${category?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not update platform blog category.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function archivePlatformBlogCategoryAction(formData: FormData) {
+  let message = "Blog category archived";
+  let status: "error" | "success" = "success";
+
+  try {
+    const category = await archiveCategory(cleanText(formData.get("categoryId")));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_category_archive", category, "admin_platform_blog_category");
+    message = `Blog category archived: ${category?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not archive platform blog category.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function createPlatformBlogTagAction(formData: FormData) {
+  let message = "Blog tag created";
+  let status: "error" | "success" = "success";
+
+  try {
+    const tag = await createTag(tagInputFromFormData(formData));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_tag_create", tag, "admin_platform_blog_tag");
+    message = `Blog tag created: ${tag?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not create platform blog tag.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function updatePlatformBlogTagAction(formData: FormData) {
+  let message = "Blog tag updated";
+  let status: "error" | "success" = "success";
+
+  try {
+    const tag = await updateTag(cleanText(formData.get("tagId")), tagInputFromFormData(formData));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_tag_update", tag, "admin_platform_blog_tag");
+    message = `Blog tag updated: ${tag?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not update platform blog tag.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
+export async function archivePlatformBlogTagAction(formData: FormData) {
+  let message = "Blog tag archived";
+  let status: "error" | "success" = "success";
+
+  try {
+    const tag = await archiveTag(cleanText(formData.get("tagId")));
+    await recordPlatformBlogTaxonomyAction("admin_platform_blog_tag_archive", tag, "admin_platform_blog_tag");
+    message = `Blog tag archived: ${tag?.name ?? "Untitled"}`;
+  } catch (error) {
+    status = "error";
+    message = error instanceof Error ? error.message : "Could not archive platform blog tag.";
+  }
+
+  platformWebsiteRedirect(status, message);
+}
+
 export async function publishPlatformBlogPostAction(formData: FormData) {
   let message = "Blog post published";
   let status: "error" | "success" = "success";
@@ -495,6 +667,10 @@ export async function savePlatformBlogEditorDraft(
   try {
     const postId = cleanText(formData.get("postId"));
     const post = await updatePlatformBlogDraft(postId, blogInputFromFormData(formData));
+    await updatePlatformBlogPostTaxonomy(postId, {
+      categoryIds: taxonomyIds(formData, "categoryIds"),
+      tagIds: taxonomyIds(formData, "tagIds")
+    });
     await recordPlatformBlogAction("admin_platform_blog_save_editor", post);
     revalidatePath(`/admin/platform-website/blog/${postId}`);
 

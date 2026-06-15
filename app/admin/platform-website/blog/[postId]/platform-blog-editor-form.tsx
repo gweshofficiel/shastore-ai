@@ -9,6 +9,8 @@ import {
   type PlatformBlogEditorActionState
 } from "@/lib/admin/platform-website-actions";
 import type { PlatformBlogPostRecord } from "@/src/lib/platform-website/blog/platform-blog-service";
+import type { PlatformBlogCategoryRecord } from "@/src/lib/platform-website/blog/categories-service";
+import type { PlatformBlogTagRecord } from "@/src/lib/platform-website/blog/tags-service";
 
 const initialState: PlatformBlogEditorActionState = {
   message: "",
@@ -54,19 +56,33 @@ function Field({
   );
 }
 
-export function PlatformBlogEditorForm({ post }: { post: PlatformBlogPostRecord }) {
+export function PlatformBlogEditorForm({
+  categories,
+  post,
+  selectedCategoryIds,
+  selectedTagIds,
+  tags
+}: {
+  categories: PlatformBlogCategoryRecord[];
+  post: PlatformBlogPostRecord;
+  selectedCategoryIds: string[];
+  selectedTagIds: string[];
+  tags: PlatformBlogTagRecord[];
+}) {
   const [state, formAction] = useActionState(savePlatformBlogEditorDraft, initialState);
   const initialSnapshot = useMemo(() => JSON.stringify({
     authorName: post.authorName,
+    categoryIds: selectedCategoryIds,
     content: post.content,
     coverImageUrl: post.coverImageUrl ?? "",
     excerpt: post.excerpt,
     seoDescription: post.seoDescription ?? "",
     seoTitle: post.seoTitle ?? "",
     slug: post.slug,
+    tagIds: selectedTagIds,
     title: post.title,
     translations: post.translations
-  }), [post]);
+  }), [post, selectedCategoryIds, selectedTagIds]);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
 
   useEffect(() => {
@@ -133,6 +149,53 @@ export function PlatformBlogEditorForm({ post }: { post: PlatformBlogPostRecord 
         <Field help="Short safe summary for blog lists and SEO fallback." label="Excerpt">
           <textarea className={textareaClass} maxLength={500} name="excerpt" defaultValue={post.excerpt} />
         </Field>
+
+        <section className="grid gap-4 rounded-[2rem] border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Categories and tags</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Assignments organize platform blog navigation only. Customer store blogs are not affected.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Categories</p>
+              {categories.length ? (
+                categories.map((category) => (
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700" key={category.id}>
+                    <input
+                      defaultChecked={selectedCategoryIds.includes(category.id)}
+                      name="categoryIds"
+                      type="checkbox"
+                      value={category.id}
+                    />
+                    {category.name}
+                  </label>
+                ))
+              ) : (
+                <p className="text-xs font-semibold text-slate-500">No active categories yet.</p>
+              )}
+            </div>
+            <div className="grid gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Tags</p>
+              {tags.length ? (
+                tags.map((tag) => (
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700" key={tag.id}>
+                    <input
+                      defaultChecked={selectedTagIds.includes(tag.id)}
+                      name="tagIds"
+                      type="checkbox"
+                      value={tag.id}
+                    />
+                    {tag.name}
+                  </label>
+                ))
+              ) : (
+                <p className="text-xs font-semibold text-slate-500">No active tags yet.</p>
+              )}
+            </div>
+          </div>
+        </section>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Field help="Recommended max 70 characters." label="SEO title">
