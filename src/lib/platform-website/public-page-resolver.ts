@@ -14,6 +14,7 @@ export type PublicPlatformPage = {
   slug: string;
   subtitle: string | null;
   title: string;
+  translations: Record<string, unknown>;
 };
 
 type PublicPlatformPageRow = {
@@ -29,6 +30,7 @@ type PublicPlatformPageRow = {
   status?: string | null;
   subtitle?: string | null;
   title?: string | null;
+  translations?: unknown;
 };
 
 const connectedPlatformRoutes = new Set([
@@ -103,7 +105,8 @@ function parsePublicPage(row: unknown): PublicPlatformPage | null {
     seoTitle: seoTitle || null,
     slug,
     subtitle: text(value.subtitle, 500) || null,
-    title
+    title,
+    translations: jsonRecord(value.translations)
   };
 }
 
@@ -116,7 +119,7 @@ async function readPublishedPlatformPage(column: "route_path" | "slug", value: s
 
   const { data, error } = await admin
     .from("platform_pages" as never)
-    .select("id, slug, title, route_path, headline, subtitle, body, seo_title, seo_description, canonical_path, open_graph, status")
+    .select("id, slug, title, route_path, headline, subtitle, body, seo_title, seo_description, canonical_path, open_graph, translations, status")
     .eq(column as never, value as never)
     .eq("status" as never, "published" as never)
     .maybeSingle();

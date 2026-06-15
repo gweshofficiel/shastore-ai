@@ -28,6 +28,7 @@ import {
   type PlatformPageRegistryRecord
 } from "@/src/lib/platform-website/platform-pages-registry";
 import { isConnectedPlatformRoute } from "@/src/lib/platform-website/public-page-resolver";
+import { getPlatformTranslationStatus, type PlatformTranslationReadiness } from "@/src/lib/platform-website/platform-translations-runtime";
 import type { Database } from "@/types/database";
 
 type AnyRecord = Record<string, unknown>;
@@ -503,8 +504,8 @@ export type AdminPlatformWebsiteControl = {
     id: string;
     isLive: boolean;
     languages: Array<{
-      language: "Arabic" | "English" | "French";
-      status: "placeholder" | "ready";
+      language: "ar" | "en" | "fr";
+      status: PlatformTranslationReadiness;
     }>;
     lastUpdated: string | null;
     metaDescription: string;
@@ -515,7 +516,7 @@ export type AdminPlatformWebsiteControl = {
       contentReady: boolean;
       routeReady: boolean;
       seoReady: boolean;
-      translationStatus: "placeholder" | "ready";
+      translationStatus: PlatformTranslationReadiness;
     };
     publishingStatus: "Archived" | "Draft" | "Needs Content" | "Needs SEO" | "Published";
     section: string;
@@ -4134,31 +4135,12 @@ export async function getAdminAIControl(): Promise<AdminAIControl> {
   };
 }
 
-function translationStatus(value: unknown) {
-  if (!isRecord(value)) {
-    return "placeholder";
-  }
-
-  const status = text(value.status);
-
-  if (status === "ready") {
-    return "ready";
-  }
-
-  return Object.values(value).some((entry) => typeof entry === "string" && entry.trim())
-    ? "ready"
-    : "placeholder";
-}
-
 function platformLanguageRows(page: PlatformPageRegistryRecord) {
-  const translations = isRecord(page.translations) ? page.translations : {};
+  const statuses = getPlatformTranslationStatus(page);
 
-  return (["Arabic", "English", "French"] as const).map((language) => ({
+  return (["en", "ar", "fr"] as const).map((language) => ({
     language,
-    status: translationStatus(translations[language === "Arabic" ? "ar" : language === "French" ? "fr" : "en"]) === "ready" ||
-      page.languageStatus[language] === "ready"
-      ? "ready" as const
-      : "placeholder" as const
+    status: statuses[language]
   }));
 }
 
@@ -4174,7 +4156,11 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
     !text(page.openGraph.title) ||
     !text(page.openGraph.description) ||
     !text(page.openGraph.image_url);
-  const translationReady = languages.some((language) => language.status === "ready");
+  const translationStatus = languages.every((language) => language.status === "ready")
+    ? "ready" as const
+    : languages.some((language) => language.status === "partial")
+      ? "partial" as const
+      : "missing" as const;
   const publishingStatus: AdminPlatformWebsiteControl["pages"][number]["publishingStatus"] = page.status === "published"
     ? "Published"
     : page.status === "archived"
@@ -4200,7 +4186,7 @@ function platformPageDefinitionFromRegistry(page: PlatformPageRegistryRecord) {
       contentReady,
       routeReady,
       seoReady,
-      translationStatus: translationReady ? "ready" as const : "placeholder" as const
+      translationStatus
     },
     publishingStatus,
     section: page.pageType.replaceAll("_", " "),

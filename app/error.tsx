@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { deploymentLogger } from "@/lib/deployment/logging";
@@ -34,12 +35,12 @@ export default function AppError({
           <Button onClick={reset} type="button">
             Try again
           </Button>
-          <a
+          <Link
             className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-black text-ink"
             href="/dashboard"
           >
             Dashboard
-          </a>
+          </Link>
         </div>
       </Card>
     </main>

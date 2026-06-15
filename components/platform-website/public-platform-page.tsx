@@ -10,6 +10,7 @@ import {
   buildPlatformPageMetadata,
   unpublishedPlatformPageMetadata
 } from "@/src/lib/platform-website/platform-seo-runtime";
+import { getPlatformPageTranslation } from "@/src/lib/platform-website/platform-translations-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -37,9 +38,11 @@ function bodySections(body: Record<string, unknown>) {
 
 export function PublicPlatformPageView({ page }: { page: PublicPlatformPage }) {
   const sections = bodySections(page.body);
+  const direction = "direction" in page && page.direction === "rtl" ? "rtl" : "ltr";
+  const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
 
   return (
-    <>
+    <div dir={direction} lang={locale}>
       <MarketingNavbar />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -83,26 +86,26 @@ export function PublicPlatformPageView({ page }: { page: PublicPlatformPage }) {
           </div>
         </section>
       </main>
-    </>
+    </div>
   );
 }
 
-export async function generatePublicPlatformPageMetadata(path: string): Promise<Metadata> {
+export async function generatePublicPlatformPageMetadata(path: string, locale?: string): Promise<Metadata> {
   const page = await resolvePlatformPageRoute(path);
 
   if (!page) {
     return unpublishedPlatformPageMetadata();
   }
 
-  return buildPlatformPageMetadata(page);
+  return buildPlatformPageMetadata(locale ? getPlatformPageTranslation(page, locale) : page);
 }
 
-export async function renderPublicPlatformPage(path: string) {
+export async function renderPublicPlatformPage(path: string, locale?: string) {
   const page = await resolvePlatformPageRoute(path);
 
   if (!page) {
     notFound();
   }
 
-  return <PublicPlatformPageView page={page} />;
+  return <PublicPlatformPageView page={locale ? getPlatformPageTranslation(page, locale) : page} />;
 }
