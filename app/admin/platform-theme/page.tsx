@@ -47,6 +47,8 @@ import {
   parsePlatformThemeSecurityFilters
 } from "@/src/lib/platform-theme/platform-theme-security-audit";
 import { PlatformThemeSecurityAuditPanel } from "@/components/admin/platform-theme-security-audit-panel";
+import { getPlatformThemeCertification } from "@/src/lib/platform-theme/platform-theme-certification";
+import { PlatformThemeCertificationPanel } from "@/components/admin/platform-theme-certification-panel";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -120,10 +122,11 @@ export default async function AdminPlatformThemePage({
   const themeMonitoringFilters = parsePlatformThemeMonitoringFilters(params);
   const themeSecurityFilters = parsePlatformThemeSecurityFilters(params);
   const control = await getAdminPlatformThemeControl();
-  const [themeAnalytics, themeMonitoring, themeSecurityAudit] = await Promise.all([
+  const [themeAnalytics, themeMonitoring, themeSecurityAudit, themeCertification] = await Promise.all([
     getPlatformThemeAnalyticsDashboard(themeAnalyticsRange),
     listThemeMonitoringIssues(themeMonitoringFilters),
-    listThemeSecurityFindings(themeSecurityFilters)
+    listThemeSecurityFindings(themeSecurityFilters),
+    getPlatformThemeCertification()
   ]);
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
@@ -1167,6 +1170,8 @@ export default async function AdminPlatformThemePage({
       <PlatformThemeMonitoringPanel monitoring={themeMonitoring} />
 
       <PlatformThemeSecurityAuditPanel audit={themeSecurityAudit} />
+
+      <PlatformThemeCertificationPanel certification={themeCertification} />
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
