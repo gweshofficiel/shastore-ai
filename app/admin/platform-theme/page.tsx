@@ -37,6 +37,11 @@ import {
   getPlatformThemeAnalyticsDashboard,
   parsePlatformThemeAnalyticsRange
 } from "@/src/lib/platform-theme/platform-theme-analytics";
+import {
+  listThemeMonitoringIssues,
+  parsePlatformThemeMonitoringFilters
+} from "@/src/lib/platform-theme/platform-theme-monitoring";
+import { PlatformThemeMonitoringPanel } from "@/components/admin/platform-theme-monitoring-panel";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -97,12 +102,19 @@ export default async function AdminPlatformThemePage({
     whiteLabelMessage?: string;
     whiteLabelStatus?: string;
     themeAnalyticsRange?: string;
+    themeMonitoringArea?: string;
+    themeMonitoringIssueType?: string;
+    themeMonitoringSeverity?: string;
   }>;
 }) {
   const params = await searchParams;
   const themeAnalyticsRange = parsePlatformThemeAnalyticsRange(params?.themeAnalyticsRange);
+  const themeMonitoringFilters = parsePlatformThemeMonitoringFilters(params);
   const control = await getAdminPlatformThemeControl();
-  const themeAnalytics = await getPlatformThemeAnalyticsDashboard(themeAnalyticsRange);
+  const [themeAnalytics, themeMonitoring] = await Promise.all([
+    getPlatformThemeAnalyticsDashboard(themeAnalyticsRange),
+    listThemeMonitoringIssues(themeMonitoringFilters)
+  ]);
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
   const readyAdminPreviews = control.previews.adminDashboard.filter((preview) => preview.status === "ready").length;
@@ -1141,6 +1153,8 @@ export default async function AdminPlatformThemePage({
       </section>
 
       <PlatformThemeAnalyticsPanel analytics={themeAnalytics} />
+
+      <PlatformThemeMonitoringPanel monitoring={themeMonitoring} />
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
