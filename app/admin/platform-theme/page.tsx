@@ -10,6 +10,7 @@ import { getAdminPlatformThemeControl } from "@/lib/admin/data";
 import { PlatformThemeVersionActions } from "@/components/admin/platform-theme-version-actions";
 import {
   discardPlatformBrandingDraft,
+  createPresetFromCurrentDraftAction,
   previewPlatformFaviconAction,
   previewPlatformBranding,
   previewPlatformLogoAction,
@@ -26,6 +27,7 @@ import {
   buildPlatformRtlClassNames
 } from "@/src/lib/platform-theme/platform-rtl-runtime";
 import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
+import { PlatformThemePresetActions } from "@/components/admin/platform-theme-preset-actions";
 import { canRollbackThemeVersion, snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
 
 function createdByLabel(createdBy: string | null) {
@@ -78,6 +80,8 @@ export default async function AdminPlatformThemePage({
     publishStatus?: string;
     rollbackMessage?: string;
     rollbackStatus?: string;
+    presetMessage?: string;
+    presetStatus?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -93,6 +97,8 @@ export default async function AdminPlatformThemePage({
   const logoMessage = params?.logoMessage;
   const rollbackStatus = params?.rollbackStatus === "success" ? "success" : params?.rollbackStatus === "error" ? "error" : null;
   const rollbackMessage = params?.rollbackMessage;
+  const presetStatus = params?.presetStatus === "success" ? "success" : params?.presetStatus === "error" ? "error" : null;
+  const presetMessage = params?.presetMessage;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -116,6 +122,7 @@ export default async function AdminPlatformThemePage({
           { label: "Admin previews", value: `${readyAdminPreviews}/${control.previews.adminDashboard.length}` },
           { label: "RTL languages", value: control.readiness.filter((item) => item.direction === "RTL").length },
           { label: "Theme versions", value: control.versions.length },
+          { label: "Theme presets", value: control.presets.filter((preset) => preset.status === "active").length },
           { label: "Store themes touched", value: 0 }
         ]}
       />
@@ -169,6 +176,19 @@ export default async function AdminPlatformThemePage({
           role={rollbackStatus === "success" ? "status" : "alert"}
         >
           {rollbackMessage}
+        </div>
+      ) : null}
+
+      {presetStatus && presetMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            presetStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={presetStatus === "success" ? "status" : "alert"}
+        >
+          {presetMessage}
         </div>
       ) : null}
 
@@ -772,6 +792,85 @@ export default async function AdminPlatformThemePage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-preset-manager">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Preset Manager</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform theme presets</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Apply predefined presets to draft branding only. Presets never auto-publish and do not affect customer storefronts. Published theme changes only after Publish Branding.
+          </p>
+        </div>
+
+        <form action={createPresetFromCurrentDraftAction} className="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-[1fr_1fr_1.2fr_auto] lg:items-end">
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Preset name</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              name="presetName"
+              placeholder="Summer launch"
+              required
+              type="text"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Preset key</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              name="presetKey"
+              pattern="[a-z0-9_]{2,80}"
+              placeholder="summer_launch"
+              required
+              type="text"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Description</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              name="presetDescription"
+              placeholder="Optional preset description"
+              type="text"
+            />
+          </label>
+          <button
+            className="h-11 rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+            type="submit"
+          >
+            Create preset from current draft
+          </button>
+        </form>
+
+        <AdminTable
+          empty={!control.presets.length ? "No theme presets are available yet." : null}
+          headers={["Preset", "Description", "Status", "Type", "Created", "Actions"]}
+        >
+          {control.presets.map((preset) => (
+            <tr key={preset.id}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{preset.name}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{preset.presetKey}</p>
+              </td>
+              <td className="px-5 py-4 text-sm leading-6 text-slate-600">{preset.description ?? "No description"}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={preset.status === "active" ? "green" : "slate"}>{preset.status}</AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={preset.isSystem ? "blue" : "amber"}>{preset.isSystem ? "System" : "Custom"}</AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(preset.createdAt)}</td>
+              <td className="px-5 py-4">
+                <PlatformThemePresetActions
+                  canApply={preset.status === "active"}
+                  canArchive={!preset.isSystem && preset.status === "active"}
+                  presetId={preset.id}
+                  presetKey={preset.presetKey}
+                />
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-version-history">
         <div>

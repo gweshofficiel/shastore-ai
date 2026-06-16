@@ -28,6 +28,11 @@ import {
   createThemeVersion
 } from "@/src/lib/platform-theme/platform-theme-versions";
 import { rollbackThemeVersionToDraft } from "@/src/lib/platform-theme/platform-theme-rollback";
+import {
+  applyThemePresetToDraft,
+  archiveThemePreset,
+  createPresetFromCurrentDraft
+} from "@/src/lib/platform-theme/platform-theme-presets";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -37,6 +42,9 @@ type PlatformThemeAction =
   | "admin_platform_theme_discard_draft"
   | "admin_platform_theme_publish"
   | "admin_platform_theme_rollback_to_draft"
+  | "admin_platform_theme_preset_apply"
+  | "admin_platform_theme_preset_create_from_draft"
+  | "admin_platform_theme_preset_archive"
   | "admin_platform_theme_favicon_upload"
   | "admin_platform_theme_favicon_remove_draft"
   | "admin_platform_theme_favicon_preview"
@@ -67,6 +75,10 @@ function platformRollbackRedirect(status: "error" | "success", message: string, 
   }
 
   redirect(`/admin/platform-theme?${params.toString()}#theme-version-history`);
+}
+
+function platformPresetRedirect(status: "error" | "success", message: string): never {
+  redirect(`/admin/platform-theme?presetStatus=${status}&presetMessage=${encodeURIComponent(message)}#theme-preset-manager`);
 }
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
@@ -322,5 +334,103 @@ export async function rollbackThemeVersionToDraftAction(formData: FormData) {
       store_themes_touched: 0
     });
     platformRollbackRedirect("error", error instanceof Error ? error.message : "Theme rollback failed.");
+  }
+}
+
+export async function applyThemePresetToDraftAction(formData: FormData) {
+  const presetKey = formData.get("presetKey");
+
+  if (typeof presetKey !== "string" || !presetKey.trim()) {
+    platformPresetRedirect("error", "Preset key is required.");
+  }
+
+  try {
+    const result = await applyThemePresetToDraft(presetKey);
+    await recordPlatformThemeAction("admin_platform_theme_preset_apply", {
+      applied_settings: result.appliedSettingCount,
+      draft_only: true,
+      preset_key: result.presetKey,
+      preset_name: result.presetName,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect(
+      "success",
+      `Preset "${result.presetName}" applied to draft. Publish Branding required to make it live.`
+    );
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_preset_apply", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Preset apply failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect("error", error instanceof Error ? error.message : "Preset apply failed.");
+  }
+}
+
+export async function createPresetFromCurrentDraftAction(formData: FormData) {
+  const name = formData.get("presetName");
+  const presetKey = formData.get("presetKey");
+  const description = formData.get("presetDescription");
+
+  if (typeof name !== "string" || !name.trim()) {
+    platformPresetRedirect("error", "Preset name is required.");
+  }
+
+  if (typeof presetKey !== "string" || !presetKey.trim()) {
+    platformPresetRedirect("error", "Preset key is required.");
+  }
+
+  try {
+    const preset = await createPresetFromCurrentDraft({
+      description: typeof description === "string" ? description : null,
+      name: name.trim(),
+      presetKey: presetKey.trim()
+    });
+    await recordPlatformThemeAction("admin_platform_theme_preset_create_from_draft", {
+      draft_only: true,
+      preset_key: preset.presetKey,
+      preset_name: preset.name,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect("success", `Preset "${preset.name}" created from current draft.`);
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_preset_create_from_draft", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Preset creation failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect("error", error instanceof Error ? error.message : "Preset creation failed.");
+  }
+}
+
+export async function archiveThemePresetAction(formData: FormData) {
+  const presetId = formData.get("presetId");
+
+  if (typeof presetId !== "string" || !presetId.trim()) {
+    platformPresetRedirect("error", "Preset id is required.");
+  }
+
+  try {
+    const preset = await archiveThemePreset(presetId);
+    await recordPlatformThemeAction("admin_platform_theme_preset_archive", {
+      draft_only: true,
+      preset_key: preset.presetKey,
+      preset_name: preset.name,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect("success", `Preset "${preset.name}" archived.`);
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_preset_archive", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Preset archive failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformPresetRedirect("error", error instanceof Error ? error.message : "Preset archive failed.");
   }
 }

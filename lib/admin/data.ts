@@ -65,6 +65,10 @@ import {
   type PlatformThemeVersionRecord
 } from "@/src/lib/platform-theme/platform-theme-versions";
 import {
+  listThemePresets,
+  type PlatformThemePresetRecord
+} from "@/src/lib/platform-theme/platform-theme-presets";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -684,6 +688,7 @@ export type AdminPlatformThemeControl = {
     validationStatus: PlatformBrandValidationStatus;
     value: string;
   }>;
+  presets: PlatformThemePresetRecord[];
   versions: PlatformThemeVersionRecord[];
 };
 
@@ -4400,7 +4405,7 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme, versions] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme, versions, presets] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
@@ -4409,7 +4414,8 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     listPlatformThemeAssets(),
     resolvePlatformBranding(),
     resolveAdminBranding(),
-    listThemeVersions()
+    listThemeVersions(),
+    listThemePresets()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4431,9 +4437,6 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     draft,
     favicon: currentFavicon.favicon,
     futureHooks: [
-      "Upload logo",
-      "Upload favicon",
-      "Theme preset manager",
       "White-label platform branding",
       "Reseller branding inheritance"
     ],
@@ -4504,6 +4507,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       validationMessage: settingsByKey.get(section.sectionKey)?.validationMessage ?? null,
       value: platformThemeValue(section, settingsByKey.get(section.sectionKey), "Not configured")
     })),
+    presets,
     versions
   };
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AdminBadge, AdminHeader } from "@/components/admin/admin-control";
 import { Card } from "@/components/ui/card";
 import { previewThemeVersion } from "@/src/lib/platform-theme/platform-theme-rollback";
+import { previewThemePreset } from "@/src/lib/platform-theme/platform-theme-presets";
 import {
   buildThemePreviewMetadata,
   getPublishedThemePreview,
@@ -19,13 +20,15 @@ import {
 export const dynamic = "force-dynamic";
 
 type PreviewPageProps = {
-  searchParams?: Promise<{ locale?: string; mode?: string; versionId?: string }>;
+  searchParams?: Promise<{ locale?: string; mode?: string; presetKey?: string; versionId?: string }>;
 };
 
 type PreviewDisplay = Pick<
   PlatformThemePreview,
   "accentColor" | "cssVariables" | "faviconUrl" | "localeTheme" | "logoUrl" | "primaryColor" | "secondaryColor" | "typography"
 > & {
+  presetKey?: string;
+  presetName?: string;
   sourceVersionNumber?: number;
 };
 
@@ -67,8 +70,26 @@ function safeLocale(locale: string | undefined): PlatformLocale {
 async function loadPreview(
   mode: PlatformThemePreviewMode,
   locale: PlatformLocale,
-  versionId?: string
+  versionId?: string,
+  presetKey?: string
 ): Promise<PreviewDisplay> {
+  if (presetKey) {
+    const presetPreview = await previewThemePreset(presetKey, locale);
+
+    return {
+      accentColor: presetPreview.accentColor,
+      cssVariables: presetPreview.cssVariables,
+      faviconUrl: presetPreview.faviconUrl,
+      localeTheme: presetPreview.localeTheme,
+      logoUrl: presetPreview.logoUrl,
+      presetKey: presetPreview.presetKey,
+      presetName: presetPreview.presetName,
+      primaryColor: presetPreview.primaryColor,
+      secondaryColor: presetPreview.secondaryColor,
+      typography: presetPreview.typography
+    };
+  }
+
   if (versionId) {
     const versionPreview = await previewThemeVersion(versionId, locale);
 
@@ -104,6 +125,13 @@ export async function generateMetadata({ searchParams }: PreviewPageProps): Prom
     };
   }
 
+  if (params?.presetKey) {
+    return {
+      description: "Admin-only preview of a platform theme preset. Does not apply preset or change public website.",
+      title: "Platform Theme Preset Preview"
+    };
+  }
+
   return buildThemePreviewMetadata(params?.mode, params?.locale);
 }
 
@@ -117,9 +145,10 @@ function previewStyle(preview: PreviewDisplay): CSSProperties {
 export default async function AdminPlatformThemePreviewPage({ searchParams }: PreviewPageProps) {
   const params = await searchParams;
   const versionId = params?.versionId?.trim() || undefined;
+  const presetKey = params?.presetKey?.trim() || undefined;
   const mode = safeMode(params?.mode);
   const locale = safeLocale(params?.locale);
-  const preview = await loadPreview(mode, locale, versionId);
+  const preview = await loadPreview(mode, locale, versionId, presetKey);
   const hero = sampleHeroCopy[locale];
   const nav = sampleNavCopy[locale];
   const directionAttributes = {
@@ -127,21 +156,36 @@ export default async function AdminPlatformThemePreviewPage({ searchParams }: Pr
     dir: preview.localeTheme.direction,
     lang: preview.localeTheme.lang
   };
+  const previewQueryPrefix = presetKey
+    ? `presetKey=${presetKey}`
+    : versionId
+      ? `versionId=${versionId}`
+      : `mode=${mode}`;
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
         description={
-          versionId
-            ? "Admin-only preview of a saved platform theme version snapshot. This does not apply rollback or change the public website."
-            : "Admin-only preview of platform theme drafts and published branding. This route does not change the public website, admin dashboard styling, or customer storefronts."
+          presetKey
+            ? "Admin-only preview of a platform theme preset. Applying the preset still requires an explicit Apply to Draft action."
+            : versionId
+              ? "Admin-only preview of a saved platform theme version snapshot. This does not apply rollback or change the public website."
+              : "Admin-only preview of platform theme drafts and published branding. This route does not change the public website, admin dashboard styling, or customer storefronts."
         }
-        title={versionId ? `Platform Theme Version #${preview.sourceVersionNumber ?? ""} Preview` : "Platform Theme Preview"}
+        title={
+          presetKey
+            ? `Platform Theme Preset: ${preview.presetName ?? presetKey}`
+            : versionId
+              ? `Platform Theme Version #${preview.sourceVersionNumber ?? ""} Preview`
+              : "Platform Theme Preview"
+        }
       />
 
       <Card className="grid gap-4 p-5 lg:p-6">
         <div className="flex flex-wrap items-center gap-2">
-          {versionId ? (
+          {presetKey ? (
+            <AdminBadge tone="blue">{preview.presetName ?? presetKey} preset preview</AdminBadge>
+          ) : versionId ? (
             <AdminBadge tone="blue">Version #{preview.sourceVersionNumber} preview</AdminBadge>
           ) : (
             <AdminBadge tone={mode === "published" ? "green" : "amber"}>
@@ -154,7 +198,7 @@ export default async function AdminPlatformThemePreviewPage({ searchParams }: Pr
         </div>
 
         <div className="grid gap-3">
-          {!versionId ? (
+          {!versionId && !presetKey ? (
             <div className="flex flex-wrap gap-2">
               <Link
                 className={`inline-flex h-9 items-center rounded-full border px-3 text-xs font-black uppercase tracking-[0.14em] ${
@@ -187,7 +231,7 @@ export default async function AdminPlatformThemePreviewPage({ searchParams }: Pr
                     ? "border-blue-200 bg-blue-50 text-blue-700"
                     : "border-slate-200 bg-white text-slate-500"
                 }`}
-                href={`/admin/platform-theme/preview?${versionId ? `versionId=${versionId}&locale=${item}` : `mode=${mode}&locale=${item}`}`}
+                href={`/admin/platform-theme/preview?${previewQueryPrefix}&locale=${item}`}
                 key={item}
               >
                 {item}
@@ -281,14 +325,21 @@ export default async function AdminPlatformThemePreviewPage({ searchParams }: Pr
           <Card className="p-5 lg:p-6">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Theme metadata</p>
             <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-slate-950">
-              {versionId ? `Version #${preview.sourceVersionNumber} draft preview` : mode === "published" ? "Published values" : "Draft values"}
+              {presetKey
+                ? `${preview.presetName ?? presetKey} preset preview`
+                : versionId
+                  ? `Version #${preview.sourceVersionNumber} draft preview`
+                  : mode === "published"
+                    ? "Published values"
+                    : "Draft values"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               {preview.localeTheme.previewDescription}
             </p>
             <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-500">
               <p>
-                <span className="font-black text-slate-800">Mode:</span> {versionId ? "version snapshot" : mode}
+                <span className="font-black text-slate-800">Mode:</span>{" "}
+                {presetKey ? "preset preview" : versionId ? "version snapshot" : mode}
               </p>
               <p>
                 <span className="font-black text-slate-800">Locale:</span> {locale}
