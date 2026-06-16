@@ -31,7 +31,12 @@ import {
 import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 import { PlatformThemePresetActions } from "@/components/admin/platform-theme-preset-actions";
 import { PlatformThemeImportExportPanel } from "@/components/admin/platform-theme-import-export-panel";
+import { PlatformThemeAnalyticsPanel } from "@/components/admin/platform-theme-analytics-panel";
 import { canRollbackThemeVersion, snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
+import {
+  getPlatformThemeAnalyticsDashboard,
+  parsePlatformThemeAnalyticsRange
+} from "@/src/lib/platform-theme/platform-theme-analytics";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -91,10 +96,13 @@ export default async function AdminPlatformThemePage({
     importWarnings?: string;
     whiteLabelMessage?: string;
     whiteLabelStatus?: string;
+    themeAnalyticsRange?: string;
   }>;
 }) {
   const params = await searchParams;
+  const themeAnalyticsRange = parsePlatformThemeAnalyticsRange(params?.themeAnalyticsRange);
   const control = await getAdminPlatformThemeControl();
+  const themeAnalytics = await getPlatformThemeAnalyticsDashboard(themeAnalyticsRange);
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
   const readyAdminPreviews = control.previews.adminDashboard.filter((preview) => preview.status === "ready").length;
@@ -1131,6 +1139,8 @@ export default async function AdminPlatformThemePage({
           ))}
         </AdminTable>
       </section>
+
+      <PlatformThemeAnalyticsPanel analytics={themeAnalytics} />
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
