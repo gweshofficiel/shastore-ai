@@ -42,7 +42,7 @@ async function getUnreadNotificationCount(
   return unreadCount;
 }
 
-export async function Sidebar() {
+export async function Sidebar({ logoUrl }: { logoUrl?: string | null }) {
   const supabase = await createClient();
   const {
     data: { user }
@@ -61,8 +61,23 @@ export async function Sidebar() {
     <aside className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
       <div className="flex h-full flex-col px-4 py-4 lg:px-5 lg:py-6">
         <div className="flex items-center justify-between gap-4 lg:block">
-          <Link className="text-lg font-black tracking-[-0.03em] text-ink" href="/">
-            SHASTORE AI
+          <Link
+            className="text-lg font-black tracking-[-0.03em] text-ink"
+            href="/"
+            style={{ color: "var(--admin-platform-primary)" }}
+          >
+            {logoUrl ? (
+              <object
+                aria-label="SHASTORE AI"
+                className="h-9 max-w-44"
+                data={logoUrl}
+                type="image/png"
+              >
+                SHASTORE AI
+              </object>
+            ) : (
+              "SHASTORE AI"
+            )}
           </Link>
           <p className="hidden text-xs font-semibold text-muted lg:mt-1 lg:block">
             AI landing page studio

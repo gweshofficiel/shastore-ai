@@ -1,6 +1,8 @@
+import type { CSSProperties } from "react";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { AdminTopbar } from "@/components/admin/admin-topbar";
 import { getAdminAccess } from "@/lib/admin-access";
+import { resolveAdminBranding } from "@/src/lib/platform-theme/admin-platform-theme-resolver";
 import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +20,15 @@ export default async function AdminLayout({
   }
 
   const access = await getAdminAccess();
+  const adminBranding = await resolveAdminBranding();
+  const adminThemeStyle = {
+    ...adminBranding.cssVariables,
+    fontFamily: "var(--admin-platform-font-family)"
+  } as CSSProperties;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_36%,#f1f5f9_100%)]">
-      <AdminSidebar internalRole={access.internalRole} />
+    <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_36%,#f1f5f9_100%)]" style={adminThemeStyle}>
+      <AdminSidebar internalRole={access.internalRole} logoUrl={adminBranding.logoUrl} />
       <main className="min-w-0 px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8 xl:px-10">
         <div className="mx-auto grid w-full max-w-7xl gap-8">
           <AdminTopbar isRoleConfigured={access.isConfigured} />

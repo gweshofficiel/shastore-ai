@@ -57,6 +57,10 @@ import {
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
 import {
+  resolveAdminBranding,
+  type AdminPlatformBranding
+} from "@/src/lib/platform-theme/admin-platform-theme-resolver";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -629,6 +633,7 @@ export type AdminPlatformWebsiteControl = {
 
 export type AdminPlatformThemeControl = {
   assets: PlatformThemeAssetRecord[];
+  adminTheme: AdminPlatformBranding;
   branding: {
     accentColor: string;
     darkMode: string;
@@ -4390,14 +4395,15 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
     getCurrentPlatformLogo(),
     getCurrentPlatformFavicon(),
     listPlatformThemeAssets(),
-    resolvePlatformBranding()
+    resolvePlatformBranding(),
+    resolveAdminBranding()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4414,6 +4420,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
   return {
     assets,
+    adminTheme,
     branding,
     draft,
     favicon: currentFavicon.favicon,
