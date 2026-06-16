@@ -49,6 +49,11 @@ import {
 import { PlatformThemeSecurityAuditPanel } from "@/components/admin/platform-theme-security-audit-panel";
 import { getPlatformThemeCertification } from "@/src/lib/platform-theme/platform-theme-certification";
 import { PlatformThemeCertificationPanel } from "@/components/admin/platform-theme-certification-panel";
+import {
+  getPlatformThemeBranding,
+  getPlatformThemeLiveRuntimeStatus
+} from "@/src/lib/platform-theme/platform-theme-runtime";
+import { PlatformThemeLiveRuntimePanel } from "@/components/admin/platform-theme-live-runtime-panel";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -122,11 +127,13 @@ export default async function AdminPlatformThemePage({
   const themeMonitoringFilters = parsePlatformThemeMonitoringFilters(params);
   const themeSecurityFilters = parsePlatformThemeSecurityFilters(params);
   const control = await getAdminPlatformThemeControl();
-  const [themeAnalytics, themeMonitoring, themeSecurityAudit, themeCertification] = await Promise.all([
+  const [themeAnalytics, themeMonitoring, themeSecurityAudit, themeCertification, themeLiveRuntime, themeLiveBranding] = await Promise.all([
     getPlatformThemeAnalyticsDashboard(themeAnalyticsRange),
     listThemeMonitoringIssues(themeMonitoringFilters),
     listThemeSecurityFindings(themeSecurityFilters),
-    getPlatformThemeCertification()
+    getPlatformThemeCertification(),
+    getPlatformThemeLiveRuntimeStatus(),
+    getPlatformThemeBranding()
   ]);
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
@@ -1172,6 +1179,8 @@ export default async function AdminPlatformThemePage({
       <PlatformThemeSecurityAuditPanel audit={themeSecurityAudit} />
 
       <PlatformThemeCertificationPanel certification={themeCertification} />
+
+      <PlatformThemeLiveRuntimePanel runtime={themeLiveRuntime} source={themeLiveBranding.source} />
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (

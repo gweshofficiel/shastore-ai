@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MarketingNavbar } from "@/components/marketing/navbar";
+import { ButtonLink } from "@/components/ui/button";
+import { PublicPlatformShell } from "@/components/platform-website/public-platform-shell";
 import {
   getPublishedPlatformBlogPostBySlug,
   listPublishedPlatformBlogPostsByCategorySlug,
@@ -27,19 +27,12 @@ import {
   type PlatformBlogTagRecord
 } from "@/src/lib/platform-website/blog/tags-service";
 import { trackPlatformBlogView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
-import {
-  resolvePlatformBranding,
-  type PlatformBranding
-} from "@/src/lib/platform-theme/public-platform-theme-resolver";
+import { getPlatformThemeBranding } from "@/src/lib/platform-theme/platform-theme-runtime";
 import {
   buildWhiteLabelShellProps,
   getPublishedWhiteLabelSettings,
   type PlatformWhiteLabelShellProps
 } from "@/src/lib/platform-theme/platform-white-label";
-import {
-  buildPlatformLocaleThemeAttributes,
-  getPlatformLocaleTheme
-} from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -69,18 +62,18 @@ function bodySections(content: Record<string, unknown>) {
     : [{ body: fallbackBody, heading: "" }];
 }
 
-function blogIndexTitle(locale?: string | null) {
-  if (locale === "ar") return "مدونة SHASTORE AI";
-  if (locale === "fr") return "Blog SHASTORE AI";
+function blogIndexTitle(locale?: string | null, brandName = "SHASTORE AI") {
+  if (locale === "ar") return `مدونة ${brandName}`;
+  if (locale === "fr") return `Blog ${brandName}`;
 
-  return "SHASTORE AI Blog";
+  return `${brandName} Blog`;
 }
 
-function blogIndexDescription(locale?: string | null) {
-  if (locale === "ar") return "مقالات وتحديثات منصة SHASTORE AI.";
-  if (locale === "fr") return "Articles et mises a jour de la plateforme SHASTORE AI.";
+function blogIndexDescription(locale?: string | null, brandName = "SHASTORE AI") {
+  if (locale === "ar") return `مقالات وتحديثات منصة ${brandName}.`;
+  if (locale === "fr") return `Articles et mises a jour de la plateforme ${brandName}.`;
 
-  return "Articles and updates from the SHASTORE AI platform.";
+  return `Articles and updates from the ${brandName} platform.`;
 }
 
 function postDescription(post: PlatformBlogPostRecord) {
@@ -90,21 +83,19 @@ function postDescription(post: PlatformBlogPostRecord) {
 }
 
 async function withPlatformThemeMetadata(metadata: Metadata): Promise<Metadata> {
-  const branding = await resolvePlatformBranding();
+  const branding = await getPlatformThemeBranding();
 
-  return branding.faviconUrl
-    ? {
-        ...metadata,
-        icons: {
-          icon: [{ url: branding.faviconUrl }]
-        }
-      }
-    : metadata;
+  return {
+    ...metadata,
+    icons: {
+      icon: [{ url: branding.faviconUrl }]
+    }
+  };
 }
 
 async function loadPlatformShellBranding() {
   const [branding, whiteLabel] = await Promise.all([
-    resolvePlatformBranding(),
+    getPlatformThemeBranding(),
     getPublishedWhiteLabelSettings()
   ]);
 
@@ -112,19 +103,6 @@ async function loadPlatformShellBranding() {
     branding,
     whiteLabel: buildWhiteLabelShellProps(whiteLabel)
   };
-}
-
-function platformThemeStyle(branding: PlatformBranding, locale?: string | null): CSSProperties {
-  const localeTheme = getPlatformLocaleTheme(locale);
-
-  return {
-    ...branding.cssVariables,
-    fontFamily: localeTheme.fontFamily
-  } as CSSProperties;
-}
-
-function platformDirectionProps(locale?: string | null) {
-  return buildPlatformLocaleThemeAttributes(locale);
 }
 
 function categoryDescription(category: PlatformBlogCategoryRecord) {
@@ -157,12 +135,9 @@ function PublicBlogCard({
       {post.excerpt ? (
         <p className="mt-3 text-sm leading-7 text-muted">{post.excerpt}</p>
       ) : null}
-      <Link
-        className="mt-5 inline-flex h-10 items-center rounded-full bg-ink px-4 text-xs font-black uppercase tracking-[0.16em] text-white"
-        href={href}
-      >
+      <ButtonLink className="mt-5 text-xs font-black uppercase tracking-[0.16em]" href={href} variant="platform">
         Read article
-      </Link>
+      </ButtonLink>
     </article>
   );
 }
@@ -370,48 +345,46 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
   const requestHeaders = await headers();
   const { branding, whiteLabel } = await loadPlatformShellBranding();
-  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     locale,
     path: platformBlogCanonicalPath("/blog", locale),
     referrer: requestHeaders.get("referer"),
-    title: blogIndexTitle(locale)
+    title: blogIndexTitle(locale, whiteLabel.brandName)
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
-      <main className="bg-canvas">
-        <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>SHASTORE AI</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
-            {blogIndexTitle(locale)}
-          </h1>
-          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
-            {blogIndexDescription(locale)}
-          </p>
-        </section>
+    <PublicPlatformShell branding={branding} locale={locale} whiteLabel={whiteLabel}>
+      <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
+          {whiteLabel.brandName}
+        </p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
+          {blogIndexTitle(locale, whiteLabel.brandName)}
+        </h1>
+        <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
+          {blogIndexDescription(locale, whiteLabel.brandName)}
+        </p>
+      </section>
 
-        <BlogFilters categories={categories} locale={locale} tags={tags} />
+      <BlogFilters categories={categories} locale={locale} tags={tags} />
 
-        <section className="border-t border-line bg-canvas py-14">
-          <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
-            {posts.length ? (
-              posts.map((post) => (
-                <PublicBlogCard key={post.id} locale={locale} post={post} />
-              ))
-            ) : (
-              <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
-                <h2 className="text-2xl font-black tracking-tight text-ink">No published posts yet</h2>
-                <p className="mt-3 text-base leading-8 text-muted">
-                  Platform blog posts are being prepared.
-                </p>
-              </article>
-            )}
-          </div>
-        </section>
-      </main>
-    </div>
+      <section className="border-t border-line bg-canvas py-14">
+        <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
+          {posts.length ? (
+            posts.map((post) => (
+              <PublicBlogCard key={post.id} locale={locale} post={post} />
+            ))
+          ) : (
+            <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
+              <h2 className="text-2xl font-black tracking-tight text-ink">No published posts yet</h2>
+              <p className="mt-3 text-base leading-8 text-muted">
+                Platform blog posts are being prepared.
+              </p>
+            </article>
+          )}
+        </div>
+      </section>
+    </PublicPlatformShell>
   );
 }
 
@@ -428,7 +401,6 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   );
   const requestHeaders = await headers();
   const { branding, whiteLabel } = await loadPlatformShellBranding();
-  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     categorySlug: category.slug,
     contentId: category.id,
@@ -439,33 +411,30 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
-      <main className="bg-canvas">
-        <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog category</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
-            {translatedCategory.name}
-          </h1>
-          {translatedCategory.description ? (
-            <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">{translatedCategory.description}</p>
-          ) : null}
-        </section>
-        <section className="border-t border-line bg-canvas py-14">
-          <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
-            {posts.length ? (
-              posts.map((post) => (
-                <PublicBlogCard key={post.id} locale={locale} post={post} />
-              ))
-            ) : (
-              <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
-                <h2 className="text-2xl font-black tracking-tight text-ink">No published posts in this category yet</h2>
-              </article>
-            )}
-          </div>
-        </section>
-      </main>
-    </div>
+    <PublicPlatformShell branding={branding} locale={locale} whiteLabel={whiteLabel}>
+      <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog category</p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
+          {translatedCategory.name}
+        </h1>
+        {translatedCategory.description ? (
+          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">{translatedCategory.description}</p>
+        ) : null}
+      </section>
+      <section className="border-t border-line bg-canvas py-14">
+        <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
+          {posts.length ? (
+            posts.map((post) => (
+              <PublicBlogCard key={post.id} locale={locale} post={post} />
+            ))
+          ) : (
+            <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
+              <h2 className="text-2xl font-black tracking-tight text-ink">No published posts in this category yet</h2>
+            </article>
+          )}
+        </div>
+      </section>
+    </PublicPlatformShell>
   );
 }
 
@@ -482,7 +451,6 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   );
   const requestHeaders = await headers();
   const { branding, whiteLabel } = await loadPlatformShellBranding();
-  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: tag.id,
     locale,
@@ -493,33 +461,30 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
-      <main className="bg-canvas">
-        <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog tag</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
-            {translatedTag.name}
-          </h1>
-          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
-            {tagDescription(translatedTag)}
-          </p>
-        </section>
-        <section className="border-t border-line bg-canvas py-14">
-          <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
-            {posts.length ? (
-              posts.map((post) => (
-                <PublicBlogCard key={post.id} locale={locale} post={post} />
-              ))
-            ) : (
-              <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
-                <h2 className="text-2xl font-black tracking-tight text-ink">No published posts with this tag yet</h2>
-              </article>
-            )}
-          </div>
-        </section>
-      </main>
-    </div>
+    <PublicPlatformShell branding={branding} locale={locale} whiteLabel={whiteLabel}>
+      <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog tag</p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
+          {translatedTag.name}
+        </h1>
+        <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
+          {tagDescription(translatedTag)}
+        </p>
+      </section>
+      <section className="border-t border-line bg-canvas py-14">
+        <div className="mx-auto grid max-w-5xl gap-5 px-4 sm:px-6 lg:px-8">
+          {posts.length ? (
+            posts.map((post) => (
+              <PublicBlogCard key={post.id} locale={locale} post={post} />
+            ))
+          ) : (
+            <article className="rounded-[2rem] border border-line bg-white p-6 text-center shadow-sm">
+              <h2 className="text-2xl font-black tracking-tight text-ink">No published posts with this tag yet</h2>
+            </article>
+          )}
+        </div>
+      </section>
+    </PublicPlatformShell>
   );
 }
 
@@ -534,7 +499,6 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   const sections = bodySections(translatedPost.content);
   const requestHeaders = await headers();
   const { branding, whiteLabel } = await loadPlatformShellBranding();
-  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: post.id,
     locale,
@@ -545,48 +509,45 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
-      <main className="bg-canvas">
-        <article>
-          <header className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
-              {translatedPost.authorName}
+    <PublicPlatformShell branding={branding} locale={locale} whiteLabel={whiteLabel}>
+      <article>
+        <header className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
+            {translatedPost.authorName}
+          </p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
+            {translatedPost.title}
+          </h1>
+          {translatedPost.excerpt ? (
+            <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
+              {translatedPost.excerpt}
             </p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
-              {translatedPost.title}
-            </h1>
-            {translatedPost.excerpt ? (
-              <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
-                {translatedPost.excerpt}
-              </p>
-            ) : null}
-          </header>
+          ) : null}
+        </header>
 
-          <section className="border-t border-line bg-white py-16">
-            <div className="mx-auto grid max-w-3xl gap-6 px-4 sm:px-6 lg:px-8">
-              {sections.length ? (
-                sections.map((section, index) => (
-                  <section className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm" key={`${section.heading}-${index}`}>
-                    {section.heading ? (
-                      <h2 className="text-2xl font-black tracking-tight text-ink">{section.heading}</h2>
-                    ) : null}
-                    {section.body ? (
-                      <p className="mt-3 whitespace-pre-line text-base leading-8 text-muted">{section.body}</p>
-                    ) : null}
-                  </section>
-                ))
-              ) : (
-                <section className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm">
-                  <p className="text-base leading-8 text-muted">
-                    This platform blog post is published. Article content is being prepared.
-                  </p>
+        <section className="border-t border-line bg-white py-16">
+          <div className="mx-auto grid max-w-3xl gap-6 px-4 sm:px-6 lg:px-8">
+            {sections.length ? (
+              sections.map((section, index) => (
+                <section className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm" key={`${section.heading}-${index}`}>
+                  {section.heading ? (
+                    <h2 className="text-2xl font-black tracking-tight text-ink">{section.heading}</h2>
+                  ) : null}
+                  {section.body ? (
+                    <p className="mt-3 whitespace-pre-line text-base leading-8 text-muted">{section.body}</p>
+                  ) : null}
                 </section>
-              )}
-            </div>
-          </section>
-        </article>
-      </main>
-    </div>
+              ))
+            ) : (
+              <section className="rounded-[2rem] border border-line bg-canvas p-6 shadow-sm">
+                <p className="text-base leading-8 text-muted">
+                  This platform blog post is published. Article content is being prepared.
+                </p>
+              </section>
+            )}
+          </div>
+        </section>
+      </article>
+    </PublicPlatformShell>
   );
 }

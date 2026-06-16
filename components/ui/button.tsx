@@ -2,11 +2,12 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "ghost" | "platform" | "primary" | "secondary";
 };
 
 const variants = {
   primary: "bg-ink text-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] hover:bg-slate-800",
+  platform: "text-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.35)] hover:opacity-90 [background-color:var(--platform-primary,#0f172a)]",
   secondary: "border border-slate-200 bg-white text-ink shadow-sm hover:border-slate-300 hover:bg-slate-50",
   ghost: "text-muted hover:bg-slate-100 hover:text-ink"
 };
@@ -30,8 +31,8 @@ export function Button({
 }
 
 type ButtonLinkProps = React.ComponentProps<typeof Link> & {
-  variant?: "primary" | "secondary" | "ghost";
   className?: string;
+  variant?: "ghost" | "platform" | "primary" | "secondary";
 };
 
 export function ButtonLink({

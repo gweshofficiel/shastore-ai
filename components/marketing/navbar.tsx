@@ -47,7 +47,7 @@ export function MarketingNavbar({
             Login
           </Link>
         </nav>
-        <ButtonLink href="/register">Start free</ButtonLink>
+        <ButtonLink href="/register" variant="platform">Start free</ButtonLink>
       </div>
       {showPoweredBy && poweredByLabel ? (
         <div className="border-t border-line/70 bg-white/90 px-4 py-2 text-center text-xs font-semibold text-muted sm:px-6 lg:px-8">
