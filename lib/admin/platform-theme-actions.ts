@@ -37,6 +37,10 @@ import {
   importThemeToDraft,
   validateThemeImport
 } from "@/src/lib/platform-theme/platform-theme-import-export";
+import {
+  publishWhiteLabelSettings,
+  updateWhiteLabelDraft
+} from "@/src/lib/platform-theme/platform-white-label";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -51,6 +55,8 @@ type PlatformThemeAction =
   | "admin_platform_theme_preset_archive"
   | "admin_platform_theme_import_validate"
   | "admin_platform_theme_import_draft"
+  | "admin_platform_theme_white_label_save_draft"
+  | "admin_platform_theme_white_label_publish"
   | "admin_platform_theme_favicon_upload"
   | "admin_platform_theme_favicon_remove_draft"
   | "admin_platform_theme_favicon_preview"
@@ -106,6 +112,22 @@ function platformImportExportRedirect(
   }
 
   redirect(`/admin/platform-theme?${params.toString()}#theme-import-export`);
+}
+
+function platformWhiteLabelRedirect(status: "error" | "success", message: string): never {
+  redirect(`/admin/platform-theme?whiteLabelMessage=${encodeURIComponent(message)}&whiteLabelStatus=${status}#white-label-branding`);
+}
+
+function readWhiteLabelDraftInput(formData: FormData) {
+  return {
+    brandName: formData.get("brandName"),
+    documentationUrl: formData.get("documentationUrl"),
+    legalName: formData.get("legalName"),
+    poweredByLabel: formData.get("poweredByLabel"),
+    showPoweredBy: formData.get("showPoweredBy") === "true",
+    supportEmail: formData.get("supportEmail"),
+    supportUrl: formData.get("supportUrl")
+  };
 }
 
 async function readThemeImportFile(formData: FormData) {
@@ -547,5 +569,45 @@ export async function importThemeToDraftAction(formData: FormData) {
       store_themes_touched: 0
     });
     platformImportExportRedirect("error", error instanceof Error ? error.message : "Import failed.");
+  }
+}
+
+export async function saveWhiteLabelDraftAction(formData: FormData) {
+  try {
+    const record = await updateWhiteLabelDraft(readWhiteLabelDraftInput(formData));
+    await recordPlatformThemeAction("admin_platform_theme_white_label_save_draft", {
+      brand_name: record.draft.brandName,
+      draft_only: true,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformWhiteLabelRedirect("success", "White-label draft saved.");
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_white_label_save_draft", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "White-label draft save failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformWhiteLabelRedirect("error", error instanceof Error ? error.message : "White-label draft save failed.");
+  }
+}
+
+export async function publishWhiteLabelSettingsAction() {
+  try {
+    const record = await publishWhiteLabelSettings();
+    await recordPlatformThemeAction("admin_platform_theme_white_label_publish", {
+      brand_name: record.published.brandName,
+      public_theme_changed: true,
+      store_themes_touched: 0
+    });
+    platformWhiteLabelRedirect("success", "White-label settings published to platform shell.");
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_white_label_publish", {
+      error_message: error instanceof Error ? error.message : "White-label publish failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformWhiteLabelRedirect("error", error instanceof Error ? error.message : "White-label publish failed.");
   }
 }

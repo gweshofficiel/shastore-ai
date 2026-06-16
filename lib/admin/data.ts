@@ -69,6 +69,12 @@ import {
   type PlatformThemePresetRecord
 } from "@/src/lib/platform-theme/platform-theme-presets";
 import {
+  getWhiteLabelSettings,
+  type PlatformWhiteLabelSettings,
+  type PlatformWhiteLabelStatus,
+  type PlatformWhiteLabelValidation
+} from "@/src/lib/platform-theme/platform-white-label";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -690,6 +696,14 @@ export type AdminPlatformThemeControl = {
   }>;
   presets: PlatformThemePresetRecord[];
   versions: PlatformThemeVersionRecord[];
+  whiteLabel: {
+    draft: PlatformWhiteLabelSettings;
+    hasDraftChanges: boolean;
+    hasPublished: boolean;
+    published: PlatformWhiteLabelSettings;
+    status: PlatformWhiteLabelStatus;
+    validation: PlatformWhiteLabelValidation;
+  };
 };
 
 export type AdminTemplateManagementControl = {
@@ -4405,7 +4419,7 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme, versions, presets] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme, versions, presets, whiteLabelRecord] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
@@ -4415,7 +4429,8 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     resolvePlatformBranding(),
     resolveAdminBranding(),
     listThemeVersions(),
-    listThemePresets()
+    listThemePresets(),
+    getWhiteLabelSettings()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4437,7 +4452,6 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     draft,
     favicon: currentFavicon.favicon,
     futureHooks: [
-      "White-label platform branding",
       "Reseller branding inheritance"
     ],
     logo: currentLogo.logo,
@@ -4508,7 +4522,15 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       value: platformThemeValue(section, settingsByKey.get(section.sectionKey), "Not configured")
     })),
     presets,
-    versions
+    versions,
+    whiteLabel: {
+      draft: whiteLabelRecord.draft,
+      hasDraftChanges: whiteLabelRecord.hasDraftChanges,
+      hasPublished: whiteLabelRecord.hasPublished,
+      published: whiteLabelRecord.published,
+      status: whiteLabelRecord.status,
+      validation: whiteLabelRecord.validation
+    }
   };
 }
 

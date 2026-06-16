@@ -24,6 +24,11 @@ import {
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
 import {
+  buildWhiteLabelShellProps,
+  getPublishedWhiteLabelSettings,
+  type PlatformWhiteLabelShellProps
+} from "@/src/lib/platform-theme/platform-white-label";
+import {
   buildPlatformLocaleThemeAttributes,
   getPlatformLocaleTheme
 } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
@@ -116,11 +121,13 @@ function platformThemeStyle(branding: PlatformBranding, locale: string): CSSProp
 export function PublicPlatformPageView({
   blocks = [],
   branding,
-  page
+  page,
+  whiteLabel
 }: {
   blocks?: PlatformPageBlockRecord[];
   branding: PlatformBranding;
   page: PublicPlatformPage;
+  whiteLabel: PlatformWhiteLabelShellProps;
 }) {
   const sections = bodySections(page.body);
   const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
@@ -133,7 +140,7 @@ export function PublicPlatformPageView({
       lang={localeThemeAttributes.lang}
       style={platformThemeStyle(branding, locale)}
     >
-      <MarketingNavbar logoUrl={branding.logoUrl} />
+      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
@@ -225,12 +232,14 @@ export async function renderPublicPlatformPage(path: string, locale?: string) {
   });
 
   const branding = await resolvePlatformBranding();
+  const whiteLabel = buildWhiteLabelShellProps(await getPublishedWhiteLabelSettings());
 
   return (
     <PublicPlatformPageView
       blocks={blocks}
       branding={branding}
       page={locale ? getPlatformPageTranslation(page, locale) : page}
+      whiteLabel={whiteLabel}
     />
   );
 }

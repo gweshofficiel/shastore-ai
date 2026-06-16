@@ -4,6 +4,7 @@ import {
   canInternalTeamRoleAccessPath,
   type InternalTeamRole
 } from "@/lib/admin/internal-team-runtime";
+import type { PlatformWhiteLabelShellProps } from "@/src/lib/platform-theme/platform-white-label";
 
 export const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "overview" },
@@ -38,12 +39,13 @@ export const adminNavItems = [
 ] as const;
 
 export function AdminSidebar({
+  brandName = "SHASTORE",
   internalRole,
   logoUrl
 }: {
   internalRole: InternalTeamRole;
   logoUrl?: string | null;
-}) {
+} & Pick<PlatformWhiteLabelShellProps, "brandName">) {
   const visibleItems = adminNavItems.filter((item) => canInternalTeamRoleAccessPath(internalRole, item.href));
 
   return (
@@ -57,15 +59,15 @@ export function AdminSidebar({
           >
             {logoUrl ? (
               <object
-                aria-label="SHASTORE Admin"
+                aria-label={`${brandName} Admin`}
                 className="h-9 max-w-44"
                 data={logoUrl}
                 type="image/png"
               >
-                SHASTORE Admin
+                {brandName} Admin
               </object>
             ) : (
-              "SHASTORE Admin"
+              `${brandName} Admin`
             )}
           </Link>
           <p className="hidden text-xs font-semibold text-slate-500 lg:mt-1 lg:block">

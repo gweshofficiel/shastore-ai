@@ -32,6 +32,11 @@ import {
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
 import {
+  buildWhiteLabelShellProps,
+  getPublishedWhiteLabelSettings,
+  type PlatformWhiteLabelShellProps
+} from "@/src/lib/platform-theme/platform-white-label";
+import {
   buildPlatformLocaleThemeAttributes,
   getPlatformLocaleTheme
 } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
@@ -95,6 +100,18 @@ async function withPlatformThemeMetadata(metadata: Metadata): Promise<Metadata> 
         }
       }
     : metadata;
+}
+
+async function loadPlatformShellBranding() {
+  const [branding, whiteLabel] = await Promise.all([
+    resolvePlatformBranding(),
+    getPublishedWhiteLabelSettings()
+  ]);
+
+  return {
+    branding,
+    whiteLabel: buildWhiteLabelShellProps(whiteLabel)
+  };
 }
 
 function platformThemeStyle(branding: PlatformBranding, locale?: string | null): CSSProperties {
@@ -352,7 +369,7 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   const categories = rawCategories.map((category) => locale ? translateCategory(category, locale) : category);
   const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
   const requestHeaders = await headers();
-  const branding = await resolvePlatformBranding();
+  const { branding, whiteLabel } = await loadPlatformShellBranding();
   const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     locale,
@@ -363,7 +380,7 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
 
   return (
     <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} />
+      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>SHASTORE AI</p>
@@ -410,7 +427,7 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
     locale ? translatePlatformBlogPost(post, locale) : post
   );
   const requestHeaders = await headers();
-  const branding = await resolvePlatformBranding();
+  const { branding, whiteLabel } = await loadPlatformShellBranding();
   const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     categorySlug: category.slug,
@@ -423,7 +440,7 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
 
   return (
     <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} />
+      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog category</p>
@@ -464,7 +481,7 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
     locale ? translatePlatformBlogPost(post, locale) : post
   );
   const requestHeaders = await headers();
-  const branding = await resolvePlatformBranding();
+  const { branding, whiteLabel } = await loadPlatformShellBranding();
   const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: tag.id,
@@ -477,7 +494,7 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
 
   return (
     <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} />
+      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog tag</p>
@@ -516,7 +533,7 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   const translatedPost = locale ? translatePlatformBlogPost(post, locale) : post;
   const sections = bodySections(translatedPost.content);
   const requestHeaders = await headers();
-  const branding = await resolvePlatformBranding();
+  const { branding, whiteLabel } = await loadPlatformShellBranding();
   const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: post.id,
@@ -529,7 +546,7 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
 
   return (
     <div {...directionProps} style={platformThemeStyle(branding, locale)}>
-      <MarketingNavbar logoUrl={branding.logoUrl} />
+      <MarketingNavbar logoUrl={branding.logoUrl} {...whiteLabel} />
       <main className="bg-canvas">
         <article>
           <header className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">

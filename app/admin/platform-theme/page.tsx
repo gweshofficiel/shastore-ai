@@ -15,10 +15,12 @@ import {
   previewPlatformBranding,
   previewPlatformLogoAction,
   publishPlatformBrandingPlaceholder,
+  publishWhiteLabelSettingsAction,
   removeDraftPlatformFaviconAction,
   removeDraftPlatformLogoAction,
   resetPlatformBrandingPlaceholder,
   savePlatformBrandingDraft,
+  saveWhiteLabelDraftAction,
   uploadPlatformFaviconAction,
   uploadPlatformLogoAction
 } from "@/lib/admin/platform-theme-actions";
@@ -87,6 +89,8 @@ export default async function AdminPlatformThemePage({
     importExportStatus?: string;
     importSettingCount?: string;
     importWarnings?: string;
+    whiteLabelMessage?: string;
+    whiteLabelStatus?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -115,6 +119,8 @@ export default async function AdminPlatformThemePage({
   const importExportMessage = params?.importExportMessage;
   const importSettingCount = params?.importSettingCount ? Number(params.importSettingCount) : null;
   const importWarnings = params?.importWarnings?.split(" | ").filter(Boolean) ?? [];
+  const whiteLabelStatus = params?.whiteLabelStatus === "success" ? "success" : params?.whiteLabelStatus === "error" ? "error" : null;
+  const whiteLabelMessage = params?.whiteLabelMessage;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -139,6 +145,7 @@ export default async function AdminPlatformThemePage({
           { label: "RTL languages", value: control.readiness.filter((item) => item.direction === "RTL").length },
           { label: "Theme versions", value: control.versions.length },
           { label: "Theme presets", value: control.presets.filter((preset) => preset.status === "active").length },
+          { label: "White label", value: control.whiteLabel.hasPublished ? "Published" : "Draft" },
           { label: "Store themes touched", value: 0 }
         ]}
       />
@@ -232,6 +239,19 @@ export default async function AdminPlatformThemePage({
               ))}
             </ul>
           ) : null}
+        </div>
+      ) : null}
+
+      {whiteLabelStatus && whiteLabelMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            whiteLabelStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={whiteLabelStatus === "success" ? "status" : "alert"}
+        >
+          {whiteLabelMessage}
         </div>
       ) : null}
 
@@ -924,6 +944,156 @@ export default async function AdminPlatformThemePage({
           </p>
         </div>
         <PlatformThemeImportExportPanel />
+      </section>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="white-label-branding">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">White Label Branding</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform shell identity</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Configure platform-level brand name and support links for the admin and public website shell only. Draft changes do not affect live shell until published. Customer storefronts and reseller inheritance are not affected.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <article className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Draft preview</p>
+            <h3 className="mt-2 text-lg font-black text-slate-950">{control.whiteLabel.draft.brandName}</h3>
+            <p className="mt-2 text-sm text-slate-600">{control.whiteLabel.draft.legalName ?? "No legal name configured"}</p>
+            <div className="mt-4 grid gap-2 text-sm font-semibold text-slate-600">
+              <p>Support email: {control.whiteLabel.draft.supportEmail ?? "Not set"}</p>
+              <p>Support URL: {control.whiteLabel.draft.supportUrl ?? "Not set"}</p>
+              <p>Documentation URL: {control.whiteLabel.draft.documentationUrl ?? "Not set"}</p>
+              <p>Powered by: {control.whiteLabel.draft.showPoweredBy ? control.whiteLabel.draft.poweredByLabel ?? "Enabled" : "Hidden"}</p>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <AdminBadge tone={control.whiteLabel.validation.ok ? "green" : "red"}>
+                {control.whiteLabel.validation.ok ? "Valid draft" : "Invalid draft"}
+              </AdminBadge>
+              <AdminBadge tone={control.whiteLabel.hasDraftChanges ? "amber" : "slate"}>
+                {control.whiteLabel.hasDraftChanges ? "Unpublished changes" : "Matches published"}
+              </AdminBadge>
+            </div>
+          </article>
+
+          <article className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Published shell preview</p>
+            <h3 className="mt-2 text-lg font-black text-slate-950">{control.whiteLabel.published.brandName}</h3>
+            <p className="mt-2 text-sm text-slate-600">{control.whiteLabel.published.legalName ?? "No legal name configured"}</p>
+            <div className="mt-4 grid gap-2 text-sm font-semibold text-slate-600">
+              <p>Support email: {control.whiteLabel.published.supportEmail ?? "Not set"}</p>
+              <p>Support URL: {control.whiteLabel.published.supportUrl ?? "Not set"}</p>
+              <p>Documentation URL: {control.whiteLabel.published.documentationUrl ?? "Not set"}</p>
+              <p>Powered by: {control.whiteLabel.published.showPoweredBy ? control.whiteLabel.published.poweredByLabel ?? "Enabled" : "Hidden"}</p>
+            </div>
+            <div className="mt-4">
+              <AdminBadge tone={control.whiteLabel.hasPublished ? "green" : "amber"}>
+                {control.whiteLabel.hasPublished ? "Published shell active" : "Defaults only"}
+              </AdminBadge>
+            </div>
+          </article>
+        </div>
+
+        {control.whiteLabel.validation.warnings.length ? (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-700">
+            <p className="font-black uppercase tracking-[0.14em]">Validation warnings</p>
+            <ul className="mt-3 list-disc space-y-1 pl-5">
+              {control.whiteLabel.validation.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <form action={saveWhiteLabelDraftAction} className="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-2">
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Brand name</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.brandName}
+              name="brandName"
+              required
+              type="text"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Legal name</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.legalName ?? ""}
+              name="legalName"
+              placeholder="Optional legal entity name"
+              type="text"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Support email</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.supportEmail ?? ""}
+              name="supportEmail"
+              placeholder="support@example.com"
+              type="email"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Support URL</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.supportUrl ?? ""}
+              name="supportUrl"
+              placeholder="https://support.example.com"
+              type="url"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700 lg:col-span-2">
+            <span>Documentation URL</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.documentationUrl ?? ""}
+              name="documentationUrl"
+              placeholder="https://docs.example.com"
+              type="url"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            <span>Powered by label</span>
+            <input
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              defaultValue={control.whiteLabel.draft.poweredByLabel ?? ""}
+              name="poweredByLabel"
+              placeholder="Powered by SHASTORE"
+              type="text"
+            />
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+            <input
+              defaultChecked={control.whiteLabel.draft.showPoweredBy}
+              name="showPoweredBy"
+              type="checkbox"
+              value="true"
+            />
+            <span>Show powered by in public shell</span>
+          </label>
+          <div className="flex flex-wrap gap-2 lg:col-span-2">
+            <button
+              className="h-11 rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-700"
+              type="submit"
+            >
+              Save White Label Draft
+            </button>
+          </div>
+        </form>
+
+        <form action={publishWhiteLabelSettingsAction} className="flex flex-wrap gap-2">
+          <button
+            className="h-11 rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+            disabled={!control.whiteLabel.validation.ok}
+            type="submit"
+          >
+            Publish White Label
+          </button>
+        </form>
       </section>
 
       <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-version-history">
