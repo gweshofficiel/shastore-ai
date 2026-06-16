@@ -28,6 +28,7 @@ import {
 } from "@/src/lib/platform-theme/platform-rtl-runtime";
 import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 import { PlatformThemePresetActions } from "@/components/admin/platform-theme-preset-actions";
+import { PlatformThemeImportExportPanel } from "@/components/admin/platform-theme-import-export-panel";
 import { canRollbackThemeVersion, snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
 
 function createdByLabel(createdBy: string | null) {
@@ -82,6 +83,10 @@ export default async function AdminPlatformThemePage({
     rollbackStatus?: string;
     presetMessage?: string;
     presetStatus?: string;
+    importExportMessage?: string;
+    importExportStatus?: string;
+    importSettingCount?: string;
+    importWarnings?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -99,6 +104,17 @@ export default async function AdminPlatformThemePage({
   const rollbackMessage = params?.rollbackMessage;
   const presetStatus = params?.presetStatus === "success" ? "success" : params?.presetStatus === "error" ? "error" : null;
   const presetMessage = params?.presetMessage;
+  const importExportStatus =
+    params?.importExportStatus === "success"
+      ? "success"
+      : params?.importExportStatus === "error"
+        ? "error"
+        : params?.importExportStatus === "validated"
+          ? "validated"
+          : null;
+  const importExportMessage = params?.importExportMessage;
+  const importSettingCount = params?.importSettingCount ? Number(params.importSettingCount) : null;
+  const importWarnings = params?.importWarnings?.split(" | ").filter(Boolean) ?? [];
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -189,6 +205,33 @@ export default async function AdminPlatformThemePage({
           role={presetStatus === "success" ? "status" : "alert"}
         >
           {presetMessage}
+        </div>
+      ) : null}
+
+      {importExportStatus && importExportMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            importExportStatus === "error"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : importExportStatus === "validated"
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+          role={importExportStatus === "error" ? "alert" : "status"}
+        >
+          <p>{importExportMessage}</p>
+          {typeof importSettingCount === "number" && !Number.isNaN(importSettingCount) ? (
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
+              Imported settings count: {importSettingCount}
+            </p>
+          ) : null}
+          {importWarnings.length ? (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs font-semibold leading-5 opacity-90">
+              {importWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
@@ -870,6 +913,17 @@ export default async function AdminPlatformThemePage({
             </tr>
           ))}
         </AdminTable>
+      </section>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-import-export">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Import / Export</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform theme configuration files</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Export draft or published platform theme settings as JSON. Import applies values to draft branding only and never auto-publishes. Customer storefronts and store themes are not affected.
+          </p>
+        </div>
+        <PlatformThemeImportExportPanel />
       </section>
 
       <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-version-history">

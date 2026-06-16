@@ -33,6 +33,10 @@ import {
   archiveThemePreset,
   createPresetFromCurrentDraft
 } from "@/src/lib/platform-theme/platform-theme-presets";
+import {
+  importThemeToDraft,
+  validateThemeImport
+} from "@/src/lib/platform-theme/platform-theme-import-export";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -45,6 +49,8 @@ type PlatformThemeAction =
   | "admin_platform_theme_preset_apply"
   | "admin_platform_theme_preset_create_from_draft"
   | "admin_platform_theme_preset_archive"
+  | "admin_platform_theme_import_validate"
+  | "admin_platform_theme_import_draft"
   | "admin_platform_theme_favicon_upload"
   | "admin_platform_theme_favicon_remove_draft"
   | "admin_platform_theme_favicon_preview"
@@ -79,6 +85,41 @@ function platformRollbackRedirect(status: "error" | "success", message: string, 
 
 function platformPresetRedirect(status: "error" | "success", message: string): never {
   redirect(`/admin/platform-theme?presetStatus=${status}&presetMessage=${encodeURIComponent(message)}#theme-preset-manager`);
+}
+
+function platformImportExportRedirect(
+  status: "error" | "success" | "validated",
+  message: string,
+  details?: { importedSettingCount?: number; warnings?: string[] }
+): never {
+  const params = new URLSearchParams({
+    importExportMessage: message,
+    importExportStatus: status
+  });
+
+  if (typeof details?.importedSettingCount === "number") {
+    params.set("importSettingCount", String(details.importedSettingCount));
+  }
+
+  if (details?.warnings?.length) {
+    params.set("importWarnings", details.warnings.slice(0, 5).join(" | "));
+  }
+
+  redirect(`/admin/platform-theme?${params.toString()}#theme-import-export`);
+}
+
+async function readThemeImportFile(formData: FormData) {
+  const file = formData.get("themeImportFile");
+
+  if (!(file instanceof File) || !file.size) {
+    throw new Error("Select a JSON theme export file.");
+  }
+
+  if (file.size > 1024 * 1024) {
+    throw new Error("Theme import file must be 1 MB or smaller.");
+  }
+
+  return file.text();
 }
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
@@ -432,5 +473,79 @@ export async function archiveThemePresetAction(formData: FormData) {
       store_themes_touched: 0
     });
     platformPresetRedirect("error", error instanceof Error ? error.message : "Preset archive failed.");
+  }
+}
+
+export async function validateThemeImportAction(formData: FormData) {
+  try {
+    const fileData = await readThemeImportFile(formData);
+    const result = await validateThemeImport(fileData);
+
+    if (!result.ok) {
+      await recordPlatformThemeAction("admin_platform_theme_import_validate", {
+        draft_only: true,
+        error_message: result.errors.join("; "),
+        public_theme_changed: false,
+        store_themes_touched: 0
+      });
+      platformImportExportRedirect("error", result.errors.join(" "));
+    }
+
+    await recordPlatformThemeAction("admin_platform_theme_import_validate", {
+      draft_only: true,
+      imported_setting_count: result.importedSettingCount,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+
+    const message =
+      result.warnings.length > 0
+        ? `Validation passed with ${result.warnings.length} warning(s). ${result.importedSettingCount} settings ready to import.`
+        : `Validation passed. ${result.importedSettingCount} settings ready to import.`;
+
+    platformImportExportRedirect("validated", message, {
+      importedSettingCount: result.importedSettingCount,
+      warnings: result.warnings
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_import_validate", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Validation failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformImportExportRedirect("error", error instanceof Error ? error.message : "Validation failed.");
+  }
+}
+
+export async function importThemeToDraftAction(formData: FormData) {
+  try {
+    const fileData = await readThemeImportFile(formData);
+    const result = await importThemeToDraft(fileData);
+
+    await recordPlatformThemeAction("admin_platform_theme_import_draft", {
+      draft_only: true,
+      imported_setting_count: result.appliedSettingCount,
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+
+    const message =
+      result.warnings.length > 0
+        ? `Theme imported to draft (${result.appliedSettingCount} settings). ${result.warnings.length} warning(s). Published theme unchanged.`
+        : `Theme imported to draft (${result.appliedSettingCount} settings). Published theme unchanged.`;
+
+    platformImportExportRedirect("success", message, {
+      importedSettingCount: result.appliedSettingCount,
+      warnings: result.warnings
+    });
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_import_draft", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Import failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformImportExportRedirect("error", error instanceof Error ? error.message : "Import failed.");
   }
 }
