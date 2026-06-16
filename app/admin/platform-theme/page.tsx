@@ -3,7 +3,8 @@ import {
   AdminBadge,
   AdminHeader,
   AdminStatGrid,
-  AdminTable
+  AdminTable,
+  formatAdminDate
 } from "@/components/admin/admin-control";
 import { getAdminPlatformThemeControl } from "@/lib/admin/data";
 import {
@@ -24,6 +25,20 @@ import {
   buildPlatformRtlClassNames
 } from "@/src/lib/platform-theme/platform-rtl-runtime";
 import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
+import { snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
+
+function createdByLabel(createdBy: string | null) {
+  if (!createdBy) return "Not recorded";
+
+  return createdBy.length > 12 ? `${createdBy.slice(0, 8)}…` : createdBy;
+}
+
+function toneForSnapshotType(snapshotType: string) {
+  if (snapshotType === "published") return "green" as const;
+  if (snapshotType === "draft_saved") return "amber" as const;
+  if (snapshotType === "asset_uploaded") return "blue" as const;
+  return "slate" as const;
+}
 
 function toneForStatus(status: string) {
   if (status === "ready") {
@@ -94,6 +109,7 @@ export default async function AdminPlatformThemePage({
           { label: "Public previews", value: `${readyPublicPreviews}/${control.previews.publicWebsite.length}` },
           { label: "Admin previews", value: `${readyAdminPreviews}/${control.previews.adminDashboard.length}` },
           { label: "RTL languages", value: control.readiness.filter((item) => item.direction === "RTL").length },
+          { label: "Theme versions", value: control.versions.length },
           { label: "Store themes touched", value: 0 }
         ]}
       />
@@ -737,6 +753,43 @@ export default async function AdminPlatformThemePage({
           </tr>
         ))}
       </AdminTable>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="theme-version-history">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Version History</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform theme snapshots</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Version snapshots are recorded when drafts are saved, branding is published, or logo/favicon assets are uploaded. Snapshots are audit-only in this phase — rollback is not available yet.
+          </p>
+        </div>
+        <AdminTable
+          empty={!control.versions.length ? "No theme versions have been recorded yet. Save a draft, publish branding, or upload an asset to create the first snapshot." : null}
+          headers={["Version", "Type", "Created", "Created by", "Note", "Changed settings", "Action"]}
+        >
+          {control.versions.map((version) => (
+            <tr key={version.id}>
+              <td className="px-5 py-4 font-bold text-slate-950">#{version.versionNumber}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForSnapshotType(version.snapshotType)}>
+                  {snapshotTypeLabel(version.snapshotType)}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{formatAdminDate(version.createdAt)}</td>
+              <td className="px-5 py-4 text-xs font-semibold text-slate-500">{createdByLabel(version.createdBy)}</td>
+              <td className="px-5 py-4 text-slate-600">{version.note ?? "Snapshot"}</td>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-600">{version.changedSettingsSummary}</td>
+              <td className="px-5 py-4">
+                <Link
+                  className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                  href={`/admin/platform-theme/versions/${version.id}`}
+                >
+                  View snapshot
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (

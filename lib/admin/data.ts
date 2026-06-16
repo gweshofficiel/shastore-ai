@@ -61,6 +61,10 @@ import {
   type AdminPlatformBranding
 } from "@/src/lib/platform-theme/admin-platform-theme-resolver";
 import {
+  listThemeVersions,
+  type PlatformThemeVersionRecord
+} from "@/src/lib/platform-theme/platform-theme-versions";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -680,6 +684,7 @@ export type AdminPlatformThemeControl = {
     validationStatus: PlatformBrandValidationStatus;
     value: string;
   }>;
+  versions: PlatformThemeVersionRecord[];
 };
 
 export type AdminTemplateManagementControl = {
@@ -4395,7 +4400,7 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme, adminTheme, versions] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
@@ -4403,7 +4408,8 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     getCurrentPlatformFavicon(),
     listPlatformThemeAssets(),
     resolvePlatformBranding(),
-    resolveAdminBranding()
+    resolveAdminBranding(),
+    listThemeVersions()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4497,7 +4503,8 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       validationStatus: settingsByKey.get(section.sectionKey)?.validationStatus ?? "placeholder",
       validationMessage: settingsByKey.get(section.sectionKey)?.validationMessage ?? null,
       value: platformThemeValue(section, settingsByKey.get(section.sectionKey), "Not configured")
-    }))
+    })),
+    versions
   };
 }
 

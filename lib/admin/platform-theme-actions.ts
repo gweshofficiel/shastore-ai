@@ -22,6 +22,11 @@ import {
   getCurrentPlatformFavicon,
   uploadPlatformFavicon
 } from "@/src/lib/platform-theme/platform-favicon-upload";
+import {
+  createDraftThemeSnapshot,
+  createPublishedThemeSnapshot,
+  createThemeVersion
+} from "@/src/lib/platform-theme/platform-theme-versions";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -93,6 +98,7 @@ export async function savePlatformBrandingDraft(formData: FormData) {
     public_theme_changed: false,
     store_themes_touched: 0
   });
+  await createDraftThemeSnapshot();
 }
 
 export async function previewPlatformBranding() {
@@ -114,6 +120,7 @@ export async function resetPlatformBrandingPlaceholder() {
 export async function publishPlatformBrandingPlaceholder() {
   try {
     const publishedTheme = await publishThemeDraft();
+    await createPublishedThemeSnapshot();
     await recordPlatformThemeAction("admin_platform_theme_publish", {
       public_theme_changed: false,
       published_settings: publishedTheme.settings.length,
@@ -153,6 +160,7 @@ export async function uploadPlatformLogoAction(formData: FormData) {
 
   try {
     const result = await uploadPlatformLogo(file);
+    await createThemeVersion("asset_uploaded", "Platform logo uploaded");
     await recordPlatformThemeAction("admin_platform_theme_logo_upload", {
       draft_only: true,
       file_name: result.logo.fileName,
@@ -215,6 +223,7 @@ export async function uploadPlatformFaviconAction(formData: FormData) {
 
   try {
     const result = await uploadPlatformFavicon(file);
+    await createThemeVersion("asset_uploaded", "Platform favicon uploaded");
     await recordPlatformThemeAction("admin_platform_theme_favicon_upload", {
       draft_only: true,
       file_name: result.favicon.fileName,
