@@ -7,6 +7,7 @@ import {
   formatAdminDate
 } from "@/components/admin/admin-control";
 import { getAdminPlatformThemeControl } from "@/lib/admin/data";
+import { PlatformThemeVersionActions } from "@/components/admin/platform-theme-version-actions";
 import {
   discardPlatformBrandingDraft,
   previewPlatformFaviconAction,
@@ -25,7 +26,7 @@ import {
   buildPlatformRtlClassNames
 } from "@/src/lib/platform-theme/platform-rtl-runtime";
 import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
-import { snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
+import { canRollbackThemeVersion, snapshotTypeLabel } from "@/src/lib/platform-theme/platform-theme-versions";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -37,6 +38,7 @@ function toneForSnapshotType(snapshotType: string) {
   if (snapshotType === "published") return "green" as const;
   if (snapshotType === "draft_saved") return "amber" as const;
   if (snapshotType === "asset_uploaded") return "blue" as const;
+  if (snapshotType === "rollback_to_draft") return "slate" as const;
   return "slate" as const;
 }
 
@@ -74,6 +76,8 @@ export default async function AdminPlatformThemePage({
     logoStatus?: string;
     publishMessage?: string;
     publishStatus?: string;
+    rollbackMessage?: string;
+    rollbackStatus?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -87,6 +91,8 @@ export default async function AdminPlatformThemePage({
   const faviconMessage = params?.faviconMessage;
   const logoStatus = params?.logoStatus === "success" ? "success" : params?.logoStatus === "error" ? "error" : null;
   const logoMessage = params?.logoMessage;
+  const rollbackStatus = params?.rollbackStatus === "success" ? "success" : params?.rollbackStatus === "error" ? "error" : null;
+  const rollbackMessage = params?.rollbackMessage;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -150,6 +156,19 @@ export default async function AdminPlatformThemePage({
           role={faviconStatus === "success" ? "status" : "alert"}
         >
           {faviconMessage}
+        </div>
+      ) : null}
+
+      {rollbackStatus && rollbackMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            rollbackStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={rollbackStatus === "success" ? "status" : "alert"}
+        >
+          {rollbackMessage}
         </div>
       ) : null}
 
@@ -759,12 +778,12 @@ export default async function AdminPlatformThemePage({
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Version History</p>
           <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform theme snapshots</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Version snapshots are recorded when drafts are saved, branding is published, or logo/favicon assets are uploaded. Snapshots are audit-only in this phase — rollback is not available yet.
+            Version snapshots are recorded when drafts are saved, branding is published, assets are uploaded, or a rollback restores draft values. Rollback replaces draft values only — publish is required to make changes live.
           </p>
         </div>
         <AdminTable
           empty={!control.versions.length ? "No theme versions have been recorded yet. Save a draft, publish branding, or upload an asset to create the first snapshot." : null}
-          headers={["Version", "Type", "Created", "Created by", "Note", "Changed settings", "Action"]}
+          headers={["Version", "Type", "Created", "Created by", "Note", "Changed settings", "Actions"]}
         >
           {control.versions.map((version) => (
             <tr key={version.id}>
@@ -779,12 +798,11 @@ export default async function AdminPlatformThemePage({
               <td className="px-5 py-4 text-slate-600">{version.note ?? "Snapshot"}</td>
               <td className="px-5 py-4 text-sm font-semibold text-slate-600">{version.changedSettingsSummary}</td>
               <td className="px-5 py-4">
-                <Link
-                  className="inline-flex h-9 items-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                  href={`/admin/platform-theme/versions/${version.id}`}
-                >
-                  View snapshot
-                </Link>
+                <PlatformThemeVersionActions
+                  canRollback={canRollbackThemeVersion(version.snapshotType)}
+                  versionId={version.id}
+                  versionNumber={version.versionNumber}
+                />
               </td>
             </tr>
           ))}

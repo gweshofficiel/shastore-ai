@@ -27,6 +27,7 @@ import {
   createPublishedThemeSnapshot,
   createThemeVersion
 } from "@/src/lib/platform-theme/platform-theme-versions";
+import { rollbackThemeVersionToDraft } from "@/src/lib/platform-theme/platform-theme-rollback";
 
 type PlatformThemeAction =
   | "admin_platform_theme_preview"
@@ -35,6 +36,7 @@ type PlatformThemeAction =
   | "admin_platform_theme_save_draft"
   | "admin_platform_theme_discard_draft"
   | "admin_platform_theme_publish"
+  | "admin_platform_theme_rollback_to_draft"
   | "admin_platform_theme_favicon_upload"
   | "admin_platform_theme_favicon_remove_draft"
   | "admin_platform_theme_favicon_preview"
@@ -52,6 +54,19 @@ function platformLogoRedirect(status: "error" | "success", message: string): nev
 
 function platformFaviconRedirect(status: "error" | "success", message: string): never {
   redirect(`/admin/platform-theme?faviconStatus=${status}&faviconMessage=${encodeURIComponent(message)}#platform-favicon`);
+}
+
+function platformRollbackRedirect(status: "error" | "success", message: string, versionNumber?: number): never {
+  const params = new URLSearchParams({
+    rollbackMessage: message,
+    rollbackStatus: status
+  });
+
+  if (versionNumber) {
+    params.set("rollbackVersion", String(versionNumber));
+  }
+
+  redirect(`/admin/platform-theme?${params.toString()}#theme-version-history`);
 }
 
 async function recordPlatformThemeAction(action: PlatformThemeAction, metadata: Record<string, unknown> = {}) {
@@ -275,4 +290,37 @@ export async function previewPlatformFaviconAction() {
     store_themes_touched: 0
   });
   platformFaviconRedirect("success", "Favicon preview refreshed.");
+}
+
+export async function rollbackThemeVersionToDraftAction(formData: FormData) {
+  const versionId = formData.get("versionId");
+
+  if (typeof versionId !== "string" || !versionId.trim()) {
+    platformRollbackRedirect("error", "Theme version id is required for rollback.");
+  }
+
+  try {
+    const result = await rollbackThemeVersionToDraft(versionId);
+    await recordPlatformThemeAction("admin_platform_theme_rollback_to_draft", {
+      draft_only: true,
+      public_theme_changed: false,
+      restored_settings: result.restoredSettingCount,
+      rollback_version_number: result.rollbackVersionNumber,
+      source_version_number: result.sourceVersionNumber,
+      store_themes_touched: 0
+    });
+    platformRollbackRedirect(
+      "success",
+      `Draft restored from version #${result.sourceVersionNumber}. Publish Branding required to make it live.`,
+      result.sourceVersionNumber
+    );
+  } catch (error) {
+    await recordPlatformThemeAction("admin_platform_theme_rollback_to_draft", {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Theme rollback failed.",
+      public_theme_changed: false,
+      store_themes_touched: 0
+    });
+    platformRollbackRedirect("error", error instanceof Error ? error.message : "Theme rollback failed.");
+  }
 }

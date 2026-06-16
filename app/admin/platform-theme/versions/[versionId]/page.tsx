@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminBadge, AdminHeader, AdminTable, formatAdminDate } from "@/components/admin/admin-control";
 import { Card } from "@/components/ui/card";
+import { PlatformThemeVersionActions } from "@/components/admin/platform-theme-version-actions";
 import {
+  canRollbackThemeVersion,
   getThemeVersion,
   snapshotTypeLabel
 } from "@/src/lib/platform-theme/platform-theme-versions";
@@ -40,6 +42,7 @@ function toneForSnapshotType(snapshotType: string) {
   if (snapshotType === "published") return "green" as const;
   if (snapshotType === "draft_saved") return "amber" as const;
   if (snapshotType === "asset_uploaded") return "blue" as const;
+  if (snapshotType === "rollback_to_draft") return "slate" as const;
   return "slate" as const;
 }
 
@@ -54,7 +57,7 @@ export default async function AdminPlatformThemeVersionPage({ params }: VersionP
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Read-only snapshot of platform theme settings captured for audit. Rollback is not available in this phase."
+        description="Read-only snapshot of platform theme settings captured for audit. Rollback restores draft values only and does not auto-publish."
         title={`Theme Version #${version.versionNumber}`}
       />
 
@@ -73,6 +76,11 @@ export default async function AdminPlatformThemeVersionPage({ params }: VersionP
           <p><span className="font-black text-slate-800">Captured at:</span> {formatAdminDate(version.snapshot.capturedAt)}</p>
           <p><span className="font-black text-slate-800">Summary:</span> {version.changedSettingsSummary}</p>
         </div>
+        <PlatformThemeVersionActions
+          canRollback={canRollbackThemeVersion(version.snapshotType)}
+          versionId={version.id}
+          versionNumber={version.versionNumber}
+        />
         <Link
           className="inline-flex h-9 w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
           href="/admin/platform-theme#theme-version-history"

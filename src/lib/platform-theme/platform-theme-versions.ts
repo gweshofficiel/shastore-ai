@@ -12,7 +12,8 @@ export type PlatformThemeSnapshotType =
   | "asset_uploaded"
   | "draft_saved"
   | "manual_snapshot"
-  | "published";
+  | "published"
+  | "rollback_to_draft";
 
 export type PlatformThemeVersionSnapshot = {
   assets: Array<{
@@ -64,7 +65,8 @@ const snapshotTypes: PlatformThemeSnapshotType[] = [
   "draft_saved",
   "published",
   "asset_uploaded",
-  "manual_snapshot"
+  "manual_snapshot",
+  "rollback_to_draft"
 ];
 
 const sensitiveKeys = new Set([
@@ -367,6 +369,10 @@ export async function createPublishedThemeSnapshot(note?: string | null) {
   return createThemeVersion("published", note ?? "Branding published");
 }
 
+export async function createRollbackThemeSnapshot(note?: string | null) {
+  return createThemeVersion("rollback_to_draft", note ?? "Rollback to draft");
+}
+
 export async function listThemeVersions(limit = 25) {
   await requireSuperAdmin();
   const admin = requireAdminClient();
@@ -409,5 +415,12 @@ export function snapshotTypeLabel(snapshotType: PlatformThemeSnapshotType) {
   if (snapshotType === "draft_saved") return "Draft saved";
   if (snapshotType === "published") return "Published";
   if (snapshotType === "asset_uploaded") return "Asset uploaded";
+  if (snapshotType === "rollback_to_draft") return "Rollback to draft";
   return "Manual snapshot";
+}
+
+export function canRollbackThemeVersion(snapshotType: PlatformThemeSnapshotType) {
+  return snapshotType === "draft_saved" ||
+    snapshotType === "published" ||
+    snapshotType === "manual_snapshot";
 }
