@@ -23,6 +23,10 @@ import {
   resolvePlatformBranding,
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
+import {
+  buildPlatformDirectionAttributes,
+  buildPlatformRtlClassNames
+} from "@/src/lib/platform-theme/platform-rtl-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -117,11 +121,17 @@ export function PublicPlatformPageView({
   page: PublicPlatformPage;
 }) {
   const sections = bodySections(page.body);
-  const direction = "direction" in page && page.direction === "rtl" ? "rtl" : "ltr";
   const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
+  const directionAttributes = buildPlatformDirectionAttributes(locale);
+  const directionClassName = buildPlatformRtlClassNames(locale);
 
   return (
-    <div dir={direction} lang={locale} style={platformThemeStyle(branding)}>
+    <div
+      className={directionClassName}
+      dir={directionAttributes.dir}
+      lang={directionAttributes.lang}
+      style={platformThemeStyle(branding)}
+    >
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">

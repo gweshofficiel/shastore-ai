@@ -18,6 +18,10 @@ import {
   uploadPlatformFaviconAction,
   uploadPlatformLogoAction
 } from "@/lib/admin/platform-theme-actions";
+import {
+  buildPlatformDirectionAttributes,
+  buildPlatformRtlClassNames
+} from "@/src/lib/platform-theme/platform-rtl-runtime";
 
 function toneForStatus(status: string) {
   if (status === "ready") {
@@ -40,6 +44,12 @@ function formatBytes(value: number | null) {
 
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
+
+const themePreviewLocales = [
+  { label: "English LTR preview", locale: "en" },
+  { label: "Arabic RTL preview", locale: "ar" },
+  { label: "French LTR preview", locale: "fr" }
+] as const;
 
 export default async function AdminPlatformThemePage({
   searchParams
@@ -631,6 +641,50 @@ export default async function AdminPlatformThemePage({
           </div>
         </section>
       </div>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">RTL Runtime Preview</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Platform direction previews</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            These previews exercise platform direction attributes inside this Super Admin screen only. The admin dashboard is not forced into RTL globally, and customer storefront layouts are not changed.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {themePreviewLocales.map((preview) => {
+            const directionAttributes = buildPlatformDirectionAttributes(preview.locale);
+            const directionClassName = buildPlatformRtlClassNames(preview.locale);
+
+            return (
+              <article
+                className={`rounded-3xl border border-slate-200 bg-slate-50 p-5 ${directionClassName}`}
+                dir={directionAttributes.dir}
+                key={preview.locale}
+                lang={directionAttributes.lang}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{preview.label}</p>
+                  <AdminBadge tone={directionAttributes.dir === "rtl" ? "amber" : "green"}>{directionAttributes.dir}</AdminBadge>
+                </div>
+                <h3 className="mt-4 text-2xl font-black tracking-[-0.03em] text-slate-950" style={{ color: control.branding.primaryColor }}>
+                  SHASTORE AI
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  Platform theme preview keeps spacing stable while switching direction attributes.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white" style={{ backgroundColor: control.branding.accentColor }}>
+                    Action
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500">
+                    Secondary
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       <AdminTable headers={["Language", "Direction", "Readiness"]}>
         {control.readiness.map((item) => (

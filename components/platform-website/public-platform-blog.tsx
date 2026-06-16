@@ -26,12 +26,15 @@ import {
   translateTag,
   type PlatformBlogTagRecord
 } from "@/src/lib/platform-website/blog/tags-service";
-import { isPlatformLocale } from "@/src/lib/platform-website/platform-translations-runtime";
 import { trackPlatformBlogView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
 import {
   resolvePlatformBranding,
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
+import {
+  buildPlatformDirectionAttributes,
+  buildPlatformRtlClassNames
+} from "@/src/lib/platform-theme/platform-rtl-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -99,6 +102,16 @@ function platformThemeStyle(branding: PlatformBranding): CSSProperties {
     ...branding.cssVariables,
     fontFamily: "var(--platform-font-family)"
   } as CSSProperties;
+}
+
+function platformDirectionProps(locale?: string | null) {
+  const attributes = buildPlatformDirectionAttributes(locale);
+
+  return {
+    className: buildPlatformRtlClassNames(locale),
+    dir: attributes.dir,
+    lang: attributes.lang
+  };
 }
 
 function categoryDescription(category: PlatformBlogCategoryRecord) {
@@ -342,9 +355,9 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   );
   const categories = rawCategories.map((category) => locale ? translateCategory(category, locale) : category);
   const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
-  const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
   const branding = await resolvePlatformBranding();
+  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     locale,
     path: platformBlogCanonicalPath("/blog", locale),
@@ -353,7 +366,7 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -400,9 +413,9 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   const posts = (await listPublishedPlatformBlogPostsByCategorySlug(category.slug)).map((post) =>
     locale ? translatePlatformBlogPost(post, locale) : post
   );
-  const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
   const branding = await resolvePlatformBranding();
+  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     categorySlug: category.slug,
     contentId: category.id,
@@ -413,7 +426,7 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -454,9 +467,9 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   const posts = (await listPublishedPlatformBlogPostsByTagSlug(tag.slug)).map((post) =>
     locale ? translatePlatformBlogPost(post, locale) : post
   );
-  const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
   const branding = await resolvePlatformBranding();
+  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: tag.id,
     locale,
@@ -467,7 +480,7 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -506,9 +519,9 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
 
   const translatedPost = locale ? translatePlatformBlogPost(post, locale) : post;
   const sections = bodySections(translatedPost.content);
-  const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
   const branding = await resolvePlatformBranding();
+  const directionProps = platformDirectionProps(locale);
   await trackPlatformBlogView({
     contentId: post.id,
     locale,
@@ -519,7 +532,7 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <article>
