@@ -104,6 +104,7 @@ export async function previewPlatformBranding() {
     public_theme_changed: false,
     store_themes_touched: 0
   });
+  redirect("/admin/platform-theme/preview?mode=draft&locale=en");
 }
 
 export async function resetPlatformBrandingPlaceholder() {

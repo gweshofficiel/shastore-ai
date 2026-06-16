@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   AdminBadge,
   AdminHeader,
@@ -165,6 +166,48 @@ export default async function AdminPlatformThemePage({
           </button>
         </form>
       </div>
+
+      <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Theme Preview Runtime</p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Admin-only theme previews</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Preview draft or published platform branding inside Super Admin only. Draft previews never affect the public website. Published previews mirror published values without changing live routes or storefronts.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className="inline-flex h-11 items-center rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-700"
+            href="/admin/platform-theme/preview?mode=draft&locale=en"
+          >
+            Preview Draft
+          </Link>
+          <Link
+            className="inline-flex h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+            href="/admin/platform-theme/preview?mode=published&locale=en"
+          >
+            Preview Published
+          </Link>
+          <Link
+            className="inline-flex h-11 items-center rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            href="/admin/platform-theme/preview?mode=draft&locale=en"
+          >
+            Preview English
+          </Link>
+          <Link
+            className="inline-flex h-11 items-center rounded-full border border-purple-200 bg-purple-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-purple-700"
+            href="/admin/platform-theme/preview?mode=draft&locale=ar"
+          >
+            Preview Arabic
+          </Link>
+          <Link
+            className="inline-flex h-11 items-center rounded-full border border-indigo-200 bg-indigo-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-indigo-700"
+            href="/admin/platform-theme/preview?mode=draft&locale=fr"
+          >
+            Preview French
+          </Link>
+        </div>
+      </section>
 
       <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="platform-logo">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
