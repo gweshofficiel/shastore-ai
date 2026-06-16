@@ -42,6 +42,11 @@ import {
   parsePlatformThemeMonitoringFilters
 } from "@/src/lib/platform-theme/platform-theme-monitoring";
 import { PlatformThemeMonitoringPanel } from "@/components/admin/platform-theme-monitoring-panel";
+import {
+  listThemeSecurityFindings,
+  parsePlatformThemeSecurityFilters
+} from "@/src/lib/platform-theme/platform-theme-security-audit";
+import { PlatformThemeSecurityAuditPanel } from "@/components/admin/platform-theme-security-audit-panel";
 
 function createdByLabel(createdBy: string | null) {
   if (!createdBy) return "Not recorded";
@@ -105,15 +110,20 @@ export default async function AdminPlatformThemePage({
     themeMonitoringArea?: string;
     themeMonitoringIssueType?: string;
     themeMonitoringSeverity?: string;
+    themeSecurityArea?: string;
+    themeSecurityFindingType?: string;
+    themeSecuritySeverity?: string;
   }>;
 }) {
   const params = await searchParams;
   const themeAnalyticsRange = parsePlatformThemeAnalyticsRange(params?.themeAnalyticsRange);
   const themeMonitoringFilters = parsePlatformThemeMonitoringFilters(params);
+  const themeSecurityFilters = parsePlatformThemeSecurityFilters(params);
   const control = await getAdminPlatformThemeControl();
-  const [themeAnalytics, themeMonitoring] = await Promise.all([
+  const [themeAnalytics, themeMonitoring, themeSecurityAudit] = await Promise.all([
     getPlatformThemeAnalyticsDashboard(themeAnalyticsRange),
-    listThemeMonitoringIssues(themeMonitoringFilters)
+    listThemeMonitoringIssues(themeMonitoringFilters),
+    listThemeSecurityFindings(themeSecurityFilters)
   ]);
   const readySections = control.sections.filter((section) => section.status === "ready").length;
   const readyPublicPreviews = control.previews.publicWebsite.filter((preview) => preview.status === "ready").length;
@@ -1155,6 +1165,8 @@ export default async function AdminPlatformThemePage({
       <PlatformThemeAnalyticsPanel analytics={themeAnalytics} />
 
       <PlatformThemeMonitoringPanel monitoring={themeMonitoring} />
+
+      <PlatformThemeSecurityAuditPanel audit={themeSecurityAudit} />
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
