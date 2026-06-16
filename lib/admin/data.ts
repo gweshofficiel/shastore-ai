@@ -69,11 +69,19 @@ import {
   type PlatformThemePresetRecord
 } from "@/src/lib/platform-theme/platform-theme-presets";
 import {
+  defaultPlatformWhiteLabelSettings,
   getWhiteLabelSettings,
   type PlatformWhiteLabelSettings,
   type PlatformWhiteLabelStatus,
   type PlatformWhiteLabelValidation
 } from "@/src/lib/platform-theme/platform-white-label";
+import {
+  listResellerBrandingSummaries,
+  type EffectiveResellerBranding,
+  type ResellerBrandingInheritanceMode,
+  type ResellerBrandingSource,
+  type ResellerBrandingStatus
+} from "@/src/lib/platform-theme/reseller-branding";
 import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
@@ -342,6 +350,18 @@ export type AdminReseller = {
   commissionSummary: {
     note: string;
     total: number;
+  };
+  branding: {
+    customDraft: PlatformWhiteLabelSettings;
+    customPreview: PlatformWhiteLabelSettings;
+    effective: PlatformWhiteLabelSettings;
+    effectiveSource: ResellerBrandingSource;
+    hasCustomDraftChanges: boolean;
+    hasCustomPublished: boolean;
+    inheritanceMode: ResellerBrandingInheritanceMode;
+    platformPreview: PlatformWhiteLabelSettings;
+    publishStatus: ResellerBrandingStatus;
+    validationOk: boolean;
   };
 };
 
@@ -2469,6 +2489,12 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
     }
   }
 
+  let brandingSummaries = new Map<string, EffectiveResellerBranding>();
+
+  if ((await getAdminAccess()).internalRole === "super_admin") {
+    brandingSummaries = await listResellerBrandingSummaries([...resellerIds]);
+  }
+
   const storesByOwner = new Map<string, AnyRecord[]>();
   for (const store of stores) {
     const ownerId = ownerUserId(store);
@@ -2594,6 +2620,53 @@ export async function getAdminResellers(): Promise<AdminReseller[]> {
     ];
 
     return {
+      branding: (() => {
+        const summary = brandingSummaries.get(userId);
+
+        if (!summary) {
+          return {
+            customDraft: {
+              brandName: "",
+              documentationUrl: null,
+              legalName: null,
+              poweredByLabel: null,
+              showPoweredBy: true,
+              supportEmail: null,
+              supportUrl: null
+            },
+            customPreview: {
+              brandName: "",
+              documentationUrl: null,
+              legalName: null,
+              poweredByLabel: null,
+              showPoweredBy: true,
+              supportEmail: null,
+              supportUrl: null
+            },
+            effective: defaultPlatformWhiteLabelSettings,
+            effectiveSource: "platform" as const,
+            hasCustomDraftChanges: false,
+            hasCustomPublished: false,
+            inheritanceMode: "inherit_platform" as const,
+            platformPreview: defaultPlatformWhiteLabelSettings,
+            publishStatus: "draft" as const,
+            validationOk: false
+          };
+        }
+
+        return {
+          customDraft: summary.record.customDraft,
+          customPreview: summary.customPreview,
+          effective: summary.branding,
+          effectiveSource: summary.effectiveSource,
+          hasCustomDraftChanges: summary.record.hasCustomDraftChanges,
+          hasCustomPublished: summary.record.hasCustomPublished,
+          inheritanceMode: summary.inheritanceMode,
+          platformPreview: summary.platformPreview,
+          publishStatus: summary.publishStatus,
+          validationOk: summary.record.validation.ok
+        };
+      })(),
       commissionSummary: {
         note: resellerAffiliateOrders.length
           ? `Affiliate commission records found with ${commissionStatus} status.`
@@ -4451,9 +4524,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
     branding,
     draft,
     favicon: currentFavicon.favicon,
-    futureHooks: [
-      "Reseller branding inheritance"
-    ],
+    futureHooks: [] as string[],
     logo: currentLogo.logo,
     publicTheme,
     publishReadiness,

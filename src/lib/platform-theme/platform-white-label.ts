@@ -72,7 +72,7 @@ type PlatformWhiteLabelRow = {
 const singletonId = "00000000-0000-4000-8000-000000000001";
 const statuses: PlatformWhiteLabelStatus[] = ["draft", "published", "archived"];
 
-const defaultSettings: PlatformWhiteLabelSettings = {
+export const defaultPlatformWhiteLabelSettings: PlatformWhiteLabelSettings = {
   brandName: "SHASTORE AI",
   documentationUrl: null,
   legalName: null,
@@ -81,6 +81,8 @@ const defaultSettings: PlatformWhiteLabelSettings = {
   supportEmail: null,
   supportUrl: null
 };
+
+const defaultSettings = defaultPlatformWhiteLabelSettings;
 
 function text(value: unknown, maxLength = 1000) {
   if (typeof value !== "string") return "";
@@ -128,6 +130,13 @@ function validHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+export function parsePlatformWhiteLabelSettings(
+  value: unknown,
+  fallback: PlatformWhiteLabelSettings = defaultSettings
+): PlatformWhiteLabelSettings {
+  return settingsFromJson(value, fallback);
 }
 
 function settingsFromJson(value: unknown, fallback: PlatformWhiteLabelSettings = defaultSettings): PlatformWhiteLabelSettings {

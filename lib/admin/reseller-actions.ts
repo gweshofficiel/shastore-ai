@@ -1,10 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { recordStoreAuditLogSafe, type StoreAuditAction } from "@/lib/audit/store-audit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  publishResellerBranding,
+  switchInheritanceMode,
+  updateResellerBrandingDraft
+} from "@/src/lib/platform-theme/reseller-branding";
 
 type ResellerGovernanceStatus = "active" | "pending_review" | "suspended";
 type ResellerVerificationStatus = "pending_verification" | "verified";
@@ -329,4 +335,125 @@ export async function clearResellerRisk(formData: FormData) {
     resellerId: cleanResellerId(formData),
     riskStatus: "clear"
   });
+}
+
+function resellerBrandingRedirect(status: "error" | "success", message: string, resellerId: string): never {
+  redirect(
+    `/admin/resellers?brandingMessage=${encodeURIComponent(message)}&brandingResellerId=${encodeURIComponent(resellerId)}&brandingStatus=${status}#branding-${encodeURIComponent(resellerId)}`
+  );
+}
+
+function readResellerBrandingDraftInput(formData: FormData) {
+  return {
+    brandName: formData.get("brandName"),
+    documentationUrl: formData.get("documentationUrl"),
+    legalName: formData.get("legalName"),
+    poweredByLabel: formData.get("poweredByLabel"),
+    showPoweredBy: formData.get("showPoweredBy") === "true",
+    supportEmail: formData.get("supportEmail"),
+    supportUrl: formData.get("supportUrl")
+  };
+}
+
+async function recordResellerBrandingAction(
+  action: string,
+  resellerId: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const access = await getAdminAccess();
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return;
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: resellerId,
+    entity_type: "admin_reseller_branding",
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      ...metadata,
+      note: "Reseller branding changes affect reseller context only. Platform branding and customer storefronts were not changed.",
+      reseller_id: resellerId,
+      source: "super_admin_reseller_branding"
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/resellers");
+}
+
+export async function switchResellerInheritancePlatformAction(formData: FormData) {
+  const resellerId = cleanResellerId(formData);
+
+  try {
+    const record = await switchInheritanceMode(resellerId, "inherit_platform");
+    await recordResellerBrandingAction("admin_reseller_branding_inherit_platform", resellerId, {
+      inheritance_mode: record.inheritanceMode
+    });
+    resellerBrandingRedirect("success", "Reseller set to inherit platform branding.", resellerId);
+  } catch (error) {
+    await recordResellerBrandingAction("admin_reseller_branding_inherit_platform", resellerId, {
+      error_message: error instanceof Error ? error.message : "Inheritance switch failed."
+    });
+    resellerBrandingRedirect("error", error instanceof Error ? error.message : "Inheritance switch failed.", resellerId);
+  }
+}
+
+export async function switchResellerInheritanceCustomAction(formData: FormData) {
+  const resellerId = cleanResellerId(formData);
+
+  try {
+    const record = await switchInheritanceMode(resellerId, "custom_branding");
+    await recordResellerBrandingAction("admin_reseller_branding_custom_mode", resellerId, {
+      inheritance_mode: record.inheritanceMode
+    });
+    resellerBrandingRedirect("success", "Reseller switched to custom branding mode. Save and publish draft to apply.", resellerId);
+  } catch (error) {
+    await recordResellerBrandingAction("admin_reseller_branding_custom_mode", resellerId, {
+      error_message: error instanceof Error ? error.message : "Inheritance switch failed."
+    });
+    resellerBrandingRedirect("error", error instanceof Error ? error.message : "Inheritance switch failed.", resellerId);
+  }
+}
+
+export async function saveResellerBrandingDraftAction(formData: FormData) {
+  const resellerId = cleanResellerId(formData);
+
+  try {
+    const record = await updateResellerBrandingDraft(resellerId, readResellerBrandingDraftInput(formData));
+    await recordResellerBrandingAction("admin_reseller_branding_save_draft", resellerId, {
+      brand_name: record.customDraft.brandName,
+      draft_only: true,
+      inheritance_mode: record.inheritanceMode
+    });
+    resellerBrandingRedirect("success", "Reseller branding draft saved.", resellerId);
+  } catch (error) {
+    await recordResellerBrandingAction("admin_reseller_branding_save_draft", resellerId, {
+      draft_only: true,
+      error_message: error instanceof Error ? error.message : "Draft save failed."
+    });
+    resellerBrandingRedirect("error", error instanceof Error ? error.message : "Draft save failed.", resellerId);
+  }
+}
+
+export async function publishResellerBrandingAction(formData: FormData) {
+  const resellerId = cleanResellerId(formData);
+
+  try {
+    const record = await publishResellerBranding(resellerId);
+    await recordResellerBrandingAction("admin_reseller_branding_publish", resellerId, {
+      brand_name: record.customPublished.brandName,
+      inheritance_mode: record.inheritanceMode
+    });
+    resellerBrandingRedirect("success", "Reseller custom branding published.", resellerId);
+  } catch (error) {
+    await recordResellerBrandingAction("admin_reseller_branding_publish", resellerId, {
+      error_message: error instanceof Error ? error.message : "Publish failed."
+    });
+    resellerBrandingRedirect("error", error instanceof Error ? error.message : "Publish failed.", resellerId);
+  }
 }

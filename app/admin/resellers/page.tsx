@@ -8,14 +8,19 @@ import {
 } from "@/components/admin/admin-control";
 import Link from "next/link";
 import { getAdminResellers } from "@/lib/admin/data";
+import { getAdminAccess } from "@/lib/admin-access";
 import {
   clearResellerRisk,
   markResellerHighRisk,
   markResellerReviewed
 } from "@/lib/admin/reseller-actions";
+import { ResellerBrandingPanel } from "@/components/admin/reseller-branding-panel";
 
 type AdminResellersPageProps = {
   searchParams: Promise<{
+    brandingMessage?: string;
+    brandingResellerId?: string;
+    brandingStatus?: string;
     q?: string;
     commission?: string;
     plan?: string;
@@ -76,7 +81,12 @@ function commissionTone(status: string) {
 
 export default async function AdminResellersPage({ searchParams }: AdminResellersPageProps) {
   const query = await searchParams;
+  const access = await getAdminAccess();
+  const isSuperAdmin = access.internalRole === "super_admin";
   const resellers = await getAdminResellers();
+  const brandingStatus = query.brandingStatus === "success" ? "success" : query.brandingStatus === "error" ? "error" : null;
+  const brandingMessage = query.brandingMessage;
+  const brandingResellerId = query.brandingResellerId;
   const statusFilter = cleanStatusFilter(query.status);
   const planFilter = cleanFilter(query.plan, ["free", "starter", "pro", "agency"]);
   const storeCountFilter = cleanFilter(query.storeCount, ["none", "one", "many"]);
@@ -133,9 +143,28 @@ export default async function AdminResellersPage({ searchParams }: AdminReseller
           { label: "Stores created", value: resellers.reduce((total, reseller) => total + reseller.storesCreated, 0) },
           { label: "Stores sold", value: resellers.reduce((total, reseller) => total + reseller.storesSold, 0) },
           { label: "Customers referred", value: resellers.reduce((total, reseller) => total + reseller.customersReferred, 0) },
-          { label: "Commissions", value: formatAdminMoney(totalCommissions), note: "From available affiliate commission records." }
+          { label: "Commissions", value: formatAdminMoney(totalCommissions), note: "From available affiliate commission records." },
+          { label: "Custom branding", value: resellers.filter((reseller) => reseller.branding.inheritanceMode === "custom_branding").length }
         ]}
       />
+
+      {brandingStatus && brandingMessage ? (
+        <div
+          className={`rounded-3xl border p-5 text-sm font-bold leading-6 ${
+            brandingStatus === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+          role={brandingStatus === "success" ? "status" : "alert"}
+        >
+          {brandingMessage}
+          {brandingResellerId ? (
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
+              Reseller: {brandingResellerId}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5">
         <form className="grid gap-4 lg:grid-cols-[1.3fr_repeat(5,minmax(160px,1fr))_auto] lg:items-end">
@@ -351,6 +380,9 @@ export default async function AdminResellersPage({ searchParams }: AdminReseller
                     <p>Status: <AdminBadge tone={commissionTone(reseller.commissionStatus)}>{reseller.commissionStatus}</AdminBadge></p>
                     <p>{reseller.commissionSummary.note}</p>
                   </section>
+                  {isSuperAdmin ? (
+                    <ResellerBrandingPanel branding={reseller.branding} resellerId={reseller.userId} />
+                  ) : null}
                   <section className="rounded-xl bg-white p-3">
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Risk signals</p>
                     <div className="mt-2 grid gap-2">
