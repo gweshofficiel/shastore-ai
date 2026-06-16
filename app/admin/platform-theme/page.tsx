@@ -75,6 +75,8 @@ export default async function AdminPlatformThemePage({
       <AdminStatGrid
         stats={[
           { label: "Theme assets", value: control.assets.length },
+          { label: "Public connected", value: "Yes" },
+          { label: "Published active", value: control.publicTheme.hasPublishedTheme ? "Yes" : "No" },
           { label: "Brand sections", value: control.sections.length },
           { label: "Ready sections", value: readySections },
           { label: "Draft changes", value: control.draft.changedCount },
@@ -368,6 +370,34 @@ export default async function AdminPlatformThemePage({
               </td>
             </tr>
           ) : null}
+        </AdminTable>
+      </section>
+
+      <section className="grid gap-5 rounded-3xl border border-slate-200 bg-white p-5" id="public-theme-connection">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Public Website Connection</p>
+            <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950">Published platform theme status</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Published platform branding is connected only to SHASTORE public platform pages and platform blog rendering. Draft values, admin dashboard styling, customer stores, and storefront theme systems are not exposed here.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <AdminBadge tone="green">Public website connected: yes</AdminBadge>
+            <AdminBadge tone={control.publicTheme.hasPublishedTheme ? "green" : "blue"}>
+              Published theme active: {control.publicTheme.hasPublishedTheme ? "yes" : "no"}
+            </AdminBadge>
+          </div>
+        </div>
+        <AdminTable headers={["Published value", "Status"]}>
+          {control.publicTheme.publishedSummary.map((item) => (
+            <tr key={`published-theme-${item.key}`}>
+              <td className="px-5 py-4 font-bold text-slate-950">{item.key}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={item.value ? "green" : "blue"}>{item.value ?? "Fallback design"}</AdminBadge>
+              </td>
+            </tr>
+          ))}
         </AdminTable>
       </section>
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -27,6 +28,10 @@ import {
 } from "@/src/lib/platform-website/blog/tags-service";
 import { isPlatformLocale } from "@/src/lib/platform-website/platform-translations-runtime";
 import { trackPlatformBlogView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
+import {
+  resolvePlatformBranding,
+  type PlatformBranding
+} from "@/src/lib/platform-theme/public-platform-theme-resolver";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -74,6 +79,26 @@ function postDescription(post: PlatformBlogPostRecord) {
   return text(post.seoDescription, 160) ||
     text(post.excerpt, 160) ||
     `Read ${post.title} on the SHASTORE AI blog.`;
+}
+
+async function withPlatformThemeMetadata(metadata: Metadata): Promise<Metadata> {
+  const branding = await resolvePlatformBranding();
+
+  return branding.faviconUrl
+    ? {
+        ...metadata,
+        icons: {
+          icon: [{ url: branding.faviconUrl }]
+        }
+      }
+    : metadata;
+}
+
+function platformThemeStyle(branding: PlatformBranding): CSSProperties {
+  return {
+    ...branding.cssVariables,
+    fontFamily: "var(--platform-font-family)"
+  } as CSSProperties;
 }
 
 function categoryDescription(category: PlatformBlogCategoryRecord) {
@@ -170,7 +195,7 @@ export async function generatePublicPlatformBlogIndexMetadata(locale?: string | 
   const title = blogIndexTitle(locale);
   const description = blogIndexDescription(locale);
 
-  return {
+  return withPlatformThemeMetadata({
     alternates: {
       canonical: canonicalUrl
     },
@@ -186,7 +211,7 @@ export async function generatePublicPlatformBlogIndexMetadata(locale?: string | 
       index: true
     },
     title
-  };
+  });
 }
 
 export async function generatePublicPlatformBlogPostMetadata(
@@ -209,7 +234,7 @@ export async function generatePublicPlatformBlogPostMetadata(
   const title = text(translatedPost.seoTitle, 70) || translatedPost.title;
   const description = postDescription(translatedPost);
 
-  return {
+  return withPlatformThemeMetadata({
     alternates: {
       canonical: canonicalUrl
     },
@@ -225,7 +250,7 @@ export async function generatePublicPlatformBlogPostMetadata(
       index: true
     },
     title
-  };
+  });
 }
 
 export async function generatePublicPlatformBlogCategoryMetadata(
@@ -248,7 +273,7 @@ export async function generatePublicPlatformBlogCategoryMetadata(
   const title = text(translatedCategory.seoTitle, 70) || `${translatedCategory.name} | SHASTORE AI Blog`;
   const description = categoryDescription(translatedCategory);
 
-  return {
+  return withPlatformThemeMetadata({
     alternates: {
       canonical: canonicalUrl
     },
@@ -264,7 +289,7 @@ export async function generatePublicPlatformBlogCategoryMetadata(
       index: true
     },
     title
-  };
+  });
 }
 
 export async function generatePublicPlatformBlogTagMetadata(
@@ -287,7 +312,7 @@ export async function generatePublicPlatformBlogTagMetadata(
   const title = `${translatedTag.name} | SHASTORE AI Blog`;
   const description = tagDescription(translatedTag);
 
-  return {
+  return withPlatformThemeMetadata({
     alternates: {
       canonical: canonicalUrl
     },
@@ -303,7 +328,7 @@ export async function generatePublicPlatformBlogTagMetadata(
       index: true
     },
     title
-  };
+  });
 }
 
 export async function renderPublicPlatformBlogIndex(locale?: string | null) {
@@ -319,6 +344,7 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   const tags = rawTags.map((tag) => locale ? translateTag(tag, locale) : tag);
   const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
+  const branding = await resolvePlatformBranding();
   await trackPlatformBlogView({
     locale,
     path: platformBlogCanonicalPath("/blog", locale),
@@ -327,12 +353,12 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
-      <MarketingNavbar />
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+      <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">SHASTORE AI</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>SHASTORE AI</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
             {blogIndexTitle(locale)}
           </h1>
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
@@ -376,6 +402,7 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   );
   const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
+  const branding = await resolvePlatformBranding();
   await trackPlatformBlogView({
     categorySlug: category.slug,
     contentId: category.id,
@@ -386,12 +413,12 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
-      <MarketingNavbar />
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+      <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">Blog category</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog category</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
             {translatedCategory.name}
           </h1>
           {translatedCategory.description ? (
@@ -429,6 +456,7 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   );
   const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
+  const branding = await resolvePlatformBranding();
   await trackPlatformBlogView({
     contentId: tag.id,
     locale,
@@ -439,12 +467,12 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
-      <MarketingNavbar />
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+      <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">Blog tag</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>Blog tag</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
             {translatedTag.name}
           </h1>
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted">
@@ -480,6 +508,7 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   const sections = bodySections(translatedPost.content);
   const direction = locale === "ar" ? "rtl" : "ltr";
   const requestHeaders = await headers();
+  const branding = await resolvePlatformBranding();
   await trackPlatformBlogView({
     contentId: post.id,
     locale,
@@ -490,15 +519,15 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   });
 
   return (
-    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"}>
-      <MarketingNavbar />
+    <div dir={direction} lang={isPlatformLocale(locale) ? locale : "en"} style={platformThemeStyle(branding)}>
+      <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <article>
           <header className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
               {translatedPost.authorName}
             </p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+            <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
               {translatedPost.title}
             </h1>
             {translatedPost.excerpt ? (

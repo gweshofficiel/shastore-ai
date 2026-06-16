@@ -53,6 +53,10 @@ import {
   type PlatformThemeAssetRecord
 } from "@/src/lib/platform-theme/platform-theme-assets";
 import {
+  resolvePlatformBranding,
+  type PlatformBranding
+} from "@/src/lib/platform-theme/public-platform-theme-resolver";
+import {
   listPlatformBlogPosts,
   type PlatformBlogPostRecord
 } from "@/src/lib/platform-website/blog/platform-blog-service";
@@ -639,6 +643,7 @@ export type AdminPlatformThemeControl = {
   favicon: PlatformFaviconReference;
   futureHooks: string[];
   logo: PlatformLogoReference;
+  publicTheme: PlatformBranding;
   publishReadiness: PlatformThemePublishValidation;
   previews: {
     adminDashboard: Array<{
@@ -4385,13 +4390,14 @@ function platformThemeValue(
 }
 
 export async function getAdminPlatformThemeControl(): Promise<AdminPlatformThemeControl> {
-  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets] = await Promise.all([
+  const [registrySections, draft, publishReadiness, currentLogo, currentFavicon, assets, publicTheme] = await Promise.all([
     ensurePlatformThemeRegistry(),
     getThemeDraft(),
     validateThemeBeforePublish(),
     getCurrentPlatformLogo(),
     getCurrentPlatformFavicon(),
-    listPlatformThemeAssets()
+    listPlatformThemeAssets(),
+    resolvePlatformBranding()
   ]);
   const sectionsByKey = new Map(registrySections.map((section) => [section.sectionKey, section]));
   const settingsByKey = new Map(draft.settings.map((setting) => [setting.settingKey, setting]));
@@ -4419,6 +4425,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
       "Reseller branding inheritance"
     ],
     logo: currentLogo.logo,
+    publicTheme,
     publishReadiness,
     previews: {
       adminDashboard: [

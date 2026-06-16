@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { MarketingNavbar } from "@/components/marketing/navbar";
@@ -18,6 +19,10 @@ import {
 } from "@/src/lib/platform-website/platform-seo-runtime";
 import { getPlatformPageTranslation } from "@/src/lib/platform-website/platform-translations-runtime";
 import { trackPlatformPageView } from "@/src/lib/platform-website/analytics/platform-analytics-service";
+import {
+  resolvePlatformBranding,
+  type PlatformBranding
+} from "@/src/lib/platform-theme/public-platform-theme-resolver";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -95,11 +100,20 @@ function PublicPlatformBlock({ block }: { block: PlatformPageBlockRecord }) {
   );
 }
 
+function platformThemeStyle(branding: PlatformBranding): CSSProperties {
+  return {
+    ...branding.cssVariables,
+    fontFamily: "var(--platform-font-family)"
+  } as CSSProperties;
+}
+
 export function PublicPlatformPageView({
   blocks = [],
+  branding,
   page
 }: {
   blocks?: PlatformPageBlockRecord[];
+  branding: PlatformBranding;
   page: PublicPlatformPage;
 }) {
   const sections = bodySections(page.body);
@@ -107,14 +121,14 @@ export function PublicPlatformPageView({
   const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
 
   return (
-    <div dir={direction} lang={locale}>
-      <MarketingNavbar />
+    <div dir={direction} lang={locale} style={platformThemeStyle(branding)}>
+      <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted" style={{ color: "var(--platform-secondary)" }}>
             SHASTORE AI
           </p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl">
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-ink sm:text-6xl" style={{ color: "var(--platform-primary)" }}>
             {page.headline}
           </h1>
           {page.subtitle ? (
@@ -168,7 +182,17 @@ export async function generatePublicPlatformPageMetadata(path: string, locale?: 
     return unpublishedPlatformPageMetadata();
   }
 
-  return buildPlatformPageMetadata(locale ? getPlatformPageTranslation(page, locale) : page);
+  const metadata = buildPlatformPageMetadata(locale ? getPlatformPageTranslation(page, locale) : page);
+  const branding = await resolvePlatformBranding();
+
+  return branding.faviconUrl
+    ? {
+        ...metadata,
+        icons: {
+          icon: [{ url: branding.faviconUrl }]
+        }
+      }
+    : metadata;
 }
 
 export async function renderPublicPlatformPage(path: string, locale?: string) {
@@ -189,5 +213,13 @@ export async function renderPublicPlatformPage(path: string, locale?: string) {
     title: page.title
   });
 
-  return <PublicPlatformPageView blocks={blocks} page={locale ? getPlatformPageTranslation(page, locale) : page} />;
+  const branding = await resolvePlatformBranding();
+
+  return (
+    <PublicPlatformPageView
+      blocks={blocks}
+      branding={branding}
+      page={locale ? getPlatformPageTranslation(page, locale) : page}
+    />
+  );
 }
