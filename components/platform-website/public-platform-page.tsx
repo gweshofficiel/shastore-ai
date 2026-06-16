@@ -24,9 +24,9 @@ import {
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
 import {
-  buildPlatformDirectionAttributes,
-  buildPlatformRtlClassNames
-} from "@/src/lib/platform-theme/platform-rtl-runtime";
+  buildPlatformLocaleThemeAttributes,
+  getPlatformLocaleTheme
+} from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -104,10 +104,12 @@ function PublicPlatformBlock({ block }: { block: PlatformPageBlockRecord }) {
   );
 }
 
-function platformThemeStyle(branding: PlatformBranding): CSSProperties {
+function platformThemeStyle(branding: PlatformBranding, locale: string): CSSProperties {
+  const localeTheme = getPlatformLocaleTheme(locale);
+
   return {
     ...branding.cssVariables,
-    fontFamily: "var(--platform-font-family)"
+    fontFamily: localeTheme.fontFamily
   } as CSSProperties;
 }
 
@@ -122,15 +124,14 @@ export function PublicPlatformPageView({
 }) {
   const sections = bodySections(page.body);
   const locale = "locale" in page && typeof page.locale === "string" ? page.locale : "en";
-  const directionAttributes = buildPlatformDirectionAttributes(locale);
-  const directionClassName = buildPlatformRtlClassNames(locale);
+  const localeThemeAttributes = buildPlatformLocaleThemeAttributes(locale);
 
   return (
     <div
-      className={directionClassName}
-      dir={directionAttributes.dir}
-      lang={directionAttributes.lang}
-      style={platformThemeStyle(branding)}
+      className={localeThemeAttributes.className}
+      dir={localeThemeAttributes.dir}
+      lang={localeThemeAttributes.lang}
+      style={platformThemeStyle(branding, locale)}
     >
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">

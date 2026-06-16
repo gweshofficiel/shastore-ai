@@ -22,6 +22,7 @@ import {
   buildPlatformDirectionAttributes,
   buildPlatformRtlClassNames
 } from "@/src/lib/platform-theme/platform-rtl-runtime";
+import { getPlatformLocalePreviewConfig } from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 
 function toneForStatus(status: string) {
   if (status === "ready") {
@@ -45,11 +46,7 @@ function formatBytes(value: number | null) {
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-const themePreviewLocales = [
-  { label: "English LTR preview", locale: "en" },
-  { label: "Arabic RTL preview", locale: "ar" },
-  { label: "French LTR preview", locale: "fr" }
-] as const;
+const themePreviewLocales = ["en", "ar", "fr"] as const;
 
 export default async function AdminPlatformThemePage({
   searchParams
@@ -651,7 +648,8 @@ export default async function AdminPlatformThemePage({
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
-          {themePreviewLocales.map((preview) => {
+          {themePreviewLocales.map((locale) => {
+            const preview = getPlatformLocalePreviewConfig(locale);
             const directionAttributes = buildPlatformDirectionAttributes(preview.locale);
             const directionClassName = buildPlatformRtlClassNames(preview.locale);
 
@@ -659,8 +657,9 @@ export default async function AdminPlatformThemePage({
               <article
                 className={`rounded-3xl border border-slate-200 bg-slate-50 p-5 ${directionClassName}`}
                 dir={directionAttributes.dir}
-                key={preview.locale}
+                key={locale}
                 lang={directionAttributes.lang}
+                style={{ fontFamily: preview.typography }}
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{preview.label}</p>
@@ -670,7 +669,7 @@ export default async function AdminPlatformThemePage({
                   SHASTORE AI
                 </h3>
                 <p className="mt-3 text-sm leading-6 text-slate-500">
-                  Platform theme preview keeps spacing stable while switching direction attributes.
+                  {preview.description}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white" style={{ backgroundColor: control.branding.accentColor }}>

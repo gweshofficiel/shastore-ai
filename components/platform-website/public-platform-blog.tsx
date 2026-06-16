@@ -32,9 +32,9 @@ import {
   type PlatformBranding
 } from "@/src/lib/platform-theme/public-platform-theme-resolver";
 import {
-  buildPlatformDirectionAttributes,
-  buildPlatformRtlClassNames
-} from "@/src/lib/platform-theme/platform-rtl-runtime";
+  buildPlatformLocaleThemeAttributes,
+  getPlatformLocaleTheme
+} from "@/src/lib/platform-theme/platform-locale-theme-runtime";
 
 function text(value: unknown, maxLength = 2000) {
   return typeof value === "string" && value.trim()
@@ -97,21 +97,17 @@ async function withPlatformThemeMetadata(metadata: Metadata): Promise<Metadata> 
     : metadata;
 }
 
-function platformThemeStyle(branding: PlatformBranding): CSSProperties {
+function platformThemeStyle(branding: PlatformBranding, locale?: string | null): CSSProperties {
+  const localeTheme = getPlatformLocaleTheme(locale);
+
   return {
     ...branding.cssVariables,
-    fontFamily: "var(--platform-font-family)"
+    fontFamily: localeTheme.fontFamily
   } as CSSProperties;
 }
 
 function platformDirectionProps(locale?: string | null) {
-  const attributes = buildPlatformDirectionAttributes(locale);
-
-  return {
-    className: buildPlatformRtlClassNames(locale),
-    dir: attributes.dir,
-    lang: attributes.lang
-  };
+  return buildPlatformLocaleThemeAttributes(locale);
 }
 
 function categoryDescription(category: PlatformBlogCategoryRecord) {
@@ -366,7 +362,7 @@ export async function renderPublicPlatformBlogIndex(locale?: string | null) {
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -426,7 +422,7 @@ export async function renderPublicPlatformBlogCategory(slug: string, locale?: st
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -480,7 +476,7 @@ export async function renderPublicPlatformBlogTag(slug: string, locale?: string 
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
@@ -532,7 +528,7 @@ export async function renderPublicPlatformBlogPost(slug: string, locale?: string
   });
 
   return (
-    <div {...directionProps} style={platformThemeStyle(branding)}>
+    <div {...directionProps} style={platformThemeStyle(branding, locale)}>
       <MarketingNavbar logoUrl={branding.logoUrl} />
       <main className="bg-canvas">
         <article>
