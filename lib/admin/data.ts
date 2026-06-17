@@ -42,6 +42,7 @@ import {
 } from "@/src/lib/templates/template-package-runtime";
 import { listAllTemplateScreenshots } from "@/src/lib/templates/template-screenshot-storage";
 import { listAllTemplateAssets } from "@/src/lib/templates/template-asset-storage";
+import { listTemplateInstalls } from "@/src/lib/templates/template-install-runtime";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -838,6 +839,28 @@ export type AdminTemplateManagementControl = {
     screenshotType: "desktop" | "gallery" | "hero" | "mobile" | "tablet" | "thumbnail";
     sortOrder: number;
     status: "archived" | "deleted" | "draft" | "published";
+    templateName: string;
+  }>;
+  installableStores: Array<{
+    id: string;
+    name: string;
+    slug: string | null;
+  }>;
+  installOverview: {
+    completedInstalls: number;
+    failedInstalls: number;
+    preparedInstalls: number;
+    totalInstalls: number;
+  };
+  templateInstalls: Array<{
+    completedAt: string | null;
+    createdAt: string | null;
+    errorMessage: string | null;
+    id: string;
+    status: "cancelled" | "completed" | "failed" | "installing" | "prepared";
+    storeId: string;
+    storeName: string;
+    templateId: string;
     templateName: string;
   }>;
   templates: Array<{
@@ -4772,7 +4795,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, installTargetStores] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4787,7 +4810,9 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listTemplatePackages(),
     getTemplatePackageStats(),
     listAllTemplateScreenshots(),
-    listAllTemplateAssets()
+    listAllTemplateAssets(),
+    listTemplateInstalls(200),
+    safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
   ]);
 
   const packageValidations = await Promise.all(
@@ -4818,6 +4843,17 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 
   const templateKeyByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.templateKey]));
   const templateNameByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.name]));
+  const storeNameById = new Map(
+    installTargetStores.map((store) => [text(store.id), text(store.store_name, text(store.name, "Store"))])
+  );
+  const installableStores = installTargetStores
+    .filter((store) => text(store.id) && text(store.user_id) && text(store.workspace_id))
+    .map((store) => ({
+      id: text(store.id),
+      name: text(store.store_name, text(store.name, "Store")),
+      slug: text(store.slug) || null
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
 
   const publishedTemplateIds = new Set(
     allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
@@ -5081,6 +5117,24 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         uploadedAt: screenshot.createdAt
       }))
     ],
+    installableStores,
+    installOverview: {
+      completedInstalls: allInstalls.filter((install) => install.status === "completed").length,
+      failedInstalls: allInstalls.filter((install) => install.status === "failed").length,
+      preparedInstalls: allInstalls.filter((install) => install.status === "prepared").length,
+      totalInstalls: allInstalls.length
+    },
+    templateInstalls: allInstalls.map((install) => ({
+      completedAt: install.completedAt,
+      createdAt: install.createdAt,
+      errorMessage: install.errorMessage,
+      id: install.id,
+      status: install.status,
+      storeId: install.storeId,
+      storeName: storeNameById.get(install.storeId) ?? install.storeId,
+      templateId: install.templateId,
+      templateName: templateNameByRegistryId.get(install.templateId) ?? "Template"
+    })),
     screenshots: allScreenshots.map((screenshot) => ({
       id: screenshot.id,
       originalFilename: screenshot.originalFilename,

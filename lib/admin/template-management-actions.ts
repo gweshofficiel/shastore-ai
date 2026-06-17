@@ -35,6 +35,7 @@ import {
   publishTemplateAsset,
   uploadTemplateAsset
 } from "@/src/lib/templates/template-asset-storage";
+import { installTemplateToStore } from "@/src/lib/templates/template-install-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -54,6 +55,7 @@ type TemplateAdminAction =
   | "admin_template_asset_deleted"
   | "admin_template_asset_published"
   | "admin_template_asset_uploaded"
+  | "admin_template_install_to_store"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -977,6 +979,56 @@ export async function deleteDraftTemplateAssetAction(formData: FormData) {
   } as never);
 
   revalidatePath("/admin/templates");
+}
+
+export async function installTemplateToStoreAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can install templates into stores.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin install confirmation is required.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const storeId = cleanText(formData.get("storeId"));
+
+  if (!registryId || !storeId) {
+    throw new Error("Template and store are required for install.");
+  }
+
+  const result = await installTemplateToStore(registryId, storeId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.install.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_install_to_store",
+    metadata: {
+      install_id: result.install.id,
+      install_status: result.install.status,
+      note: "Super Admin manual template install completed for a single selected store.",
+      package_install_status: result.packageResult.status,
+      source: "super_admin_template_management_center",
+      store_id: storeId,
+      template_name: templateName,
+      template_registry_id: registryId
+    },
+    store_id: storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(storeId)}`);
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

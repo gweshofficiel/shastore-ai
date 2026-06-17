@@ -13,6 +13,7 @@ import {
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
   deleteDraftTemplateAssetAction,
+  installTemplateToStoreAction,
   installTemplateVersionPlaceholder,
   markTemplateDraft,
   markTemplateOfficial,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/admin/template-management-actions";
 import { TemplateAssetList } from "@/components/admin/template-asset-list";
 import { TemplateAssetUploadForm } from "@/components/admin/template-asset-upload-form";
+import { TemplateInstallToStoreForm } from "@/components/admin/template-install-to-store-form";
 import { TemplatePackageEditForm } from "@/components/admin/template-package-edit-form";
 import { TemplatePackageSummaryLink } from "@/components/admin/template-package-summary-link";
 import { TemplateScreenshotList } from "@/components/admin/template-screenshot-list";
@@ -45,11 +47,11 @@ import { TemplateRestoreControl } from "@/components/admin/template-restore-cont
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
-  if (["active", "marketplace", "owner", "ready", "published"].includes(status)) {
+  if (["active", "completed", "marketplace", "owner", "ready", "published"].includes(status)) {
     return "green" as const;
   }
 
-  if (["archived", "internal", "invalid"].includes(status)) {
+  if (["archived", "cancelled", "failed", "internal", "invalid"].includes(status)) {
     return "red" as const;
   }
 
@@ -109,6 +111,14 @@ function assetTypeLabel(type: string) {
   if (type === "package_file") return "Package file";
   if (type === "documentation") return "Documentation";
   return type;
+}
+
+function installStatusLabel(status: string) {
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  if (status === "installing") return "Installing";
+  if (status === "cancelled") return "Cancelled";
+  return "Prepared";
 }
 
 function TemplateHiddenFields({
@@ -320,6 +330,44 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4 text-xs font-semibold text-slate-500">
               {asset.managedExternally ? "Screenshot runtime" : "Template assets"}
             </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Install runs", value: control.installOverview.totalInstalls },
+          { label: "Completed", value: control.installOverview.completedInstalls },
+          { label: "Prepared", value: control.installOverview.preparedInstalls },
+          { label: "Failed", value: control.installOverview.failedInstalls }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin manual install runtime only. One template into one selected store per action. No bulk, marketplace, or automatic installs. Existing store data is never deleted; conflicts are skipped safely."
+        title="Template Install Runtime"
+      />
+
+      <AdminTable
+        empty={!control.templateInstalls.length ? "No template install runs recorded yet." : null}
+        headers={["Template", "Store", "Status", "Created", "Completed", "Error"]}
+      >
+        {control.templateInstalls.map((install) => (
+          <tr key={install.id}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{install.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{install.templateId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{install.storeName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{install.storeId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(install.status)}>{installStatusLabel(install.status)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(install.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(install.completedAt)}</td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">{install.errorMessage ?? "—"}</td>
           </tr>
         ))}
       </AdminTable>
@@ -550,6 +598,12 @@ export default async function AdminTemplatesPage() {
                 >
                   Preview
                 </Link>
+                <TemplateInstallToStoreForm
+                  action={installTemplateToStoreAction}
+                  registryId={template.registryId}
+                  stores={control.installableStores}
+                  templateName={template.name}
+                />
                 <details
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
                   id={`asset-runtime-${template.registryId}`}
