@@ -16,11 +16,13 @@ import {
   markTemplateRecommended,
   previewTemplatePlaceholder,
   publishTemplateUpdatePlaceholder,
+  restoreArchivedTemplateToDraft,
   setTemplateVisibility,
   updateStoresTemplatePlaceholder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
 import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
+import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
@@ -106,7 +108,7 @@ export default async function AdminTemplatesPage() {
       />
 
       <AdminTable
-        empty={!control.templates.length ? "No templates found in the template registry." : null}
+        empty={!control.templates.length ? "No active or draft templates found in the template registry." : null}
         headers={[
           "Template",
           "Category / Industry",
@@ -284,6 +286,41 @@ export default async function AdminTemplatesPage() {
                   </button>
                 </form>
               </div>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminHeader
+        description="Archived templates remain available for Super Admin audit and history. They are hidden from owner, reseller, and marketplace selection lists and do not change existing stores."
+        title="Archived Templates"
+      />
+
+      <AdminTable
+        empty={!control.archivedTemplates.length ? "No archived templates in the registry." : null}
+        headers={["Template", "Category", "Previous visibility", "Latest version", "Archived at", "Actions"]}
+      >
+        {control.archivedTemplates.map((template) => (
+          <tr key={template.registryId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{template.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.templateKey}</p>
+              <AdminBadge tone="red">Archived</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(template.previousVisibility)}>
+                {visibilityLabel(template.previousVisibility)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.latestVersion ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(template.archivedAt)}</td>
+            <td className="px-5 py-4">
+              <TemplateRestoreControl
+                action={restoreArchivedTemplateToDraft}
+                registryId={template.registryId}
+                templateName={template.name}
+              />
             </td>
           </tr>
         ))}

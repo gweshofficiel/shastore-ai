@@ -29,6 +29,7 @@ import {
 } from "@/src/lib/templates/template-versions";
 import { getTemplateVisibilityStats } from "@/src/lib/templates/template-visibility";
 import { getTemplateActivationStats } from "@/src/lib/templates/template-activation";
+import { listArchivedTemplates } from "@/src/lib/templates/template-archive";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -734,6 +735,15 @@ export type AdminPlatformThemeControl = {
 };
 
 export type AdminTemplateManagementControl = {
+  archivedTemplates: Array<{
+    archivedAt: string | null;
+    category: string;
+    latestVersion: string | null;
+    name: string;
+    previousVisibility: "internal" | "marketplace" | "owner" | "reseller";
+    registryId: string;
+    templateKey: string;
+  }>;
   futureHooks: string[];
   overview: {
     activeTemplates: number;
@@ -4636,13 +4646,15 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats] = await Promise.all([
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates] =
+    await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
     getTemplateActivationStats(),
     safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
     listAllTemplateVersions(),
-    getTemplateVisibilityStats()
+    getTemplateVisibilityStats(),
+    listArchivedTemplates()
   ]);
 
   const publishedTemplateIds = new Set(
@@ -4701,7 +4713,9 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     }
   }
 
-  const templates: AdminTemplateManagementControl["templates"] = registryTemplates.map((template) => {
+  const templates: AdminTemplateManagementControl["templates"] = registryTemplates
+    .filter((template) => template.status !== "archived")
+    .map((template) => {
     const storeTemplateId = text(template.metadata.storeTemplateId, template.templateKey);
     const templateVersions = versionsByTemplateId.get(template.id) ?? [];
     const latestVersion = templateVersions[0] ?? null;
@@ -4760,6 +4774,15 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
   });
 
   return {
+    archivedTemplates: archivedTemplates.map((template) => ({
+      archivedAt: template.archivedAt,
+      category: text(template.category, "general"),
+      latestVersion: template.latestVersionNumber,
+      name: template.name,
+      previousVisibility: template.previousVisibility ?? template.visibility,
+      registryId: template.registryId,
+      templateKey: template.templateKey
+    })),
     futureHooks: [
       "Create new template",
       "Upload template preview",

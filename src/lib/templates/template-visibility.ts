@@ -142,18 +142,21 @@ export async function listTemplatesByVisibility(visibility: string): Promise<Tem
   }
 
   const templates = await listTemplates();
-  return templates.filter((template) => template.visibility === cleanedVisibility);
+  return templates.filter(
+    (template) => template.visibility === cleanedVisibility && template.status !== "archived"
+  );
 }
 
 export async function getTemplateVisibilityStats(): Promise<TemplateVisibilityStats> {
   await requireSuperAdmin();
 
   const templates = await listTemplates();
+  const selectableTemplates = templates.filter((template) => template.status !== "archived");
 
   return {
-    hiddenInternal: templates.filter((template) => template.visibility === "internal").length,
-    marketplaceVisible: templates.filter((template) => template.visibility === "marketplace").length,
-    ownerVisible: templates.filter((template) => template.visibility === "owner").length,
-    resellerVisible: templates.filter((template) => template.visibility === "reseller").length
+    hiddenInternal: selectableTemplates.filter((template) => template.visibility === "internal").length,
+    marketplaceVisible: selectableTemplates.filter((template) => template.visibility === "marketplace").length,
+    ownerVisible: selectableTemplates.filter((template) => template.visibility === "owner").length,
+    resellerVisible: selectableTemplates.filter((template) => template.visibility === "reseller").length
   };
 }

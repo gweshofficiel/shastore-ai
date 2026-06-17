@@ -12,7 +12,7 @@ const activateConfirmMessage =
   "Activating makes this template available according to its visibility, but does not install it into stores.";
 
 const archiveConfirmMessage =
-  "Archiving hides this template from future selection but does not affect existing stores.";
+  "Archiving hides this template from future selection. Existing stores using this template will not be changed.";
 
 export function TemplateActivationControls({
   activateAction,

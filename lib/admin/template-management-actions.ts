@@ -6,9 +6,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { setTemplateVisibility as updateTemplateRegistryVisibility } from "@/src/lib/templates/template-visibility";
 import {
   activateTemplate as activateRegistryTemplate,
-  archiveTemplate as archiveRegistryTemplate,
   markTemplateDraft as markRegistryTemplateDraft
 } from "@/src/lib/templates/template-activation";
+import {
+  archiveTemplateSafely,
+  restoreArchivedTemplateToDraft as restoreArchivedRegistryTemplate
+} from "@/src/lib/templates/template-archive";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -20,6 +23,7 @@ type TemplateAdminAction =
   | "admin_template_package_summary_viewed"
   | "admin_template_preview"
   | "admin_template_publish_update"
+  | "admin_template_restore_archived"
   | "admin_template_set_visibility"
   | "admin_template_update_stores";
 
@@ -126,13 +130,82 @@ export async function archiveTemplate(formData: FormData) {
   }
 
   const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
 
   if (!registryId) {
     throw new Error("Missing template registry id.");
   }
 
-  const result = await archiveRegistryTemplate(registryId);
-  await recordTemplateActivationEvent(formData, "admin_template_archive", result);
+  const result = await archiveTemplateSafely(registryId);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_archive",
+    metadata: {
+      archived_at: result.archivedAt,
+      note: "Template archived safely in registry. History, versions, badges, and package summary were preserved. No store installations or storefront rendering were changed.",
+      previous_status: result.previousStatus,
+      previous_visibility: result.previousVisibility,
+      source: "super_admin_template_management_center",
+      status: result.status,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function restoreArchivedTemplateToDraft(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can restore archived templates.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await restoreArchivedRegistryTemplate(registryId);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_restore_archived",
+    metadata: {
+      note: "Archived template restored to draft in registry only. It will not become active until activated manually.",
+      previous_status: result.previousStatus,
+      restored_at: result.restoredAt,
+      source: "super_admin_template_management_center",
+      status: result.status,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
   revalidatePath("/admin/templates");
 }
 
