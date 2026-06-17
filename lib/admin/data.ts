@@ -20,8 +20,10 @@ import {
 import { integrationDefinitions } from "@/lib/integrations/catalog";
 import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integrations/health-engine";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
-import { getTemplateLibrary } from "@/lib/storefront/template-library";
-import { templatePreviewSummary } from "@/lib/storefront/template-preview-summary";
+import {
+  getTemplateRegistryStats,
+  listTemplates
+} from "@/src/lib/templates/template-registry";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -4607,26 +4609,11 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [library, stores, monitoringEvents] = await Promise.all([
-    getTemplateLibrary(),
-    safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
-    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  const [registryTemplates, stats, stores] = await Promise.all([
+    listTemplates(),
+    getTemplateRegistryStats(),
+    safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000)
   ]);
-  const templateEvents = monitoringEvents
-    .filter((event) => text(event.event_type).startsWith("admin_template_"))
-    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
-  const latestEventsByTemplate = new Map<string, AnyRecord[]>();
-
-  for (const event of templateEvents) {
-    const metadata = isRecord(event.metadata) ? event.metadata : {};
-    const templateId = text(metadata.template_id);
-
-    if (!templateId) {
-      continue;
-    }
-
-    latestEventsByTemplate.set(templateId, [...(latestEventsByTemplate.get(templateId) ?? []), event]);
-  }
 
   const installedVersionsByTemplate = new Map<string, Set<string>>();
 
@@ -4643,65 +4630,41 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     }
   }
 
-  const templates: AdminTemplateManagementControl["templates"] = library.templates.map((template) => {
-    const summary = templatePreviewSummary(template);
-    const events = latestEventsByTemplate.get(template.id) ?? [];
-    const latestStatusEvent = events.find((event) =>
-      ["admin_template_activate", "admin_template_archive"].includes(text(event.event_type))
-    );
-    const latestVisibilityEvent = events.find((event) => text(event.event_type) === "admin_template_set_visibility");
-    const latestOfficialEvent = events.find((event) => text(event.event_type) === "admin_template_mark_official");
-    const latestRecommendedEvent = events.find((event) => text(event.event_type) === "admin_template_mark_recommended");
-    const visibilityMetadata = isRecord(latestVisibilityEvent?.metadata) ? latestVisibilityEvent.metadata : {};
-    const status =
-      text(latestStatusEvent?.event_type) === "admin_template_archive"
-        ? "archived"
-        : template.is_active
-          ? "active"
-          : "draft";
-    const visibility = ((): AdminTemplateManagementControl["templates"][number]["visibility"] => {
-      const requested = text(visibilityMetadata.visibility);
-
-      if (requested === "owner" || requested === "reseller" || requested === "marketplace" || requested === "internal") {
-        return requested;
-      }
-
-      if (status === "archived") {
-        return "internal";
-      }
-
-      return template.is_official ? "marketplace" : "owner";
-    })();
-    const official = template.is_official || Boolean(latestOfficialEvent);
-    const recommended = template.is_recommended || Boolean(latestRecommendedEvent);
+  const templates: AdminTemplateManagementControl["templates"] = registryTemplates.map((template) => {
+    const storeTemplateId = text(template.metadata.storeTemplateId, template.templateKey);
+    const parsedVersion = Number.parseInt(template.version, 10);
+    const premium =
+      template.badges.includes("premium") ||
+      template.badges.includes("ready-to-use") ||
+      template.packageSummary.domainEmailReadiness === "ready";
 
     return {
       badges: {
-        official,
-        premium: summary.hasPackage || summary.hasAIVisualSupport || template.package_enabled,
-        recommended
+        official: template.isOfficial,
+        premium,
+        recommended: template.isRecommended
       },
-      category: text(template.category_key, text(template.category, "general")),
-      createdAt: null,
-      domainEmailReadiness: summary.hasPackage ? "ready" : "placeholder",
-      id: template.id,
-      industry: text(template.industry, text(template.niche_category, "general")),
-      installedVersionCount: installedVersionsByTemplate.get(template.id)?.size ?? 0,
-      lastUpdated: text(events[0]?.created_at) || null,
+      category: text(template.category, "general"),
+      createdAt: template.createdAt,
+      domainEmailReadiness: template.packageSummary.domainEmailReadiness,
+      id: storeTemplateId,
+      industry: text(template.industry, "general"),
+      installedVersionCount: installedVersionsByTemplate.get(storeTemplateId)?.size ?? 0,
+      lastUpdated: template.updatedAt,
       name: template.name,
       packageSummary: {
-        aiVisualSupport: summary.hasAIVisualSupport,
-        blogCount: summary.blogArticleCount,
-        categoriesCount: summary.categoryCount,
-        faqCount: summary.faqCount,
-        pagesCount: summary.customPageCount + summary.legalPageCount + summary.homepageSectionCount,
-        productsCount: summary.productCount
+        aiVisualSupport: template.packageSummary.aiVisualSupport,
+        blogCount: template.packageSummary.blogCount,
+        categoriesCount: template.packageSummary.categoriesCount,
+        faqCount: template.packageSummary.faqCount,
+        pagesCount: template.packageSummary.pagesCount,
+        productsCount: template.packageSummary.productsCount
       },
-      packageVersion: summary.packageVersion ?? template.package_version ?? null,
-      previewHref: `/templates/preview/${encodeURIComponent(template.id)}`,
-      status,
+      packageVersion: Number.isFinite(parsedVersion) ? parsedVersion : null,
+      previewHref: `/templates/preview/${encodeURIComponent(storeTemplateId)}`,
+      status: template.status,
       updateAvailable: "placeholder",
-      visibility
+      visibility: template.visibility
     };
   });
 
@@ -4714,18 +4677,18 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       "Reseller exclusive templates"
     ],
     overview: {
-      activeTemplates: templates.filter((template) => template.status === "active").length,
-      archivedTemplates: templates.filter((template) => template.status === "archived").length,
-      draftTemplates: templates.filter((template) => template.status === "draft").length,
-      officialTemplates: templates.filter((template) => template.badges.official).length,
-      resellerVisibleTemplates: templates.filter((template) => template.visibility === "reseller").length,
-      totalTemplates: templates.length
+      activeTemplates: stats.activeTemplates,
+      archivedTemplates: stats.archivedTemplates,
+      draftTemplates: stats.draftTemplates,
+      officialTemplates: stats.officialTemplates,
+      resellerVisibleTemplates: stats.resellerVisible,
+      totalTemplates: stats.totalTemplates
     },
     templates,
     visibility: {
-      hiddenInternal: templates.filter((template) => template.visibility === "internal").length,
-      ownerVisible: templates.filter((template) => template.visibility === "owner" || template.visibility === "marketplace").length,
-      resellerVisible: templates.filter((template) => template.visibility === "reseller").length
+      hiddenInternal: stats.hiddenInternal,
+      ownerVisible: stats.ownerVisible,
+      resellerVisible: stats.resellerVisible
     }
   };
 }

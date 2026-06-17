@@ -52,7 +52,7 @@ export default async function AdminTemplatesPage() {
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Global control layer over the existing Store Owner template library and Template Package Installer. No packages are installed here, no stores are overwritten, and no duplicate template registry is created."
+        description="Global control layer over the template registry runtime. No packages are installed here, no stores are overwritten, and storefront rendering is unchanged."
         title="Template Management Center"
       />
 
@@ -70,7 +70,7 @@ export default async function AdminTemplatesPage() {
       />
 
       <AdminTable
-        empty={!control.templates.length ? "No templates found in the existing template library." : null}
+        empty={!control.templates.length ? "No templates found in the template registry." : null}
         headers={[
           "Template",
           "Category / Industry",
