@@ -10,21 +10,27 @@ import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
   activateTemplate,
   archiveTemplate,
+  archiveTemplateScreenshotAction,
   installTemplateVersionPlaceholder,
   markTemplateDraft,
   markTemplateOfficial,
+  publishTemplateScreenshotAction,
   publishTemplateUpdatePlaceholder,
   recommendTemplate,
+  reorderTemplateScreenshotAction,
   restoreArchivedTemplateToDraft,
   saveTemplatePackageMetadata,
   setTemplateVisibility,
   unmarkTemplateOfficial,
   unrecommendTemplate,
   updateStoresTemplatePlaceholder,
-  updateTemplateRecommendationOrder
+  updateTemplateRecommendationOrder,
+  uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
 import { TemplatePackageEditForm } from "@/components/admin/template-package-edit-form";
 import { TemplatePackageSummaryLink } from "@/components/admin/template-package-summary-link";
+import { TemplateScreenshotList } from "@/components/admin/template-screenshot-list";
+import { TemplateScreenshotUploadForm } from "@/components/admin/template-screenshot-upload-form";
 import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
 import { TemplateOfficialControls } from "@/components/admin/template-official-controls";
 import { TemplateRecommendationControls } from "@/components/admin/template-recommendation-controls";
@@ -73,6 +79,13 @@ function readinessLabel(status: string) {
   if (status === "ready") return "Ready";
   if (status === "needs_attention") return "Needs attention";
   if (status === "invalid") return "Invalid";
+  return "Draft";
+}
+
+function screenshotStatusLabel(status: string) {
+  if (status === "published") return "Published";
+  if (status === "archived") return "Archived";
+  if (status === "deleted") return "Deleted";
   return "Draft";
 }
 
@@ -184,6 +197,54 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4 text-xs font-semibold text-slate-600">
               {pkg.validationIssues.length ? pkg.validationIssues.join(" · ") : "—"}
             </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Screenshots", value: control.screenshotOverview.totalScreenshots },
+          { label: "Published screenshots", value: control.screenshotOverview.publishedScreenshots },
+          { label: "Draft screenshots", value: control.screenshotOverview.draftScreenshots },
+          { label: "Archived screenshots", value: control.screenshotOverview.archivedScreenshots }
+        ]}
+      />
+
+      <AdminHeader
+        description="Upload, publish, archive, and reorder template screenshots for Super Admin preview only. Storage keys stay private; only safe public preview URLs are shown."
+        title="Screenshot Management"
+      />
+
+      <AdminTable
+        empty={!control.screenshots.length ? "No template screenshots uploaded yet." : null}
+        headers={["Template", "Type", "Status", "Order", "Preview", "Filename"]}
+      >
+        {control.screenshots.map((screenshot) => (
+          <tr key={screenshot.id}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{screenshot.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{screenshot.registryId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{screenshot.screenshotType}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(screenshot.status)}>{screenshotStatusLabel(screenshot.status)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{screenshot.sortOrder}</td>
+            <td className="px-5 py-4">
+              {screenshot.previewUrl ? (
+                <Link
+                  className="text-xs font-black uppercase tracking-[0.14em] text-slate-700 underline"
+                  href={screenshot.previewUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Preview image
+                </Link>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">—</span>
+              )}
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">{screenshot.originalFilename}</td>
           </tr>
         ))}
       </AdminTable>
@@ -414,6 +475,28 @@ export default async function AdminTemplatesPage() {
                 >
                   Preview
                 </Link>
+                <details
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  id={`screenshot-runtime-${template.registryId}`}
+                >
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                    Screenshots ({template.screenshots.length})
+                  </summary>
+                  <TemplateScreenshotUploadForm
+                    action={uploadTemplateScreenshotAction}
+                    registryId={template.registryId}
+                    templateName={template.name}
+                  />
+                  <TemplateScreenshotList
+                    archiveAction={archiveTemplateScreenshotAction}
+                    previewHref={template.previewHref}
+                    publishAction={publishTemplateScreenshotAction}
+                    registryId={template.registryId}
+                    reorderAction={reorderTemplateScreenshotAction}
+                    screenshots={template.screenshots}
+                    templateName={template.name}
+                  />
+                </details>
                 {template.packageRuntime ? (
                   <TemplatePackageSummaryLink targetId={`package-runtime-${template.registryId}`}>
                     Package summary

@@ -40,6 +40,7 @@ import {
   listTemplatePackages,
   validateTemplatePackage
 } from "@/src/lib/templates/template-package-runtime";
+import { listAllTemplateScreenshots } from "@/src/lib/templates/template-screenshot-storage";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -802,6 +803,22 @@ export type AdminTemplateManagementControl = {
     templateKey: string;
     visibility: "internal" | "marketplace" | "owner" | "reseller";
   }>;
+  screenshotOverview: {
+    archivedScreenshots: number;
+    draftScreenshots: number;
+    publishedScreenshots: number;
+    totalScreenshots: number;
+  };
+  screenshots: Array<{
+    id: string;
+    originalFilename: string;
+    previewUrl: string | null;
+    registryId: string;
+    screenshotType: "desktop" | "gallery" | "hero" | "mobile" | "tablet" | "thumbnail";
+    sortOrder: number;
+    status: "archived" | "deleted" | "draft" | "published";
+    templateName: string;
+  }>;
   templates: Array<{
     badges: {
       official: boolean;
@@ -852,6 +869,14 @@ export type AdminTemplateManagementControl = {
     previewHref: string;
     recommendationOrder: number | null;
     registryId: string;
+    screenshots: Array<{
+      id: string;
+      originalFilename: string;
+      previewUrl: string | null;
+      screenshotType: "desktop" | "gallery" | "hero" | "mobile" | "tablet" | "thumbnail";
+      sortOrder: number;
+      status: "archived" | "deleted" | "draft" | "published";
+    }>;
     status: "active" | "archived" | "draft";
     updateAvailable: "placeholder";
     versions: Array<{
@@ -4715,7 +4740,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4728,7 +4753,8 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     getRecommendedTemplateStats(),
     listRecommendedTemplates(),
     listTemplatePackages(),
-    getTemplatePackageStats()
+    getTemplatePackageStats(),
+    listAllTemplateScreenshots()
   ]);
 
   const packageValidations = await Promise.all(
@@ -4741,6 +4767,14 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     packageValidations.map((entry) => [entry.templateId, entry.validation])
   );
   const packagesByTemplateId = new Map(allPackages.map((pkg) => [pkg.templateId, pkg]));
+  const screenshotsByTemplateId = new Map<string, typeof allScreenshots>();
+
+  for (const screenshot of allScreenshots) {
+    const existing = screenshotsByTemplateId.get(screenshot.templateId) ?? [];
+    existing.push(screenshot);
+    screenshotsByTemplateId.set(screenshot.templateId, existing);
+  }
+
   const templateKeyByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.templateKey]));
   const templateNameByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.name]));
 
@@ -4865,6 +4899,14 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       previewHref: `/admin/templates/preview/${encodeURIComponent(template.id)}`,
       recommendationOrder,
       registryId: template.id,
+      screenshots: (screenshotsByTemplateId.get(template.id) ?? []).map((screenshot) => ({
+        id: screenshot.id,
+        originalFilename: screenshot.originalFilename,
+        previewUrl: screenshot.previewUrl,
+        screenshotType: screenshot.screenshotType,
+        sortOrder: screenshot.sortOrder,
+        status: screenshot.status
+      })),
       status: template.status,
       updateAvailable: "placeholder",
       versions: templateVersions.map((version) => ({
@@ -4931,6 +4973,22 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       registryId: template.id,
       templateKey: template.templateKey,
       visibility: template.visibility
+    })),
+    screenshotOverview: {
+      archivedScreenshots: allScreenshots.filter((screenshot) => screenshot.status === "archived").length,
+      draftScreenshots: allScreenshots.filter((screenshot) => screenshot.status === "draft").length,
+      publishedScreenshots: allScreenshots.filter((screenshot) => screenshot.status === "published").length,
+      totalScreenshots: allScreenshots.length
+    },
+    screenshots: allScreenshots.map((screenshot) => ({
+      id: screenshot.id,
+      originalFilename: screenshot.originalFilename,
+      previewUrl: screenshot.previewUrl,
+      registryId: screenshot.templateId,
+      screenshotType: screenshot.screenshotType,
+      sortOrder: screenshot.sortOrder,
+      status: screenshot.status,
+      templateName: templateNameByRegistryId.get(screenshot.templateId) ?? "Template"
     })),
     templates,
     versionOverview: versionStats,

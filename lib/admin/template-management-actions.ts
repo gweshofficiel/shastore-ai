@@ -22,6 +22,13 @@ import {
   updateRecommendationOrder as updateRegistryRecommendationOrder
 } from "@/src/lib/templates/template-recommendation";
 import { updateTemplatePackageMetadata } from "@/src/lib/templates/template-package-runtime";
+import {
+  archiveTemplateScreenshot,
+  listTemplateScreenshots,
+  publishTemplateScreenshot,
+  reorderTemplateScreenshots,
+  uploadTemplateScreenshot
+} from "@/src/lib/templates/template-screenshot-storage";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -33,6 +40,10 @@ type TemplateAdminAction =
   | "admin_template_package_summary_updated"
   | "admin_template_package_summary_viewed"
   | "admin_template_preview"
+  | "admin_template_screenshot_archived"
+  | "admin_template_screenshot_published"
+  | "admin_template_screenshot_reordered"
+  | "admin_template_screenshot_uploaded"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -574,6 +585,206 @@ export async function saveTemplatePackageMetadata(formData: FormData) {
   } as never);
 
   revalidatePath("/admin/templates");
+}
+
+export async function uploadTemplateScreenshotAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can upload template screenshots.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const screenshotType = cleanText(formData.get("screenshotType")) || "gallery";
+  const file = formData.get("screenshotFile");
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  if (!(file instanceof File) || !file.size) {
+    throw new Error("Select a screenshot file to upload.");
+  }
+
+  const screenshot = await uploadTemplateScreenshot(registryId, file, {
+    screenshotType: screenshotType as "desktop" | "gallery" | "hero" | "mobile" | "tablet" | "thumbnail"
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: screenshot.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_screenshot_uploaded",
+    metadata: {
+      note: "Template screenshot uploaded to admin storage only. No store installation or storefront rendering changes occurred.",
+      screenshot_type: screenshot.screenshotType,
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/templates/preview/${encodeURIComponent(registryId)}`);
+}
+
+export async function publishTemplateScreenshotAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can publish template screenshots.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const screenshotId = cleanText(formData.get("screenshotId"));
+
+  if (!screenshotId) {
+    throw new Error("Missing screenshot id.");
+  }
+
+  const screenshot = await publishTemplateScreenshot(screenshotId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: screenshot.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_screenshot_published",
+    metadata: {
+      note: "Template screenshot published for admin preview only.",
+      screenshot_type: screenshot.screenshotType,
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId || screenshot.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/templates/preview/${encodeURIComponent(registryId || screenshot.templateId)}`);
+}
+
+export async function archiveTemplateScreenshotAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can archive template screenshots.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const screenshotId = cleanText(formData.get("screenshotId"));
+
+  if (!screenshotId) {
+    throw new Error("Missing screenshot id.");
+  }
+
+  const screenshot = await archiveTemplateScreenshot(screenshotId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: screenshot.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_screenshot_archived",
+    metadata: {
+      note: "Template screenshot archived in admin storage runtime only.",
+      screenshot_type: screenshot.screenshotType,
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId || screenshot.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/templates/preview/${encodeURIComponent(registryId || screenshot.templateId)}`);
+}
+
+export async function reorderTemplateScreenshotAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can reorder template screenshots.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const screenshotId = cleanText(formData.get("screenshotId"));
+  const direction = cleanText(formData.get("direction"));
+
+  if (!registryId || !screenshotId) {
+    throw new Error("Missing screenshot reorder context.");
+  }
+
+  const screenshots = await listTemplateScreenshots(registryId);
+  const ids = screenshots.map((screenshot) => screenshot.id);
+  const index = ids.indexOf(screenshotId);
+
+  if (index < 0) {
+    throw new Error("Screenshot was not found for reorder.");
+  }
+
+  if (direction === "up" && index > 0) {
+    const previous = ids[index - 1];
+    ids[index - 1] = screenshotId;
+    ids[index] = previous;
+  } else if (direction === "down" && index < ids.length - 1) {
+    const next = ids[index + 1];
+    ids[index + 1] = screenshotId;
+    ids[index] = next;
+  }
+
+  await reorderTemplateScreenshots(registryId, ids);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: screenshotId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_screenshot_reordered",
+    metadata: {
+      direction: direction || "custom",
+      note: "Template screenshot order updated in admin runtime only.",
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/templates/preview/${encodeURIComponent(registryId)}`);
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

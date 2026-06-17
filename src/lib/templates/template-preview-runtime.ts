@@ -14,6 +14,10 @@ import {
   type TemplateRegistryVisibility
 } from "@/src/lib/templates/template-registry";
 import { getPublishedTemplateVersion } from "@/src/lib/templates/template-versions";
+import {
+  listPublishedTemplateScreenshots,
+  screenshotTypeLabel
+} from "@/src/lib/templates/template-screenshot-storage";
 
 export type TemplatePreviewReadiness = "invalid" | "needs_attention" | "ready";
 
@@ -165,7 +169,7 @@ function contentsFromSummary(summary: TemplateRegistryPackageSummary): TemplateP
   };
 }
 
-function buildScreenshots(template: TemplateRegistryRecord): TemplatePreviewScreenshot[] {
+function buildMetadataScreenshots(template: TemplateRegistryRecord): TemplatePreviewScreenshot[] {
   const gradients = gradientsForCategory(template.category);
   const metadata = template.metadata;
   const urls: string[] = [];
@@ -208,6 +212,27 @@ function buildScreenshots(template: TemplateRegistryRecord): TemplatePreviewScre
     imageUrl: url,
     label: labels[index] ?? `Screen ${index + 1}`
   }));
+}
+
+async function buildPreviewScreenshots(template: TemplateRegistryRecord): Promise<TemplatePreviewScreenshot[]> {
+  const gradients = gradientsForCategory(template.category);
+
+  try {
+    const published = await listPublishedTemplateScreenshots(template.id);
+    const withUrls = published.filter((screenshot) => screenshot.previewUrl);
+
+    if (withUrls.length) {
+      return withUrls.map((screenshot) => ({
+        gradient: gradients[0],
+        imageUrl: screenshot.previewUrl,
+        label: screenshotTypeLabel(screenshot.screenshotType)
+      }));
+    }
+  } catch {
+    // Fall back to registry metadata or gradient placeholders.
+  }
+
+  return buildMetadataScreenshots(template);
 }
 
 function buildMockSections(contents: TemplatePackageContents): TemplatePreviewMockSection[] {
@@ -396,7 +421,7 @@ export async function buildTemplatePreviewModel(templateId: string): Promise<Tem
     previewReadiness: readiness.readiness,
     readinessIssues: readiness.issues,
     registryId: template.id,
-    screenshots: buildScreenshots(template),
+    screenshots: await buildPreviewScreenshots(template),
     slug: template.slug,
     status: template.status,
     storeTemplateId: storeTemplateIdFromMetadata(template.metadata),
