@@ -46,6 +46,7 @@ import { listTemplateInstalls } from "@/src/lib/templates/template-install-runti
 import { listStoreTemplateAssignments } from "@/src/lib/templates/store-template-assignment";
 import { listStoreThemeIsolationIssues } from "@/src/lib/templates/store-theme-isolation";
 import { listTemplateUpdateJobs } from "@/src/lib/templates/template-update-runtime";
+import { listTemplateRollbackJobs } from "@/src/lib/templates/template-rollback-runtime";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -932,6 +933,42 @@ export type AdminTemplateManagementControl = {
     targetVersionNumber: string | null;
     templateId: string;
     templateName: string;
+  }>;
+  rollbackOverview: {
+    completedRollbacks: number;
+    failedRollbacks: number;
+    preparedRollbacks: number;
+    totalRollbacks: number;
+  };
+  rollbackableTargets: Array<{
+    assignmentId: string;
+    currentVersionId: string | null;
+    currentVersionNumber: string | null;
+    registryId: string;
+    storeId: string;
+    storeName: string;
+    targetVersionId: string;
+    targetVersionNumber: string;
+    templateName: string;
+    updateJobId: string | null;
+  }>;
+  templateRollbackJobs: Array<{
+    assignmentId: string | null;
+    completedAt: string | null;
+    conflictSummary: string | null;
+    conflictsCount: number;
+    createdAt: string | null;
+    currentVersionNumber: string | null;
+    errorMessage: string | null;
+    id: string;
+    status: "cancelled" | "completed" | "failed" | "prepared" | "rolling_back";
+    storeId: string;
+    storeName: string;
+    summaryNote: string | null;
+    targetVersionNumber: string | null;
+    templateId: string;
+    templateName: string;
+    updateJobId: string | null;
   }>;
   templateInstalls: Array<{
     completedAt: string | null;
@@ -4877,7 +4914,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, installTargetStores] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4897,6 +4934,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listStoreTemplateAssignments({ limit: 200 }),
     listStoreThemeIsolationIssues({ limit: 200 }),
     listTemplateUpdateJobs({ limit: 200 }),
+    listTemplateRollbackJobs({ limit: 200 }),
     safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
   ]);
 
@@ -5048,6 +5086,112 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       };
     })
     .filter((target): target is NonNullable<typeof target> => Boolean(target))
+    .sort((left, right) => left.storeName.localeCompare(right.storeName));
+
+  const rollbackableTargets = allAssignments
+    .filter(
+      (assignment) =>
+        (assignment.assignmentStatus === "active" || assignment.assignmentStatus === "assigned") &&
+        activeRegistryIds.has(assignment.templateId)
+    )
+    .flatMap((assignment) => {
+      const currentVersion = assignment.templateVersionId
+        ? allVersions.find((version) => version.id === assignment.templateVersionId) ?? null
+        : null;
+
+      if (!currentVersion) return [];
+
+      const knownVersionIds = new Set<string>();
+
+      for (const historyAssignment of allAssignments) {
+        if (historyAssignment.storeId !== assignment.storeId) continue;
+        if (historyAssignment.templateId !== assignment.templateId) continue;
+
+        if (historyAssignment.templateVersionId) {
+          knownVersionIds.add(historyAssignment.templateVersionId);
+        }
+
+        const metadata = historyAssignment.metadata;
+
+        for (const key of ["previous_template_version_id", "updated_to_version_id"] as const) {
+          const value = typeof metadata[key] === "string" ? metadata[key] : "";
+
+          if (value) knownVersionIds.add(value);
+        }
+      }
+
+      for (const install of allInstalls) {
+        if (install.storeId !== assignment.storeId) continue;
+        if (install.templateId !== assignment.templateId) continue;
+        if (install.status !== "completed") continue;
+        if (install.templateVersionId) knownVersionIds.add(install.templateVersionId);
+      }
+
+      for (const updateJob of allUpdateJobs) {
+        if (updateJob.storeId !== assignment.storeId) continue;
+        if (updateJob.templateId !== assignment.templateId) continue;
+        if (updateJob.status !== "completed") continue;
+        if (updateJob.fromVersionId) knownVersionIds.add(updateJob.fromVersionId);
+        if (updateJob.toVersionId) knownVersionIds.add(updateJob.toVersionId);
+      }
+
+      const linkedUpdateJob =
+        allUpdateJobs.find(
+          (updateJob) =>
+            updateJob.storeId === assignment.storeId &&
+            updateJob.templateId === assignment.templateId &&
+            updateJob.status === "completed" &&
+            updateJob.toVersionId === currentVersion.id
+        ) ?? null;
+
+      const targets: Array<{
+        assignmentId: string;
+        currentVersionId: string;
+        currentVersionNumber: string;
+        registryId: string;
+        storeId: string;
+        storeName: string;
+        targetVersionId: string;
+        targetVersionNumber: string;
+        templateName: string;
+        updateJobId: string | null;
+      }> = [];
+
+      for (const versionId of knownVersionIds) {
+        if (versionId === currentVersion.id) continue;
+
+        const targetVersion = allVersions.find((version) => version.id === versionId);
+
+        if (!targetVersion || targetVersion.status !== "published") continue;
+        if (targetVersion.templateId !== assignment.templateId) continue;
+
+        const isKnown = knownVersionIds.has(targetVersion.id);
+        const isOlderOrEqual =
+          compareTemplateVersionNumbers(targetVersion.versionNumber, currentVersion.versionNumber) <= 0;
+
+        if (!isKnown && !isOlderOrEqual) continue;
+
+        targets.push({
+          assignmentId: assignment.id,
+          currentVersionId: currentVersion.id,
+          currentVersionNumber: currentVersion.versionNumber,
+          registryId: assignment.templateId,
+          storeId: assignment.storeId,
+          storeName: storeNameById.get(assignment.storeId) ?? assignment.storeId,
+          targetVersionId: targetVersion.id,
+          targetVersionNumber: targetVersion.versionNumber,
+          templateName: templateNameByRegistryId.get(assignment.templateId) ?? "Template",
+          updateJobId:
+            linkedUpdateJob && linkedUpdateJob.fromVersionId === targetVersion.id
+              ? linkedUpdateJob.id
+              : null
+        });
+      }
+
+      const unique = new Map(targets.map((target) => [target.targetVersionId, target]));
+
+      return [...unique.values()];
+    })
     .sort((left, right) => left.storeName.localeCompare(right.storeName));
 
   const publishedTemplateIds = new Set(
@@ -5388,6 +5532,31 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       targetVersionNumber: versionNumberById.get(job.toVersionId) ?? null,
       templateId: job.templateId,
       templateName: templateNameByRegistryId.get(job.templateId) ?? "Template"
+    })),
+    rollbackOverview: {
+      completedRollbacks: allRollbackJobs.filter((job) => job.status === "completed").length,
+      failedRollbacks: allRollbackJobs.filter((job) => job.status === "failed").length,
+      preparedRollbacks: allRollbackJobs.filter((job) => job.status === "prepared").length,
+      totalRollbacks: allRollbackJobs.length
+    },
+    rollbackableTargets,
+    templateRollbackJobs: allRollbackJobs.map((job) => ({
+      assignmentId: job.assignmentId,
+      completedAt: job.completedAt,
+      conflictSummary: job.conflicts[0]?.note ?? null,
+      conflictsCount: job.conflicts.length,
+      createdAt: job.createdAt,
+      currentVersionNumber: job.fromVersionId ? versionNumberById.get(job.fromVersionId) ?? null : null,
+      errorMessage: job.errorMessage,
+      id: job.id,
+      status: job.status,
+      storeId: job.storeId,
+      storeName: storeNameById.get(job.storeId) ?? job.storeId,
+      summaryNote: typeof job.rollbackSummary.note === "string" ? job.rollbackSummary.note : null,
+      targetVersionNumber: versionNumberById.get(job.toVersionId) ?? null,
+      templateId: job.templateId,
+      templateName: templateNameByRegistryId.get(job.templateId) ?? "Template",
+      updateJobId: job.updateJobId
     })),
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,

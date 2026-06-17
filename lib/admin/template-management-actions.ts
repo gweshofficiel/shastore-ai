@@ -46,6 +46,10 @@ import {
   checkTemplateUpdateAvailability,
   prepareTemplateUpdate
 } from "@/src/lib/templates/template-update-runtime";
+import {
+  applyTemplateRollback,
+  prepareTemplateRollback
+} from "@/src/lib/templates/template-rollback-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -72,6 +76,8 @@ type TemplateAdminAction =
   | "admin_template_update_check"
   | "admin_template_update_prepare"
   | "admin_template_update_apply"
+  | "admin_template_rollback_prepare"
+  | "admin_template_rollback_apply"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -1337,6 +1343,112 @@ export async function applyTemplateUpdateAction(formData: FormData) {
       to_version_id: result.job.toVersionId,
       update_job_id: result.job.id,
       update_status: result.job.status
+    },
+    store_id: result.job.storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(result.job.storeId)}`);
+}
+
+export async function prepareTemplateRollbackAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can prepare template rollbacks.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin rollback confirmation is required.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const storeId = cleanText(formData.get("storeId"));
+  const toVersionId = cleanText(formData.get("toVersionId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId || !storeId || !toVersionId) {
+    throw new Error("Store, template, and rollback version are required.");
+  }
+
+  const result = await prepareTemplateRollback(storeId, registryId, toVersionId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.job.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_rollback_prepare",
+    metadata: {
+      from_version_id: result.job.fromVersionId,
+      note: "Super Admin manual template rollback job prepared for a single store.",
+      rollback_job_id: result.job.id,
+      rollback_status: result.job.status,
+      source: "super_admin_template_management_center",
+      store_id: storeId,
+      template_name: templateName || result.validation.templateName,
+      template_registry_id: registryId,
+      to_version_id: result.job.toVersionId,
+      update_job_id: result.job.updateJobId
+    },
+    store_id: storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(storeId)}`);
+}
+
+export async function applyTemplateRollbackAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can apply template rollbacks.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin apply confirmation is required.");
+  }
+
+  const rollbackJobId = cleanText(formData.get("rollbackJobId"));
+  const storeName = cleanText(formData.get("storeName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!rollbackJobId) {
+    throw new Error("Prepared rollback job id is required.");
+  }
+
+  const result = await applyTemplateRollback(rollbackJobId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.job.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_rollback_apply",
+    metadata: {
+      conflict_count: result.job.conflicts.length,
+      note: "Super Admin manual template rollback applied for a single store.",
+      package_install_status: result.packageResult.status,
+      rollback_job_id: result.job.id,
+      rollback_status: result.job.status,
+      source: "super_admin_template_management_center",
+      store_id: result.job.storeId,
+      store_name: storeName,
+      template_name: templateName || result.validation.templateName,
+      to_version_id: result.job.toVersionId,
+      update_job_id: result.job.updateJobId
     },
     store_id: result.job.storeId,
     user_id: access.user.id,

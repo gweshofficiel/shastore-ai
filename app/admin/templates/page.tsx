@@ -13,6 +13,7 @@ import {
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
   assignTemplateToStoreAction,
+  applyTemplateRollbackAction,
   applyTemplateUpdateAction,
   checkTemplateUpdateAction,
   deleteDraftTemplateAssetAction,
@@ -21,6 +22,7 @@ import {
   markTemplateAssignmentActiveAction,
   markTemplateDraft,
   markTemplateOfficial,
+  prepareTemplateRollbackAction,
   prepareTemplateUpdateAction,
   publishTemplateAssetAction,
   publishTemplateScreenshotAction,
@@ -38,6 +40,8 @@ import {
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateRollbackApplyRowAction } from "@/components/admin/template-rollback-apply-row-action";
+import { TemplateRollbackRuntimeForm } from "@/components/admin/template-rollback-runtime-form";
 import { TemplateUpdateApplyRowAction } from "@/components/admin/template-update-apply-row-action";
 import { TemplateUpdateRuntimeForm } from "@/components/admin/template-update-runtime-form";
 import { TemplateAssignToStoreForm } from "@/components/admin/template-assign-to-store-form";
@@ -162,6 +166,15 @@ function isolationStatusLabel(status: string) {
 function updateStatusLabel(status: string) {
   if (status === "prepared") return "Prepared";
   if (status === "updating") return "Updating";
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
+  return status;
+}
+
+function rollbackStatusLabel(status: string) {
+  if (status === "prepared") return "Prepared";
+  if (status === "rolling_back") return "Rolling back";
   if (status === "completed") return "Completed";
   if (status === "failed") return "Failed";
   if (status === "cancelled") return "Cancelled";
@@ -598,6 +611,80 @@ export default async function AdminTemplatesPage() {
               {job.status === "prepared" ? (
                 <TemplateUpdateApplyRowAction
                   action={applyTemplateUpdateAction}
+                  jobId={job.id}
+                  storeName={job.storeName}
+                  templateName={job.templateName}
+                />
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">—</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Rollback jobs", value: control.rollbackOverview.totalRollbacks },
+          { label: "Prepared", value: control.rollbackOverview.preparedRollbacks },
+          { label: "Completed", value: control.rollbackOverview.completedRollbacks },
+          { label: "Failed", value: control.rollbackOverview.failedRollbacks }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin manual template rollback runtime for stores updated through Template Update Runtime. Explicit prepare and apply only. Conflicts are skipped safely; customer data is never deleted."
+        title="Template Rollbacks"
+      />
+
+      <TemplateRollbackRuntimeForm
+        applyAction={applyTemplateRollbackAction}
+        prepareAction={prepareTemplateRollbackAction}
+        rollbackableTargets={control.rollbackableTargets}
+        stores={control.installableStores}
+      />
+
+      <AdminTable
+        empty={!control.templateRollbackJobs.length ? "No template rollback jobs recorded yet." : null}
+        headers={[
+          "Store",
+          "Template",
+          "Current",
+          "Rollback to",
+          "Status",
+          "Conflicts",
+          "Summary",
+          "Created",
+          "Actions"
+        ]}
+      >
+        {control.templateRollbackJobs.map((job) => (
+          <tr key={job.id}>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{job.storeName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.storeId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{job.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.templateId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{job.currentVersionNumber ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{job.targetVersionNumber ?? "—"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(job.status)}>{rollbackStatusLabel(job.status)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-slate-600">{job.conflictsCount}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.conflictSummary ?? "—"}</p>
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">
+              {job.summaryNote ?? job.errorMessage ?? "—"}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.createdAt)}</td>
+            <td className="px-5 py-4">
+              {job.status === "prepared" ? (
+                <TemplateRollbackApplyRowAction
+                  action={applyTemplateRollbackAction}
                   jobId={job.id}
                   storeName={job.storeName}
                   templateName={job.templateName}
