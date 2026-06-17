@@ -10,6 +10,7 @@ import {
 } from "@/src/lib/templates/template-package-runtime";
 import { listTemplates, type TemplateRegistryRecord } from "@/src/lib/templates/template-registry";
 import { getPublishedTemplateVersion } from "@/src/lib/templates/template-versions";
+import { assignTemplateToStore } from "@/src/lib/templates/store-template-assignment";
 
 export type TemplateInstallStatus = "cancelled" | "completed" | "failed" | "installing" | "prepared";
 export type TemplateInstallMode = "super_admin_manual";
@@ -486,6 +487,42 @@ export async function installTemplateToStore(templateId: string, storeId: string
       },
       userId: access.user.id
     });
+
+    try {
+      await assignTemplateToStore(
+        store.id,
+        install.templateId,
+        install.templateVersionId,
+        install.id,
+        {
+          assignmentSource: "template_install",
+          initialStatus: "active",
+          metadata: {
+            install_mode: install.installMode,
+            package_install_status: packageResult.status
+          },
+          replaceConfirmed: true
+        }
+      );
+    } catch (assignmentError) {
+      conflicts.push({
+        note:
+          assignmentError instanceof Error
+            ? assignmentError.message
+            : "Template assignment record could not be created after install.",
+        step: "store-template-assignment"
+      });
+
+      await admin
+        .from("template_installs" as never)
+        .update({
+          installed_summary: {
+            ...installedSummary,
+            assignmentWarning: conflicts[conflicts.length - 1]?.note ?? "Assignment failed."
+          }
+        } as never)
+        .eq("id" as never, install.id as never);
+    }
 
     return {
       install: parsed,

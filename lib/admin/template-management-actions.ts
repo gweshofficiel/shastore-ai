@@ -36,6 +36,11 @@ import {
   uploadTemplateAsset
 } from "@/src/lib/templates/template-asset-storage";
 import { installTemplateToStore } from "@/src/lib/templates/template-install-runtime";
+import {
+  assignTemplateToStore,
+  markTemplateAssignmentActive,
+  unassignTemplateFromStore
+} from "@/src/lib/templates/store-template-assignment";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -56,6 +61,9 @@ type TemplateAdminAction =
   | "admin_template_asset_published"
   | "admin_template_asset_uploaded"
   | "admin_template_install_to_store"
+  | "admin_template_assign_to_store"
+  | "admin_template_assignment_mark_active"
+  | "admin_template_assignment_unassign"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -1029,6 +1037,149 @@ export async function installTemplateToStoreAction(formData: FormData) {
 
   revalidatePath("/admin/templates");
   revalidatePath(`/admin/stores/${encodeURIComponent(storeId)}`);
+}
+
+export async function assignTemplateToStoreAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can assign templates to stores.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin assignment confirmation is required.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const storeId = cleanText(formData.get("storeId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const replaceConfirmed = cleanText(formData.get("replaceConfirmed")) === "1";
+
+  if (!registryId || !storeId) {
+    throw new Error("Template and store are required for assignment.");
+  }
+
+  const result = await assignTemplateToStore(storeId, registryId, null, null, {
+    replaceConfirmed
+  });
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.assignment.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_assign_to_store",
+    metadata: {
+      assignment_id: result.assignment.id,
+      assignment_status: result.assignment.assignmentStatus,
+      note: "Super Admin manual template assignment metadata recorded for a single store.",
+      replaced_assignment_id: result.replacedAssignmentId,
+      source: "super_admin_template_management_center",
+      store_id: storeId,
+      template_name: templateName || result.validation.templateName,
+      template_registry_id: registryId
+    },
+    store_id: storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(storeId)}`);
+}
+
+export async function markTemplateAssignmentActiveAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can mark template assignments active.");
+  }
+
+  const assignmentId = cleanText(formData.get("assignmentId"));
+  const storeName = cleanText(formData.get("storeName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!assignmentId) {
+    throw new Error("Assignment id is required.");
+  }
+
+  const assignment = await markTemplateAssignmentActive(assignmentId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: assignment.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_assignment_mark_active",
+    metadata: {
+      assignment_id: assignment.id,
+      assignment_status: assignment.assignmentStatus,
+      note: "Template assignment marked active. Metadata only; no store content changes.",
+      source: "super_admin_template_management_center",
+      store_id: assignment.storeId,
+      store_name: storeName,
+      template_name: templateName
+    },
+    store_id: assignment.storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(assignment.storeId)}`);
+}
+
+export async function unassignTemplateFromStoreAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can unassign templates from stores.");
+  }
+
+  const assignmentId = cleanText(formData.get("assignmentId"));
+  const storeName = cleanText(formData.get("storeName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!assignmentId) {
+    throw new Error("Assignment id is required.");
+  }
+
+  const assignment = await unassignTemplateFromStore(assignmentId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: assignment.id,
+    entity_type: "admin_template_management",
+    event_status: "warning",
+    event_type: "admin_template_assignment_unassign",
+    metadata: {
+      assignment_id: assignment.id,
+      assignment_status: assignment.assignmentStatus,
+      note: "Template assignment unassigned. Metadata only; no store content deleted.",
+      source: "super_admin_template_management_center",
+      store_id: assignment.storeId,
+      store_name: storeName,
+      template_name: templateName
+    },
+    store_id: assignment.storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(assignment.storeId)}`);
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

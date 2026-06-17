@@ -43,6 +43,7 @@ import {
 import { listAllTemplateScreenshots } from "@/src/lib/templates/template-screenshot-storage";
 import { listAllTemplateAssets } from "@/src/lib/templates/template-asset-storage";
 import { listTemplateInstalls } from "@/src/lib/templates/template-install-runtime";
+import { listStoreTemplateAssignments } from "@/src/lib/templates/store-template-assignment";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -852,6 +853,32 @@ export type AdminTemplateManagementControl = {
     preparedInstalls: number;
     totalInstalls: number;
   };
+  assignmentOverview: {
+    activeAssignments: number;
+    assignedAssignments: number;
+    totalAssignments: number;
+    unassignedAssignments: number;
+  };
+  assignableTemplates: Array<{
+    name: string;
+    publishedVersionId: string;
+    publishedVersionNumber: string;
+    registryId: string;
+  }>;
+  activeAssignmentStoreIds: string[];
+  storeTemplateAssignments: Array<{
+    assignedAt: string | null;
+    assignmentSource: "migration" | "store_creation" | "super_admin_manual" | "template_install";
+    assignmentStatus: "active" | "assigned" | "failed" | "inactive" | "unassigned";
+    id: string;
+    installId: string | null;
+    ownerEmail: string;
+    storeId: string;
+    storeName: string;
+    templateId: string;
+    templateName: string;
+    versionNumber: string | null;
+  }>;
   templateInstalls: Array<{
     completedAt: string | null;
     createdAt: string | null;
@@ -4794,8 +4821,9 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 }
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
-  const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, installTargetStores] =
+  const { supabase, users } = await getAdminUsersBase();
+  const owners = emailMap(users);
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, installTargetStores] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4812,6 +4840,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listAllTemplateScreenshots(),
     listAllTemplateAssets(),
     listTemplateInstalls(200),
+    listStoreTemplateAssignments({ limit: 200 }),
     safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
   ]);
 
@@ -4843,6 +4872,18 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 
   const templateKeyByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.templateKey]));
   const templateNameByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.name]));
+  const versionNumberById = new Map(allVersions.map((version) => [version.id, version.versionNumber]));
+  const publishedVersionByTemplateId = new Map(
+    allVersions
+      .filter((version) => version.status === "published")
+      .map((version) => [version.templateId, version])
+  );
+  const ownerEmailByStoreId = new Map(
+    installTargetStores.map((store) => [
+      text(store.id),
+      owners.get(text(store.user_id)) ?? "—"
+    ])
+  );
   const storeNameById = new Map(
     installTargetStores.map((store) => [text(store.id), text(store.store_name, text(store.name, "Store"))])
   );
@@ -4854,6 +4895,34 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       slug: text(store.slug) || null
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+
+  const assignableTemplates = registryTemplates
+    .filter((template) => template.status === "active")
+    .map((template) => {
+      const publishedVersion = publishedVersionByTemplateId.get(template.id);
+
+      if (!publishedVersion) return null;
+
+      return {
+        name: template.name,
+        publishedVersionId: publishedVersion.id,
+        publishedVersionNumber: publishedVersion.versionNumber,
+        registryId: template.id
+      };
+    })
+    .filter((template): template is NonNullable<typeof template> => Boolean(template))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const activeAssignmentStoreIds = [
+    ...new Set(
+      allAssignments
+        .filter(
+          (assignment) =>
+            assignment.assignmentStatus === "active" || assignment.assignmentStatus === "assigned"
+        )
+        .map((assignment) => assignment.storeId)
+    )
+  ];
 
   const publishedTemplateIds = new Set(
     allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
@@ -5124,6 +5193,30 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       preparedInstalls: allInstalls.filter((install) => install.status === "prepared").length,
       totalInstalls: allInstalls.length
     },
+    assignmentOverview: {
+      activeAssignments: allAssignments.filter((assignment) => assignment.assignmentStatus === "active").length,
+      assignedAssignments: allAssignments.filter((assignment) => assignment.assignmentStatus === "assigned").length,
+      totalAssignments: allAssignments.length,
+      unassignedAssignments: allAssignments.filter((assignment) => assignment.assignmentStatus === "unassigned")
+        .length
+    },
+    assignableTemplates,
+    activeAssignmentStoreIds,
+    storeTemplateAssignments: allAssignments.map((assignment) => ({
+      assignedAt: assignment.assignedAt,
+      assignmentSource: assignment.assignmentSource,
+      assignmentStatus: assignment.assignmentStatus,
+      id: assignment.id,
+      installId: assignment.installId,
+      ownerEmail: ownerEmailByStoreId.get(assignment.storeId) ?? "—",
+      storeId: assignment.storeId,
+      storeName: storeNameById.get(assignment.storeId) ?? assignment.storeId,
+      templateId: assignment.templateId,
+      templateName: templateNameByRegistryId.get(assignment.templateId) ?? "Template",
+      versionNumber: assignment.templateVersionId
+        ? versionNumberById.get(assignment.templateVersionId) ?? null
+        : null
+    })),
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,
       createdAt: install.createdAt,

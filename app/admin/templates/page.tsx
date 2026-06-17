@@ -12,9 +12,11 @@ import {
   archiveTemplate,
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
+  assignTemplateToStoreAction,
   deleteDraftTemplateAssetAction,
   installTemplateToStoreAction,
   installTemplateVersionPlaceholder,
+  markTemplateAssignmentActiveAction,
   markTemplateDraft,
   markTemplateOfficial,
   publishTemplateAssetAction,
@@ -27,11 +29,14 @@ import {
   setTemplateVisibility,
   unmarkTemplateOfficial,
   unrecommendTemplate,
+  unassignTemplateFromStoreAction,
   updateStoresTemplatePlaceholder,
   updateTemplateRecommendationOrder,
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateAssignToStoreForm } from "@/components/admin/template-assign-to-store-form";
+import { TemplateAssignmentRowActions } from "@/components/admin/template-assignment-row-actions";
 import { TemplateAssetList } from "@/components/admin/template-asset-list";
 import { TemplateAssetUploadForm } from "@/components/admin/template-asset-upload-form";
 import { TemplateInstallToStoreForm } from "@/components/admin/template-install-to-store-form";
@@ -51,8 +56,12 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
-  if (["archived", "cancelled", "failed", "internal", "invalid"].includes(status)) {
+  if (["archived", "cancelled", "failed", "internal", "invalid", "unassigned"].includes(status)) {
     return "red" as const;
+  }
+
+  if (["inactive", "assigned"].includes(status)) {
+    return "amber" as const;
   }
 
   if (status === "reseller") {
@@ -119,6 +128,23 @@ function installStatusLabel(status: string) {
   if (status === "installing") return "Installing";
   if (status === "cancelled") return "Cancelled";
   return "Prepared";
+}
+
+function assignmentStatusLabel(status: string) {
+  if (status === "assigned") return "Assigned";
+  if (status === "active") return "Active";
+  if (status === "inactive") return "Inactive";
+  if (status === "unassigned") return "Unassigned";
+  if (status === "failed") return "Failed";
+  return status;
+}
+
+function assignmentSourceLabel(source: string) {
+  if (source === "super_admin_manual") return "Super Admin manual";
+  if (source === "template_install") return "Template install";
+  if (source === "store_creation") return "Store creation";
+  if (source === "migration") return "Migration";
+  return source;
 }
 
 function TemplateHiddenFields({
@@ -368,6 +394,77 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(install.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(install.completedAt)}</td>
             <td className="px-5 py-4 text-xs font-semibold text-slate-600">{install.errorMessage ?? "—"}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Assignments", value: control.assignmentOverview.totalAssignments },
+          { label: "Active", value: control.assignmentOverview.activeAssignments },
+          { label: "Assigned", value: control.assignmentOverview.assignedAssignments },
+          { label: "Unassigned", value: control.assignmentOverview.unassignedAssignments }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin store template assignment runtime. Tracks which template/version is assigned or installed to which store. Metadata only — no store content, pages, products, or theme rendering changes."
+        title="Store Template Assignments"
+      />
+
+      <TemplateAssignToStoreForm
+        action={assignTemplateToStoreAction}
+        activeAssignmentStoreIds={control.activeAssignmentStoreIds}
+        stores={control.installableStores}
+        templates={control.assignableTemplates}
+      />
+
+      <AdminTable
+        empty={!control.storeTemplateAssignments.length ? "No store template assignments recorded yet." : null}
+        headers={[
+          "Store",
+          "Owner",
+          "Template",
+          "Version",
+          "Status",
+          "Source",
+          "Assigned",
+          "Install",
+          "Actions"
+        ]}
+      >
+        {control.storeTemplateAssignments.map((assignment) => (
+          <tr key={assignment.id}>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{assignment.storeName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{assignment.storeId}</p>
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">{assignment.ownerEmail}</td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{assignment.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{assignment.templateId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{assignment.versionNumber ?? "—"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(assignment.assignmentStatus)}>
+                {assignmentStatusLabel(assignment.assignmentStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">
+              {assignmentSourceLabel(assignment.assignmentSource)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(assignment.assignedAt)}</td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-500">{assignment.installId ?? "—"}</td>
+            <td className="px-5 py-4">
+              <TemplateAssignmentRowActions
+                assignmentId={assignment.id}
+                assignmentStatus={assignment.assignmentStatus}
+                markActiveAction={markTemplateAssignmentActiveAction}
+                storeName={assignment.storeName}
+                templateName={assignment.templateName}
+                unassignAction={unassignTemplateFromStoreAction}
+              />
+            </td>
           </tr>
         ))}
       </AdminTable>
