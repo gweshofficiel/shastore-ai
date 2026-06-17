@@ -10,10 +10,13 @@ import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
   activateTemplate,
   archiveTemplate,
+  archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
+  deleteDraftTemplateAssetAction,
   installTemplateVersionPlaceholder,
   markTemplateDraft,
   markTemplateOfficial,
+  publishTemplateAssetAction,
   publishTemplateScreenshotAction,
   publishTemplateUpdatePlaceholder,
   recommendTemplate,
@@ -25,8 +28,11 @@ import {
   unrecommendTemplate,
   updateStoresTemplatePlaceholder,
   updateTemplateRecommendationOrder,
+  uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateAssetList } from "@/components/admin/template-asset-list";
+import { TemplateAssetUploadForm } from "@/components/admin/template-asset-upload-form";
 import { TemplatePackageEditForm } from "@/components/admin/template-package-edit-form";
 import { TemplatePackageSummaryLink } from "@/components/admin/template-package-summary-link";
 import { TemplateScreenshotList } from "@/components/admin/template-screenshot-list";
@@ -87,6 +93,22 @@ function screenshotStatusLabel(status: string) {
   if (status === "archived") return "Archived";
   if (status === "deleted") return "Deleted";
   return "Draft";
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function assetTypeLabel(type: string) {
+  if (type === "screenshot") return "Screenshot";
+  if (type === "preview_image") return "Preview image";
+  if (type === "icon") return "Icon";
+  if (type === "demo_media") return "Demo media";
+  if (type === "package_file") return "Package file";
+  if (type === "documentation") return "Documentation";
+  return type;
 }
 
 function TemplateHiddenFields({
@@ -245,6 +267,59 @@ export default async function AdminTemplatesPage() {
               )}
             </td>
             <td className="px-5 py-4 text-xs font-semibold text-slate-600">{screenshot.originalFilename}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Template assets", value: control.assetOverview.totalAssets },
+          { label: "Published assets", value: control.assetOverview.publishedAssets },
+          { label: "Draft assets", value: control.assetOverview.draftAssets },
+          { label: "Archived assets", value: control.assetOverview.archivedAssets }
+        ]}
+      />
+
+      <AdminHeader
+        description="Unified template asset storage for preview images, icons, demo media, package JSON metadata, and documentation. Screenshots from Screenshot Management appear here as read-only linked assets."
+        title="Template Assets"
+      />
+
+      <AdminTable
+        empty={!control.assets.length ? "No template assets uploaded yet." : null}
+        headers={["Template", "Type", "Filename", "MIME", "Size", "Status", "Uploaded", "Preview", "Source"]}
+      >
+        {control.assets.map((asset) => (
+          <tr key={`${asset.source}-${asset.id}`}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{asset.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{asset.registryId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{assetTypeLabel(asset.assetType)}</td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">{asset.originalFilename}</td>
+            <td className="px-5 py-4 text-slate-600">{asset.mimeType}</td>
+            <td className="px-5 py-4 text-slate-600">{formatFileSize(asset.fileSize)}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(asset.status)}>{screenshotStatusLabel(asset.status)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(asset.uploadedAt)}</td>
+            <td className="px-5 py-4">
+              {asset.previewUrl ? (
+                <Link
+                  className="text-xs font-black uppercase tracking-[0.14em] text-slate-700 underline"
+                  href={asset.previewUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Preview
+                </Link>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">—</span>
+              )}
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-500">
+              {asset.managedExternally ? "Screenshot runtime" : "Template assets"}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -475,6 +550,28 @@ export default async function AdminTemplatesPage() {
                 >
                   Preview
                 </Link>
+                <details
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  id={`asset-runtime-${template.registryId}`}
+                >
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                    Template assets ({template.assets.length})
+                  </summary>
+                  <TemplateAssetUploadForm
+                    action={uploadTemplateAssetAction}
+                    registryId={template.registryId}
+                    templateName={template.name}
+                  />
+                  <TemplateAssetList
+                    archiveAction={archiveTemplateAssetAction}
+                    assets={template.assets}
+                    deleteDraftAction={deleteDraftTemplateAssetAction}
+                    publishAction={publishTemplateAssetAction}
+                    registryId={template.registryId}
+                    screenshotDrawerId={`screenshot-runtime-${template.registryId}`}
+                    templateName={template.name}
+                  />
+                </details>
                 <details
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
                   id={`screenshot-runtime-${template.registryId}`}

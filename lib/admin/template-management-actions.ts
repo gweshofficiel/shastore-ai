@@ -29,6 +29,12 @@ import {
   reorderTemplateScreenshots,
   uploadTemplateScreenshot
 } from "@/src/lib/templates/template-screenshot-storage";
+import {
+  archiveTemplateAsset,
+  deleteDraftTemplateAsset,
+  publishTemplateAsset,
+  uploadTemplateAsset
+} from "@/src/lib/templates/template-asset-storage";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -44,6 +50,10 @@ type TemplateAdminAction =
   | "admin_template_screenshot_published"
   | "admin_template_screenshot_reordered"
   | "admin_template_screenshot_uploaded"
+  | "admin_template_asset_archived"
+  | "admin_template_asset_deleted"
+  | "admin_template_asset_published"
+  | "admin_template_asset_uploaded"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -785,6 +795,188 @@ export async function reorderTemplateScreenshotAction(formData: FormData) {
 
   revalidatePath("/admin/templates");
   revalidatePath(`/admin/templates/preview/${encodeURIComponent(registryId)}`);
+}
+
+export async function uploadTemplateAssetAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can upload template assets.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const assetType = cleanText(formData.get("assetType")) || "custom";
+  const file = formData.get("assetFile");
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  if (!(file instanceof File) || !file.size) {
+    throw new Error("Select an asset file to upload.");
+  }
+
+  const asset = await uploadTemplateAsset(registryId, file, {
+    assetType: assetType as
+      | "custom"
+      | "demo_media"
+      | "documentation"
+      | "icon"
+      | "package_file"
+      | "preview_image"
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: asset.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_asset_uploaded",
+    metadata: {
+      asset_type: asset.assetType,
+      note: "Template asset uploaded to admin storage only. No store installation or storefront rendering changes occurred.",
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function publishTemplateAssetAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can publish template assets.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const assetId = cleanText(formData.get("assetId"));
+
+  if (!assetId) {
+    throw new Error("Missing asset id.");
+  }
+
+  const asset = await publishTemplateAsset(assetId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: asset.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_asset_published",
+    metadata: {
+      asset_type: asset.assetType,
+      note: "Template asset published in admin runtime only.",
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId || asset.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function archiveTemplateAssetAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can archive template assets.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const assetId = cleanText(formData.get("assetId"));
+
+  if (!assetId) {
+    throw new Error("Missing asset id.");
+  }
+
+  const asset = await archiveTemplateAsset(assetId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: asset.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_asset_archived",
+    metadata: {
+      asset_type: asset.assetType,
+      note: "Template asset archived in admin runtime only.",
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId || asset.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function deleteDraftTemplateAssetAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can delete draft template assets.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const assetId = cleanText(formData.get("assetId"));
+
+  if (!assetId) {
+    throw new Error("Missing asset id.");
+  }
+
+  const asset = await deleteDraftTemplateAsset(assetId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: asset.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_asset_deleted",
+    metadata: {
+      asset_type: asset.assetType,
+      note: "Draft template asset deleted from admin storage runtime only.",
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      template_registry_id: registryId || asset.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

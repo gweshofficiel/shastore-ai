@@ -41,6 +41,7 @@ import {
   validateTemplatePackage
 } from "@/src/lib/templates/template-package-runtime";
 import { listAllTemplateScreenshots } from "@/src/lib/templates/template-screenshot-storage";
+import { listAllTemplateAssets } from "@/src/lib/templates/template-asset-storage";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -809,6 +810,26 @@ export type AdminTemplateManagementControl = {
     publishedScreenshots: number;
     totalScreenshots: number;
   };
+  assetOverview: {
+    archivedAssets: number;
+    draftAssets: number;
+    publishedAssets: number;
+    totalAssets: number;
+  };
+  assets: Array<{
+    assetType: string;
+    fileSize: number;
+    id: string;
+    managedExternally: boolean;
+    mimeType: string;
+    originalFilename: string;
+    previewUrl: string | null;
+    registryId: string;
+    source: "template_assets" | "template_screenshots";
+    status: "archived" | "deleted" | "draft" | "published";
+    templateName: string;
+    uploadedAt: string | null;
+  }>;
   screenshots: Array<{
     id: string;
     originalFilename: string;
@@ -869,6 +890,17 @@ export type AdminTemplateManagementControl = {
     previewHref: string;
     recommendationOrder: number | null;
     registryId: string;
+    assets: Array<{
+      assetType: string;
+      fileSize: number;
+      id: string;
+      managedExternally: boolean;
+      mimeType: string;
+      originalFilename: string;
+      previewUrl: string | null;
+      status: "archived" | "deleted" | "draft" | "published";
+      uploadedAt: string | null;
+    }>;
     screenshots: Array<{
       id: string;
       originalFilename: string;
@@ -4740,7 +4772,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4754,7 +4786,8 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listRecommendedTemplates(),
     listTemplatePackages(),
     getTemplatePackageStats(),
-    listAllTemplateScreenshots()
+    listAllTemplateScreenshots(),
+    listAllTemplateAssets()
   ]);
 
   const packageValidations = await Promise.all(
@@ -4773,6 +4806,14 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     const existing = screenshotsByTemplateId.get(screenshot.templateId) ?? [];
     existing.push(screenshot);
     screenshotsByTemplateId.set(screenshot.templateId, existing);
+  }
+
+  const assetsByTemplateId = new Map<string, typeof allAssets>();
+
+  for (const asset of allAssets) {
+    const existing = assetsByTemplateId.get(asset.templateId) ?? [];
+    existing.push(asset);
+    assetsByTemplateId.set(asset.templateId, existing);
   }
 
   const templateKeyByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.templateKey]));
@@ -4899,6 +4940,30 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       previewHref: `/admin/templates/preview/${encodeURIComponent(template.id)}`,
       recommendationOrder,
       registryId: template.id,
+      assets: [
+        ...(assetsByTemplateId.get(template.id) ?? []).map((asset) => ({
+          assetType: asset.assetType,
+          fileSize: asset.fileSize,
+          id: asset.id,
+          managedExternally: false,
+          mimeType: asset.mimeType,
+          originalFilename: asset.originalFilename,
+          previewUrl: asset.previewUrl,
+          status: asset.status,
+          uploadedAt: asset.createdAt
+        })),
+        ...(screenshotsByTemplateId.get(template.id) ?? []).map((screenshot) => ({
+          assetType: "screenshot",
+          fileSize: screenshot.fileSize,
+          id: screenshot.id,
+          managedExternally: true,
+          mimeType: screenshot.mimeType,
+          originalFilename: screenshot.originalFilename,
+          previewUrl: screenshot.previewUrl,
+          status: screenshot.status,
+          uploadedAt: screenshot.createdAt
+        }))
+      ],
       screenshots: (screenshotsByTemplateId.get(template.id) ?? []).map((screenshot) => ({
         id: screenshot.id,
         originalFilename: screenshot.originalFilename,
@@ -4980,6 +5045,42 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       publishedScreenshots: allScreenshots.filter((screenshot) => screenshot.status === "published").length,
       totalScreenshots: allScreenshots.length
     },
+    assetOverview: {
+      archivedAssets: allAssets.filter((asset) => asset.status === "archived").length,
+      draftAssets: allAssets.filter((asset) => asset.status === "draft").length,
+      publishedAssets: allAssets.filter((asset) => asset.status === "published").length,
+      totalAssets: allAssets.length
+    },
+    assets: [
+      ...allAssets.map((asset) => ({
+        assetType: asset.assetType,
+        fileSize: asset.fileSize,
+        id: asset.id,
+        managedExternally: false,
+        mimeType: asset.mimeType,
+        originalFilename: asset.originalFilename,
+        previewUrl: asset.previewUrl,
+        registryId: asset.templateId,
+        source: "template_assets" as const,
+        status: asset.status,
+        templateName: templateNameByRegistryId.get(asset.templateId) ?? "Template",
+        uploadedAt: asset.createdAt
+      })),
+      ...allScreenshots.map((screenshot) => ({
+        assetType: "screenshot",
+        fileSize: screenshot.fileSize,
+        id: screenshot.id,
+        managedExternally: true,
+        mimeType: screenshot.mimeType,
+        originalFilename: screenshot.originalFilename,
+        previewUrl: screenshot.previewUrl,
+        registryId: screenshot.templateId,
+        source: "template_screenshots" as const,
+        status: screenshot.status,
+        templateName: templateNameByRegistryId.get(screenshot.templateId) ?? "Template",
+        uploadedAt: screenshot.createdAt
+      }))
+    ],
     screenshots: allScreenshots.map((screenshot) => ({
       id: screenshot.id,
       originalFilename: screenshot.originalFilename,
