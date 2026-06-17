@@ -79,11 +79,13 @@ import { TemplateRecommendationControls } from "@/components/admin/template-reco
 import { TemplateRecommendationOrderForm } from "@/components/admin/template-recommendation-order-form";
 import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
 import { TemplateAnalyticsPanel } from "@/components/admin/template-analytics-panel";
+import { TemplateCertificationPanel } from "@/components/admin/template-certification-panel";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 import {
   getTemplateAnalyticsDashboard,
   parseTemplateAnalyticsRange
 } from "@/src/lib/templates/template-analytics";
+import { runTemplateCertification } from "@/src/lib/templates/template-certification";
 
 function toneForStatus(status: string) {
   if (["active", "approved", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
@@ -244,9 +246,10 @@ export default async function AdminTemplatesPage({
 }) {
   const query = await searchParams;
   const analyticsRange = parseTemplateAnalyticsRange(query.analyticsRange);
-  const [control, templateAnalytics] = await Promise.all([
+  const [control, templateAnalytics, templateCertification] = await Promise.all([
     getAdminTemplateManagementControl(),
-    getTemplateAnalyticsDashboard(analyticsRange)
+    getTemplateAnalyticsDashboard(analyticsRange),
+    runTemplateCertification()
   ]);
 
   return (
@@ -272,6 +275,8 @@ export default async function AdminTemplatesPage({
       />
 
       <TemplateAnalyticsPanel analytics={templateAnalytics} currentRange={analyticsRange} />
+
+      <TemplateCertificationPanel certification={templateCertification} />
 
       <AdminStatGrid
         stats={[
