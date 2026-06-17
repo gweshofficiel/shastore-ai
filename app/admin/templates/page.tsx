@@ -80,12 +80,14 @@ import { TemplateRecommendationOrderForm } from "@/components/admin/template-rec
 import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
 import { TemplateAnalyticsPanel } from "@/components/admin/template-analytics-panel";
 import { TemplateCertificationPanel } from "@/components/admin/template-certification-panel";
+import { TemplateLiveRenderingStatusPanel } from "@/components/admin/template-live-rendering-status-panel";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 import {
   getTemplateAnalyticsDashboard,
   parseTemplateAnalyticsRange
 } from "@/src/lib/templates/template-analytics";
 import { runTemplateCertification } from "@/src/lib/templates/template-certification";
+import { listLiveStoreRenderingDiagnostics } from "@/src/lib/templates/store-rendering-runtime";
 
 function toneForStatus(status: string) {
   if (["active", "approved", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
@@ -246,10 +248,11 @@ export default async function AdminTemplatesPage({
 }) {
   const query = await searchParams;
   const analyticsRange = parseTemplateAnalyticsRange(query.analyticsRange);
-  const [control, templateAnalytics, templateCertification] = await Promise.all([
+  const [control, templateAnalytics, templateCertification, liveRenderingStatuses] = await Promise.all([
     getAdminTemplateManagementControl(),
     getTemplateAnalyticsDashboard(analyticsRange),
-    runTemplateCertification()
+    runTemplateCertification(),
+    listLiveStoreRenderingDiagnostics(50)
   ]);
 
   return (
@@ -277,6 +280,8 @@ export default async function AdminTemplatesPage({
       <TemplateAnalyticsPanel analytics={templateAnalytics} currentRange={analyticsRange} />
 
       <TemplateCertificationPanel certification={templateCertification} />
+
+      <TemplateLiveRenderingStatusPanel statuses={liveRenderingStatuses} />
 
       <AdminStatGrid
         stats={[

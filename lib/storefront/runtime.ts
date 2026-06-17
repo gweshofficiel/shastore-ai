@@ -3,6 +3,7 @@ import { getRuntimeSectionOrderForTemplate } from "@/lib/storefront/template-blu
 import { getProductionStoreTemplate } from "@/lib/storefront/template-library";
 import type { StoreSection } from "@/lib/storefront/sections";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
+import { getEffectiveStoreTemplateId } from "@/src/lib/templates/store-rendering-runtime";
 
 type RuntimeSectionInput = {
   config?: unknown;
@@ -87,7 +88,7 @@ function defaultRuntimeSections(context: StoreTenantContext): StoreSection[] {
   const template = resolveStorefrontTemplateConfig({
     fontStyle: context.preview.fontStyle,
     layoutStyle: context.preview.layoutStyle,
-    templateId: context.preview.templateId,
+    templateId: getEffectiveStoreTemplateId(context),
     themeColor: context.preview.themeColor,
     themeSettings: context.preview.themeSettings
   });

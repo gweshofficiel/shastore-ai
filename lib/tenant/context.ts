@@ -6,6 +6,11 @@ import { getStorefrontContextFromHostname } from "@/lib/storefront-hostname-cont
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { StoreThemeTokens } from "@/lib/tenant/theme";
 import { getStoreTheme, resolveThemeTokens } from "@/lib/tenant/theme";
+import {
+  applyStoreRenderingBinding,
+  resolveStoreRenderingConfig,
+  type StoreRenderingConfig
+} from "@/src/lib/templates/store-rendering-runtime";
 
 export type TenantSource = "custom_domain" | "hostname" | "localhost_subdomain" | "slug";
 
@@ -41,6 +46,7 @@ export type StoreTenantContext = {
   source: TenantSource;
   store_instance_id: string;
   store_slug: string;
+  templateRendering: StoreRenderingConfig | null;
   theme: StoreThemeTokens;
 };
 
@@ -205,12 +211,29 @@ const resolveTenantStoreCached = cache(async function resolveTenantStoreCached(
     source,
     store_instance_id: preview.store.id,
     store_slug: preview.store.slug,
+    templateRendering: null as StoreRenderingConfig | null,
     theme: null as unknown as StoreThemeTokens
   };
-  const theme = await getStoreTheme(baseContext);
+
+  const templateRendering = await resolveStoreRenderingConfig(preview.store.id).catch(() => null);
+
+  const boundContext = templateRendering
+    ? applyStoreRenderingBinding(
+        {
+          ...baseContext,
+          templateRendering: null
+        },
+        templateRendering
+      )
+    : {
+        ...baseContext,
+        templateRendering: null
+      };
+
+  const theme = await getStoreTheme(boundContext);
 
   return {
-    ...baseContext,
+    ...boundContext,
     theme: resolveThemeTokens(theme)
   };
 });

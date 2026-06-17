@@ -1,6 +1,7 @@
 import type { StoreTenantContext } from "@/lib/tenant/context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
+import { getEffectiveStoreTemplateId } from "@/src/lib/templates/store-rendering-runtime";
 
 export type StoreThemeRecord = {
   id: string | null;
@@ -115,7 +116,7 @@ function defaultTheme(context: StoreTenantContext): StoreThemeRecord {
   const templateConfig = resolveStorefrontTemplateConfig({
     fontStyle: context.preview.fontStyle,
     layoutStyle: context.preview.layoutStyle,
-    templateId: context.preview.templateId,
+    templateId: getEffectiveStoreTemplateId(context),
     themeColor: context.preview.themeColor,
     themeSettings
   });

@@ -85,6 +85,7 @@ import {
 } from "@/lib/storefront/builder";
 import { resolveStorefrontRuntimeSections } from "@/lib/storefront/runtime";
 import { resolveStorefrontTemplateConfig } from "@/lib/storefront/theme-registry";
+import { getEffectiveStoreTemplateId } from "@/src/lib/templates/store-rendering-runtime";
 import type { PublicStoreFaq } from "@/lib/store-faq-public";
 import type { PublicStoreAboutPage } from "@/lib/store-about-public";
 import type { PublicStoreBlogArticle } from "@/lib/store-blog-public";
@@ -230,7 +231,7 @@ function templateConfig(context: StoreTenantContext) {
   const base = resolveStorefrontTemplateConfig({
     fontStyle: context.preview.fontStyle,
     layoutStyle: context.preview.layoutStyle,
-    templateId: context.preview.templateId,
+    templateId: getEffectiveStoreTemplateId(context),
     themeColor: context.preview.themeColor,
     themeSettings: context.preview.themeSettings
   });
