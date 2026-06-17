@@ -10,20 +10,24 @@ import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
   activateTemplate,
   archiveTemplate,
+  archiveMarketplaceListingAction,
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
   assignTemplateToStoreAction,
   applyTemplateRollbackAction,
   applyTemplateUpdateAction,
   checkTemplateUpdateAction,
+  createMarketplaceListingAction,
   deleteDraftTemplateAssetAction,
   installTemplateToStoreAction,
   installTemplateVersionPlaceholder,
+  markMarketplaceListingFeaturedAction,
   markTemplateAssignmentActiveAction,
   markTemplateDraft,
   markTemplateOfficial,
   prepareTemplateRollbackAction,
   prepareTemplateUpdateAction,
+  publishMarketplaceListingAction,
   publishTemplateAssetAction,
   publishTemplateScreenshotAction,
   publishTemplateUpdatePlaceholder,
@@ -35,11 +39,15 @@ import {
   unmarkTemplateOfficial,
   unrecommendTemplate,
   unassignTemplateFromStoreAction,
+  updateMarketplaceListingAction,
   updateStoresTemplatePlaceholder,
   updateTemplateRecommendationOrder,
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateMarketplaceCatalogPreview } from "@/components/admin/template-marketplace-catalog-preview";
+import { TemplateMarketplaceListingForm } from "@/components/admin/template-marketplace-listing-form";
+import { TemplateMarketplaceListingRowActions } from "@/components/admin/template-marketplace-listing-row-actions";
 import { TemplateRollbackApplyRowAction } from "@/components/admin/template-rollback-apply-row-action";
 import { TemplateRollbackRuntimeForm } from "@/components/admin/template-rollback-runtime-form";
 import { TemplateUpdateApplyRowAction } from "@/components/admin/template-update-apply-row-action";
@@ -61,7 +69,7 @@ import { TemplateRestoreControl } from "@/components/admin/template-restore-cont
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
-  if (["active", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
+  if (["active", "approved", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
     return "green" as const;
   }
 
@@ -179,6 +187,19 @@ function rollbackStatusLabel(status: string) {
   if (status === "failed") return "Failed";
   if (status === "cancelled") return "Cancelled";
   return status;
+}
+
+function listingStatusLabel(status: string) {
+  if (status === "draft") return "Draft";
+  if (status === "published") return "Published";
+  if (status === "archived") return "Archived";
+  return status;
+}
+
+function approvalStatusLabel(status: string) {
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  return "Pending review";
 }
 
 function TemplateHiddenFields({
@@ -696,6 +717,94 @@ export default async function AdminTemplatesPage() {
           </tr>
         ))}
       </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Marketplace listings", value: control.marketplaceListingOverview.totalListings },
+          { label: "Draft", value: control.marketplaceListingOverview.draftListings },
+          { label: "Published", value: control.marketplaceListingOverview.publishedListings },
+          { label: "Featured", value: control.marketplaceListingOverview.featuredListings }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin template marketplace runtime foundation. Makes marketplace visibility and catalog data real for admin preview only. No public purchase flow, automatic install, payments, or store mutation."
+        title="Marketplace Listings"
+      />
+
+      <TemplateMarketplaceListingForm
+        createAction={createMarketplaceListingAction}
+        eligibleTemplates={control.marketplaceEligibleTemplates}
+        listings={control.marketplaceListings}
+        updateAction={updateMarketplaceListingAction}
+      />
+
+      <AdminTable
+        empty={!control.marketplaceListings.length ? "No marketplace listings recorded yet." : null}
+        headers={[
+          "Template",
+          "Listing",
+          "Status",
+          "Approval",
+          "Pricing",
+          "Featured",
+          "Published",
+          "Actions"
+        ]}
+      >
+        {control.marketplaceListings.map((listing) => (
+          <tr key={listing.id}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{listing.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{listing.templateId}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">v{listing.versionNumber ?? "—"}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{listing.listingTitle}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{listing.listingDescription ?? "—"}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(listing.listingStatus)}>
+                {listingStatusLabel(listing.listingStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(listing.approvalStatus)}>
+                {approvalStatusLabel(listing.approvalStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={listing.pricingType === "free" ? "green" : "amber"}>
+                {listing.pricingLabel}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                {listing.pricingType}
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={listing.featured ? "amber" : "blue"}>
+                {listing.featured ? "Featured" : "Standard"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(listing.publishedAt)}</td>
+            <td className="px-5 py-4">
+              <TemplateMarketplaceListingRowActions
+                archiveAction={archiveMarketplaceListingAction}
+                featuredAction={markMarketplaceListingFeaturedAction}
+                listing={listing}
+                publishAction={publishMarketplaceListingAction}
+              />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminHeader
+        description="Admin-only preview of the published marketplace catalog. Cards use published screenshots when available, otherwise safe preview placeholders. No public route exposure."
+        title="Marketplace Catalog Preview"
+      />
+
+      <TemplateMarketplaceCatalogPreview cards={control.marketplaceCatalogPreview} />
 
       <AdminTable
         empty={!control.templates.length ? "No active or draft templates found in the template registry." : null}

@@ -50,6 +50,13 @@ import {
   applyTemplateRollback,
   prepareTemplateRollback
 } from "@/src/lib/templates/template-rollback-runtime";
+import {
+  archiveMarketplaceListing,
+  createMarketplaceListing,
+  publishMarketplaceListing,
+  setMarketplaceListingFeatured,
+  updateMarketplaceListing
+} from "@/src/lib/templates/template-marketplace-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -78,6 +85,11 @@ type TemplateAdminAction =
   | "admin_template_update_apply"
   | "admin_template_rollback_prepare"
   | "admin_template_rollback_apply"
+  | "admin_template_marketplace_create"
+  | "admin_template_marketplace_update"
+  | "admin_template_marketplace_publish"
+  | "admin_template_marketplace_archive"
+  | "admin_template_marketplace_featured"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -1457,6 +1469,264 @@ export async function applyTemplateRollbackAction(formData: FormData) {
 
   revalidatePath("/admin/templates");
   revalidatePath(`/admin/stores/${encodeURIComponent(result.job.storeId)}`);
+}
+
+export async function createMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can create template marketplace listings.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin marketplace listing confirmation is required.");
+  }
+
+  const templateId = cleanText(formData.get("templateId"));
+  const listingTitle = cleanText(formData.get("listingTitle"));
+  const listingDescription = cleanText(formData.get("listingDescription"));
+  const pricingType = cleanText(formData.get("pricingType")) as "free" | "included" | "paid" | "";
+  const priceRaw = cleanText(formData.get("priceAmount"));
+  const currency = cleanText(formData.get("currency"));
+
+  if (!templateId) {
+    throw new Error("Template is required to create a marketplace listing.");
+  }
+
+  const result = await createMarketplaceListing(templateId, {
+    currency: currency || null,
+    listingDescription: listingDescription || null,
+    listingTitle: listingTitle || undefined,
+    priceAmount: priceRaw ? Number(priceRaw) : null,
+    pricingType: pricingType || "free"
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_create",
+    metadata: {
+      approval_status: result.listing.approvalStatus,
+      listing_id: result.listing.id,
+      listing_status: result.listing.listingStatus,
+      listing_title: result.listing.listingTitle,
+      note: "Super Admin draft marketplace listing created. No install, payment, or store mutation.",
+      pricing_type: result.listing.pricingType,
+      source: "super_admin_template_management_center",
+      template_id: templateId,
+      template_name: result.eligibility.templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function updateMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can update template marketplace listings.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const listingTitle = cleanText(formData.get("listingTitle"));
+  const listingDescription = cleanText(formData.get("listingDescription"));
+  const approvalStatus = cleanText(formData.get("approvalStatus")) as
+    | "approved"
+    | "pending_review"
+    | "rejected"
+    | "";
+  const pricingType = cleanText(formData.get("pricingType")) as "free" | "included" | "paid" | "";
+  const priceRaw = cleanText(formData.get("priceAmount"));
+  const currency = cleanText(formData.get("currency"));
+  const featuredRaw = cleanText(formData.get("featured"));
+
+  if (!listingId) {
+    throw new Error("Listing id is required.");
+  }
+
+  const result = await updateMarketplaceListing(listingId, {
+    approvalStatus: approvalStatus || undefined,
+    currency: currency || undefined,
+    featured: featuredRaw === "" ? undefined : featuredRaw === "1",
+    listingDescription: listingDescription || undefined,
+    listingTitle: listingTitle || undefined,
+    priceAmount: priceRaw ? Number(priceRaw) : undefined,
+    pricingType: pricingType || undefined
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_update",
+    metadata: {
+      approval_status: result.listing.approvalStatus,
+      featured: result.listing.featured,
+      listing_id: result.listing.id,
+      listing_status: result.listing.listingStatus,
+      listing_title: result.listing.listingTitle,
+      note: "Super Admin marketplace listing updated.",
+      pricing_type: result.listing.pricingType,
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function publishMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can publish template marketplace listings.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin publish confirmation is required.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const listingTitle = cleanText(formData.get("listingTitle"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!listingId) {
+    throw new Error("Listing id is required.");
+  }
+
+  const result = await publishMarketplaceListing(listingId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_publish",
+    metadata: {
+      listing_id: result.listing.id,
+      listing_status: result.listing.listingStatus,
+      listing_title: listingTitle || result.listing.listingTitle,
+      note: "Super Admin marketplace listing published for admin catalog preview only. No install or payment.",
+      published_at: result.listing.publishedAt,
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function archiveMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can archive template marketplace listings.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin archive confirmation is required.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+
+  if (!listingId) {
+    throw new Error("Listing id is required.");
+  }
+
+  const result = await archiveMarketplaceListing(listingId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_archive",
+    metadata: {
+      listing_id: result.listing.id,
+      listing_status: result.listing.listingStatus,
+      note: "Super Admin marketplace listing archived.",
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function markMarketplaceListingFeaturedAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can feature template marketplace listings.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const featured = cleanText(formData.get("featured")) === "1";
+
+  if (!listingId) {
+    throw new Error("Listing id is required.");
+  }
+
+  const result = await setMarketplaceListingFeatured(listingId, featured);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_featured",
+    metadata: {
+      featured: result.listing.featured,
+      listing_id: result.listing.id,
+      note: "Super Admin marketplace listing featured flag updated.",
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

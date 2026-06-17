@@ -47,6 +47,11 @@ import { listStoreTemplateAssignments } from "@/src/lib/templates/store-template
 import { listStoreThemeIsolationIssues } from "@/src/lib/templates/store-theme-isolation";
 import { listTemplateUpdateJobs } from "@/src/lib/templates/template-update-runtime";
 import { listTemplateRollbackJobs } from "@/src/lib/templates/template-rollback-runtime";
+import {
+  getMarketplaceCatalogPreview,
+  getMarketplaceListingStats,
+  listMarketplaceListings
+} from "@/src/lib/templates/template-marketplace-runtime";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -969,6 +974,63 @@ export type AdminTemplateManagementControl = {
     templateId: string;
     templateName: string;
     updateJobId: string | null;
+  }>;
+  marketplaceListingOverview: {
+    approvedListings: number;
+    archivedListings: number;
+    draftListings: number;
+    featuredListings: number;
+    pendingReviewListings: number;
+    publishedListings: number;
+    rejectedListings: number;
+    totalListings: number;
+  };
+  marketplaceEligibleTemplates: Array<{
+    packageReadiness: string;
+    publishedVersionNumber: string | null;
+    registryId: string;
+    templateName: string;
+    visibility: string;
+    warnings: string[];
+  }>;
+  marketplaceListings: Array<{
+    approvalStatus: "approved" | "pending_review" | "rejected";
+    createdAt: string | null;
+    currency: string | null;
+    featured: boolean;
+    id: string;
+    listingDescription: string | null;
+    listingStatus: "archived" | "draft" | "published";
+    listingTitle: string;
+    priceAmount: number | null;
+    pricingLabel: string;
+    pricingType: "free" | "included" | "paid";
+    publishedAt: string | null;
+    templateId: string;
+    templateName: string;
+    versionNumber: string | null;
+  }>;
+  marketplaceCatalogPreview: Array<{
+    badges: string[];
+    category: string | null;
+    featured: boolean;
+    id: string;
+    isOfficial: boolean;
+    isRecommended: boolean;
+    listingDescription: string | null;
+    listingStatus: string;
+    listingTitle: string;
+    previewGradient: string | null;
+    pricingLabel: string;
+    pricingType: string;
+    publishedAt: string | null;
+    screenshots: Array<{
+      imageUrl: string | null;
+      label: string;
+    }>;
+    templateName: string;
+    templateSlug: string;
+    versionNumber: string | null;
   }>;
   templateInstalls: Array<{
     completedAt: string | null;
@@ -4914,7 +4976,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4935,7 +4997,10 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listStoreThemeIsolationIssues({ limit: 200 }),
     listTemplateUpdateJobs({ limit: 200 }),
     listTemplateRollbackJobs({ limit: 200 }),
-    safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
+    safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500),
+    listMarketplaceListings({ limit: 200 }),
+    getMarketplaceListingStats(),
+    getMarketplaceCatalogPreview()
   ]);
 
   const packageValidations = await Promise.all(
@@ -5193,6 +5258,59 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       return [...unique.values()];
     })
     .sort((left, right) => left.storeName.localeCompare(right.storeName));
+
+  const activeMarketplaceListingTemplateIds = new Set(
+    allMarketplaceListings
+      .filter((listing) => listing.listingStatus === "draft" || listing.listingStatus === "published")
+      .map((listing) => listing.templateId)
+  );
+
+  const marketplaceEligibleTemplates = registryTemplates
+    .filter((template) => {
+      if (template.status !== "active") return false;
+      if (
+        template.visibility !== "marketplace" &&
+        template.metadata.marketplaceAllowed !== true &&
+        template.metadata.allowMarketplace !== true
+      ) {
+        return false;
+      }
+      if (!publishedVersionByTemplateId.has(template.id)) return false;
+      const pkg = packagesByTemplateId.get(template.id);
+      if (!pkg || pkg.readinessStatus !== "ready") return false;
+      if (activeMarketplaceListingTemplateIds.has(template.id)) return false;
+      return true;
+    })
+    .map((template) => {
+      const publishedVersion = publishedVersionByTemplateId.get(template.id);
+      const screenshots = screenshotsByTemplateId.get(template.id) ?? [];
+      const warnings =
+        screenshots.filter((screenshot) => screenshot.status === "published").length === 0
+          ? ["No published screenshots found; marketplace preview will use generated placeholders."]
+          : [];
+
+      return {
+        packageReadiness: packagesByTemplateId.get(template.id)?.readinessStatus ?? "missing",
+        publishedVersionNumber: publishedVersion?.versionNumber ?? null,
+        registryId: template.id,
+        templateName: template.name,
+        visibility: template.visibility,
+        warnings
+      };
+    })
+    .sort((left, right) => left.templateName.localeCompare(right.templateName));
+
+  const marketplacePricingLabel = (listing: (typeof allMarketplaceListings)[number]) => {
+    if (listing.pricingType === "included") return "Included";
+    if (listing.pricingType === "paid") {
+      if (listing.priceAmount !== null) {
+        const currency = listing.currency?.toUpperCase() || "USD";
+        return `${currency} ${listing.priceAmount.toFixed(2)}`;
+      }
+      return "Paid";
+    }
+    return "Free";
+  };
 
   const publishedTemplateIds = new Set(
     allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
@@ -5558,6 +5676,28 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       templateName: templateNameByRegistryId.get(job.templateId) ?? "Template",
       updateJobId: job.updateJobId
     })),
+    marketplaceListingOverview: marketplaceListingStats,
+    marketplaceEligibleTemplates,
+    marketplaceListings: allMarketplaceListings.map((listing) => ({
+      approvalStatus: listing.approvalStatus,
+      createdAt: listing.createdAt,
+      currency: listing.currency,
+      featured: listing.featured,
+      id: listing.id,
+      listingDescription: listing.listingDescription,
+      listingStatus: listing.listingStatus,
+      listingTitle: listing.listingTitle,
+      priceAmount: listing.priceAmount,
+      pricingLabel: marketplacePricingLabel(listing),
+      pricingType: listing.pricingType,
+      publishedAt: listing.publishedAt,
+      templateId: listing.templateId,
+      templateName: templateNameByRegistryId.get(listing.templateId) ?? "Template",
+      versionNumber: listing.templateVersionId
+        ? versionNumberById.get(listing.templateVersionId) ?? null
+        : publishedVersionByTemplateId.get(listing.templateId)?.versionNumber ?? null
+    })),
+    marketplaceCatalogPreview,
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,
       createdAt: install.createdAt,
