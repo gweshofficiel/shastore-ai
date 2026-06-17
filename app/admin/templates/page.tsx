@@ -81,6 +81,7 @@ import { TemplateRestoreControl } from "@/components/admin/template-restore-cont
 import { TemplateAnalyticsPanel } from "@/components/admin/template-analytics-panel";
 import { TemplateCertificationPanel } from "@/components/admin/template-certification-panel";
 import { TemplateLiveRenderingStatusPanel } from "@/components/admin/template-live-rendering-status-panel";
+import { TemplatesProductionCertificationPanel } from "@/components/admin/templates-production-certification-panel";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 import {
   getTemplateAnalyticsDashboard,
@@ -88,6 +89,7 @@ import {
 } from "@/src/lib/templates/template-analytics";
 import { runTemplateCertification } from "@/src/lib/templates/template-certification";
 import { listLiveStoreRenderingDiagnostics } from "@/src/lib/templates/store-rendering-runtime";
+import { runTemplatesProductionCertification } from "@/src/lib/templates/templates-production-certification";
 
 function toneForStatus(status: string) {
   if (["active", "approved", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
@@ -248,11 +250,13 @@ export default async function AdminTemplatesPage({
 }) {
   const query = await searchParams;
   const analyticsRange = parseTemplateAnalyticsRange(query.analyticsRange);
-  const [control, templateAnalytics, templateCertification, liveRenderingStatuses] = await Promise.all([
+  const [control, templateAnalytics, templateCertification, liveRenderingStatuses, templatesProductionCertification] =
+    await Promise.all([
     getAdminTemplateManagementControl(),
     getTemplateAnalyticsDashboard(analyticsRange),
     runTemplateCertification(),
-    listLiveStoreRenderingDiagnostics(50)
+    listLiveStoreRenderingDiagnostics(50),
+    runTemplatesProductionCertification()
   ]);
 
   return (
@@ -282,6 +286,8 @@ export default async function AdminTemplatesPage({
       <TemplateCertificationPanel certification={templateCertification} />
 
       <TemplateLiveRenderingStatusPanel statuses={liveRenderingStatuses} />
+
+      <TemplatesProductionCertificationPanel certification={templatesProductionCertification} />
 
       <AdminStatGrid
         stats={[
