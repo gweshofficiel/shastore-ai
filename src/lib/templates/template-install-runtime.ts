@@ -11,6 +11,10 @@ import {
 import { listTemplates, type TemplateRegistryRecord } from "@/src/lib/templates/template-registry";
 import { getPublishedTemplateVersion } from "@/src/lib/templates/template-versions";
 import { assignTemplateToStore } from "@/src/lib/templates/store-template-assignment";
+import {
+  createStoreThemeIsolationSnapshot,
+  validateStoreThemeIsolation
+} from "@/src/lib/templates/store-theme-isolation";
 
 export type TemplateInstallStatus = "cancelled" | "completed" | "failed" | "installing" | "prepared";
 export type TemplateInstallMode = "super_admin_manual";
@@ -358,6 +362,17 @@ export async function prepareTemplateInstall(templateId: string, storeId: string
 
 export async function installTemplateToStore(templateId: string, storeId: string) {
   const access = await requireSuperAdmin();
+  const isolation = await validateStoreThemeIsolation(storeId, templateId);
+
+  if (!isolation.canProceed) {
+    throw new Error(
+      isolation.issues
+        .filter((issue) => issue.severity === "error")
+        .map((issue) => issue.message)
+        .join(" ") || "Store theme isolation validation failed."
+    );
+  }
+
   const prepared = await prepareTemplateInstall(templateId, storeId);
   const validation = prepared.validation;
   const install = prepared.install;
@@ -519,6 +534,28 @@ export async function installTemplateToStore(templateId: string, storeId: string
           installed_summary: {
             ...installedSummary,
             assignmentWarning: conflicts[conflicts.length - 1]?.note ?? "Assignment failed."
+          }
+        } as never)
+        .eq("id" as never, install.id as never);
+    }
+
+    try {
+      await createStoreThemeIsolationSnapshot(store.id, install.templateId, install.id);
+    } catch (snapshotError) {
+      conflicts.push({
+        note:
+          snapshotError instanceof Error
+            ? snapshotError.message
+            : "Store theme isolation snapshot could not be created after install.",
+        step: "store-theme-isolation-snapshot"
+      });
+
+      await admin
+        .from("template_installs" as never)
+        .update({
+          installed_summary: {
+            ...installedSummary,
+            isolationSnapshotWarning: conflicts[conflicts.length - 1]?.note ?? "Isolation snapshot failed."
           }
         } as never)
         .eq("id" as never, install.id as never);

@@ -8,6 +8,11 @@ import {
   listAllTemplateVersions,
   type TemplateVersionRecord
 } from "@/src/lib/templates/template-versions";
+import {
+  createStoreThemeIsolationSnapshot,
+  validateStoreThemeIsolation,
+  verifyNoCrossStoreTemplateMutation
+} from "@/src/lib/templates/store-theme-isolation";
 
 export type StoreAssignmentStatus = "active" | "assigned" | "failed" | "inactive" | "unassigned";
 export type StoreAssignmentSource =
@@ -395,6 +400,20 @@ export async function assignTemplateToStore(
     );
   }
 
+  const isolation = await validateStoreThemeIsolation(storeId, templateId);
+  const mutationCheck = await verifyNoCrossStoreTemplateMutation(storeId, templateId, {
+    installId
+  });
+
+  if (!isolation.canProceed || !mutationCheck.canProceed) {
+    throw new Error(
+      [...isolation.issues, ...mutationCheck.issues]
+        .filter((issue) => issue.severity === "error")
+        .map((issue) => issue.message)
+        .join(" ") || "Store theme isolation blocked template assignment."
+    );
+  }
+
   const admin = requireAdminClient();
   const assignmentSource = options.assignmentSource ?? (installId ? "template_install" : "super_admin_manual");
   const initialStatus = options.initialStatus ?? (assignmentSource === "template_install" ? "active" : "assigned");
@@ -474,6 +493,22 @@ export async function assignTemplateToStore(
     storeId: parsed.storeId,
     userId: access.user.id
   });
+
+  const verified = await verifyNoCrossStoreTemplateMutation(storeId, templateId, {
+    assignmentId: parsed.id,
+    installId: parsed.installId
+  });
+
+  if (!verified.canProceed) {
+    throw new Error(
+      verified.issues
+        .filter((issue) => issue.severity === "error")
+        .map((issue) => issue.message)
+        .join(" ") || "Template assignment failed store isolation verification."
+    );
+  }
+
+  await createStoreThemeIsolationSnapshot(parsed.storeId, parsed.templateId, parsed.installId);
 
   return {
     assignment: parsed,

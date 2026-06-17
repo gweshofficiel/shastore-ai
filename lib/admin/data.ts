@@ -44,6 +44,7 @@ import { listAllTemplateScreenshots } from "@/src/lib/templates/template-screens
 import { listAllTemplateAssets } from "@/src/lib/templates/template-asset-storage";
 import { listTemplateInstalls } from "@/src/lib/templates/template-install-runtime";
 import { listStoreTemplateAssignments } from "@/src/lib/templates/store-template-assignment";
+import { listStoreThemeIsolationIssues } from "@/src/lib/templates/store-theme-isolation";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -878,6 +879,24 @@ export type AdminTemplateManagementControl = {
     templateId: string;
     templateName: string;
     versionNumber: string | null;
+  }>;
+  isolationOverview: {
+    failedSnapshots: number;
+    safeSnapshots: number;
+    totalSnapshots: number;
+    warningSnapshots: number;
+  };
+  storeThemeIsolationSnapshots: Array<{
+    createdAt: string | null;
+    id: string;
+    installId: string | null;
+    isolationStatus: "failed" | "safe" | "warning";
+    issueSummary: string | null;
+    issuesCount: number;
+    storeId: string;
+    storeName: string;
+    templateId: string | null;
+    templateName: string;
   }>;
   templateInstalls: Array<{
     completedAt: string | null;
@@ -4823,7 +4842,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, installTargetStores] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, installTargetStores] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4841,6 +4860,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listAllTemplateAssets(),
     listTemplateInstalls(200),
     listStoreTemplateAssignments({ limit: 200 }),
+    listStoreThemeIsolationIssues({ limit: 200 }),
     safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
   ]);
 
@@ -5216,6 +5236,28 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       versionNumber: assignment.templateVersionId
         ? versionNumberById.get(assignment.templateVersionId) ?? null
         : null
+    })),
+    isolationOverview: {
+      failedSnapshots: allIsolationSnapshots.filter((snapshot) => snapshot.isolationStatus === "failed").length,
+      safeSnapshots: allIsolationSnapshots.filter((snapshot) => snapshot.isolationStatus === "safe").length,
+      totalSnapshots: allIsolationSnapshots.length,
+      warningSnapshots: allIsolationSnapshots.filter((snapshot) => snapshot.isolationStatus === "warning").length
+    },
+    storeThemeIsolationSnapshots: allIsolationSnapshots.map((snapshot) => ({
+      createdAt: snapshot.createdAt,
+      id: snapshot.id,
+      installId: snapshot.installId,
+      isolationStatus: snapshot.isolationStatus,
+      issueSummary:
+        snapshot.issues[0]?.message ??
+        (snapshot.isolationStatus === "safe" ? "No isolation issues detected." : null),
+      issuesCount: snapshot.issues.length,
+      storeId: snapshot.storeId,
+      storeName: storeNameById.get(snapshot.storeId) ?? snapshot.storeId,
+      templateId: snapshot.templateId,
+      templateName: snapshot.templateId
+        ? templateNameByRegistryId.get(snapshot.templateId) ?? "Template"
+        : "—"
     })),
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,

@@ -52,7 +52,7 @@ import { TemplateRestoreControl } from "@/components/admin/template-restore-cont
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
-  if (["active", "completed", "marketplace", "owner", "ready", "published"].includes(status)) {
+  if (["active", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
     return "green" as const;
   }
 
@@ -145,6 +145,13 @@ function assignmentSourceLabel(source: string) {
   if (source === "store_creation") return "Store creation";
   if (source === "migration") return "Migration";
   return source;
+}
+
+function isolationStatusLabel(status: string) {
+  if (status === "safe") return "Safe";
+  if (status === "warning") return "Warning";
+  if (status === "failed") return "Failed";
+  return status;
 }
 
 function TemplateHiddenFields({
@@ -465,6 +472,51 @@ export default async function AdminTemplatesPage() {
                 unassignAction={unassignTemplateFromStoreAction}
               />
             </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Isolation snapshots", value: control.isolationOverview.totalSnapshots },
+          { label: "Safe", value: control.isolationOverview.safeSnapshots },
+          { label: "Warnings", value: control.isolationOverview.warningSnapshots },
+          { label: "Failed", value: control.isolationOverview.failedSnapshots }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin store theme isolation safeguards. Read-only checks plus snapshot metadata ensure template installs and assignments stay scoped to one store. Cross-store risks block install and assignment. No storefront rendering or destructive theme changes."
+        title="Store Theme Isolation"
+      />
+
+      <AdminTable
+        empty={
+          !control.storeThemeIsolationSnapshots.length
+            ? "No store theme isolation snapshots recorded yet. Snapshots are created after installs and assignments."
+            : null
+        }
+        headers={["Store", "Template", "Install", "Status", "Issues", "Summary", "Created"]}
+      >
+        {control.storeThemeIsolationSnapshots.map((snapshot) => (
+          <tr key={snapshot.id}>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{snapshot.storeName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{snapshot.storeId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{snapshot.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{snapshot.templateId ?? "—"}</p>
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-500">{snapshot.installId ?? "—"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(snapshot.isolationStatus)}>
+                {isolationStatusLabel(snapshot.isolationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{snapshot.issuesCount}</td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">{snapshot.issueSummary ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(snapshot.createdAt)}</td>
           </tr>
         ))}
       </AdminTable>
