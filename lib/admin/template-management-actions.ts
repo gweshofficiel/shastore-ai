@@ -12,6 +12,10 @@ import {
   archiveTemplateSafely,
   restoreArchivedTemplateToDraft as restoreArchivedRegistryTemplate
 } from "@/src/lib/templates/template-archive";
+import {
+  markTemplateOfficial as markRegistryTemplateOfficial,
+  unmarkTemplateOfficial as unmarkRegistryTemplateOfficial
+} from "@/src/lib/templates/template-official";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -25,6 +29,7 @@ type TemplateAdminAction =
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
+  | "admin_template_unmark_official"
   | "admin_template_update_stores";
 
 function cleanText(value: FormDataEntryValue | null) {
@@ -228,7 +233,89 @@ export async function markTemplateDraft(formData: FormData) {
 }
 
 export async function markTemplateOfficial(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_mark_official");
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can mark templates official.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await markRegistryTemplateOfficial(registryId);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_mark_official",
+    metadata: {
+      badges: result.badges,
+      is_official: result.isOfficial,
+      note: "Template official flag updated in registry catalog only. No store installations or storefront rendering were changed.",
+      previous_official: result.previousOfficial,
+      source: "super_admin_template_management_center",
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function unmarkTemplateOfficial(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can remove official template status.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await unmarkRegistryTemplateOfficial(registryId);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_unmark_official",
+    metadata: {
+      badges: result.badges,
+      is_official: result.isOfficial,
+      note: "Template official flag removed in registry catalog only. No store installations or storefront rendering were changed.",
+      previous_official: result.previousOfficial,
+      source: "super_admin_template_management_center",
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function markTemplateRecommended(formData: FormData) {

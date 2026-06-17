@@ -18,10 +18,12 @@ import {
   publishTemplateUpdatePlaceholder,
   restoreArchivedTemplateToDraft,
   setTemplateVisibility,
+  unmarkTemplateOfficial,
   updateStoresTemplatePlaceholder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
 import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
+import { TemplateOfficialControls } from "@/components/admin/template-official-controls";
 import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
@@ -127,6 +129,7 @@ export default async function AdminTemplatesPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-bold text-slate-950">{template.name}</p>
                 <AdminBadge tone={toneForStatus(template.status)}>{statusLabel(template.status)}</AdminBadge>
+                {template.badges.official ? <AdminBadge tone="green">Official</AdminBadge> : null}
                 <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
               </div>
               <p className="mt-1 text-xs font-semibold text-slate-500">{template.id}</p>
@@ -251,12 +254,13 @@ export default async function AdminTemplatesPage() {
                   registryId={template.registryId}
                   templateName={template.name}
                 />
-                <form action={markTemplateOfficial}>
-                  <TemplateHiddenFields template={template} />
-                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                    Mark official
-                  </button>
-                </form>
+                <TemplateOfficialControls
+                  isOfficial={template.badges.official}
+                  markOfficialAction={markTemplateOfficial}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                  unmarkOfficialAction={unmarkTemplateOfficial}
+                />
                 <form action={markTemplateRecommended}>
                   <TemplateHiddenFields template={template} />
                   <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">

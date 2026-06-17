@@ -30,6 +30,7 @@ import {
 import { getTemplateVisibilityStats } from "@/src/lib/templates/template-visibility";
 import { getTemplateActivationStats } from "@/src/lib/templates/template-activation";
 import { listArchivedTemplates } from "@/src/lib/templates/template-archive";
+import { getOfficialTemplateStats } from "@/src/lib/templates/template-official";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -4646,7 +4647,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4654,7 +4655,8 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
     listAllTemplateVersions(),
     getTemplateVisibilityStats(),
-    listArchivedTemplates()
+    listArchivedTemplates(),
+    getOfficialTemplateStats()
   ]);
 
   const publishedTemplateIds = new Set(
@@ -4794,7 +4796,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       activeTemplates: activationStats.activeTemplates,
       archivedTemplates: activationStats.archivedTemplates,
       draftTemplates: activationStats.draftTemplates,
-      officialTemplates: stats.officialTemplates,
+      officialTemplates: officialStats.officialTemplates,
       resellerVisibleTemplates: stats.resellerVisible,
       totalTemplates: stats.totalTemplates
     },
