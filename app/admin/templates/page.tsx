@@ -10,15 +10,18 @@ import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
   activateTemplatePlaceholder,
   archiveTemplatePlaceholder,
+  installTemplateVersionPlaceholder,
   markTemplateOfficial,
   markTemplateRecommended,
   previewTemplatePlaceholder,
+  publishTemplateUpdatePlaceholder,
   setTemplateVisibility,
+  updateStoresTemplatePlaceholder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
 
 function toneForStatus(status: string) {
-  if (["active", "marketplace", "owner", "ready"].includes(status)) {
+  if (["active", "marketplace", "owner", "ready", "published"].includes(status)) {
     return "green" as const;
   }
 
@@ -34,14 +37,18 @@ function toneForStatus(status: string) {
 }
 
 function TemplateHiddenFields({
-  template
+  template,
+  version
 }: {
   template: Awaited<ReturnType<typeof getAdminTemplateManagementControl>>["templates"][number];
+  version?: Awaited<ReturnType<typeof getAdminTemplateManagementControl>>["templates"][number]["versions"][number];
 }) {
   return (
     <>
       <input name="templateId" type="hidden" value={template.id} />
       <input name="templateName" type="hidden" value={template.name} />
+      {version ? <input name="versionId" type="hidden" value={version.id} /> : null}
+      {version ? <input name="versionNumber" type="hidden" value={version.versionNumber} /> : null}
     </>
   );
 }
@@ -52,7 +59,7 @@ export default async function AdminTemplatesPage() {
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Global control layer over the template registry runtime. No packages are installed here, no stores are overwritten, and storefront rendering is unchanged."
+        description="Global control layer over the template registry and version runtime. No packages are installed here, no stores are overwritten, and storefront rendering is unchanged."
         title="Template Management Center"
       />
 
@@ -66,6 +73,16 @@ export default async function AdminTemplatesPage() {
           { label: "Owner visible", value: control.visibility.ownerVisible },
           { label: "Reseller visible", value: control.visibility.resellerVisible },
           { label: "Hidden/internal", value: control.visibility.hiddenInternal }
+        ]}
+      />
+
+      <AdminStatGrid
+        stats={[
+          { label: "Versions", value: control.versionOverview.totalVersions },
+          { label: "Published versions", value: control.versionOverview.publishedVersions },
+          { label: "Draft versions", value: control.versionOverview.draftVersions },
+          { label: "Archived versions", value: control.versionOverview.archivedVersions },
+          { label: "Templates with published version", value: control.versionOverview.templatesWithPublishedVersion }
         ]}
       />
 
@@ -84,10 +101,67 @@ export default async function AdminTemplatesPage() {
         ]}
       >
         {control.templates.map((template) => (
-          <tr key={template.id}>
+          <tr key={template.registryId}>
             <td className="px-5 py-4">
               <p className="font-bold text-slate-950">{template.name}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">{template.id}</p>
+              <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                  Version details ({template.versions.length})
+                </summary>
+                <div className="mt-3 grid gap-3">
+                  {template.versions.length ? (
+                    template.versions.map((version) => (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-3" key={version.id}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-slate-950">v{version.versionNumber}</p>
+                          <AdminBadge tone={toneForStatus(version.status)}>{version.status}</AdminBadge>
+                        </div>
+                        <p className="mt-2 text-xs font-semibold text-slate-600">
+                          Changelog: {version.changelog || "No changelog recorded."}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Created: {formatAdminDate(version.createdAt)}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Published: {formatAdminDate(version.publishedAt)}
+                        </p>
+                        <div className="mt-3 grid gap-2">
+                          <form action={publishTemplateUpdatePlaceholder}>
+                            <TemplateHiddenFields template={template} version={version} />
+                            <button
+                              className="h-8 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700"
+                              type="submit"
+                            >
+                              Publish template update
+                            </button>
+                          </form>
+                          <form action={installTemplateVersionPlaceholder}>
+                            <TemplateHiddenFields template={template} version={version} />
+                            <button
+                              className="h-8 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                              type="submit"
+                            >
+                              Install version
+                            </button>
+                          </form>
+                          <form action={updateStoresTemplatePlaceholder}>
+                            <TemplateHiddenFields template={template} version={version} />
+                            <button
+                              className="h-8 w-full rounded-full border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-700"
+                              type="submit"
+                            >
+                              Update stores
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-500">No version records found for this template.</p>
+                  )}
+                </div>
+              </details>
             </td>
             <td className="px-5 py-4 text-slate-600">
               <p>{template.category}</p>
@@ -96,7 +170,16 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(template.status)}>{template.status}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(template.visibility)}>{template.visibility}</AdminBadge></td>
             <td className="px-5 py-4 text-slate-600">
-              <p>Latest: {template.packageVersion ?? "legacy"}</p>
+              <p>
+                Latest: {template.latestVersion?.versionNumber ?? template.packageVersion ?? "legacy"}
+                {template.latestVersion ? (
+                  <span className="ml-2">
+                    <AdminBadge tone={toneForStatus(template.latestVersion.status)}>
+                      {template.latestVersion.status}
+                    </AdminBadge>
+                  </span>
+                ) : null}
+              </p>
               <p className="mt-1 text-xs font-semibold">Installed versions: {template.installedVersionCount}</p>
               <p className="mt-1 text-xs font-semibold">Update: {template.updateAvailable}</p>
             </td>

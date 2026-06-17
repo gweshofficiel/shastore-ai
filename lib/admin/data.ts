@@ -24,6 +24,9 @@ import {
   getTemplateRegistryStats,
   listTemplates
 } from "@/src/lib/templates/template-registry";
+import {
+  listAllTemplateVersions
+} from "@/src/lib/templates/template-versions";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -751,6 +754,11 @@ export type AdminTemplateManagementControl = {
     industry: string;
     installedVersionCount: number;
     lastUpdated: string | null;
+    latestVersion: {
+      publishedAt: string | null;
+      status: "archived" | "draft" | "published";
+      versionNumber: string;
+    } | null;
     name: string;
     packageSummary: {
       aiVisualSupport: boolean;
@@ -762,10 +770,26 @@ export type AdminTemplateManagementControl = {
     };
     packageVersion: number | null;
     previewHref: string;
+    registryId: string;
     status: "active" | "archived" | "draft";
     updateAvailable: "placeholder";
+    versions: Array<{
+      changelog: string | null;
+      createdAt: string | null;
+      id: string;
+      publishedAt: string | null;
+      status: "archived" | "draft" | "published";
+      versionNumber: string;
+    }>;
     visibility: "internal" | "marketplace" | "owner" | "reseller";
   }>;
+  versionOverview: {
+    archivedVersions: number;
+    draftVersions: number;
+    publishedVersions: number;
+    templatesWithPublishedVersion: number;
+    totalVersions: number;
+  };
   visibility: {
     hiddenInternal: number;
     ownerVisible: number;
@@ -4609,11 +4633,53 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, stores] = await Promise.all([
+  const [registryTemplates, stats, stores, allVersions] = await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
-    safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000)
+    safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
+    listAllTemplateVersions()
   ]);
+
+  const publishedTemplateIds = new Set(
+    allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
+  );
+  const versionStats = {
+    archivedVersions: allVersions.filter((version) => version.status === "archived").length,
+    draftVersions: allVersions.filter((version) => version.status === "draft").length,
+    publishedVersions: allVersions.filter((version) => version.status === "published").length,
+    templatesWithPublishedVersion: publishedTemplateIds.size,
+    totalVersions: allVersions.length
+  };
+
+  const versionsByTemplateId = new Map<string, typeof allVersions>();
+
+  for (const version of allVersions) {
+    const existing = versionsByTemplateId.get(version.templateId) ?? [];
+    existing.push(version);
+    versionsByTemplateId.set(version.templateId, existing);
+  }
+
+  for (const [templateId, versions] of versionsByTemplateId) {
+    versionsByTemplateId.set(
+      templateId,
+      [...versions].sort((left, right) => {
+        const leftParts = left.versionNumber.split(".").map((part) => Number.parseInt(part, 10));
+        const rightParts = right.versionNumber.split(".").map((part) => Number.parseInt(part, 10));
+        const length = Math.max(leftParts.length, rightParts.length);
+
+        for (let index = 0; index < length; index += 1) {
+          const leftValue = Number.isFinite(leftParts[index]) ? leftParts[index] : 0;
+          const rightValue = Number.isFinite(rightParts[index]) ? rightParts[index] : 0;
+
+          if (leftValue !== rightValue) {
+            return rightValue - leftValue;
+          }
+        }
+
+        return right.versionNumber.localeCompare(left.versionNumber);
+      })
+    );
+  }
 
   const installedVersionsByTemplate = new Map<string, Set<string>>();
 
@@ -4632,7 +4698,11 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 
   const templates: AdminTemplateManagementControl["templates"] = registryTemplates.map((template) => {
     const storeTemplateId = text(template.metadata.storeTemplateId, template.templateKey);
-    const parsedVersion = Number.parseInt(template.version, 10);
+    const templateVersions = versionsByTemplateId.get(template.id) ?? [];
+    const latestVersion = templateVersions[0] ?? null;
+    const parsedVersion = latestVersion
+      ? Number.parseInt(latestVersion.versionNumber, 10)
+      : Number.parseInt(template.version, 10);
     const premium =
       template.badges.includes("premium") ||
       template.badges.includes("ready-to-use") ||
@@ -4651,6 +4721,13 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       industry: text(template.industry, "general"),
       installedVersionCount: installedVersionsByTemplate.get(storeTemplateId)?.size ?? 0,
       lastUpdated: template.updatedAt,
+      latestVersion: latestVersion
+        ? {
+            publishedAt: latestVersion.publishedAt,
+            status: latestVersion.status,
+            versionNumber: latestVersion.versionNumber
+          }
+        : null,
       name: template.name,
       packageSummary: {
         aiVisualSupport: template.packageSummary.aiVisualSupport,
@@ -4662,8 +4739,17 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       },
       packageVersion: Number.isFinite(parsedVersion) ? parsedVersion : null,
       previewHref: `/templates/preview/${encodeURIComponent(storeTemplateId)}`,
+      registryId: template.id,
       status: template.status,
       updateAvailable: "placeholder",
+      versions: templateVersions.map((version) => ({
+        changelog: version.changelog,
+        createdAt: version.createdAt,
+        id: version.id,
+        publishedAt: version.publishedAt,
+        status: version.status,
+        versionNumber: version.versionNumber
+      })),
       visibility: template.visibility
     };
   });
@@ -4685,6 +4771,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       totalTemplates: stats.totalTemplates
     },
     templates,
+    versionOverview: versionStats,
     visibility: {
       hiddenInternal: stats.hiddenInternal,
       ownerVisible: stats.ownerVisible,

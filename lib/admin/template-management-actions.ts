@@ -7,11 +7,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 type TemplateAdminAction =
   | "admin_template_activate"
   | "admin_template_archive"
+  | "admin_template_install_version"
   | "admin_template_mark_official"
   | "admin_template_mark_recommended"
   | "admin_template_package_summary_viewed"
   | "admin_template_preview"
-  | "admin_template_set_visibility";
+  | "admin_template_publish_update"
+  | "admin_template_set_visibility"
+  | "admin_template_update_stores";
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
@@ -22,6 +25,8 @@ async function recordTemplateAdminAction(formData: FormData, action: TemplateAdm
   const templateId = cleanText(formData.get("templateId"));
   const templateName = cleanText(formData.get("templateName"));
   const visibility = cleanText(formData.get("visibility"));
+  const versionId = cleanText(formData.get("versionId"));
+  const versionNumber = cleanText(formData.get("versionNumber"));
 
   if (!templateId) {
     throw new Error("Missing template id.");
@@ -43,6 +48,8 @@ async function recordTemplateAdminAction(formData: FormData, action: TemplateAdm
       source: "super_admin_template_management_center",
       template_id: templateId,
       template_name: templateName,
+      version_id: versionId || null,
+      version_number: versionNumber || null,
       visibility: visibility || null
     },
     store_id: null,
@@ -79,4 +86,16 @@ export async function previewTemplatePlaceholder(formData: FormData) {
 
 export async function viewTemplatePackageSummary(formData: FormData) {
   await recordTemplateAdminAction(formData, "admin_template_package_summary_viewed");
+}
+
+export async function publishTemplateUpdatePlaceholder(formData: FormData) {
+  await recordTemplateAdminAction(formData, "admin_template_publish_update");
+}
+
+export async function installTemplateVersionPlaceholder(formData: FormData) {
+  await recordTemplateAdminAction(formData, "admin_template_install_version");
+}
+
+export async function updateStoresTemplatePlaceholder(formData: FormData) {
+  await recordTemplateAdminAction(formData, "admin_template_update_stores");
 }
