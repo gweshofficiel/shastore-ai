@@ -13,17 +13,21 @@ import {
   installTemplateVersionPlaceholder,
   markTemplateDraft,
   markTemplateOfficial,
-  markTemplateRecommended,
   previewTemplatePlaceholder,
   publishTemplateUpdatePlaceholder,
+  recommendTemplate,
   restoreArchivedTemplateToDraft,
   setTemplateVisibility,
   unmarkTemplateOfficial,
+  unrecommendTemplate,
   updateStoresTemplatePlaceholder,
+  updateTemplateRecommendationOrder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
 import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
 import { TemplateOfficialControls } from "@/components/admin/template-official-controls";
+import { TemplateRecommendationControls } from "@/components/admin/template-recommendation-controls";
+import { TemplateRecommendationOrderForm } from "@/components/admin/template-recommendation-order-form";
 import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
@@ -92,6 +96,7 @@ export default async function AdminTemplatesPage() {
           { label: "Draft", value: control.overview.draftTemplates },
           { label: "Archived", value: control.overview.archivedTemplates },
           { label: "Official", value: control.overview.officialTemplates },
+          { label: "Recommended", value: control.overview.recommendedTemplates },
           { label: "Owner visible", value: control.visibility.ownerVisible },
           { label: "Reseller visible", value: control.visibility.resellerVisible },
           { label: "Marketplace visible", value: control.visibility.marketplaceVisible },
@@ -130,6 +135,7 @@ export default async function AdminTemplatesPage() {
                 <p className="font-bold text-slate-950">{template.name}</p>
                 <AdminBadge tone={toneForStatus(template.status)}>{statusLabel(template.status)}</AdminBadge>
                 {template.badges.official ? <AdminBadge tone="green">Official</AdminBadge> : null}
+                {template.badges.recommended ? <AdminBadge tone="amber">Recommended</AdminBadge> : null}
                 <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
               </div>
               <p className="mt-1 text-xs font-semibold text-slate-500">{template.id}</p>
@@ -261,12 +267,22 @@ export default async function AdminTemplatesPage() {
                   templateName={template.name}
                   unmarkOfficialAction={unmarkTemplateOfficial}
                 />
-                <form action={markTemplateRecommended}>
-                  <TemplateHiddenFields template={template} />
-                  <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                    Recommend
-                  </button>
-                </form>
+                <TemplateRecommendationControls
+                  isRecommended={template.badges.recommended}
+                  recommendAction={recommendTemplate}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                  unrecommendAction={unrecommendTemplate}
+                  visibility={template.visibility}
+                />
+                {template.badges.recommended ? (
+                  <TemplateRecommendationOrderForm
+                    action={updateTemplateRecommendationOrder}
+                    currentOrder={template.recommendationOrder}
+                    registryId={template.registryId}
+                    templateName={template.name}
+                  />
+                ) : null}
                 <TemplateVisibilityForm
                   action={setTemplateVisibility}
                   currentVisibility={template.visibility}
@@ -289,6 +305,50 @@ export default async function AdminTemplatesPage() {
                     Package summary
                   </button>
                 </form>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminHeader
+        description="Recommended templates are sorted for catalog highlighting only. They are not installed into stores and do not change storefront rendering."
+        title="Recommended Templates"
+      />
+
+      <AdminTable
+        empty={!control.recommendedTemplates.length ? "No recommended templates in the registry." : null}
+        headers={["Template", "Category", "Visibility", "Latest version", "Order", "Actions"]}
+      >
+        {control.recommendedTemplates.map((template) => (
+          <tr key={template.registryId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{template.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.templateKey}</p>
+              <AdminBadge tone="amber">Recommended</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.latestVersion ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{template.recommendationOrder ?? "—"}</td>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <TemplateRecommendationOrderForm
+                  action={updateTemplateRecommendationOrder}
+                  currentOrder={template.recommendationOrder}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                />
+                <TemplateRecommendationControls
+                  isRecommended
+                  recommendAction={recommendTemplate}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                  unrecommendAction={unrecommendTemplate}
+                  visibility={template.visibility}
+                />
               </div>
             </td>
           </tr>

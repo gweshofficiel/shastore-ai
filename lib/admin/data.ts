@@ -31,6 +31,10 @@ import { getTemplateVisibilityStats } from "@/src/lib/templates/template-visibil
 import { getTemplateActivationStats } from "@/src/lib/templates/template-activation";
 import { listArchivedTemplates } from "@/src/lib/templates/template-archive";
 import { getOfficialTemplateStats } from "@/src/lib/templates/template-official";
+import {
+  getRecommendedTemplateStats,
+  listRecommendedTemplates
+} from "@/src/lib/templates/template-recommendation";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -751,9 +755,19 @@ export type AdminTemplateManagementControl = {
     archivedTemplates: number;
     draftTemplates: number;
     officialTemplates: number;
+    recommendedTemplates: number;
     resellerVisibleTemplates: number;
     totalTemplates: number;
   };
+  recommendedTemplates: Array<{
+    category: string;
+    latestVersion: string | null;
+    name: string;
+    recommendationOrder: number | null;
+    registryId: string;
+    templateKey: string;
+    visibility: "internal" | "marketplace" | "owner" | "reseller";
+  }>;
   templates: Array<{
     badges: {
       official: boolean;
@@ -783,6 +797,7 @@ export type AdminTemplateManagementControl = {
     };
     packageVersion: number | null;
     previewHref: string;
+    recommendationOrder: number | null;
     registryId: string;
     status: "active" | "archived" | "draft";
     updateAvailable: "placeholder";
@@ -4647,7 +4662,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4656,7 +4671,9 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listAllTemplateVersions(),
     getTemplateVisibilityStats(),
     listArchivedTemplates(),
-    getOfficialTemplateStats()
+    getOfficialTemplateStats(),
+    getRecommendedTemplateStats(),
+    listRecommendedTemplates()
   ]);
 
   const publishedTemplateIds = new Set(
@@ -4728,6 +4745,10 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       template.badges.includes("premium") ||
       template.badges.includes("ready-to-use") ||
       template.packageSummary.domainEmailReadiness === "ready";
+    const recommendationOrder =
+      typeof template.metadata.recommendationOrder === "number" && Number.isFinite(template.metadata.recommendationOrder)
+        ? Math.trunc(template.metadata.recommendationOrder)
+        : null;
 
     return {
       badges: {
@@ -4760,6 +4781,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       },
       packageVersion: Number.isFinite(parsedVersion) ? parsedVersion : null,
       previewHref: `/templates/preview/${encodeURIComponent(storeTemplateId)}`,
+      recommendationOrder,
       registryId: template.id,
       status: template.status,
       updateAvailable: "placeholder",
@@ -4797,9 +4819,19 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       archivedTemplates: activationStats.archivedTemplates,
       draftTemplates: activationStats.draftTemplates,
       officialTemplates: officialStats.officialTemplates,
+      recommendedTemplates: recommendedStats.recommendedTemplates,
       resellerVisibleTemplates: stats.resellerVisible,
       totalTemplates: stats.totalTemplates
     },
+    recommendedTemplates: recommendedTemplates.map((template) => ({
+      category: text(template.category, "general"),
+      latestVersion: template.latestPublishedVersion,
+      name: template.name,
+      recommendationOrder: template.recommendationOrder,
+      registryId: template.id,
+      templateKey: template.templateKey,
+      visibility: template.visibility
+    })),
     templates,
     versionOverview: versionStats,
     visibility: {

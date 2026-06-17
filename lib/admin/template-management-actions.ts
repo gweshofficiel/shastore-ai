@@ -16,6 +16,11 @@ import {
   markTemplateOfficial as markRegistryTemplateOfficial,
   unmarkTemplateOfficial as unmarkRegistryTemplateOfficial
 } from "@/src/lib/templates/template-official";
+import {
+  recommendTemplate as recommendRegistryTemplate,
+  unrecommendTemplate as unrecommendRegistryTemplate,
+  updateRecommendationOrder as updateRegistryRecommendationOrder
+} from "@/src/lib/templates/template-recommendation";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -30,6 +35,8 @@ type TemplateAdminAction =
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
   | "admin_template_unmark_official"
+  | "admin_template_unrecommend"
+  | "admin_template_update_recommendation_order"
   | "admin_template_update_stores";
 
 function cleanText(value: FormDataEntryValue | null) {
@@ -318,8 +325,135 @@ export async function unmarkTemplateOfficial(formData: FormData) {
   revalidatePath("/admin/templates");
 }
 
-export async function markTemplateRecommended(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_mark_recommended");
+export async function recommendTemplate(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can recommend templates.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const allowInternalVisibility = cleanText(formData.get("confirmInternalRecommendation")) === "1";
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await recommendRegistryTemplate(registryId, { allowInternalVisibility });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_mark_recommended",
+    metadata: {
+      badges: result.badges,
+      is_recommended: result.isRecommended,
+      note: "Template recommendation updated in registry catalog only. No store installations or storefront rendering were changed.",
+      previous_recommended: result.previousRecommended,
+      recommendation_order: result.recommendationOrder,
+      source: "super_admin_template_management_center",
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function unrecommendTemplate(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can remove template recommendations.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await unrecommendRegistryTemplate(registryId);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_unrecommend",
+    metadata: {
+      badges: result.badges,
+      is_recommended: result.isRecommended,
+      note: "Template recommendation removed in registry catalog only. No store installations or storefront rendering were changed.",
+      previous_recommended: result.previousRecommended,
+      source: "super_admin_template_management_center",
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function updateTemplateRecommendationOrder(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can update recommendation order.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const recommendationOrder = cleanText(formData.get("recommendationOrder"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await updateRegistryRecommendationOrder(registryId, Number.parseInt(recommendationOrder, 10));
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_update_recommendation_order",
+    metadata: {
+      note: "Template recommendation order updated in registry catalog only.",
+      previous_order: result.previousOrder,
+      recommendation_order: result.recommendationOrder,
+      source: "super_admin_template_management_center",
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function setTemplateVisibility(formData: FormData) {
