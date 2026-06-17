@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { setTemplateVisibility as updateTemplateRegistryVisibility } from "@/src/lib/templates/template-visibility";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -77,7 +78,46 @@ export async function markTemplateRecommended(formData: FormData) {
 }
 
 export async function setTemplateVisibility(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_set_visibility");
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can change template visibility.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const visibility = cleanText(formData.get("visibility"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await updateTemplateRegistryVisibility(registryId, visibility);
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_set_visibility",
+    metadata: {
+      note: "Template registry visibility updated. No store installations, storefront rendering, or template package installer were changed.",
+      previous_visibility: result.previousVisibility,
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      visibility: result.visibility
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function previewTemplatePlaceholder(formData: FormData) {

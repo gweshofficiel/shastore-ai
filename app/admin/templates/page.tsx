@@ -19,6 +19,7 @@ import {
   updateStoresTemplatePlaceholder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
+import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
   if (["active", "marketplace", "owner", "ready", "published"].includes(status)) {
@@ -34,6 +35,14 @@ function toneForStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function visibilityLabel(visibility: string) {
+  if (visibility === "owner") return "Owner catalog";
+  if (visibility === "reseller") return "Reseller catalog";
+  if (visibility === "marketplace") return "Marketplace catalog";
+  if (visibility === "internal") return "Hidden / internal";
+  return visibility;
 }
 
 function TemplateHiddenFields({
@@ -72,6 +81,7 @@ export default async function AdminTemplatesPage() {
           { label: "Official", value: control.overview.officialTemplates },
           { label: "Owner visible", value: control.visibility.ownerVisible },
           { label: "Reseller visible", value: control.visibility.resellerVisible },
+          { label: "Marketplace visible", value: control.visibility.marketplaceVisible },
           { label: "Hidden/internal", value: control.visibility.hiddenInternal }
         ]}
       />
@@ -103,7 +113,10 @@ export default async function AdminTemplatesPage() {
         {control.templates.map((template) => (
           <tr key={template.registryId}>
             <td className="px-5 py-4">
-              <p className="font-bold text-slate-950">{template.name}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-bold text-slate-950">{template.name}</p>
+                <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
+              </div>
               <p className="mt-1 text-xs font-semibold text-slate-500">{template.id}</p>
               <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
@@ -168,7 +181,10 @@ export default async function AdminTemplatesPage() {
               <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{template.industry}</p>
             </td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(template.status)}>{template.status}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(template.visibility)}>{template.visibility}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{template.visibility}</p>
+            </td>
             <td className="px-5 py-4 text-slate-600">
               <p>
                 Latest: {template.latestVersion?.versionNumber ?? template.packageVersion ?? "legacy"}
@@ -237,22 +253,12 @@ export default async function AdminTemplatesPage() {
                     Recommend
                   </button>
                 </form>
-                <form action={setTemplateVisibility} className="grid gap-2">
-                  <TemplateHiddenFields template={template} />
-                  <select
-                    className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600"
-                    defaultValue={template.visibility}
-                    name="visibility"
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="reseller">Reseller</option>
-                    <option value="marketplace">Marketplace</option>
-                    <option value="internal">Internal</option>
-                  </select>
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
-                    Set visibility
-                  </button>
-                </form>
+                <TemplateVisibilityForm
+                  action={setTemplateVisibility}
+                  currentVisibility={template.visibility}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                />
                 <form action={previewTemplatePlaceholder}>
                   <TemplateHiddenFields template={template} />
                   <Link

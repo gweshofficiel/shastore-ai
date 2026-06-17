@@ -27,6 +27,7 @@ import {
 import {
   listAllTemplateVersions
 } from "@/src/lib/templates/template-versions";
+import { getTemplateVisibilityStats } from "@/src/lib/templates/template-visibility";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -792,6 +793,7 @@ export type AdminTemplateManagementControl = {
   };
   visibility: {
     hiddenInternal: number;
+    marketplaceVisible: number;
     ownerVisible: number;
     resellerVisible: number;
   };
@@ -4633,11 +4635,12 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, stores, allVersions] = await Promise.all([
+  const [registryTemplates, stats, stores, allVersions, visibilityStats] = await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
     safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
-    listAllTemplateVersions()
+    listAllTemplateVersions(),
+    getTemplateVisibilityStats()
   ]);
 
   const publishedTemplateIds = new Set(
@@ -4773,9 +4776,10 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     templates,
     versionOverview: versionStats,
     visibility: {
-      hiddenInternal: stats.hiddenInternal,
-      ownerVisible: stats.ownerVisible,
-      resellerVisible: stats.resellerVisible
+      hiddenInternal: visibilityStats.hiddenInternal,
+      marketplaceVisible: visibilityStats.marketplaceVisible,
+      ownerVisible: visibilityStats.ownerVisible,
+      resellerVisible: visibilityStats.resellerVisible
     }
   };
 }
