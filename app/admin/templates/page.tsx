@@ -78,7 +78,12 @@ import { TemplateOfficialControls } from "@/components/admin/template-official-c
 import { TemplateRecommendationControls } from "@/components/admin/template-recommendation-controls";
 import { TemplateRecommendationOrderForm } from "@/components/admin/template-recommendation-order-form";
 import { TemplateRestoreControl } from "@/components/admin/template-restore-control";
+import { TemplateAnalyticsPanel } from "@/components/admin/template-analytics-panel";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
+import {
+  getTemplateAnalyticsDashboard,
+  parseTemplateAnalyticsRange
+} from "@/src/lib/templates/template-analytics";
 
 function toneForStatus(status: string) {
   if (["active", "approved", "completed", "marketplace", "owner", "ready", "published", "safe"].includes(status)) {
@@ -232,8 +237,17 @@ function TemplateHiddenFields({
   );
 }
 
-export default async function AdminTemplatesPage() {
-  const control = await getAdminTemplateManagementControl();
+export default async function AdminTemplatesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ analyticsRange?: string }>;
+}) {
+  const query = await searchParams;
+  const analyticsRange = parseTemplateAnalyticsRange(query.analyticsRange);
+  const [control, templateAnalytics] = await Promise.all([
+    getAdminTemplateManagementControl(),
+    getTemplateAnalyticsDashboard(analyticsRange)
+  ]);
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -256,6 +270,8 @@ export default async function AdminTemplatesPage() {
           { label: "Hidden/internal", value: control.visibility.hiddenInternal }
         ]}
       />
+
+      <TemplateAnalyticsPanel analytics={templateAnalytics} currentRange={analyticsRange} />
 
       <AdminStatGrid
         stats={[
