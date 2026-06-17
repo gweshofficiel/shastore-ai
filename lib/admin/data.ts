@@ -45,6 +45,7 @@ import { listAllTemplateAssets } from "@/src/lib/templates/template-asset-storag
 import { listTemplateInstalls } from "@/src/lib/templates/template-install-runtime";
 import { listStoreTemplateAssignments } from "@/src/lib/templates/store-template-assignment";
 import { listStoreThemeIsolationIssues } from "@/src/lib/templates/store-theme-isolation";
+import { listTemplateUpdateJobs } from "@/src/lib/templates/template-update-runtime";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -896,6 +897,40 @@ export type AdminTemplateManagementControl = {
     storeId: string;
     storeName: string;
     templateId: string | null;
+    templateName: string;
+  }>;
+  updateOverview: {
+    completedUpdates: number;
+    failedUpdates: number;
+    preparedUpdates: number;
+    totalUpdates: number;
+  };
+  updatableTargets: Array<{
+    assignmentId: string;
+    currentVersionId: string | null;
+    currentVersionNumber: string | null;
+    registryId: string;
+    storeId: string;
+    storeName: string;
+    targetVersionId: string;
+    targetVersionNumber: string;
+    templateName: string;
+  }>;
+  templateUpdateJobs: Array<{
+    assignmentId: string | null;
+    completedAt: string | null;
+    conflictSummary: string | null;
+    conflictsCount: number;
+    createdAt: string | null;
+    currentVersionNumber: string | null;
+    errorMessage: string | null;
+    id: string;
+    status: "cancelled" | "completed" | "failed" | "prepared" | "updating";
+    storeId: string;
+    storeName: string;
+    summaryNote: string | null;
+    targetVersionNumber: string | null;
+    templateId: string;
     templateName: string;
   }>;
   templateInstalls: Array<{
@@ -4842,7 +4877,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, installTargetStores] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, installTargetStores] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4861,6 +4896,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listTemplateInstalls(200),
     listStoreTemplateAssignments({ limit: 200 }),
     listStoreThemeIsolationIssues({ limit: 200 }),
+    listTemplateUpdateJobs({ limit: 200 }),
     safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500)
   ]);
 
@@ -4943,6 +4979,76 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         .map((assignment) => assignment.storeId)
     )
   ];
+
+  const compareTemplateVersionNumbers = (left: string, right: string) => {
+    const leftParts = left.split(".").map((part) => Number.parseInt(part, 10));
+    const rightParts = right.split(".").map((part) => Number.parseInt(part, 10));
+    const length = Math.max(leftParts.length, rightParts.length);
+
+    for (let index = 0; index < length; index += 1) {
+      const leftValue = Number.isFinite(leftParts[index]) ? leftParts[index] : 0;
+      const rightValue = Number.isFinite(rightParts[index]) ? rightParts[index] : 0;
+
+      if (leftValue !== rightValue) {
+        return leftValue - rightValue;
+      }
+    }
+
+    return left.localeCompare(right);
+  };
+
+  const latestPublishedVersionByTemplateId = new Map<string, (typeof allVersions)[number]>();
+
+  for (const version of allVersions) {
+    if (version.status !== "published") continue;
+
+    const existing = latestPublishedVersionByTemplateId.get(version.templateId);
+
+    if (!existing || compareTemplateVersionNumbers(version.versionNumber, existing.versionNumber) > 0) {
+      latestPublishedVersionByTemplateId.set(version.templateId, version);
+    }
+  }
+
+  const activeRegistryIds = new Set(registryTemplates.filter((template) => template.status === "active").map((template) => template.id));
+
+  const updatableTargets = allAssignments
+    .filter(
+      (assignment) =>
+        (assignment.assignmentStatus === "active" || assignment.assignmentStatus === "assigned") &&
+        activeRegistryIds.has(assignment.templateId)
+    )
+    .map((assignment) => {
+      const targetVersion = latestPublishedVersionByTemplateId.get(assignment.templateId);
+
+      if (!targetVersion) return null;
+
+      const currentVersion = assignment.templateVersionId
+        ? allVersions.find((version) => version.id === assignment.templateVersionId) ?? null
+        : null;
+
+      if (targetVersion.id === assignment.templateVersionId) return null;
+
+      if (
+        currentVersion &&
+        compareTemplateVersionNumbers(targetVersion.versionNumber, currentVersion.versionNumber) <= 0
+      ) {
+        return null;
+      }
+
+      return {
+        assignmentId: assignment.id,
+        currentVersionId: assignment.templateVersionId,
+        currentVersionNumber: currentVersion?.versionNumber ?? versionNumberById.get(assignment.templateVersionId ?? "") ?? null,
+        registryId: assignment.templateId,
+        storeId: assignment.storeId,
+        storeName: storeNameById.get(assignment.storeId) ?? assignment.storeId,
+        targetVersionId: targetVersion.id,
+        targetVersionNumber: targetVersion.versionNumber,
+        templateName: templateNameByRegistryId.get(assignment.templateId) ?? "Template"
+      };
+    })
+    .filter((target): target is NonNullable<typeof target> => Boolean(target))
+    .sort((left, right) => left.storeName.localeCompare(right.storeName));
 
   const publishedTemplateIds = new Set(
     allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
@@ -5258,6 +5364,30 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       templateName: snapshot.templateId
         ? templateNameByRegistryId.get(snapshot.templateId) ?? "Template"
         : "—"
+    })),
+    updateOverview: {
+      completedUpdates: allUpdateJobs.filter((job) => job.status === "completed").length,
+      failedUpdates: allUpdateJobs.filter((job) => job.status === "failed").length,
+      preparedUpdates: allUpdateJobs.filter((job) => job.status === "prepared").length,
+      totalUpdates: allUpdateJobs.length
+    },
+    updatableTargets,
+    templateUpdateJobs: allUpdateJobs.map((job) => ({
+      assignmentId: job.assignmentId,
+      completedAt: job.completedAt,
+      conflictSummary: job.conflicts[0]?.note ?? null,
+      conflictsCount: job.conflicts.length,
+      createdAt: job.createdAt,
+      currentVersionNumber: job.fromVersionId ? versionNumberById.get(job.fromVersionId) ?? null : null,
+      errorMessage: job.errorMessage,
+      id: job.id,
+      status: job.status,
+      storeId: job.storeId,
+      storeName: storeNameById.get(job.storeId) ?? job.storeId,
+      summaryNote: typeof job.updateSummary.note === "string" ? job.updateSummary.note : null,
+      targetVersionNumber: versionNumberById.get(job.toVersionId) ?? null,
+      templateId: job.templateId,
+      templateName: templateNameByRegistryId.get(job.templateId) ?? "Template"
     })),
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,

@@ -13,12 +13,15 @@ import {
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
   assignTemplateToStoreAction,
+  applyTemplateUpdateAction,
+  checkTemplateUpdateAction,
   deleteDraftTemplateAssetAction,
   installTemplateToStoreAction,
   installTemplateVersionPlaceholder,
   markTemplateAssignmentActiveAction,
   markTemplateDraft,
   markTemplateOfficial,
+  prepareTemplateUpdateAction,
   publishTemplateAssetAction,
   publishTemplateScreenshotAction,
   publishTemplateUpdatePlaceholder,
@@ -35,6 +38,8 @@ import {
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateUpdateApplyRowAction } from "@/components/admin/template-update-apply-row-action";
+import { TemplateUpdateRuntimeForm } from "@/components/admin/template-update-runtime-form";
 import { TemplateAssignToStoreForm } from "@/components/admin/template-assign-to-store-form";
 import { TemplateAssignmentRowActions } from "@/components/admin/template-assignment-row-actions";
 import { TemplateAssetList } from "@/components/admin/template-asset-list";
@@ -151,6 +156,15 @@ function isolationStatusLabel(status: string) {
   if (status === "safe") return "Safe";
   if (status === "warning") return "Warning";
   if (status === "failed") return "Failed";
+  return status;
+}
+
+function updateStatusLabel(status: string) {
+  if (status === "prepared") return "Prepared";
+  if (status === "updating") return "Updating";
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
   return status;
 }
 
@@ -517,6 +531,81 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4 text-slate-600">{snapshot.issuesCount}</td>
             <td className="px-5 py-4 text-xs font-semibold text-slate-600">{snapshot.issueSummary ?? "—"}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(snapshot.createdAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Update jobs", value: control.updateOverview.totalUpdates },
+          { label: "Prepared", value: control.updateOverview.preparedUpdates },
+          { label: "Completed", value: control.updateOverview.completedUpdates },
+          { label: "Failed", value: control.updateOverview.failedUpdates }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin manual template update runtime for stores with active assignments. Explicit prepare and apply only. Conflicts are skipped safely; customer products, pages, custom themes, orders, payments, and domains are never deleted."
+        title="Template Updates"
+      />
+
+      <TemplateUpdateRuntimeForm
+        applyAction={applyTemplateUpdateAction}
+        checkAction={checkTemplateUpdateAction}
+        prepareAction={prepareTemplateUpdateAction}
+        stores={control.installableStores}
+        updatableTargets={control.updatableTargets}
+      />
+
+      <AdminTable
+        empty={!control.templateUpdateJobs.length ? "No template update jobs recorded yet." : null}
+        headers={[
+          "Store",
+          "Template",
+          "Current",
+          "Target",
+          "Status",
+          "Conflicts",
+          "Summary",
+          "Created",
+          "Actions"
+        ]}
+      >
+        {control.templateUpdateJobs.map((job) => (
+          <tr key={job.id}>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{job.storeName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.storeId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{job.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.templateId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{job.currentVersionNumber ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{job.targetVersionNumber ?? "—"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(job.status)}>{updateStatusLabel(job.status)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-slate-600">{job.conflictsCount}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{job.conflictSummary ?? "—"}</p>
+            </td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">
+              {job.summaryNote ?? job.errorMessage ?? "—"}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(job.createdAt)}</td>
+            <td className="px-5 py-4">
+              {job.status === "prepared" ? (
+                <TemplateUpdateApplyRowAction
+                  action={applyTemplateUpdateAction}
+                  jobId={job.id}
+                  storeName={job.storeName}
+                  templateName={job.templateName}
+                />
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">—</span>
+              )}
+            </td>
           </tr>
         ))}
       </AdminTable>

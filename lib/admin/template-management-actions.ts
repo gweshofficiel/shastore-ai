@@ -41,6 +41,11 @@ import {
   markTemplateAssignmentActive,
   unassignTemplateFromStore
 } from "@/src/lib/templates/store-template-assignment";
+import {
+  applyTemplateUpdate,
+  checkTemplateUpdateAvailability,
+  prepareTemplateUpdate
+} from "@/src/lib/templates/template-update-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -64,6 +69,9 @@ type TemplateAdminAction =
   | "admin_template_assign_to_store"
   | "admin_template_assignment_mark_active"
   | "admin_template_assignment_unassign"
+  | "admin_template_update_check"
+  | "admin_template_update_prepare"
+  | "admin_template_update_apply"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -1180,6 +1188,163 @@ export async function unassignTemplateFromStoreAction(formData: FormData) {
 
   revalidatePath("/admin/templates");
   revalidatePath(`/admin/stores/${encodeURIComponent(assignment.storeId)}`);
+}
+
+export async function checkTemplateUpdateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can check template updates.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const storeId = cleanText(formData.get("storeId"));
+  const toVersionId = cleanText(formData.get("toVersionId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId || !storeId || !toVersionId) {
+    throw new Error("Store, template, and target version are required to check updates.");
+  }
+
+  const validation = await checkTemplateUpdateAvailability(storeId, registryId, toVersionId);
+
+  if (!validation.canUpdate) {
+    throw new Error(validation.issues.join(" ") || "Template update is not available.");
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_update_check",
+    metadata: {
+      assignment_id: validation.assignmentId,
+      from_version_id: validation.fromVersionId,
+      from_version_number: validation.fromVersionNumber,
+      note: "Super Admin template update availability check passed.",
+      source: "super_admin_template_management_center",
+      store_id: storeId,
+      template_name: templateName || validation.templateName,
+      template_registry_id: registryId,
+      to_version_id: validation.toVersionId,
+      to_version_number: validation.toVersionNumber
+    },
+    store_id: storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function prepareTemplateUpdateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can prepare template updates.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin update confirmation is required.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const storeId = cleanText(formData.get("storeId"));
+  const toVersionId = cleanText(formData.get("toVersionId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!registryId || !storeId || !toVersionId) {
+    throw new Error("Store, template, and target version are required to prepare an update.");
+  }
+
+  const result = await prepareTemplateUpdate(storeId, registryId, toVersionId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.job.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_update_prepare",
+    metadata: {
+      from_version_id: result.job.fromVersionId,
+      note: "Super Admin manual template update job prepared for a single store.",
+      source: "super_admin_template_management_center",
+      store_id: storeId,
+      template_name: templateName || result.validation.templateName,
+      template_registry_id: registryId,
+      to_version_id: result.job.toVersionId,
+      update_job_id: result.job.id,
+      update_status: result.job.status
+    },
+    store_id: storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(storeId)}`);
+}
+
+export async function applyTemplateUpdateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can apply template updates.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin apply confirmation is required.");
+  }
+
+  const updateJobId = cleanText(formData.get("updateJobId"));
+  const storeName = cleanText(formData.get("storeName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!updateJobId) {
+    throw new Error("Prepared update job id is required.");
+  }
+
+  const result = await applyTemplateUpdate(updateJobId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.job.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_update_apply",
+    metadata: {
+      conflict_count: result.job.conflicts.length,
+      note: "Super Admin manual template update applied for a single store.",
+      package_install_status: result.packageResult.status,
+      source: "super_admin_template_management_center",
+      store_id: result.job.storeId,
+      store_name: storeName,
+      template_name: templateName || result.validation.templateName,
+      to_version_id: result.job.toVersionId,
+      update_job_id: result.job.id,
+      update_status: result.job.status
+    },
+    store_id: result.job.storeId,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+  revalidatePath(`/admin/stores/${encodeURIComponent(result.job.storeId)}`);
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {
