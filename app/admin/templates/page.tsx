@@ -17,13 +17,15 @@ import {
   publishTemplateUpdatePlaceholder,
   recommendTemplate,
   restoreArchivedTemplateToDraft,
+  saveTemplatePackageMetadata,
   setTemplateVisibility,
   unmarkTemplateOfficial,
   unrecommendTemplate,
   updateStoresTemplatePlaceholder,
-  updateTemplateRecommendationOrder,
-  viewTemplatePackageSummary
+  updateTemplateRecommendationOrder
 } from "@/lib/admin/template-management-actions";
+import { TemplatePackageEditForm } from "@/components/admin/template-package-edit-form";
+import { TemplatePackageSummaryLink } from "@/components/admin/template-package-summary-link";
 import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
 import { TemplateOfficialControls } from "@/components/admin/template-official-controls";
 import { TemplateRecommendationControls } from "@/components/admin/template-recommendation-controls";
@@ -36,7 +38,7 @@ function toneForStatus(status: string) {
     return "green" as const;
   }
 
-  if (["archived", "internal"].includes(status)) {
+  if (["archived", "internal", "invalid"].includes(status)) {
     return "red" as const;
   }
 
@@ -60,6 +62,19 @@ function visibilityLabel(visibility: string) {
   if (visibility === "marketplace") return "Marketplace catalog";
   if (visibility === "internal") return "Hidden / internal";
   return visibility;
+}
+
+function triStateLabel(value: boolean | "unknown") {
+  if (value === true) return "ready";
+  if (value === false) return "not ready";
+  return "unknown";
+}
+
+function readinessLabel(status: string) {
+  if (status === "ready") return "Ready";
+  if (status === "needs_attention") return "Needs attention";
+  if (status === "invalid") return "Invalid";
+  return "Draft";
 }
 
 function TemplateHiddenFields({
@@ -113,6 +128,66 @@ export default async function AdminTemplatesPage() {
           { label: "Templates with published version", value: control.versionOverview.templatesWithPublishedVersion }
         ]}
       />
+
+      <AdminStatGrid
+        stats={[
+          { label: "Packages", value: control.packageOverview.totalPackages },
+          { label: "Ready packages", value: control.packageOverview.readyPackages },
+          { label: "Draft packages", value: control.packageOverview.draftPackages },
+          { label: "Needs attention", value: control.packageOverview.needsAttentionPackages },
+          { label: "Invalid packages", value: control.packageOverview.invalidPackages }
+        ]}
+      />
+
+      <AdminHeader
+        description="Package metadata runtime only. Contents are tracked as counts and readiness flags — no packages are installed into stores and storefront rendering is unchanged."
+        title="Package Runtime"
+      />
+
+      <AdminTable
+        empty={!control.packages.length ? "No template packages found in the registry runtime." : null}
+        headers={[
+          "Package",
+          "Readiness",
+          "Products",
+          "Categories",
+          "Pages",
+          "Blog",
+          "FAQ",
+          "AI support",
+          "Domain",
+          "Checkout",
+          "Navigation",
+          "Theme",
+          "Issues"
+        ]}
+      >
+        {control.packages.map((pkg) => (
+          <tr key={pkg.packageId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{pkg.packageName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{pkg.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-400">{pkg.packageKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(pkg.readinessStatus)}>{readinessLabel(pkg.readinessStatus)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.products_count}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.categories_count}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.pages_count}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.blog_posts_count}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.faq_count}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.ai_support_enabled ? "yes" : "no"}</td>
+            <td className="px-5 py-4 text-slate-600">{pkg.contents.domain_ready ? "ready" : "not ready"}</td>
+            <td className="px-5 py-4 text-slate-600">{triStateLabel(pkg.contents.checkout_ready)}</td>
+            <td className="px-5 py-4 text-slate-600">{triStateLabel(pkg.contents.navigation_ready)}</td>
+            <td className="px-5 py-4 text-slate-600">{triStateLabel(pkg.contents.theme_ready)}</td>
+            <td className="px-5 py-4 text-xs font-semibold text-slate-600">
+              {pkg.validationIssues.length ? pkg.validationIssues.join(" · ") : "—"}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
 
       <AdminTable
         empty={!control.templates.length ? "No active or draft templates found in the template registry." : null}
@@ -242,14 +317,59 @@ export default async function AdminTemplatesPage() {
             </td>
             <td className="px-5 py-4 text-slate-600">
               <div className="grid min-w-56 gap-1 text-xs font-semibold">
-                <p>Products: {template.packageSummary.productsCount}</p>
-                <p>Categories: {template.packageSummary.categoriesCount}</p>
-                <p>Pages: {template.packageSummary.pagesCount}</p>
-                <p>Blog: {template.packageSummary.blogCount}</p>
-                <p>FAQ: {template.packageSummary.faqCount}</p>
-                <p>AI visual support: {template.packageSummary.aiVisualSupport ? "yes" : "placeholder"}</p>
-                <p>Domain/email readiness: {template.domainEmailReadiness}</p>
+                {template.packageRuntime ? (
+                  <>
+                    <p>Package: {template.packageRuntime.packageName}</p>
+                    <p>
+                      Readiness:{" "}
+                      <AdminBadge tone={toneForStatus(template.packageRuntime.readinessStatus)}>
+                        {readinessLabel(template.packageRuntime.readinessStatus)}
+                      </AdminBadge>
+                    </p>
+                    <p>Products: {template.packageRuntime.contents.products_count}</p>
+                    <p>Categories: {template.packageRuntime.contents.categories_count}</p>
+                    <p>Pages: {template.packageRuntime.contents.pages_count}</p>
+                    <p>Blog: {template.packageRuntime.contents.blog_posts_count}</p>
+                    <p>FAQ: {template.packageRuntime.contents.faq_count}</p>
+                    <p>AI support: {template.packageRuntime.contents.ai_support_enabled ? "yes" : "no"}</p>
+                    <p>Domain: {template.packageRuntime.contents.domain_ready ? "ready" : "not ready"}</p>
+                    <p>Checkout: {triStateLabel(template.packageRuntime.contents.checkout_ready)}</p>
+                    <p>Navigation: {triStateLabel(template.packageRuntime.contents.navigation_ready)}</p>
+                    <p>Theme: {triStateLabel(template.packageRuntime.contents.theme_ready)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Products: {template.packageSummary.productsCount}</p>
+                    <p>Categories: {template.packageSummary.categoriesCount}</p>
+                    <p>Pages: {template.packageSummary.pagesCount}</p>
+                    <p>Blog: {template.packageSummary.blogCount}</p>
+                    <p>FAQ: {template.packageSummary.faqCount}</p>
+                    <p>AI visual support: {template.packageSummary.aiVisualSupport ? "yes" : "placeholder"}</p>
+                    <p>Domain/email readiness: {template.domainEmailReadiness}</p>
+                  </>
+                )}
               </div>
+              {template.packageRuntime ? (
+                <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3" id={`package-runtime-${template.registryId}`}>
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                    Package runtime details
+                  </summary>
+                  {template.packageRuntime.validationIssues.length ? (
+                    <p className="mt-2 text-xs font-semibold text-amber-700">
+                      Validation: {template.packageRuntime.validationIssues.join(" · ")}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs font-semibold text-emerald-700">Validation: no blocking issues.</p>
+                  )}
+                  <TemplatePackageEditForm
+                    action={saveTemplatePackageMetadata}
+                    contents={template.packageRuntime.contents}
+                    packageName={template.packageRuntime.packageName}
+                    registryId={template.registryId}
+                    templateName={template.name}
+                  />
+                </details>
+              ) : null}
             </td>
             <td className="px-5 py-4">
               <div className="grid min-w-56 gap-2">
@@ -299,12 +419,19 @@ export default async function AdminTemplatesPage() {
                     Preview
                   </Link>
                 </form>
-                <form action={viewTemplatePackageSummary}>
-                  <TemplateHiddenFields template={template} />
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                {template.packageRuntime ? (
+                  <TemplatePackageSummaryLink targetId={`package-runtime-${template.registryId}`}>
+                    Package summary
+                  </TemplatePackageSummaryLink>
+                ) : (
+                  <button
+                    className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                    disabled
+                    type="button"
+                  >
                     Package summary
                   </button>
-                </form>
+                )}
               </div>
             </td>
           </tr>

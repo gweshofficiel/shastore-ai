@@ -21,6 +21,7 @@ import {
   unrecommendTemplate as unrecommendRegistryTemplate,
   updateRecommendationOrder as updateRegistryRecommendationOrder
 } from "@/src/lib/templates/template-recommendation";
+import { updateTemplatePackageMetadata } from "@/src/lib/templates/template-package-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -29,6 +30,7 @@ type TemplateAdminAction =
   | "admin_template_mark_draft"
   | "admin_template_mark_official"
   | "admin_template_mark_recommended"
+  | "admin_template_package_summary_updated"
   | "admin_template_package_summary_viewed"
   | "admin_template_preview"
   | "admin_template_publish_update"
@@ -503,8 +505,75 @@ export async function previewTemplatePlaceholder(formData: FormData) {
   await recordTemplateAdminAction(formData, "admin_template_preview");
 }
 
-export async function viewTemplatePackageSummary(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_package_summary_viewed");
+export async function saveTemplatePackageMetadata(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can update template package metadata.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const packageName = cleanText(formData.get("packageName"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  function parseTriState(value: FormDataEntryValue | null) {
+    const cleaned = cleanText(value);
+
+    if (cleaned === "true") return true;
+    if (cleaned === "false") return false;
+    return "unknown" as const;
+  }
+
+  function parseCount(value: FormDataEntryValue | null) {
+    const parsed = Number.parseInt(cleanText(value), 10);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+
+  const result = await updateTemplatePackageMetadata(registryId, {
+    contents: {
+      ai_support_enabled: formData.get("aiSupportEnabled") === "1",
+      blog_posts_count: parseCount(formData.get("blogPostsCount")),
+      categories_count: parseCount(formData.get("categoriesCount")),
+      checkout_ready: parseTriState(formData.get("checkoutReady")),
+      domain_ready: formData.get("domainReady") === "1",
+      faq_count: parseCount(formData.get("faqCount")),
+      navigation_ready: parseTriState(formData.get("navigationReady")),
+      pages_count: parseCount(formData.get("pagesCount")),
+      products_count: parseCount(formData.get("productsCount")),
+      theme_ready: parseTriState(formData.get("themeReady"))
+    },
+    packageName: packageName || undefined
+  });
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_package_summary_updated",
+    metadata: {
+      note: "Template package metadata updated in registry runtime only. No package installation, store mutation, or storefront rendering changes occurred.",
+      package_name: result.package.packageName,
+      readiness_status: result.package.readinessStatus,
+      source: "super_admin_template_management_center",
+      template_name: templateName,
+      validation_issues: result.validation.issues
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
 }
 
 export async function publishTemplateUpdatePlaceholder(formData: FormData) {

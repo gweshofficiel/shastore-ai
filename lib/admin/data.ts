@@ -35,6 +35,11 @@ import {
   getRecommendedTemplateStats,
   listRecommendedTemplates
 } from "@/src/lib/templates/template-recommendation";
+import {
+  getTemplatePackageStats,
+  listTemplatePackages,
+  validateTemplatePackage
+} from "@/src/lib/templates/template-package-runtime";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -759,6 +764,35 @@ export type AdminTemplateManagementControl = {
     resellerVisibleTemplates: number;
     totalTemplates: number;
   };
+  packageOverview: {
+    draftPackages: number;
+    invalidPackages: number;
+    needsAttentionPackages: number;
+    readyPackages: number;
+    totalPackages: number;
+  };
+  packages: Array<{
+    contents: {
+      ai_support_enabled: boolean;
+      blog_posts_count: number;
+      categories_count: number;
+      checkout_ready: boolean | "unknown";
+      domain_ready: boolean;
+      faq_count: number;
+      navigation_ready: boolean | "unknown";
+      pages_count: number;
+      products_count: number;
+      theme_ready: boolean | "unknown";
+    };
+    packageId: string;
+    packageKey: string;
+    packageName: string;
+    readinessStatus: "draft" | "invalid" | "needs_attention" | "ready";
+    registryId: string;
+    templateKey: string;
+    templateName: string;
+    validationIssues: string[];
+  }>;
   recommendedTemplates: Array<{
     category: string;
     latestVersion: string | null;
@@ -787,6 +821,25 @@ export type AdminTemplateManagementControl = {
       versionNumber: string;
     } | null;
     name: string;
+    packageRuntime: {
+      contents: {
+        ai_support_enabled: boolean;
+        blog_posts_count: number;
+        categories_count: number;
+        checkout_ready: boolean | "unknown";
+        domain_ready: boolean;
+        faq_count: number;
+        navigation_ready: boolean | "unknown";
+        pages_count: number;
+        products_count: number;
+        theme_ready: boolean | "unknown";
+      };
+      packageId: string;
+      packageKey: string;
+      packageName: string;
+      readinessStatus: "draft" | "invalid" | "needs_attention" | "ready";
+      validationIssues: string[];
+    } | null;
     packageSummary: {
       aiVisualSupport: boolean;
       blogCount: number;
@@ -4662,7 +4715,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -4673,8 +4726,23 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     listArchivedTemplates(),
     getOfficialTemplateStats(),
     getRecommendedTemplateStats(),
-    listRecommendedTemplates()
+    listRecommendedTemplates(),
+    listTemplatePackages(),
+    getTemplatePackageStats()
   ]);
+
+  const packageValidations = await Promise.all(
+    allPackages.map(async (pkg) => ({
+      templateId: pkg.templateId,
+      validation: await validateTemplatePackage(pkg.templateId)
+    }))
+  );
+  const validationByTemplateId = new Map(
+    packageValidations.map((entry) => [entry.templateId, entry.validation])
+  );
+  const packagesByTemplateId = new Map(allPackages.map((pkg) => [pkg.templateId, pkg]));
+  const templateKeyByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.templateKey]));
+  const templateNameByRegistryId = new Map(registryTemplates.map((template) => [template.id, template.name]));
 
   const publishedTemplateIds = new Set(
     allVersions.filter((version) => version.status === "published").map((version) => version.templateId)
@@ -4771,6 +4839,20 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
           }
         : null,
       name: template.name,
+      packageRuntime: (() => {
+        const pkg = packagesByTemplateId.get(template.id);
+
+        if (!pkg) return null;
+
+        return {
+          contents: pkg.contents,
+          packageId: pkg.id,
+          packageKey: pkg.packageKey,
+          packageName: pkg.packageName,
+          readinessStatus: pkg.readinessStatus,
+          validationIssues: validationByTemplateId.get(template.id)?.issues ?? []
+        };
+      })(),
       packageSummary: {
         aiVisualSupport: template.packageSummary.aiVisualSupport,
         blogCount: template.packageSummary.blogCount,
@@ -4823,6 +4905,24 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       resellerVisibleTemplates: stats.resellerVisible,
       totalTemplates: stats.totalTemplates
     },
+    packageOverview: {
+      draftPackages: packageStats.draftPackages,
+      invalidPackages: packageStats.invalidPackages,
+      needsAttentionPackages: packageStats.needsAttentionPackages,
+      readyPackages: packageStats.readyPackages,
+      totalPackages: packageStats.totalPackages
+    },
+    packages: allPackages.map((pkg) => ({
+      contents: pkg.contents,
+      packageId: pkg.id,
+      packageKey: pkg.packageKey,
+      packageName: pkg.packageName,
+      readinessStatus: pkg.readinessStatus,
+      registryId: pkg.templateId,
+      templateKey: templateKeyByRegistryId.get(pkg.templateId) ?? pkg.packageKey,
+      templateName: templateNameByRegistryId.get(pkg.templateId) ?? pkg.packageName,
+      validationIssues: validationByTemplateId.get(pkg.templateId)?.issues ?? []
+    })),
     recommendedTemplates: recommendedTemplates.map((template) => ({
       category: text(template.category, "general"),
       latestVersion: template.latestPublishedVersion,
