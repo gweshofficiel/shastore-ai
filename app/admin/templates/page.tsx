@@ -9,6 +9,7 @@ import {
 import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
   activateTemplate,
+  approveMarketplaceListingAction,
   archiveTemplate,
   archiveMarketplaceListingAction,
   archiveTemplateAssetAction,
@@ -32,7 +33,9 @@ import {
   publishTemplateScreenshotAction,
   publishTemplateUpdatePlaceholder,
   recommendTemplate,
+  rejectMarketplaceListingAction,
   reorderTemplateScreenshotAction,
+  requestMarketplaceChangesAction,
   restoreArchivedTemplateToDraft,
   saveTemplatePackageMetadata,
   setTemplateVisibility,
@@ -45,6 +48,7 @@ import {
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateMarketplaceApprovalQueue } from "@/components/admin/template-marketplace-approval-queue";
 import { TemplateMarketplaceCatalogPreview } from "@/components/admin/template-marketplace-catalog-preview";
 import { TemplateMarketplaceListingForm } from "@/components/admin/template-marketplace-listing-form";
 import { TemplateMarketplaceListingRowActions } from "@/components/admin/template-marketplace-listing-row-actions";
@@ -199,6 +203,7 @@ function listingStatusLabel(status: string) {
 function approvalStatusLabel(status: string) {
   if (status === "approved") return "Approved";
   if (status === "rejected") return "Rejected";
+  if (status === "changes_requested") return "Changes requested";
   return "Pending review";
 }
 
@@ -717,6 +722,30 @@ export default async function AdminTemplatesPage() {
           </tr>
         ))}
       </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Pending review", value: control.marketplaceApprovalOverview.pendingReviewListings },
+          { label: "Approved", value: control.marketplaceApprovalOverview.approvedListings },
+          { label: "Rejected", value: control.marketplaceApprovalOverview.rejectedListings },
+          { label: "Changes requested", value: control.marketplaceApprovalOverview.changesRequestedListings }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin marketplace approval workflow for template listings. Approval updates approval_status and safe review metadata only. No auto-publish, install, payments, or store mutation."
+        title="Marketplace Approval Queue"
+      />
+
+      <TemplateMarketplaceApprovalQueue
+        approveAction={approveMarketplaceListingAction}
+        queue={control.marketplaceApprovalQueue.map((item) => ({
+          ...item,
+          updatedAt: formatAdminDate(item.updatedAt)
+        }))}
+        rejectAction={rejectMarketplaceListingAction}
+        requestChangesAction={requestMarketplaceChangesAction}
+      />
 
       <AdminStatGrid
         stats={[

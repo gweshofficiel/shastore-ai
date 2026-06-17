@@ -171,6 +171,7 @@ export function TemplateMarketplaceListingForm({
               <option value="pending_review">Pending review</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
+              <option value="changes_requested">Changes requested</option>
             </select>
           </label>
           <label className="grid gap-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 md:col-span-2">

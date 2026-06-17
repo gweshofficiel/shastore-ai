@@ -48,6 +48,10 @@ import { listStoreThemeIsolationIssues } from "@/src/lib/templates/store-theme-i
 import { listTemplateUpdateJobs } from "@/src/lib/templates/template-update-runtime";
 import { listTemplateRollbackJobs } from "@/src/lib/templates/template-rollback-runtime";
 import {
+  getMarketplaceApprovalStats,
+  listPendingMarketplaceListings
+} from "@/src/lib/templates/marketplace-approval-runtime";
+import {
   getMarketplaceCatalogPreview,
   getMarketplaceListingStats,
   listMarketplaceListings
@@ -978,6 +982,7 @@ export type AdminTemplateManagementControl = {
   marketplaceListingOverview: {
     approvedListings: number;
     archivedListings: number;
+    changesRequestedListings: number;
     draftListings: number;
     featuredListings: number;
     pendingReviewListings: number;
@@ -985,6 +990,28 @@ export type AdminTemplateManagementControl = {
     rejectedListings: number;
     totalListings: number;
   };
+  marketplaceApprovalOverview: {
+    approvedListings: number;
+    changesRequestedListings: number;
+    pendingReviewListings: number;
+    rejectedListings: number;
+    totalReviewableListings: number;
+  };
+  marketplaceApprovalQueue: Array<{
+    approvalStatus: "changes_requested" | "approved" | "pending_review" | "rejected";
+    id: string;
+    lastReviewNote: string | null;
+    listingDescription: string | null;
+    listingStatus: "archived" | "draft" | "published";
+    listingTitle: string;
+    pricingType: "free" | "included" | "paid";
+    readinessLabel: string;
+    rejectionReason: string | null;
+    templateId: string;
+    templateName: string | null;
+    updatedAt: string | null;
+    versionNumber: string | null;
+  }>;
   marketplaceEligibleTemplates: Array<{
     packageReadiness: string;
     publishedVersionNumber: string | null;
@@ -994,7 +1021,7 @@ export type AdminTemplateManagementControl = {
     warnings: string[];
   }>;
   marketplaceListings: Array<{
-    approvalStatus: "approved" | "pending_review" | "rejected";
+    approvalStatus: "approved" | "changes_requested" | "pending_review" | "rejected";
     createdAt: string | null;
     currency: string | null;
     featured: boolean;
@@ -4976,7 +5003,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview, marketplaceApprovalStats, marketplaceApprovalQueue] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -5000,7 +5027,9 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     safeSelect(supabase, "stores", "id, name, store_name, slug, user_id, workspace_id", 500),
     listMarketplaceListings({ limit: 200 }),
     getMarketplaceListingStats(),
-    getMarketplaceCatalogPreview()
+    getMarketplaceCatalogPreview(),
+    getMarketplaceApprovalStats(),
+    listPendingMarketplaceListings()
   ]);
 
   const packageValidations = await Promise.all(
@@ -5677,6 +5706,22 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       updateJobId: job.updateJobId
     })),
     marketplaceListingOverview: marketplaceListingStats,
+    marketplaceApprovalOverview: marketplaceApprovalStats,
+    marketplaceApprovalQueue: marketplaceApprovalQueue.map((item) => ({
+      approvalStatus: item.approvalStatus,
+      id: item.id,
+      lastReviewNote: item.lastReviewNote,
+      listingDescription: item.listingDescription,
+      listingStatus: item.listingStatus,
+      listingTitle: item.listingTitle,
+      pricingType: item.pricingType,
+      readinessLabel: item.readinessLabel,
+      rejectionReason: item.rejectionReason,
+      templateId: item.templateId,
+      templateName: item.templateName,
+      updatedAt: item.updatedAt,
+      versionNumber: item.versionNumber
+    })),
     marketplaceEligibleTemplates,
     marketplaceListings: allMarketplaceListings.map((listing) => ({
       approvalStatus: listing.approvalStatus,

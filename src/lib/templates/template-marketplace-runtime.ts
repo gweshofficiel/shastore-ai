@@ -17,7 +17,11 @@ import { getPublishedTemplateVersion } from "@/src/lib/templates/template-versio
 
 export type MarketplaceListingStatus = "archived" | "draft" | "published";
 export type MarketplacePricingType = "free" | "included" | "paid";
-export type MarketplaceApprovalStatus = "approved" | "pending_review" | "rejected";
+export type MarketplaceApprovalStatus =
+  | "approved"
+  | "changes_requested"
+  | "pending_review"
+  | "rejected";
 export type MarketplaceListingVisibility = "internal" | "marketplace" | "owner" | "reseller";
 
 export type MarketplaceListingRecord = {
@@ -80,6 +84,7 @@ export type MarketplaceListingStats = {
   pendingReviewListings: number;
   publishedListings: number;
   rejectedListings: number;
+  changesRequestedListings: number;
   totalListings: number;
 };
 
@@ -184,6 +189,7 @@ function parseApprovalStatus(value: unknown): MarketplaceApprovalStatus {
   const cleaned = text(value, 40);
   if (cleaned === "approved") return "approved";
   if (cleaned === "rejected") return "rejected";
+  if (cleaned === "changes_requested") return "changes_requested";
   return "pending_review";
 }
 
@@ -800,6 +806,9 @@ export async function getMarketplaceListingStats(): Promise<MarketplaceListingSt
   return {
     approvedListings: listings.filter((listing) => listing.approvalStatus === "approved").length,
     archivedListings: listings.filter((listing) => listing.listingStatus === "archived").length,
+    changesRequestedListings: listings.filter(
+      (listing) => listing.approvalStatus === "changes_requested"
+    ).length,
     draftListings: listings.filter((listing) => listing.listingStatus === "draft").length,
     featuredListings: listings.filter((listing) => listing.featured).length,
     pendingReviewListings: listings.filter((listing) => listing.approvalStatus === "pending_review").length,

@@ -57,6 +57,11 @@ import {
   setMarketplaceListingFeatured,
   updateMarketplaceListing
 } from "@/src/lib/templates/template-marketplace-runtime";
+import {
+  approveMarketplaceListing,
+  rejectMarketplaceListing,
+  requestMarketplaceChanges
+} from "@/src/lib/templates/marketplace-approval-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -90,6 +95,9 @@ type TemplateAdminAction =
   | "admin_template_marketplace_publish"
   | "admin_template_marketplace_archive"
   | "admin_template_marketplace_featured"
+  | "admin_template_marketplace_approve"
+  | "admin_template_marketplace_reject"
+  | "admin_template_marketplace_request_changes"
   | "admin_template_publish_update"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
@@ -1543,6 +1551,7 @@ export async function updateMarketplaceListingAction(formData: FormData) {
   const listingDescription = cleanText(formData.get("listingDescription"));
   const approvalStatus = cleanText(formData.get("approvalStatus")) as
     | "approved"
+    | "changes_requested"
     | "pending_review"
     | "rejected"
     | "";
@@ -1718,6 +1727,147 @@ export async function markMarketplaceListingFeaturedAction(formData: FormData) {
       featured: result.listing.featured,
       listing_id: result.listing.id,
       note: "Super Admin marketplace listing featured flag updated.",
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function approveMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can approve marketplace listings.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin approval confirmation is required.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const listingTitle = cleanText(formData.get("listingTitle"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!listingId) {
+    throw new Error("Listing id is required.");
+  }
+
+  const result = await approveMarketplaceListing(listingId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_approve",
+    metadata: {
+      approval_status: result.listing.approvalStatus,
+      listing_id: result.listing.id,
+      listing_status: result.listing.listingStatus,
+      listing_title: listingTitle || result.listing.listingTitle,
+      note: "Super Admin marketplace approval. No auto-publish, install, or payment.",
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function rejectMarketplaceListingAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can reject marketplace listings.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin rejection confirmation is required.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const reason = cleanText(formData.get("reason"));
+
+  if (!listingId || !reason) {
+    throw new Error("Listing id and rejection reason are required.");
+  }
+
+  const result = await rejectMarketplaceListing(listingId, reason);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_reject",
+    metadata: {
+      approval_status: result.listing.approvalStatus,
+      listing_id: result.listing.id,
+      note: "Super Admin marketplace rejection stored as safe metadata only.",
+      rejection_reason: result.rejectionReason,
+      source: "super_admin_template_management_center",
+      template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function requestMarketplaceChangesAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can request marketplace listing changes.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin review confirmation is required.");
+  }
+
+  const listingId = cleanText(formData.get("listingId"));
+  const reason = cleanText(formData.get("reason"));
+
+  if (!listingId || !reason) {
+    throw new Error("Listing id and review note are required.");
+  }
+
+  const result = await requestMarketplaceChanges(listingId, reason);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.listing.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_marketplace_request_changes",
+    metadata: {
+      approval_status: result.listing.approvalStatus,
+      listing_id: result.listing.id,
+      note: "Super Admin marketplace changes requested. Safe review note stored in metadata.",
+      review_note: result.reviewNote,
       source: "super_admin_template_management_center",
       template_id: result.listing.templateId
     },
