@@ -66,6 +66,11 @@ import {
   publishTemplateUpdate,
   unpublishTemplateVersion
 } from "@/src/lib/templates/template-publish-runtime";
+import {
+  assignTemplateToReseller,
+  revokeTemplateFromReseller,
+  suspendTemplateForReseller
+} from "@/src/lib/templates/reseller-template-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -102,6 +107,9 @@ type TemplateAdminAction =
   | "admin_template_marketplace_approve"
   | "admin_template_marketplace_reject"
   | "admin_template_marketplace_request_changes"
+  | "admin_reseller_template_assign"
+  | "admin_reseller_template_suspend"
+  | "admin_reseller_template_revoke"
   | "admin_template_publish_update"
   | "admin_template_unpublish_version"
   | "admin_template_restore_archived"
@@ -1969,6 +1977,151 @@ export async function unpublishTemplateVersionAction(formData: FormData) {
       source: "super_admin_template_management_center",
       template_id: templateId || result.template.id,
       version_id: result.version.id
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function assignResellerTemplateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can assign reseller template access.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin assignment confirmation is required.");
+  }
+
+  const resellerId = cleanText(formData.get("resellerId"));
+  const templateId = cleanText(formData.get("templateId"));
+  const accessType = cleanText(formData.get("accessType")) as "assigned" | "inherited" | "marketplace" | "";
+
+  if (!resellerId || !templateId) {
+    throw new Error("Reseller and template are required.");
+  }
+
+  const result = await assignTemplateToReseller(resellerId, templateId, {
+    accessType: accessType || "assigned"
+  });
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.access.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_reseller_template_assign",
+    metadata: {
+      access_id: result.access.id,
+      access_status: result.access.accessStatus,
+      access_type: result.access.accessType,
+      note: "Super Admin reseller template assignment. Catalog access only.",
+      reseller_id: resellerId,
+      source: "super_admin_template_management_center",
+      template_id: templateId,
+      template_name: result.eligibility.templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function suspendResellerTemplateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can suspend reseller template access.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin suspend confirmation is required.");
+  }
+
+  const accessId = cleanText(formData.get("accessId"));
+  const resellerName = cleanText(formData.get("resellerName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!accessId) {
+    throw new Error("Reseller template access id is required.");
+  }
+
+  const result = await suspendTemplateForReseller(accessId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.access.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_reseller_template_suspend",
+    metadata: {
+      access_id: result.access.id,
+      note: "Super Admin reseller template suspended. Existing installations unaffected.",
+      reseller_name: resellerName,
+      source: "super_admin_template_management_center",
+      template_id: result.access.templateId,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function revokeResellerTemplateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can revoke reseller template access.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin revoke confirmation is required.");
+  }
+
+  const accessId = cleanText(formData.get("accessId"));
+  const resellerName = cleanText(formData.get("resellerName"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  if (!accessId) {
+    throw new Error("Reseller template access id is required.");
+  }
+
+  const result = await revokeTemplateFromReseller(accessId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.access.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_reseller_template_revoke",
+    metadata: {
+      access_id: result.access.id,
+      note: "Super Admin reseller template revoked. Existing installations not uninstalled.",
+      reseller_name: resellerName,
+      source: "super_admin_template_management_center",
+      template_id: result.access.templateId,
+      template_name: templateName
     },
     store_id: null,
     user_id: access.user.id,

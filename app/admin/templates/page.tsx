@@ -14,6 +14,7 @@ import {
   archiveMarketplaceListingAction,
   archiveTemplateAssetAction,
   archiveTemplateScreenshotAction,
+  assignResellerTemplateAction,
   assignTemplateToStoreAction,
   applyTemplateRollbackAction,
   applyTemplateUpdateAction,
@@ -33,10 +34,12 @@ import {
   publishTemplateScreenshotAction,
   publishTemplateUpdateAction,
   recommendTemplate,
+  revokeResellerTemplateAction,
   rejectMarketplaceListingAction,
   reorderTemplateScreenshotAction,
   requestMarketplaceChangesAction,
   restoreArchivedTemplateToDraft,
+  suspendResellerTemplateAction,
   saveTemplatePackageMetadata,
   setTemplateVisibility,
   unmarkTemplateOfficial,
@@ -49,6 +52,8 @@ import {
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { ResellerTemplateAssignForm } from "@/components/admin/reseller-template-assign-form";
+import { ResellerTemplateRowActions } from "@/components/admin/reseller-template-row-actions";
 import { TemplateUnpublishVersionAction } from "@/components/admin/template-unpublish-version-action";
 import { TemplatePublishVersionAction } from "@/components/admin/template-publish-version-action";
 import { TemplateMarketplaceApprovalQueue } from "@/components/admin/template-marketplace-approval-queue";
@@ -776,6 +781,68 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4 text-slate-600">{event.templateName ?? event.templateId ?? "—"}</td>
             <td className="px-5 py-4 text-slate-600">{event.versionNumber ?? event.versionId ?? "—"}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(event.createdAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Reseller assignments", value: control.resellerTemplateOverview.totalAssignments },
+          { label: "Active", value: control.resellerTemplateOverview.activeAssignments },
+          { label: "Suspended", value: control.resellerTemplateOverview.suspendedAssignments },
+          { label: "Revoked", value: control.resellerTemplateOverview.revokedAssignments }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin reseller template runtime. Assigns catalog access for reseller-specific template catalogs only. No automatic install, public purchase, or store mutation."
+        title="Reseller Template Management"
+      />
+
+      <ResellerTemplateAssignForm
+        action={assignResellerTemplateAction}
+        assignableTemplates={control.resellerAssignableTemplates}
+        resellers={control.resellerOptions}
+      />
+
+      <AdminTable
+        empty={!control.resellerTemplateAssignments.length ? "No reseller template assignments recorded yet." : null}
+        headers={[
+          "Reseller",
+          "Template",
+          "Version",
+          "Status",
+          "Access type",
+          "Assigned",
+          "Actions"
+        ]}
+      >
+        {control.resellerTemplateAssignments.map((assignment) => (
+          <tr key={assignment.accessId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{assignment.resellerName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{assignment.resellerId}</p>
+              {assignment.resellerSlug ? (
+                <p className="mt-1 text-xs font-semibold text-slate-500">{assignment.resellerSlug}</p>
+              ) : null}
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-700">{assignment.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{assignment.templateId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{assignment.versionNumber ? `v${assignment.versionNumber}` : "—"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(assignment.accessStatus)}>{assignment.accessStatus}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{assignment.accessType}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(assignment.assignedAt)}</td>
+            <td className="px-5 py-4">
+              <ResellerTemplateRowActions
+                access={assignment}
+                revokeAction={revokeResellerTemplateAction}
+                suspendAction={suspendResellerTemplateAction}
+              />
+            </td>
           </tr>
         ))}
       </AdminTable>

@@ -56,6 +56,10 @@ import {
   validateTemplateVersionPublish
 } from "@/src/lib/templates/template-publish-runtime";
 import {
+  getResellerTemplateStats,
+  listResellerTemplates
+} from "@/src/lib/templates/reseller-template-runtime";
+import {
   getMarketplaceCatalogPreview,
   getMarketplaceListingStats,
   listMarketplaceListings
@@ -1084,6 +1088,36 @@ export type AdminTemplateManagementControl = {
     registryId: string;
     templateName: string;
     templateStatus: string;
+  }>;
+  resellerTemplateOverview: {
+    activeAssignments: number;
+    assignedTemplates: number;
+    revokedAssignments: number;
+    suspendedAssignments: number;
+    totalAssignments: number;
+  };
+  resellerTemplateAssignments: Array<{
+    accessId: string;
+    accessStatus: "active" | "revoked" | "suspended";
+    accessType: "assigned" | "inherited" | "marketplace";
+    assignedAt: string | null;
+    resellerId: string;
+    resellerName: string;
+    resellerSlug: string | null;
+    templateId: string;
+    templateName: string;
+    versionNumber: string | null;
+  }>;
+  resellerAssignableTemplates: Array<{
+    publishedVersionNumber: string | null;
+    registryId: string;
+    templateName: string;
+    visibility: string;
+  }>;
+  resellerOptions: Array<{
+    displayName: string;
+    id: string;
+    slug: string | null;
   }>;
   templateInstalls: Array<{
     completedAt: string | null;
@@ -5033,7 +5067,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview, marketplaceApprovalStats, marketplaceApprovalQueue, templatePublishEvents] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview, marketplaceApprovalStats, marketplaceApprovalQueue, templatePublishEvents, resellerProfiles, allResellerTemplateAccess, resellerTemplateStats] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -5060,7 +5094,10 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     getMarketplaceCatalogPreview(),
     getMarketplaceApprovalStats(),
     listPendingMarketplaceListings(),
-    listTemplatePublishEvents({ limit: 50 })
+    listTemplatePublishEvents({ limit: 50 }),
+    safeSelect(supabase, "reseller_profiles", "id, slug, display_name", 500),
+    listResellerTemplates({ limit: 200 }),
+    getResellerTemplateStats()
   ]);
 
   const draftPublishReadiness = await Promise.all(
@@ -5377,6 +5414,38 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       };
     })
     .sort((left, right) => left.templateName.localeCompare(right.templateName));
+
+  const resellerAssignableTemplates = registryTemplates
+    .filter((template) => {
+      if (template.status !== "active") return false;
+      if (
+        template.visibility !== "reseller" &&
+        template.visibility !== "marketplace" &&
+        template.metadata.resellerAllowed !== true &&
+        template.metadata.allowReseller !== true
+      ) {
+        return false;
+      }
+      if (!publishedVersionByTemplateId.has(template.id)) return false;
+      return true;
+    })
+    .map((template) => ({
+      publishedVersionNumber: publishedVersionByTemplateId.get(template.id)?.versionNumber ?? null,
+      registryId: template.id,
+      templateName: template.name,
+      visibility: template.visibility
+    }))
+    .sort((left, right) => left.templateName.localeCompare(right.templateName));
+
+  const resellerNameById = new Map(
+    resellerProfiles.map((profile) => [
+      text(profile.id),
+      text(profile.display_name) || text(profile.slug) || "Reseller"
+    ])
+  );
+  const resellerSlugById = new Map(
+    resellerProfiles.map((profile) => [text(profile.id), text(profile.slug) || null])
+  );
 
   const marketplacePricingLabel = (listing: (typeof allMarketplaceListings)[number]) => {
     if (listing.pricingType === "included") return "Included";
@@ -5825,6 +5894,36 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         };
       })
       .sort((left, right) => left.templateName.localeCompare(right.templateName)),
+    resellerAssignableTemplates,
+    resellerOptions: resellerProfiles
+      .map((profile) => ({
+        displayName: text(profile.display_name) || text(profile.slug) || "Reseller",
+        id: text(profile.id),
+        slug: text(profile.slug) || null
+      }))
+      .filter((profile) => profile.id)
+      .sort((left, right) => left.displayName.localeCompare(right.displayName)),
+    resellerTemplateAssignments: allResellerTemplateAccess.map((access) => ({
+      accessId: access.id,
+      accessStatus: access.accessStatus,
+      accessType: access.accessType,
+      assignedAt: access.assignedAt,
+      resellerId: access.resellerId,
+      resellerName: resellerNameById.get(access.resellerId) ?? access.resellerId,
+      resellerSlug: resellerSlugById.get(access.resellerId) ?? null,
+      templateId: access.templateId,
+      templateName: templateNameByRegistryId.get(access.templateId) ?? "Template",
+      versionNumber: access.templateVersionId
+        ? versionNumberById.get(access.templateVersionId) ?? null
+        : publishedVersionByTemplateId.get(access.templateId)?.versionNumber ?? null
+    })),
+    resellerTemplateOverview: {
+      activeAssignments: resellerTemplateStats.activeAssignments,
+      assignedTemplates: resellerTemplateStats.assignedTemplates,
+      revokedAssignments: resellerTemplateStats.revokedAssignments,
+      suspendedAssignments: resellerTemplateStats.suspendedAssignments,
+      totalAssignments: resellerTemplateStats.totalAssignments
+    },
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,
       createdAt: install.createdAt,
