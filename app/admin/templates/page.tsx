@@ -8,9 +8,10 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminTemplateManagementControl } from "@/lib/admin/data";
 import {
-  activateTemplatePlaceholder,
-  archiveTemplatePlaceholder,
+  activateTemplate,
+  archiveTemplate,
   installTemplateVersionPlaceholder,
+  markTemplateDraft,
   markTemplateOfficial,
   markTemplateRecommended,
   previewTemplatePlaceholder,
@@ -19,6 +20,7 @@ import {
   updateStoresTemplatePlaceholder,
   viewTemplatePackageSummary
 } from "@/lib/admin/template-management-actions";
+import { TemplateActivationControls } from "@/components/admin/template-activation-controls";
 import { TemplateVisibilityForm } from "@/components/admin/template-visibility-form";
 
 function toneForStatus(status: string) {
@@ -35,6 +37,13 @@ function toneForStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function statusLabel(status: string) {
+  if (status === "active") return "Active";
+  if (status === "draft") return "Draft";
+  if (status === "archived") return "Archived";
+  return status;
 }
 
 function visibilityLabel(visibility: string) {
@@ -115,6 +124,7 @@ export default async function AdminTemplatesPage() {
             <td className="px-5 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-bold text-slate-950">{template.name}</p>
+                <AdminBadge tone={toneForStatus(template.status)}>{statusLabel(template.status)}</AdminBadge>
                 <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
               </div>
               <p className="mt-1 text-xs font-semibold text-slate-500">{template.id}</p>
@@ -180,7 +190,10 @@ export default async function AdminTemplatesPage() {
               <p>{template.category}</p>
               <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{template.industry}</p>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(template.status)}>{template.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(template.status)}>{statusLabel(template.status)}</AdminBadge>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{template.status}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(template.visibility)}>{visibilityLabel(template.visibility)}</AdminBadge>
               <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{template.visibility}</p>
@@ -229,18 +242,13 @@ export default async function AdminTemplatesPage() {
             </td>
             <td className="px-5 py-4">
               <div className="grid min-w-56 gap-2">
-                <form action={activateTemplatePlaceholder}>
-                  <TemplateHiddenFields template={template} />
-                  <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                    Activate
-                  </button>
-                </form>
-                <form action={archiveTemplatePlaceholder}>
-                  <TemplateHiddenFields template={template} />
-                  <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                    Archive
-                  </button>
-                </form>
+                <TemplateActivationControls
+                  activateAction={activateTemplate}
+                  archiveAction={archiveTemplate}
+                  markDraftAction={markTemplateDraft}
+                  registryId={template.registryId}
+                  templateName={template.name}
+                />
                 <form action={markTemplateOfficial}>
                   <TemplateHiddenFields template={template} />
                   <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">

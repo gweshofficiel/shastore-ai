@@ -28,6 +28,7 @@ import {
   listAllTemplateVersions
 } from "@/src/lib/templates/template-versions";
 import { getTemplateVisibilityStats } from "@/src/lib/templates/template-visibility";
+import { getTemplateActivationStats } from "@/src/lib/templates/template-activation";
 import { summarizeUserAgent } from "@/lib/security/user-agent";
 import {
   type PlatformBrandSettingRecord,
@@ -4635,9 +4636,10 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryTemplates, stats, stores, allVersions, visibilityStats] = await Promise.all([
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats] = await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
+    getTemplateActivationStats(),
     safeSelect(supabase, "stores", "id, template_id, store_data, created_at, updated_at", 1000),
     listAllTemplateVersions(),
     getTemplateVisibilityStats()
@@ -4766,9 +4768,9 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       "Reseller exclusive templates"
     ],
     overview: {
-      activeTemplates: stats.activeTemplates,
-      archivedTemplates: stats.archivedTemplates,
-      draftTemplates: stats.draftTemplates,
+      activeTemplates: activationStats.activeTemplates,
+      archivedTemplates: activationStats.archivedTemplates,
+      draftTemplates: activationStats.draftTemplates,
       officialTemplates: stats.officialTemplates,
       resellerVisibleTemplates: stats.resellerVisible,
       totalTemplates: stats.totalTemplates

@@ -4,11 +4,17 @@ import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setTemplateVisibility as updateTemplateRegistryVisibility } from "@/src/lib/templates/template-visibility";
+import {
+  activateTemplate as activateRegistryTemplate,
+  archiveTemplate as archiveRegistryTemplate,
+  markTemplateDraft as markRegistryTemplateDraft
+} from "@/src/lib/templates/template-activation";
 
 type TemplateAdminAction =
   | "admin_template_activate"
   | "admin_template_archive"
   | "admin_template_install_version"
+  | "admin_template_mark_draft"
   | "admin_template_mark_official"
   | "admin_template_mark_recommended"
   | "admin_template_package_summary_viewed"
@@ -61,12 +67,91 @@ async function recordTemplateAdminAction(formData: FormData, action: TemplateAdm
   revalidatePath("/admin/templates");
 }
 
-export async function activateTemplatePlaceholder(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_activate");
+async function recordTemplateActivationEvent(
+  formData: FormData,
+  action: "admin_template_activate" | "admin_template_archive" | "admin_template_mark_draft",
+  result: { previousStatus: string | null; status: string }
+) {
+  const access = await getAdminAccess();
+  const registryId = cleanText(formData.get("registryId"));
+  const templateName = cleanText(formData.get("templateName"));
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: registryId || null,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: action,
+    metadata: {
+      note: "Template registry status updated. No store installations, storefront rendering, or template package installer were changed.",
+      previous_status: result.previousStatus,
+      source: "super_admin_template_management_center",
+      status: result.status,
+      template_name: templateName
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
 }
 
-export async function archiveTemplatePlaceholder(formData: FormData) {
-  await recordTemplateAdminAction(formData, "admin_template_archive");
+export async function activateTemplate(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can activate templates.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await activateRegistryTemplate(registryId);
+  await recordTemplateActivationEvent(formData, "admin_template_activate", result);
+  revalidatePath("/admin/templates");
+}
+
+export async function archiveTemplate(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can archive templates.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await archiveRegistryTemplate(registryId);
+  await recordTemplateActivationEvent(formData, "admin_template_archive", result);
+  revalidatePath("/admin/templates");
+}
+
+export async function markTemplateDraft(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can mark templates as draft.");
+  }
+
+  const registryId = cleanText(formData.get("registryId"));
+
+  if (!registryId) {
+    throw new Error("Missing template registry id.");
+  }
+
+  const result = await markRegistryTemplateDraft(registryId);
+  await recordTemplateActivationEvent(formData, "admin_template_mark_draft", result);
+  revalidatePath("/admin/templates");
 }
 
 export async function markTemplateOfficial(formData: FormData) {
