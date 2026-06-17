@@ -346,6 +346,15 @@ export async function archiveTemplateVersion(versionId: string): Promise<Templat
   return parsed;
 }
 
+export async function getTemplateVersionById(versionId: string): Promise<TemplateVersionRecord | null> {
+  const cleanedVersionId = text(versionId, 120);
+
+  if (!cleanedVersionId) return null;
+
+  const versions = await listAllTemplateVersions();
+  return versions.find((version) => version.id === cleanedVersionId) ?? null;
+}
+
 export async function getTemplateVersionStats(): Promise<TemplateVersionStats> {
   const versions = await listAllTemplateVersions();
   const publishedTemplateIds = new Set(

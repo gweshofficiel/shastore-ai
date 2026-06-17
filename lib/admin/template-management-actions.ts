@@ -62,6 +62,10 @@ import {
   rejectMarketplaceListing,
   requestMarketplaceChanges
 } from "@/src/lib/templates/marketplace-approval-runtime";
+import {
+  publishTemplateUpdate,
+  unpublishTemplateVersion
+} from "@/src/lib/templates/template-publish-runtime";
 
 type TemplateAdminAction =
   | "admin_template_activate"
@@ -99,6 +103,7 @@ type TemplateAdminAction =
   | "admin_template_marketplace_reject"
   | "admin_template_marketplace_request_changes"
   | "admin_template_publish_update"
+  | "admin_template_unpublish_version"
   | "admin_template_restore_archived"
   | "admin_template_set_visibility"
   | "admin_template_unmark_official"
@@ -1870,6 +1875,100 @@ export async function requestMarketplaceChangesAction(formData: FormData) {
       review_note: result.reviewNote,
       source: "super_admin_template_management_center",
       template_id: result.listing.templateId
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function publishTemplateUpdateAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can publish template updates.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin publish confirmation is required.");
+  }
+
+  const templateId = cleanText(formData.get("templateId"));
+  const templateName = cleanText(formData.get("templateName"));
+  const versionId = cleanText(formData.get("versionId"));
+  const versionNumber = cleanText(formData.get("versionNumber"));
+
+  if (!templateId || !versionId) {
+    throw new Error("Template and version are required to publish.");
+  }
+
+  const result = await publishTemplateUpdate(templateId, versionId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.publishedVersion.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_publish_update",
+    metadata: {
+      note: "Super Admin template publish update applied. Catalog metadata only. No store mutation.",
+      published_at: result.publishedVersion.publishedAt,
+      published_version_id: result.publishedVersion.id,
+      published_version_number: versionNumber || result.publishedVersion.versionNumber,
+      source: "super_admin_template_management_center",
+      template_id: templateId,
+      template_name: templateName || result.template.name
+    },
+    store_id: null,
+    user_id: access.user.id,
+    workspace_id: null
+  } as never);
+
+  revalidatePath("/admin/templates");
+}
+
+export async function unpublishTemplateVersionAction(formData: FormData) {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can unpublish template versions.");
+  }
+
+  if (cleanText(formData.get("confirmed")) !== "1") {
+    throw new Error("Super Admin unpublish confirmation is required.");
+  }
+
+  const versionId = cleanText(formData.get("versionId"));
+  const templateId = cleanText(formData.get("templateId"));
+
+  if (!versionId) {
+    throw new Error("Version id is required.");
+  }
+
+  const result = await unpublishTemplateVersion(versionId);
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for template controls.");
+  }
+
+  await admin.from("monitoring_events" as never).insert({
+    entity_id: result.version.id,
+    entity_type: "admin_template_management",
+    event_status: "info",
+    event_type: "admin_template_unpublish_version",
+    metadata: {
+      moved_template_to_draft: result.movedTemplateToDraft,
+      note: "Super Admin template version unpublished. Existing stores were not mutated.",
+      source: "super_admin_template_management_center",
+      template_id: templateId || result.template.id,
+      version_id: result.version.id
     },
     store_id: null,
     user_id: access.user.id,

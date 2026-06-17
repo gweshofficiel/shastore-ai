@@ -52,6 +52,10 @@ import {
   listPendingMarketplaceListings
 } from "@/src/lib/templates/marketplace-approval-runtime";
 import {
+  listTemplatePublishEvents,
+  validateTemplateVersionPublish
+} from "@/src/lib/templates/template-publish-runtime";
+import {
   getMarketplaceCatalogPreview,
   getMarketplaceListingStats,
   listMarketplaceListings
@@ -1059,6 +1063,28 @@ export type AdminTemplateManagementControl = {
     templateSlug: string;
     versionNumber: string | null;
   }>;
+  templatePublishOverview: {
+    draftVersions: number;
+    publishedVersions: number;
+    recentPublishEvents: number;
+    templatesWithPublishedVersion: number;
+  };
+  templatePublishEvents: Array<{
+    createdAt: string | null;
+    eventType: string;
+    templateId: string | null;
+    templateName: string | null;
+    versionId: string | null;
+    versionNumber: string | null;
+  }>;
+  templatePublishStatuses: Array<{
+    currentPublishedVersion: string | null;
+    draftVersionCount: number;
+    lastPublishedAt: string | null;
+    registryId: string;
+    templateName: string;
+    templateStatus: string;
+  }>;
   templateInstalls: Array<{
     completedAt: string | null;
     createdAt: string | null;
@@ -1145,6 +1171,10 @@ export type AdminTemplateManagementControl = {
       changelog: string | null;
       createdAt: string | null;
       id: string;
+      publishReadiness: {
+        canPublish: boolean;
+        issues: string[];
+      };
       publishedAt: string | null;
       status: "archived" | "draft" | "published";
       versionNumber: string;
@@ -5003,7 +5033,7 @@ export async function getAdminPlatformThemeControl(): Promise<AdminPlatformTheme
 export async function getAdminTemplateManagementControl(): Promise<AdminTemplateManagementControl> {
   const { supabase, users } = await getAdminUsersBase();
   const owners = emailMap(users);
-  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview, marketplaceApprovalStats, marketplaceApprovalQueue] =
+  const [registryTemplates, stats, activationStats, stores, allVersions, visibilityStats, archivedTemplates, officialStats, recommendedStats, recommendedTemplates, allPackages, packageStats, allScreenshots, allAssets, allInstalls, allAssignments, allIsolationSnapshots, allUpdateJobs, allRollbackJobs, installTargetStores, allMarketplaceListings, marketplaceListingStats, marketplaceCatalogPreview, marketplaceApprovalStats, marketplaceApprovalQueue, templatePublishEvents] =
     await Promise.all([
     listTemplates(),
     getTemplateRegistryStats(),
@@ -5029,8 +5059,27 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
     getMarketplaceListingStats(),
     getMarketplaceCatalogPreview(),
     getMarketplaceApprovalStats(),
-    listPendingMarketplaceListings()
+    listPendingMarketplaceListings(),
+    listTemplatePublishEvents({ limit: 50 })
   ]);
+
+  const draftPublishReadiness = await Promise.all(
+    allVersions
+      .filter((version) => version.status === "draft")
+      .map(async (version) => ({
+        versionId: version.id,
+        readiness: await validateTemplateVersionPublish(version.id)
+      }))
+  );
+  const publishReadinessByVersionId = new Map(
+    draftPublishReadiness.map((entry) => [
+      entry.versionId,
+      {
+        canPublish: entry.readiness.canPublish,
+        issues: entry.readiness.issues
+      }
+    ])
+  );
 
   const packageValidations = await Promise.all(
     allPackages.map(async (pkg) => ({
@@ -5500,6 +5549,10 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         changelog: version.changelog,
         createdAt: version.createdAt,
         id: version.id,
+        publishReadiness: publishReadinessByVersionId.get(version.id) ?? {
+          canPublish: version.status === "draft",
+          issues: version.status === "draft" ? [] : ["Only draft versions can be published."]
+        },
         publishedAt: version.publishedAt,
         status: version.status,
         versionNumber: version.versionNumber
@@ -5522,7 +5575,6 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
       "Create new template",
       "Upload template preview",
       "Approve marketplace template",
-      "Publish template update",
       "Reseller exclusive templates"
     ],
     overview: {
@@ -5743,6 +5795,36 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         : publishedVersionByTemplateId.get(listing.templateId)?.versionNumber ?? null
     })),
     marketplaceCatalogPreview,
+    templatePublishOverview: {
+      draftVersions: allVersions.filter((version) => version.status === "draft").length,
+      publishedVersions: allVersions.filter((version) => version.status === "published").length,
+      recentPublishEvents: templatePublishEvents.length,
+      templatesWithPublishedVersion: publishedTemplateIds.size
+    },
+    templatePublishEvents: templatePublishEvents.map((event) => ({
+      createdAt: event.createdAt,
+      eventType: event.eventType,
+      templateId: event.templateId,
+      templateName: event.templateName,
+      versionId: event.versionId,
+      versionNumber: event.versionNumber
+    })),
+    templatePublishStatuses: registryTemplates
+      .filter((template) => template.status !== "archived")
+      .map((template) => {
+        const templateVersions = versionsByTemplateId.get(template.id) ?? [];
+        const publishedVersion = templateVersions.find((version) => version.status === "published") ?? null;
+
+        return {
+          currentPublishedVersion: publishedVersion?.versionNumber ?? null,
+          draftVersionCount: templateVersions.filter((version) => version.status === "draft").length,
+          lastPublishedAt: publishedVersion?.publishedAt ?? null,
+          registryId: template.id,
+          templateName: template.name,
+          templateStatus: template.status
+        };
+      })
+      .sort((left, right) => left.templateName.localeCompare(right.templateName)),
     templateInstalls: allInstalls.map((install) => ({
       completedAt: install.completedAt,
       createdAt: install.createdAt,

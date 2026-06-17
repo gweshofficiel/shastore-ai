@@ -31,7 +31,7 @@ import {
   publishMarketplaceListingAction,
   publishTemplateAssetAction,
   publishTemplateScreenshotAction,
-  publishTemplateUpdatePlaceholder,
+  publishTemplateUpdateAction,
   recommendTemplate,
   rejectMarketplaceListingAction,
   reorderTemplateScreenshotAction,
@@ -43,11 +43,14 @@ import {
   unrecommendTemplate,
   unassignTemplateFromStoreAction,
   updateMarketplaceListingAction,
+  unpublishTemplateVersionAction,
   updateStoresTemplatePlaceholder,
   updateTemplateRecommendationOrder,
   uploadTemplateAssetAction,
   uploadTemplateScreenshotAction
 } from "@/lib/admin/template-management-actions";
+import { TemplateUnpublishVersionAction } from "@/components/admin/template-unpublish-version-action";
+import { TemplatePublishVersionAction } from "@/components/admin/template-publish-version-action";
 import { TemplateMarketplaceApprovalQueue } from "@/components/admin/template-marketplace-approval-queue";
 import { TemplateMarketplaceCatalogPreview } from "@/components/admin/template-marketplace-catalog-preview";
 import { TemplateMarketplaceListingForm } from "@/components/admin/template-marketplace-listing-form";
@@ -725,6 +728,60 @@ export default async function AdminTemplatesPage() {
 
       <AdminStatGrid
         stats={[
+          { label: "Published versions", value: control.templatePublishOverview.publishedVersions },
+          { label: "Draft versions", value: control.templatePublishOverview.draftVersions },
+          { label: "Templates published", value: control.templatePublishOverview.templatesWithPublishedVersion },
+          { label: "Recent publish events", value: control.templatePublishOverview.recentPublishEvents }
+        ]}
+      />
+
+      <AdminHeader
+        description="Super Admin template publish runtime. Publishes template version and catalog metadata only. Existing stores, assignments, installs, and live storefronts are never updated automatically."
+        title="Template Publish Runtime"
+      />
+
+      <AdminTable
+        empty={!control.templatePublishStatuses.length ? "No template publish statuses available." : null}
+        headers={[
+          "Template",
+          "Template status",
+          "Current published",
+          "Draft versions",
+          "Last published"
+        ]}
+      >
+        {control.templatePublishStatuses.map((status) => (
+          <tr key={status.registryId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{status.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{status.registryId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatus(status.templateStatus)}>{statusLabel(status.templateStatus)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{status.currentPublishedVersion ? `v${status.currentPublishedVersion}` : "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{status.draftVersionCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(status.lastPublishedAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.templatePublishEvents.length ? "No template publish events recorded yet." : null}
+        headers={["Event", "Template", "Version", "Created"]}
+      >
+        {control.templatePublishEvents.map((event) => (
+          <tr key={`${event.eventType}-${event.versionId}-${event.createdAt}`}>
+            <td className="px-5 py-4 font-semibold text-slate-700">{event.eventType}</td>
+            <td className="px-5 py-4 text-slate-600">{event.templateName ?? event.templateId ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{event.versionNumber ?? event.versionId ?? "—"}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(event.createdAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminStatGrid
+        stats={[
           { label: "Pending review", value: control.marketplaceApprovalOverview.pendingReviewListings },
           { label: "Approved", value: control.marketplaceApprovalOverview.approvedListings },
           { label: "Rejected", value: control.marketplaceApprovalOverview.rejectedListings },
@@ -882,15 +939,29 @@ export default async function AdminTemplatesPage() {
                           Published: {formatAdminDate(version.publishedAt)}
                         </p>
                         <div className="mt-3 grid gap-2">
-                          <form action={publishTemplateUpdatePlaceholder}>
-                            <TemplateHiddenFields template={template} version={version} />
-                            <button
-                              className="h-8 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700"
-                              type="submit"
-                            >
-                              Publish template update
-                            </button>
-                          </form>
+                          {version.status === "draft" ? (
+                            <TemplatePublishVersionAction
+                              action={publishTemplateUpdateAction}
+                              canPublish={version.publishReadiness.canPublish}
+                              readinessIssues={version.publishReadiness.issues}
+                              templateId={template.registryId}
+                              templateName={template.name}
+                              versionId={version.id}
+                              versionNumber={version.versionNumber}
+                            />
+                          ) : null}
+                          {version.status === "published" ? (
+                            <TemplateUnpublishVersionAction
+                              action={unpublishTemplateVersionAction}
+                              templateId={template.registryId}
+                              versionId={version.id}
+                            />
+                          ) : null}
+                          {version.status === "draft" && !version.publishReadiness.canPublish ? (
+                            <p className="text-[10px] font-semibold text-amber-700">
+                              {version.publishReadiness.issues[0] ?? "Publish readiness checks required."}
+                            </p>
+                          ) : null}
                           <form action={installTemplateVersionPlaceholder}>
                             <TemplateHiddenFields template={template} version={version} />
                             <button
