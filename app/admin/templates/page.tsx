@@ -13,7 +13,6 @@ import {
   installTemplateVersionPlaceholder,
   markTemplateDraft,
   markTemplateOfficial,
-  previewTemplatePlaceholder,
   publishTemplateUpdatePlaceholder,
   recommendTemplate,
   restoreArchivedTemplateToDraft,
@@ -409,16 +408,12 @@ export default async function AdminTemplatesPage() {
                   registryId={template.registryId}
                   templateName={template.name}
                 />
-                <form action={previewTemplatePlaceholder}>
-                  <TemplateHiddenFields template={template} />
-                  <Link
-                    className="flex h-9 w-full items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
-                    href={template.previewHref}
-                    target="_blank"
-                  >
-                    Preview
-                  </Link>
-                </form>
+                <Link
+                  className="flex h-9 w-full items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                  href={template.previewHref}
+                >
+                  Preview
+                </Link>
                 {template.packageRuntime ? (
                   <TemplatePackageSummaryLink targetId={`package-runtime-${template.registryId}`}>
                     Package summary

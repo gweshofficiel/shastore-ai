@@ -4862,7 +4862,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
         productsCount: template.packageSummary.productsCount
       },
       packageVersion: Number.isFinite(parsedVersion) ? parsedVersion : null,
-      previewHref: `/templates/preview/${encodeURIComponent(storeTemplateId)}`,
+      previewHref: `/admin/templates/preview/${encodeURIComponent(template.id)}`,
       recommendationOrder,
       registryId: template.id,
       status: template.status,
