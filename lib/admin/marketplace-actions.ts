@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { isValidMarketplaceItemType } from "@/src/lib/marketplace/marketplace-item-type-runtime";
-import {
-  applyMarketplaceApprovalAction,
-  type MarketplaceApprovalAction
-} from "@/src/lib/marketplace/marketplace-approval-runtime";
 import { submitMarketplaceCreatorSubmission } from "@/src/lib/marketplace/marketplace-creator-submission-runtime";
+import {
+  applyMarketplaceModerationAction,
+  assertValidMarketplaceModerationAction,
+  type MarketplaceModerationAction
+} from "@/src/lib/marketplace/marketplace-moderation-runtime";
 import {
   assertValidMarketplaceItemVisibility,
   setMarketplaceItemVisibility,
@@ -23,13 +24,14 @@ function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function runMarketplaceApprovalAction(
+async function runMarketplaceModerationAction(
   formData: FormData,
-  action: MarketplaceApprovalAction
+  action: MarketplaceModerationAction
 ) {
   const itemId = cleanText(formData.get("itemId"));
   const itemType = cleanText(formData.get("itemType"));
-  const approvalNote = cleanText(formData.get("approvalNote"));
+  const moderationNote = cleanText(formData.get("moderationNote") || formData.get("approvalNote"));
+  const moderationReason = cleanText(formData.get("moderationReason"));
 
   if (!itemId) {
     throw new Error("Missing marketplace item id.");
@@ -39,16 +41,27 @@ async function runMarketplaceApprovalAction(
     throw new Error("Invalid marketplace item type.");
   }
 
-  await applyMarketplaceApprovalAction(itemId, action, approvalNote || null);
+  assertValidMarketplaceModerationAction(action);
+
+  await applyMarketplaceModerationAction({
+    itemId,
+    moderationAction: action,
+    moderationNote: moderationNote || null,
+    moderationReason: moderationReason || null
+  });
   revalidatePath("/admin/marketplace");
 }
 
 export async function approveMarketplaceItem(formData: FormData) {
-  await runMarketplaceApprovalAction(formData, "approve");
+  await runMarketplaceModerationAction(formData, "approve");
 }
 
 export async function rejectMarketplaceItem(formData: FormData) {
-  await runMarketplaceApprovalAction(formData, "reject");
+  await runMarketplaceModerationAction(formData, "reject");
+}
+
+export async function requestMarketplaceItemChanges(formData: FormData) {
+  await runMarketplaceModerationAction(formData, "request_changes");
 }
 
 export async function markMarketplaceItemUnderReview(formData: FormData) {
@@ -72,11 +85,11 @@ export async function markMarketplaceItemUnderReview(formData: FormData) {
 }
 
 export async function archiveMarketplaceItem(formData: FormData) {
-  await runMarketplaceApprovalAction(formData, "archive");
+  await runMarketplaceModerationAction(formData, "archive");
 }
 
 export async function restoreMarketplaceItemDraft(formData: FormData) {
-  await runMarketplaceApprovalAction(formData, "restore_to_draft");
+  await runMarketplaceModerationAction(formData, "request_changes");
 }
 
 export async function updateMarketplaceItemVisibility(formData: FormData) {

@@ -26,11 +26,13 @@ import {
   evaluateMarketplaceCreatorAccount,
   evaluateMarketplaceCreatorSubmissionInspection,
   evaluateMarketplaceItemCreatorLink,
+  evaluateMarketplaceModerationInspection,
   evaluateMarketplacePluginBinding,
   evaluateMarketplaceServiceBinding,
   evaluateMarketplaceTemplateBinding,
   evaluateMarketplaceThemeBinding,
   getAvailableMarketplaceApprovalActions,
+  getAvailableMarketplaceModerationActions,
   getMarketplacePlatformFeeRate,
   listMarketplaceAppBindings,
   listMarketplaceCreatorAccounts,
@@ -1315,6 +1317,27 @@ export type AdminMarketplaceControl = {
     };
     installs: number;
     lastUpdated: string | null;
+    moderation: {
+      availableActions: Array<"approve" | "archive" | "reject" | "request_changes">;
+      creatorAccountId: string | null;
+      creatorDisplayName: string | null;
+      itemName: string;
+      itemType: string;
+      marketplaceStatus: string;
+      moderatedAt: string | null;
+      moderatedBy: string | null;
+      moderationAction: "approve" | "archive" | "reject" | "request_changes" | null;
+      moderationNote: string | null;
+      moderationReason: string | null;
+      pricingMode: string;
+      publicEligible: boolean;
+      submissionNote: string | null;
+      submissionStatus: "approved" | "draft" | "rejected" | "submitted" | "withdrawn" | null;
+      submittedAt: string | null;
+      verificationIssues: string[];
+      verified: boolean;
+      visibility: string;
+    };
     name: string;
     pricing: {
       billingInterval: "monthly" | "yearly" | null;
@@ -1447,6 +1470,7 @@ export type AdminMarketplaceControl = {
     totalCreatorAccounts: number;
     verifiedCreatorAccounts: number;
     submittedItems: number;
+    moderatedItems: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6307,6 +6331,32 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
         submittedBy: item.submittedBy
       }
     });
+    const moderationInspection = evaluateMarketplaceModerationInspection({
+      creatorDisplayName: linkedCreator?.displayName ?? null,
+      item: {
+        creatorAccountId: item.creatorAccountId,
+        itemType: item.itemType,
+        moderatedAt: item.moderation.moderatedAt,
+        moderatedBy: item.moderation.moderatedBy,
+        moderationAction: item.moderation.moderationAction,
+        moderationNote: item.moderation.moderationNote,
+        moderationReason: item.moderation.moderationReason,
+        name: item.name,
+        pricing: item.pricing,
+        status: item.status,
+        submissionNote: item.submissionNote,
+        submissionStatus:
+          item.submissionStatus === "draft" ||
+          item.submissionStatus === "submitted" ||
+          item.submissionStatus === "withdrawn" ||
+          item.submissionStatus === "rejected" ||
+          item.submissionStatus === "approved"
+            ? item.submissionStatus
+            : null,
+        submittedAt: item.submittedAt,
+        visibility: item.visibility
+      }
+    });
 
     return {
     approval: {
@@ -6315,7 +6365,9 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       approvalUpdatedAt: item.approval.approvalUpdatedAt,
       approvedAt: item.approval.approvedAt,
       approvedBy: item.approval.approvedBy,
-      availableActions: getAvailableMarketplaceApprovalActions(item.status),
+      availableActions: getAvailableMarketplaceApprovalActions(item.status).filter(
+        (action) => action === "submit_for_review"
+      ),
       rejectedAt: item.approval.rejectedAt,
       rejectedBy: item.approval.rejectedBy,
       reviewedAt: item.approval.reviewedAt,
@@ -6353,6 +6405,27 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     },
     installs: item.liveInstalls,
     lastUpdated: item.updatedAt,
+    moderation: {
+      availableActions: getAvailableMarketplaceModerationActions(item.status),
+      creatorAccountId: moderationInspection.creatorAccountId,
+      creatorDisplayName: moderationInspection.creatorDisplayName,
+      itemName: moderationInspection.itemName,
+      itemType: moderationInspection.itemType,
+      marketplaceStatus: moderationInspection.marketplaceStatus,
+      moderatedAt: moderationInspection.moderatedAt,
+      moderatedBy: moderationInspection.moderatedBy,
+      moderationAction: moderationInspection.moderationAction,
+      moderationNote: moderationInspection.moderationNote,
+      moderationReason: moderationInspection.moderationReason,
+      pricingMode: moderationInspection.pricingMode,
+      publicEligible: moderationInspection.publicEligible,
+      submissionNote: moderationInspection.submissionNote,
+      submissionStatus: moderationInspection.submissionStatus,
+      submittedAt: moderationInspection.submittedAt,
+      verificationIssues: moderationInspection.verificationIssues,
+      verified: moderationInspection.verified,
+      visibility: moderationInspection.visibility
+    },
     name: item.name,
     pricing: {
       billingInterval: item.pricing.billingInterval,
@@ -6591,7 +6664,8 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       activeCreatorAccounts: creatorAccounts.filter((creator) => creator.creatorStatus === "active").length,
       totalCreatorAccounts: creatorAccounts.length,
       verifiedCreatorAccounts: creatorAccounts.filter((creator) => creator.verificationStatus === "verified").length,
-      submittedItems: registryItems.filter((item) => item.submissionStatus === "submitted").length
+      submittedItems: registryItems.filter((item) => item.submissionStatus === "submitted").length,
+      moderatedItems: registryItems.filter((item) => item.moderation.moderationAction).length
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,

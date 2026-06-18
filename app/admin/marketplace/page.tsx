@@ -12,7 +12,7 @@ import {
   archiveMarketplaceItem,
   markMarketplaceItemUnderReview,
   rejectMarketplaceItem,
-  restoreMarketplaceItemDraft,
+  requestMarketplaceItemChanges,
   updateMarketplaceItemPricing,
   updateMarketplaceItemVisibility
 } from "@/lib/admin/marketplace-actions";
@@ -544,6 +544,65 @@ function MarketplaceSubmissionInspection({
   );
 }
 
+function MarketplaceModerationInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const moderation = item.moderation;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      {moderation.moderationAction ? (
+        <AdminBadge tone={moderation.moderationAction === "approve" ? "green" : moderation.verified ? "blue" : "amber"}>
+          {moderation.moderationAction}
+        </AdminBadge>
+      ) : (
+        <AdminBadge tone={moderation.verified ? "blue" : "amber"}>pending</AdminBadge>
+      )}
+      <p className="text-xs font-semibold text-slate-500">Status: {moderation.marketplaceStatus}</p>
+      <p className="text-xs font-semibold text-slate-500">Visibility: {moderation.visibility}</p>
+      <p className="text-xs font-semibold text-slate-500">Pricing: {moderation.pricingMode}</p>
+      {moderation.creatorDisplayName ? (
+        <p className="text-xs font-semibold text-slate-600">Creator: {moderation.creatorDisplayName}</p>
+      ) : null}
+      {moderation.submittedAt ? (
+        <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(moderation.submittedAt)}</p>
+      ) : null}
+      {moderation.submissionNote ? (
+        <p className="text-xs font-semibold text-slate-500">Submission note: {moderation.submissionNote}</p>
+      ) : null}
+      {moderation.moderatedAt ? (
+        <p className="text-xs font-semibold text-slate-500">Moderated: {formatAdminDate(moderation.moderatedAt)}</p>
+      ) : null}
+      {moderation.moderatedBy ? (
+        <p className="text-xs font-semibold text-slate-500">Moderator: {shortenActorId(moderation.moderatedBy)}</p>
+      ) : null}
+      {moderation.moderationReason ? (
+        <p className="text-xs font-semibold text-slate-500">Reason: {moderation.moderationReason}</p>
+      ) : null}
+      {moderation.moderationNote ? (
+        <p className="text-xs font-semibold text-slate-500">Note: {moderation.moderationNote}</p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Public eligible: {moderation.publicEligible ? "yes" : "no"}
+      </p>
+      {moderation.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Moderation issues</p>
+          {moderation.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">Moderation metadata ready.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -601,7 +660,8 @@ export default async function AdminMarketplacePage() {
           { label: "Creator accounts", value: control.overview.totalCreatorAccounts },
           { label: "Active creators", value: control.overview.activeCreatorAccounts },
           { label: "Verified creators", value: control.overview.verifiedCreatorAccounts },
-          { label: "Submitted items", value: control.overview.submittedItems }
+          { label: "Submitted items", value: control.overview.submittedItems },
+          { label: "Moderated items", value: control.overview.moderatedItems }
         ]}
       />
 
@@ -678,6 +738,7 @@ export default async function AdminMarketplacePage() {
                 "Creator/source",
                 "Creator account",
                 "Submission",
+                "Moderation",
                 "Status",
                 "Visibility",
                 "Template binding",
@@ -689,7 +750,7 @@ export default async function AdminMarketplacePage() {
                 "Installs",
                 "Revenue",
                 "Last updated",
-                "Approval workflow"
+                "Moderation workflow"
               ]}
             >
               {items.map((item) => (
@@ -705,6 +766,9 @@ export default async function AdminMarketplacePage() {
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplaceSubmissionInspection item={item} />
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceModerationInspection item={item} />
                   </td>
                   <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
                   <td className="px-5 py-4">
@@ -841,7 +905,7 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.approval.availableActions.includes("approve") ? (
+                      {item.moderation.availableActions.includes("approve") ? (
                         <form action={approveMarketplaceItem}>
                           <MarketplaceHiddenFields item={item} />
                           <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
@@ -849,13 +913,19 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.approval.availableActions.includes("reject") ? (
+                      {item.moderation.availableActions.includes("reject") ? (
                         <form action={rejectMarketplaceItem} className="grid gap-2">
                           <MarketplaceHiddenFields item={item} />
                           <input
                             className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
-                            name="approvalNote"
-                            placeholder="Rejection note (optional)"
+                            name="moderationReason"
+                            placeholder="Rejection reason (optional)"
+                            type="text"
+                          />
+                          <input
+                            className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                            name="moderationNote"
+                            placeholder="Moderation note (optional)"
                             type="text"
                           />
                           <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
@@ -863,19 +933,25 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.approval.availableActions.includes("archive") ? (
+                      {item.moderation.availableActions.includes("request_changes") ? (
+                        <form action={requestMarketplaceItemChanges} className="grid gap-2">
+                          <MarketplaceHiddenFields item={item} />
+                          <input
+                            className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                            name="moderationNote"
+                            placeholder="Change request note (optional)"
+                            type="text"
+                          />
+                          <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                            Request changes
+                          </button>
+                        </form>
+                      ) : null}
+                      {item.moderation.availableActions.includes("archive") ? (
                         <form action={archiveMarketplaceItem}>
                           <MarketplaceHiddenFields item={item} />
                           <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
                             Archive
-                          </button>
-                        </form>
-                      ) : null}
-                      {item.approval.availableActions.includes("restore_to_draft") ? (
-                        <form action={restoreMarketplaceItemDraft}>
-                          <MarketplaceHiddenFields item={item} />
-                          <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                            Restore draft
                           </button>
                         </form>
                       ) : null}

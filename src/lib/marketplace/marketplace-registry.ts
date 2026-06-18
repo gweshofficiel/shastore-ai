@@ -333,11 +333,45 @@ export {
   validateMarketplaceCreatorSubmission,
   validateSubmissionMetadata
 } from "@/src/lib/marketplace/marketplace-creator-submission-runtime";
+export type {
+  MarketplaceModerationAction,
+  MarketplaceModerationEventRecord,
+  MarketplaceModerationInspection,
+  MarketplaceModerationResult
+} from "@/src/lib/marketplace/marketplace-moderation-runtime";
+export {
+  applyMarketplaceModerationAction,
+  assertMarketplaceModerationTransition,
+  assertValidMarketplaceModerationAction,
+  canApplyMarketplaceModerationAction,
+  evaluateMarketplaceModerationInspection,
+  getAvailableMarketplaceModerationActions,
+  getLatestMarketplaceModerationEvent,
+  getMarketplaceModerationTargetStatus,
+  isValidMarketplaceModerationAction,
+  MARKETPLACE_MODERATION_ACTIONS,
+  parseMarketplaceModerationAction,
+  parseMarketplaceModerationEvent,
+  sanitizeModerationMetadata
+} from "@/src/lib/marketplace/marketplace-moderation-runtime";
+import {
+  parseMarketplaceModerationAction,
+  type MarketplaceModerationAction
+} from "@/src/lib/marketplace/marketplace-moderation-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
 export type MarketplacePricingType = "free" | "paid" | "premium" | "subscription";
+
+export type MarketplaceModerationMetadata = {
+  moderatedAt: string | null;
+  moderatedBy: string | null;
+  moderationAction: MarketplaceModerationAction | null;
+  moderationNote: string | null;
+  moderationReason: string | null;
+  moderationUpdatedAt: string | null;
+};
 
 export type MarketplaceItemRecord = {
   approval: MarketplaceApprovalMetadata;
@@ -357,6 +391,7 @@ export type MarketplaceItemRecord = {
   linkedThemeId: string | null;
   liveInstalls: number;
   metadata: Record<string, unknown>;
+  moderation: MarketplaceModerationMetadata;
   name: string;
   priceAmount: number | null;
   pricing: MarketplacePricingRecord;
@@ -411,7 +446,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, submitted_by, submitted_at, submission_note, submission_status, submission_updated_at, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, submitted_by, submitted_at, submission_note, submission_status, submission_updated_at, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, moderated_by, moderated_at, moderation_action, moderation_reason, moderation_note, moderation_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -424,6 +459,17 @@ function parseApprovalMetadataFromRow(row: Record<string, unknown>): Marketplace
     rejectedBy: text(row.rejected_by, 120) || null,
     reviewedAt: text(row.reviewed_at, 80) || null,
     reviewedBy: text(row.reviewed_by, 120) || null
+  };
+}
+
+function parseModerationMetadataFromRow(row: Record<string, unknown>): MarketplaceModerationMetadata {
+  return {
+    moderatedAt: text(row.moderated_at, 80) || null,
+    moderatedBy: text(row.moderated_by, 120) || null,
+    moderationAction: parseMarketplaceModerationAction(row.moderation_action),
+    moderationNote: text(row.moderation_note, 2000) || null,
+    moderationReason: text(row.moderation_reason, 500) || null,
+    moderationUpdatedAt: text(row.moderation_updated_at, 80) || null
   };
 }
 
@@ -612,6 +658,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     linkedThemeId: text(row.linked_theme_id, 120) || null,
     liveInstalls: Math.max(0, parseNumber(row.live_installs) ?? 0),
     metadata: safeRecord(row.metadata),
+    moderation: parseModerationMetadataFromRow(row),
     name,
     priceAmount: pricing.priceAmount,
     pricing,
