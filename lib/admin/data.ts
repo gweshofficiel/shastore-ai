@@ -22,11 +22,13 @@ import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integ
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
   calculateMarketplaceRevenue,
+  evaluateMarketplacePluginBinding,
   evaluateMarketplaceTemplateBinding,
   evaluateMarketplaceThemeBinding,
   getAvailableMarketplaceApprovalActions,
   getMarketplacePlatformFeeRate,
   listMarketplaceInstallEvents,
+  listMarketplacePluginBindings,
   listMarketplaceRevenueEvents,
   getMarketplaceRegistryStats,
   listMarketplaceSectionItemGroups,
@@ -1334,6 +1336,19 @@ export type AdminMarketplaceControl = {
       verificationIssues: string[];
       verified: boolean;
     } | null;
+    pluginBinding: {
+      bindingStatus: "active" | "archived" | "disabled" | "draft" | null;
+      marketplaceStatus: string;
+      marketplaceVisibility: string;
+      pluginKey: string | null;
+      pluginManifestSummary: string[];
+      pluginName: string | null;
+      pluginVersion: string | null;
+      pricingMode: string;
+      publicEligible: boolean;
+      verificationIssues: string[];
+      verified: boolean;
+    } | null;
     type: "app" | "plugin" | "service" | "template" | "theme";
     visibility: "internal" | "private" | "public";
   }>;
@@ -1350,6 +1365,7 @@ export type AdminMarketplaceControl = {
     totalPlatformFeesProcessed: number;
     verifiedTemplateBindings: number;
     verifiedThemeBindings: number;
+    verifiedPluginBindings: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6056,17 +6072,20 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets] = await Promise.all([
+  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings] =
+    await Promise.all([
     listMarketplaceSectionItemGroups(),
     getMarketplaceRegistryStats(),
     listMarketplaceRevenueEvents({ limit: 1000 }),
     listMarketplaceInstallEvents({ limit: 1000 }),
     listTemplates(),
-    listThemePresets()
+    listThemePresets(),
+    listMarketplacePluginBindings({ limit: 1000 })
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));
   const themePresetById = new Map(themePresets.map((preset) => [preset.id, preset]));
+  const pluginBindingByItemId = new Map(pluginBindings.map((binding) => [binding.marketplaceItemId, binding]));
   const revenueEventsByItemId = new Map<string, MarketplaceRevenueEventRecord[]>();
   const installEventsByItemId = new Map<string, MarketplaceInstallEventRecord[]>();
 
@@ -6136,6 +6155,17 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             preset: linkedThemePreset,
             storedBindingStatus: item.themeBinding.bindingStatus,
             themeVersion: item.themeBinding.themeVersion
+          })
+        : null;
+    const pluginBindingEvaluation =
+      item.itemType === "plugin"
+        ? evaluateMarketplacePluginBinding({
+            binding: pluginBindingByItemId.get(item.id) ?? null,
+            itemKey: item.itemKey,
+            itemType: item.itemType,
+            marketplaceStatus: item.status,
+            marketplaceVisibility: item.visibility,
+            pricingMode: item.pricing.mode
           })
         : null;
 
@@ -6233,6 +6263,22 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             verified: themeBindingEvaluation.verified
           }
         : null,
+    pluginBinding:
+      item.itemType === "plugin" && pluginBindingEvaluation
+        ? {
+            bindingStatus: pluginBindingEvaluation.bindingStatus,
+            marketplaceStatus: pluginBindingEvaluation.marketplaceStatus,
+            marketplaceVisibility: pluginBindingEvaluation.marketplaceVisibility,
+            pluginKey: pluginBindingEvaluation.pluginKey,
+            pluginManifestSummary: pluginBindingEvaluation.pluginManifestSummary,
+            pluginName: pluginBindingEvaluation.pluginName,
+            pluginVersion: pluginBindingEvaluation.pluginVersion,
+            pricingMode: pluginBindingEvaluation.pricingMode,
+            publicEligible: pluginBindingEvaluation.publicEligible,
+            verificationIssues: pluginBindingEvaluation.verificationIssues,
+            verified: pluginBindingEvaluation.verified
+          }
+        : null,
     type: item.itemType,
     visibility: item.visibility
   };
@@ -6289,6 +6335,18 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
           themeVersion: item.themeBinding.themeVersion
         });
         return count + (evaluation.verified ? 1 : 0);
+      }, 0),
+      verifiedPluginBindings: registryItems.reduce((count, item) => {
+        if (item.itemType !== "plugin") return count;
+        const evaluation = evaluateMarketplacePluginBinding({
+          binding: pluginBindingByItemId.get(item.id) ?? null,
+          itemKey: item.itemKey,
+          itemType: item.itemType,
+          marketplaceStatus: item.status,
+          marketplaceVisibility: item.visibility,
+          pricingMode: item.pricing.mode
+        });
+        return count + (evaluation.verified ? 1 : 0);
       }, 0)
     },
     sections: sectionGroups.map((section) => ({
@@ -6296,7 +6354,9 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       itemType: section.itemType,
       name: toAdminMarketplaceSectionName(section.section),
       status:
-        section.section === "template_marketplace" || section.section === "theme_marketplace"
+        section.section === "template_marketplace" ||
+        section.section === "theme_marketplace" ||
+        section.section === "plugin_marketplace"
           ? "ready"
           : "placeholder"
     }))

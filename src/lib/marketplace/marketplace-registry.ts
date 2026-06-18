@@ -213,6 +213,28 @@ import {
   type MarketplaceThemeBindingStatus
 } from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
 import { ensureMarketplaceThemeBindings } from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
+import { ensureMarketplacePluginBindings } from "@/src/lib/marketplace/marketplace-plugin-runtime";
+export type {
+  MarketplacePluginBindingRecord,
+  MarketplacePluginBindingStats,
+  MarketplacePluginBindingStatus,
+  MarketplacePluginInspection
+} from "@/src/lib/marketplace/marketplace-plugin-runtime";
+export {
+  ensureMarketplacePluginBindings,
+  evaluateMarketplacePluginBinding,
+  getMarketplacePluginBindingStats,
+  getMarketplacePluginInspection,
+  isValidMarketplacePluginBindingStatus,
+  isValidPluginKey,
+  listMarketplacePluginBindings,
+  MARKETPLACE_PLUGIN_BINDING_STATUSES,
+  parseMarketplacePluginBindingStatus,
+  pluginKeyFromMarketplaceItemKey,
+  sanitizePluginManifest,
+  validatePluginManifest,
+  verifyMarketplacePluginBinding
+} from "@/src/lib/marketplace/marketplace-plugin-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
@@ -711,6 +733,7 @@ export async function ensureMarketplaceRegistry() {
   await seedMissingThemeItems();
   await ensureMarketplaceTemplateBindings();
   await ensureMarketplaceThemeBindings();
+  await ensureMarketplacePluginBindings();
 }
 
 export async function listMarketplaceItems(
