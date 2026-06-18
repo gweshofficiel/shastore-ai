@@ -13,6 +13,7 @@ import {
   markMarketplaceItemUnderReview,
   rejectMarketplaceItem,
   restoreMarketplaceItemDraft,
+  updateMarketplaceItemPricing,
   updateMarketplaceItemVisibility
 } from "@/lib/admin/marketplace-actions";
 
@@ -170,7 +171,79 @@ export default async function AdminMarketplacePage() {
                       </form>
                     </div>
                   </td>
-                  <td className="px-5 py-4"><AdminBadge tone={item.priceType === "free" ? "green" : "amber"}>{item.priceType}</AdminBadge></td>
+                  <td className="px-5 py-4">
+                    <div className="grid gap-2">
+                      <AdminBadge tone={item.pricing.mode === "free" ? "green" : "amber"}>
+                        {item.pricing.mode}
+                      </AdminBadge>
+                      <p className="text-xs font-semibold text-slate-600">
+                        {item.pricing.mode === "free"
+                          ? "Free"
+                          : `${formatAdminMoney(item.pricing.priceAmount)} ${item.pricing.currency ?? "USD"}${
+                              item.pricing.billingInterval ? ` / ${item.pricing.billingInterval}` : ""
+                            }`}
+                      </p>
+                      {item.pricing.trialDays ? (
+                        <p className="text-xs font-semibold text-slate-500">Trial: {item.pricing.trialDays} days</p>
+                      ) : null}
+                      {item.pricing.pricingUpdatedAt ? (
+                        <p className="text-xs font-semibold text-slate-500">
+                          Pricing updated: {formatAdminDate(item.pricing.pricingUpdatedAt)}
+                        </p>
+                      ) : null}
+                      <form action={updateMarketplaceItemPricing} className="grid gap-2">
+                        <MarketplaceHiddenFields item={item} />
+                        <select
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.pricing.mode}
+                          name="pricingMode"
+                        >
+                          <option value="free">free</option>
+                          <option value="paid">paid</option>
+                          <option value="subscription">subscription</option>
+                        </select>
+                        <input
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.pricing.priceAmount}
+                          min="0"
+                          name="priceAmount"
+                          step="0.01"
+                          type="number"
+                        />
+                        <select
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.pricing.currency ?? "USD"}
+                          name="currency"
+                        >
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="MAD">MAD</option>
+                        </select>
+                        <select
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.pricing.billingInterval ?? ""}
+                          name="billingInterval"
+                        >
+                          <option value="">No interval</option>
+                          <option value="monthly">monthly</option>
+                          <option value="yearly">yearly</option>
+                        </select>
+                        <input
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.pricing.trialDays}
+                          min="0"
+                          name="trialDays"
+                          type="number"
+                        />
+                        <button
+                          className="h-9 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                          type="submit"
+                        >
+                          Update pricing
+                        </button>
+                      </form>
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-slate-600">{item.installs} placeholder</td>
                   <td className="px-5 py-4 text-slate-600">{formatAdminMoney(item.revenue)} placeholder</td>
                   <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.lastUpdated)}</td>

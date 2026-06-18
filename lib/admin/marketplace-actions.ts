@@ -11,6 +11,12 @@ import {
   setMarketplaceItemVisibility,
   type MarketplaceItemVisibility
 } from "@/src/lib/marketplace/marketplace-visibility-runtime";
+import {
+  setMarketplaceItemPricing,
+  type MarketplaceBillingInterval,
+  type MarketplaceCurrency,
+  type MarketplacePricingMode
+} from "@/src/lib/marketplace/marketplace-pricing-runtime";
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
@@ -71,5 +77,32 @@ export async function updateMarketplaceItemVisibility(formData: FormData) {
 
   assertValidMarketplaceItemVisibility(visibility);
   await setMarketplaceItemVisibility(itemId, visibility);
+  revalidatePath("/admin/marketplace");
+}
+
+export async function updateMarketplaceItemPricing(formData: FormData) {
+  const itemId = cleanText(formData.get("itemId"));
+  const itemType = cleanText(formData.get("itemType"));
+  const pricingMode = cleanText(formData.get("pricingMode")) as MarketplacePricingMode;
+  const priceAmount = cleanText(formData.get("priceAmount"));
+  const currency = cleanText(formData.get("currency")) as MarketplaceCurrency;
+  const billingInterval = cleanText(formData.get("billingInterval")) as MarketplaceBillingInterval;
+  const trialDays = cleanText(formData.get("trialDays"));
+
+  if (!itemId) {
+    throw new Error("Missing marketplace item id.");
+  }
+
+  if (itemType && !isValidMarketplaceItemType(itemType)) {
+    throw new Error("Invalid marketplace item type.");
+  }
+
+  await setMarketplaceItemPricing(itemId, {
+    billingInterval: billingInterval || null,
+    currency: currency || null,
+    priceAmount: priceAmount ? Number(priceAmount) : null,
+    pricingMode,
+    trialDays: trialDays ? Number(trialDays) : 0
+  });
   revalidatePath("/admin/marketplace");
 }

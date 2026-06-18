@@ -35,6 +35,11 @@ import {
   parseMarketplaceApprovalAction,
   type MarketplaceApprovalMetadata
 } from "@/src/lib/marketplace/marketplace-approval-runtime";
+import {
+  parseMarketplacePricingRecord,
+  pricingTypeForMode,
+  type MarketplacePricingRecord
+} from "@/src/lib/marketplace/marketplace-pricing-runtime";
 import { listTemplates } from "@/src/lib/templates/template-registry";
 
 export type {
@@ -104,6 +109,27 @@ export {
   restoreMarketplaceItemToDraft,
   submitMarketplaceItemForReview
 } from "@/src/lib/marketplace/marketplace-approval-runtime";
+export type {
+  MarketplaceBillingInterval,
+  MarketplaceCurrency,
+  MarketplacePricingMode,
+  MarketplacePricingRecord
+} from "@/src/lib/marketplace/marketplace-pricing-runtime";
+export {
+  getMarketplaceItemPricing,
+  isValidMarketplaceBillingInterval,
+  isValidMarketplaceCurrency,
+  isValidMarketplacePricingMode,
+  MARKETPLACE_BILLING_INTERVALS,
+  MARKETPLACE_CURRENCIES,
+  MARKETPLACE_PRICING_MODES,
+  parseMarketplaceBillingInterval,
+  parseMarketplaceCurrency,
+  parseMarketplacePricingMode,
+  parseMarketplacePricingRecord,
+  setMarketplaceItemPricing,
+  validateMarketplacePricingInput
+} from "@/src/lib/marketplace/marketplace-pricing-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
@@ -126,6 +152,7 @@ export type MarketplaceItemRecord = {
   metadata: Record<string, unknown>;
   name: string;
   priceAmount: number | null;
+  pricing: MarketplacePricingRecord;
   pricingType: MarketplacePricingType;
   revenueAmount: number;
   revenueCurrency: string | null;
@@ -162,7 +189,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_type, price_amount, currency, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -339,6 +366,12 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     return null;
   }
 
+  const pricing = parseMarketplacePricingRecord(row);
+
+  if (!pricing) {
+    return null;
+  }
+
   return {
     approval: parseApprovalMetadataFromRow(row),
     createdAt: text(row.created_at, 80) || null,
@@ -355,7 +388,8 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     linkedThemeId: text(row.linked_theme_id, 120) || null,
     metadata: safeRecord(row.metadata),
     name,
-    priceAmount: parseNumber(row.price_amount),
+    priceAmount: pricing.priceAmount,
+    pricing,
     pricingType: parsePricingType(row.pricing_type),
     revenueAmount: Math.max(0, parseNumber(row.revenue_amount) ?? 0),
     revenueCurrency: text(row.revenue_currency, 12) || null,
@@ -417,11 +451,26 @@ async function seedMissingPlaceholderItems() {
 
   const { error } = await admin.from("marketplace_items" as never).insert(
     missing.map((item) => ({
+      billing_interval: item.pricing_type === "subscription" ? "monthly" : null,
       creator_source: item.creator_source,
+      currency: item.pricing_type === "free" ? "USD" : "USD",
       item_key: item.item_key,
       item_type: item.item_type,
       metadata: { source: "marketplace_registry_seed" },
       name: item.name,
+      price_amount:
+        item.pricing_type === "free"
+          ? 0
+          : item.pricing_type === "subscription"
+            ? 9.99
+            : 19.99,
+      pricing_mode: pricingTypeForMode(
+        item.pricing_type === "subscription"
+          ? "subscription"
+          : item.pricing_type === "free"
+            ? "free"
+            : "paid"
+      ),
       pricing_type: item.pricing_type,
       section: item.section,
       slug: item.slug,
@@ -458,7 +507,10 @@ async function seedMissingTemplateItems() {
           templateRegistryId: template.id
         },
         name: template.name,
+        price_amount: isPremium ? 29.99 : 0,
+        pricing_mode: isPremium ? "paid" : "free",
         pricing_type: isPremium ? ("premium" as const) : ("free" as const),
+        currency: "USD",
         section: "template_marketplace" as const,
         slug: template.slug,
         source_type: "platform" as const,

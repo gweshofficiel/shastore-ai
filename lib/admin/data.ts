@@ -1256,7 +1256,14 @@ export type AdminMarketplaceControl = {
     installs: number;
     lastUpdated: string | null;
     name: string;
-    priceType: "free" | "paid" | "premium" | "subscription";
+    pricing: {
+      billingInterval: "monthly" | "yearly" | null;
+      currency: "EUR" | "MAD" | "USD" | null;
+      mode: "free" | "paid" | "subscription";
+      priceAmount: number;
+      pricingUpdatedAt: string | null;
+      trialDays: number;
+    };
     revenue: number;
     section: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
     status: "approved" | "archived" | "draft" | "pending_review" | "rejected";
@@ -6000,7 +6007,14 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     installs: item.installCount,
     lastUpdated: item.updatedAt,
     name: item.name,
-    priceType: item.pricingType,
+    pricing: {
+      billingInterval: item.pricing.billingInterval,
+      currency: item.pricing.currency,
+      mode: item.pricing.mode,
+      priceAmount: item.pricing.priceAmount,
+      pricingUpdatedAt: item.pricing.pricingUpdatedAt,
+      trialDays: item.pricing.trialDays
+    },
     revenue: item.revenueAmount,
     section: toAdminMarketplaceSectionName(item.section),
     status: item.status,
