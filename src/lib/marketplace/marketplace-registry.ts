@@ -1379,3 +1379,33 @@ export {
   uninstallMarketplaceAppPluginInstallationFoundation,
   validateAppPluginInstallationMetadata
 } from "@/src/lib/marketplace/marketplace-app-plugin-installation-runtime";
+export type {
+  CreateMarketplaceResellerItemFoundationInput,
+  MarketplaceResellerCommissionMode,
+  MarketplaceResellerItemEligibility,
+  MarketplaceResellerItemRecord,
+  MarketplaceResellerItemStats,
+  MarketplaceResellerStatus
+} from "@/src/lib/marketplace/marketplace-reseller-runtime";
+export {
+  archiveMarketplaceResellerItemFoundation,
+  calculateResellerCommissionPreview,
+  createMarketplaceResellerItemFoundation,
+  evaluateMarketplaceResellerItemEligibility,
+  getMarketplaceResellerItemById,
+  getMarketplaceResellerItemStats,
+  inspectMarketplaceResellerItemEligibility,
+  isResellerSupportedMarketplaceItemType,
+  isValidMarketplaceResellerCommissionMode,
+  isValidMarketplaceResellerStatus,
+  listMarketplaceResellerItems,
+  MARKETPLACE_RESELLER_COMMISSION_MODES,
+  MARKETPLACE_RESELLER_STATUSES,
+  MARKETPLACE_RESELLER_SUPPORTED_ITEM_TYPES,
+  parseMarketplaceResellerCommissionMode,
+  parseMarketplaceResellerItem,
+  parseMarketplaceResellerStatus,
+  sanitizeResellerMetadata,
+  suspendMarketplaceResellerItemFoundation,
+  validateResellerMetadata
+} from "@/src/lib/marketplace/marketplace-reseller-runtime";
