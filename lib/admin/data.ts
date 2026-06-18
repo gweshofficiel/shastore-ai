@@ -21,6 +21,13 @@ import { integrationDefinitions } from "@/lib/integrations/catalog";
 import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integrations/health-engine";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
+  getMarketplaceRegistryStats,
+  listMarketplaceItems,
+  listMarketplaceSections,
+  toAdminMarketplaceSectionName,
+  toAdminMarketplaceVisibility
+} from "@/src/lib/marketplace/marketplace-registry";
+import {
   getTemplateRegistryStats,
   listTemplates
 } from "@/src/lib/templates/template-registry";
@@ -5958,10 +5965,13 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
   const { supabase } = await getAdminUsersBase();
-  const [templateControl, monitoringEvents] = await Promise.all([
-    getAdminTemplateManagementControl(),
+  const [registryItems, registrySections, registryStats, monitoringEvents] = await Promise.all([
+    listMarketplaceItems(),
+    listMarketplaceSections(),
+    getMarketplaceRegistryStats(),
     safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
   ]);
+
   const marketplaceEvents = monitoringEvents
     .filter((event) => text(event.event_type).startsWith("admin_marketplace_"))
     .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
@@ -6001,95 +6011,19 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     return fallback;
   }
 
-  const templateItems: AdminMarketplaceControl["items"] = templateControl.templates.map((template) => {
-    const itemId = `template:${template.id}`;
-    const fallbackStatus =
-      template.status === "archived" ? "archived" : template.status === "active" ? "approved" : "draft";
-    const visibility =
-      template.visibility === "marketplace"
-        ? "public"
-        : template.visibility === "internal"
-          ? "internal"
-          : template.visibility === "reseller"
-            ? "reseller"
-            : "owner";
-
-    return {
-      creator: template.badges.official ? "SHASTORE official" : "Existing template library",
-      id: itemId,
-      installs: template.installedVersionCount,
-      lastUpdated: template.lastUpdated,
-      name: template.name,
-      priceType: template.badges.premium ? "premium" : "free",
-      revenue: 0,
-      section: "Template Marketplace",
-      status: statusFromEvent(itemId, fallbackStatus),
-      type: "template",
-      visibility
-    };
-  });
-  const placeholderItems: AdminMarketplaceControl["items"] = [
-    {
-      creator: "SHASTORE platform",
-      id: "theme:platform-brand-pack",
-      installs: 0,
-      lastUpdated: null,
-      name: "Platform Brand Theme Pack",
-      priceType: "premium",
-      revenue: 0,
-      section: "Theme Marketplace",
-      status: statusFromEvent("theme:platform-brand-pack", "draft"),
-      type: "theme",
-      visibility: "internal"
-    },
-    {
-      creator: "SHASTORE platform",
-      id: "plugin:loyalty-foundation",
-      installs: 0,
-      lastUpdated: null,
-      name: "Loyalty Plugin Foundation",
-      priceType: "subscription",
-      revenue: 0,
-      section: "Plugin Marketplace",
-      status: statusFromEvent("plugin:loyalty-foundation", "pending_review"),
-      type: "plugin",
-      visibility: "internal"
-    },
-    {
-      creator: "SHASTORE platform",
-      id: "app:analytics-connector",
-      installs: 0,
-      lastUpdated: null,
-      name: "Analytics Connector App",
-      priceType: "paid",
-      revenue: 0,
-      section: "App Marketplace",
-      status: statusFromEvent("app:analytics-connector", "draft"),
-      type: "app",
-      visibility: "internal"
-    },
-    {
-      creator: "SHASTORE services",
-      id: "service:store-launch-assistance",
-      installs: 0,
-      lastUpdated: null,
-      name: "Store Launch Assistance",
-      priceType: "paid",
-      revenue: 0,
-      section: "Service Marketplace",
-      status: statusFromEvent("service:store-launch-assistance", "draft"),
-      type: "service",
-      visibility: "internal"
-    }
-  ];
-  const items = [...templateItems, ...placeholderItems];
-  const sectionNames: AdminMarketplaceControl["sections"][number]["name"][] = [
-    "Template Marketplace",
-    "Theme Marketplace",
-    "Plugin Marketplace",
-    "App Marketplace",
-    "Service Marketplace"
-  ];
+  const items: AdminMarketplaceControl["items"] = registryItems.map((item) => ({
+    creator: item.creatorSource ?? "SHASTORE platform",
+    id: item.id,
+    installs: item.installCount,
+    lastUpdated: item.updatedAt,
+    name: item.name,
+    priceType: item.pricingType,
+    revenue: item.revenueAmount,
+    section: toAdminMarketplaceSectionName(item.section),
+    status: statusFromEvent(item.id, item.status),
+    type: item.itemType,
+    visibility: toAdminMarketplaceVisibility(item.visibility)
+  }));
 
   return {
     futureHooks: [
@@ -6103,17 +6037,17 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     ],
     items,
     overview: {
-      approvedItems: items.filter((item) => item.status === "approved").length,
-      archivedItems: items.filter((item) => item.status === "archived").length,
-      draftItems: items.filter((item) => item.status === "draft").length,
-      pendingReviewItems: items.filter((item) => item.status === "pending_review").length,
-      rejectedItems: items.filter((item) => item.status === "rejected").length,
-      totalItems: items.length
+      approvedItems: registryStats.approvedItems,
+      archivedItems: registryStats.archivedItems,
+      draftItems: registryStats.draftItems,
+      pendingReviewItems: registryStats.pendingReviewItems,
+      rejectedItems: registryStats.rejectedItems,
+      totalItems: registryStats.totalItems
     },
-    sections: sectionNames.map((name) => ({
-      itemCount: items.filter((item) => item.section === name).length,
-      name,
-      status: name === "Template Marketplace" ? "ready" : "placeholder"
+    sections: registrySections.map((section) => ({
+      itemCount: section.itemCount,
+      name: toAdminMarketplaceSectionName(section.section),
+      status: section.readiness
     }))
   };
 }

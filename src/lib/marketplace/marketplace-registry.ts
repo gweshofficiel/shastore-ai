@@ -1,0 +1,515 @@
+import "server-only";
+
+import { getAdminAccess } from "@/lib/admin-access";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { listTemplates } from "@/src/lib/templates/template-registry";
+
+export type MarketplaceItemType = "app" | "plugin" | "service" | "template" | "theme";
+
+export type MarketplaceSection =
+  | "app_marketplace"
+  | "plugin_marketplace"
+  | "service_marketplace"
+  | "template_marketplace"
+  | "theme_marketplace";
+
+export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
+
+export type MarketplaceItemStatus = "approved" | "archived" | "draft" | "pending_review" | "rejected";
+
+export type MarketplaceItemVisibility = "internal" | "marketplace" | "owner" | "reseller";
+
+export type MarketplacePricingType = "free" | "paid" | "premium" | "subscription";
+
+export type MarketplaceItemRecord = {
+  createdAt: string | null;
+  creatorSource: string | null;
+  currency: string | null;
+  id: string;
+  installCount: number;
+  itemKey: string;
+  itemType: MarketplaceItemType;
+  linkedAppId: string | null;
+  linkedPluginId: string | null;
+  linkedServiceId: string | null;
+  linkedTemplateId: string | null;
+  linkedThemeId: string | null;
+  metadata: Record<string, unknown>;
+  name: string;
+  priceAmount: number | null;
+  pricingType: MarketplacePricingType;
+  revenueAmount: number;
+  revenueCurrency: string | null;
+  section: MarketplaceSection;
+  slug: string;
+  sourceType: MarketplaceSourceType;
+  status: MarketplaceItemStatus;
+  updatedAt: string | null;
+  visibility: MarketplaceItemVisibility;
+};
+
+export type MarketplaceItemFilters = {
+  itemType?: MarketplaceItemType | MarketplaceItemType[];
+  limit?: number;
+  section?: MarketplaceSection | MarketplaceSection[];
+  status?: MarketplaceItemStatus | MarketplaceItemStatus[];
+  visibility?: MarketplaceItemVisibility | MarketplaceItemVisibility[];
+};
+
+export type MarketplaceRegistryStats = {
+  approvedItems: number;
+  archivedItems: number;
+  draftItems: number;
+  pendingReviewItems: number;
+  rejectedItems: number;
+  totalItems: number;
+};
+
+export type MarketplaceSectionSummary = {
+  itemCount: number;
+  readiness: "placeholder" | "ready";
+  section: MarketplaceSection;
+  sectionLabel: string;
+};
+
+const itemSelect =
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_type, price_amount, currency, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, created_at, updated_at";
+
+const sectionLabels: Record<MarketplaceSection, string> = {
+  app_marketplace: "App Marketplace",
+  plugin_marketplace: "Plugin Marketplace",
+  service_marketplace: "Service Marketplace",
+  template_marketplace: "Template Marketplace",
+  theme_marketplace: "Theme Marketplace"
+};
+
+const placeholderSeeds: Array<{
+  creator_source: string;
+  item_key: string;
+  item_type: MarketplaceItemType;
+  name: string;
+  pricing_type: MarketplacePricingType;
+  section: MarketplaceSection;
+  slug: string;
+  status: MarketplaceItemStatus;
+  visibility: MarketplaceItemVisibility;
+}> = [
+  {
+    creator_source: "SHASTORE platform",
+    item_key: "theme:platform-brand-pack",
+    item_type: "theme",
+    name: "Platform Brand Theme Pack",
+    pricing_type: "premium",
+    section: "theme_marketplace",
+    slug: "platform-brand-theme-pack",
+    status: "draft",
+    visibility: "internal"
+  },
+  {
+    creator_source: "SHASTORE platform",
+    item_key: "plugin:loyalty-foundation",
+    item_type: "plugin",
+    name: "Loyalty Plugin Foundation",
+    pricing_type: "subscription",
+    section: "plugin_marketplace",
+    slug: "loyalty-plugin-foundation",
+    status: "pending_review",
+    visibility: "internal"
+  },
+  {
+    creator_source: "SHASTORE platform",
+    item_key: "app:analytics-connector",
+    item_type: "app",
+    name: "Analytics Connector App",
+    pricing_type: "paid",
+    section: "app_marketplace",
+    slug: "analytics-connector-app",
+    status: "draft",
+    visibility: "internal"
+  },
+  {
+    creator_source: "SHASTORE services",
+    item_key: "service:store-launch-assistance",
+    item_type: "service",
+    name: "Store Launch Assistance",
+    pricing_type: "paid",
+    section: "service_marketplace",
+    slug: "store-launch-assistance",
+    status: "draft",
+    visibility: "internal"
+  }
+];
+
+function text(value: unknown, maxLength = 500) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/\bjavascript:/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function safeRecord(value: unknown) {
+  return isRecord(value) ? value : {};
+}
+
+function rowRecord(value: unknown) {
+  const candidate = value as unknown;
+  return isRecord(candidate) ? candidate : null;
+}
+
+function parseItemType(value: unknown): MarketplaceItemType {
+  const cleaned = text(value, 40);
+  if (cleaned === "theme") return "theme";
+  if (cleaned === "plugin") return "plugin";
+  if (cleaned === "app") return "app";
+  if (cleaned === "service") return "service";
+  return "template";
+}
+
+function parseSection(value: unknown): MarketplaceSection {
+  const cleaned = text(value, 60);
+  if (cleaned === "theme_marketplace") return "theme_marketplace";
+  if (cleaned === "plugin_marketplace") return "plugin_marketplace";
+  if (cleaned === "app_marketplace") return "app_marketplace";
+  if (cleaned === "service_marketplace") return "service_marketplace";
+  return "template_marketplace";
+}
+
+function parseSourceType(value: unknown): MarketplaceSourceType {
+  const cleaned = text(value, 40);
+  if (cleaned === "creator") return "creator";
+  if (cleaned === "reseller") return "reseller";
+  if (cleaned === "partner") return "partner";
+  return "platform";
+}
+
+function parseStatus(value: unknown): MarketplaceItemStatus {
+  const cleaned = text(value, 40);
+  if (cleaned === "approved") return "approved";
+  if (cleaned === "pending_review") return "pending_review";
+  if (cleaned === "rejected") return "rejected";
+  if (cleaned === "archived") return "archived";
+  return "draft";
+}
+
+function parseVisibility(value: unknown): MarketplaceItemVisibility {
+  const cleaned = text(value, 40);
+  if (cleaned === "marketplace") return "marketplace";
+  if (cleaned === "reseller") return "reseller";
+  if (cleaned === "owner") return "owner";
+  return "internal";
+}
+
+function parsePricingType(value: unknown): MarketplacePricingType {
+  const cleaned = text(value, 40);
+  if (cleaned === "paid") return "paid";
+  if (cleaned === "premium") return "premium";
+  if (cleaned === "subscription") return "subscription";
+  return "free";
+}
+
+function parseNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function parseRecord(value: unknown): MarketplaceItemRecord | null {
+  const row = rowRecord(value);
+  if (!row) return null;
+
+  const id = text(row.id, 120);
+  const itemKey = text(row.item_key, 160);
+  const slug = text(row.slug, 160);
+  const name = text(row.name, 240);
+
+  if (!id || !itemKey || !slug || !name) return null;
+
+  return {
+    createdAt: text(row.created_at, 80) || null,
+    creatorSource: text(row.creator_source, 240) || null,
+    currency: text(row.currency, 12) || null,
+    id,
+    installCount: Math.max(0, parseNumber(row.install_count) ?? 0),
+    itemKey,
+    itemType: parseItemType(row.item_type),
+    linkedAppId: text(row.linked_app_id, 120) || null,
+    linkedPluginId: text(row.linked_plugin_id, 120) || null,
+    linkedServiceId: text(row.linked_service_id, 120) || null,
+    linkedTemplateId: text(row.linked_template_id, 120) || null,
+    linkedThemeId: text(row.linked_theme_id, 120) || null,
+    metadata: safeRecord(row.metadata),
+    name,
+    priceAmount: parseNumber(row.price_amount),
+    pricingType: parsePricingType(row.pricing_type),
+    revenueAmount: Math.max(0, parseNumber(row.revenue_amount) ?? 0),
+    revenueCurrency: text(row.revenue_currency, 12) || null,
+    section: parseSection(row.section),
+    slug,
+    sourceType: parseSourceType(row.source_type),
+    status: parseStatus(row.status),
+    updatedAt: text(row.updated_at, 80) || null,
+    visibility: parseVisibility(row.visibility)
+  };
+}
+
+async function requireSuperAdmin() {
+  const access = await getAdminAccess();
+
+  if (access.internalRole !== "super_admin") {
+    throw new Error("Only Super Admin can access the marketplace registry.");
+  }
+}
+
+function requireAdminClient() {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for the marketplace registry.");
+  }
+
+  return admin;
+}
+
+async function loadExistingItemKeys() {
+  const admin = requireAdminClient();
+  const { data, error } = await admin.from("marketplace_items" as never).select("item_key" as never);
+
+  if (error) {
+    throw new Error(`Marketplace registry could not be inspected: ${error.message}`);
+  }
+
+  return new Set(
+    (Array.isArray(data) ? (data as unknown[]) : [])
+      .map((row) => text(rowRecord(row)?.item_key, 160))
+      .filter(Boolean)
+  );
+}
+
+async function seedMissingPlaceholderItems() {
+  const admin = requireAdminClient();
+  const existingKeys = await loadExistingItemKeys();
+  const missing = placeholderSeeds.filter((item) => !existingKeys.has(item.item_key));
+
+  if (!missing.length) return;
+
+  const { error } = await admin.from("marketplace_items" as never).insert(
+    missing.map((item) => ({
+      creator_source: item.creator_source,
+      item_key: item.item_key,
+      item_type: item.item_type,
+      metadata: { source: "marketplace_registry_seed" },
+      name: item.name,
+      pricing_type: item.pricing_type,
+      section: item.section,
+      slug: item.slug,
+      source_type: "platform",
+      status: item.status,
+      visibility: item.visibility
+    })) as never
+  );
+
+  if (error) {
+    throw new Error(`Marketplace placeholder items could not be seeded: ${error.message}`);
+  }
+}
+
+async function seedMissingTemplateItems() {
+  const admin = requireAdminClient();
+  const [existingKeys, templates] = await Promise.all([loadExistingItemKeys(), listTemplates()]);
+  const missing = templates
+    .map((template) => {
+      const itemKey = `template:${template.templateKey}`;
+
+      if (existingKeys.has(itemKey)) return null;
+
+      const isPremium = template.badges.some((badge) => badge.toLowerCase() === "premium");
+
+      return {
+        creator_source: template.isOfficial ? "SHASTORE official" : "Existing template library",
+        item_key: itemKey,
+        item_type: "template" as const,
+        linked_template_id: template.id,
+        metadata: {
+          source: "marketplace_registry_seed",
+          templateKey: template.templateKey,
+          templateRegistryId: template.id
+        },
+        name: template.name,
+        pricing_type: isPremium ? ("premium" as const) : ("free" as const),
+        section: "template_marketplace" as const,
+        slug: template.slug,
+        source_type: "platform" as const,
+        status:
+          template.status === "archived"
+            ? ("archived" as const)
+            : template.status === "active"
+              ? ("approved" as const)
+              : ("draft" as const),
+        visibility: template.visibility
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  if (!missing.length) return;
+
+  const { error } = await admin.from("marketplace_items" as never).insert(missing as never);
+
+  if (error) {
+    throw new Error(`Marketplace template items could not be seeded: ${error.message}`);
+  }
+}
+
+export async function ensureMarketplaceRegistry() {
+  await requireSuperAdmin();
+  await seedMissingPlaceholderItems();
+  await seedMissingTemplateItems();
+}
+
+export async function listMarketplaceItems(
+  filters: MarketplaceItemFilters = {}
+): Promise<MarketplaceItemRecord[]> {
+  await ensureMarketplaceRegistry();
+
+  const admin = requireAdminClient();
+  const limit = Math.max(1, Math.min(filters.limit ?? 500, 1000));
+  let query = admin.from("marketplace_items" as never).select(itemSelect as never);
+
+  if (filters.section) {
+    const sections = Array.isArray(filters.section) ? filters.section : [filters.section];
+    query = query.in("section" as never, sections as never);
+  }
+
+  if (filters.itemType) {
+    const types = Array.isArray(filters.itemType) ? filters.itemType : [filters.itemType];
+    query = query.in("item_type" as never, types as never);
+  }
+
+  if (filters.status) {
+    const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+    query = query.in("status" as never, statuses as never);
+  }
+
+  if (filters.visibility) {
+    const visibilities = Array.isArray(filters.visibility) ? filters.visibility : [filters.visibility];
+    query = query.in("visibility" as never, visibilities as never);
+  }
+
+  const { data, error } = await query.order("updated_at" as never, { ascending: false }).limit(limit);
+
+  if (error) {
+    throw new Error(`Marketplace items could not be loaded: ${error.message}`);
+  }
+
+  return (Array.isArray(data) ? (data as unknown[]) : [])
+    .map((row) => parseRecord(row))
+    .filter((item): item is MarketplaceItemRecord => Boolean(item));
+}
+
+export async function getMarketplaceItemByKey(itemKey: string): Promise<MarketplaceItemRecord | null> {
+  await ensureMarketplaceRegistry();
+
+  const cleanedKey = text(itemKey, 160);
+  if (!cleanedKey) return null;
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("marketplace_items" as never)
+    .select(itemSelect as never)
+    .eq("item_key" as never, cleanedKey as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Marketplace item could not be loaded: ${error.message}`);
+  }
+
+  return parseRecord(data);
+}
+
+export async function getMarketplaceItemBySlug(slug: string): Promise<MarketplaceItemRecord | null> {
+  await ensureMarketplaceRegistry();
+
+  const cleanedSlug = text(slug, 160);
+  if (!cleanedSlug) return null;
+
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("marketplace_items" as never)
+    .select(itemSelect as never)
+    .eq("slug" as never, cleanedSlug as never)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Marketplace item could not be loaded: ${error.message}`);
+  }
+
+  return parseRecord(data);
+}
+
+export async function getMarketplaceRegistryStats(): Promise<MarketplaceRegistryStats> {
+  const items = await listMarketplaceItems();
+
+  return {
+    approvedItems: items.filter((item) => item.status === "approved").length,
+    archivedItems: items.filter((item) => item.status === "archived").length,
+    draftItems: items.filter((item) => item.status === "draft").length,
+    pendingReviewItems: items.filter((item) => item.status === "pending_review").length,
+    rejectedItems: items.filter((item) => item.status === "rejected").length,
+    totalItems: items.length
+  };
+}
+
+export function getMarketplaceSectionLabel(section: MarketplaceSection) {
+  return sectionLabels[section];
+}
+
+export async function listMarketplaceSections(): Promise<MarketplaceSectionSummary[]> {
+  const items = await listMarketplaceItems();
+  const sections: MarketplaceSection[] = [
+    "template_marketplace",
+    "theme_marketplace",
+    "plugin_marketplace",
+    "app_marketplace",
+    "service_marketplace"
+  ];
+
+  return sections.map((section) => {
+    const itemCount = items.filter((item) => item.section === section).length;
+
+    return {
+      itemCount,
+      readiness: section === "template_marketplace" ? "ready" : "placeholder",
+      section,
+      sectionLabel: sectionLabels[section]
+    };
+  });
+}
+
+export function toAdminMarketplaceVisibility(
+  visibility: MarketplaceItemVisibility
+): "internal" | "owner" | "public" | "reseller" {
+  if (visibility === "marketplace") return "public";
+  return visibility;
+}
+
+export function toAdminMarketplaceSectionName(
+  section: MarketplaceSection
+): "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace" {
+  return sectionLabels[section] as
+    | "App Marketplace"
+    | "Plugin Marketplace"
+    | "Service Marketplace"
+    | "Template Marketplace"
+    | "Theme Marketplace";
+}
