@@ -385,6 +385,69 @@ function MarketplaceAppBindingInspection({
   );
 }
 
+function MarketplaceServiceBindingInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  if (!item.serviceBinding) {
+    return <p className="text-xs font-semibold text-slate-400">Not applicable</p>;
+  }
+
+  const binding = item.serviceBinding;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={binding.verified ? "green" : binding.bindingStatus === "active" ? "amber" : "red"}>
+        {binding.bindingStatus ?? "unbound"}
+      </AdminBadge>
+      <p className="text-xs font-semibold text-slate-600">
+        Verified: {binding.verified ? "yes" : "no"}
+      </p>
+      {binding.serviceName ? (
+        <p className="text-xs font-semibold text-slate-600">Service: {binding.serviceName}</p>
+      ) : null}
+      {binding.serviceKey ? (
+        <p className="text-xs font-semibold text-slate-500">Key: {binding.serviceKey}</p>
+      ) : null}
+      {binding.serviceCategory ? (
+        <p className="text-xs font-semibold text-slate-500">Category: {binding.serviceCategory}</p>
+      ) : null}
+      {binding.serviceDurationDays !== null && binding.serviceDurationDays > 0 ? (
+        <p className="text-xs font-semibold text-slate-500">Duration: {binding.serviceDurationDays} days</p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Marketplace status: {binding.marketplaceStatus}</p>
+      <p className="text-xs font-semibold text-slate-500">Visibility: {binding.marketplaceVisibility}</p>
+      <p className="text-xs font-semibold text-slate-500">Pricing mode: {binding.pricingMode}</p>
+      <p className="text-xs font-semibold text-slate-500">
+        Public eligible: {binding.publicEligible ? "yes" : "no"}
+      </p>
+      {binding.serviceRequirementsSummary.length ? (
+        <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Requirements summary</p>
+          {binding.serviceRequirementsSummary.map((line) => (
+            <p className="text-[11px] font-semibold text-slate-600" key={line}>
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {binding.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Binding issues</p>
+          {binding.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">Service binding verified.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -437,7 +500,8 @@ export default async function AdminMarketplacePage() {
           { label: "Verified template bindings", value: control.overview.verifiedTemplateBindings },
           { label: "Verified theme bindings", value: control.overview.verifiedThemeBindings },
           { label: "Verified plugin bindings", value: control.overview.verifiedPluginBindings },
-          { label: "Verified app bindings", value: control.overview.verifiedAppBindings }
+          { label: "Verified app bindings", value: control.overview.verifiedAppBindings },
+          { label: "Verified service bindings", value: control.overview.verifiedServiceBindings }
         ]}
       />
 
@@ -476,6 +540,7 @@ export default async function AdminMarketplacePage() {
                 "Theme binding",
                 "Plugin binding",
                 "App binding",
+                "Service binding",
                 "Price",
                 "Installs",
                 "Revenue",
@@ -526,6 +591,9 @@ export default async function AdminMarketplacePage() {
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplaceAppBindingInspection item={item} />
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceServiceBindingInspection item={item} />
                   </td>
                   <td className="px-5 py-4">
                     <div className="grid gap-2">

@@ -257,6 +257,28 @@ export {
   validateAppManifest,
   verifyMarketplaceAppBinding
 } from "@/src/lib/marketplace/marketplace-app-runtime";
+import { ensureMarketplaceServiceBindings } from "@/src/lib/marketplace/marketplace-service-runtime";
+export type {
+  MarketplaceServiceBindingRecord,
+  MarketplaceServiceBindingStats,
+  MarketplaceServiceBindingStatus,
+  MarketplaceServiceInspection
+} from "@/src/lib/marketplace/marketplace-service-runtime";
+export {
+  ensureMarketplaceServiceBindings,
+  evaluateMarketplaceServiceBinding,
+  getMarketplaceServiceBindingStats,
+  getMarketplaceServiceInspection,
+  isValidMarketplaceServiceBindingStatus,
+  isValidServiceKey,
+  listMarketplaceServiceBindings,
+  MARKETPLACE_SERVICE_BINDING_STATUSES,
+  parseMarketplaceServiceBindingStatus,
+  sanitizeServiceRequirements,
+  serviceKeyFromMarketplaceItemKey,
+  validateServiceRequirements,
+  verifyMarketplaceServiceBinding
+} from "@/src/lib/marketplace/marketplace-service-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
@@ -757,6 +779,7 @@ export async function ensureMarketplaceRegistry() {
   await ensureMarketplaceThemeBindings();
   await ensureMarketplacePluginBindings();
   await ensureMarketplaceAppBindings();
+  await ensureMarketplaceServiceBindings();
 }
 
 export async function listMarketplaceItems(
