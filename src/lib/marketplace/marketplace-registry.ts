@@ -1446,3 +1446,33 @@ export {
   toMarketplacePublicReview,
   validateReviewMetadata
 } from "@/src/lib/marketplace/marketplace-reviews-runtime";
+export type {
+  MarketplaceRevenueShareAllocation,
+  MarketplaceRevenueShareEligibility,
+  MarketplaceRevenueShareRecord,
+  MarketplaceRevenueShareStats,
+  MarketplaceRevenueShareStatus
+} from "@/src/lib/marketplace/marketplace-revenue-sharing-runtime";
+export {
+  calculateMarketplaceRevenueShareAllocation,
+  cancelMarketplaceRevenueShareFoundation,
+  createMarketplaceRevenueShareFromPurchase,
+  evaluateMarketplaceRevenueShareEligibility,
+  getMarketplaceRevenueShareById,
+  getMarketplaceRevenueShareByPurchaseId,
+  getMarketplaceRevenueShareStats,
+  inspectMarketplaceRevenueShareEligibility,
+  isRevenueShareSupportedMarketplaceItemType,
+  isValidMarketplaceRevenueShareStatus,
+  listMarketplaceRevenueShares,
+  lockMarketplaceRevenueShareFoundation,
+  MARKETPLACE_REVENUE_SHARE_ACTIVE_STATUSES,
+  MARKETPLACE_REVENUE_SHARE_STATUSES,
+  MARKETPLACE_REVENUE_SHARE_SUPPORTED_ITEM_TYPES,
+  parseMarketplaceRevenueShare,
+  parseMarketplaceRevenueShareStatus,
+  refundMarketplaceRevenueShareFoundation,
+  sanitizeRevenueShareMetadata,
+  validateMarketplaceRevenueShareAllocation,
+  validateRevenueShareMetadata
+} from "@/src/lib/marketplace/marketplace-revenue-sharing-runtime";
