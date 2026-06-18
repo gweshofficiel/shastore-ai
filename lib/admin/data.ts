@@ -24,6 +24,7 @@ import {
   calculateMarketplaceRevenue,
   evaluateMarketplaceAppBinding,
   evaluateMarketplaceCreatorAccount,
+  evaluateMarketplaceCreatorSubmissionInspection,
   evaluateMarketplaceItemCreatorLink,
   evaluateMarketplacePluginBinding,
   evaluateMarketplaceServiceBinding,
@@ -1411,6 +1412,18 @@ export type AdminMarketplaceControl = {
       verificationIssues: string[];
       verified: boolean;
     } | null;
+    submission: {
+      creatorAccountId: string | null;
+      creatorDisplayName: string | null;
+      creatorPublicSlug: string | null;
+      marketplaceStatus: string;
+      submissionNote: string | null;
+      submissionStatus: "approved" | "draft" | "rejected" | "submitted" | "withdrawn" | null;
+      submittedAt: string | null;
+      submittedBy: string | null;
+      verificationIssues: string[];
+      verified: boolean;
+    };
     type: "app" | "plugin" | "service" | "template" | "theme";
     visibility: "internal" | "private" | "public";
   }>;
@@ -1433,6 +1446,7 @@ export type AdminMarketplaceControl = {
     activeCreatorAccounts: number;
     totalCreatorAccounts: number;
     verifiedCreatorAccounts: number;
+    submittedItems: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6274,6 +6288,25 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       marketplaceStatus: item.status,
       marketplaceVisibility: item.visibility
     });
+    const linkedCreator = item.creatorAccountId ? creatorById.get(item.creatorAccountId) ?? null : null;
+    const submissionInspection = evaluateMarketplaceCreatorSubmissionInspection({
+      creator: linkedCreator,
+      item: {
+        creatorAccountId: item.creatorAccountId,
+        status: item.status,
+        submissionNote: item.submissionNote,
+        submissionStatus:
+          item.submissionStatus === "draft" ||
+          item.submissionStatus === "submitted" ||
+          item.submissionStatus === "withdrawn" ||
+          item.submissionStatus === "rejected" ||
+          item.submissionStatus === "approved"
+            ? item.submissionStatus
+            : null,
+        submittedAt: item.submittedAt,
+        submittedBy: item.submittedBy
+      }
+    });
 
     return {
     approval: {
@@ -6432,6 +6465,18 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             verified: serviceBindingEvaluation.verified
           }
         : null,
+    submission: {
+      creatorAccountId: submissionInspection.creatorAccountId,
+      creatorDisplayName: submissionInspection.creatorDisplayName,
+      creatorPublicSlug: submissionInspection.creatorPublicSlug,
+      marketplaceStatus: submissionInspection.marketplaceStatus,
+      submissionNote: submissionInspection.submissionNote,
+      submissionStatus: submissionInspection.submissionStatus,
+      submittedAt: submissionInspection.submittedAt,
+      submittedBy: submissionInspection.submittedBy,
+      verificationIssues: submissionInspection.verificationIssues,
+      verified: submissionInspection.verified
+    },
     type: item.itemType,
     visibility: item.visibility
   };
@@ -6545,7 +6590,8 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       }, 0),
       activeCreatorAccounts: creatorAccounts.filter((creator) => creator.creatorStatus === "active").length,
       totalCreatorAccounts: creatorAccounts.length,
-      verifiedCreatorAccounts: creatorAccounts.filter((creator) => creator.verificationStatus === "verified").length
+      verifiedCreatorAccounts: creatorAccounts.filter((creator) => creator.verificationStatus === "verified").length,
+      submittedItems: registryItems.filter((item) => item.submissionStatus === "submitted").length
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,

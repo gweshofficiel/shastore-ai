@@ -315,6 +315,24 @@ export {
   validateCreatorMetadata,
   verifyMarketplaceCreatorAccount
 } from "@/src/lib/marketplace/marketplace-creator-runtime";
+export type {
+  MarketplaceCreatorSubmissionInspection,
+  MarketplaceCreatorSubmissionRecord,
+  MarketplaceCreatorSubmissionResult,
+  MarketplaceSubmissionStatus
+} from "@/src/lib/marketplace/marketplace-creator-submission-runtime";
+export {
+  evaluateMarketplaceCreatorSubmissionInspection,
+  getLatestMarketplaceCreatorSubmission,
+  isValidMarketplaceSubmissionStatus,
+  MARKETPLACE_SUBMISSION_STATUSES,
+  parseMarketplaceCreatorSubmission,
+  parseMarketplaceSubmissionStatus,
+  sanitizeSubmissionMetadata,
+  submitMarketplaceCreatorSubmission,
+  validateMarketplaceCreatorSubmission,
+  validateSubmissionMetadata
+} from "@/src/lib/marketplace/marketplace-creator-submission-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
@@ -349,6 +367,11 @@ export type MarketplaceItemRecord = {
   slug: string;
   sourceType: MarketplaceSourceType;
   status: MarketplaceItemStatus;
+  submissionNote: string | null;
+  submissionStatus: string | null;
+  submissionUpdatedAt: string | null;
+  submittedAt: string | null;
+  submittedBy: string | null;
   templateBinding: {
     bindingStatus: MarketplaceTemplateBindingStatus | null;
     bindingUpdatedAt: string | null;
@@ -388,7 +411,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, submitted_by, submitted_at, submission_note, submission_status, submission_updated_at, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -599,6 +622,11 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     slug,
     sourceType: parseSourceType(row.source_type),
     status,
+    submissionNote: text(row.submission_note, 2000) || null,
+    submissionStatus: text(row.submission_status, 40) || null,
+    submissionUpdatedAt: text(row.submission_updated_at, 80) || null,
+    submittedAt: text(row.submitted_at, 80) || null,
+    submittedBy: text(row.submitted_by, 120) || null,
     templateBinding: {
       bindingStatus: parseMarketplaceTemplateBindingStatus(row.template_binding_status),
       bindingUpdatedAt: text(row.template_binding_updated_at, 80) || null,

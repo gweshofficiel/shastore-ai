@@ -500,6 +500,50 @@ function MarketplaceCreatorAccountInspection({
   );
 }
 
+function MarketplaceSubmissionInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const submission = item.submission;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={submission.submissionStatus === "submitted" ? "amber" : submission.verified ? "green" : "blue"}>
+        {submission.submissionStatus ?? "draft"}
+      </AdminBadge>
+      {submission.creatorDisplayName ? (
+        <p className="text-xs font-semibold text-slate-600">Creator: {submission.creatorDisplayName}</p>
+      ) : null}
+      {submission.creatorPublicSlug ? (
+        <p className="text-xs font-semibold text-slate-500">Slug: {submission.creatorPublicSlug}</p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Marketplace status: {submission.marketplaceStatus}</p>
+      {submission.submittedAt ? (
+        <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(submission.submittedAt)}</p>
+      ) : null}
+      {submission.submittedBy ? (
+        <p className="text-xs font-semibold text-slate-500">Submitted by: {shortenActorId(submission.submittedBy)}</p>
+      ) : null}
+      {submission.submissionNote ? (
+        <p className="text-xs font-semibold text-slate-500">Note: {submission.submissionNote}</p>
+      ) : null}
+      {submission.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Submission issues</p>
+          {submission.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">Submission metadata ready.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -556,7 +600,8 @@ export default async function AdminMarketplacePage() {
           { label: "Verified service bindings", value: control.overview.verifiedServiceBindings },
           { label: "Creator accounts", value: control.overview.totalCreatorAccounts },
           { label: "Active creators", value: control.overview.activeCreatorAccounts },
-          { label: "Verified creators", value: control.overview.verifiedCreatorAccounts }
+          { label: "Verified creators", value: control.overview.verifiedCreatorAccounts },
+          { label: "Submitted items", value: control.overview.submittedItems }
         ]}
       />
 
@@ -632,6 +677,7 @@ export default async function AdminMarketplacePage() {
                 "Type",
                 "Creator/source",
                 "Creator account",
+                "Submission",
                 "Status",
                 "Visibility",
                 "Template binding",
@@ -656,6 +702,9 @@ export default async function AdminMarketplacePage() {
                   <td className="px-5 py-4 text-slate-600">{item.creator}</td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplaceCreatorAccountInspection item={item} />
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceSubmissionInspection item={item} />
                   </td>
                   <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
                   <td className="px-5 py-4">
@@ -779,10 +828,16 @@ export default async function AdminMarketplacePage() {
                   <td className="px-5 py-4">
                     <div className="grid min-w-52 gap-2">
                       {item.approval.availableActions.includes("submit_for_review") ? (
-                        <form action={markMarketplaceItemUnderReview}>
+                        <form action={markMarketplaceItemUnderReview} className="grid gap-2">
                           <MarketplaceHiddenFields item={item} />
+                          <input
+                            className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                            name="submissionNote"
+                            placeholder="Submission note (optional)"
+                            type="text"
+                          />
                           <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                            Under review
+                            Submit for review
                           </button>
                         </form>
                       ) : null}

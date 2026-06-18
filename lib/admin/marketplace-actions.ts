@@ -6,6 +6,7 @@ import {
   applyMarketplaceApprovalAction,
   type MarketplaceApprovalAction
 } from "@/src/lib/marketplace/marketplace-approval-runtime";
+import { submitMarketplaceCreatorSubmission } from "@/src/lib/marketplace/marketplace-creator-submission-runtime";
 import {
   assertValidMarketplaceItemVisibility,
   setMarketplaceItemVisibility,
@@ -51,7 +52,23 @@ export async function rejectMarketplaceItem(formData: FormData) {
 }
 
 export async function markMarketplaceItemUnderReview(formData: FormData) {
-  await runMarketplaceApprovalAction(formData, "submit_for_review");
+  const itemId = cleanText(formData.get("itemId"));
+  const itemType = cleanText(formData.get("itemType"));
+  const submissionNote = cleanText(formData.get("submissionNote") || formData.get("approvalNote"));
+
+  if (!itemId) {
+    throw new Error("Missing marketplace item id.");
+  }
+
+  if (itemType && !isValidMarketplaceItemType(itemType)) {
+    throw new Error("Invalid marketplace item type.");
+  }
+
+  await submitMarketplaceCreatorSubmission({
+    itemId,
+    submissionNote: submissionNote || null
+  });
+  revalidatePath("/admin/marketplace");
 }
 
 export async function archiveMarketplaceItem(formData: FormData) {
