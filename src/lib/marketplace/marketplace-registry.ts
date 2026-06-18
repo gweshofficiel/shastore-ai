@@ -1329,3 +1329,25 @@ export {
   sanitizePurchaseMetadata,
   validatePurchaseMetadata
 } from "@/src/lib/marketplace/marketplace-purchase-runtime";
+export type {
+  MarketplaceTemplateSaleEligibility,
+  MarketplaceTemplateSaleRecord,
+  MarketplaceTemplateSaleStats,
+  MarketplaceTemplateSaleStatus
+} from "@/src/lib/marketplace/marketplace-template-sales-runtime";
+export {
+  cancelMarketplaceTemplateSaleFoundation,
+  createMarketplaceTemplateSaleFromPurchase,
+  evaluateMarketplaceTemplateSaleEligibility,
+  getMarketplaceTemplateSaleById,
+  getMarketplaceTemplateSaleByPurchaseId,
+  getMarketplaceTemplateSaleStats,
+  inspectMarketplaceTemplateSaleEligibility,
+  isValidMarketplaceTemplateSaleStatus,
+  listMarketplaceTemplateSales,
+  MARKETPLACE_TEMPLATE_SALE_STATUSES,
+  parseMarketplaceTemplateSale,
+  parseMarketplaceTemplateSaleStatus,
+  sanitizeTemplateSaleMetadata,
+  validateTemplateSaleMetadata
+} from "@/src/lib/marketplace/marketplace-template-sales-runtime";
