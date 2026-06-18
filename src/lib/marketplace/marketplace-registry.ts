@@ -150,6 +150,25 @@ export {
   recordMarketplaceRevenueEvent,
   validateMarketplaceRevenueCalculation
 } from "@/src/lib/marketplace/marketplace-revenue-runtime";
+export type {
+  MarketplaceInstallEventRecord,
+  MarketplaceInstallStats,
+  MarketplaceInstallStatus,
+  MarketplaceItemInstallSummary
+} from "@/src/lib/marketplace/marketplace-install-runtime";
+export {
+  getMarketplaceInstallStats,
+  getMarketplaceItemInstallSummary,
+  isInstallCountableMarketplaceItemType,
+  isPublicInstallEligible,
+  listMarketplaceInstallEvents,
+  MARKETPLACE_INSTALL_COUNTABLE_TYPES,
+  MARKETPLACE_INSTALL_STATUSES,
+  parseMarketplaceInstallEvent,
+  parseMarketplaceInstallStatus,
+  recordMarketplaceInstallEvent,
+  transitionMarketplaceInstallStatus
+} from "@/src/lib/marketplace/marketplace-install-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
@@ -162,6 +181,7 @@ export type MarketplaceItemRecord = {
   currency: string | null;
   id: string;
   installCount: number;
+  installCountUpdatedAt: string | null;
   itemKey: string;
   itemType: MarketplaceItemType;
   linkedAppId: string | null;
@@ -169,6 +189,7 @@ export type MarketplaceItemRecord = {
   linkedServiceId: string | null;
   linkedTemplateId: string | null;
   linkedThemeId: string | null;
+  liveInstalls: number;
   metadata: Record<string, unknown>;
   name: string;
   priceAmount: number | null;
@@ -209,7 +230,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -399,6 +420,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     currency: text(row.currency, 12) || null,
     id,
     installCount: Math.max(0, parseNumber(row.install_count) ?? 0),
+    installCountUpdatedAt: text(row.install_count_updated_at, 80) || null,
     itemKey,
     itemType,
     linkedAppId: text(row.linked_app_id, 120) || null,
@@ -406,6 +428,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     linkedServiceId: text(row.linked_service_id, 120) || null,
     linkedTemplateId: text(row.linked_template_id, 120) || null,
     linkedThemeId: text(row.linked_theme_id, 120) || null,
+    liveInstalls: Math.max(0, parseNumber(row.live_installs) ?? 0),
     metadata: safeRecord(row.metadata),
     name,
     priceAmount: pricing.priceAmount,

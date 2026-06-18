@@ -24,10 +24,12 @@ import {
   calculateMarketplaceRevenue,
   getAvailableMarketplaceApprovalActions,
   getMarketplacePlatformFeeRate,
+  listMarketplaceInstallEvents,
   listMarketplaceRevenueEvents,
   getMarketplaceRegistryStats,
   listMarketplaceSectionItemGroups,
   toAdminMarketplaceSectionName,
+  type MarketplaceInstallEventRecord,
   type MarketplaceRevenueEventRecord
 } from "@/src/lib/marketplace/marketplace-registry";
 import {
@@ -1257,6 +1259,21 @@ export type AdminMarketplaceControl = {
     };
     creator: string;
     id: string;
+    installInspection: {
+      eventCount: number;
+      installCount: number;
+      installCountUpdatedAt: string | null;
+      installEligible: boolean;
+      liveInstalls: number;
+      publicInstallEligible: boolean;
+      recentEvents: Array<{
+        createdAt: string | null;
+        id: string;
+        installStatus: "active" | "disabled" | "failed" | "installed" | "uninstalled";
+        source: string;
+        storeId: string | null;
+      }>;
+    };
     installs: number;
     lastUpdated: string | null;
     name: string;
@@ -6011,13 +6028,15 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const [sectionGroups, registryStats, revenueEvents] = await Promise.all([
+  const [sectionGroups, registryStats, revenueEvents, installEvents] = await Promise.all([
     listMarketplaceSectionItemGroups(),
     getMarketplaceRegistryStats(),
-    listMarketplaceRevenueEvents({ limit: 1000 })
+    listMarketplaceRevenueEvents({ limit: 1000 }),
+    listMarketplaceInstallEvents({ limit: 1000 })
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const revenueEventsByItemId = new Map<string, MarketplaceRevenueEventRecord[]>();
+  const installEventsByItemId = new Map<string, MarketplaceInstallEventRecord[]>();
 
   const revenueStats = revenueEvents.reduce(
     (stats, event) => {
@@ -6046,8 +6065,15 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     revenueEventsByItemId.set(event.marketplaceItemId, existing);
   }
 
+  for (const event of installEvents) {
+    const existing = installEventsByItemId.get(event.marketplaceItemId) ?? [];
+    existing.push(event);
+    installEventsByItemId.set(event.marketplaceItemId, existing);
+  }
+
   const items: AdminMarketplaceControl["items"] = registryItems.map((item) => {
     const itemEvents = revenueEventsByItemId.get(item.id) ?? [];
+    const itemInstallEvents = installEventsByItemId.get(item.id) ?? [];
     const calculated = calculateMarketplaceRevenue(
       item.pricing,
       getMarketplacePlatformFeeRate(item.metadata)
@@ -6068,7 +6094,22 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     },
     creator: item.creatorSource ?? "SHASTORE platform",
     id: item.id,
-    installs: item.installCount,
+    installInspection: {
+      eventCount: itemInstallEvents.length,
+      installCount: item.installCount,
+      installCountUpdatedAt: item.installCountUpdatedAt,
+      installEligible: item.itemType !== "service",
+      liveInstalls: item.liveInstalls,
+      publicInstallEligible: item.status === "approved" && item.visibility === "public",
+      recentEvents: itemInstallEvents.slice(0, 5).map((event) => ({
+        createdAt: event.createdAt,
+        id: event.id,
+        installStatus: event.installStatus,
+        source: event.source,
+        storeId: event.storeId
+      }))
+    },
+    installs: item.liveInstalls,
     lastUpdated: item.updatedAt,
     name: item.name,
     pricing: {
@@ -6122,7 +6163,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       approvedItems: registryStats.approvedItems,
       archivedItems: registryStats.archivedItems,
       draftItems: registryStats.draftItems,
-      liveInstalls: registryItems.reduce((sum, item) => sum + item.installCount, 0),
+      liveInstalls: registryItems.reduce((sum, item) => sum + item.liveInstalls, 0),
       paymentsProcessed: revenueStats.totalGrossProcessed,
       pendingReviewItems: registryStats.pendingReviewItems,
       rejectedItems: registryStats.rejectedItems,

@@ -103,6 +103,55 @@ function MarketplaceRevenueInspection({
   );
 }
 
+function MarketplaceInstallInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const { installInspection } = item;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <p className="text-xs font-semibold text-slate-600">
+        Live installs: {installInspection.liveInstalls}
+      </p>
+      <p className="text-xs font-semibold text-slate-600">
+        Total installs: {installInspection.installCount}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Eligible: {installInspection.installEligible ? "yes" : "service excluded"}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Public install eligible: {installInspection.publicInstallEligible ? "yes" : "no"}
+      </p>
+      {installInspection.installCountUpdatedAt ? (
+        <p className="text-xs font-semibold text-slate-500">
+          Updated: {formatAdminDate(installInspection.installCountUpdatedAt)}
+        </p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Events: {installInspection.eventCount}
+      </p>
+      {installInspection.recentEvents.length ? (
+        <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Recent install events</p>
+          {installInspection.recentEvents.map((event) => (
+            <div className="text-[11px] font-semibold text-slate-600" key={event.id}>
+              <p>
+                {event.installStatus}
+                {event.storeId ? ` · store ${event.storeId.slice(0, 8)}…` : ""}
+              </p>
+              {event.createdAt ? <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">No install events recorded yet.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -298,7 +347,9 @@ export default async function AdminMarketplacePage() {
                       </form>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-slate-600">{item.installs} placeholder</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceInstallInspection item={item} />
+                  </td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplaceRevenueInspection item={item} />
                   </td>
