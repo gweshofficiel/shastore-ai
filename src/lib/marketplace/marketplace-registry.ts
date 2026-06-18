@@ -27,6 +27,7 @@ import {
 } from "@/src/lib/marketplace/marketplace-status-runtime";
 import {
   assertValidMarketplaceItemVisibility,
+  isPublicMarketplaceEligible,
   normalizeMarketplaceItemVisibility,
   parseMarketplaceItemVisibility,
   type MarketplaceItemVisibility
@@ -390,7 +391,8 @@ export {
   sanitizeAssetMetadata,
   toMarketplaceAssetPublicView,
   validateAssetMetadata,
-  verifyMarketplaceItemAssets
+  verifyMarketplaceItemAssets,
+  listMarketplaceAssetsForPublicCatalog
 } from "@/src/lib/marketplace/marketplace-asset-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
@@ -1068,6 +1070,54 @@ export async function listMarketplaceItemsReadOnly(
     .filter((item): item is MarketplaceItemRecord => Boolean(item));
 }
 
+export type MarketplacePublicCatalogItemFilters = {
+  itemType?: MarketplaceItemType | MarketplaceItemType[];
+  limit?: number;
+  section?: MarketplaceSection | MarketplaceSection[];
+  slug?: string;
+};
+
+export async function listMarketplaceItemsForPublicCatalog(
+  filters: MarketplacePublicCatalogItemFilters = {}
+): Promise<MarketplaceItemRecord[]> {
+  const admin = requireAdminClient();
+  const limit = Math.max(1, Math.min(filters.limit ?? 100, 500));
+  const cleanedSlug = filters.slug ? text(filters.slug, 160) : "";
+
+  const rows = await queryMarketplaceItemRows({
+    context: "listMarketplaceItemsForPublicCatalog",
+    buildQuery: (select) => {
+      let query = admin
+        .from("marketplace_items" as never)
+        .select(select as never)
+        .eq("status" as never, "approved" as never)
+        .eq("visibility" as never, "public" as never);
+
+      if (filters.section) {
+        const sections = Array.isArray(filters.section) ? filters.section : [filters.section];
+        query = query.in("section" as never, sections as never);
+      }
+
+      if (filters.itemType) {
+        const types = Array.isArray(filters.itemType) ? filters.itemType : [filters.itemType];
+        const validatedTypes = types.map((itemType) => assertValidMarketplaceItemType(itemType));
+        query = query.in("item_type" as never, validatedTypes as never);
+      }
+
+      if (cleanedSlug) {
+        query = query.eq("slug" as never, cleanedSlug as never);
+      }
+
+      return query.order("updated_at" as never, { ascending: false }).limit(limit);
+    }
+  });
+
+  return rows
+    .map((row) => parseRecord(row))
+    .filter((item): item is MarketplaceItemRecord => Boolean(item))
+    .filter((item) => isPublicMarketplaceEligible({ status: item.status, visibility: item.visibility }));
+}
+
 export async function getMarketplaceItemByKey(itemKey: string): Promise<MarketplaceItemRecord | null> {
   await ensureMarketplaceRegistry();
 
@@ -1214,3 +1264,23 @@ export function toAdminMarketplaceSectionName(
     | "Template Marketplace"
     | "Theme Marketplace";
 }
+
+export type {
+  MarketplacePublicCatalogEntry,
+  MarketplacePublicCatalogFilters,
+  MarketplacePublicCatalogListResult,
+  MarketplacePublicCatalogStats
+} from "@/src/lib/marketplace/marketplace-public-catalog-runtime";
+export {
+  getMarketplacePublicCatalogEntryBySlug,
+  getMarketplacePublicCatalogEntryByTypeAndSlug,
+  getMarketplacePublicCatalogStats,
+  isPublicCatalogItemEligible,
+  listMarketplacePublicCatalog,
+  listMarketplacePublicCatalogBySection,
+  listMarketplacePublicCatalogSections,
+  resolvePublicCatalogThumbnail,
+  sanitizePublicCatalogDescription,
+  toMarketplacePublicCatalogEntry,
+  toPublicCatalogAssetViews
+} from "@/src/lib/marketplace/marketplace-public-catalog-runtime";

@@ -484,6 +484,34 @@ export async function listMarketplaceAssets(params: {
     .filter((asset): asset is MarketplaceAssetRecord => Boolean(asset));
 }
 
+export async function listMarketplaceAssetsForPublicCatalog(
+  itemIds: string[]
+): Promise<MarketplaceAssetRecord[]> {
+  const admin = requireAdminClient();
+  const cleanedIds = [...new Set(itemIds.map((itemId) => text(itemId, 120)).filter(Boolean))];
+
+  if (!cleanedIds.length) {
+    return [];
+  }
+
+  const { data, error } = await admin
+    .from("marketplace_assets" as never)
+    .select(assetSelect as never)
+    .in("marketplace_item_id" as never, cleanedIds as never)
+    .eq("asset_status" as never, "active" as never)
+    .order("sort_order" as never, { ascending: true })
+    .order("created_at" as never, { ascending: false })
+    .limit(5000);
+
+  if (error) {
+    throw new Error(`Public marketplace assets could not be loaded: ${error.message}`);
+  }
+
+  return (Array.isArray(data) ? (data as unknown[]) : [])
+    .map((row) => parseMarketplaceAsset(row))
+    .filter((asset): asset is MarketplaceAssetRecord => Boolean(asset));
+}
+
 export async function getMarketplaceAssetById(assetId: string): Promise<MarketplaceAssetRecord | null> {
   await requireSuperAdmin();
 
