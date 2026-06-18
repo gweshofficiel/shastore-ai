@@ -103,11 +103,18 @@ export function formatAdminDate(value: string | null | undefined) {
     return "Not set";
   }
 
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    console.warn(`[formatAdminDate] Invalid admin date value: ${value}`);
+    return "Invalid date";
+  }
+
   return new Intl.DateTimeFormat("en", {
     day: "numeric",
     month: "short",
     year: "numeric"
-  }).format(new Date(value));
+  }).format(parsed);
 }
 
 export function formatAdminMoney(value: number, currency = "USD") {

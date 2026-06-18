@@ -6177,27 +6177,37 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
+  const loadStep = async <T,>(step: string, loader: () => Promise<T>): Promise<T> => {
+    try {
+      return await loader();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[getAdminMarketplaceControl] failed at ${step}: ${message}`, error);
+      throw new Error(`getAdminMarketplaceControl failed at ${step}: ${message}`, { cause: error });
+    }
+  };
+
   const loadCreatorAccountsSafely = async () => {
     try {
       return await listMarketplaceCreatorAccounts({ limit: 1000 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[getAdminMarketplaceControl] creator accounts unavailable: ${message}`);
+      console.error(`[getAdminMarketplaceControl] creator accounts unavailable: ${message}`, error);
       return [];
     }
   };
 
   const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings, serviceBindings, creatorAccounts] =
     await Promise.all([
-    listMarketplaceSectionItemGroups(),
-    getMarketplaceRegistryStats(),
-    listMarketplaceRevenueEvents({ limit: 1000 }),
-    listMarketplaceInstallEvents({ limit: 1000 }),
-    listTemplates(),
-    listThemePresets(),
-    listMarketplacePluginBindings({ limit: 1000 }),
-    listMarketplaceAppBindings({ limit: 1000 }),
-    listMarketplaceServiceBindings({ limit: 1000 }),
+    loadStep("listMarketplaceSectionItemGroups", () => listMarketplaceSectionItemGroups()),
+    loadStep("getMarketplaceRegistryStats", () => getMarketplaceRegistryStats()),
+    loadStep("listMarketplaceRevenueEvents", () => listMarketplaceRevenueEvents({ limit: 1000 })),
+    loadStep("listMarketplaceInstallEvents", () => listMarketplaceInstallEvents({ limit: 1000 })),
+    loadStep("listTemplates", () => listTemplates()),
+    loadStep("listThemePresets", () => listThemePresets()),
+    loadStep("listMarketplacePluginBindings", () => listMarketplacePluginBindings({ limit: 1000 })),
+    loadStep("listMarketplaceAppBindings", () => listMarketplaceAppBindings({ limit: 1000 })),
+    loadStep("listMarketplaceServiceBindings", () => listMarketplaceServiceBindings({ limit: 1000 })),
     loadCreatorAccountsSafely()
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);

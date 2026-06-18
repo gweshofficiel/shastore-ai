@@ -528,7 +528,7 @@ function MarketplaceSubmissionInspection({
       {submission.submissionNote ? (
         <p className="text-xs font-semibold text-slate-500">Note: {submission.submissionNote}</p>
       ) : null}
-      {submission.verificationIssues.length ? (
+      {submission.verificationIssues?.length ? (
         <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Submission issues</p>
           {submission.verificationIssues.map((issue) => (
@@ -587,7 +587,7 @@ function MarketplaceModerationInspection({
       <p className="text-xs font-semibold text-slate-500">
         Public eligible: {moderation.publicEligible ? "yes" : "no"}
       </p>
-      {moderation.verificationIssues.length ? (
+      {moderation.verificationIssues?.length ? (
         <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Moderation issues</p>
           {moderation.verificationIssues.map((issue) => (
@@ -626,7 +626,14 @@ function MarketplaceApprovalMeta({
 }
 
 export default async function AdminMarketplacePage() {
-  const control = await getAdminMarketplaceControl();
+  let control: Awaited<ReturnType<typeof getAdminMarketplaceControl>>;
+
+  try {
+    control = await getAdminMarketplaceControl();
+  } catch (error) {
+    console.error("[AdminMarketplacePage] marketplace control load failed", error);
+    throw error;
+  }
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -891,7 +898,7 @@ export default async function AdminMarketplacePage() {
                   <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.lastUpdated)}</td>
                   <td className="px-5 py-4">
                     <div className="grid min-w-52 gap-2">
-                      {item.approval.availableActions.includes("submit_for_review") ? (
+                      {(item.approval?.availableActions ?? []).includes("submit_for_review") ? (
                         <form action={markMarketplaceItemUnderReview} className="grid gap-2">
                           <MarketplaceHiddenFields item={item} />
                           <input
@@ -905,7 +912,7 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.moderation.availableActions.includes("approve") ? (
+                      {(item.moderation?.availableActions ?? []).includes("approve") ? (
                         <form action={approveMarketplaceItem}>
                           <MarketplaceHiddenFields item={item} />
                           <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
@@ -913,7 +920,7 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.moderation.availableActions.includes("reject") ? (
+                      {(item.moderation?.availableActions ?? []).includes("reject") ? (
                         <form action={rejectMarketplaceItem} className="grid gap-2">
                           <MarketplaceHiddenFields item={item} />
                           <input
@@ -933,7 +940,7 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.moderation.availableActions.includes("request_changes") ? (
+                      {(item.moderation?.availableActions ?? []).includes("request_changes") ? (
                         <form action={requestMarketplaceItemChanges} className="grid gap-2">
                           <MarketplaceHiddenFields item={item} />
                           <input
@@ -947,7 +954,7 @@ export default async function AdminMarketplacePage() {
                           </button>
                         </form>
                       ) : null}
-                      {item.moderation.availableActions.includes("archive") ? (
+                      {(item.moderation?.availableActions ?? []).includes("archive") ? (
                         <form action={archiveMarketplaceItem}>
                           <MarketplaceHiddenFields item={item} />
                           <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
