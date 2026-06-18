@@ -358,6 +358,40 @@ import {
   parseMarketplaceModerationAction,
   type MarketplaceModerationAction
 } from "@/src/lib/marketplace/marketplace-moderation-runtime";
+export type {
+  MarketplaceAssetPublicView,
+  MarketplaceAssetRecord,
+  MarketplaceAssetStats,
+  MarketplaceAssetStatus,
+  MarketplaceAssetType,
+  MarketplaceItemAssetsInspection,
+  MarketplaceStorageProvider
+} from "@/src/lib/marketplace/marketplace-asset-runtime";
+export {
+  evaluateMarketplaceItemAssetsInspection,
+  filterPublicMarketplaceAssets,
+  getMarketplaceAssetById,
+  getMarketplaceAssetStats,
+  getMarketplaceAssetsForItem,
+  isPublicMarketplaceAssetEligible,
+  isPublicMarketplaceItemEligible,
+  isValidMarketplaceAssetStatus,
+  isValidMarketplaceAssetType,
+  isValidMarketplaceStorageProvider,
+  listMarketplaceAssets,
+  MARKETPLACE_ASSET_STATUSES,
+  MARKETPLACE_ASSET_TYPES,
+  MARKETPLACE_STORAGE_PROVIDERS,
+  parseMarketplaceAsset,
+  parseMarketplaceAssetStatus,
+  parseMarketplaceAssetType,
+  parseMarketplaceStorageProvider,
+  registerMarketplaceAsset,
+  sanitizeAssetMetadata,
+  toMarketplaceAssetPublicView,
+  validateAssetMetadata,
+  verifyMarketplaceItemAssets
+} from "@/src/lib/marketplace/marketplace-asset-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";

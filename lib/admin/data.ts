@@ -25,7 +25,9 @@ import {
   evaluateMarketplaceAppBinding,
   evaluateMarketplaceCreatorAccount,
   evaluateMarketplaceCreatorSubmissionInspection,
+  evaluateMarketplaceItemAssetsInspection,
   evaluateMarketplaceItemCreatorLink,
+  listMarketplaceAssets,
   evaluateMarketplaceModerationInspection,
   evaluateMarketplacePluginBinding,
   evaluateMarketplaceServiceBinding,
@@ -1437,6 +1439,27 @@ export type AdminMarketplaceControl = {
       verificationIssues: string[];
       verified: boolean;
     } | null;
+    assetInspection: {
+      activeAssetCount: number;
+      assetCount: number;
+      assets: Array<{
+        assetStatus: "active" | "archived" | "draft" | "hidden";
+        assetType: "demo_media" | "documentation" | "gallery_image" | "preview_file" | "thumbnail";
+        fileName: string;
+        fileSize: number;
+        hasPublicUrl: boolean;
+        id: string;
+        mimeType: string;
+        sortOrder: number;
+        storageProvider: "cloudflare-r2" | "external-url" | "supabase-storage";
+      }>;
+      marketplaceStatus: string;
+      marketplaceVisibility: string;
+      publicEligible: boolean;
+      publicEligibleAssetCount: number;
+      verificationIssues: string[];
+      verified: boolean;
+    };
     submission: {
       creatorAccountId: string | null;
       creatorDisplayName: string | null;
@@ -1473,6 +1496,9 @@ export type AdminMarketplaceControl = {
     verifiedCreatorAccounts: number;
     submittedItems: number;
     moderatedItems: number;
+    totalMarketplaceAssets: number;
+    activeMarketplaceAssets: number;
+    verifiedAssetItems: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6205,6 +6231,9 @@ export function createEmptyAdminMarketplaceControl(): AdminMarketplaceControl {
       totalCreatorAccounts: 0,
       totalCreatorRevenueProcessed: 0,
       totalItems: 0,
+      totalMarketplaceAssets: 0,
+      activeMarketplaceAssets: 0,
+      verifiedAssetItems: 0,
       totalPlatformFeesProcessed: 0,
       verifiedAppBindings: 0,
       verifiedCreatorAccounts: 0,
@@ -6245,7 +6274,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
 
   const emptySectionGroups = createEmptyMarketplaceSectionItemGroups();
 
-  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings, serviceBindings, creatorAccounts] =
+  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings, serviceBindings, creatorAccounts, marketplaceAssets] =
     await Promise.all([
     loadStep("listMarketplaceSectionItemGroupsReadOnly", () => listMarketplaceSectionItemGroupsReadOnly(), emptySectionGroups),
     loadStep("getMarketplaceRegistryStatsReadOnly", () => getMarketplaceRegistryStatsReadOnly(), emptyRegistryStats),
@@ -6256,7 +6285,8 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     loadStep("listMarketplacePluginBindings", () => listMarketplacePluginBindings({ limit: 1000 }), []),
     loadStep("listMarketplaceAppBindings", () => listMarketplaceAppBindings({ limit: 1000 }), []),
     loadStep("listMarketplaceServiceBindings", () => listMarketplaceServiceBindings({ limit: 1000 }), []),
-    loadStep("listMarketplaceCreatorAccounts", () => listMarketplaceCreatorAccounts({ limit: 1000 }), [])
+    loadStep("listMarketplaceCreatorAccounts", () => listMarketplaceCreatorAccounts({ limit: 1000 }), []),
+    loadStep("listMarketplaceAssets", () => listMarketplaceAssets({ limit: 5000 }), [])
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));
@@ -6265,6 +6295,12 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
   const appBindingByItemId = new Map(appBindings.map((binding) => [binding.marketplaceItemId, binding]));
   const serviceBindingByItemId = new Map(serviceBindings.map((binding) => [binding.marketplaceItemId, binding]));
   const creatorById = new Map(creatorAccounts.map((creator) => [creator.id, creator]));
+  const assetsByItemId = marketplaceAssets.reduce<Map<string, typeof marketplaceAssets>>((map, asset) => {
+    const existing = map.get(asset.marketplaceItemId) ?? [];
+    existing.push(asset);
+    map.set(asset.marketplaceItemId, existing);
+    return map;
+  }, new Map());
   const itemCountByCreatorId = registryItems.reduce<Map<string, number>>((counts, item) => {
     if (!item.creatorAccountId) return counts;
     counts.set(item.creatorAccountId, (counts.get(item.creatorAccountId) ?? 0) + 1);
@@ -6374,6 +6410,13 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             pricingMode: item.pricing.mode
           })
         : null;
+    const itemAssets = assetsByItemId.get(item.id) ?? [];
+    const assetInspection = evaluateMarketplaceItemAssetsInspection({
+      assets: itemAssets,
+      itemType: item.itemType,
+      marketplaceStatus: item.status,
+      marketplaceVisibility: item.visibility
+    });
     const creatorLinkEvaluation = evaluateMarketplaceItemCreatorLink({
       creator: item.creatorAccountId ? creatorById.get(item.creatorAccountId) ?? null : null,
       creatorAccountId: item.creatorAccountId,
@@ -6606,6 +6649,17 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             verified: serviceBindingEvaluation.verified
           }
         : null,
+    assetInspection: {
+      activeAssetCount: assetInspection.activeAssetCount,
+      assetCount: assetInspection.assetCount,
+      assets: assetInspection.assets,
+      marketplaceStatus: assetInspection.marketplaceStatus,
+      marketplaceVisibility: assetInspection.marketplaceVisibility,
+      publicEligible: assetInspection.publicEligible,
+      publicEligibleAssetCount: assetInspection.publicEligibleAssetCount,
+      verificationIssues: assetInspection.verificationIssues,
+      verified: assetInspection.verified
+    },
     submission: {
       creatorAccountId: submissionInspection.creatorAccountId,
       creatorDisplayName: submissionInspection.creatorDisplayName,
@@ -6733,7 +6787,18 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       totalCreatorAccounts: creatorAccounts.length,
       verifiedCreatorAccounts: creatorAccounts.filter((creator) => creator.verificationStatus === "verified").length,
       submittedItems: registryItems.filter((item) => item.submissionStatus === "submitted").length,
-      moderatedItems: registryItems.filter((item) => item.moderation?.moderationAction).length
+      moderatedItems: registryItems.filter((item) => item.moderation?.moderationAction).length,
+      totalMarketplaceAssets: marketplaceAssets.length,
+      activeMarketplaceAssets: marketplaceAssets.filter((asset) => asset.assetStatus === "active").length,
+      verifiedAssetItems: registryItems.reduce((count, item) => {
+        const inspection = evaluateMarketplaceItemAssetsInspection({
+          assets: assetsByItemId.get(item.id) ?? [],
+          itemType: item.itemType,
+          marketplaceStatus: item.status,
+          marketplaceVisibility: item.visibility
+        });
+        return count + (inspection.verified ? 1 : 0);
+      }, 0)
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,

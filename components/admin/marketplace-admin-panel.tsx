@@ -445,6 +445,60 @@ function MarketplaceServiceBindingInspection({
   );
 }
 
+function MarketplaceAssetInspection({
+  item
+}: {
+  item: AdminMarketplaceControl["items"][number];
+}) {
+  const inspection = item.assetInspection;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={inspection.verified ? "green" : inspection.assetCount ? "amber" : "blue"}>
+        {inspection.assetCount ? `${inspection.activeAssetCount}/${inspection.assetCount} active` : "none"}
+      </AdminBadge>
+      <p className="text-xs font-semibold text-slate-600">
+        Public eligible: {inspection.publicEligible ? "yes" : "no"}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Public assets: {inspection.publicEligibleAssetCount}
+      </p>
+      {inspection.assets.length ? (
+        <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Registered assets</p>
+          {inspection.assets.slice(0, 5).map((asset) => (
+            <div className="text-[11px] font-semibold text-slate-600" key={asset.id}>
+              <p>
+                {asset.assetType} · {asset.assetStatus}
+              </p>
+              <p className="text-slate-400">
+                {asset.fileName} · {asset.mimeType}
+              </p>
+              <p className="text-slate-400">
+                {asset.hasPublicUrl ? "Public URL set" : "No public URL"} · {asset.storageProvider}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">No marketplace assets registered yet.</p>
+      )}
+      {inspection.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Asset issues</p>
+          {inspection.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : inspection.assetCount ? (
+        <p className="text-[11px] font-semibold text-slate-400">Asset metadata ready.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function MarketplaceCreatorAccountInspection({
   item
 }: {
@@ -661,7 +715,10 @@ function MarketplaceAdminPanelContent({ control }: { control: AdminMarketplaceCo
           { label: "Active creators", value: control.overview.activeCreatorAccounts },
           { label: "Verified creators", value: control.overview.verifiedCreatorAccounts },
           { label: "Submitted items", value: control.overview.submittedItems },
-          { label: "Moderated items", value: control.overview.moderatedItems }
+          { label: "Moderated items", value: control.overview.moderatedItems },
+          { label: "Marketplace assets", value: control.overview.totalMarketplaceAssets },
+          { label: "Active assets", value: control.overview.activeMarketplaceAssets },
+          { label: "Verified asset items", value: control.overview.verifiedAssetItems }
         ]}
       />
 
@@ -746,6 +803,7 @@ function MarketplaceAdminPanelContent({ control }: { control: AdminMarketplaceCo
                 "Plugin binding",
                 "App binding",
                 "Service binding",
+                "Assets",
                 "Price",
                 "Installs",
                 "Revenue",
@@ -808,6 +866,9 @@ function MarketplaceAdminPanelContent({ control }: { control: AdminMarketplaceCo
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplaceServiceBindingInspection item={item} />
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceAssetInspection item={item} />
                   </td>
                   <td className="px-5 py-4">
                     <div className="grid gap-2">
