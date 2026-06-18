@@ -22,11 +22,13 @@ import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integ
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
   calculateMarketplaceRevenue,
+  evaluateMarketplaceAppBinding,
   evaluateMarketplacePluginBinding,
   evaluateMarketplaceTemplateBinding,
   evaluateMarketplaceThemeBinding,
   getAvailableMarketplaceApprovalActions,
   getMarketplacePlatformFeeRate,
+  listMarketplaceAppBindings,
   listMarketplaceInstallEvents,
   listMarketplacePluginBindings,
   listMarketplaceRevenueEvents,
@@ -1349,6 +1351,19 @@ export type AdminMarketplaceControl = {
       verificationIssues: string[];
       verified: boolean;
     } | null;
+    appBinding: {
+      appKey: string | null;
+      appManifestSummary: string[];
+      appName: string | null;
+      appVersion: string | null;
+      bindingStatus: "active" | "archived" | "disabled" | "draft" | null;
+      marketplaceStatus: string;
+      marketplaceVisibility: string;
+      pricingMode: string;
+      publicEligible: boolean;
+      verificationIssues: string[];
+      verified: boolean;
+    } | null;
     type: "app" | "plugin" | "service" | "template" | "theme";
     visibility: "internal" | "private" | "public";
   }>;
@@ -1366,6 +1381,7 @@ export type AdminMarketplaceControl = {
     verifiedTemplateBindings: number;
     verifiedThemeBindings: number;
     verifiedPluginBindings: number;
+    verifiedAppBindings: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6072,7 +6088,7 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings] =
+  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings] =
     await Promise.all([
     listMarketplaceSectionItemGroups(),
     getMarketplaceRegistryStats(),
@@ -6080,12 +6096,14 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     listMarketplaceInstallEvents({ limit: 1000 }),
     listTemplates(),
     listThemePresets(),
-    listMarketplacePluginBindings({ limit: 1000 })
+    listMarketplacePluginBindings({ limit: 1000 }),
+    listMarketplaceAppBindings({ limit: 1000 })
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));
   const themePresetById = new Map(themePresets.map((preset) => [preset.id, preset]));
   const pluginBindingByItemId = new Map(pluginBindings.map((binding) => [binding.marketplaceItemId, binding]));
+  const appBindingByItemId = new Map(appBindings.map((binding) => [binding.marketplaceItemId, binding]));
   const revenueEventsByItemId = new Map<string, MarketplaceRevenueEventRecord[]>();
   const installEventsByItemId = new Map<string, MarketplaceInstallEventRecord[]>();
 
@@ -6161,6 +6179,17 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       item.itemType === "plugin"
         ? evaluateMarketplacePluginBinding({
             binding: pluginBindingByItemId.get(item.id) ?? null,
+            itemKey: item.itemKey,
+            itemType: item.itemType,
+            marketplaceStatus: item.status,
+            marketplaceVisibility: item.visibility,
+            pricingMode: item.pricing.mode
+          })
+        : null;
+    const appBindingEvaluation =
+      item.itemType === "app"
+        ? evaluateMarketplaceAppBinding({
+            binding: appBindingByItemId.get(item.id) ?? null,
             itemKey: item.itemKey,
             itemType: item.itemType,
             marketplaceStatus: item.status,
@@ -6279,6 +6308,22 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             verified: pluginBindingEvaluation.verified
           }
         : null,
+    appBinding:
+      item.itemType === "app" && appBindingEvaluation
+        ? {
+            appKey: appBindingEvaluation.appKey,
+            appManifestSummary: appBindingEvaluation.appManifestSummary,
+            appName: appBindingEvaluation.appName,
+            appVersion: appBindingEvaluation.appVersion,
+            bindingStatus: appBindingEvaluation.bindingStatus,
+            marketplaceStatus: appBindingEvaluation.marketplaceStatus,
+            marketplaceVisibility: appBindingEvaluation.marketplaceVisibility,
+            pricingMode: appBindingEvaluation.pricingMode,
+            publicEligible: appBindingEvaluation.publicEligible,
+            verificationIssues: appBindingEvaluation.verificationIssues,
+            verified: appBindingEvaluation.verified
+          }
+        : null,
     type: item.itemType,
     visibility: item.visibility
   };
@@ -6347,6 +6392,18 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
           pricingMode: item.pricing.mode
         });
         return count + (evaluation.verified ? 1 : 0);
+      }, 0),
+      verifiedAppBindings: registryItems.reduce((count, item) => {
+        if (item.itemType !== "app") return count;
+        const evaluation = evaluateMarketplaceAppBinding({
+          binding: appBindingByItemId.get(item.id) ?? null,
+          itemKey: item.itemKey,
+          itemType: item.itemType,
+          marketplaceStatus: item.status,
+          marketplaceVisibility: item.visibility,
+          pricingMode: item.pricing.mode
+        });
+        return count + (evaluation.verified ? 1 : 0);
       }, 0)
     },
     sections: sectionGroups.map((section) => ({
@@ -6356,7 +6413,8 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       status:
         section.section === "template_marketplace" ||
         section.section === "theme_marketplace" ||
-        section.section === "plugin_marketplace"
+        section.section === "plugin_marketplace" ||
+        section.section === "app_marketplace"
           ? "ready"
           : "placeholder"
     }))

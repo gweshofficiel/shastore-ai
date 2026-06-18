@@ -325,6 +325,66 @@ function MarketplacePluginBindingInspection({
   );
 }
 
+function MarketplaceAppBindingInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  if (!item.appBinding) {
+    return <p className="text-xs font-semibold text-slate-400">Not applicable</p>;
+  }
+
+  const binding = item.appBinding;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={binding.verified ? "green" : binding.bindingStatus === "active" ? "amber" : "red"}>
+        {binding.bindingStatus ?? "unbound"}
+      </AdminBadge>
+      <p className="text-xs font-semibold text-slate-600">
+        Verified: {binding.verified ? "yes" : "no"}
+      </p>
+      {binding.appName ? (
+        <p className="text-xs font-semibold text-slate-600">App: {binding.appName}</p>
+      ) : null}
+      {binding.appKey ? (
+        <p className="text-xs font-semibold text-slate-500">Key: {binding.appKey}</p>
+      ) : null}
+      {binding.appVersion ? (
+        <p className="text-xs font-semibold text-slate-500">Version: {binding.appVersion}</p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Marketplace status: {binding.marketplaceStatus}</p>
+      <p className="text-xs font-semibold text-slate-500">Visibility: {binding.marketplaceVisibility}</p>
+      <p className="text-xs font-semibold text-slate-500">Pricing mode: {binding.pricingMode}</p>
+      <p className="text-xs font-semibold text-slate-500">
+        Public eligible: {binding.publicEligible ? "yes" : "no"}
+      </p>
+      {binding.appManifestSummary.length ? (
+        <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Manifest summary</p>
+          {binding.appManifestSummary.map((line) => (
+            <p className="text-[11px] font-semibold text-slate-600" key={line}>
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {binding.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Binding issues</p>
+          {binding.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">App binding verified.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -376,7 +436,8 @@ export default async function AdminMarketplacePage() {
           { label: "Creator revenue", value: formatAdminMoney(control.overview.totalCreatorRevenueProcessed) },
           { label: "Verified template bindings", value: control.overview.verifiedTemplateBindings },
           { label: "Verified theme bindings", value: control.overview.verifiedThemeBindings },
-          { label: "Verified plugin bindings", value: control.overview.verifiedPluginBindings }
+          { label: "Verified plugin bindings", value: control.overview.verifiedPluginBindings },
+          { label: "Verified app bindings", value: control.overview.verifiedAppBindings }
         ]}
       />
 
@@ -414,6 +475,7 @@ export default async function AdminMarketplacePage() {
                 "Template binding",
                 "Theme binding",
                 "Plugin binding",
+                "App binding",
                 "Price",
                 "Installs",
                 "Revenue",
@@ -461,6 +523,9 @@ export default async function AdminMarketplacePage() {
                   </td>
                   <td className="px-5 py-4 text-slate-600">
                     <MarketplacePluginBindingInspection item={item} />
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceAppBindingInspection item={item} />
                   </td>
                   <td className="px-5 py-4">
                     <div className="grid gap-2">
