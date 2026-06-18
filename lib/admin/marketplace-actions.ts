@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { isValidMarketplaceItemType } from "@/src/lib/marketplace/marketplace-item-type-runtime";
 import {
+  assertValidMarketplaceItemVisibility,
+  setMarketplaceItemVisibility,
+  type MarketplaceItemVisibility
+} from "@/src/lib/marketplace/marketplace-visibility-runtime";
+import {
   transitionMarketplaceItemStatus,
   type MarketplaceStatusTransition
 } from "@/src/lib/marketplace/marketplace-status-runtime";
@@ -44,4 +49,22 @@ export async function markMarketplaceItemUnderReview(formData: FormData) {
 
 export async function archiveMarketplaceItem(formData: FormData) {
   await runMarketplaceStatusAction(formData, "archive");
+}
+
+export async function updateMarketplaceItemVisibility(formData: FormData) {
+  const itemId = cleanText(formData.get("itemId"));
+  const itemType = cleanText(formData.get("itemType"));
+  const visibility = cleanText(formData.get("visibility")) as MarketplaceItemVisibility;
+
+  if (!itemId) {
+    throw new Error("Missing marketplace item id.");
+  }
+
+  if (itemType && !isValidMarketplaceItemType(itemType)) {
+    throw new Error("Invalid marketplace item type.");
+  }
+
+  assertValidMarketplaceItemVisibility(visibility);
+  await setMarketplaceItemVisibility(itemId, visibility);
+  revalidatePath("/admin/marketplace");
 }

@@ -25,6 +25,12 @@ import {
   parseMarketplaceItemStatus,
   type MarketplaceItemStatus
 } from "@/src/lib/marketplace/marketplace-status-runtime";
+import {
+  assertValidMarketplaceItemVisibility,
+  normalizeMarketplaceItemVisibility,
+  parseMarketplaceItemVisibility,
+  type MarketplaceItemVisibility
+} from "@/src/lib/marketplace/marketplace-visibility-runtime";
 import { listTemplates } from "@/src/lib/templates/template-registry";
 
 export type {
@@ -60,10 +66,22 @@ export {
   setMarketplaceItemDraft,
   transitionMarketplaceItemStatus
 } from "@/src/lib/marketplace/marketplace-status-runtime";
+export type { MarketplaceItemVisibility, MarketplaceVisibilityStats } from "@/src/lib/marketplace/marketplace-visibility-runtime";
+export {
+  assertValidMarketplaceItemVisibility,
+  canExposeMarketplaceItemPublicly,
+  countMarketplaceItemsByVisibility,
+  filterPublicMarketplaceEligibleItems,
+  getMarketplaceItemVisibility,
+  isPublicMarketplaceEligible,
+  isValidMarketplaceItemVisibility,
+  MARKETPLACE_ITEM_VISIBILITIES,
+  normalizeMarketplaceItemVisibility,
+  parseMarketplaceItemVisibility,
+  setMarketplaceItemVisibility
+} from "@/src/lib/marketplace/marketplace-visibility-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
-
-export type MarketplaceItemVisibility = "internal" | "marketplace" | "owner" | "reseller";
 
 export type MarketplacePricingType = "free" | "paid" | "premium" | "subscription";
 
@@ -231,12 +249,8 @@ function parseStatus(value: unknown): MarketplaceItemStatus | null {
   return parseMarketplaceItemStatus(value);
 }
 
-function parseVisibility(value: unknown): MarketplaceItemVisibility {
-  const cleaned = text(value, 40);
-  if (cleaned === "marketplace") return "marketplace";
-  if (cleaned === "reseller") return "reseller";
-  if (cleaned === "owner") return "owner";
-  return "internal";
+function parseVisibility(value: unknown): MarketplaceItemVisibility | null {
+  return parseMarketplaceItemVisibility(value);
 }
 
 function parsePricingType(value: unknown): MarketplacePricingType {
@@ -280,6 +294,12 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     return null;
   }
 
+  const visibility = parseVisibility(row.visibility);
+
+  if (!visibility) {
+    return null;
+  }
+
   return {
     createdAt: text(row.created_at, 80) || null,
     creatorSource: text(row.creator_source, 240) || null,
@@ -304,7 +324,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     sourceType: parseSourceType(row.source_type),
     status,
     updatedAt: text(row.updated_at, 80) || null,
-    visibility: parseVisibility(row.visibility)
+    visibility,
   };
 }
 
@@ -352,6 +372,7 @@ async function seedMissingPlaceholderItems() {
     assertValidMarketplaceItemType(item.item_type);
     assertValidItemTypeSectionPair(item.item_type, item.section);
     assertValidMarketplaceItemStatus(item.status);
+    assertValidMarketplaceItemVisibility(item.visibility);
   }
 
   const { error } = await admin.from("marketplace_items" as never).insert(
@@ -407,7 +428,7 @@ async function seedMissingTemplateItems() {
             : template.status === "active"
               ? ("approved" as const)
               : ("draft" as const),
-        visibility: template.visibility
+        visibility: normalizeMarketplaceItemVisibility(template.visibility) ?? "internal"
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -418,6 +439,7 @@ async function seedMissingTemplateItems() {
     assertValidMarketplaceItemType(item.item_type);
     assertValidItemTypeSectionPair(item.item_type, item.section);
     assertValidMarketplaceItemStatus(item.status);
+    assertValidMarketplaceItemVisibility(item.visibility);
   }
 
   const { error } = await admin.from("marketplace_items" as never).insert(missing as never);
@@ -461,7 +483,10 @@ export async function listMarketplaceItems(
 
   if (filters.visibility) {
     const visibilities = Array.isArray(filters.visibility) ? filters.visibility : [filters.visibility];
-    query = query.in("visibility" as never, visibilities as never);
+    const validatedVisibilities = visibilities.map((visibility) =>
+      assertValidMarketplaceItemVisibility(visibility)
+    );
+    query = query.in("visibility" as never, validatedVisibilities as never);
   }
 
   const { data, error } = await query.order("updated_at" as never, { ascending: false }).limit(limit);
@@ -589,13 +614,6 @@ export async function listMarketplaceSectionItemGroups(): Promise<MarketplaceSec
       sectionLabel: getMarketplaceSectionLabel(section)
     };
   });
-}
-
-export function toAdminMarketplaceVisibility(
-  visibility: MarketplaceItemVisibility
-): "internal" | "owner" | "public" | "reseller" {
-  if (visibility === "marketplace") return "public";
-  return visibility;
 }
 
 export function toAdminMarketplaceSectionName(

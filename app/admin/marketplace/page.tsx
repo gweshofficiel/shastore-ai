@@ -11,19 +11,24 @@ import {
   approveMarketplaceItem,
   archiveMarketplaceItem,
   markMarketplaceItemUnderReview,
-  rejectMarketplaceItem
+  rejectMarketplaceItem,
+  updateMarketplaceItemVisibility
 } from "@/lib/admin/marketplace-actions";
 
 function toneForStatus(status: string) {
-  if (["approved", "owner", "public", "ready"].includes(status)) {
+  if (["approved", "public", "ready"].includes(status)) {
     return "green" as const;
   }
 
-  if (["archived", "internal", "rejected"].includes(status)) {
+  if (["archived", "rejected"].includes(status)) {
     return "red" as const;
   }
 
-  if (["placeholder", "reseller"].includes(status)) {
+  if (["internal", "placeholder"].includes(status)) {
+    return "amber" as const;
+  }
+
+  if (status === "private") {
     return "blue" as const;
   }
 
@@ -114,7 +119,29 @@ export default async function AdminMarketplacePage() {
                   <td className="px-5 py-4"><AdminBadge tone="blue">{item.type}</AdminBadge></td>
                   <td className="px-5 py-4 text-slate-600">{item.creator}</td>
                   <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
-                  <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.visibility)}>{item.visibility}</AdminBadge></td>
+                  <td className="px-5 py-4">
+                    <div className="grid gap-2">
+                      <AdminBadge tone={toneForStatus(item.visibility)}>{item.visibility}</AdminBadge>
+                      <form action={updateMarketplaceItemVisibility} className="grid gap-2">
+                        <MarketplaceHiddenFields item={item} />
+                        <select
+                          className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                          defaultValue={item.visibility}
+                          name="visibility"
+                        >
+                          <option value="private">private</option>
+                          <option value="internal">internal</option>
+                          <option value="public">public</option>
+                        </select>
+                        <button
+                          className="h-9 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+                          type="submit"
+                        >
+                          Update visibility
+                        </button>
+                      </form>
+                    </div>
+                  </td>
                   <td className="px-5 py-4"><AdminBadge tone={item.priceType === "free" ? "green" : "amber"}>{item.priceType}</AdminBadge></td>
                   <td className="px-5 py-4 text-slate-600">{item.installs} placeholder</td>
                   <td className="px-5 py-4 text-slate-600">{formatAdminMoney(item.revenue)} placeholder</td>

@@ -23,8 +23,7 @@ import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
   getMarketplaceRegistryStats,
   listMarketplaceSectionItemGroups,
-  toAdminMarketplaceSectionName,
-  toAdminMarketplaceVisibility
+  toAdminMarketplaceSectionName
 } from "@/src/lib/marketplace/marketplace-registry";
 import {
   getTemplateRegistryStats,
@@ -1249,7 +1248,7 @@ export type AdminMarketplaceControl = {
     section: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
     status: "approved" | "archived" | "draft" | "pending_review" | "rejected";
     type: "app" | "plugin" | "service" | "template" | "theme";
-    visibility: "internal" | "owner" | "public" | "reseller";
+    visibility: "internal" | "private" | "public";
   }>;
   overview: {
     approvedItems: number;
@@ -5981,7 +5980,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     section: toAdminMarketplaceSectionName(item.section),
     status: item.status,
     type: item.itemType,
-    visibility: toAdminMarketplaceVisibility(item.visibility)
+    visibility: item.visibility
   }));
 
   return {
