@@ -1351,3 +1351,31 @@ export {
   sanitizeTemplateSaleMetadata,
   validateTemplateSaleMetadata
 } from "@/src/lib/marketplace/marketplace-template-sales-runtime";
+export type {
+  CreateMarketplaceAppPluginInstallationInput,
+  MarketplaceAppPluginInstallationEligibility,
+  MarketplaceAppPluginInstallationRecord,
+  MarketplaceAppPluginInstallationStats,
+  MarketplaceAppPluginInstallationStatus,
+  MarketplaceAppPluginInstallationType
+} from "@/src/lib/marketplace/marketplace-app-plugin-installation-runtime";
+export {
+  createMarketplaceAppPluginInstallationFromPurchase,
+  disableMarketplaceAppPluginInstallationFoundation,
+  evaluateMarketplaceAppPluginInstallationEligibility,
+  getMarketplaceAppPluginInstallationById,
+  getMarketplaceAppPluginInstallationByPurchaseId,
+  getMarketplaceAppPluginInstallationStats,
+  inspectMarketplaceAppPluginInstallationEligibility,
+  isValidMarketplaceAppPluginInstallationStatus,
+  isValidMarketplaceAppPluginInstallationType,
+  listMarketplaceAppPluginInstallations,
+  MARKETPLACE_APP_PLUGIN_INSTALLATION_STATUSES,
+  MARKETPLACE_APP_PLUGIN_INSTALLATION_TYPES,
+  parseMarketplaceAppPluginInstallation,
+  parseMarketplaceAppPluginInstallationStatus,
+  parseMarketplaceAppPluginInstallationType,
+  sanitizeAppPluginInstallationMetadata,
+  uninstallMarketplaceAppPluginInstallationFoundation,
+  validateAppPluginInstallationMetadata
+} from "@/src/lib/marketplace/marketplace-app-plugin-installation-runtime";
