@@ -1409,3 +1409,40 @@ export {
   suspendMarketplaceResellerItemFoundation,
   validateResellerMetadata
 } from "@/src/lib/marketplace/marketplace-reseller-runtime";
+export type {
+  CreateMarketplaceReviewInput,
+  MarketplacePublicReview,
+  MarketplaceReviewAggregate,
+  MarketplaceReviewEligibility,
+  MarketplaceReviewRecord,
+  MarketplaceReviewStats,
+  MarketplaceReviewStatus
+} from "@/src/lib/marketplace/marketplace-reviews-runtime";
+export {
+  archiveMarketplaceReviewFoundation,
+  calculateMarketplaceReviewAggregate,
+  createMarketplaceReviewFromPurchase,
+  evaluateMarketplaceReviewEligibility,
+  flagMarketplaceReviewFoundation,
+  getMarketplacePublicReviewAggregate,
+  getMarketplaceReviewById,
+  getMarketplaceReviewStats,
+  hideMarketplaceReviewFoundation,
+  inspectMarketplaceReviewEligibility,
+  isPublicMarketplaceReviewEligible,
+  isReviewSupportedMarketplaceItemType,
+  isValidMarketplaceReviewRating,
+  isValidMarketplaceReviewStatus,
+  listMarketplacePublicReviews,
+  listMarketplaceReviews,
+  MARKETPLACE_REVIEW_STATUSES,
+  MARKETPLACE_REVIEW_SUPPORTED_ITEM_TYPES,
+  parseMarketplaceReview,
+  parseMarketplaceReviewRating,
+  parseMarketplaceReviewStatus,
+  publishMarketplaceReviewFoundation,
+  sanitizeReviewMetadata,
+  sanitizeReviewText,
+  toMarketplacePublicReview,
+  validateReviewMetadata
+} from "@/src/lib/marketplace/marketplace-reviews-runtime";
