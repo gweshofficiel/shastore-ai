@@ -448,6 +448,58 @@ function MarketplaceServiceBindingInspection({
   );
 }
 
+function MarketplaceCreatorAccountInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const binding = item.creatorAccount;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={binding.verified ? "green" : binding.creatorStatus === "active" ? "amber" : "red"}>
+        {binding.creatorStatus ?? "unlinked"}
+      </AdminBadge>
+      <p className="text-xs font-semibold text-slate-600">
+        Verified: {binding.verified ? "yes" : "no"}
+      </p>
+      {binding.displayName ? (
+        <p className="text-xs font-semibold text-slate-600">Creator: {binding.displayName}</p>
+      ) : null}
+      {binding.publicSlug ? (
+        <p className="text-xs font-semibold text-slate-500">Slug: {binding.publicSlug}</p>
+      ) : null}
+      {binding.creatorType ? (
+        <p className="text-xs font-semibold text-slate-500">Type: {binding.creatorType}</p>
+      ) : null}
+      {binding.verificationStatus ? (
+        <p className="text-xs font-semibold text-slate-500">Verification: {binding.verificationStatus}</p>
+      ) : null}
+      {binding.accountId ? (
+        <p className="text-xs font-semibold text-slate-500">Account: {binding.accountId}</p>
+      ) : null}
+      {binding.linkedUserId ? (
+        <p className="text-xs font-semibold text-slate-500">User: {shortenActorId(binding.linkedUserId)}</p>
+      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Public eligible: {binding.publicEligible ? "yes" : "no"}
+      </p>
+      {binding.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Creator issues</p>
+          {binding.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">Creator account verified.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -501,9 +553,54 @@ export default async function AdminMarketplacePage() {
           { label: "Verified theme bindings", value: control.overview.verifiedThemeBindings },
           { label: "Verified plugin bindings", value: control.overview.verifiedPluginBindings },
           { label: "Verified app bindings", value: control.overview.verifiedAppBindings },
-          { label: "Verified service bindings", value: control.overview.verifiedServiceBindings }
+          { label: "Verified service bindings", value: control.overview.verifiedServiceBindings },
+          { label: "Creator accounts", value: control.overview.totalCreatorAccounts },
+          { label: "Active creators", value: control.overview.activeCreatorAccounts },
+          { label: "Verified creators", value: control.overview.verifiedCreatorAccounts }
         ]}
       />
+
+      <section className="grid gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Marketplace foundation</p>
+          <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950">Creator Accounts</h2>
+        </div>
+        <AdminTable
+          empty={!control.creators.length ? "No creator accounts registered yet." : null}
+          headers={[
+            "Creator",
+            "Public slug",
+            "Type",
+            "Status",
+            "Verification",
+            "Linked account",
+            "Linked user",
+            "Items",
+            "Public eligible"
+          ]}
+        >
+          {control.creators.map((creator) => (
+            <tr key={creator.id}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{creator.displayName}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{creator.id}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{creator.publicSlug}</td>
+              <td className="px-5 py-4"><AdminBadge tone="blue">{creator.creatorType}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(creator.creatorStatus)}>{creator.creatorStatus}</AdminBadge></td>
+              <td className="px-5 py-4"><AdminBadge tone={toneForStatus(creator.verificationStatus)}>{creator.verificationStatus}</AdminBadge></td>
+              <td className="px-5 py-4 text-slate-600">{creator.accountId ?? "—"}</td>
+              <td className="px-5 py-4 text-slate-600">{creator.linkedUserId ? shortenActorId(creator.linkedUserId) : "—"}</td>
+              <td className="px-5 py-4 text-slate-600">{creator.itemCount}</td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={creator.publicEligible ? "green" : "amber"}>
+                  {creator.publicEligible ? "yes" : "no"}
+                </AdminBadge>
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      </section>
 
       <AdminTable headers={["Marketplace section", "Items", "Status"]}>
         {control.sections.map((section) => (
@@ -534,6 +631,7 @@ export default async function AdminMarketplacePage() {
                 "Item",
                 "Type",
                 "Creator/source",
+                "Creator account",
                 "Status",
                 "Visibility",
                 "Template binding",
@@ -556,6 +654,9 @@ export default async function AdminMarketplacePage() {
                   </td>
                   <td className="px-5 py-4"><AdminBadge tone="blue">{item.type}</AdminBadge></td>
                   <td className="px-5 py-4 text-slate-600">{item.creator}</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceCreatorAccountInspection item={item} />
+                  </td>
                   <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
                   <td className="px-5 py-4">
                     <div className="grid gap-2">

@@ -279,6 +279,42 @@ export {
   validateServiceRequirements,
   verifyMarketplaceServiceBinding
 } from "@/src/lib/marketplace/marketplace-service-runtime";
+import { ensureMarketplaceCreatorFoundation } from "@/src/lib/marketplace/marketplace-creator-runtime";
+export type {
+  MarketplaceCreatorAccountRecord,
+  MarketplaceCreatorAccountStats,
+  MarketplaceCreatorInspection,
+  MarketplaceCreatorStatus,
+  MarketplaceCreatorType,
+  MarketplaceCreatorVerificationStatus,
+  MarketplaceItemCreatorInspection
+} from "@/src/lib/marketplace/marketplace-creator-runtime";
+export {
+  ensureMarketplaceCreatorAccounts,
+  ensureMarketplaceCreatorFoundation,
+  ensureMarketplaceCreatorItemLinks,
+  evaluateMarketplaceCreatorAccount,
+  evaluateMarketplaceItemCreatorLink,
+  getMarketplaceCreatorAccountById,
+  getMarketplaceCreatorAccountStats,
+  getMarketplaceCreatorInspection,
+  isPublicCreatorEligible,
+  isValidCreatorPublicSlug,
+  isValidMarketplaceCreatorStatus,
+  isValidMarketplaceCreatorType,
+  isValidMarketplaceCreatorVerificationStatus,
+  listMarketplaceCreatorAccounts,
+  MARKETPLACE_CREATOR_STATUSES,
+  MARKETPLACE_CREATOR_TYPES,
+  MARKETPLACE_CREATOR_VERIFICATION_STATUSES,
+  parseMarketplaceCreatorAccount,
+  parseMarketplaceCreatorStatus,
+  parseMarketplaceCreatorType,
+  parseMarketplaceCreatorVerificationStatus,
+  sanitizeCreatorMetadata,
+  validateCreatorMetadata,
+  verifyMarketplaceCreatorAccount
+} from "@/src/lib/marketplace/marketplace-creator-runtime";
 import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
@@ -288,6 +324,7 @@ export type MarketplacePricingType = "free" | "paid" | "premium" | "subscription
 export type MarketplaceItemRecord = {
   approval: MarketplaceApprovalMetadata;
   createdAt: string | null;
+  creatorAccountId: string | null;
   creatorSource: string | null;
   currency: string | null;
   id: string;
@@ -351,7 +388,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -537,6 +574,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
   return {
     approval: parseApprovalMetadataFromRow(row),
     createdAt: text(row.created_at, 80) || null,
+    creatorAccountId: text(row.creator_account_id, 120) || null,
     creatorSource: text(row.creator_source, 240) || null,
     currency: text(row.currency, 12) || null,
     id,
@@ -780,6 +818,7 @@ export async function ensureMarketplaceRegistry() {
   await ensureMarketplacePluginBindings();
   await ensureMarketplaceAppBindings();
   await ensureMarketplaceServiceBindings();
+  await ensureMarketplaceCreatorFoundation();
 }
 
 export async function listMarketplaceItems(
