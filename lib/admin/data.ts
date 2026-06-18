@@ -21,10 +21,14 @@ import { integrationDefinitions } from "@/lib/integrations/catalog";
 import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integrations/health-engine";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
+  calculateMarketplaceRevenue,
   getAvailableMarketplaceApprovalActions,
+  getMarketplacePlatformFeeRate,
+  listMarketplaceRevenueEvents,
   getMarketplaceRegistryStats,
   listMarketplaceSectionItemGroups,
-  toAdminMarketplaceSectionName
+  toAdminMarketplaceSectionName,
+  type MarketplaceRevenueEventRecord
 } from "@/src/lib/marketplace/marketplace-registry";
 import {
   getTemplateRegistryStats,
@@ -1265,6 +1269,26 @@ export type AdminMarketplaceControl = {
       trialDays: number;
     };
     revenue: number;
+    revenueInspection: {
+      creatorRevenueAmount: number;
+      currency: "EUR" | "MAD" | "USD" | null;
+      eventCount: number;
+      grossAmount: number;
+      platformFeeAmount: number;
+      platformFeeRate: number;
+      processedEventCount: number;
+      recordedAmount: number;
+      recentEvents: Array<{
+        createdAt: string | null;
+        creatorRevenueAmount: number;
+        currency: "EUR" | "MAD" | "USD";
+        grossAmount: number;
+        id: string;
+        platformFeeAmount: number;
+        revenueStatus: "cancelled" | "failed" | "pending" | "processed" | "refunded";
+        source: string;
+      }>;
+    };
     section: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
     status: "approved" | "archived" | "draft" | "pending_review" | "rejected";
     type: "app" | "plugin" | "service" | "template" | "theme";
@@ -1274,9 +1298,13 @@ export type AdminMarketplaceControl = {
     approvedItems: number;
     archivedItems: number;
     draftItems: number;
+    liveInstalls: number;
+    paymentsProcessed: number;
     pendingReviewItems: number;
     rejectedItems: number;
+    totalCreatorRevenueProcessed: number;
     totalItems: number;
+    totalPlatformFeesProcessed: number;
   };
   sections: Array<{
     itemCount: number;
@@ -5983,13 +6011,49 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const [sectionGroups, registryStats] = await Promise.all([
+  const [sectionGroups, registryStats, revenueEvents] = await Promise.all([
     listMarketplaceSectionItemGroups(),
-    getMarketplaceRegistryStats()
+    getMarketplaceRegistryStats(),
+    listMarketplaceRevenueEvents({ limit: 1000 })
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
+  const revenueEventsByItemId = new Map<string, MarketplaceRevenueEventRecord[]>();
 
-  const items: AdminMarketplaceControl["items"] = registryItems.map((item) => ({
+  const revenueStats = revenueEvents.reduce(
+    (stats, event) => {
+      if (event.revenueStatus === "processed") {
+        stats.processedEvents += 1;
+        stats.totalGrossProcessed = Math.round((stats.totalGrossProcessed + event.grossAmount) * 100) / 100;
+        stats.totalPlatformFeesProcessed =
+          Math.round((stats.totalPlatformFeesProcessed + event.platformFeeAmount) * 100) / 100;
+        stats.totalCreatorRevenueProcessed =
+          Math.round((stats.totalCreatorRevenueProcessed + event.creatorRevenueAmount) * 100) / 100;
+      }
+
+      return stats;
+    },
+    {
+      processedEvents: 0,
+      totalCreatorRevenueProcessed: 0,
+      totalGrossProcessed: 0,
+      totalPlatformFeesProcessed: 0
+    }
+  );
+
+  for (const event of revenueEvents) {
+    const existing = revenueEventsByItemId.get(event.marketplaceItemId) ?? [];
+    existing.push(event);
+    revenueEventsByItemId.set(event.marketplaceItemId, existing);
+  }
+
+  const items: AdminMarketplaceControl["items"] = registryItems.map((item) => {
+    const itemEvents = revenueEventsByItemId.get(item.id) ?? [];
+    const calculated = calculateMarketplaceRevenue(
+      item.pricing,
+      getMarketplacePlatformFeeRate(item.metadata)
+    );
+
+    return {
     approval: {
       action: item.approval.approvalAction,
       approvalNote: item.approval.approvalNote,
@@ -6016,11 +6080,32 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       trialDays: item.pricing.trialDays
     },
     revenue: item.revenueAmount,
+    revenueInspection: {
+      creatorRevenueAmount: calculated.creatorRevenueAmount,
+      currency: calculated.currency,
+      eventCount: itemEvents.length,
+      grossAmount: calculated.grossAmount,
+      platformFeeAmount: calculated.platformFeeAmount,
+      platformFeeRate: calculated.platformFeeRate,
+      processedEventCount: itemEvents.filter((event) => event.revenueStatus === "processed").length,
+      recordedAmount: item.revenueAmount,
+      recentEvents: itemEvents.slice(0, 5).map((event) => ({
+        createdAt: event.createdAt,
+        creatorRevenueAmount: event.creatorRevenueAmount,
+        currency: event.currency,
+        grossAmount: event.grossAmount,
+        id: event.id,
+        platformFeeAmount: event.platformFeeAmount,
+        revenueStatus: event.revenueStatus,
+        source: event.source
+      }))
+    },
     section: toAdminMarketplaceSectionName(item.section),
     status: item.status,
     type: item.itemType,
     visibility: item.visibility
-  }));
+  };
+  });
 
   return {
     futureHooks: [
@@ -6037,9 +6122,13 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       approvedItems: registryStats.approvedItems,
       archivedItems: registryStats.archivedItems,
       draftItems: registryStats.draftItems,
+      liveInstalls: registryItems.reduce((sum, item) => sum + item.installCount, 0),
+      paymentsProcessed: revenueStats.totalGrossProcessed,
       pendingReviewItems: registryStats.pendingReviewItems,
       rejectedItems: registryStats.rejectedItems,
-      totalItems: registryStats.totalItems
+      totalCreatorRevenueProcessed: revenueStats.totalCreatorRevenueProcessed,
+      totalItems: registryStats.totalItems,
+      totalPlatformFeesProcessed: revenueStats.totalPlatformFeesProcessed
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,

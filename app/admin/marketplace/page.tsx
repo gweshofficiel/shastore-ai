@@ -56,6 +56,53 @@ function shortenActorId(value: string | null) {
   return value.length > 12 ? `${value.slice(0, 8)}…` : value;
 }
 
+function MarketplaceRevenueInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const { revenueInspection } = item;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <p className="text-xs font-semibold text-slate-600">
+        Recorded: {formatAdminMoney(revenueInspection.recordedAmount)} {revenueInspection.currency ?? "USD"}
+      </p>
+      <p className="text-xs font-semibold text-slate-600">
+        Pricing gross: {formatAdminMoney(revenueInspection.grossAmount)} {revenueInspection.currency ?? "USD"}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Platform fee ({Math.round(revenueInspection.platformFeeRate * 100)}%):{" "}
+        {formatAdminMoney(revenueInspection.platformFeeAmount)}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Creator share: {formatAdminMoney(revenueInspection.creatorRevenueAmount)}
+      </p>
+      <p className="text-xs font-semibold text-slate-500">
+        Events: {revenueInspection.processedEventCount} processed / {revenueInspection.eventCount} total
+      </p>
+      {revenueInspection.recentEvents.length ? (
+        <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Recent revenue events</p>
+          {revenueInspection.recentEvents.map((event) => (
+            <div className="text-[11px] font-semibold text-slate-600" key={event.id}>
+              <p>
+                {formatAdminMoney(event.grossAmount)} {event.currency} · {event.revenueStatus}
+              </p>
+              <p className="text-slate-400">
+                Fee {formatAdminMoney(event.platformFeeAmount)} · Creator {formatAdminMoney(event.creatorRevenueAmount)}
+              </p>
+              {event.createdAt ? <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">No revenue events recorded yet.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -96,8 +143,15 @@ export default async function AdminMarketplacePage() {
           { label: "Draft", value: control.overview.draftItems },
           { label: "Rejected", value: control.overview.rejectedItems },
           { label: "Archived", value: control.overview.archivedItems },
-          { label: "Payments processed", value: formatAdminMoney(0) },
-          { label: "Live installs", value: 0 }
+          { label: "Payments processed", value: formatAdminMoney(control.overview.paymentsProcessed) },
+          { label: "Live installs", value: control.overview.liveInstalls }
+        ]}
+      />
+
+      <AdminStatGrid
+        stats={[
+          { label: "Platform fees", value: formatAdminMoney(control.overview.totalPlatformFeesProcessed) },
+          { label: "Creator revenue", value: formatAdminMoney(control.overview.totalCreatorRevenueProcessed) }
         ]}
       />
 
@@ -245,7 +299,9 @@ export default async function AdminMarketplacePage() {
                     </div>
                   </td>
                   <td className="px-5 py-4 text-slate-600">{item.installs} placeholder</td>
-                  <td className="px-5 py-4 text-slate-600">{formatAdminMoney(item.revenue)} placeholder</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceRevenueInspection item={item} />
+                  </td>
                   <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.lastUpdated)}</td>
                   <td className="px-5 py-4">
                     <div className="grid min-w-52 gap-2">

@@ -130,6 +130,26 @@ export {
   setMarketplaceItemPricing,
   validateMarketplacePricingInput
 } from "@/src/lib/marketplace/marketplace-pricing-runtime";
+export type {
+  MarketplaceItemRevenueSummary,
+  MarketplaceRevenueCalculation,
+  MarketplaceRevenueEventRecord,
+  MarketplaceRevenueStats,
+  MarketplaceRevenueStatus
+} from "@/src/lib/marketplace/marketplace-revenue-runtime";
+export {
+  calculateMarketplaceRevenue,
+  getMarketplaceItemRevenueSummary,
+  getMarketplacePlatformFeeRate,
+  getMarketplaceRevenueStats,
+  listMarketplaceRevenueEvents,
+  MARKETPLACE_DEFAULT_PLATFORM_FEE_RATE,
+  MARKETPLACE_REVENUE_STATUSES,
+  parseMarketplaceRevenueEvent,
+  parseMarketplaceRevenueStatus,
+  recordMarketplaceRevenueEvent,
+  validateMarketplaceRevenueCalculation
+} from "@/src/lib/marketplace/marketplace-revenue-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
