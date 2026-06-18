@@ -6177,6 +6177,16 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
+  const loadCreatorAccountsSafely = async () => {
+    try {
+      return await listMarketplaceCreatorAccounts({ limit: 1000 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[getAdminMarketplaceControl] creator accounts unavailable: ${message}`);
+      return [];
+    }
+  };
+
   const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings, serviceBindings, creatorAccounts] =
     await Promise.all([
     listMarketplaceSectionItemGroups(),
@@ -6188,7 +6198,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     listMarketplacePluginBindings({ limit: 1000 }),
     listMarketplaceAppBindings({ limit: 1000 }),
     listMarketplaceServiceBindings({ limit: 1000 }),
-    listMarketplaceCreatorAccounts({ limit: 1000 })
+    loadCreatorAccountsSafely()
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));
@@ -6336,11 +6346,11 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       item: {
         creatorAccountId: item.creatorAccountId,
         itemType: item.itemType,
-        moderatedAt: item.moderation.moderatedAt,
-        moderatedBy: item.moderation.moderatedBy,
-        moderationAction: item.moderation.moderationAction,
-        moderationNote: item.moderation.moderationNote,
-        moderationReason: item.moderation.moderationReason,
+        moderatedAt: item.moderation?.moderatedAt ?? null,
+        moderatedBy: item.moderation?.moderatedBy ?? null,
+        moderationAction: item.moderation?.moderationAction ?? null,
+        moderationNote: item.moderation?.moderationNote ?? null,
+        moderationReason: item.moderation?.moderationReason ?? null,
         name: item.name,
         pricing: item.pricing,
         status: item.status,
@@ -6665,7 +6675,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       totalCreatorAccounts: creatorAccounts.length,
       verifiedCreatorAccounts: creatorAccounts.filter((creator) => creator.verificationStatus === "verified").length,
       submittedItems: registryItems.filter((item) => item.submissionStatus === "submitted").length,
-      moderatedItems: registryItems.filter((item) => item.moderation.moderationAction).length
+      moderatedItems: registryItems.filter((item) => item.moderation?.moderationAction).length
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,

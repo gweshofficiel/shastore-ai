@@ -448,6 +448,104 @@ export type MarketplaceSectionSummary = {
 const itemSelect =
   "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, submitted_by, submitted_at, submission_note, submission_status, submission_updated_at, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, moderated_by, moderated_at, moderation_action, moderation_reason, moderation_note, moderation_updated_at, created_at, updated_at";
 
+const itemSelectWithoutModeration =
+  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, submitted_by, submitted_at, submission_note, submission_status, submission_updated_at, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+
+const itemSelectWithoutSubmissionAndModeration =
+  "id, item_key, slug, name, item_type, section, creator_source, creator_account_id, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+
+const itemSelectCore =
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+
+const marketplaceItemSelectTiers = [
+  itemSelect,
+  itemSelectWithoutModeration,
+  itemSelectWithoutSubmissionAndModeration,
+  itemSelectCore
+] as const;
+
+function isMarketplaceSchemaDriftError(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("does not exist") ||
+    normalized.includes("unknown column") ||
+    normalized.includes("could not find") ||
+    (normalized.includes("column") && normalized.includes("not found"))
+  );
+}
+
+async function queryMarketplaceItemRows(params: {
+  buildQuery: (select: string) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  context: string;
+}) {
+  let lastMessage = "Marketplace items could not be loaded.";
+
+  for (const select of marketplaceItemSelectTiers) {
+    const { data, error } = await params.buildQuery(select);
+
+    if (!error) {
+      if (select !== itemSelect) {
+        console.warn(
+          `[marketplace-registry] ${params.context} loaded with reduced marketplace schema select. Apply pending MP-14/15/16 migrations for full metadata.`
+        );
+      }
+
+      if (Array.isArray(data)) {
+        return data as unknown[];
+      }
+
+      return data ? [data] : [];
+    }
+
+    lastMessage = error.message;
+
+    if (!isMarketplaceSchemaDriftError(error.message)) {
+      throw new Error(`Marketplace items could not be loaded: ${error.message}`);
+    }
+
+    console.warn(
+      `[marketplace-registry] ${params.context} select fallback after schema drift: ${error.message}`
+    );
+  }
+
+  throw new Error(`Marketplace items could not be loaded: ${lastMessage}`);
+}
+
+function applyMarketplaceItemFilters(
+  query: ReturnType<ReturnType<typeof requireAdminClient>["from"]>,
+  filters: MarketplaceItemFilters
+) {
+  let filteredQuery = query;
+
+  if (filters.section) {
+    const sections = Array.isArray(filters.section) ? filters.section : [filters.section];
+    filteredQuery = filteredQuery.in("section" as never, sections as never);
+  }
+
+  if (filters.itemType) {
+    const types = Array.isArray(filters.itemType) ? filters.itemType : [filters.itemType];
+    const validatedTypes = types.map((itemType) => assertValidMarketplaceItemType(itemType));
+    filteredQuery = filteredQuery.in("item_type" as never, validatedTypes as never);
+  }
+
+  if (filters.status) {
+    const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+    const validatedStatuses = statuses.map((status) => assertValidMarketplaceItemStatus(status));
+    filteredQuery = filteredQuery.in("status" as never, validatedStatuses as never);
+  }
+
+  if (filters.visibility) {
+    const visibilities = Array.isArray(filters.visibility) ? filters.visibility : [filters.visibility];
+    const validatedVisibilities = visibilities.map((visibility) =>
+      assertValidMarketplaceItemVisibility(visibility)
+    );
+    filteredQuery = filteredQuery.in("visibility" as never, validatedVisibilities as never);
+  }
+
+  return filteredQuery;
+}
+
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
     approvalAction: parseMarketplaceApprovalAction(row.approval_action),
@@ -893,7 +991,19 @@ export async function ensureMarketplaceRegistry() {
   await ensureMarketplacePluginBindings();
   await ensureMarketplaceAppBindings();
   await ensureMarketplaceServiceBindings();
-  await ensureMarketplaceCreatorFoundation();
+
+  try {
+    await ensureMarketplaceCreatorFoundation();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (isMarketplaceSchemaDriftError(message)) {
+      console.warn(`[marketplace-registry] Creator foundation skipped pending schema: ${message}`);
+      return;
+    }
+
+    throw error;
+  }
 }
 
 export async function listMarketplaceItems(
@@ -903,40 +1013,15 @@ export async function listMarketplaceItems(
 
   const admin = requireAdminClient();
   const limit = Math.max(1, Math.min(filters.limit ?? 500, 1000));
-  let query = admin.from("marketplace_items" as never).select(itemSelect as never);
+  const rows = await queryMarketplaceItemRows({
+    context: "listMarketplaceItems",
+    buildQuery: (select) =>
+      applyMarketplaceItemFilters(admin.from("marketplace_items" as never).select(select as never), filters)
+        .order("updated_at" as never, { ascending: false })
+        .limit(limit)
+  });
 
-  if (filters.section) {
-    const sections = Array.isArray(filters.section) ? filters.section : [filters.section];
-    query = query.in("section" as never, sections as never);
-  }
-
-  if (filters.itemType) {
-    const types = Array.isArray(filters.itemType) ? filters.itemType : [filters.itemType];
-    const validatedTypes = types.map((itemType) => assertValidMarketplaceItemType(itemType));
-    query = query.in("item_type" as never, validatedTypes as never);
-  }
-
-  if (filters.status) {
-    const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
-    const validatedStatuses = statuses.map((status) => assertValidMarketplaceItemStatus(status));
-    query = query.in("status" as never, validatedStatuses as never);
-  }
-
-  if (filters.visibility) {
-    const visibilities = Array.isArray(filters.visibility) ? filters.visibility : [filters.visibility];
-    const validatedVisibilities = visibilities.map((visibility) =>
-      assertValidMarketplaceItemVisibility(visibility)
-    );
-    query = query.in("visibility" as never, validatedVisibilities as never);
-  }
-
-  const { data, error } = await query.order("updated_at" as never, { ascending: false }).limit(limit);
-
-  if (error) {
-    throw new Error(`Marketplace items could not be loaded: ${error.message}`);
-  }
-
-  return (Array.isArray(data) ? (data as unknown[]) : [])
+  return rows
     .map((row) => parseRecord(row))
     .filter((item): item is MarketplaceItemRecord => Boolean(item));
 }
@@ -948,17 +1033,17 @@ export async function getMarketplaceItemByKey(itemKey: string): Promise<Marketpl
   if (!cleanedKey) return null;
 
   const admin = requireAdminClient();
-  const { data, error } = await admin
-    .from("marketplace_items" as never)
-    .select(itemSelect as never)
-    .eq("item_key" as never, cleanedKey as never)
-    .maybeSingle();
+  const rows = await queryMarketplaceItemRows({
+    context: "getMarketplaceItemByKey",
+    buildQuery: (select) =>
+      admin
+        .from("marketplace_items" as never)
+        .select(select as never)
+        .eq("item_key" as never, cleanedKey as never)
+        .maybeSingle()
+  });
 
-  if (error) {
-    throw new Error(`Marketplace item could not be loaded: ${error.message}`);
-  }
-
-  return parseRecord(data);
+  return parseRecord(rows[0] ?? null);
 }
 
 export async function getMarketplaceItemBySlug(slug: string): Promise<MarketplaceItemRecord | null> {
@@ -968,17 +1053,17 @@ export async function getMarketplaceItemBySlug(slug: string): Promise<Marketplac
   if (!cleanedSlug) return null;
 
   const admin = requireAdminClient();
-  const { data, error } = await admin
-    .from("marketplace_items" as never)
-    .select(itemSelect as never)
-    .eq("slug" as never, cleanedSlug as never)
-    .maybeSingle();
+  const rows = await queryMarketplaceItemRows({
+    context: "getMarketplaceItemBySlug",
+    buildQuery: (select) =>
+      admin
+        .from("marketplace_items" as never)
+        .select(select as never)
+        .eq("slug" as never, cleanedSlug as never)
+        .maybeSingle()
+  });
 
-  if (error) {
-    throw new Error(`Marketplace item could not be loaded: ${error.message}`);
-  }
-
-  return parseRecord(data);
+  return parseRecord(rows[0] ?? null);
 }
 
 export async function getMarketplaceRegistryStats(): Promise<MarketplaceRegistryStats> {
