@@ -21,6 +21,7 @@ import { integrationDefinitions } from "@/lib/integrations/catalog";
 import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integrations/health-engine";
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
+  getAvailableMarketplaceApprovalActions,
   getMarketplaceRegistryStats,
   listMarketplaceSectionItemGroups,
   toAdminMarketplaceSectionName
@@ -1238,6 +1239,18 @@ export type AdminTemplateManagementControl = {
 export type AdminMarketplaceControl = {
   futureHooks: string[];
   items: Array<{
+    approval: {
+      action: "approve" | "archive" | "reject" | "restore_to_draft" | "submit_for_review" | null;
+      approvalNote: string | null;
+      approvalUpdatedAt: string | null;
+      approvedAt: string | null;
+      approvedBy: string | null;
+      availableActions: Array<"approve" | "archive" | "reject" | "restore_to_draft" | "submit_for_review">;
+      rejectedAt: string | null;
+      rejectedBy: string | null;
+      reviewedAt: string | null;
+      reviewedBy: string | null;
+    };
     creator: string;
     id: string;
     installs: number;
@@ -5970,6 +5983,18 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
   const registryItems = sectionGroups.flatMap((section) => section.items);
 
   const items: AdminMarketplaceControl["items"] = registryItems.map((item) => ({
+    approval: {
+      action: item.approval.approvalAction,
+      approvalNote: item.approval.approvalNote,
+      approvalUpdatedAt: item.approval.approvalUpdatedAt,
+      approvedAt: item.approval.approvedAt,
+      approvedBy: item.approval.approvedBy,
+      availableActions: getAvailableMarketplaceApprovalActions(item.status),
+      rejectedAt: item.approval.rejectedAt,
+      rejectedBy: item.approval.rejectedBy,
+      reviewedAt: item.approval.reviewedAt,
+      reviewedBy: item.approval.reviewedBy
+    },
     creator: item.creatorSource ?? "SHASTORE platform",
     id: item.id,
     installs: item.installCount,

@@ -3,25 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { isValidMarketplaceItemType } from "@/src/lib/marketplace/marketplace-item-type-runtime";
 import {
+  applyMarketplaceApprovalAction,
+  type MarketplaceApprovalAction
+} from "@/src/lib/marketplace/marketplace-approval-runtime";
+import {
   assertValidMarketplaceItemVisibility,
   setMarketplaceItemVisibility,
   type MarketplaceItemVisibility
 } from "@/src/lib/marketplace/marketplace-visibility-runtime";
-import {
-  transitionMarketplaceItemStatus,
-  type MarketplaceStatusTransition
-} from "@/src/lib/marketplace/marketplace-status-runtime";
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function runMarketplaceStatusAction(
+async function runMarketplaceApprovalAction(
   formData: FormData,
-  transition: MarketplaceStatusTransition
+  action: MarketplaceApprovalAction
 ) {
   const itemId = cleanText(formData.get("itemId"));
   const itemType = cleanText(formData.get("itemType"));
+  const approvalNote = cleanText(formData.get("approvalNote"));
 
   if (!itemId) {
     throw new Error("Missing marketplace item id.");
@@ -31,24 +32,28 @@ async function runMarketplaceStatusAction(
     throw new Error("Invalid marketplace item type.");
   }
 
-  await transitionMarketplaceItemStatus(itemId, transition);
+  await applyMarketplaceApprovalAction(itemId, action, approvalNote || null);
   revalidatePath("/admin/marketplace");
 }
 
 export async function approveMarketplaceItem(formData: FormData) {
-  await runMarketplaceStatusAction(formData, "approve");
+  await runMarketplaceApprovalAction(formData, "approve");
 }
 
 export async function rejectMarketplaceItem(formData: FormData) {
-  await runMarketplaceStatusAction(formData, "reject");
+  await runMarketplaceApprovalAction(formData, "reject");
 }
 
 export async function markMarketplaceItemUnderReview(formData: FormData) {
-  await runMarketplaceStatusAction(formData, "pending_review");
+  await runMarketplaceApprovalAction(formData, "submit_for_review");
 }
 
 export async function archiveMarketplaceItem(formData: FormData) {
-  await runMarketplaceStatusAction(formData, "archive");
+  await runMarketplaceApprovalAction(formData, "archive");
+}
+
+export async function restoreMarketplaceItemDraft(formData: FormData) {
+  await runMarketplaceApprovalAction(formData, "restore_to_draft");
 }
 
 export async function updateMarketplaceItemVisibility(formData: FormData) {

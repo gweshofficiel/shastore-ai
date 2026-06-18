@@ -31,6 +31,10 @@ import {
   parseMarketplaceItemVisibility,
   type MarketplaceItemVisibility
 } from "@/src/lib/marketplace/marketplace-visibility-runtime";
+import {
+  parseMarketplaceApprovalAction,
+  type MarketplaceApprovalMetadata
+} from "@/src/lib/marketplace/marketplace-approval-runtime";
 import { listTemplates } from "@/src/lib/templates/template-registry";
 
 export type {
@@ -80,12 +84,33 @@ export {
   parseMarketplaceItemVisibility,
   setMarketplaceItemVisibility
 } from "@/src/lib/marketplace/marketplace-visibility-runtime";
+export type {
+  MarketplaceApprovalAction,
+  MarketplaceApprovalMetadata,
+  MarketplaceApprovalResult
+} from "@/src/lib/marketplace/marketplace-approval-runtime";
+export {
+  applyMarketplaceApprovalAction,
+  approveMarketplaceItemApproval,
+  archiveMarketplaceItemApproval,
+  assertValidMarketplaceApprovalAction,
+  canApplyMarketplaceApprovalAction,
+  getAvailableMarketplaceApprovalActions,
+  getMarketplaceApprovalTargetStatus,
+  isValidMarketplaceApprovalAction,
+  MARKETPLACE_APPROVAL_ACTIONS,
+  parseMarketplaceApprovalAction,
+  rejectMarketplaceItemApproval,
+  restoreMarketplaceItemToDraft,
+  submitMarketplaceItemForReview
+} from "@/src/lib/marketplace/marketplace-approval-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
 export type MarketplacePricingType = "free" | "paid" | "premium" | "subscription";
 
 export type MarketplaceItemRecord = {
+  approval: MarketplaceApprovalMetadata;
   createdAt: string | null;
   creatorSource: string | null;
   currency: string | null;
@@ -137,7 +162,21 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_type, price_amount, currency, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_type, price_amount, currency, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+
+function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
+  return {
+    approvalAction: parseMarketplaceApprovalAction(row.approval_action),
+    approvalNote: text(row.approval_note, 2000) || null,
+    approvalUpdatedAt: text(row.approval_updated_at, 80) || null,
+    approvedAt: text(row.approved_at, 80) || null,
+    approvedBy: text(row.approved_by, 120) || null,
+    rejectedAt: text(row.rejected_at, 80) || null,
+    rejectedBy: text(row.rejected_by, 120) || null,
+    reviewedAt: text(row.reviewed_at, 80) || null,
+    reviewedBy: text(row.reviewed_by, 120) || null
+  };
+}
 
 export type MarketplaceSectionItems = {
   itemCount: number;
@@ -301,6 +340,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
   }
 
   return {
+    approval: parseApprovalMetadataFromRow(row),
     createdAt: text(row.created_at, 80) || null,
     creatorSource: text(row.creator_source, 240) || null,
     currency: text(row.currency, 12) || null,

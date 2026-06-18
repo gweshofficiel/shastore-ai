@@ -12,6 +12,7 @@ import {
   archiveMarketplaceItem,
   markMarketplaceItemUnderReview,
   rejectMarketplaceItem,
+  restoreMarketplaceItemDraft,
   updateMarketplaceItemVisibility
 } from "@/lib/admin/marketplace-actions";
 
@@ -46,6 +47,33 @@ function MarketplaceHiddenFields({
       <input name="itemName" type="hidden" value={item.name} />
       <input name="itemType" type="hidden" value={item.type} />
     </>
+  );
+}
+
+function shortenActorId(value: string | null) {
+  if (!value) return null;
+  return value.length > 12 ? `${value.slice(0, 8)}…` : value;
+}
+
+function MarketplaceApprovalMeta({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  const { approval } = item;
+
+  return (
+    <div className="mt-2 grid gap-1 text-[11px] font-semibold text-slate-500">
+      {approval.action ? <p>Last action: {approval.action}</p> : null}
+      {approval.approvalUpdatedAt ? <p>Updated: {formatAdminDate(approval.approvalUpdatedAt)}</p> : null}
+      {approval.reviewedAt ? <p>Reviewed: {formatAdminDate(approval.reviewedAt)}</p> : null}
+      {approval.reviewedBy ? <p>Reviewer: {shortenActorId(approval.reviewedBy)}</p> : null}
+      {approval.approvedAt ? <p>Approved: {formatAdminDate(approval.approvedAt)}</p> : null}
+      {approval.approvedBy ? <p>Approver: {shortenActorId(approval.approvedBy)}</p> : null}
+      {approval.rejectedAt ? <p>Rejected: {formatAdminDate(approval.rejectedAt)}</p> : null}
+      {approval.rejectedBy ? <p>Rejector: {shortenActorId(approval.rejectedBy)}</p> : null}
+      {approval.approvalNote ? <p>Note: {approval.approvalNote}</p> : null}
+    </div>
   );
 }
 
@@ -148,30 +176,53 @@ export default async function AdminMarketplacePage() {
                   <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.lastUpdated)}</td>
                   <td className="px-5 py-4">
                     <div className="grid min-w-52 gap-2">
-                      <form action={approveMarketplaceItem}>
-                        <MarketplaceHiddenFields item={item} />
-                        <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                          Approve
-                        </button>
-                      </form>
-                      <form action={rejectMarketplaceItem}>
-                        <MarketplaceHiddenFields item={item} />
-                        <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                          Reject
-                        </button>
-                      </form>
-                      <form action={markMarketplaceItemUnderReview}>
-                        <MarketplaceHiddenFields item={item} />
-                        <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                          Under review
-                        </button>
-                      </form>
-                      <form action={archiveMarketplaceItem}>
-                        <MarketplaceHiddenFields item={item} />
-                        <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
-                          Archive
-                        </button>
-                      </form>
+                      {item.approval.availableActions.includes("submit_for_review") ? (
+                        <form action={markMarketplaceItemUnderReview}>
+                          <MarketplaceHiddenFields item={item} />
+                          <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
+                            Under review
+                          </button>
+                        </form>
+                      ) : null}
+                      {item.approval.availableActions.includes("approve") ? (
+                        <form action={approveMarketplaceItem}>
+                          <MarketplaceHiddenFields item={item} />
+                          <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
+                            Approve
+                          </button>
+                        </form>
+                      ) : null}
+                      {item.approval.availableActions.includes("reject") ? (
+                        <form action={rejectMarketplaceItem} className="grid gap-2">
+                          <MarketplaceHiddenFields item={item} />
+                          <input
+                            className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                            name="approvalNote"
+                            placeholder="Rejection note (optional)"
+                            type="text"
+                          />
+                          <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
+                            Reject
+                          </button>
+                        </form>
+                      ) : null}
+                      {item.approval.availableActions.includes("archive") ? (
+                        <form action={archiveMarketplaceItem}>
+                          <MarketplaceHiddenFields item={item} />
+                          <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                            Archive
+                          </button>
+                        </form>
+                      ) : null}
+                      {item.approval.availableActions.includes("restore_to_draft") ? (
+                        <form action={restoreMarketplaceItemDraft}>
+                          <MarketplaceHiddenFields item={item} />
+                          <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
+                            Restore draft
+                          </button>
+                        </form>
+                      ) : null}
+                      <MarketplaceApprovalMeta item={item} />
                     </div>
                   </td>
                 </tr>
