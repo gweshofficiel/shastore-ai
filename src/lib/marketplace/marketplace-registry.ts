@@ -1303,3 +1303,29 @@ export {
   groupPublicItemDetailAssets,
   toMarketplacePublicItemDetail
 } from "@/src/lib/marketplace/marketplace-public-item-detail-runtime";
+export type {
+  CreateMarketplacePurchaseFoundationInput,
+  MarketplacePaymentProvider,
+  MarketplacePurchaseEligibility,
+  MarketplacePurchaseRecord,
+  MarketplacePurchaseStats,
+  MarketplacePurchaseStatus
+} from "@/src/lib/marketplace/marketplace-purchase-runtime";
+export {
+  cancelMarketplacePurchaseFoundation,
+  createMarketplacePurchaseFoundation,
+  evaluateMarketplacePurchaseEligibility,
+  getMarketplacePurchaseById,
+  getMarketplacePurchaseStats,
+  inspectMarketplacePurchaseEligibility,
+  isValidMarketplacePaymentProvider,
+  isValidMarketplacePurchaseStatus,
+  listMarketplacePurchases,
+  MARKETPLACE_PAYMENT_PROVIDERS,
+  MARKETPLACE_PURCHASE_STATUSES,
+  parseMarketplacePaymentProvider,
+  parseMarketplacePurchase,
+  parseMarketplacePurchaseStatus,
+  sanitizePurchaseMetadata,
+  validatePurchaseMetadata
+} from "@/src/lib/marketplace/marketplace-purchase-runtime";
