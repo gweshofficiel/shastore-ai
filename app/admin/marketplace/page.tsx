@@ -80,7 +80,9 @@ export default async function AdminMarketplacePage() {
       </AdminTable>
 
       {control.sections.map((section) => {
-        const items = control.items.filter((item) => item.section === section.name);
+        const items = control.items.filter(
+          (item) => item.section === section.name && item.type === section.itemType
+        );
 
         return (
           <section className="grid gap-4" key={section.name}>

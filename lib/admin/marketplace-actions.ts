@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isValidMarketplaceItemType } from "@/src/lib/marketplace/marketplace-item-type-runtime";
 
 type MarketplaceAction =
   | "admin_marketplace_approve_item"
@@ -22,6 +23,10 @@ async function recordMarketplaceAction(formData: FormData, action: MarketplaceAc
 
   if (!itemId) {
     throw new Error("Missing marketplace item id.");
+  }
+
+  if (itemType && !isValidMarketplaceItemType(itemType)) {
+    throw new Error("Invalid marketplace item type.");
   }
 
   const admin = createAdminClient();

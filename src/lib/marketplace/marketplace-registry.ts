@@ -2,16 +2,43 @@ import "server-only";
 
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  assertValidItemTypeSectionPair,
+  assertValidMarketplaceItemType,
+  countMarketplaceItemsByType,
+  filterMarketplaceItemsBySection,
+  filterMarketplaceItemsByType,
+  getItemTypeForSection,
+  getMarketplaceSectionLabel,
+  getSectionForItemType,
+  MARKETPLACE_SECTIONS,
+  parseMarketplaceItemType,
+  parseMarketplaceSection,
+  type MarketplaceItemType,
+  type MarketplaceItemTypeStats,
+  type MarketplaceSection,
+  validateItemTypeSectionPair
+} from "@/src/lib/marketplace/marketplace-item-type-runtime";
 import { listTemplates } from "@/src/lib/templates/template-registry";
 
-export type MarketplaceItemType = "app" | "plugin" | "service" | "template" | "theme";
-
-export type MarketplaceSection =
-  | "app_marketplace"
-  | "plugin_marketplace"
-  | "service_marketplace"
-  | "template_marketplace"
-  | "theme_marketplace";
+export type {
+  MarketplaceItemType,
+  MarketplaceItemTypeCatalogEntry,
+  MarketplaceItemTypeStats,
+  MarketplaceSection
+} from "@/src/lib/marketplace/marketplace-item-type-runtime";
+export {
+  getItemTypeForSection,
+  getMarketplaceItemTypeLabel,
+  getMarketplaceSectionLabel,
+  getSectionForItemType,
+  isValidMarketplaceItemType,
+  listMarketplaceItemTypeCatalog,
+  MARKETPLACE_ITEM_TYPES,
+  MARKETPLACE_SECTIONS,
+  parseMarketplaceItemType,
+  validateItemTypeSectionPair
+} from "@/src/lib/marketplace/marketplace-item-type-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
@@ -75,12 +102,12 @@ export type MarketplaceSectionSummary = {
 const itemSelect =
   "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_type, price_amount, currency, install_count, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, created_at, updated_at";
 
-const sectionLabels: Record<MarketplaceSection, string> = {
-  app_marketplace: "App Marketplace",
-  plugin_marketplace: "Plugin Marketplace",
-  service_marketplace: "Service Marketplace",
-  template_marketplace: "Template Marketplace",
-  theme_marketplace: "Theme Marketplace"
+export type MarketplaceSectionItems = {
+  itemCount: number;
+  itemType: MarketplaceItemType;
+  items: MarketplaceItemRecord[];
+  section: MarketplaceSection;
+  sectionLabel: string;
 };
 
 const placeholderSeeds: Array<{
@@ -165,22 +192,12 @@ function rowRecord(value: unknown) {
   return isRecord(candidate) ? candidate : null;
 }
 
-function parseItemType(value: unknown): MarketplaceItemType {
-  const cleaned = text(value, 40);
-  if (cleaned === "theme") return "theme";
-  if (cleaned === "plugin") return "plugin";
-  if (cleaned === "app") return "app";
-  if (cleaned === "service") return "service";
-  return "template";
+function parseItemType(value: unknown): MarketplaceItemType | null {
+  return parseMarketplaceItemType(value);
 }
 
-function parseSection(value: unknown): MarketplaceSection {
-  const cleaned = text(value, 60);
-  if (cleaned === "theme_marketplace") return "theme_marketplace";
-  if (cleaned === "plugin_marketplace") return "plugin_marketplace";
-  if (cleaned === "app_marketplace") return "app_marketplace";
-  if (cleaned === "service_marketplace") return "service_marketplace";
-  return "template_marketplace";
+function parseSection(value: unknown): MarketplaceSection | null {
+  return parseMarketplaceSection(value);
 }
 
 function parseSourceType(value: unknown): MarketplaceSourceType {
@@ -236,6 +253,13 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
 
   if (!id || !itemKey || !slug || !name) return null;
 
+  const itemType = parseItemType(row.item_type);
+  const section = parseSection(row.section);
+
+  if (!itemType || !section || !validateItemTypeSectionPair(itemType, section)) {
+    return null;
+  }
+
   return {
     createdAt: text(row.created_at, 80) || null,
     creatorSource: text(row.creator_source, 240) || null,
@@ -243,7 +267,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     id,
     installCount: Math.max(0, parseNumber(row.install_count) ?? 0),
     itemKey,
-    itemType: parseItemType(row.item_type),
+    itemType,
     linkedAppId: text(row.linked_app_id, 120) || null,
     linkedPluginId: text(row.linked_plugin_id, 120) || null,
     linkedServiceId: text(row.linked_service_id, 120) || null,
@@ -255,7 +279,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     pricingType: parsePricingType(row.pricing_type),
     revenueAmount: Math.max(0, parseNumber(row.revenue_amount) ?? 0),
     revenueCurrency: text(row.revenue_currency, 12) || null,
-    section: parseSection(row.section),
+    section,
     slug,
     sourceType: parseSourceType(row.source_type),
     status: parseStatus(row.status),
@@ -303,6 +327,11 @@ async function seedMissingPlaceholderItems() {
   const missing = placeholderSeeds.filter((item) => !existingKeys.has(item.item_key));
 
   if (!missing.length) return;
+
+  for (const item of missing) {
+    assertValidMarketplaceItemType(item.item_type);
+    assertValidItemTypeSectionPair(item.item_type, item.section);
+  }
 
   const { error } = await admin.from("marketplace_items" as never).insert(
     missing.map((item) => ({
@@ -364,6 +393,11 @@ async function seedMissingTemplateItems() {
 
   if (!missing.length) return;
 
+  for (const item of missing) {
+    assertValidMarketplaceItemType(item.item_type);
+    assertValidItemTypeSectionPair(item.item_type, item.section);
+  }
+
   const { error } = await admin.from("marketplace_items" as never).insert(missing as never);
 
   if (error) {
@@ -393,7 +427,8 @@ export async function listMarketplaceItems(
 
   if (filters.itemType) {
     const types = Array.isArray(filters.itemType) ? filters.itemType : [filters.itemType];
-    query = query.in("item_type" as never, types as never);
+    const validatedTypes = types.map((itemType) => assertValidMarketplaceItemType(itemType));
+    query = query.in("item_type" as never, validatedTypes as never);
   }
 
   if (filters.status) {
@@ -470,28 +505,72 @@ export async function getMarketplaceRegistryStats(): Promise<MarketplaceRegistry
   };
 }
 
-export function getMarketplaceSectionLabel(section: MarketplaceSection) {
-  return sectionLabels[section];
-}
-
 export async function listMarketplaceSections(): Promise<MarketplaceSectionSummary[]> {
   const items = await listMarketplaceItems();
-  const sections: MarketplaceSection[] = [
-    "template_marketplace",
-    "theme_marketplace",
-    "plugin_marketplace",
-    "app_marketplace",
-    "service_marketplace"
-  ];
 
-  return sections.map((section) => {
-    const itemCount = items.filter((item) => item.section === section).length;
+  return MARKETPLACE_SECTIONS.map((section) => {
+    const sectionItems = filterMarketplaceItemsBySection(items, section);
 
     return {
-      itemCount,
+      itemCount: sectionItems.length,
       readiness: section === "template_marketplace" ? "ready" : "placeholder",
       section,
-      sectionLabel: sectionLabels[section]
+      sectionLabel: getMarketplaceSectionLabel(section)
+    };
+  });
+}
+
+export async function listMarketplaceItemsByType(
+  itemType: MarketplaceItemType
+): Promise<MarketplaceItemRecord[]> {
+  await ensureMarketplaceRegistry();
+  assertValidMarketplaceItemType(itemType);
+
+  const items = await listMarketplaceItems({
+    itemType,
+    section: getSectionForItemType(itemType)
+  });
+
+  return filterMarketplaceItemsByType(items, itemType);
+}
+
+export async function listMarketplaceItemsBySection(
+  section: MarketplaceSection
+): Promise<MarketplaceItemRecord[]> {
+  await ensureMarketplaceRegistry();
+
+  const parsedSection = parseMarketplaceSection(section);
+
+  if (!parsedSection) {
+    throw new Error("Marketplace section is invalid.");
+  }
+
+  const items = await listMarketplaceItems({
+    itemType: getItemTypeForSection(parsedSection),
+    section: parsedSection
+  });
+
+  return filterMarketplaceItemsBySection(items, parsedSection);
+}
+
+export async function getMarketplaceItemTypeStats(): Promise<MarketplaceItemTypeStats> {
+  const items = await listMarketplaceItems();
+
+  return countMarketplaceItemsByType(items);
+}
+
+export async function listMarketplaceSectionItemGroups(): Promise<MarketplaceSectionItems[]> {
+  const items = await listMarketplaceItems();
+
+  return MARKETPLACE_SECTIONS.map((section) => {
+    const sectionItems = filterMarketplaceItemsBySection(items, section);
+
+    return {
+      itemCount: sectionItems.length,
+      itemType: getItemTypeForSection(section),
+      items: sectionItems,
+      section,
+      sectionLabel: getMarketplaceSectionLabel(section)
     };
   });
 }
@@ -506,7 +585,7 @@ export function toAdminMarketplaceVisibility(
 export function toAdminMarketplaceSectionName(
   section: MarketplaceSection
 ): "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace" {
-  return sectionLabels[section] as
+  return getMarketplaceSectionLabel(section) as
     | "App Marketplace"
     | "Plugin Marketplace"
     | "Service Marketplace"

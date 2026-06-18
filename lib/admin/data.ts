@@ -22,8 +22,7 @@ import { listIntegrationHealth, type IntegrationHealthStatus } from "@/lib/integ
 import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
   getMarketplaceRegistryStats,
-  listMarketplaceItems,
-  listMarketplaceSections,
+  listMarketplaceSectionItemGroups,
   toAdminMarketplaceSectionName,
   toAdminMarketplaceVisibility
 } from "@/src/lib/marketplace/marketplace-registry";
@@ -1262,6 +1261,7 @@ export type AdminMarketplaceControl = {
   };
   sections: Array<{
     itemCount: number;
+    itemType: "app" | "plugin" | "service" | "template" | "theme";
     name: "App Marketplace" | "Plugin Marketplace" | "Service Marketplace" | "Template Marketplace" | "Theme Marketplace";
     status: "placeholder" | "ready";
   }>;
@@ -5965,12 +5965,12 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
   const { supabase } = await getAdminUsersBase();
-  const [registryItems, registrySections, registryStats, monitoringEvents] = await Promise.all([
-    listMarketplaceItems(),
-    listMarketplaceSections(),
+  const [sectionGroups, registryStats, monitoringEvents] = await Promise.all([
+    listMarketplaceSectionItemGroups(),
     getMarketplaceRegistryStats(),
     safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
   ]);
+  const registryItems = sectionGroups.flatMap((section) => section.items);
 
   const marketplaceEvents = monitoringEvents
     .filter((event) => text(event.event_type).startsWith("admin_marketplace_"))
@@ -6044,10 +6044,11 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
       rejectedItems: registryStats.rejectedItems,
       totalItems: registryStats.totalItems
     },
-    sections: registrySections.map((section) => ({
+    sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,
+      itemType: section.itemType,
       name: toAdminMarketplaceSectionName(section.section),
-      status: section.readiness
+      status: section.section === "template_marketplace" ? "ready" : "placeholder"
     }))
   };
 }
