@@ -23,6 +23,7 @@ import { extractHttpApiErrorMessage } from "@/lib/domains/httpapi-registration";
 import {
   calculateMarketplaceRevenue,
   evaluateMarketplaceTemplateBinding,
+  evaluateMarketplaceThemeBinding,
   getAvailableMarketplaceApprovalActions,
   getMarketplacePlatformFeeRate,
   listMarketplaceInstallEvents,
@@ -1322,6 +1323,17 @@ export type AdminMarketplaceControl = {
       verificationIssues: string[];
       verified: boolean;
     } | null;
+    themeBinding: {
+      bindingStatus: "bound" | "invalid" | "orphaned" | "unbound" | null;
+      bindingUpdatedAt: string | null;
+      linkedThemeId: string | null;
+      themeKey: string | null;
+      themeName: string | null;
+      themeStatus: "active" | "archived" | null;
+      themeVersion: string | null;
+      verificationIssues: string[];
+      verified: boolean;
+    } | null;
     type: "app" | "plugin" | "service" | "template" | "theme";
     visibility: "internal" | "private" | "public";
   }>;
@@ -1337,6 +1349,7 @@ export type AdminMarketplaceControl = {
     totalItems: number;
     totalPlatformFeesProcessed: number;
     verifiedTemplateBindings: number;
+    verifiedThemeBindings: number;
   };
   sections: Array<{
     itemCount: number;
@@ -6043,15 +6056,17 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const [sectionGroups, registryStats, revenueEvents, installEvents, templates] = await Promise.all([
+  const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets] = await Promise.all([
     listMarketplaceSectionItemGroups(),
     getMarketplaceRegistryStats(),
     listMarketplaceRevenueEvents({ limit: 1000 }),
     listMarketplaceInstallEvents({ limit: 1000 }),
-    listTemplates()
+    listTemplates(),
+    listThemePresets()
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));
+  const themePresetById = new Map(themePresets.map((preset) => [preset.id, preset]));
   const revenueEventsByItemId = new Map<string, MarketplaceRevenueEventRecord[]>();
   const installEventsByItemId = new Map<string, MarketplaceInstallEventRecord[]>();
 
@@ -6107,6 +6122,20 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             storedBindingStatus: item.templateBinding.bindingStatus,
             template: linkedTemplate,
             templateVersion: item.templateBinding.templateVersion
+          })
+        : null;
+    const linkedThemePreset = item.linkedThemeId ? themePresetById.get(item.linkedThemeId) ?? null : null;
+    const themeBindingEvaluation =
+      item.itemType === "theme"
+        ? evaluateMarketplaceThemeBinding({
+            itemKey: item.itemKey,
+            itemType: item.itemType,
+            linkedThemeId: item.linkedThemeId,
+            marketplaceStatus: item.status,
+            marketplaceVisibility: item.visibility,
+            preset: linkedThemePreset,
+            storedBindingStatus: item.themeBinding.bindingStatus,
+            themeVersion: item.themeBinding.themeVersion
           })
         : null;
 
@@ -6190,6 +6219,20 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
             verified: templateBindingEvaluation.verified
           }
         : null,
+    themeBinding:
+      item.itemType === "theme" && themeBindingEvaluation
+        ? {
+            bindingStatus: themeBindingEvaluation.bindingStatus,
+            bindingUpdatedAt: item.themeBinding.bindingUpdatedAt,
+            linkedThemeId: themeBindingEvaluation.linkedThemeId,
+            themeKey: themeBindingEvaluation.themeKey,
+            themeName: themeBindingEvaluation.themeName,
+            themeStatus: themeBindingEvaluation.themeStatus,
+            themeVersion: themeBindingEvaluation.themeVersion,
+            verificationIssues: themeBindingEvaluation.verificationIssues,
+            verified: themeBindingEvaluation.verified
+          }
+        : null,
     type: item.itemType,
     visibility: item.visibility
   };
@@ -6231,13 +6274,31 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
           templateVersion: item.templateBinding.templateVersion
         });
         return count + (evaluation.verified ? 1 : 0);
+      }, 0),
+      verifiedThemeBindings: registryItems.reduce((count, item) => {
+        if (item.itemType !== "theme") return count;
+        const linkedThemePreset = item.linkedThemeId ? themePresetById.get(item.linkedThemeId) ?? null : null;
+        const evaluation = evaluateMarketplaceThemeBinding({
+          itemKey: item.itemKey,
+          itemType: item.itemType,
+          linkedThemeId: item.linkedThemeId,
+          marketplaceStatus: item.status,
+          marketplaceVisibility: item.visibility,
+          preset: linkedThemePreset,
+          storedBindingStatus: item.themeBinding.bindingStatus,
+          themeVersion: item.themeBinding.themeVersion
+        });
+        return count + (evaluation.verified ? 1 : 0);
       }, 0)
     },
     sections: sectionGroups.map((section) => ({
       itemCount: section.itemCount,
       itemType: section.itemType,
       name: toAdminMarketplaceSectionName(section.section),
-      status: section.section === "template_marketplace" ? "ready" : "placeholder"
+      status:
+        section.section === "template_marketplace" || section.section === "theme_marketplace"
+          ? "ready"
+          : "placeholder"
     }))
   };
 }

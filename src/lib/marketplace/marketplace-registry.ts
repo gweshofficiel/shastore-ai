@@ -191,6 +191,29 @@ import {
   type MarketplaceTemplateBindingStatus
 } from "@/src/lib/marketplace/marketplace-template-binding-runtime";
 import { ensureMarketplaceTemplateBindings } from "@/src/lib/marketplace/marketplace-template-binding-runtime";
+export type {
+  MarketplaceThemeBindingRecord,
+  MarketplaceThemeBindingStats,
+  MarketplaceThemeBindingStatus,
+  MarketplaceThemeBindingVerification
+} from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
+export {
+  bindMarketplaceThemeItem,
+  ensureMarketplaceThemeBindings,
+  evaluateMarketplaceThemeBinding,
+  getMarketplaceThemeBindingStats,
+  getMarketplaceThemeBindingSummary,
+  MARKETPLACE_THEME_BINDING_STATUSES,
+  parseMarketplaceThemeBindingStatus,
+  validateMarketplaceThemeReference,
+  verifyMarketplaceThemeBinding
+} from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
+import {
+  parseMarketplaceThemeBindingStatus,
+  type MarketplaceThemeBindingStatus
+} from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
+import { ensureMarketplaceThemeBindings } from "@/src/lib/marketplace/marketplace-theme-binding-runtime";
+import { listThemePresets } from "@/src/lib/platform-theme/platform-theme-presets";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
@@ -228,6 +251,11 @@ export type MarketplaceItemRecord = {
     bindingUpdatedAt: string | null;
     templateVersion: string | null;
   };
+  themeBinding: {
+    bindingStatus: MarketplaceThemeBindingStatus | null;
+    bindingUpdatedAt: string | null;
+    themeVersion: string | null;
+  };
   updatedAt: string | null;
   visibility: MarketplaceItemVisibility;
 };
@@ -257,7 +285,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, metadata, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, linked_theme_id, theme_version, theme_binding_status, theme_binding_updated_at, metadata, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -472,6 +500,11 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
       bindingUpdatedAt: text(row.template_binding_updated_at, 80) || null,
       templateVersion: text(row.template_version, 40) || null
     },
+    themeBinding: {
+      bindingStatus: parseMarketplaceThemeBindingStatus(row.theme_binding_status),
+      bindingUpdatedAt: text(row.theme_binding_updated_at, 80) || null,
+      themeVersion: text(row.theme_version, 40) || null
+    },
     updatedAt: text(row.updated_at, 80) || null,
     visibility,
   };
@@ -618,11 +651,66 @@ async function seedMissingTemplateItems() {
   }
 }
 
+async function seedMissingThemeItems() {
+  const admin = requireAdminClient();
+  const [existingKeys, presets] = await Promise.all([loadExistingItemKeys(), listThemePresets(false)]);
+  const missing = presets
+    .map((preset) => {
+      const itemKey = `theme:${preset.presetKey}`;
+
+      if (existingKeys.has(itemKey)) return null;
+
+      const isPremium = preset.presetKey === "bold";
+
+      return {
+        creator_source: preset.isSystem ? "SHASTORE official" : "Platform theme library",
+        item_key: itemKey,
+        item_type: "theme" as const,
+        linked_theme_id: preset.id,
+        metadata: {
+          presetKey: preset.presetKey,
+          source: "marketplace_registry_seed",
+          themePresetId: preset.id
+        },
+        name: preset.name,
+        price_amount: isPremium ? 14.99 : 0,
+        pricing_mode: isPremium ? "paid" : "free",
+        pricing_type: isPremium ? ("premium" as const) : ("free" as const),
+        currency: "USD",
+        section: "theme_marketplace" as const,
+        slug: preset.presetKey,
+        source_type: "platform" as const,
+        status: preset.status === "archived" ? ("archived" as const) : ("draft" as const),
+        theme_binding_status: "bound" as const,
+        theme_version: preset.updatedAt?.slice(0, 10) ?? "1",
+        visibility: "internal" as const
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  if (!missing.length) return;
+
+  for (const item of missing) {
+    assertValidMarketplaceItemType(item.item_type);
+    assertValidItemTypeSectionPair(item.item_type, item.section);
+    assertValidMarketplaceItemStatus(item.status);
+    assertValidMarketplaceItemVisibility(item.visibility);
+  }
+
+  const { error } = await admin.from("marketplace_items" as never).insert(missing as never);
+
+  if (error) {
+    throw new Error(`Marketplace theme items could not be seeded: ${error.message}`);
+  }
+}
+
 export async function ensureMarketplaceRegistry() {
   await requireSuperAdmin();
   await seedMissingPlaceholderItems();
   await seedMissingTemplateItems();
+  await seedMissingThemeItems();
   await ensureMarketplaceTemplateBindings();
+  await ensureMarketplaceThemeBindings();
 }
 
 export async function listMarketplaceItems(
