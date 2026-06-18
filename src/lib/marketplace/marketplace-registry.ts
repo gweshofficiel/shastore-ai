@@ -1513,3 +1513,35 @@ export {
   submitMarketplacePayoutRequestForReview,
   validatePayoutMetadata
 } from "@/src/lib/marketplace/marketplace-payouts-runtime";
+export type {
+  MarketplaceAnalyticsEventCounts,
+  MarketplaceAnalyticsEventRecord,
+  MarketplaceAnalyticsEventType,
+  MarketplaceAnalyticsFoundationCounts,
+  MarketplaceAnalyticsPayoutStateCounts,
+  MarketplaceAnalyticsRatingsSummary,
+  MarketplaceAnalyticsSummary,
+  RecordMarketplaceAnalyticsEventInput
+} from "@/src/lib/marketplace/marketplace-analytics-runtime";
+export {
+  aggregateMarketplaceAnalyticsEventCounts,
+  createEmptyMarketplaceAnalyticsEventCounts,
+  createEmptyMarketplaceAnalyticsFoundationCounts,
+  createEmptyMarketplaceAnalyticsPayoutStateCounts,
+  createEmptyMarketplaceAnalyticsRatingsSummary,
+  createEmptyMarketplaceAnalyticsSummary,
+  getMarketplaceAnalyticsEventStats,
+  getMarketplaceAnalyticsReadModel,
+  getMarketplaceItemAnalyticsSummary,
+  isValidMarketplaceAnalyticsEventSource,
+  isValidMarketplaceAnalyticsEventType,
+  listMarketplaceAnalyticsEvents,
+  loadMarketplaceAnalyticsReadModelSafe,
+  MARKETPLACE_ANALYTICS_EVENT_SOURCES,
+  MARKETPLACE_ANALYTICS_EVENT_TYPES,
+  parseMarketplaceAnalyticsEvent,
+  parseMarketplaceAnalyticsEventType,
+  recordMarketplaceAnalyticsEvent,
+  sanitizeAnalyticsMetadata,
+  validateAnalyticsMetadata
+} from "@/src/lib/marketplace/marketplace-analytics-runtime";
