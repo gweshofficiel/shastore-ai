@@ -157,7 +157,7 @@ export function toMarketplacePublicCatalogEntry(params: {
   };
 }
 
-async function loadPublicCreatorDisplayNames(creatorAccountIds: string[]) {
+export async function loadPublicCreatorDisplayNames(creatorAccountIds: string[]) {
   const admin = requireCatalogClient();
   const cleanedIds = [...new Set(creatorAccountIds.map((id) => text(id, 120)).filter(Boolean))];
   const displayNames = new Map<string, string>();

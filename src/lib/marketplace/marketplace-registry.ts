@@ -1071,6 +1071,7 @@ export async function listMarketplaceItemsReadOnly(
 }
 
 export type MarketplacePublicCatalogItemFilters = {
+  itemId?: string;
   itemType?: MarketplaceItemType | MarketplaceItemType[];
   limit?: number;
   section?: MarketplaceSection | MarketplaceSection[];
@@ -1083,6 +1084,7 @@ export async function listMarketplaceItemsForPublicCatalog(
   const admin = requireAdminClient();
   const limit = Math.max(1, Math.min(filters.limit ?? 100, 500));
   const cleanedSlug = filters.slug ? text(filters.slug, 160) : "";
+  const cleanedItemId = filters.itemId ? text(filters.itemId, 120) : "";
 
   const rows = await queryMarketplaceItemRows({
     context: "listMarketplaceItemsForPublicCatalog",
@@ -1106,6 +1108,10 @@ export async function listMarketplaceItemsForPublicCatalog(
 
       if (cleanedSlug) {
         query = query.eq("slug" as never, cleanedSlug as never);
+      }
+
+      if (cleanedItemId) {
+        query = query.eq("id" as never, cleanedItemId as never);
       }
 
       return query.order("updated_at" as never, { ascending: false }).limit(limit);
@@ -1284,3 +1290,16 @@ export {
   toMarketplacePublicCatalogEntry,
   toPublicCatalogAssetViews
 } from "@/src/lib/marketplace/marketplace-public-catalog-runtime";
+export type {
+  MarketplacePublicItemDetail,
+  MarketplacePublicItemDetailLookup
+} from "@/src/lib/marketplace/marketplace-public-item-detail-runtime";
+export {
+  formatPublicMarketplaceDate,
+  getMarketplacePublicItemDetail,
+  getMarketplacePublicItemDetailById,
+  getMarketplacePublicItemDetailBySlug,
+  getMarketplacePublicItemDetailByTypeAndSlug,
+  groupPublicItemDetailAssets,
+  toMarketplacePublicItemDetail
+} from "@/src/lib/marketplace/marketplace-public-item-detail-runtime";
