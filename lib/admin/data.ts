@@ -5964,52 +5964,11 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
 }
 
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const { supabase } = await getAdminUsersBase();
-  const [sectionGroups, registryStats, monitoringEvents] = await Promise.all([
+  const [sectionGroups, registryStats] = await Promise.all([
     listMarketplaceSectionItemGroups(),
-    getMarketplaceRegistryStats(),
-    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+    getMarketplaceRegistryStats()
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
-
-  const marketplaceEvents = monitoringEvents
-    .filter((event) => text(event.event_type).startsWith("admin_marketplace_"))
-    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
-  const latestEventByItem = new Map<string, AnyRecord>();
-
-  for (const event of marketplaceEvents) {
-    const metadata = isRecord(event.metadata) ? event.metadata : {};
-    const itemId = text(metadata.item_id);
-
-    if (itemId && !latestEventByItem.has(itemId)) {
-      latestEventByItem.set(itemId, event);
-    }
-  }
-
-  function statusFromEvent(
-    itemId: string,
-    fallback: AdminMarketplaceControl["items"][number]["status"]
-  ): AdminMarketplaceControl["items"][number]["status"] {
-    const eventType = text(latestEventByItem.get(itemId)?.event_type);
-
-    if (eventType === "admin_marketplace_approve_item") {
-      return "approved";
-    }
-
-    if (eventType === "admin_marketplace_reject_item") {
-      return "rejected";
-    }
-
-    if (eventType === "admin_marketplace_mark_review") {
-      return "pending_review";
-    }
-
-    if (eventType === "admin_marketplace_archive_item") {
-      return "archived";
-    }
-
-    return fallback;
-  }
 
   const items: AdminMarketplaceControl["items"] = registryItems.map((item) => ({
     creator: item.creatorSource ?? "SHASTORE platform",
@@ -6020,7 +5979,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
     priceType: item.pricingType,
     revenue: item.revenueAmount,
     section: toAdminMarketplaceSectionName(item.section),
-    status: statusFromEvent(item.id, item.status),
+    status: item.status,
     type: item.itemType,
     visibility: toAdminMarketplaceVisibility(item.visibility)
   }));

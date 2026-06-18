@@ -19,6 +19,12 @@ import {
   type MarketplaceSection,
   validateItemTypeSectionPair
 } from "@/src/lib/marketplace/marketplace-item-type-runtime";
+import {
+  assertValidMarketplaceItemStatus,
+  countMarketplaceItemsByStatus,
+  parseMarketplaceItemStatus,
+  type MarketplaceItemStatus
+} from "@/src/lib/marketplace/marketplace-status-runtime";
 import { listTemplates } from "@/src/lib/templates/template-registry";
 
 export type {
@@ -39,10 +45,23 @@ export {
   parseMarketplaceItemType,
   validateItemTypeSectionPair
 } from "@/src/lib/marketplace/marketplace-item-type-runtime";
+export type { MarketplaceItemStatus, MarketplaceStatusStats } from "@/src/lib/marketplace/marketplace-status-runtime";
+export {
+  approveMarketplaceItemStatus,
+  archiveMarketplaceItemStatus,
+  assertValidMarketplaceItemStatus,
+  countMarketplaceItemsByStatus,
+  getMarketplaceItemStatus,
+  isValidMarketplaceItemStatus,
+  markMarketplaceItemPendingReview,
+  MARKETPLACE_ITEM_STATUSES,
+  parseMarketplaceItemStatus,
+  rejectMarketplaceItemStatus,
+  setMarketplaceItemDraft,
+  transitionMarketplaceItemStatus
+} from "@/src/lib/marketplace/marketplace-status-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
-
-export type MarketplaceItemStatus = "approved" | "archived" | "draft" | "pending_review" | "rejected";
 
 export type MarketplaceItemVisibility = "internal" | "marketplace" | "owner" | "reseller";
 
@@ -208,13 +227,8 @@ function parseSourceType(value: unknown): MarketplaceSourceType {
   return "platform";
 }
 
-function parseStatus(value: unknown): MarketplaceItemStatus {
-  const cleaned = text(value, 40);
-  if (cleaned === "approved") return "approved";
-  if (cleaned === "pending_review") return "pending_review";
-  if (cleaned === "rejected") return "rejected";
-  if (cleaned === "archived") return "archived";
-  return "draft";
+function parseStatus(value: unknown): MarketplaceItemStatus | null {
+  return parseMarketplaceItemStatus(value);
 }
 
 function parseVisibility(value: unknown): MarketplaceItemVisibility {
@@ -260,6 +274,12 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     return null;
   }
 
+  const status = parseStatus(row.status);
+
+  if (!status) {
+    return null;
+  }
+
   return {
     createdAt: text(row.created_at, 80) || null,
     creatorSource: text(row.creator_source, 240) || null,
@@ -282,7 +302,7 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     section,
     slug,
     sourceType: parseSourceType(row.source_type),
-    status: parseStatus(row.status),
+    status,
     updatedAt: text(row.updated_at, 80) || null,
     visibility: parseVisibility(row.visibility)
   };
@@ -331,6 +351,7 @@ async function seedMissingPlaceholderItems() {
   for (const item of missing) {
     assertValidMarketplaceItemType(item.item_type);
     assertValidItemTypeSectionPair(item.item_type, item.section);
+    assertValidMarketplaceItemStatus(item.status);
   }
 
   const { error } = await admin.from("marketplace_items" as never).insert(
@@ -396,6 +417,7 @@ async function seedMissingTemplateItems() {
   for (const item of missing) {
     assertValidMarketplaceItemType(item.item_type);
     assertValidItemTypeSectionPair(item.item_type, item.section);
+    assertValidMarketplaceItemStatus(item.status);
   }
 
   const { error } = await admin.from("marketplace_items" as never).insert(missing as never);
@@ -433,7 +455,8 @@ export async function listMarketplaceItems(
 
   if (filters.status) {
     const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
-    query = query.in("status" as never, statuses as never);
+    const validatedStatuses = statuses.map((status) => assertValidMarketplaceItemStatus(status));
+    query = query.in("status" as never, validatedStatuses as never);
   }
 
   if (filters.visibility) {
@@ -495,14 +518,7 @@ export async function getMarketplaceItemBySlug(slug: string): Promise<Marketplac
 export async function getMarketplaceRegistryStats(): Promise<MarketplaceRegistryStats> {
   const items = await listMarketplaceItems();
 
-  return {
-    approvedItems: items.filter((item) => item.status === "approved").length,
-    archivedItems: items.filter((item) => item.status === "archived").length,
-    draftItems: items.filter((item) => item.status === "draft").length,
-    pendingReviewItems: items.filter((item) => item.status === "pending_review").length,
-    rejectedItems: items.filter((item) => item.status === "rejected").length,
-    totalItems: items.length
-  };
+  return countMarketplaceItemsByStatus(items);
 }
 
 export async function listMarketplaceSections(): Promise<MarketplaceSectionSummary[]> {
