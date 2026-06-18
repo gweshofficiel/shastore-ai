@@ -618,8 +618,7 @@ function MarketplaceApprovalMeta({
 
 type MarketplacePanelState =
   | { status: "loading" }
-  | { error: string; status: "error" }
-  | { control: AdminMarketplaceControl; status: "ready" };
+  | { control: AdminMarketplaceControl; status: "ready"; warning?: string };
 
 function MarketplaceRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -995,12 +994,11 @@ export function MarketplaceAdminPanel() {
         return;
       }
 
-      if (result.ok) {
-        setState({ control: result.control, status: "ready" });
-        return;
-      }
-
-      setState({ error: result.error, status: "error" });
+      setState({
+        control: result.control,
+        status: "ready",
+        warning: result.ok ? undefined : result.warning
+      });
     });
 
     return () => {
@@ -1016,9 +1014,10 @@ export function MarketplaceAdminPanel() {
     );
   }
 
-  if (state.status === "error") {
-    return <MarketplaceRuntimeRecoveryNotice message={state.error} />;
-  }
-
-  return <MarketplaceAdminPanelContent control={state.control} />;
+  return (
+    <>
+      {state.warning ? <MarketplaceRuntimeRecoveryNotice message={state.warning} /> : null}
+      <MarketplaceAdminPanelContent control={state.control} />
+    </>
+  );
 }

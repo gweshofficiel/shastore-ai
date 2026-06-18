@@ -1011,10 +1011,18 @@ export async function listMarketplaceItems(
 ): Promise<MarketplaceItemRecord[]> {
   await ensureMarketplaceRegistry();
 
+  return listMarketplaceItemsReadOnly(filters);
+}
+
+export async function listMarketplaceItemsReadOnly(
+  filters: MarketplaceItemFilters = {}
+): Promise<MarketplaceItemRecord[]> {
+  await requireSuperAdmin();
+
   const admin = requireAdminClient();
   const limit = Math.max(1, Math.min(filters.limit ?? 500, 1000));
   const rows = await queryMarketplaceItemRows({
-    context: "listMarketplaceItems",
+    context: "listMarketplaceItemsReadOnly",
     buildQuery: (select) =>
       applyMarketplaceItemFilters(admin.from("marketplace_items" as never).select(select as never), filters)
         .order("updated_at" as never, { ascending: false })
@@ -1068,6 +1076,12 @@ export async function getMarketplaceItemBySlug(slug: string): Promise<Marketplac
 
 export async function getMarketplaceRegistryStats(): Promise<MarketplaceRegistryStats> {
   const items = await listMarketplaceItems();
+
+  return countMarketplaceItemsByStatus(items);
+}
+
+export async function getMarketplaceRegistryStatsReadOnly(): Promise<MarketplaceRegistryStats> {
+  const items = await listMarketplaceItemsReadOnly();
 
   return countMarketplaceItemsByStatus(items);
 }
@@ -1129,6 +1143,16 @@ export async function getMarketplaceItemTypeStats(): Promise<MarketplaceItemType
 export async function listMarketplaceSectionItemGroups(): Promise<MarketplaceSectionItems[]> {
   const items = await listMarketplaceItems();
 
+  return buildMarketplaceSectionItemGroups(items);
+}
+
+export async function listMarketplaceSectionItemGroupsReadOnly(): Promise<MarketplaceSectionItems[]> {
+  const items = await listMarketplaceItemsReadOnly();
+
+  return buildMarketplaceSectionItemGroups(items);
+}
+
+function buildMarketplaceSectionItemGroups(items: MarketplaceItemRecord[]): MarketplaceSectionItems[] {
   return MARKETPLACE_SECTIONS.map((section) => {
     const sectionItems = filterMarketplaceItemsBySection(items, section);
 
@@ -1140,6 +1164,10 @@ export async function listMarketplaceSectionItemGroups(): Promise<MarketplaceSec
       sectionLabel: getMarketplaceSectionLabel(section)
     };
   });
+}
+
+export function createEmptyMarketplaceSectionItemGroups(): MarketplaceSectionItems[] {
+  return buildMarketplaceSectionItemGroups([]);
 }
 
 export function toAdminMarketplaceSectionName(

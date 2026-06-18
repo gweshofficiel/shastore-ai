@@ -270,7 +270,7 @@ export function evaluateMarketplaceCreatorAccount(
       linkedUserId: null,
       publicEligible: false,
       publicSlug: null,
-      verificationIssues: ["Creator account record is missing."],
+      verificationIssues: ["Creator not linked."],
       verificationStatus: null,
       verified: false
     };
@@ -325,7 +325,7 @@ export function evaluateMarketplaceItemCreatorLink(params: {
   const verificationIssues = [...creatorInspection.verificationIssues];
 
   if (!params.creatorAccountId) {
-    verificationIssues.push("Marketplace item is missing a creator_account_id link.");
+    verificationIssues.push("Creator not linked.");
   } else if (!params.creator) {
     verificationIssues.push("Marketplace item references a missing creator account.");
   }
@@ -596,7 +596,7 @@ export async function ensureMarketplaceCreatorFoundation() {
 }
 
 export async function getMarketplaceCreatorAccountStats(): Promise<MarketplaceCreatorAccountStats> {
-  await ensureMarketplaceCreatorFoundation();
+  await requireSuperAdmin();
 
   const admin = requireAdminClient();
   const [creators, { data: items, error: itemsError }] = await Promise.all([

@@ -40,15 +40,17 @@ import {
   listMarketplacePluginBindings,
   listMarketplaceServiceBindings,
   listMarketplaceRevenueEvents,
-  getMarketplaceRegistryStats,
-  listMarketplaceSectionItemGroups,
+  getMarketplaceRegistryStatsReadOnly,
+  createEmptyMarketplaceSectionItemGroups,
+  listMarketplaceSectionItemGroupsReadOnly,
   toAdminMarketplaceSectionName,
   type MarketplaceInstallEventRecord,
   type MarketplaceRevenueEventRecord
 } from "@/src/lib/marketplace/marketplace-registry";
 import {
   getTemplateRegistryStats,
-  listTemplates
+  listTemplates,
+  listTemplatesReadOnly
 } from "@/src/lib/templates/template-registry";
 import {
   listAllTemplateVersions
@@ -6176,39 +6178,85 @@ export async function getAdminTemplateManagementControl(): Promise<AdminTemplate
   };
 }
 
+export function createEmptyAdminMarketplaceControl(): AdminMarketplaceControl {
+  return {
+    creators: [],
+    futureHooks: [
+      "Creator accounts",
+      "Marketplace payouts",
+      "App/plugin installation",
+      "Template sales",
+      "Reseller-exclusive marketplace items",
+      "Reviews and ratings",
+      "Revenue sharing"
+    ],
+    items: [],
+    overview: {
+      activeCreatorAccounts: 0,
+      approvedItems: 0,
+      archivedItems: 0,
+      draftItems: 0,
+      liveInstalls: 0,
+      moderatedItems: 0,
+      paymentsProcessed: 0,
+      pendingReviewItems: 0,
+      rejectedItems: 0,
+      submittedItems: 0,
+      totalCreatorAccounts: 0,
+      totalCreatorRevenueProcessed: 0,
+      totalItems: 0,
+      totalPlatformFeesProcessed: 0,
+      verifiedAppBindings: 0,
+      verifiedCreatorAccounts: 0,
+      verifiedPluginBindings: 0,
+      verifiedServiceBindings: 0,
+      verifiedTemplateBindings: 0,
+      verifiedThemeBindings: 0
+    },
+    sections: [
+      { itemCount: 0, itemType: "template", name: "Template Marketplace", status: "ready" },
+      { itemCount: 0, itemType: "theme", name: "Theme Marketplace", status: "ready" },
+      { itemCount: 0, itemType: "plugin", name: "Plugin Marketplace", status: "ready" },
+      { itemCount: 0, itemType: "app", name: "App Marketplace", status: "ready" },
+      { itemCount: 0, itemType: "service", name: "Service Marketplace", status: "ready" }
+    ]
+  };
+}
+
 export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceControl> {
-  const loadStep = async <T,>(step: string, loader: () => Promise<T>): Promise<T> => {
+  const loadStep = async <T,>(step: string, loader: () => Promise<T>, fallback: T): Promise<T> => {
     try {
       return await loader();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[getAdminMarketplaceControl] failed at ${step}: ${message}`, error);
-      throw new Error(`getAdminMarketplaceControl failed at ${step}: ${message}`, { cause: error });
+      return fallback;
     }
   };
 
-  const loadCreatorAccountsSafely = async () => {
-    try {
-      return await listMarketplaceCreatorAccounts({ limit: 1000 });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[getAdminMarketplaceControl] creator accounts unavailable: ${message}`, error);
-      return [];
-    }
+  const emptyRegistryStats = {
+    approvedItems: 0,
+    archivedItems: 0,
+    draftItems: 0,
+    pendingReviewItems: 0,
+    rejectedItems: 0,
+    totalItems: 0
   };
+
+  const emptySectionGroups = createEmptyMarketplaceSectionItemGroups();
 
   const [sectionGroups, registryStats, revenueEvents, installEvents, templates, themePresets, pluginBindings, appBindings, serviceBindings, creatorAccounts] =
     await Promise.all([
-    loadStep("listMarketplaceSectionItemGroups", () => listMarketplaceSectionItemGroups()),
-    loadStep("getMarketplaceRegistryStats", () => getMarketplaceRegistryStats()),
-    loadStep("listMarketplaceRevenueEvents", () => listMarketplaceRevenueEvents({ limit: 1000 })),
-    loadStep("listMarketplaceInstallEvents", () => listMarketplaceInstallEvents({ limit: 1000 })),
-    loadStep("listTemplates", () => listTemplates()),
-    loadStep("listThemePresets", () => listThemePresets()),
-    loadStep("listMarketplacePluginBindings", () => listMarketplacePluginBindings({ limit: 1000 })),
-    loadStep("listMarketplaceAppBindings", () => listMarketplaceAppBindings({ limit: 1000 })),
-    loadStep("listMarketplaceServiceBindings", () => listMarketplaceServiceBindings({ limit: 1000 })),
-    loadCreatorAccountsSafely()
+    loadStep("listMarketplaceSectionItemGroupsReadOnly", () => listMarketplaceSectionItemGroupsReadOnly(), emptySectionGroups),
+    loadStep("getMarketplaceRegistryStatsReadOnly", () => getMarketplaceRegistryStatsReadOnly(), emptyRegistryStats),
+    loadStep("listMarketplaceRevenueEvents", () => listMarketplaceRevenueEvents({ limit: 1000 }), [] as MarketplaceRevenueEventRecord[]),
+    loadStep("listMarketplaceInstallEvents", () => listMarketplaceInstallEvents({ limit: 1000 }), [] as MarketplaceInstallEventRecord[]),
+    loadStep("listTemplatesReadOnly", () => listTemplatesReadOnly(), []),
+    loadStep("listThemePresets", () => listThemePresets(), []),
+    loadStep("listMarketplacePluginBindings", () => listMarketplacePluginBindings({ limit: 1000 }), []),
+    loadStep("listMarketplaceAppBindings", () => listMarketplaceAppBindings({ limit: 1000 }), []),
+    loadStep("listMarketplaceServiceBindings", () => listMarketplaceServiceBindings({ limit: 1000 }), []),
+    loadStep("listMarketplaceCreatorAccounts", () => listMarketplaceCreatorAccounts({ limit: 1000 }), [])
   ]);
   const registryItems = sectionGroups.flatMap((section) => section.items);
   const templateById = new Map(templates.map((template) => [template.id, template]));

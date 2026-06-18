@@ -442,6 +442,12 @@ export async function ensureTemplateRegistry() {
 export async function listTemplates(): Promise<TemplateRegistryRecord[]> {
   await ensureTemplateRegistry();
 
+  return listTemplatesReadOnly();
+}
+
+export async function listTemplatesReadOnly(): Promise<TemplateRegistryRecord[]> {
+  await requireSuperAdmin();
+
   const admin = requireAdminClient();
   const { data, error } = await admin
     .from("template_registry" as never)
