@@ -98,23 +98,80 @@ export function AdminTable({
   );
 }
 
-export function formatAdminDate(value: string | null | undefined) {
-  if (!value) {
-    return "Not set";
-  }
+export type AdminDateInput = string | number | Date | null | undefined;
 
-  const parsed = new Date(value);
+const adminDateFormatter = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "short",
+  year: "numeric"
+});
 
-  if (Number.isNaN(parsed.getTime())) {
-    console.warn(`[formatAdminDate] Invalid admin date value: ${value}`);
+function formatValidatedAdminDate(date: Date) {
+  try {
+    return adminDateFormatter.format(date);
+  } catch (error) {
+    console.warn("[formatAdminDate] Intl formatting failed safely", error);
     return "Invalid date";
   }
+}
 
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric"
-  }).format(parsed);
+function parseAdminDateInput(value: AdminDateInput): Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value.trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const parsed = new Date(cleaned);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function formatAdminDate(value: AdminDateInput) {
+  try {
+    if (value === null || value === undefined) {
+      return "Not set";
+    }
+
+    if (typeof value === "string" && !value.trim()) {
+      return "Not set";
+    }
+
+    const parsed = parseAdminDateInput(value);
+
+    if (!parsed) {
+      if (typeof value === "string") {
+        console.warn(`[formatAdminDate] Invalid admin date value: ${value.trim()}`);
+      }
+
+      return "Invalid date";
+    }
+
+    return formatValidatedAdminDate(parsed);
+  } catch (error) {
+    console.warn("[formatAdminDate] Date formatting failed safely", error);
+    return "Invalid date";
+  }
 }
 
 export function formatAdminMoney(value: number, currency = "USD") {

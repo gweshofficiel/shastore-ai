@@ -92,7 +92,7 @@ function MarketplaceRevenueInspection({
               <p className="text-slate-400">
                 Fee {formatAdminMoney(event.platformFeeAmount)} · Creator {formatAdminMoney(event.creatorRevenueAmount)}
               </p>
-              {event.createdAt ? <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p> : null}
+              <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p>
             </div>
           ))}
         </div>
@@ -124,11 +124,9 @@ function MarketplaceInstallInspection({
       <p className="text-xs font-semibold text-slate-500">
         Public install eligible: {installInspection.publicInstallEligible ? "yes" : "no"}
       </p>
-      {installInspection.installCountUpdatedAt ? (
-        <p className="text-xs font-semibold text-slate-500">
-          Updated: {formatAdminDate(installInspection.installCountUpdatedAt)}
-        </p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Updated: {formatAdminDate(installInspection.installCountUpdatedAt)}
+      </p>
       <p className="text-xs font-semibold text-slate-500">
         Events: {installInspection.eventCount}
       </p>
@@ -141,7 +139,7 @@ function MarketplaceInstallInspection({
                 {event.installStatus}
                 {event.storeId ? ` · store ${event.storeId.slice(0, 8)}…` : ""}
               </p>
-              {event.createdAt ? <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p> : null}
+              <p className="text-slate-400">{formatAdminDate(event.createdAt)}</p>
             </div>
           ))}
         </div>
@@ -189,11 +187,9 @@ function MarketplaceTemplateBindingInspection({
       {binding.templateVisibility ? (
         <p className="text-xs font-semibold text-slate-500">Template visibility: {binding.templateVisibility}</p>
       ) : null}
-      {binding.bindingUpdatedAt ? (
-        <p className="text-xs font-semibold text-slate-500">
-          Binding updated: {formatAdminDate(binding.bindingUpdatedAt)}
-        </p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Binding updated: {formatAdminDate(binding.bindingUpdatedAt)}
+      </p>
       {binding.verificationIssues.length ? (
         <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Binding issues</p>
@@ -244,11 +240,9 @@ function MarketplaceThemeBindingInspection({
       {binding.themeStatus ? (
         <p className="text-xs font-semibold text-slate-500">Theme status: {binding.themeStatus}</p>
       ) : null}
-      {binding.bindingUpdatedAt ? (
-        <p className="text-xs font-semibold text-slate-500">
-          Binding updated: {formatAdminDate(binding.bindingUpdatedAt)}
-        </p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">
+        Binding updated: {formatAdminDate(binding.bindingUpdatedAt)}
+      </p>
       {binding.verificationIssues.length ? (
         <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Binding issues</p>
@@ -519,9 +513,7 @@ function MarketplaceSubmissionInspection({
         <p className="text-xs font-semibold text-slate-500">Slug: {submission.creatorPublicSlug}</p>
       ) : null}
       <p className="text-xs font-semibold text-slate-500">Marketplace status: {submission.marketplaceStatus}</p>
-      {submission.submittedAt ? (
-        <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(submission.submittedAt)}</p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(submission.submittedAt)}</p>
       {submission.submittedBy ? (
         <p className="text-xs font-semibold text-slate-500">Submitted by: {shortenActorId(submission.submittedBy)}</p>
       ) : null}
@@ -566,15 +558,11 @@ function MarketplaceModerationInspection({
       {moderation.creatorDisplayName ? (
         <p className="text-xs font-semibold text-slate-600">Creator: {moderation.creatorDisplayName}</p>
       ) : null}
-      {moderation.submittedAt ? (
-        <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(moderation.submittedAt)}</p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Submitted: {formatAdminDate(moderation.submittedAt)}</p>
       {moderation.submissionNote ? (
         <p className="text-xs font-semibold text-slate-500">Submission note: {moderation.submissionNote}</p>
       ) : null}
-      {moderation.moderatedAt ? (
-        <p className="text-xs font-semibold text-slate-500">Moderated: {formatAdminDate(moderation.moderatedAt)}</p>
-      ) : null}
+      <p className="text-xs font-semibold text-slate-500">Moderated: {formatAdminDate(moderation.moderatedAt)}</p>
       {moderation.moderatedBy ? (
         <p className="text-xs font-semibold text-slate-500">Moderator: {shortenActorId(moderation.moderatedBy)}</p>
       ) : null}
@@ -613,12 +601,12 @@ function MarketplaceApprovalMeta({
   return (
     <div className="mt-2 grid gap-1 text-[11px] font-semibold text-slate-500">
       {approval.action ? <p>Last action: {approval.action}</p> : null}
-      {approval.approvalUpdatedAt ? <p>Updated: {formatAdminDate(approval.approvalUpdatedAt)}</p> : null}
-      {approval.reviewedAt ? <p>Reviewed: {formatAdminDate(approval.reviewedAt)}</p> : null}
+      <p>Updated: {formatAdminDate(approval.approvalUpdatedAt)}</p>
+      <p>Reviewed: {formatAdminDate(approval.reviewedAt)}</p>
       {approval.reviewedBy ? <p>Reviewer: {shortenActorId(approval.reviewedBy)}</p> : null}
-      {approval.approvedAt ? <p>Approved: {formatAdminDate(approval.approvedAt)}</p> : null}
+      <p>Approved: {formatAdminDate(approval.approvedAt)}</p>
       {approval.approvedBy ? <p>Approver: {shortenActorId(approval.approvedBy)}</p> : null}
-      {approval.rejectedAt ? <p>Rejected: {formatAdminDate(approval.rejectedAt)}</p> : null}
+      <p>Rejected: {formatAdminDate(approval.rejectedAt)}</p>
       {approval.rejectedBy ? <p>Rejector: {shortenActorId(approval.rejectedBy)}</p> : null}
       {approval.approvalNote ? <p>Note: {approval.approvalNote}</p> : null}
     </div>
@@ -831,11 +819,9 @@ export default async function AdminMarketplacePage() {
                       {item.pricing.trialDays ? (
                         <p className="text-xs font-semibold text-slate-500">Trial: {item.pricing.trialDays} days</p>
                       ) : null}
-                      {item.pricing.pricingUpdatedAt ? (
-                        <p className="text-xs font-semibold text-slate-500">
-                          Pricing updated: {formatAdminDate(item.pricing.pricingUpdatedAt)}
-                        </p>
-                      ) : null}
+                      <p className="text-xs font-semibold text-slate-500">
+                        Pricing updated: {formatAdminDate(item.pricing.pricingUpdatedAt)}
+                      </p>
                       <form action={updateMarketplaceItemPricing} className="grid gap-2">
                         <MarketplaceHiddenFields item={item} />
                         <select
