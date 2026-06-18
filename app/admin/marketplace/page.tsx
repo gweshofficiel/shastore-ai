@@ -152,6 +152,64 @@ function MarketplaceInstallInspection({
   );
 }
 
+function MarketplaceTemplateBindingInspection({
+  item
+}: {
+  item: Awaited<ReturnType<typeof getAdminMarketplaceControl>>["items"][number];
+}) {
+  if (!item.templateBinding) {
+    return <p className="text-xs font-semibold text-slate-400">Not applicable</p>;
+  }
+
+  const binding = item.templateBinding;
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <AdminBadge tone={binding.verified ? "green" : binding.bindingStatus === "bound" ? "amber" : "red"}>
+        {binding.bindingStatus ?? "unknown"}
+      </AdminBadge>
+      <p className="text-xs font-semibold text-slate-600">
+        Verified: {binding.verified ? "yes" : "no"}
+      </p>
+      {binding.templateName ? (
+        <p className="text-xs font-semibold text-slate-600">Template: {binding.templateName}</p>
+      ) : null}
+      {binding.templateKey ? (
+        <p className="text-xs font-semibold text-slate-500">Key: {binding.templateKey}</p>
+      ) : null}
+      {binding.linkedTemplateId ? (
+        <p className="text-xs font-semibold text-slate-500">Registry ID: {binding.linkedTemplateId}</p>
+      ) : null}
+      {binding.templateVersion ? (
+        <p className="text-xs font-semibold text-slate-500">Bound version: {binding.templateVersion}</p>
+      ) : null}
+      {binding.templateStatus ? (
+        <p className="text-xs font-semibold text-slate-500">Template status: {binding.templateStatus}</p>
+      ) : null}
+      {binding.templateVisibility ? (
+        <p className="text-xs font-semibold text-slate-500">Template visibility: {binding.templateVisibility}</p>
+      ) : null}
+      {binding.bindingUpdatedAt ? (
+        <p className="text-xs font-semibold text-slate-500">
+          Binding updated: {formatAdminDate(binding.bindingUpdatedAt)}
+        </p>
+      ) : null}
+      {binding.verificationIssues.length ? (
+        <div className="grid gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Binding issues</p>
+          {binding.verificationIssues.map((issue) => (
+            <p className="text-[11px] font-semibold text-amber-800" key={issue}>
+              {issue}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-slate-400">Template binding verified.</p>
+      )}
+    </div>
+  );
+}
+
 function MarketplaceApprovalMeta({
   item
 }: {
@@ -200,7 +258,8 @@ export default async function AdminMarketplacePage() {
       <AdminStatGrid
         stats={[
           { label: "Platform fees", value: formatAdminMoney(control.overview.totalPlatformFeesProcessed) },
-          { label: "Creator revenue", value: formatAdminMoney(control.overview.totalCreatorRevenueProcessed) }
+          { label: "Creator revenue", value: formatAdminMoney(control.overview.totalCreatorRevenueProcessed) },
+          { label: "Verified template bindings", value: control.overview.verifiedTemplateBindings }
         ]}
       />
 
@@ -235,6 +294,7 @@ export default async function AdminMarketplacePage() {
                 "Creator/source",
                 "Status",
                 "Visibility",
+                "Template binding",
                 "Price",
                 "Installs",
                 "Revenue",
@@ -273,6 +333,9 @@ export default async function AdminMarketplacePage() {
                         </button>
                       </form>
                     </div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <MarketplaceTemplateBindingInspection item={item} />
                   </td>
                   <td className="px-5 py-4">
                     <div className="grid gap-2">

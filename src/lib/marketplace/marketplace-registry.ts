@@ -169,6 +169,28 @@ export {
   recordMarketplaceInstallEvent,
   transitionMarketplaceInstallStatus
 } from "@/src/lib/marketplace/marketplace-install-runtime";
+export type {
+  MarketplaceTemplateBindingRecord,
+  MarketplaceTemplateBindingStats,
+  MarketplaceTemplateBindingStatus,
+  MarketplaceTemplateBindingVerification
+} from "@/src/lib/marketplace/marketplace-template-binding-runtime";
+export {
+  bindMarketplaceTemplateItem,
+  ensureMarketplaceTemplateBindings,
+  evaluateMarketplaceTemplateBinding,
+  getMarketplaceTemplateBindingStats,
+  getMarketplaceTemplateBindingSummary,
+  MARKETPLACE_TEMPLATE_BINDING_STATUSES,
+  parseMarketplaceTemplateBindingStatus,
+  validateMarketplaceTemplateReference,
+  verifyMarketplaceTemplateBinding
+} from "@/src/lib/marketplace/marketplace-template-binding-runtime";
+import {
+  parseMarketplaceTemplateBindingStatus,
+  type MarketplaceTemplateBindingStatus
+} from "@/src/lib/marketplace/marketplace-template-binding-runtime";
+import { ensureMarketplaceTemplateBindings } from "@/src/lib/marketplace/marketplace-template-binding-runtime";
 
 export type MarketplaceSourceType = "creator" | "partner" | "platform" | "reseller";
 
@@ -201,6 +223,11 @@ export type MarketplaceItemRecord = {
   slug: string;
   sourceType: MarketplaceSourceType;
   status: MarketplaceItemStatus;
+  templateBinding: {
+    bindingStatus: MarketplaceTemplateBindingStatus | null;
+    bindingUpdatedAt: string | null;
+    templateVersion: string | null;
+  };
   updatedAt: string | null;
   visibility: MarketplaceItemVisibility;
 };
@@ -230,7 +257,7 @@ export type MarketplaceSectionSummary = {
 };
 
 const itemSelect =
-  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, metadata, linked_template_id, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
+  "id, item_key, slug, name, item_type, section, creator_source, source_type, status, visibility, pricing_mode, pricing_type, price_amount, currency, billing_interval, trial_days, pricing_updated_at, install_count, live_installs, install_count_updated_at, revenue_amount, revenue_currency, linked_template_id, template_version, template_binding_status, template_binding_updated_at, metadata, linked_theme_id, linked_plugin_id, linked_app_id, linked_service_id, approved_by, approved_at, rejected_by, rejected_at, reviewed_by, reviewed_at, approval_note, approval_action, approval_updated_at, created_at, updated_at";
 
 function parseApprovalMetadataFromRow(row: Record<string, unknown>): MarketplaceApprovalMetadata {
   return {
@@ -440,6 +467,11 @@ function parseRecord(value: unknown): MarketplaceItemRecord | null {
     slug,
     sourceType: parseSourceType(row.source_type),
     status,
+    templateBinding: {
+      bindingStatus: parseMarketplaceTemplateBindingStatus(row.template_binding_status),
+      bindingUpdatedAt: text(row.template_binding_updated_at, 80) || null,
+      templateVersion: text(row.template_version, 40) || null
+    },
     updatedAt: text(row.updated_at, 80) || null,
     visibility,
   };
@@ -563,6 +595,8 @@ async function seedMissingTemplateItems() {
             : template.status === "active"
               ? ("approved" as const)
               : ("draft" as const),
+        template_binding_status: "bound" as const,
+        template_version: template.version,
         visibility: normalizeMarketplaceItemVisibility(template.visibility) ?? "internal"
       };
     })
@@ -588,6 +622,7 @@ export async function ensureMarketplaceRegistry() {
   await requireSuperAdmin();
   await seedMissingPlaceholderItems();
   await seedMissingTemplateItems();
+  await ensureMarketplaceTemplateBindings();
 }
 
 export async function listMarketplaceItems(
