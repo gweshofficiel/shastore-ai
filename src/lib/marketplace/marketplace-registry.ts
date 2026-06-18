@@ -1476,3 +1476,40 @@ export {
   validateMarketplaceRevenueShareAllocation,
   validateRevenueShareMetadata
 } from "@/src/lib/marketplace/marketplace-revenue-sharing-runtime";
+export type {
+  CreateMarketplacePayoutRequestInput,
+  MarketplacePayoutBalanceSummary,
+  MarketplacePayoutMethod,
+  MarketplacePayoutRecipientType,
+  MarketplacePayoutRequestEligibility,
+  MarketplacePayoutRequestRecord,
+  MarketplacePayoutRequestStats,
+  MarketplacePayoutStatus
+} from "@/src/lib/marketplace/marketplace-payouts-runtime";
+export {
+  approveMarketplacePayoutRequestFoundation,
+  cancelMarketplacePayoutRequestFoundation,
+  createMarketplacePayoutRequestFoundation,
+  evaluateMarketplacePayoutRequestEligibility,
+  getMarketplacePayoutBalanceSummary,
+  getMarketplacePayoutRequestById,
+  getMarketplacePayoutRequestStats,
+  inspectMarketplacePayoutRequestEligibility,
+  isValidMarketplacePayoutMethod,
+  isValidMarketplacePayoutStatus,
+  listMarketplacePayoutRequests,
+  markMarketplacePayoutFailedFoundation,
+  markMarketplacePayoutPaidFoundation,
+  markMarketplacePayoutProcessingFoundation,
+  MARKETPLACE_PAYOUT_ACTIVE_STATUSES,
+  MARKETPLACE_PAYOUT_METHODS,
+  MARKETPLACE_PAYOUT_STATUSES,
+  parseMarketplacePayoutMethod,
+  parseMarketplacePayoutRequest,
+  parseMarketplacePayoutStatus,
+  rejectMarketplacePayoutRequestFoundation,
+  resolveMarketplacePayoutRecipientType,
+  sanitizePayoutMetadata,
+  submitMarketplacePayoutRequestForReview,
+  validatePayoutMetadata
+} from "@/src/lib/marketplace/marketplace-payouts-runtime";
