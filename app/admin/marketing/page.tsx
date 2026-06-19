@@ -9,6 +9,10 @@ import {
 import type { AdminPlatformMarketingControl } from "@/lib/admin/data";
 import { loadPlatformMarketingControlSafe } from "@/lib/admin/marketing-loader";
 import {
+  getMarketingStatusBadgeTone,
+  getMarketingStatusLabel
+} from "@/src/lib/marketing/marketing-status-runtime";
+import {
   getMarketingTypeBadgeTone,
   getMarketingTypeLabel
 } from "@/src/lib/marketing/marketing-type-runtime";
@@ -31,22 +35,6 @@ function MarketingRuntimeRecoveryNotice({ message }: { message: string }) {
       <p className="mt-2 text-xs font-semibold text-amber-800">{message}</p>
     </div>
   );
-}
-
-function toneForStatus(status: string) {
-  if (status === "active") {
-    return "green" as const;
-  }
-
-  if (["archived", "expired"].includes(status)) {
-    return "red" as const;
-  }
-
-  if (status === "paused") {
-    return "blue" as const;
-  }
-
-  return "amber" as const;
 }
 
 function CampaignHiddenFields({
@@ -112,7 +100,10 @@ export default async function AdminMarketingPage() {
               <AdminBadge tone={campaign.typeBadgeTone}>{campaign.typeLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.typeDescription}</p>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(campaign.status)}>{campaign.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.statusBadgeTone}>{campaign.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.statusDescription}</p>
+            </td>
             <td className="px-5 py-4 text-slate-600">{campaign.targetAudience}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.startDate)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.endDate)}</td>
@@ -164,7 +155,9 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4 text-slate-600">{coupon.amount}</td>
             <td className="px-5 py-4 text-slate-600">{coupon.planEligibility}</td>
             <td className="px-5 py-4 text-slate-600">{coupon.usageLimit}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(coupon.status)}>{coupon.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingStatusBadgeTone(coupon.status)}>{getMarketingStatusLabel(coupon.status)}</AdminBadge>
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -176,7 +169,9 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminMoney(giftCode.creditAmount)} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{giftCode.planCredit}</td>
             <td className="px-5 py-4 text-slate-600">{giftCode.redemptionStatus}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(giftCode.status)}>{giftCode.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingStatusBadgeTone(giftCode.status)}>{getMarketingStatusLabel(giftCode.status)}</AdminBadge>
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -191,7 +186,9 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4 text-slate-600">{record.referredUsers} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminMoney(record.commission)} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{record.payoutStatus}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(record.status)}>{record.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingStatusBadgeTone(record.status)}>{getMarketingStatusLabel(record.status)}</AdminBadge>
+            </td>
           </tr>
         ))}
       </AdminTable>

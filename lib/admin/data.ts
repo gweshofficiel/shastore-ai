@@ -7,6 +7,11 @@ import {
   toMarketingRegistryCampaignView
 } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
+  countMarketingStatusOverview,
+  indexLatestMarketingPlatformActions,
+  resolveMarketingRegistryStatus
+} from "@/src/lib/marketing/marketing-status-runtime";
+import {
   internalTeamRoleMeta,
   internalTeamRoles,
   normalizeInternalTeamRole,
@@ -1522,6 +1527,9 @@ export type AdminPlatformMarketingControl = {
     section: "Affiliate program" | "Campaigns" | "Gift codes" | "Platform coupons" | "Platform promotions" | "Referral program";
     startDate: string | null;
     status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
     targetAudience: string;
     type: "affiliate" | "campaign" | "coupon" | "gift_code" | "promotion" | "referral";
     typeBadgeTone: "amber" | "blue" | "green" | "red";
@@ -6824,32 +6832,6 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
   };
 }
 
-function resolvePlatformMarketingCampaignStatus(
-  latestEventByCampaign: Map<string, AnyRecord>,
-  campaignId: string,
-  fallback: AdminPlatformMarketingControl["campaigns"][number]["status"]
-): AdminPlatformMarketingControl["campaigns"][number]["status"] {
-  const eventType = text(latestEventByCampaign.get(campaignId)?.event_type);
-
-  if (eventType === "admin_platform_marketing_activate_campaign") {
-    return "active";
-  }
-
-  if (eventType === "admin_platform_marketing_archive_campaign") {
-    return "archived";
-  }
-
-  if (eventType === "admin_platform_marketing_create_draft") {
-    return "draft";
-  }
-
-  if (eventType === "admin_platform_marketing_pause_campaign") {
-    return "paused";
-  }
-
-  return fallback;
-}
-
 function buildAdminPlatformMarketingControl(params: {
   campaigns: AdminPlatformMarketingControl["campaigns"];
   runtimeWarning?: string | null;
@@ -6893,14 +6875,7 @@ function buildAdminPlatformMarketingControl(params: {
         status: campaigns.find((campaign) => campaign.id === "gift-code:launch-credit")?.status ?? "draft"
       }
     ],
-    overview: {
-      activeSections: campaigns.filter((campaign) => campaign.status === "active").length,
-      archivedSections: campaigns.filter((campaign) => campaign.status === "archived").length,
-      draftSections: campaigns.filter((campaign) => campaign.status === "draft").length,
-      expiredSections: campaigns.filter((campaign) => campaign.status === "expired").length,
-      pausedSections: campaigns.filter((campaign) => campaign.status === "paused").length,
-      totalSections: campaigns.length
-    },
+    overview: countMarketingStatusOverview(campaigns),
     referralAffiliates: [
       {
         commission: 0,
@@ -6943,25 +6918,20 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
     "event_type, event_status, entity_type, metadata, created_at",
     500
   );
-  const marketingEvents = monitoringEvents
-    .filter((event) => text(event.event_type).startsWith("admin_platform_marketing_"))
-    .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
-  const latestEventByCampaign = new Map<string, AnyRecord>();
-
-  for (const event of marketingEvents) {
-    const metadata = isRecord(event.metadata) ? event.metadata : {};
-    const campaignId = text(metadata.campaign_id);
-
-    if (campaignId && !latestEventByCampaign.has(campaignId)) {
-      latestEventByCampaign.set(campaignId, event);
-    }
-  }
+  const marketingEvents = monitoringEvents.filter((event) =>
+    text(event.event_type).startsWith("admin_platform_marketing_")
+  );
+  const latestActionByCampaign = indexLatestMarketingPlatformActions(marketingEvents);
 
   const registryLoad = await listMarketingRegistryItemsReadOnlySafe();
   const campaigns = registryLoad.items.map((item) =>
     toMarketingRegistryCampaignView(
       item,
-      resolvePlatformMarketingCampaignStatus(latestEventByCampaign, item.registryKey, item.status)
+      resolveMarketingRegistryStatus({
+        fallbackStatus: item.status,
+        latestActionByCampaign,
+        registryKey: item.registryKey
+      })
     )
   );
 

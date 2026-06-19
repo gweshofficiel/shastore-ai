@@ -11,10 +11,18 @@ import {
   type MarketingType,
   type MarketingTypeSection
 } from "@/src/lib/marketing/marketing-type-runtime";
+import {
+  getMarketingStatusBadgeTone,
+  getMarketingStatusDescription,
+  getMarketingStatusLabel,
+  isValidMarketingStatus,
+  parseMarketingStatus,
+  type MarketingStatus
+} from "@/src/lib/marketing/marketing-status-runtime";
 
 export type MarketingRegistryType = MarketingType;
 
-export type MarketingRegistryStatus = "active" | "archived" | "draft" | "expired" | "paused";
+export type MarketingRegistryStatus = MarketingStatus;
 
 export type MarketingRegistrySection = MarketingTypeSection;
 
@@ -42,6 +50,9 @@ export type MarketingRegistryCampaignView = {
   section: MarketingRegistrySection;
   startDate: string | null;
   status: MarketingRegistryStatus;
+  statusBadgeTone: ReturnType<typeof getMarketingStatusBadgeTone>;
+  statusDescription: string;
+  statusLabel: string;
   targetAudience: string;
   type: MarketingType;
   typeBadgeTone: ReturnType<typeof getMarketingTypeBadgeTone>;
@@ -59,13 +70,13 @@ export const MARKETING_REGISTRY_TYPES = [
   "campaign"
 ] as const satisfies readonly MarketingType[];
 
-export const MARKETING_REGISTRY_STATUSES: readonly MarketingRegistryStatus[] = [
+export const MARKETING_REGISTRY_STATUSES = [
   "draft",
   "active",
   "paused",
   "expired",
   "archived"
-] as const;
+] as const satisfies readonly MarketingStatus[];
 
 const registrySelect =
   "id, registry_key, slug, name, marketing_type, status, target_audience, description, revenue_impact, usage_count, metadata, created_at, updated_at";
@@ -100,16 +111,15 @@ export function isValidMarketingRegistryType(value: unknown): value is Marketing
 }
 
 export function isValidMarketingRegistryStatus(value: unknown): value is MarketingRegistryStatus {
-  return typeof value === "string" && MARKETING_REGISTRY_STATUSES.includes(value as MarketingRegistryStatus);
+  return isValidMarketingStatus(value);
+}
+
+export function parseMarketingRegistryStatus(value: unknown): MarketingRegistryStatus | null {
+  return parseMarketingStatus(value);
 }
 
 export function parseMarketingRegistryType(value: unknown): MarketingRegistryType | null {
   return parseMarketingType(value);
-}
-
-export function parseMarketingRegistryStatus(value: unknown): MarketingRegistryStatus | null {
-  const cleaned = text(value, 80);
-  return isValidMarketingRegistryStatus(cleaned) ? cleaned : null;
 }
 
 export function sectionForMarketingRegistryType(type: MarketingRegistryType): MarketingRegistrySection {
@@ -131,6 +141,12 @@ export function parseMarketingRegistryItem(row: unknown): MarketingRegistryItemR
     if (id && registryKey && !marketingType) {
       console.warn(
         `[marketing-registry-runtime] skipped registry item with invalid marketing_type: ${text(record.marketing_type, 80) || "empty"}`
+      );
+    }
+
+    if (id && registryKey && marketingType && !status) {
+      console.warn(
+        `[marketing-registry-runtime] skipped registry item with invalid status: ${text(record.status, 80) || "empty"}`
       );
     }
 
@@ -176,6 +192,7 @@ export function toMarketingRegistryCampaignView(
   statusOverride?: MarketingRegistryStatus
 ): MarketingRegistryCampaignView {
   const metadata = item.metadata;
+  const resolvedStatus = statusOverride ?? item.status;
 
   return {
     endDate: text(metadata.end_date, 80) || null,
@@ -184,7 +201,10 @@ export function toMarketingRegistryCampaignView(
     revenueImpact: item.revenueImpact,
     section: resolveMarketingRegistrySection(item),
     startDate: text(metadata.start_date, 80) || null,
-    status: statusOverride ?? item.status,
+    status: resolvedStatus,
+    statusBadgeTone: getMarketingStatusBadgeTone(resolvedStatus),
+    statusDescription: getMarketingStatusDescription(resolvedStatus),
+    statusLabel: getMarketingStatusLabel(resolvedStatus),
     targetAudience: item.targetAudience,
     type: item.marketingType,
     typeBadgeTone: getMarketingTypeBadgeTone(item.marketingType),
@@ -337,6 +357,34 @@ export async function listMarketingRegistryItemsReadOnlySafe(): Promise<{
   }
 }
 
+export type {
+  MarketingStatus,
+  MarketingStatusBadgeTone,
+  MarketingStatusCatalogEntry,
+  MarketingStatusOverview,
+  MarketingStatusStats,
+  MarketingPlatformActionEventType
+} from "@/src/lib/marketing/marketing-status-runtime";
+export {
+  assertValidMarketingStatus,
+  countMarketingItemsByStatus,
+  countMarketingStatusOverview,
+  getMarketingStatusBadgeTone,
+  getMarketingStatusDescription,
+  getMarketingStatusLabel,
+  indexLatestMarketingPlatformActions,
+  isMarketingPlatformActionEventType,
+  isValidMarketingStatus,
+  listMarketingStatusCatalog,
+  MARKETING_PLATFORM_ACTION_EVENT_TYPES,
+  MARKETING_STATUSES,
+  parseMarketingStatus,
+  resolveMarketingRegistryStatus,
+  resolveMarketingStatusBadgeTone,
+  resolveMarketingStatusDescription,
+  resolveMarketingStatusFromPlatformAction,
+  resolveMarketingStatusLabel
+} from "@/src/lib/marketing/marketing-status-runtime";
 export type {
   MarketingType,
   MarketingTypeBadgeTone,
