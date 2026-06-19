@@ -481,7 +481,7 @@ export default async function AdminMarketingPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Campaign", "Program", "Audience", "Schedule", "Usage", "Lifecycle", "Email", "Readiness", "Status"]}>
+      <AdminTable headers={["Campaign", "Program", "Audience", "Schedule", "Usage", "Lifecycle", "Email", "Notification", "Readiness", "Status"]}>
         {control.platformCampaigns.map((campaign) => (
           <tr key={campaign.registryKey}>
             <td className="px-5 py-4">
@@ -531,6 +531,14 @@ export default async function AdminMarketingPage() {
               <AdminBadge tone={campaign.massSendBadgeTone}>{campaign.massSendLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.massSendDescription}</p>
               <p className="mt-1 text-xs text-slate-500">{campaign.emailSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.notificationBadgeTone}>{campaign.notificationLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.notificationDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">Channel {campaign.notificationChannelLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">Template {campaign.notificationTemplateLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">{campaign.notificationEngineStatus}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.notificationSummary}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={campaign.campaignBadgeTone}>{campaign.campaignLabel}</AdminBadge>

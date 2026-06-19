@@ -15,6 +15,12 @@ import {
   type MarketingCampaignEmailSummaryRecord,
   type MarketingCampaignEmailView
 } from "@/src/lib/marketing/marketing-campaign-email-runtime";
+import {
+  MARKETING_CAMPAIGN_NOTIFICATION_FALLBACK_SUMMARIES,
+  resolveMarketingCampaignNotificationViewSafe,
+  type MarketingCampaignNotificationSummaryRecord,
+  type MarketingCampaignNotificationView
+} from "@/src/lib/marketing/marketing-campaign-notification-runtime";
 import type { MarketingRegistryItemRecord } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
   getMarketingStatusBadgeTone,
@@ -103,7 +109,8 @@ export type MarketingCampaignView = {
   usageCount: number;
 } & MarketingAudienceView &
   MarketingCampaignReadinessView &
-  MarketingCampaignEmailView;
+  MarketingCampaignEmailView &
+  MarketingCampaignNotificationView;
 
 export const MARKETING_CAMPAIGN_PROGRAM_TYPES: readonly MarketingCampaignProgramType[] = [
   "platform_announcement",
@@ -553,7 +560,10 @@ function resolveMarketingCampaignReadinessViewSafe(input: {
 function attachMarketingCampaignAudience(
   view: Omit<
     MarketingCampaignView,
-    keyof MarketingAudienceView | keyof MarketingCampaignReadinessView | keyof MarketingCampaignEmailView
+    | keyof MarketingAudienceView
+    | keyof MarketingCampaignReadinessView
+    | keyof MarketingCampaignEmailView
+    | keyof MarketingCampaignNotificationView
   > &
     Partial<MarketingAudienceView>,
   params: {
@@ -563,7 +573,7 @@ function attachMarketingCampaignAudience(
   }
 ): Omit<
   MarketingCampaignView,
-  keyof MarketingCampaignReadinessView | keyof MarketingCampaignEmailView
+  keyof MarketingCampaignReadinessView | keyof MarketingCampaignEmailView | keyof MarketingCampaignNotificationView
 > &
   MarketingAudienceView {
   const audience = resolveMarketingAudienceView({
@@ -579,8 +589,43 @@ function attachMarketingCampaignAudience(
   };
 }
 
+function attachMarketingCampaignNotificationLayer(
+  view: Omit<MarketingCampaignView, keyof MarketingCampaignNotificationView> &
+    Partial<MarketingCampaignNotificationView> &
+    MarketingAudienceView &
+    MarketingCampaignReadinessView &
+    MarketingCampaignEmailView,
+  params: {
+    metadata?: Record<string, unknown>;
+    notificationSummaryRecord?: MarketingCampaignNotificationSummaryRecord | null;
+  }
+): MarketingCampaignView {
+  const notification = resolveMarketingCampaignNotificationViewSafe({
+    campaignReady: view.campaignReady,
+    code: view.code,
+    emailReady: view.emailReady,
+    exists: true,
+    lifecycleState: view.lifecycleState,
+    marketingType: "campaign",
+    metadata: params.metadata,
+    metadataSummary: view.metadataSummary,
+    notificationSummaryRecord: params.notificationSummaryRecord,
+    registryKey: view.registryKey,
+    slug: view.slug,
+    status: view.status
+  });
+
+  return {
+    ...view,
+    ...notification
+  };
+}
+
 function attachMarketingCampaignEmailLayer(
-  view: Omit<MarketingCampaignView, keyof MarketingCampaignEmailView> &
+  view: Omit<
+    MarketingCampaignView,
+    keyof MarketingCampaignEmailView | keyof MarketingCampaignNotificationView
+  > &
     Partial<MarketingCampaignEmailView> &
     MarketingAudienceView &
     MarketingCampaignReadinessView,
@@ -588,7 +633,10 @@ function attachMarketingCampaignEmailLayer(
     emailSummaryRecord?: MarketingCampaignEmailSummaryRecord | null;
     metadata?: Record<string, unknown>;
   }
-): MarketingCampaignView {
+): Omit<MarketingCampaignView, keyof MarketingCampaignNotificationView> &
+  MarketingAudienceView &
+  MarketingCampaignReadinessView &
+  MarketingCampaignEmailView {
   const email = resolveMarketingCampaignEmailViewSafe({
     campaignReady: view.campaignReady,
     campaignState: view.campaignState,
@@ -614,14 +662,19 @@ function attachMarketingCampaignEmailLayer(
 function attachMarketingCampaignReadinessLayer(
   view: Omit<
     MarketingCampaignView,
-    keyof MarketingCampaignReadinessView | keyof MarketingCampaignEmailView
+    | keyof MarketingCampaignReadinessView
+    | keyof MarketingCampaignEmailView
+    | keyof MarketingCampaignNotificationView
   > &
     Partial<MarketingCampaignReadinessView> &
     MarketingAudienceView,
   params: {
     metadata?: Record<string, unknown>;
   }
-): Omit<MarketingCampaignView, keyof MarketingCampaignEmailView> &
+): Omit<
+  MarketingCampaignView,
+  keyof MarketingCampaignEmailView | keyof MarketingCampaignNotificationView
+> &
   MarketingAudienceView &
   MarketingCampaignReadinessView {
   const readiness = resolveMarketingCampaignReadinessViewSafe({
@@ -647,7 +700,8 @@ function toMarketingCampaignViewFromCampaign(
     metadata?: Record<string, unknown>;
     slug?: string;
   },
-  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map()
+  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map(),
+  notificationSummariesByRegistryKey: Map<string, MarketingCampaignNotificationSummaryRecord> = new Map()
 ): MarketingCampaignView | null {
   if (campaign.type !== "campaign") {
     return null;
@@ -667,46 +721,52 @@ function toMarketingCampaignViewFromCampaign(
     metadataValue(metadata, ["campaign_program_type", "program_type"]) || mapped?.campaignProgramType
   );
 
-  return attachMarketingCampaignEmailLayer(
-    attachMarketingCampaignReadinessLayer(
-      attachMarketingCampaignAudience(
-        {
-          campaignProgramType,
-          campaignTypeLabel: "Platform campaign",
-          code: buildCampaignDisplayCode({ metadata, registryKey, slug }),
-          deliveryStatus: "No campaign sender connected",
-          description,
-          endDateDisplay: sanitizeScheduleDisplay(campaign.endDate ?? metadata.end_date),
-          lifecycleDescription:
-            campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-          lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
-          lifecycleState,
-          metadataSummary: buildMetadataSummary(metadata),
-          name: sanitizeCampaignDisplayValue(campaign.name, "Marketing campaign"),
-          registryKey,
-          revenueImpact: Math.max(0, campaign.revenueImpact),
-          slug,
-          startDateDisplay: sanitizeScheduleDisplay(campaign.startDate ?? metadata.start_date),
-          status,
-          statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-          statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-          statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-          targetAudienceSummary: sanitizeCampaignDisplayValue(
-            campaign.targetAudienceSummary,
-            campaign.audienceLabel || "Audience summary unavailable."
-          ),
-          usageCount: Math.max(0, Math.trunc(campaign.usage))
-        },
-        {
-          metadata,
-          registryKey,
-          targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
-        }
+  return attachMarketingCampaignNotificationLayer(
+    attachMarketingCampaignEmailLayer(
+      attachMarketingCampaignReadinessLayer(
+        attachMarketingCampaignAudience(
+          {
+            campaignProgramType,
+            campaignTypeLabel: "Platform campaign",
+            code: buildCampaignDisplayCode({ metadata, registryKey, slug }),
+            deliveryStatus: "No campaign sender connected",
+            description,
+            endDateDisplay: sanitizeScheduleDisplay(campaign.endDate ?? metadata.end_date),
+            lifecycleDescription:
+              campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+            lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+            lifecycleState,
+            metadataSummary: buildMetadataSummary(metadata),
+            name: sanitizeCampaignDisplayValue(campaign.name, "Marketing campaign"),
+            registryKey,
+            revenueImpact: Math.max(0, campaign.revenueImpact),
+            slug,
+            startDateDisplay: sanitizeScheduleDisplay(campaign.startDate ?? metadata.start_date),
+            status,
+            statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+            statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+            statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+            targetAudienceSummary: sanitizeCampaignDisplayValue(
+              campaign.targetAudienceSummary,
+              campaign.audienceLabel || "Audience summary unavailable."
+            ),
+            usageCount: Math.max(0, Math.trunc(campaign.usage))
+          },
+          {
+            metadata,
+            registryKey,
+            targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+          }
+        ),
+        { metadata }
       ),
-      { metadata }
+      {
+        emailSummaryRecord: emailSummariesByRegistryKey.get(registryKey) ?? null,
+        metadata
+      }
     ),
     {
-      emailSummaryRecord: emailSummariesByRegistryKey.get(registryKey) ?? null,
+      notificationSummaryRecord: notificationSummariesByRegistryKey.get(registryKey) ?? null,
       metadata
     }
   );
@@ -715,7 +775,8 @@ function toMarketingCampaignViewFromCampaign(
 function toMarketingCampaignViewFromRegistryItem(
   item: MarketingRegistryItemRecord,
   statusOverride?: MarketingStatus,
-  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map()
+  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map(),
+  notificationSummariesByRegistryKey: Map<string, MarketingCampaignNotificationSummaryRecord> = new Map()
 ): MarketingCampaignView | null {
   if (item.marketingType !== "campaign") {
     return null;
@@ -742,17 +803,21 @@ function toMarketingCampaignViewFromRegistryItem(
     type: item.marketingType,
     typeDescription: "Platform campaign foundation.",
     usage: item.usageCount
-  }, emailSummariesByRegistryKey);
+  }, emailSummariesByRegistryKey, notificationSummariesByRegistryKey);
 }
 
 const fallbackEmailSummariesByRegistryKey = new Map(
   MARKETING_CAMPAIGN_EMAIL_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
 );
+const fallbackNotificationSummariesByRegistryKey = new Map(
+  MARKETING_CAMPAIGN_NOTIFICATION_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+);
 
 export const MARKETING_CAMPAIGN_FALLBACK_VIEWS: readonly MarketingCampaignView[] = [
-  attachMarketingCampaignEmailLayer(
-    attachMarketingCampaignReadinessLayer(
-      attachMarketingCampaignAudience(
+  attachMarketingCampaignNotificationLayer(
+    attachMarketingCampaignEmailLayer(
+      attachMarketingCampaignReadinessLayer(
+        attachMarketingCampaignAudience(
       {
         campaignProgramType: "platform_announcement",
         campaignTypeLabel: "Platform campaign",
@@ -791,13 +856,20 @@ export const MARKETING_CAMPAIGN_FALLBACK_VIEWS: readonly MarketingCampaignView[]
       emailSummaryRecord: fallbackEmailSummariesByRegistryKey.get("campaign:platform-announcements") ?? null,
       metadata: { section: "Campaigns", source: "marketing_registry_fallback" }
     }
+    ),
+    {
+      notificationSummaryRecord:
+        fallbackNotificationSummariesByRegistryKey.get("campaign:platform-announcements") ?? null,
+      metadata: { section: "Campaigns", source: "marketing_registry_fallback" }
+    }
   )
 ];
 
 export function buildMarketingCampaignViewsFromCampaigns(
   campaigns: MarketingCampaignCampaignSource[],
   metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
-  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map()
+  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map(),
+  notificationSummariesByRegistryKey: Map<string, MarketingCampaignNotificationSummaryRecord> = new Map()
 ): MarketingCampaignView[] {
   const views: MarketingCampaignView[] = [];
 
@@ -811,7 +883,7 @@ export function buildMarketingCampaignViewsFromCampaigns(
       metadata: metadataByRegistryKey.get(campaign.id),
       slug: campaign.id.split(":").pop(),
       startDate: campaign.startDate
-    }, emailSummariesByRegistryKey);
+    }, emailSummariesByRegistryKey, notificationSummariesByRegistryKey);
 
     if (campaignView) {
       views.push(campaignView);
@@ -828,7 +900,8 @@ export function buildMarketingCampaignViewsFromCampaigns(
 export function buildMarketingCampaignViewsFromRegistryItems(
   items: MarketingRegistryItemRecord[],
   statusByRegistryKey: Map<string, MarketingStatus> = new Map(),
-  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map()
+  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map(),
+  notificationSummariesByRegistryKey: Map<string, MarketingCampaignNotificationSummaryRecord> = new Map()
 ): MarketingCampaignView[] {
   const views: MarketingCampaignView[] = [];
 
@@ -836,7 +909,8 @@ export function buildMarketingCampaignViewsFromRegistryItems(
     const campaignView = toMarketingCampaignViewFromRegistryItem(
       item,
       statusByRegistryKey.get(item.registryKey) ?? item.status,
-      emailSummariesByRegistryKey
+      emailSummariesByRegistryKey,
+      notificationSummariesByRegistryKey
     );
 
     if (campaignView) {
@@ -854,14 +928,16 @@ export function buildMarketingCampaignViewsFromRegistryItems(
 export function buildMarketingCampaignViewsSafe(
   campaigns: MarketingCampaignCampaignSource[],
   metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
-  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map()
+  emailSummariesByRegistryKey: Map<string, MarketingCampaignEmailSummaryRecord> = new Map(),
+  notificationSummariesByRegistryKey: Map<string, MarketingCampaignNotificationSummaryRecord> = new Map()
 ): { platformCampaigns: MarketingCampaignView[]; warning: string | null } {
   try {
     return {
       platformCampaigns: buildMarketingCampaignViewsFromCampaigns(
         campaigns,
         metadataByRegistryKey,
-        emailSummariesByRegistryKey
+        emailSummariesByRegistryKey,
+        notificationSummariesByRegistryKey
       ),
       warning: null
     };

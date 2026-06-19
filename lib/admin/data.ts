@@ -5,12 +5,14 @@ import { getAdminAccess } from "@/lib/admin-access";
 import {
   MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES,
   MARKETING_CAMPAIGN_EMAIL_FALLBACK_SUMMARIES,
+  MARKETING_CAMPAIGN_NOTIFICATION_FALLBACK_SUMMARIES,
   MARKETING_COMMISSION_FALLBACK_SUMMARIES,
   MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
   MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES,
   MARKETING_REGISTRY_FALLBACK_ITEMS,
   indexMarketingAffiliateTrackingSummariesByRegistryKey,
   indexMarketingCampaignEmailSummariesByRegistryKey,
+  indexMarketingCampaignNotificationSummariesByRegistryKey,
   indexMarketingCommissionSummariesByRegistryKey,
   indexMarketingCouponUsageSummariesByRegistryKey,
   indexMarketingReferralTrackingSummariesByRegistryKey,
@@ -32,6 +34,7 @@ import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import type { MarketingAffiliateTrackingSummaryRecord } from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
 import type { MarketingCampaignEmailSummaryRecord } from "@/src/lib/marketing/marketing-campaign-email-runtime";
+import type { MarketingCampaignNotificationSummaryRecord } from "@/src/lib/marketing/marketing-campaign-notification-runtime";
 import type { MarketingCommissionSummaryRecord } from "@/src/lib/marketing/marketing-commission-runtime";
 import type { MarketingReferralTrackingSummaryRecord } from "@/src/lib/marketing/marketing-referral-tracking-runtime";
 import {
@@ -1830,6 +1833,15 @@ export type AdminPlatformMarketingControl = {
     massSendState: "invalid" | "mass_send_disabled" | "mass_send_ready" | "needs_review" | "unknown";
     metadataSummary: string;
     name: string;
+    notificationBadgeTone: "amber" | "blue" | "green" | "red";
+    notificationChannelLabel: string;
+    notificationDescription: string;
+    notificationEngineStatus: string;
+    notificationLabel: string;
+    notificationReady: boolean;
+    notificationState: "invalid" | "needs_review" | "notification_disabled" | "notification_ready" | "unknown";
+    notificationSummary: string;
+    notificationTemplateLabel: string;
     registryKey: string;
     revenueImpact: number;
     slug: string;
@@ -7230,6 +7242,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
 function buildAdminPlatformMarketingControl(params: {
   affiliateTrackingSummariesByRegistryKey?: Map<string, MarketingAffiliateTrackingSummaryRecord>;
   campaignEmailSummariesByRegistryKey?: Map<string, MarketingCampaignEmailSummaryRecord>;
+  campaignNotificationSummariesByRegistryKey?: Map<string, MarketingCampaignNotificationSummaryRecord>;
   campaigns: AdminPlatformMarketingControl["campaigns"];
   commissionSummariesByRegistryKey?: Map<string, MarketingCommissionSummaryRecord>;
   couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
@@ -7240,6 +7253,7 @@ function buildAdminPlatformMarketingControl(params: {
   const {
     affiliateTrackingSummariesByRegistryKey = new Map(),
     campaignEmailSummariesByRegistryKey = new Map(),
+    campaignNotificationSummariesByRegistryKey = new Map(),
     campaigns,
     commissionSummariesByRegistryKey = new Map(),
     couponMetadataByRegistryKey = new Map(),
@@ -7269,7 +7283,8 @@ function buildAdminPlatformMarketingControl(params: {
   const platformCampaignLoad = buildMarketingCampaignViewsSafe(
     campaigns,
     couponMetadataByRegistryKey,
-    campaignEmailSummariesByRegistryKey
+    campaignEmailSummariesByRegistryKey,
+    campaignNotificationSummariesByRegistryKey
   );
   const combinedWarning =
     [
@@ -7350,6 +7365,9 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
     campaignEmailSummariesByRegistryKey: new Map(
       MARKETING_CAMPAIGN_EMAIL_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
     ),
+    campaignNotificationSummariesByRegistryKey: new Map(
+      MARKETING_CAMPAIGN_NOTIFICATION_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+    ),
     runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
   });
 }
@@ -7358,6 +7376,7 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   const {
     listMarketingAffiliateTrackingSummariesReadOnlySafe,
     listMarketingCampaignEmailSummariesReadOnlySafe,
+    listMarketingCampaignNotificationSummariesReadOnlySafe,
     listMarketingCommissionSummariesReadOnlySafe,
     listMarketingCouponUsageSummariesReadOnlySafe,
     listMarketingReferralTrackingSummariesReadOnlySafe,
@@ -7376,14 +7395,15 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   );
   const latestActionByCampaign = indexLatestMarketingPlatformActions(marketingEvents);
 
-  const [registryLoad, usageLoad, referralTrackingLoad, affiliateTrackingLoad, commissionLoad, campaignEmailLoad] =
+  const [registryLoad, usageLoad, referralTrackingLoad, affiliateTrackingLoad, commissionLoad, campaignEmailLoad, campaignNotificationLoad] =
     await Promise.all([
       listMarketingRegistryItemsReadOnlySafe(),
       listMarketingCouponUsageSummariesReadOnlySafe(),
       listMarketingReferralTrackingSummariesReadOnlySafe(),
       listMarketingAffiliateTrackingSummariesReadOnlySafe(),
       listMarketingCommissionSummariesReadOnlySafe(),
-      listMarketingCampaignEmailSummariesReadOnlySafe()
+      listMarketingCampaignEmailSummariesReadOnlySafe(),
+      listMarketingCampaignNotificationSummariesReadOnlySafe()
     ]);
   const campaigns = registryLoad.items.map((item) =>
     toMarketingRegistryCampaignView(
@@ -7402,7 +7422,8 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
       referralTrackingLoad.warning,
       affiliateTrackingLoad.warning,
       commissionLoad.warning,
-      campaignEmailLoad.warning
+      campaignEmailLoad.warning,
+      campaignNotificationLoad.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -7413,6 +7434,9 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
     ),
     campaignEmailSummariesByRegistryKey: indexMarketingCampaignEmailSummariesByRegistryKey(
       campaignEmailLoad.summaries
+    ),
+    campaignNotificationSummariesByRegistryKey: indexMarketingCampaignNotificationSummariesByRegistryKey(
+      campaignNotificationLoad.summaries
     ),
     campaigns,
     commissionSummariesByRegistryKey: indexMarketingCommissionSummariesByRegistryKey(

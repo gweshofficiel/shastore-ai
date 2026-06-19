@@ -496,6 +496,39 @@ export {
   resolveMarketingCampaignMassSendState
 } from "@/src/lib/marketing/marketing-campaign-email-runtime";
 export type {
+  MarketingCampaignNotificationInput,
+  MarketingCampaignNotificationIssue,
+  MarketingCampaignNotificationIssueSeverity,
+  MarketingCampaignNotificationState,
+  MarketingCampaignNotificationSummaryRecord,
+  MarketingCampaignNotificationSummaryStatus,
+  MarketingCampaignNotificationSource,
+  MarketingCampaignNotificationView
+} from "@/src/lib/marketing/marketing-campaign-notification-runtime";
+export {
+  getMarketingCampaignNotificationBadgeTone,
+  getMarketingCampaignNotificationDescription,
+  getMarketingCampaignNotificationLabel,
+  indexMarketingCampaignNotificationSummariesByRegistryKey,
+  isMarketingCampaignNotificationReady,
+  isValidMarketingCampaignNotificationState,
+  isValidMarketingCampaignNotificationSummaryStatus,
+  listMarketingCampaignNotificationIssues,
+  listMarketingCampaignNotificationSummariesReadOnly,
+  listMarketingCampaignNotificationSummariesReadOnlySafe,
+  MARKETING_CAMPAIGN_NOTIFICATION_FALLBACK_SUMMARIES,
+  MARKETING_CAMPAIGN_NOTIFICATION_STATES,
+  MARKETING_CAMPAIGN_NOTIFICATION_SUMMARY_STATUSES,
+  parseMarketingCampaignNotificationSummary,
+  parseMarketingCampaignNotificationSummaryStatus,
+  resolveMarketingCampaignNotificationChannelLabel,
+  resolveMarketingCampaignNotificationState,
+  resolveMarketingCampaignNotificationSummaryText,
+  resolveMarketingCampaignNotificationTemplateLabel,
+  resolveMarketingCampaignNotificationView,
+  resolveMarketingCampaignNotificationViewSafe
+} from "@/src/lib/marketing/marketing-campaign-notification-runtime";
+export type {
   MarketingCouponDiscountType,
   MarketingCouponView
 } from "@/src/lib/marketing/marketing-coupon-runtime";
