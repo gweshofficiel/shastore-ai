@@ -3,6 +3,10 @@ import { planLimitsConfig } from "@/lib/billing/plan-limits";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import {
+  MARKETING_REGISTRY_FALLBACK_ITEMS,
+  toMarketingRegistryCampaignView
+} from "@/src/lib/marketing/marketing-registry-runtime";
+import {
   internalTeamRoleMeta,
   internalTeamRoles,
   normalizeInternalTeamRole,
@@ -1509,6 +1513,7 @@ export type AdminMarketplaceControl = {
 };
 
 export type AdminPlatformMarketingControl = {
+  runtimeWarning?: string | null;
   campaigns: Array<{
     endDate: string | null;
     id: string;
@@ -6816,7 +6821,118 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
   };
 }
 
+function resolvePlatformMarketingCampaignStatus(
+  latestEventByCampaign: Map<string, AnyRecord>,
+  campaignId: string,
+  fallback: AdminPlatformMarketingControl["campaigns"][number]["status"]
+): AdminPlatformMarketingControl["campaigns"][number]["status"] {
+  const eventType = text(latestEventByCampaign.get(campaignId)?.event_type);
+
+  if (eventType === "admin_platform_marketing_activate_campaign") {
+    return "active";
+  }
+
+  if (eventType === "admin_platform_marketing_archive_campaign") {
+    return "archived";
+  }
+
+  if (eventType === "admin_platform_marketing_create_draft") {
+    return "draft";
+  }
+
+  if (eventType === "admin_platform_marketing_pause_campaign") {
+    return "paused";
+  }
+
+  return fallback;
+}
+
+function buildAdminPlatformMarketingControl(params: {
+  campaigns: AdminPlatformMarketingControl["campaigns"];
+  runtimeWarning?: string | null;
+}): AdminPlatformMarketingControl {
+  const { campaigns, runtimeWarning = null } = params;
+
+  return {
+    campaigns,
+    coupons: [
+      {
+        amount: "10%",
+        code: "PLATFORM-WELCOME",
+        discountType: "percentage",
+        planEligibility: "Starter, Growth, Pro",
+        status: campaigns.find((campaign) => campaign.id === "platform-coupon:welcome-plan-credit")?.status ?? "draft",
+        usageLimit: "Placeholder limit"
+      },
+      {
+        amount: "1 month credit",
+        code: "PLAN-CREDIT-DRAFT",
+        discountType: "plan_credit",
+        planEligibility: "Growth, Pro",
+        status: campaigns.find((campaign) => campaign.id === "platform-promotion:annual-upgrade")?.status ?? "draft",
+        usageLimit: "Internal review only"
+      }
+    ],
+    futureHooks: [
+      "Platform coupon redemption",
+      "Plan discount application",
+      "Affiliate tracking",
+      "Payout system",
+      "Campaign email sending",
+      "Campaign analytics"
+    ],
+    giftCodes: [
+      {
+        code: "GIFT-LAUNCH-CREDIT",
+        creditAmount: 0,
+        planCredit: "Platform subscription credit placeholder",
+        redemptionStatus: "No redemption engine connected",
+        status: campaigns.find((campaign) => campaign.id === "gift-code:launch-credit")?.status ?? "draft"
+      }
+    ],
+    overview: {
+      activeSections: campaigns.filter((campaign) => campaign.status === "active").length,
+      archivedSections: campaigns.filter((campaign) => campaign.status === "archived").length,
+      draftSections: campaigns.filter((campaign) => campaign.status === "draft").length,
+      expiredSections: campaigns.filter((campaign) => campaign.status === "expired").length,
+      pausedSections: campaigns.filter((campaign) => campaign.status === "paused").length,
+      totalSections: campaigns.length
+    },
+    referralAffiliates: [
+      {
+        commission: 0,
+        payoutStatus: "No payout system connected",
+        referredUsers: 0,
+        referrer: "Store Owner Referral Foundation",
+        status: campaigns.find((campaign) => campaign.id === "referral:owner-invite")?.status ?? "draft",
+        type: "referral"
+      },
+      {
+        commission: 0,
+        payoutStatus: "Placeholder only",
+        referredUsers: 0,
+        referrer: "Creator Affiliate Foundation",
+        status: campaigns.find((campaign) => campaign.id === "affiliate:creator-partners")?.status ?? "draft",
+        type: "affiliate"
+      }
+    ],
+    runtimeWarning
+  };
+}
+
+export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMarketingControl {
+  const campaigns = MARKETING_REGISTRY_FALLBACK_ITEMS.map((item) => toMarketingRegistryCampaignView(item));
+
+  return buildAdminPlatformMarketingControl({
+    campaigns,
+    runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
+  });
+}
+
 export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformMarketingControl> {
+  const { listMarketingRegistryItemsReadOnlySafe, toMarketingRegistryCampaignView } = await import(
+    "@/src/lib/marketing/marketing-registry-runtime"
+  );
   const { supabase } = await getAdminUsersBase();
   const monitoringEvents = await safeSelect(
     supabase,
@@ -6838,170 +6954,18 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
     }
   }
 
-  function campaignStatus(
-    campaignId: string,
-    fallback: AdminPlatformMarketingControl["campaigns"][number]["status"]
-  ): AdminPlatformMarketingControl["campaigns"][number]["status"] {
-    const eventType = text(latestEventByCampaign.get(campaignId)?.event_type);
+  const registryLoad = await listMarketingRegistryItemsReadOnlySafe();
+  const campaigns = registryLoad.items.map((item) =>
+    toMarketingRegistryCampaignView(
+      item,
+      resolvePlatformMarketingCampaignStatus(latestEventByCampaign, item.registryKey, item.status)
+    )
+  );
 
-    if (eventType === "admin_platform_marketing_activate_campaign") {
-      return "active";
-    }
-
-    if (eventType === "admin_platform_marketing_archive_campaign") {
-      return "archived";
-    }
-
-    if (eventType === "admin_platform_marketing_create_draft") {
-      return "draft";
-    }
-
-    if (eventType === "admin_platform_marketing_pause_campaign") {
-      return "paused";
-    }
-
-    return fallback;
-  }
-
-  const campaigns: AdminPlatformMarketingControl["campaigns"] = [
-    {
-      endDate: null,
-      id: "platform-coupon:welcome-plan-credit",
-      name: "Welcome Plan Credit",
-      revenueImpact: 0,
-      section: "Platform coupons",
-      startDate: null,
-      status: campaignStatus("platform-coupon:welcome-plan-credit", "draft"),
-      targetAudience: "New SHASTORE platform subscribers",
-      type: "coupon",
-      usage: 0
-    },
-    {
-      endDate: null,
-      id: "platform-promotion:annual-upgrade",
-      name: "Annual Upgrade Promotion",
-      revenueImpact: 0,
-      section: "Platform promotions",
-      startDate: null,
-      status: campaignStatus("platform-promotion:annual-upgrade", "draft"),
-      targetAudience: "Monthly plan customers",
-      type: "promotion",
-      usage: 0
-    },
-    {
-      endDate: null,
-      id: "gift-code:launch-credit",
-      name: "Launch Credit Gift Code",
-      revenueImpact: 0,
-      section: "Gift codes",
-      startDate: null,
-      status: campaignStatus("gift-code:launch-credit", "draft"),
-      targetAudience: "Selected launch partners",
-      type: "gift_code",
-      usage: 0
-    },
-    {
-      endDate: null,
-      id: "referral:owner-invite",
-      name: "Store Owner Referral Foundation",
-      revenueImpact: 0,
-      section: "Referral program",
-      startDate: null,
-      status: campaignStatus("referral:owner-invite", "draft"),
-      targetAudience: "Existing store owners",
-      type: "referral",
-      usage: 0
-    },
-    {
-      endDate: null,
-      id: "affiliate:creator-partners",
-      name: "Creator Affiliate Foundation",
-      revenueImpact: 0,
-      section: "Affiliate program",
-      startDate: null,
-      status: campaignStatus("affiliate:creator-partners", "draft"),
-      targetAudience: "Creators, agencies, and future reseller partners",
-      type: "affiliate",
-      usage: 0
-    },
-    {
-      endDate: null,
-      id: "campaign:platform-announcements",
-      name: "Platform Announcement Campaign",
-      revenueImpact: 0,
-      section: "Campaigns",
-      startDate: null,
-      status: campaignStatus("campaign:platform-announcements", "paused"),
-      targetAudience: "All SHASTORE platform users",
-      type: "campaign",
-      usage: 0
-    }
-  ];
-
-  return {
+  return buildAdminPlatformMarketingControl({
     campaigns,
-    coupons: [
-      {
-        amount: "10%",
-        code: "PLATFORM-WELCOME",
-        discountType: "percentage",
-        planEligibility: "Starter, Growth, Pro",
-        status: campaignStatus("platform-coupon:welcome-plan-credit", "draft"),
-        usageLimit: "Placeholder limit"
-      },
-      {
-        amount: "1 month credit",
-        code: "PLAN-CREDIT-DRAFT",
-        discountType: "plan_credit",
-        planEligibility: "Growth, Pro",
-        status: campaignStatus("platform-promotion:annual-upgrade", "draft"),
-        usageLimit: "Internal review only"
-      }
-    ],
-    futureHooks: [
-      "Platform coupon redemption",
-      "Plan discount application",
-      "Affiliate tracking",
-      "Payout system",
-      "Campaign email sending",
-      "Campaign analytics"
-    ],
-    giftCodes: [
-      {
-        code: "GIFT-LAUNCH-CREDIT",
-        creditAmount: 0,
-        planCredit: "Platform subscription credit placeholder",
-        redemptionStatus: "No redemption engine connected",
-        status: campaignStatus("gift-code:launch-credit", "draft")
-      }
-    ],
-    overview: {
-      activeSections: campaigns.filter((campaign) => campaign.status === "active").length,
-      archivedSections: campaigns.filter((campaign) => campaign.status === "archived").length,
-      draftSections: campaigns.filter((campaign) => campaign.status === "draft").length,
-      expiredSections: campaigns.filter((campaign) => campaign.status === "expired").length,
-      pausedSections: campaigns.filter((campaign) => campaign.status === "paused").length,
-      totalSections: campaigns.length
-    },
-    referralAffiliates: [
-      {
-        commission: 0,
-        payoutStatus: "No payout system connected",
-        referredUsers: 0,
-        referrer: "Store Owner Referral Foundation",
-        status: campaignStatus("referral:owner-invite", "draft"),
-        type: "referral"
-      },
-      {
-        commission: 0,
-        payoutStatus: "Placeholder only",
-        referredUsers: 0,
-        referrer: "Creator Affiliate Foundation",
-        status: campaignStatus("affiliate:creator-partners", "draft"),
-        type: "affiliate"
-      }
-    ]
-  };
+    runtimeWarning: registryLoad.warning
+  });
 }
 
 export async function getAdminEmailControl(): Promise<AdminEmailControl> {

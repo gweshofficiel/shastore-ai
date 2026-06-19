@@ -6,7 +6,8 @@ import {
   formatAdminDate,
   formatAdminMoney
 } from "@/components/admin/admin-control";
-import { getAdminPlatformMarketingControl } from "@/lib/admin/data";
+import type { AdminPlatformMarketingControl } from "@/lib/admin/data";
+import { loadPlatformMarketingControlSafe } from "@/lib/admin/marketing-loader";
 import {
   activateMarketingCampaignPlaceholder,
   archiveMarketingCampaignPlaceholder,
@@ -14,6 +15,19 @@ import {
   pauseMarketingCampaign,
   viewMarketingUsagePlaceholder
 } from "@/lib/admin/platform-marketing-actions";
+
+function MarketingRuntimeRecoveryNotice({ message }: { message: string }) {
+  return (
+    <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Marketing registry recovery</p>
+      <p className="mt-2 text-sm font-semibold text-amber-900">
+        Marketing registry data could not be loaded from runtime storage. The admin shell is still available with fallback
+        registry rows.
+      </p>
+      <p className="mt-2 text-xs font-semibold text-amber-800">{message}</p>
+    </div>
+  );
+}
 
 function toneForStatus(status: string) {
   if (status === "active") {
@@ -34,7 +48,7 @@ function toneForStatus(status: string) {
 function CampaignHiddenFields({
   campaign
 }: {
-  campaign: Awaited<ReturnType<typeof getAdminPlatformMarketingControl>>["campaigns"][number];
+  campaign: AdminPlatformMarketingControl["campaigns"][number];
 }) {
   return (
     <>
@@ -46,7 +60,8 @@ function CampaignHiddenFields({
 }
 
 export default async function AdminMarketingPage() {
-  const control = await getAdminPlatformMarketingControl();
+  const { control, ok, warning } = await loadPlatformMarketingControlSafe();
+  const recoveryMessage = warning ?? control.runtimeWarning ?? null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -54,6 +69,8 @@ export default async function AdminMarketingPage() {
         description="Platform-level marketing foundations for SHASTORE coupons, promotions, gift codes, referrals, affiliates, and campaigns. This does not modify Store Owner coupons, discounts, email campaigns, referrals, or storefront marketing."
         title="Marketing & Promotion Center"
       />
+
+      {!ok && recoveryMessage ? <MarketingRuntimeRecoveryNotice message={recoveryMessage} /> : null}
 
       <AdminStatGrid
         stats={[
