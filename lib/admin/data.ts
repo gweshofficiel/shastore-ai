@@ -11,6 +11,7 @@ import {
   indexLatestMarketingPlatformActions,
   resolveMarketingRegistryStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
+import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import {
   internalTeamRoleMeta,
   internalTeamRoles,
@@ -1564,9 +1565,22 @@ export type AdminPlatformMarketingControl = {
   coupons: Array<{
     amount: string;
     code: string;
+    couponDescription: string;
+    couponLabel: string;
+    description: string;
     discountType: "fixed" | "percentage" | "plan_credit";
+    metadataSummary: string;
+    name: string;
     planEligibility: string;
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
     status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    usageCount: number;
     usageLimit: string;
   }>;
   futureHooks: string[];
@@ -6861,27 +6875,12 @@ function buildAdminPlatformMarketingControl(params: {
   runtimeWarning?: string | null;
 }): AdminPlatformMarketingControl {
   const { campaigns, runtimeWarning = null } = params;
+  const couponLoad = buildMarketingCouponViewsSafe(campaigns);
+  const combinedWarning = runtimeWarning ?? couponLoad.warning ?? null;
 
   return {
     campaigns,
-    coupons: [
-      {
-        amount: "10%",
-        code: "PLATFORM-WELCOME",
-        discountType: "percentage",
-        planEligibility: "Starter, Growth, Pro",
-        status: campaigns.find((campaign) => campaign.id === "platform-coupon:welcome-plan-credit")?.status ?? "draft",
-        usageLimit: "Placeholder limit"
-      },
-      {
-        amount: "1 month credit",
-        code: "PLAN-CREDIT-DRAFT",
-        discountType: "plan_credit",
-        planEligibility: "Growth, Pro",
-        status: campaigns.find((campaign) => campaign.id === "platform-promotion:annual-upgrade")?.status ?? "draft",
-        usageLimit: "Internal review only"
-      }
-    ],
+    coupons: couponLoad.coupons,
     futureHooks: [
       "Platform coupon redemption",
       "Plan discount application",
@@ -6918,7 +6917,7 @@ function buildAdminPlatformMarketingControl(params: {
         type: "affiliate"
       }
     ],
-    runtimeWarning
+    runtimeWarning: combinedWarning
   };
 }
 

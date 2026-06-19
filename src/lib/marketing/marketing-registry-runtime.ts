@@ -431,6 +431,19 @@ export {
   sanitizeMarketingLifecycleNote
 } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 export type {
+  MarketingCouponDiscountType,
+  MarketingCouponView
+} from "@/src/lib/marketing/marketing-coupon-runtime";
+export {
+  buildMarketingCouponViewsFromCampaigns,
+  buildMarketingCouponViewsFromRegistryItems,
+  buildMarketingCouponViewsSafe,
+  getMarketingCouponBadgeTone,
+  getMarketingCouponDiscountTypeLabel,
+  MARKETING_COUPON_DISCOUNT_TYPES,
+  MARKETING_COUPON_FALLBACK_VIEWS
+} from "@/src/lib/marketing/marketing-coupon-runtime";
+export type {
   MarketingStatus,
   MarketingStatusBadgeTone,
   MarketingStatusCatalogEntry,

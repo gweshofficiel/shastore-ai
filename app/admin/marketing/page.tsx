@@ -10,6 +10,10 @@ import type { AdminPlatformMarketingControl } from "@/lib/admin/data";
 import { loadPlatformMarketingControlSafe } from "@/lib/admin/marketing-loader";
 import type { MarketingLifecycleAction } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 import {
+  getMarketingCouponBadgeTone,
+  getMarketingCouponDiscountTypeLabel
+} from "@/src/lib/marketing/marketing-coupon-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
 } from "@/src/lib/marketing/marketing-status-runtime";
@@ -168,14 +172,25 @@ export default async function AdminMarketingPage() {
 
       <AdminTable headers={["Coupon code", "Discount type", "Amount", "Plan eligibility", "Usage limit", "Status"]}>
         {control.coupons.map((coupon) => (
-          <tr key={coupon.code}>
-            <td className="px-5 py-4 font-bold text-slate-950">{coupon.code}</td>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{coupon.discountType}</AdminBadge></td>
+          <tr key={coupon.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{coupon.code}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.name}</p>
+              <p className="mt-1 text-xs text-slate-500">{coupon.couponDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{coupon.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingCouponBadgeTone(coupon.discountType)}>
+                {getMarketingCouponDiscountTypeLabel(coupon.discountType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.couponLabel}</p>
+            </td>
             <td className="px-5 py-4 text-slate-600">{coupon.amount}</td>
             <td className="px-5 py-4 text-slate-600">{coupon.planEligibility}</td>
             <td className="px-5 py-4 text-slate-600">{coupon.usageLimit}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={getMarketingStatusBadgeTone(coupon.status)}>{getMarketingStatusLabel(coupon.status)}</AdminBadge>
+              <AdminBadge tone={coupon.statusBadgeTone}>{coupon.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.statusDescription}</p>
             </td>
           </tr>
         ))}
