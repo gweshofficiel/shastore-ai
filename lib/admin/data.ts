@@ -15,6 +15,7 @@ import {
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
+import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
@@ -1662,11 +1663,41 @@ export type AdminPlatformMarketingControl = {
   }>;
   futureHooks: string[];
   giftCodes: Array<{
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
     code: string;
     creditAmount: number;
+    creditType: "fixed_credit" | "platform_credit" | "subscription_credit";
+    description: string;
+    giftCodeDescription: string;
+    giftCodeLabel: string;
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
+    metadataSummary: string;
+    name: string;
     planCredit: string;
     redemptionStatus: string;
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
     status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    usageCount: number;
   }>;
   overview: {
     activeSections: number;
@@ -6997,8 +7028,11 @@ function buildAdminPlatformMarketingControl(params: {
     couponUsageSummariesByRegistryKey
   );
   const promotionLoad = buildMarketingPromotionViewsSafe(campaigns, couponMetadataByRegistryKey);
+  const giftCodeLoad = buildMarketingGiftCodeViewsSafe(campaigns, couponMetadataByRegistryKey);
   const combinedWarning =
-    [runtimeWarning, couponLoad.warning, promotionLoad.warning].filter(Boolean).join(" ") || null;
+    [runtimeWarning, couponLoad.warning, promotionLoad.warning, giftCodeLoad.warning]
+      .filter(Boolean)
+      .join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
   const promotionMetrics = buildMarketingPromotionMetricsSummarySafe(promotionLoad.promotions);
 
@@ -7006,6 +7040,7 @@ function buildAdminPlatformMarketingControl(params: {
     campaigns,
     couponAnalytics,
     coupons: couponLoad.coupons,
+    giftCodes: giftCodeLoad.giftCodes,
     promotionMetrics,
     promotions: promotionLoad.promotions,
     futureHooks: [
@@ -7015,15 +7050,6 @@ function buildAdminPlatformMarketingControl(params: {
       "Payout system",
       "Campaign email sending",
       "Campaign analytics"
-    ],
-    giftCodes: [
-      {
-        code: "GIFT-LAUNCH-CREDIT",
-        creditAmount: 0,
-        planCredit: "Platform subscription credit placeholder",
-        redemptionStatus: "No redemption engine connected",
-        status: campaigns.find((campaign) => campaign.id === "gift-code:launch-credit")?.status ?? "draft"
-      }
     ],
     overview: countMarketingStatusOverview(campaigns),
     referralAffiliates: [

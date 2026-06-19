@@ -457,6 +457,19 @@ export {
   MARKETING_PROMOTION_INCENTIVE_TYPES
 } from "@/src/lib/marketing/marketing-promotion-runtime";
 export type {
+  MarketingGiftCodeCreditType,
+  MarketingGiftCodeView
+} from "@/src/lib/marketing/marketing-gift-code-runtime";
+export {
+  buildMarketingGiftCodeViewsFromCampaigns,
+  buildMarketingGiftCodeViewsFromRegistryItems,
+  buildMarketingGiftCodeViewsSafe,
+  getMarketingGiftCodeBadgeTone,
+  getMarketingGiftCodeCreditTypeLabel,
+  MARKETING_GIFT_CODE_CREDIT_TYPES,
+  MARKETING_GIFT_CODE_FALLBACK_VIEWS
+} from "@/src/lib/marketing/marketing-gift-code-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView

@@ -14,6 +14,10 @@ import {
   getMarketingCouponDiscountTypeLabel
 } from "@/src/lib/marketing/marketing-coupon-runtime";
 import {
+  getMarketingGiftCodeBadgeTone,
+  getMarketingGiftCodeCreditTypeLabel
+} from "@/src/lib/marketing/marketing-gift-code-runtime";
+import {
   getMarketingPromotionBadgeTone,
   getMarketingPromotionIncentiveTypeLabel
 } from "@/src/lib/marketing/marketing-promotion-runtime";
@@ -298,15 +302,45 @@ export default async function AdminMarketingPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Gift code", "Credit amount", "Plan credit", "Redemption status", "Status"]}>
+      <AdminTable headers={["Gift code", "Credit", "Audience", "Usage", "Lifecycle", "Redemption", "Status"]}>
         {control.giftCodes.map((giftCode) => (
-          <tr key={giftCode.code}>
-            <td className="px-5 py-4 font-bold text-slate-950">{giftCode.code}</td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminMoney(giftCode.creditAmount)} placeholder</td>
-            <td className="px-5 py-4 text-slate-600">{giftCode.planCredit}</td>
+          <tr key={giftCode.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{giftCode.code}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.slug}</p>
+              <p className="mt-1 text-xs text-slate-500">{giftCode.giftCodeDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{giftCode.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingGiftCodeBadgeTone(giftCode.creditType)}>
+                {getMarketingGiftCodeCreditTypeLabel(giftCode.creditType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.giftCodeLabel}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">
+                {formatAdminMoney(giftCode.creditAmount)} placeholder
+              </p>
+              <p className="mt-1 text-xs text-slate-600">{giftCode.planCredit}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={giftCode.audienceBadgeTone}>{giftCode.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{giftCode.targetAudienceSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{giftCode.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {formatAdminMoney(giftCode.revenueImpact)} placeholder impact
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">{giftCode.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{giftCode.lifecycleDescription}</p>
+            </td>
             <td className="px-5 py-4 text-slate-600">{giftCode.redemptionStatus}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={getMarketingStatusBadgeTone(giftCode.status)}>{getMarketingStatusLabel(giftCode.status)}</AdminBadge>
+              <AdminBadge tone={giftCode.statusBadgeTone}>{giftCode.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.statusDescription}</p>
             </td>
           </tr>
         ))}
