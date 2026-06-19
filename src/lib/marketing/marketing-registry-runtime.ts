@@ -1,30 +1,28 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getMarketingTypeBadgeTone,
+  getMarketingTypeDescription,
+  getMarketingTypeLabel,
+  getMarketingTypeSection,
+  isValidMarketingType,
+  parseMarketingType,
+  type MarketingType,
+  type MarketingTypeSection
+} from "@/src/lib/marketing/marketing-type-runtime";
 
-export type MarketingRegistryType =
-  | "affiliate"
-  | "campaign"
-  | "coupon"
-  | "gift_code"
-  | "promotion"
-  | "referral";
+export type MarketingRegistryType = MarketingType;
 
 export type MarketingRegistryStatus = "active" | "archived" | "draft" | "expired" | "paused";
 
-export type MarketingRegistrySection =
-  | "Affiliate program"
-  | "Campaigns"
-  | "Gift codes"
-  | "Platform coupons"
-  | "Platform promotions"
-  | "Referral program";
+export type MarketingRegistrySection = MarketingTypeSection;
 
 export type MarketingRegistryItemRecord = {
   createdAt: string | null;
   description: string;
   id: string;
-  marketingType: MarketingRegistryType;
+  marketingType: MarketingType;
   metadata: Record<string, unknown>;
   name: string;
   registryKey: string;
@@ -45,18 +43,21 @@ export type MarketingRegistryCampaignView = {
   startDate: string | null;
   status: MarketingRegistryStatus;
   targetAudience: string;
-  type: MarketingRegistryType;
+  type: MarketingType;
+  typeBadgeTone: ReturnType<typeof getMarketingTypeBadgeTone>;
+  typeDescription: string;
+  typeLabel: string;
   usage: number;
 };
 
-export const MARKETING_REGISTRY_TYPES: readonly MarketingRegistryType[] = [
+export const MARKETING_REGISTRY_TYPES = [
   "coupon",
   "promotion",
   "gift_code",
   "referral",
   "affiliate",
   "campaign"
-] as const;
+] as const satisfies readonly MarketingType[];
 
 export const MARKETING_REGISTRY_STATUSES: readonly MarketingRegistryStatus[] = [
   "draft",
@@ -68,15 +69,6 @@ export const MARKETING_REGISTRY_STATUSES: readonly MarketingRegistryStatus[] = [
 
 const registrySelect =
   "id, registry_key, slug, name, marketing_type, status, target_audience, description, revenue_impact, usage_count, metadata, created_at, updated_at";
-
-const sectionByType: Record<MarketingRegistryType, MarketingRegistrySection> = {
-  affiliate: "Affiliate program",
-  campaign: "Campaigns",
-  coupon: "Platform coupons",
-  gift_code: "Gift codes",
-  promotion: "Platform promotions",
-  referral: "Referral program"
-};
 
 function text(value: unknown, maxLength = 500) {
   if (typeof value !== "string") return "";
@@ -104,7 +96,7 @@ function requireAdminClient() {
 }
 
 export function isValidMarketingRegistryType(value: unknown): value is MarketingRegistryType {
-  return typeof value === "string" && MARKETING_REGISTRY_TYPES.includes(value as MarketingRegistryType);
+  return isValidMarketingType(value);
 }
 
 export function isValidMarketingRegistryStatus(value: unknown): value is MarketingRegistryStatus {
@@ -112,8 +104,7 @@ export function isValidMarketingRegistryStatus(value: unknown): value is Marketi
 }
 
 export function parseMarketingRegistryType(value: unknown): MarketingRegistryType | null {
-  const cleaned = text(value, 80);
-  return isValidMarketingRegistryType(cleaned) ? cleaned : null;
+  return parseMarketingType(value);
 }
 
 export function parseMarketingRegistryStatus(value: unknown): MarketingRegistryStatus | null {
@@ -122,7 +113,7 @@ export function parseMarketingRegistryStatus(value: unknown): MarketingRegistryS
 }
 
 export function sectionForMarketingRegistryType(type: MarketingRegistryType): MarketingRegistrySection {
-  return sectionByType[type];
+  return getMarketingTypeSection(type);
 }
 
 export function parseMarketingRegistryItem(row: unknown): MarketingRegistryItemRecord | null {
@@ -133,10 +124,16 @@ export function parseMarketingRegistryItem(row: unknown): MarketingRegistryItemR
   const registryKey = text(record.registry_key, 160);
   const slug = text(record.slug, 160);
   const name = text(record.name, 200);
-  const marketingType = parseMarketingRegistryType(record.marketing_type);
+  const marketingType = parseMarketingType(record.marketing_type);
   const status = parseMarketingRegistryStatus(record.status);
 
   if (!id || !registryKey || !slug || !name || !marketingType || !status) {
+    if (id && registryKey && !marketingType) {
+      console.warn(
+        `[marketing-registry-runtime] skipped registry item with invalid marketing_type: ${text(record.marketing_type, 80) || "empty"}`
+      );
+    }
+
     return null;
   }
 
@@ -171,7 +168,7 @@ export function resolveMarketingRegistrySection(item: MarketingRegistryItemRecor
     return metadataSection;
   }
 
-  return sectionForMarketingRegistryType(item.marketingType);
+  return getMarketingTypeSection(item.marketingType);
 }
 
 export function toMarketingRegistryCampaignView(
@@ -190,6 +187,9 @@ export function toMarketingRegistryCampaignView(
     status: statusOverride ?? item.status,
     targetAudience: item.targetAudience,
     type: item.marketingType,
+    typeBadgeTone: getMarketingTypeBadgeTone(item.marketingType),
+    typeDescription: getMarketingTypeDescription(item.marketingType),
+    typeLabel: getMarketingTypeLabel(item.marketingType),
     usage: item.usageCount
   };
 }
@@ -336,3 +336,29 @@ export async function listMarketingRegistryItemsReadOnlySafe(): Promise<{
     };
   }
 }
+
+export type {
+  MarketingType,
+  MarketingTypeBadgeTone,
+  MarketingTypeCatalogEntry,
+  MarketingTypeGroup,
+  MarketingTypeSection,
+  MarketingTypeStats
+} from "@/src/lib/marketing/marketing-type-runtime";
+export {
+  assertValidMarketingType,
+  countMarketingItemsByType,
+  filterMarketingItemsByType,
+  getMarketingTypeBadgeTone,
+  getMarketingTypeDescription,
+  getMarketingTypeLabel,
+  getMarketingTypeSection,
+  getMarketingTypeSectionLabel,
+  groupMarketingRegistryItemsByType,
+  isValidMarketingType,
+  listMarketingTypeCatalog,
+  MARKETING_TYPES,
+  parseMarketingType,
+  resolveMarketingTypeBadgeTone,
+  resolveMarketingTypeLabel
+} from "@/src/lib/marketing/marketing-type-runtime";

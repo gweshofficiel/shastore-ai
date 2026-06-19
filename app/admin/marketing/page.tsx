@@ -9,6 +9,10 @@ import {
 import type { AdminPlatformMarketingControl } from "@/lib/admin/data";
 import { loadPlatformMarketingControlSafe } from "@/lib/admin/marketing-loader";
 import {
+  getMarketingTypeBadgeTone,
+  getMarketingTypeLabel
+} from "@/src/lib/marketing/marketing-type-runtime";
+import {
   activateMarketingCampaignPlaceholder,
   archiveMarketingCampaignPlaceholder,
   createMarketingDraftPlaceholder,
@@ -104,7 +108,10 @@ export default async function AdminMarketingPage() {
               <p className="font-bold text-slate-950">{campaign.name}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.section}</p>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{campaign.type}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.typeBadgeTone}>{campaign.typeLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.typeDescription}</p>
+            </td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(campaign.status)}>{campaign.status}</AdminBadge></td>
             <td className="px-5 py-4 text-slate-600">{campaign.targetAudience}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.startDate)}</td>
@@ -178,7 +185,9 @@ export default async function AdminMarketingPage() {
         {control.referralAffiliates.map((record) => (
           <tr key={`${record.type}:${record.referrer}`}>
             <td className="px-5 py-4 font-bold text-slate-950">{record.referrer}</td>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{record.type}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingTypeBadgeTone(record.type)}>{getMarketingTypeLabel(record.type)}</AdminBadge>
+            </td>
             <td className="px-5 py-4 text-slate-600">{record.referredUsers} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminMoney(record.commission)} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{record.payoutStatus}</td>

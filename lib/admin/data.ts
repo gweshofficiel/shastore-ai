@@ -1524,6 +1524,9 @@ export type AdminPlatformMarketingControl = {
     status: "active" | "archived" | "draft" | "expired" | "paused";
     targetAudience: string;
     type: "affiliate" | "campaign" | "coupon" | "gift_code" | "promotion" | "referral";
+    typeBadgeTone: "amber" | "blue" | "green" | "red";
+    typeDescription: string;
+    typeLabel: string;
     usage: number;
   }>;
   coupons: Array<{
