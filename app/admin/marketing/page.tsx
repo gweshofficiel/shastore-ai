@@ -447,7 +447,16 @@ export default async function AdminMarketingPage() {
               <p className="text-xs font-semibold text-slate-500">{affiliate.lifecycleLabel}</p>
               <p className="mt-1 text-xs text-slate-500">{affiliate.lifecycleDescription}</p>
             </td>
-            <td className="px-5 py-4 text-slate-600">{affiliate.trackingStatus}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={affiliate.trackingBadgeTone}>{affiliate.trackingLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.trackingDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{affiliate.trackingEngineStatus}</p>
+              <p className="mt-2 text-xs font-semibold text-slate-950">
+                Visits {affiliate.trackedVisitsCount} · Signups {affiliate.trackedSignupsCount} · Conversions{" "}
+                {affiliate.trackedConversionsCount}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{affiliate.trackingSummary}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={affiliate.statusBadgeTone}>{affiliate.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.statusDescription}</p>

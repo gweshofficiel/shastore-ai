@@ -11,6 +11,12 @@ import {
 } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 import type { MarketingRegistryItemRecord } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
+  MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES,
+  resolveMarketingAffiliateTrackingViewSafe,
+  type MarketingAffiliateTrackingSummaryRecord,
+  type MarketingAffiliateTrackingView
+} from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusDescription,
   getMarketingStatusLabel,
@@ -63,7 +69,8 @@ export type MarketingAffiliateView = {
   targetAudienceSummary: string;
   trackingStatus: string;
   usageCount: number;
-} & MarketingAudienceView;
+} & MarketingAudienceView &
+  MarketingAffiliateTrackingView;
 
 export const MARKETING_AFFILIATE_PROGRAM_TYPES: readonly MarketingAffiliateProgramType[] = [
   "creator_partner",
@@ -160,14 +167,48 @@ function buildMetadataSummary(metadata: Record<string, unknown>) {
   return summary;
 }
 
+function attachMarketingAffiliateTrackingLayer(
+  view: Omit<MarketingAffiliateView, keyof MarketingAffiliateTrackingView> &
+    Partial<MarketingAffiliateTrackingView> &
+    MarketingAudienceView,
+  params: {
+    exists?: boolean;
+    lifecycleState?: MarketingStatus;
+    marketingType: MarketingType;
+    metadata?: Record<string, unknown>;
+    trackingSummaryRecord?: MarketingAffiliateTrackingSummaryRecord | null;
+  }
+): MarketingAffiliateView {
+  const tracking = resolveMarketingAffiliateTrackingViewSafe({
+    code: view.code,
+    exists: params.exists,
+    lifecycleState: params.lifecycleState ?? view.lifecycleState,
+    marketingType: params.marketingType,
+    metadata: params.metadata,
+    registryKey: view.registryKey,
+    revenueImpact: view.revenueImpact,
+    slug: view.slug,
+    status: view.status,
+    trackingSummaryRecord: params.trackingSummaryRecord,
+    usageCount: view.usageCount
+  });
+
+  return {
+    ...view,
+    ...tracking,
+    trackingStatus: tracking.trackingEngineStatus
+  };
+}
+
 function attachMarketingAffiliateAudience(
-  view: Omit<MarketingAffiliateView, keyof MarketingAudienceView> & Partial<MarketingAudienceView>,
+  view: Omit<MarketingAffiliateView, keyof MarketingAudienceView | keyof MarketingAffiliateTrackingView> &
+    Partial<MarketingAudienceView>,
   params: {
     metadata?: Record<string, unknown>;
     registryKey: string;
     targetAudience: string;
   }
-): MarketingAffiliateView {
+): Omit<MarketingAffiliateView, keyof MarketingAffiliateTrackingView> & MarketingAudienceView {
   const audience = resolveMarketingAudienceView({
     marketingType: "affiliate",
     metadata: params.metadata,
@@ -186,7 +227,8 @@ function toMarketingAffiliateViewFromCampaign(
     description?: string;
     metadata?: Record<string, unknown>;
     slug?: string;
-  }
+  },
+  trackingSummariesByRegistryKey: Map<string, MarketingAffiliateTrackingSummaryRecord> = new Map()
 ): MarketingAffiliateView | null {
   if (campaign.type !== "affiliate") {
     return null;
@@ -206,46 +248,56 @@ function toMarketingAffiliateViewFromCampaign(
     metadataValue(metadata, ["affiliate_program_type", "program_type"]) || mapped?.affiliateProgramType
   );
 
-  return attachMarketingAffiliateAudience(
+  return attachMarketingAffiliateTrackingLayer(
+    attachMarketingAffiliateAudience(
+      {
+        affiliateDescription: description,
+        affiliateLabel: "Platform affiliate program",
+        affiliateProgramType,
+        code: buildAffiliateDisplayCode({ metadata, registryKey, slug }),
+        commissionDisplay: "0.00 placeholder",
+        description,
+        lifecycleDescription:
+          campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+        lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+        lifecycleState,
+        metadataSummary: buildMetadataSummary(metadata),
+        name: sanitizeAffiliateDisplayValue(campaign.name, "Marketing affiliate program"),
+        payoutStatus: "No payout system connected",
+        registryKey,
+        revenueImpact: Math.max(0, campaign.revenueImpact),
+        slug,
+        status,
+        statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+        statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+        statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+        targetAudienceSummary: sanitizeAffiliateDisplayValue(
+          campaign.targetAudienceSummary,
+          campaign.audienceLabel || "Audience summary unavailable."
+        ),
+        trackingStatus: "No affiliate tracking connected",
+        usageCount: Math.max(0, Math.trunc(campaign.usage))
+      },
+      {
+        metadata,
+        registryKey,
+        targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+      }
+    ),
     {
-      affiliateDescription: description,
-      affiliateLabel: "Platform affiliate program",
-      affiliateProgramType,
-      code: buildAffiliateDisplayCode({ metadata, registryKey, slug }),
-      commissionDisplay: "0.00 placeholder",
-      description,
-      lifecycleDescription:
-        campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-      lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+      exists: true,
       lifecycleState,
-      metadataSummary: buildMetadataSummary(metadata),
-      name: sanitizeAffiliateDisplayValue(campaign.name, "Marketing affiliate program"),
-      payoutStatus: "No payout system connected",
-      registryKey,
-      revenueImpact: Math.max(0, campaign.revenueImpact),
-      slug,
-      status,
-      statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-      statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-      statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-      targetAudienceSummary: sanitizeAffiliateDisplayValue(
-        campaign.targetAudienceSummary,
-        campaign.audienceLabel || "Audience summary unavailable."
-      ),
-      trackingStatus: "No affiliate tracking connected",
-      usageCount: Math.max(0, Math.trunc(campaign.usage))
-    },
-    {
+      marketingType: "affiliate",
       metadata,
-      registryKey,
-      targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+      trackingSummaryRecord: trackingSummariesByRegistryKey.get(registryKey) ?? null
     }
   );
 }
 
 function toMarketingAffiliateViewFromRegistryItem(
   item: MarketingRegistryItemRecord,
-  statusOverride?: MarketingStatus
+  statusOverride?: MarketingStatus,
+  trackingSummariesByRegistryKey: Map<string, MarketingAffiliateTrackingSummaryRecord> = new Map()
 ): MarketingAffiliateView | null {
   if (item.marketingType !== "affiliate") {
     return null;
@@ -253,75 +305,95 @@ function toMarketingAffiliateViewFromRegistryItem(
 
   const status = statusOverride ?? item.status;
 
-  return toMarketingAffiliateViewFromCampaign({
-    audienceLabel: "",
-    description: item.description,
-    id: item.registryKey,
-    lifecycleState: status,
-    metadata: item.metadata,
-    name: item.name,
-    revenueImpact: item.revenueImpact,
-    slug: item.slug,
-    status,
-    statusBadgeTone: getMarketingStatusBadgeTone(status),
-    statusDescription: getMarketingStatusDescription(status),
-    statusLabel: getMarketingStatusLabel(status),
-    targetAudienceSummary: item.targetAudience,
-    type: item.marketingType,
-    typeDescription: "Platform affiliate program foundation.",
-    usage: item.usageCount
-  });
+  return toMarketingAffiliateViewFromCampaign(
+    {
+      audienceLabel: "",
+      description: item.description,
+      id: item.registryKey,
+      lifecycleState: status,
+      metadata: item.metadata,
+      name: item.name,
+      revenueImpact: item.revenueImpact,
+      slug: item.slug,
+      status,
+      statusBadgeTone: getMarketingStatusBadgeTone(status),
+      statusDescription: getMarketingStatusDescription(status),
+      statusLabel: getMarketingStatusLabel(status),
+      targetAudienceSummary: item.targetAudience,
+      type: item.marketingType,
+      typeDescription: "Platform affiliate program foundation.",
+      usage: item.usageCount
+    },
+    trackingSummariesByRegistryKey
+  );
 }
 
+const fallbackAffiliateTrackingSummariesByRegistryKey = new Map(
+  MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+);
+
 export const MARKETING_AFFILIATE_FALLBACK_VIEWS: readonly MarketingAffiliateView[] = [
-  attachMarketingAffiliateAudience(
+  attachMarketingAffiliateTrackingLayer(
+    attachMarketingAffiliateAudience(
+      {
+        affiliateDescription: "Affiliate program foundation for creator partnerships.",
+        affiliateLabel: "Platform affiliate program",
+        affiliateProgramType: "creator_partner",
+        code: "AFF-CREATOR-PARTNERS",
+        commissionDisplay: "0.00 placeholder",
+        description: "Affiliate program foundation for creator partnerships.",
+        lifecycleDescription: getMarketingLifecycleDescription("draft"),
+        lifecycleLabel: getMarketingLifecycleLabel("draft"),
+        lifecycleState: "draft",
+        metadataSummary: "Foundation affiliate display only. No tracking, commission, or payout integration.",
+        name: "Creator Affiliate Foundation",
+        payoutStatus: "No payout system connected",
+        registryKey: "affiliate:creator-partners",
+        revenueImpact: 0,
+        slug: "creator-partners",
+        status: "draft",
+        statusBadgeTone: "amber",
+        statusDescription: getMarketingStatusDescription("draft"),
+        statusLabel: getMarketingStatusLabel("draft"),
+        targetAudienceSummary: "Creators, agencies, and future reseller partners",
+        trackingStatus: "No affiliate tracking connected",
+        usageCount: 0
+      },
+      {
+        metadata: { section: "Affiliate program", source: "marketing_registry_fallback" },
+        registryKey: "affiliate:creator-partners",
+        targetAudience: "Creators, agencies, and future reseller partners"
+      }
+    ),
     {
-      affiliateDescription: "Affiliate program foundation for creator partnerships.",
-      affiliateLabel: "Platform affiliate program",
-      affiliateProgramType: "creator_partner",
-      code: "AFF-CREATOR-PARTNERS",
-      commissionDisplay: "0.00 placeholder",
-      description: "Affiliate program foundation for creator partnerships.",
-      lifecycleDescription: getMarketingLifecycleDescription("draft"),
-      lifecycleLabel: getMarketingLifecycleLabel("draft"),
+      exists: true,
       lifecycleState: "draft",
-      metadataSummary: "Foundation affiliate display only. No tracking, commission, or payout integration.",
-      name: "Creator Affiliate Foundation",
-      payoutStatus: "No payout system connected",
-      registryKey: "affiliate:creator-partners",
-      revenueImpact: 0,
-      slug: "creator-partners",
-      status: "draft",
-      statusBadgeTone: "amber",
-      statusDescription: getMarketingStatusDescription("draft"),
-      statusLabel: getMarketingStatusLabel("draft"),
-      targetAudienceSummary: "Creators, agencies, and future reseller partners",
-      trackingStatus: "No affiliate tracking connected",
-      usageCount: 0
-    },
-    {
+      marketingType: "affiliate",
       metadata: { section: "Affiliate program", source: "marketing_registry_fallback" },
-      registryKey: "affiliate:creator-partners",
-      targetAudience: "Creators, agencies, and future reseller partners"
+      trackingSummaryRecord: fallbackAffiliateTrackingSummariesByRegistryKey.get("affiliate:creator-partners") ?? null
     }
   )
 ];
 
 export function buildMarketingAffiliateViewsFromCampaigns(
   campaigns: MarketingAffiliateCampaignSource[],
-  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
+  trackingSummariesByRegistryKey: Map<string, MarketingAffiliateTrackingSummaryRecord> = new Map()
 ): MarketingAffiliateView[] {
   const views: MarketingAffiliateView[] = [];
 
   for (const campaign of campaigns) {
-    const affiliateView = toMarketingAffiliateViewFromCampaign({
-      ...campaign,
-      description: undefined,
-      lifecycleDescription: campaign.lifecycleDescription,
-      lifecycleLabel: campaign.lifecycleLabel,
-      metadata: metadataByRegistryKey.get(campaign.id),
-      slug: campaign.id.split(":").pop()
-    });
+    const affiliateView = toMarketingAffiliateViewFromCampaign(
+      {
+        ...campaign,
+        description: undefined,
+        lifecycleDescription: campaign.lifecycleDescription,
+        lifecycleLabel: campaign.lifecycleLabel,
+        metadata: metadataByRegistryKey.get(campaign.id),
+        slug: campaign.id.split(":").pop()
+      },
+      trackingSummariesByRegistryKey
+    );
 
     if (affiliateView) {
       views.push(affiliateView);
@@ -337,14 +409,16 @@ export function buildMarketingAffiliateViewsFromCampaigns(
 
 export function buildMarketingAffiliateViewsFromRegistryItems(
   items: MarketingRegistryItemRecord[],
-  statusByRegistryKey: Map<string, MarketingStatus> = new Map()
+  statusByRegistryKey: Map<string, MarketingStatus> = new Map(),
+  trackingSummariesByRegistryKey: Map<string, MarketingAffiliateTrackingSummaryRecord> = new Map()
 ): MarketingAffiliateView[] {
   const views: MarketingAffiliateView[] = [];
 
   for (const item of items) {
     const affiliateView = toMarketingAffiliateViewFromRegistryItem(
       item,
-      statusByRegistryKey.get(item.registryKey) ?? item.status
+      statusByRegistryKey.get(item.registryKey) ?? item.status,
+      trackingSummariesByRegistryKey
     );
 
     if (affiliateView) {
@@ -361,11 +435,16 @@ export function buildMarketingAffiliateViewsFromRegistryItems(
 
 export function buildMarketingAffiliateViewsSafe(
   campaigns: MarketingAffiliateCampaignSource[],
-  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
+  trackingSummariesByRegistryKey: Map<string, MarketingAffiliateTrackingSummaryRecord> = new Map()
 ): { affiliates: MarketingAffiliateView[]; warning: string | null } {
   try {
     return {
-      affiliates: buildMarketingAffiliateViewsFromCampaigns(campaigns, metadataByRegistryKey),
+      affiliates: buildMarketingAffiliateViewsFromCampaigns(
+        campaigns,
+        metadataByRegistryKey,
+        trackingSummariesByRegistryKey
+      ),
       warning: null
     };
   } catch (error) {

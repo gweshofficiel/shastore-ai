@@ -565,6 +565,37 @@ export {
   MARKETING_AFFILIATE_PROGRAM_TYPES
 } from "@/src/lib/marketing/marketing-affiliate-runtime";
 export type {
+  MarketingAffiliateTrackingInput,
+  MarketingAffiliateTrackingIssue,
+  MarketingAffiliateTrackingIssueSeverity,
+  MarketingAffiliateTrackingState,
+  MarketingAffiliateTrackingSummaryRecord,
+  MarketingAffiliateTrackingSummaryStatus,
+  MarketingAffiliateTrackingView
+} from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
+export {
+  getMarketingAffiliateTrackingBadgeTone,
+  getMarketingAffiliateTrackingDescription,
+  getMarketingAffiliateTrackingLabel,
+  indexMarketingAffiliateTrackingSummariesByRegistryKey,
+  isMarketingAffiliateTrackingReady,
+  isValidMarketingAffiliateTrackingState,
+  isValidMarketingAffiliateTrackingSummaryStatus,
+  listMarketingAffiliateTrackingIssues,
+  listMarketingAffiliateTrackingSummariesReadOnly,
+  listMarketingAffiliateTrackingSummariesReadOnlySafe,
+  MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES,
+  MARKETING_AFFILIATE_TRACKING_STATES,
+  MARKETING_AFFILIATE_TRACKING_SUMMARY_STATUSES,
+  parseMarketingAffiliateTrackingSummary,
+  parseMarketingAffiliateTrackingSummaryStatus,
+  resolveMarketingAffiliateTrackingCounts,
+  resolveMarketingAffiliateTrackingState,
+  resolveMarketingAffiliateTrackingSummaryText,
+  resolveMarketingAffiliateTrackingView,
+  resolveMarketingAffiliateTrackingViewSafe
+} from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView
