@@ -186,6 +186,25 @@ export default async function AdminMarketingPage() {
       />
       <p className="-mt-4 text-xs font-semibold text-slate-500">{control.campaignAnalytics.analyticsDescription}</p>
 
+      <AdminStatGrid
+        stats={[
+          { label: "Audit state", value: control.marketingAudit.auditLabel },
+          { label: "Marketing items", value: control.marketingAudit.totalMarketingItems },
+          { label: "Needs review", value: control.marketingAudit.needsReviewCount },
+          { label: "Invalid items", value: control.marketingAudit.invalidItemCount },
+          { label: "Risky metadata", value: control.marketingAudit.riskyMetadataCount },
+          { label: "Missing fields", value: control.marketingAudit.missingRequiredRuntimeFieldsCount },
+          { label: "Review status", value: control.marketingAudit.reviewedStatus },
+          {
+            label: "Last updated",
+            value: control.marketingAudit.lastUpdatedDisplay
+              ? formatAdminDate(control.marketingAudit.lastUpdatedDisplay)
+              : "Unknown"
+          }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">{control.marketingAudit.auditDescription}</p>
+
       <AdminTable
         headers={[
           "Name",

@@ -24,6 +24,7 @@ import {
   resolveMarketingRegistryStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
+import { buildMarketingAuditSummarySafe } from "@/src/lib/marketing/marketing-audit-runtime";
 import { buildMarketingCampaignAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
@@ -1805,6 +1806,21 @@ export type AdminPlatformMarketingControl = {
     totalPromotionItems: number;
     totalRevenueImpact: number;
     totalUsageCount: number;
+  };
+  marketingAudit: {
+    auditBadgeTone: "amber" | "blue" | "green" | "red";
+    auditDescription: string;
+    auditLabel: string;
+    auditReady: boolean;
+    auditState: "audit_ready" | "incomplete" | "invalid" | "needs_review" | "unknown";
+    auditSummary: string;
+    invalidItemCount: number;
+    lastUpdatedDisplay: string | null;
+    missingRequiredRuntimeFieldsCount: number;
+    needsReviewCount: number;
+    reviewedStatus: string;
+    riskyMetadataCount: number;
+    totalMarketingItems: number;
   };
   platformCampaigns: Array<{
     audienceBadgeTone: "amber" | "blue" | "green" | "red";
@@ -7266,6 +7282,12 @@ function buildAdminPlatformMarketingControl(params: {
   couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
   couponUsageSummariesByRegistryKey?: Map<string, MarketingCouponUsageSummaryRecord>;
   referralTrackingSummariesByRegistryKey?: Map<string, MarketingReferralTrackingSummaryRecord>;
+  registryAuditItems?: Array<{
+    name: string;
+    registryKey: string;
+    slug: string | null;
+    updatedAt: string | null;
+  }>;
   runtimeWarning?: string | null;
 }): AdminPlatformMarketingControl {
   const {
@@ -7277,6 +7299,7 @@ function buildAdminPlatformMarketingControl(params: {
     couponMetadataByRegistryKey = new Map(),
     couponUsageSummariesByRegistryKey = new Map(),
     referralTrackingSummariesByRegistryKey = new Map(),
+    registryAuditItems = [],
     runtimeWarning = null
   } = params;
   const couponLoad = buildMarketingCouponViewsSafe(
@@ -7319,11 +7342,29 @@ function buildAdminPlatformMarketingControl(params: {
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
   const promotionMetrics = buildMarketingPromotionMetricsSummarySafe(promotionLoad.promotions);
   const campaignAnalytics = buildMarketingCampaignAnalyticsSummarySafe(platformCampaignLoad.platformCampaigns);
+  const marketingAudit = buildMarketingAuditSummarySafe({
+    affiliates: affiliateLoad.affiliates,
+    coupons: couponLoad.coupons,
+    giftCodes: giftCodeLoad.giftCodes,
+    platformCampaigns: platformCampaignLoad.platformCampaigns,
+    promotions: promotionLoad.promotions,
+    referrals: referralLoad.referrals,
+    registryItems: registryAuditItems.length
+      ? registryAuditItems
+      : campaigns.map((campaign) => ({
+          name: campaign.name,
+          registryKey: campaign.id,
+          slug: campaign.id,
+          updatedAt: null
+        })),
+    runtimeWarning: combinedWarning
+  });
 
   return {
     campaigns,
     campaignAnalytics,
     couponAnalytics,
+    marketingAudit,
     coupons: couponLoad.coupons,
     giftCodes: giftCodeLoad.giftCodes,
     promotionMetrics,
@@ -7367,6 +7408,12 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
 
   return buildAdminPlatformMarketingControl({
     campaigns,
+    registryAuditItems: MARKETING_REGISTRY_FALLBACK_ITEMS.map((item) => ({
+      name: item.name,
+      registryKey: item.registryKey,
+      slug: item.slug,
+      updatedAt: item.updatedAt
+    })),
     couponMetadataByRegistryKey: new Map(
       MARKETING_REGISTRY_FALLBACK_ITEMS.map((item) => [item.registryKey, item.metadata])
     ),
@@ -7467,6 +7514,12 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
     referralTrackingSummariesByRegistryKey: indexMarketingReferralTrackingSummariesByRegistryKey(
       referralTrackingLoad.summaries
     ),
+    registryAuditItems: registryLoad.items.map((item) => ({
+      name: item.name,
+      registryKey: item.registryKey,
+      slug: item.slug,
+      updatedAt: item.updatedAt
+    })),
     runtimeWarning
   });
 }

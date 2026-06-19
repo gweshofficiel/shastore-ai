@@ -792,6 +792,30 @@ export {
   sumMarketingCampaignUsageCount
 } from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
 export type {
+  MarketingAuditAffiliateSnapshot,
+  MarketingAuditBadgeTone,
+  MarketingAuditCouponSnapshot,
+  MarketingAuditGiftCodeSnapshot,
+  MarketingAuditItemSnapshot,
+  MarketingAuditLoadInput,
+  MarketingAuditPlatformCampaignSnapshot,
+  MarketingAuditPromotionSnapshot,
+  MarketingAuditReferralSnapshot,
+  MarketingAuditRegistrySnapshot,
+  MarketingAuditState,
+  MarketingAuditSummary
+} from "@/src/lib/marketing/marketing-audit-runtime";
+export {
+  buildMarketingAuditSummary,
+  buildMarketingAuditSummarySafe,
+  collectMarketingAuditSnapshots,
+  getMarketingAuditBadgeTone,
+  getMarketingAuditDescription,
+  getMarketingAuditLabel,
+  MARKETING_AUDIT_FALLBACK_SUMMARY,
+  resolveMarketingAuditState
+} from "@/src/lib/marketing/marketing-audit-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,
