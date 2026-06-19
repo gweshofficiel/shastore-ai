@@ -457,6 +457,23 @@ export {
   MARKETING_PROMOTION_INCENTIVE_TYPES
 } from "@/src/lib/marketing/marketing-promotion-runtime";
 export type {
+  MarketingPromotionScheduleState,
+  MarketingPromotionSchedulingInput,
+  MarketingPromotionSchedulingView
+} from "@/src/lib/marketing/marketing-promotion-scheduling-runtime";
+export {
+  buildMarketingPromotionScheduleLabel,
+  getMarketingPromotionScheduleBadgeTone,
+  getMarketingPromotionScheduleDescription,
+  getMarketingPromotionScheduleLabel,
+  isValidMarketingPromotionScheduleState,
+  resolveMarketingPromotionScheduleBounds,
+  resolveMarketingPromotionScheduleState,
+  resolveMarketingPromotionSchedulingView,
+  resolveMarketingPromotionSchedulingViewSafe,
+  resolveMarketingPromotionTimezoneDisplay
+} from "@/src/lib/marketing/marketing-promotion-scheduling-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

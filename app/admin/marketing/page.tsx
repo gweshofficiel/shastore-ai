@@ -217,6 +217,17 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <p className="text-xs font-semibold text-slate-500">{promotion.lifecycleLabel}</p>
               <p className="mt-1 text-xs text-slate-500">{promotion.lifecycleDescription}</p>
+              <div className="mt-2">
+                <AdminBadge tone={promotion.scheduleBadgeTone}>{promotion.scheduleLabel}</AdminBadge>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.scheduleDescription}</p>
+              {promotion.startsAt || promotion.endsAt ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  {promotion.startsAt ? `Starts ${promotion.startsAt}` : "No start date"}
+                  {promotion.endsAt ? ` · Ends ${promotion.endsAt}` : ""}
+                  {promotion.timezoneDisplay ? ` · ${promotion.timezoneDisplay}` : ""}
+                </p>
+              ) : null}
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={promotion.statusBadgeTone}>{promotion.statusLabel}</AdminBadge>

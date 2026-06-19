@@ -1635,6 +1635,13 @@ export type AdminPlatformMarketingControl = {
     statusLabel: string;
     targetAudienceSummary: string;
     usageCount: number;
+    endsAt: string | null;
+    scheduleBadgeTone: "amber" | "blue" | "green" | "red";
+    scheduleDescription: string;
+    scheduleLabel: string;
+    scheduleState: "ended" | "invalid_schedule" | "live" | "scheduled" | "unknown" | "unscheduled";
+    startsAt: string | null;
+    timezoneDisplay: string | null;
   }>;
   futureHooks: string[];
   giftCodes: Array<{

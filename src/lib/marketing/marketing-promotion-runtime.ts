@@ -13,10 +13,15 @@ import {
   parseMarketingStatus,
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
+import {
+  resolveMarketingPromotionSchedulingViewSafe,
+  type MarketingPromotionSchedulingView
+} from "@/src/lib/marketing/marketing-promotion-scheduling-runtime";
 import type { MarketingType } from "@/src/lib/marketing/marketing-type-runtime";
 
 type MarketingPromotionCampaignSource = {
   audienceLabel: string;
+  endDate?: string | null;
   id: string;
   lifecycleActions?: MarketingLifecycleActionDefinition[];
   lifecycleDescription?: string;
@@ -24,6 +29,7 @@ type MarketingPromotionCampaignSource = {
   lifecycleState: MarketingStatus;
   name: string;
   revenueImpact: number;
+  startDate?: string | null;
   status: MarketingStatus;
   statusBadgeTone: ReturnType<typeof getMarketingStatusBadgeTone>;
   statusDescription: string;
@@ -57,7 +63,7 @@ export type MarketingPromotionView = {
   statusLabel: string;
   targetAudienceSummary: string;
   usageCount: number;
-};
+} & MarketingPromotionSchedulingView;
 
 export const MARKETING_PROMOTION_INCENTIVE_TYPES: readonly MarketingPromotionIncentiveType[] = [
   "upgrade_offer",
@@ -137,6 +143,27 @@ function buildMetadataSummary(metadata: Record<string, unknown>) {
   return summary;
 }
 
+function attachMarketingPromotionScheduling(
+  view: Omit<MarketingPromotionView, keyof MarketingPromotionSchedulingView> &
+    Partial<MarketingPromotionSchedulingView>,
+  params: {
+    endDate?: string | null;
+    metadata?: Record<string, unknown>;
+    startDate?: string | null;
+  }
+): MarketingPromotionView {
+  const scheduling = resolveMarketingPromotionSchedulingViewSafe({
+    endsAt: params.endDate,
+    metadata: params.metadata,
+    startsAt: params.startDate
+  });
+
+  return {
+    ...view,
+    ...scheduling
+  };
+}
+
 function toMarketingPromotionViewFromCampaign(
   campaign: MarketingPromotionCampaignSource & {
     description?: string;
@@ -159,40 +186,47 @@ function toMarketingPromotionViewFromCampaign(
     campaign.typeDescription || "Platform promotion foundation."
   );
 
-  return {
-    description,
-    incentiveLabel: sanitizePromotionDisplayValue(
-      metadataValue(metadata, ["incentive_label", "promotion_incentive_label"]) || mapped?.incentiveLabel,
-      "Platform promotion incentive"
-    ),
-    incentiveType: parseMarketingPromotionIncentiveType(
-      metadataValue(metadata, ["incentive_type", "promotion_incentive_type"]) || mapped?.incentiveType
-    ),
-    lifecycleDescription:
-      campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-    lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
-    lifecycleState,
-    metadataSummary: buildMetadataSummary(metadata),
-    name: sanitizePromotionDisplayValue(campaign.name, "Marketing promotion"),
-    planScope: sanitizePromotionDisplayValue(
-      metadataValue(metadata, ["plan_scope", "eligible_plans", "plan_eligibility"]),
-      mapped?.planScope ?? "Internal review only"
-    ),
-    promotionDescription: description,
-    promotionLabel: "Platform promotion",
-    registryKey,
-    revenueImpact: Math.max(0, campaign.revenueImpact),
-    slug,
-    status,
-    statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-    statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-    statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-    targetAudienceSummary: sanitizePromotionDisplayValue(
-      campaign.targetAudienceSummary,
-      campaign.audienceLabel || "Audience summary unavailable."
-    ),
-    usageCount: Math.max(0, Math.trunc(campaign.usage))
-  };
+  return attachMarketingPromotionScheduling(
+    {
+      description,
+      incentiveLabel: sanitizePromotionDisplayValue(
+        metadataValue(metadata, ["incentive_label", "promotion_incentive_label"]) || mapped?.incentiveLabel,
+        "Platform promotion incentive"
+      ),
+      incentiveType: parseMarketingPromotionIncentiveType(
+        metadataValue(metadata, ["incentive_type", "promotion_incentive_type"]) || mapped?.incentiveType
+      ),
+      lifecycleDescription:
+        campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+      lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+      lifecycleState,
+      metadataSummary: buildMetadataSummary(metadata),
+      name: sanitizePromotionDisplayValue(campaign.name, "Marketing promotion"),
+      planScope: sanitizePromotionDisplayValue(
+        metadataValue(metadata, ["plan_scope", "eligible_plans", "plan_eligibility"]),
+        mapped?.planScope ?? "Internal review only"
+      ),
+      promotionDescription: description,
+      promotionLabel: "Platform promotion",
+      registryKey,
+      revenueImpact: Math.max(0, campaign.revenueImpact),
+      slug,
+      status,
+      statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+      statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+      statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+      targetAudienceSummary: sanitizePromotionDisplayValue(
+        campaign.targetAudienceSummary,
+        campaign.audienceLabel || "Audience summary unavailable."
+      ),
+      usageCount: Math.max(0, Math.trunc(campaign.usage))
+    },
+    {
+      endDate: campaign.endDate,
+      metadata,
+      startDate: campaign.startDate
+    }
+  );
 }
 
 function toMarketingPromotionViewFromRegistryItem(
@@ -205,49 +239,58 @@ function toMarketingPromotionViewFromRegistryItem(
 
   const status = statusOverride ?? item.status;
 
-  return toMarketingPromotionViewFromCampaign({
-    audienceLabel: "",
-    description: item.description,
-    id: item.registryKey,
-    lifecycleState: status,
-    metadata: item.metadata,
-    name: item.name,
-    revenueImpact: item.revenueImpact,
-    slug: item.slug,
-    status,
-    statusBadgeTone: getMarketingStatusBadgeTone(status),
-    statusDescription: getMarketingStatusDescription(status),
-    statusLabel: getMarketingStatusLabel(status),
-    targetAudienceSummary: item.targetAudience,
-    type: item.marketingType,
-    typeDescription: "Platform plan promotion and upgrade incentive foundation.",
-    usage: item.usageCount
-  });
+  return toMarketingPromotionViewFromCampaign(
+    {
+      audienceLabel: "",
+      description: item.description,
+      endDate: metadataValue(item.metadata, ["end_date", "ends_at", "schedule_end"]) || null,
+      id: item.registryKey,
+      lifecycleState: status,
+      metadata: item.metadata,
+      name: item.name,
+      revenueImpact: item.revenueImpact,
+      slug: item.slug,
+      startDate: metadataValue(item.metadata, ["start_date", "starts_at", "schedule_start"]) || null,
+      status,
+      statusBadgeTone: getMarketingStatusBadgeTone(status),
+      statusDescription: getMarketingStatusDescription(status),
+      statusLabel: getMarketingStatusLabel(status),
+      targetAudienceSummary: item.targetAudience,
+      type: item.marketingType,
+      typeDescription: "Platform plan promotion and upgrade incentive foundation.",
+      usage: item.usageCount
+    }
+  );
 }
 
 export const MARKETING_PROMOTION_FALLBACK_VIEWS: readonly MarketingPromotionView[] = [
-  {
-    description: "Platform promotion foundation for annual upgrade incentives.",
-    incentiveLabel: "Annual upgrade incentive",
-    incentiveType: "upgrade_offer",
-    lifecycleDescription: getMarketingLifecycleDescription("draft"),
-    lifecycleLabel: getMarketingLifecycleLabel("draft"),
-    lifecycleState: "draft",
-    metadataSummary: "Foundation promotion display only. No scheduling or discount application.",
-    name: "Annual Upgrade Promotion",
-    planScope: "Growth, Pro",
-    promotionDescription: "Platform promotion foundation for annual upgrade incentives.",
-    promotionLabel: "Platform promotion",
-    registryKey: "platform-promotion:annual-upgrade",
-    revenueImpact: 0,
-    slug: "annual-upgrade",
-    status: "draft",
-    statusBadgeTone: "amber",
-    statusDescription: getMarketingStatusDescription("draft"),
-    statusLabel: getMarketingStatusLabel("draft"),
-    targetAudienceSummary: "Monthly plan customers",
-    usageCount: 0
-  }
+  attachMarketingPromotionScheduling(
+    {
+      description: "Platform promotion foundation for annual upgrade incentives.",
+      incentiveLabel: "Annual upgrade incentive",
+      incentiveType: "upgrade_offer",
+      lifecycleDescription: getMarketingLifecycleDescription("draft"),
+      lifecycleLabel: getMarketingLifecycleLabel("draft"),
+      lifecycleState: "draft",
+      metadataSummary: "Foundation promotion display only. No scheduling or discount application.",
+      name: "Annual Upgrade Promotion",
+      planScope: "Growth, Pro",
+      promotionDescription: "Platform promotion foundation for annual upgrade incentives.",
+      promotionLabel: "Platform promotion",
+      registryKey: "platform-promotion:annual-upgrade",
+      revenueImpact: 0,
+      slug: "annual-upgrade",
+      status: "draft",
+      statusBadgeTone: "amber",
+      statusDescription: getMarketingStatusDescription("draft"),
+      statusLabel: getMarketingStatusLabel("draft"),
+      targetAudienceSummary: "Monthly plan customers",
+      usageCount: 0
+    },
+    {
+      metadata: { section: "Platform promotions", source: "marketing_registry_fallback" }
+    }
+  )
 ];
 
 export function buildMarketingPromotionViewsFromCampaigns(
@@ -260,10 +303,12 @@ export function buildMarketingPromotionViewsFromCampaigns(
     const promotionView = toMarketingPromotionViewFromCampaign({
       ...campaign,
       description: undefined,
+      endDate: campaign.endDate ?? null,
       lifecycleDescription: campaign.lifecycleDescription,
       lifecycleLabel: campaign.lifecycleLabel,
       metadata: metadataByRegistryKey.get(campaign.id),
-      slug: campaign.id.split(":").pop()
+      slug: campaign.id.split(":").pop(),
+      startDate: campaign.startDate ?? null
     });
 
     if (promotionView) {
