@@ -1627,6 +1627,22 @@ export type AdminPlatformMarketingControl = {
     promotionDescription: string;
     promotionLabel: string;
     registryKey: string;
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
+    promotionAudienceDescription: string;
+    promotionAudienceLabel: string;
+    promotionAudienceReadinessState: "classified" | "custom" | "unclassified" | "unknown";
     revenueImpact: number;
     slug: string;
     status: "active" | "archived" | "draft" | "expired" | "paused";

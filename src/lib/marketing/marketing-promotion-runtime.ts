@@ -14,6 +14,10 @@ import {
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import {
+  resolveMarketingPromotionAudienceViewSafe,
+  type MarketingPromotionAudienceView
+} from "@/src/lib/marketing/marketing-promotion-audience-runtime";
+import {
   resolveMarketingPromotionSchedulingViewSafe,
   type MarketingPromotionSchedulingView
 } from "@/src/lib/marketing/marketing-promotion-scheduling-runtime";
@@ -63,7 +67,8 @@ export type MarketingPromotionView = {
   statusLabel: string;
   targetAudienceSummary: string;
   usageCount: number;
-} & MarketingPromotionSchedulingView;
+} & MarketingPromotionAudienceView &
+  MarketingPromotionSchedulingView;
 
 export const MARKETING_PROMOTION_INCENTIVE_TYPES: readonly MarketingPromotionIncentiveType[] = [
   "upgrade_offer",
@@ -143,6 +148,28 @@ function buildMetadataSummary(metadata: Record<string, unknown>) {
   return summary;
 }
 
+function attachMarketingPromotionAudience(
+  view: Omit<MarketingPromotionView, keyof MarketingPromotionAudienceView | keyof MarketingPromotionSchedulingView> &
+    Partial<MarketingPromotionAudienceView> &
+    Partial<MarketingPromotionSchedulingView>,
+  params: {
+    metadata?: Record<string, unknown>;
+    registryKey: string;
+    targetAudience: string;
+  }
+): Omit<MarketingPromotionView, keyof MarketingPromotionSchedulingView> & MarketingPromotionAudienceView {
+  const audience = resolveMarketingPromotionAudienceViewSafe({
+    metadata: params.metadata,
+    registryKey: params.registryKey,
+    targetAudience: params.targetAudience
+  });
+
+  return {
+    ...view,
+    ...audience
+  };
+}
+
 function attachMarketingPromotionScheduling(
   view: Omit<MarketingPromotionView, keyof MarketingPromotionSchedulingView> &
     Partial<MarketingPromotionSchedulingView>,
@@ -187,40 +214,47 @@ function toMarketingPromotionViewFromCampaign(
   );
 
   return attachMarketingPromotionScheduling(
-    {
-      description,
-      incentiveLabel: sanitizePromotionDisplayValue(
-        metadataValue(metadata, ["incentive_label", "promotion_incentive_label"]) || mapped?.incentiveLabel,
-        "Platform promotion incentive"
-      ),
-      incentiveType: parseMarketingPromotionIncentiveType(
-        metadataValue(metadata, ["incentive_type", "promotion_incentive_type"]) || mapped?.incentiveType
-      ),
-      lifecycleDescription:
-        campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-      lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
-      lifecycleState,
-      metadataSummary: buildMetadataSummary(metadata),
-      name: sanitizePromotionDisplayValue(campaign.name, "Marketing promotion"),
-      planScope: sanitizePromotionDisplayValue(
-        metadataValue(metadata, ["plan_scope", "eligible_plans", "plan_eligibility"]),
-        mapped?.planScope ?? "Internal review only"
-      ),
-      promotionDescription: description,
-      promotionLabel: "Platform promotion",
-      registryKey,
-      revenueImpact: Math.max(0, campaign.revenueImpact),
-      slug,
-      status,
-      statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-      statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-      statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-      targetAudienceSummary: sanitizePromotionDisplayValue(
-        campaign.targetAudienceSummary,
-        campaign.audienceLabel || "Audience summary unavailable."
-      ),
-      usageCount: Math.max(0, Math.trunc(campaign.usage))
-    },
+    attachMarketingPromotionAudience(
+      {
+        description,
+        incentiveLabel: sanitizePromotionDisplayValue(
+          metadataValue(metadata, ["incentive_label", "promotion_incentive_label"]) || mapped?.incentiveLabel,
+          "Platform promotion incentive"
+        ),
+        incentiveType: parseMarketingPromotionIncentiveType(
+          metadataValue(metadata, ["incentive_type", "promotion_incentive_type"]) || mapped?.incentiveType
+        ),
+        lifecycleDescription:
+          campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+        lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+        lifecycleState,
+        metadataSummary: buildMetadataSummary(metadata),
+        name: sanitizePromotionDisplayValue(campaign.name, "Marketing promotion"),
+        planScope: sanitizePromotionDisplayValue(
+          metadataValue(metadata, ["plan_scope", "eligible_plans", "plan_eligibility"]),
+          mapped?.planScope ?? "Internal review only"
+        ),
+        promotionDescription: description,
+        promotionLabel: "Platform promotion",
+        registryKey,
+        revenueImpact: Math.max(0, campaign.revenueImpact),
+        slug,
+        status,
+        statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+        statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+        statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+        targetAudienceSummary: sanitizePromotionDisplayValue(
+          campaign.targetAudienceSummary,
+          campaign.audienceLabel || "Audience summary unavailable."
+        ),
+        usageCount: Math.max(0, Math.trunc(campaign.usage))
+      },
+      {
+        metadata,
+        registryKey,
+        targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+      }
+    ),
     {
       endDate: campaign.endDate,
       metadata,
@@ -265,28 +299,35 @@ function toMarketingPromotionViewFromRegistryItem(
 
 export const MARKETING_PROMOTION_FALLBACK_VIEWS: readonly MarketingPromotionView[] = [
   attachMarketingPromotionScheduling(
-    {
-      description: "Platform promotion foundation for annual upgrade incentives.",
-      incentiveLabel: "Annual upgrade incentive",
-      incentiveType: "upgrade_offer",
-      lifecycleDescription: getMarketingLifecycleDescription("draft"),
-      lifecycleLabel: getMarketingLifecycleLabel("draft"),
-      lifecycleState: "draft",
-      metadataSummary: "Foundation promotion display only. No scheduling or discount application.",
-      name: "Annual Upgrade Promotion",
-      planScope: "Growth, Pro",
-      promotionDescription: "Platform promotion foundation for annual upgrade incentives.",
-      promotionLabel: "Platform promotion",
-      registryKey: "platform-promotion:annual-upgrade",
-      revenueImpact: 0,
-      slug: "annual-upgrade",
-      status: "draft",
-      statusBadgeTone: "amber",
-      statusDescription: getMarketingStatusDescription("draft"),
-      statusLabel: getMarketingStatusLabel("draft"),
-      targetAudienceSummary: "Monthly plan customers",
-      usageCount: 0
-    },
+    attachMarketingPromotionAudience(
+      {
+        description: "Platform promotion foundation for annual upgrade incentives.",
+        incentiveLabel: "Annual upgrade incentive",
+        incentiveType: "upgrade_offer",
+        lifecycleDescription: getMarketingLifecycleDescription("draft"),
+        lifecycleLabel: getMarketingLifecycleLabel("draft"),
+        lifecycleState: "draft",
+        metadataSummary: "Foundation promotion display only. No scheduling or discount application.",
+        name: "Annual Upgrade Promotion",
+        planScope: "Growth, Pro",
+        promotionDescription: "Platform promotion foundation for annual upgrade incentives.",
+        promotionLabel: "Platform promotion",
+        registryKey: "platform-promotion:annual-upgrade",
+        revenueImpact: 0,
+        slug: "annual-upgrade",
+        status: "draft",
+        statusBadgeTone: "amber",
+        statusDescription: getMarketingStatusDescription("draft"),
+        statusLabel: getMarketingStatusLabel("draft"),
+        targetAudienceSummary: "Monthly plan customers",
+        usageCount: 0
+      },
+      {
+        metadata: { section: "Platform promotions", source: "marketing_registry_fallback" },
+        registryKey: "platform-promotion:annual-upgrade",
+        targetAudience: "Monthly plan customers"
+      }
+    ),
     {
       metadata: { section: "Platform promotions", source: "marketing_registry_fallback" }
     }

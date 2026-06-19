@@ -207,7 +207,13 @@ export default async function AdminMarketingPage() {
               <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.promotionLabel}</p>
             </td>
             <td className="px-5 py-4 text-slate-600">{promotion.planScope}</td>
-            <td className="px-5 py-4 text-slate-600">{promotion.targetAudienceSummary}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={promotion.audienceBadgeTone}>{promotion.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{promotion.targetAudienceSummary}</p>
+              <p className="mt-2 text-xs font-semibold text-slate-500">{promotion.promotionAudienceLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{promotion.promotionAudienceDescription}</p>
+            </td>
             <td className="px-5 py-4">
               <p className="font-semibold text-slate-950">{promotion.usageCount}</p>
               <p className="mt-1 text-xs text-slate-600">

@@ -474,6 +474,20 @@ export {
   resolveMarketingPromotionTimezoneDisplay
 } from "@/src/lib/marketing/marketing-promotion-scheduling-runtime";
 export type {
+  MarketingPromotionAudienceInput,
+  MarketingPromotionAudienceReadinessState,
+  MarketingPromotionAudienceView
+} from "@/src/lib/marketing/marketing-promotion-audience-runtime";
+export {
+  getMarketingPromotionAudienceReadinessBadgeTone,
+  getMarketingPromotionAudienceReadinessDescription,
+  getMarketingPromotionAudienceReadinessLabel,
+  isValidMarketingPromotionAudienceReadinessState,
+  resolveMarketingPromotionAudienceReadinessState,
+  resolveMarketingPromotionAudienceView,
+  resolveMarketingPromotionAudienceViewSafe
+} from "@/src/lib/marketing/marketing-promotion-audience-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,
