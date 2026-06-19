@@ -143,6 +143,20 @@ export default async function AdminMarketingPage() {
       />
       <p className="-mt-4 text-xs font-semibold text-slate-500">{control.couponAnalytics.analyticsDescription}</p>
 
+      <AdminStatGrid
+        stats={[
+          { label: "Promotion items", value: control.promotionMetrics.totalPromotionItems },
+          { label: "Active promotions", value: control.promotionMetrics.activePromotionItems },
+          { label: "Draft promotions", value: control.promotionMetrics.draftPromotionItems },
+          { label: "Scheduled", value: control.promotionMetrics.scheduledPromotionItems },
+          { label: "Live", value: control.promotionMetrics.livePromotionItems },
+          { label: "Total usage", value: control.promotionMetrics.totalUsageCount },
+          { label: "Revenue impact", value: formatAdminMoney(control.promotionMetrics.totalRevenueImpact) },
+          { label: "Needs review", value: control.promotionMetrics.needsReviewPromotionCount }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">{control.promotionMetrics.metricsDescription}</p>
+
       <AdminTable
         headers={[
           "Name",

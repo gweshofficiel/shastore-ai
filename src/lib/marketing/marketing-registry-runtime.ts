@@ -488,6 +488,21 @@ export {
   resolveMarketingPromotionAudienceViewSafe
 } from "@/src/lib/marketing/marketing-promotion-audience-runtime";
 export type {
+  MarketingPromotionMetricsSnapshot,
+  MarketingPromotionMetricsSummary
+} from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
+export {
+  averageMarketingPromotionUsageCount,
+  buildMarketingPromotionMetricsSummary,
+  buildMarketingPromotionMetricsSummarySafe,
+  countMarketingPromotionNeedsReview,
+  countMarketingPromotionsByScheduleState,
+  countMarketingPromotionsByStatus,
+  MARKETING_PROMOTION_METRICS_FALLBACK_SUMMARY,
+  sumMarketingPromotionRevenueImpact,
+  sumMarketingPromotionUsageCount
+} from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

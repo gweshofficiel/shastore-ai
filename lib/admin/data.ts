@@ -15,6 +15,7 @@ import {
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
+import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import {
@@ -1687,6 +1688,24 @@ export type AdminPlatformMarketingControl = {
     needsReviewCouponCount: number;
     pausedCouponItems: number;
     totalCouponItems: number;
+    totalUsageCount: number;
+  };
+  promotionMetrics: {
+    activePromotionItems: number;
+    archivedPromotionItems: number;
+    averageUsageCount: number;
+    draftPromotionItems: number;
+    endedPromotionItems: number;
+    expiredPromotionItems: number;
+    invalidSchedulePromotionItems: number;
+    livePromotionItems: number;
+    metricsDescription: string;
+    metricsReady: boolean;
+    needsReviewPromotionCount: number;
+    pausedPromotionItems: number;
+    scheduledPromotionItems: number;
+    totalPromotionItems: number;
+    totalRevenueImpact: number;
     totalUsageCount: number;
   };
   referralAffiliates: Array<{
@@ -6981,11 +7000,13 @@ function buildAdminPlatformMarketingControl(params: {
   const combinedWarning =
     [runtimeWarning, couponLoad.warning, promotionLoad.warning].filter(Boolean).join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
+  const promotionMetrics = buildMarketingPromotionMetricsSummarySafe(promotionLoad.promotions);
 
   return {
     campaigns,
     couponAnalytics,
     coupons: couponLoad.coupons,
+    promotionMetrics,
     promotions: promotionLoad.promotions,
     futureHooks: [
       "Platform coupon redemption",
