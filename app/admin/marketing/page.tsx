@@ -392,7 +392,16 @@ export default async function AdminMarketingPage() {
               <p className="text-xs font-semibold text-slate-500">{referral.lifecycleLabel}</p>
               <p className="mt-1 text-xs text-slate-500">{referral.lifecycleDescription}</p>
             </td>
-            <td className="px-5 py-4 text-slate-600">{referral.trackingStatus}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={referral.trackingBadgeTone}>{referral.trackingLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.trackingDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{referral.trackingEngineStatus}</p>
+              <p className="mt-2 text-xs font-semibold text-slate-950">
+                Visits {referral.trackedVisitsCount} · Signups {referral.trackedSignupsCount} · Conversions{" "}
+                {referral.trackedConversionsCount}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{referral.trackingSummary}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={referral.statusBadgeTone}>{referral.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{referral.statusDescription}</p>

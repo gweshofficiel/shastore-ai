@@ -4,8 +4,10 @@ import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import {
   MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
+  MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES,
   MARKETING_REGISTRY_FALLBACK_ITEMS,
   indexMarketingCouponUsageSummariesByRegistryKey,
+  indexMarketingReferralTrackingSummariesByRegistryKey,
   toMarketingRegistryCampaignView
 } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
@@ -20,6 +22,7 @@ import { buildMarketingReferralViewsSafe } from "@/src/lib/marketing/marketing-r
 import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
+import type { MarketingReferralTrackingSummaryRecord } from "@/src/lib/marketing/marketing-referral-tracking-runtime";
 import {
   internalTeamRoleMeta,
   internalTeamRoles,
@@ -1813,7 +1816,17 @@ export type AdminPlatformMarketingControl = {
     statusDescription: string;
     statusLabel: string;
     targetAudienceSummary: string;
+    trackedConversionsCount: number;
+    trackedSignupsCount: number;
+    trackedVisitsCount: number;
+    trackingBadgeTone: "amber" | "blue" | "green" | "red";
+    trackingDescription: string;
+    trackingEngineStatus: string;
+    trackingLabel: string;
+    trackingReady: boolean;
+    trackingState: "invalid" | "needs_review" | "tracking_disabled" | "tracking_ready" | "unknown";
     trackingStatus: string;
+    trackingSummary: string;
     usageCount: number;
   }>;
 };
@@ -7083,12 +7096,14 @@ function buildAdminPlatformMarketingControl(params: {
   campaigns: AdminPlatformMarketingControl["campaigns"];
   couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
   couponUsageSummariesByRegistryKey?: Map<string, MarketingCouponUsageSummaryRecord>;
+  referralTrackingSummariesByRegistryKey?: Map<string, MarketingReferralTrackingSummaryRecord>;
   runtimeWarning?: string | null;
 }): AdminPlatformMarketingControl {
   const {
     campaigns,
     couponMetadataByRegistryKey = new Map(),
     couponUsageSummariesByRegistryKey = new Map(),
+    referralTrackingSummariesByRegistryKey = new Map(),
     runtimeWarning = null
   } = params;
   const couponLoad = buildMarketingCouponViewsSafe(
@@ -7098,7 +7113,11 @@ function buildAdminPlatformMarketingControl(params: {
   );
   const promotionLoad = buildMarketingPromotionViewsSafe(campaigns, couponMetadataByRegistryKey);
   const giftCodeLoad = buildMarketingGiftCodeViewsSafe(campaigns, couponMetadataByRegistryKey);
-  const referralLoad = buildMarketingReferralViewsSafe(campaigns, couponMetadataByRegistryKey);
+  const referralLoad = buildMarketingReferralViewsSafe(
+    campaigns,
+    couponMetadataByRegistryKey,
+    referralTrackingSummariesByRegistryKey
+  );
   const combinedWarning =
     [runtimeWarning, couponLoad.warning, promotionLoad.warning, giftCodeLoad.warning, referralLoad.warning]
       .filter(Boolean)
@@ -7156,6 +7175,9 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
     couponUsageSummariesByRegistryKey: new Map(
       MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
     ),
+    referralTrackingSummariesByRegistryKey: new Map(
+      MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+    ),
     runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
   });
 }
@@ -7163,6 +7185,7 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
 export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformMarketingControl> {
   const {
     listMarketingCouponUsageSummariesReadOnlySafe,
+    listMarketingReferralTrackingSummariesReadOnlySafe,
     listMarketingRegistryItemsReadOnlySafe,
     toMarketingRegistryCampaignView
   } = await import("@/src/lib/marketing/marketing-registry-runtime");
@@ -7178,9 +7201,10 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   );
   const latestActionByCampaign = indexLatestMarketingPlatformActions(marketingEvents);
 
-  const [registryLoad, usageLoad] = await Promise.all([
+  const [registryLoad, usageLoad, referralTrackingLoad] = await Promise.all([
     listMarketingRegistryItemsReadOnlySafe(),
-    listMarketingCouponUsageSummariesReadOnlySafe()
+    listMarketingCouponUsageSummariesReadOnlySafe(),
+    listMarketingReferralTrackingSummariesReadOnlySafe()
   ]);
   const campaigns = registryLoad.items.map((item) =>
     toMarketingRegistryCampaignView(
@@ -7192,12 +7216,16 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
       })
     )
   );
-  const runtimeWarning = [registryLoad.warning, usageLoad.warning].filter(Boolean).join(" ") || null;
+  const runtimeWarning =
+    [registryLoad.warning, usageLoad.warning, referralTrackingLoad.warning].filter(Boolean).join(" ") || null;
 
   return buildAdminPlatformMarketingControl({
     campaigns,
     couponMetadataByRegistryKey: new Map(registryLoad.items.map((item) => [item.registryKey, item.metadata])),
     couponUsageSummariesByRegistryKey: indexMarketingCouponUsageSummariesByRegistryKey(usageLoad.summaries),
+    referralTrackingSummariesByRegistryKey: indexMarketingReferralTrackingSummariesByRegistryKey(
+      referralTrackingLoad.summaries
+    ),
     runtimeWarning
   });
 }

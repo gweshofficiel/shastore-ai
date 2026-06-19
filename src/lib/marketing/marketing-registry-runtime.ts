@@ -521,6 +521,37 @@ export {
   MARKETING_REFERRAL_PROGRAM_TYPES
 } from "@/src/lib/marketing/marketing-referral-runtime";
 export type {
+  MarketingReferralTrackingInput,
+  MarketingReferralTrackingIssue,
+  MarketingReferralTrackingIssueSeverity,
+  MarketingReferralTrackingState,
+  MarketingReferralTrackingSummaryRecord,
+  MarketingReferralTrackingSummaryStatus,
+  MarketingReferralTrackingView
+} from "@/src/lib/marketing/marketing-referral-tracking-runtime";
+export {
+  getMarketingReferralTrackingBadgeTone,
+  getMarketingReferralTrackingDescription,
+  getMarketingReferralTrackingLabel,
+  indexMarketingReferralTrackingSummariesByRegistryKey,
+  isMarketingReferralTrackingReady,
+  isValidMarketingReferralTrackingState,
+  isValidMarketingReferralTrackingSummaryStatus,
+  listMarketingReferralTrackingIssues,
+  listMarketingReferralTrackingSummariesReadOnly,
+  listMarketingReferralTrackingSummariesReadOnlySafe,
+  MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES,
+  MARKETING_REFERRAL_TRACKING_STATES,
+  MARKETING_REFERRAL_TRACKING_SUMMARY_STATUSES,
+  parseMarketingReferralTrackingSummary,
+  parseMarketingReferralTrackingSummaryStatus,
+  resolveMarketingReferralTrackingCounts,
+  resolveMarketingReferralTrackingState,
+  resolveMarketingReferralTrackingSummaryText,
+  resolveMarketingReferralTrackingView,
+  resolveMarketingReferralTrackingViewSafe
+} from "@/src/lib/marketing/marketing-referral-tracking-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView
