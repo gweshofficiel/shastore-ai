@@ -24,6 +24,7 @@ import {
   resolveMarketingRegistryStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
+import { buildMarketingCampaignAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -1768,6 +1769,23 @@ export type AdminPlatformMarketingControl = {
     needsReviewCouponCount: number;
     pausedCouponItems: number;
     totalCouponItems: number;
+    totalUsageCount: number;
+  };
+  campaignAnalytics: {
+    activeCampaignItems: number;
+    analyticsDescription: string;
+    analyticsReady: boolean;
+    archivedCampaignItems: number;
+    averageUsageCount: number;
+    draftCampaignItems: number;
+    emailReadyCampaignCount: number;
+    expiredCampaignItems: number;
+    invalidCampaignCount: number;
+    needsReviewCampaignCount: number;
+    notificationReadyCampaignCount: number;
+    pausedCampaignItems: number;
+    totalCampaignItems: number;
+    totalRevenueImpact: number;
     totalUsageCount: number;
   };
   promotionMetrics: {
@@ -7300,9 +7318,11 @@ function buildAdminPlatformMarketingControl(params: {
       .join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
   const promotionMetrics = buildMarketingPromotionMetricsSummarySafe(promotionLoad.promotions);
+  const campaignAnalytics = buildMarketingCampaignAnalyticsSummarySafe(platformCampaignLoad.platformCampaigns);
 
   return {
     campaigns,
+    campaignAnalytics,
     couponAnalytics,
     coupons: couponLoad.coupons,
     giftCodes: giftCodeLoad.giftCodes,

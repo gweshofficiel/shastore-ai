@@ -775,6 +775,23 @@ export {
   sumMarketingPromotionUsageCount
 } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 export type {
+  MarketingCampaignAnalyticsSnapshot,
+  MarketingCampaignAnalyticsSummary
+} from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
+export {
+  averageMarketingCampaignUsageCount,
+  buildMarketingCampaignAnalyticsSummary,
+  buildMarketingCampaignAnalyticsSummarySafe,
+  countMarketingCampaignEmailReady,
+  countMarketingCampaignInvalid,
+  countMarketingCampaignNeedsReview,
+  countMarketingCampaignNotificationReady,
+  countMarketingCampaignsByStatus,
+  MARKETING_CAMPAIGN_ANALYTICS_FALLBACK_SUMMARY,
+  sumMarketingCampaignRevenueImpact,
+  sumMarketingCampaignUsageCount
+} from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

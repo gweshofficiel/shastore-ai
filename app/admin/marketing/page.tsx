@@ -172,6 +172,20 @@ export default async function AdminMarketingPage() {
       />
       <p className="-mt-4 text-xs font-semibold text-slate-500">{control.promotionMetrics.metricsDescription}</p>
 
+      <AdminStatGrid
+        stats={[
+          { label: "Campaign items", value: control.campaignAnalytics.totalCampaignItems },
+          { label: "Active campaigns", value: control.campaignAnalytics.activeCampaignItems },
+          { label: "Draft campaigns", value: control.campaignAnalytics.draftCampaignItems },
+          { label: "Paused campaigns", value: control.campaignAnalytics.pausedCampaignItems },
+          { label: "Email ready", value: control.campaignAnalytics.emailReadyCampaignCount },
+          { label: "Notification ready", value: control.campaignAnalytics.notificationReadyCampaignCount },
+          { label: "Total usage", value: control.campaignAnalytics.totalUsageCount },
+          { label: "Needs review", value: control.campaignAnalytics.needsReviewCampaignCount }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">{control.campaignAnalytics.analyticsDescription}</p>
+
       <AdminTable
         headers={[
           "Name",
