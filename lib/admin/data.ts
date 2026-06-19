@@ -1592,6 +1592,16 @@ export type AdminPlatformMarketingControl = {
     validationLabel: string;
     validationReady: boolean;
     validationState: "invalid" | "needs_review" | "valid";
+    eligibilityBadgeTone: "amber" | "blue" | "green" | "red";
+    eligibilityDescription: string;
+    eligibilityIssues: Array<{
+      code: string;
+      message: string;
+      severity: "blocker" | "review";
+    }>;
+    eligibilityLabel: string;
+    eligibilityReady: boolean;
+    eligibilityState: "eligible" | "needs_review" | "not_eligible" | "unknown";
   }>;
   futureHooks: string[];
   giftCodes: Array<{

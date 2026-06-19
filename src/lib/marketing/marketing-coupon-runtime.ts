@@ -9,6 +9,10 @@ import {
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import {
+  resolveMarketingCouponEligibilityViewSafe,
+  type MarketingCouponEligibilityView
+} from "@/src/lib/marketing/marketing-coupon-eligibility-runtime";
+import {
   resolveMarketingCouponValidationViewSafe,
   type MarketingCouponValidationView
 } from "@/src/lib/marketing/marketing-coupon-validation-runtime";
@@ -52,7 +56,8 @@ export type MarketingCouponView = {
   targetAudienceSummary: string;
   usageCount: number;
   usageLimit: string;
-} & MarketingCouponValidationView;
+} & MarketingCouponValidationView &
+  MarketingCouponEligibilityView;
 
 export const MARKETING_COUPON_DISCOUNT_TYPES: readonly MarketingCouponDiscountType[] = [
   "percentage",
@@ -142,10 +147,16 @@ function metadataValue(metadata: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
-function attachMarketingCouponValidation(
-  view: Omit<MarketingCouponView, keyof MarketingCouponValidationView> & Partial<MarketingCouponValidationView>,
+function attachMarketingCouponRuntimeLayers(
+  view: Omit<
+    MarketingCouponView,
+    keyof MarketingCouponValidationView | keyof MarketingCouponEligibilityView
+  > &
+    Partial<MarketingCouponValidationView> &
+    Partial<MarketingCouponEligibilityView>,
   params: {
     exists?: boolean;
+    lifecycleState?: MarketingStatus;
     marketingType: MarketingType;
     metadata?: Record<string, unknown>;
   }
@@ -161,14 +172,27 @@ function attachMarketingCouponValidation(
     targetAudienceSummary: view.targetAudienceSummary
   });
 
+  const eligibility = resolveMarketingCouponEligibilityViewSafe({
+    exists: params.exists,
+    lifecycleState: params.lifecycleState ?? view.status,
+    marketingType: params.marketingType,
+    metadata: params.metadata,
+    registryKey: view.registryKey,
+    status: view.status,
+    targetAudienceSummary: view.targetAudienceSummary,
+    validationReady: validation.validationReady,
+    validationState: validation.validationState
+  });
+
   return {
     ...view,
-    ...validation
+    ...validation,
+    ...eligibility
   };
 }
 
 export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
-  attachMarketingCouponValidation(
+  attachMarketingCouponRuntimeLayers(
     {
       amount: "10%",
       code: "PLATFORM-WELCOME",
@@ -192,11 +216,12 @@ export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
     },
     {
       exists: true,
+      lifecycleState: "draft",
       marketingType: "coupon",
       metadata: { section: "Platform coupons", source: "marketing_registry_fallback" }
     }
   ),
-  attachMarketingCouponValidation(
+  attachMarketingCouponRuntimeLayers(
     {
       amount: "1 month credit",
       code: "PLAN-CREDIT-DRAFT",
@@ -220,6 +245,7 @@ export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
     },
     {
       exists: true,
+      lifecycleState: "draft",
       marketingType: "promotion",
       metadata: { section: "Platform promotions", source: "marketing_registry_fallback" }
     }
@@ -260,7 +286,7 @@ function toMarketingCouponViewFromCampaign(
     campaign.typeDescription || "Platform coupon foundation."
   );
 
-  return attachMarketingCouponValidation(
+  return attachMarketingCouponRuntimeLayers(
     {
       amount: sanitizeCouponDisplayValue(
         metadataValue(metadata, ["amount", "amount_label", "discount_amount"]),
@@ -298,6 +324,7 @@ function toMarketingCouponViewFromCampaign(
     },
     {
       exists: Boolean(registryKey),
+      lifecycleState: campaign.lifecycleState ?? status,
       marketingType: campaign.type,
       metadata
     }

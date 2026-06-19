@@ -191,6 +191,10 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={coupon.validationBadgeTone}>{coupon.validationLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.validationDescription}</p>
+              <div className="mt-2">
+                <AdminBadge tone={coupon.eligibilityBadgeTone}>{coupon.eligibilityLabel}</AdminBadge>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.eligibilityDescription}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={coupon.statusBadgeTone}>{coupon.statusLabel}</AdminBadge>

@@ -463,6 +463,24 @@ export {
   resolveMarketingCouponValidationViewSafe
 } from "@/src/lib/marketing/marketing-coupon-validation-runtime";
 export type {
+  MarketingCouponEligibilityInput,
+  MarketingCouponEligibilityIssue,
+  MarketingCouponEligibilityIssueSeverity,
+  MarketingCouponEligibilityState,
+  MarketingCouponEligibilityView
+} from "@/src/lib/marketing/marketing-coupon-eligibility-runtime";
+export {
+  getMarketingCouponEligibilityBadgeTone,
+  getMarketingCouponEligibilityDescription,
+  getMarketingCouponEligibilityLabel,
+  isMarketingCouponEligibilityReady,
+  isValidMarketingCouponEligibilityState,
+  listMarketingCouponEligibilityIssues,
+  resolveMarketingCouponEligibilityState,
+  resolveMarketingCouponEligibilityView,
+  resolveMarketingCouponEligibilityViewSafe
+} from "@/src/lib/marketing/marketing-coupon-eligibility-runtime";
+export type {
   MarketingStatus,
   MarketingStatusBadgeTone,
   MarketingStatusCatalogEntry,
