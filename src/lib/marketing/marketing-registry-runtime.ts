@@ -509,6 +509,20 @@ export {
   resolveMarketingCouponUsageViewSafe
 } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 export type {
+  MarketingCouponAnalyticsCouponSnapshot,
+  MarketingCouponAnalyticsSummary
+} from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
+export {
+  averageMarketingCouponUsageCount,
+  buildMarketingCouponAnalyticsSummary,
+  buildMarketingCouponAnalyticsSummarySafe,
+  countMarketingCouponHighUsage,
+  countMarketingCouponNeedsReview,
+  countMarketingCouponsByStatus,
+  MARKETING_COUPON_ANALYTICS_FALLBACK_SUMMARY,
+  sumMarketingCouponUsageCount
+} from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
+export type {
   MarketingStatus,
   MarketingStatusBadgeTone,
   MarketingStatusCatalogEntry,

@@ -125,6 +125,20 @@ export default async function AdminMarketingPage() {
         ]}
       />
 
+      <AdminStatGrid
+        stats={[
+          { label: "Coupon items", value: control.couponAnalytics.totalCouponItems },
+          { label: "Active coupons", value: control.couponAnalytics.activeCouponItems },
+          { label: "Draft coupons", value: control.couponAnalytics.draftCouponItems },
+          { label: "Paused coupons", value: control.couponAnalytics.pausedCouponItems },
+          { label: "Total usage", value: control.couponAnalytics.totalUsageCount },
+          { label: "Avg usage", value: control.couponAnalytics.averageUsageCount.toFixed(1) },
+          { label: "High usage", value: control.couponAnalytics.highUsageCouponCount },
+          { label: "Needs review", value: control.couponAnalytics.needsReviewCouponCount }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">{control.couponAnalytics.analyticsDescription}</p>
+
       <AdminTable
         headers={[
           "Name",

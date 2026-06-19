@@ -14,6 +14,7 @@ import {
   resolveMarketingRegistryStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
+import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import {
   internalTeamRoleMeta,
@@ -1627,6 +1628,20 @@ export type AdminPlatformMarketingControl = {
     expiredSections: number;
     pausedSections: number;
     totalSections: number;
+  };
+  couponAnalytics: {
+    activeCouponItems: number;
+    analyticsDescription: string;
+    analyticsReady: boolean;
+    archivedCouponItems: number;
+    averageUsageCount: number;
+    draftCouponItems: number;
+    expiredCouponItems: number;
+    highUsageCouponCount: number;
+    needsReviewCouponCount: number;
+    pausedCouponItems: number;
+    totalCouponItems: number;
+    totalUsageCount: number;
   };
   referralAffiliates: Array<{
     commission: number;
@@ -6917,9 +6932,11 @@ function buildAdminPlatformMarketingControl(params: {
     couponUsageSummariesByRegistryKey
   );
   const combinedWarning = runtimeWarning ?? couponLoad.warning ?? null;
+  const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
 
   return {
     campaigns,
+    couponAnalytics,
     coupons: couponLoad.coupons,
     futureHooks: [
       "Platform coupon redemption",
