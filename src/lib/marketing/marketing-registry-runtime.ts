@@ -23,6 +23,10 @@ import {
   resolveMarketingAudienceView,
   type MarketingAudience
 } from "@/src/lib/marketing/marketing-audience-runtime";
+import {
+  resolveMarketingCampaignLifecycleView,
+  type MarketingLifecycleActionDefinition
+} from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 
 export type MarketingRegistryType = MarketingType;
 
@@ -53,6 +57,10 @@ export type MarketingRegistryCampaignView = {
   audienceLabel: string;
   endDate: string | null;
   id: string;
+  lifecycleActions: MarketingLifecycleActionDefinition[];
+  lifecycleDescription: string;
+  lifecycleLabel: string;
+  lifecycleState: MarketingRegistryStatus;
   name: string;
   revenueImpact: number;
   section: MarketingRegistrySection;
@@ -208,6 +216,7 @@ export function toMarketingRegistryCampaignView(
     registryKey: item.registryKey,
     targetAudience: item.targetAudience
   });
+  const lifecycle = resolveMarketingCampaignLifecycleView(resolvedStatus);
 
   return {
     audienceBadgeTone: audience.audienceBadgeTone,
@@ -216,6 +225,10 @@ export function toMarketingRegistryCampaignView(
     audienceLabel: audience.audienceLabel,
     endDate: text(metadata.end_date, 80) || null,
     id: item.registryKey,
+    lifecycleActions: lifecycle.actions,
+    lifecycleDescription: lifecycle.lifecycleDescription,
+    lifecycleLabel: lifecycle.lifecycleLabel,
+    lifecycleState: lifecycle.lifecycleState,
     name: item.name,
     revenueImpact: item.revenueImpact,
     section: resolveMarketingRegistrySection(item),
@@ -400,6 +413,23 @@ export {
   resolveMarketingAudienceView,
   sanitizeMarketingAudienceSummary
 } from "@/src/lib/marketing/marketing-audience-runtime";
+export type {
+  MarketingCampaignLifecycleView,
+  MarketingLifecycleAction,
+  MarketingLifecycleActionDefinition
+} from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
+export {
+  getMarketingLifecycleActionDescription,
+  getMarketingLifecycleActionLabel,
+  getMarketingLifecycleDescription,
+  getMarketingLifecycleLabel,
+  isMarketingLifecycleActionReady,
+  listMarketingLifecycleActionsForStatus,
+  MARKETING_LIFECYCLE_ACTIONS,
+  resolveMarketingCampaignLifecycleView,
+  resolveMarketingLifecycleActionReadiness,
+  sanitizeMarketingLifecycleNote
+} from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 export type {
   MarketingStatus,
   MarketingStatusBadgeTone,

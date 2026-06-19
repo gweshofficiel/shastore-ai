@@ -1535,6 +1535,16 @@ export type AdminPlatformMarketingControl = {
     audienceLabel: string;
     endDate: string | null;
     id: string;
+    lifecycleActions: Array<{
+      action: "activate" | "archive" | "create_draft" | "pause" | "view_usage";
+      description: string;
+      foundationOnly: true;
+      label: string;
+      ready: boolean;
+    }>;
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
     name: string;
     revenueImpact: number;
     section: "Affiliate program" | "Campaigns" | "Gift codes" | "Platform coupons" | "Platform promotions" | "Referral program";

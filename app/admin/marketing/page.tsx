@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/admin-control";
 import type { AdminPlatformMarketingControl } from "@/lib/admin/data";
 import { loadPlatformMarketingControlSafe } from "@/lib/admin/marketing-loader";
+import type { MarketingLifecycleAction } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
@@ -23,6 +24,7 @@ import {
   pauseMarketingCampaign,
   viewMarketingUsagePlaceholder
 } from "@/lib/admin/platform-marketing-actions";
+import type { ComponentProps } from "react";
 
 function MarketingRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -48,6 +50,48 @@ function CampaignHiddenFields({
       <input name="campaignName" type="hidden" value={campaign.name} />
       <input name="campaignType" type="hidden" value={campaign.type} />
     </>
+  );
+}
+
+const lifecycleActionHandlers: Record<
+  MarketingLifecycleAction,
+  ComponentProps<"form">["action"]
+> = {
+  activate: activateMarketingCampaignPlaceholder,
+  archive: archiveMarketingCampaignPlaceholder,
+  create_draft: createMarketingDraftPlaceholder,
+  pause: pauseMarketingCampaign,
+  view_usage: viewMarketingUsagePlaceholder
+};
+
+const lifecycleActionButtonClass: Record<MarketingLifecycleAction, string> = {
+  activate: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  archive: "border border-red-200 bg-red-50 text-red-700",
+  create_draft: "border border-slate-200 bg-white text-slate-700",
+  pause: "border border-blue-200 bg-blue-50 text-blue-700",
+  view_usage: "border border-amber-200 bg-amber-50 text-amber-700"
+};
+
+function MarketingCampaignSafeActions({
+  campaign
+}: {
+  campaign: AdminPlatformMarketingControl["campaigns"][number];
+}) {
+  return (
+    <div className="grid min-w-52 gap-2">
+      {campaign.lifecycleActions.map((action) => (
+        <form action={lifecycleActionHandlers[action.action]} key={action.action}>
+          <CampaignHiddenFields campaign={campaign} />
+          <button
+            className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${lifecycleActionButtonClass[action.action]}`}
+            title={action.description}
+            type="submit"
+          >
+            {action.label}
+          </button>
+        </form>
+      ))}
+    </div>
   );
 }
 
@@ -103,6 +147,8 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={campaign.statusBadgeTone}>{campaign.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.statusDescription}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.lifecycleDescription}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={campaign.audienceBadgeTone}>{campaign.audienceLabel}</AdminBadge>
@@ -114,38 +160,7 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4 text-slate-600">{campaign.usage} placeholder</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminMoney(campaign.revenueImpact)} placeholder</td>
             <td className="px-5 py-4">
-              <div className="grid min-w-52 gap-2">
-                <form action={createMarketingDraftPlaceholder}>
-                  <CampaignHiddenFields campaign={campaign} />
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
-                    Create draft
-                  </button>
-                </form>
-                <form action={pauseMarketingCampaign}>
-                  <CampaignHiddenFields campaign={campaign} />
-                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                    Pause
-                  </button>
-                </form>
-                <form action={activateMarketingCampaignPlaceholder}>
-                  <CampaignHiddenFields campaign={campaign} />
-                  <button className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700" type="submit">
-                    Activate
-                  </button>
-                </form>
-                <form action={archiveMarketingCampaignPlaceholder}>
-                  <CampaignHiddenFields campaign={campaign} />
-                  <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                    Archive
-                  </button>
-                </form>
-                <form action={viewMarketingUsagePlaceholder}>
-                  <CampaignHiddenFields campaign={campaign} />
-                  <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                    View usage
-                  </button>
-                </form>
-              </div>
+              <MarketingCampaignSafeActions campaign={campaign} />
             </td>
           </tr>
         ))}
