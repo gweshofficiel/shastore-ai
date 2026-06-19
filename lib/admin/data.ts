@@ -16,6 +16,7 @@ import {
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
+import { buildMarketingReferralViewsSafe } from "@/src/lib/marketing/marketing-referral-runtime";
 import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
@@ -1777,6 +1778,43 @@ export type AdminPlatformMarketingControl = {
     referrer: string;
     status: "active" | "archived" | "draft" | "expired" | "paused";
     type: "affiliate" | "referral";
+  }>;
+  referrals: Array<{
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
+    code: string;
+    commissionDisplay: string;
+    description: string;
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
+    metadataSummary: string;
+    name: string;
+    payoutStatus: string;
+    referralDescription: string;
+    referralLabel: string;
+    referralProgramType: "owner_invite" | "partner_invite" | "platform_invite";
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    trackingStatus: string;
+    usageCount: number;
   }>;
 };
 
@@ -7060,8 +7098,9 @@ function buildAdminPlatformMarketingControl(params: {
   );
   const promotionLoad = buildMarketingPromotionViewsSafe(campaigns, couponMetadataByRegistryKey);
   const giftCodeLoad = buildMarketingGiftCodeViewsSafe(campaigns, couponMetadataByRegistryKey);
+  const referralLoad = buildMarketingReferralViewsSafe(campaigns, couponMetadataByRegistryKey);
   const combinedWarning =
-    [runtimeWarning, couponLoad.warning, promotionLoad.warning, giftCodeLoad.warning]
+    [runtimeWarning, couponLoad.warning, promotionLoad.warning, giftCodeLoad.warning, referralLoad.warning]
       .filter(Boolean)
       .join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
@@ -7074,6 +7113,7 @@ function buildAdminPlatformMarketingControl(params: {
     giftCodes: giftCodeLoad.giftCodes,
     promotionMetrics,
     promotions: promotionLoad.promotions,
+    referrals: referralLoad.referrals,
     futureHooks: [
       "Platform coupon redemption",
       "Plan discount application",
@@ -7084,21 +7124,21 @@ function buildAdminPlatformMarketingControl(params: {
     ],
     overview: countMarketingStatusOverview(campaigns),
     referralAffiliates: [
-      {
+      ...referralLoad.referrals.map((referral) => ({
         commission: 0,
-        payoutStatus: "No payout system connected",
-        referredUsers: 0,
-        referrer: "Store Owner Referral Foundation",
-        status: campaigns.find((campaign) => campaign.id === "referral:owner-invite")?.status ?? "draft",
-        type: "referral"
-      },
+        payoutStatus: referral.payoutStatus,
+        referredUsers: referral.usageCount,
+        referrer: referral.name,
+        status: referral.status,
+        type: "referral" as const
+      })),
       {
         commission: 0,
         payoutStatus: "Placeholder only",
         referredUsers: 0,
         referrer: "Creator Affiliate Foundation",
         status: campaigns.find((campaign) => campaign.id === "affiliate:creator-partners")?.status ?? "draft",
-        type: "affiliate"
+        type: "affiliate" as const
       }
     ],
     runtimeWarning: combinedWarning

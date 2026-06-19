@@ -21,6 +21,10 @@ import {
   getMarketingPromotionIncentiveTypeLabel
 } from "@/src/lib/marketing/marketing-promotion-runtime";
 import {
+  getMarketingReferralBadgeTone,
+  getMarketingReferralProgramTypeLabel
+} from "@/src/lib/marketing/marketing-referral-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
 } from "@/src/lib/marketing/marketing-status-runtime";
@@ -350,6 +354,48 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={giftCode.statusBadgeTone}>{giftCode.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.statusDescription}</p>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Referral", "Program", "Audience", "Usage", "Lifecycle", "Tracking", "Status"]}>
+        {control.referrals.map((referral) => (
+          <tr key={referral.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{referral.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.code}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.slug}</p>
+              <p className="mt-1 text-xs text-slate-500">{referral.referralDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{referral.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingReferralBadgeTone(referral.referralProgramType)}>
+                {getMarketingReferralProgramTypeLabel(referral.referralProgramType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.referralLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">{referral.commissionDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">{referral.payoutStatus}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={referral.audienceBadgeTone}>{referral.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{referral.targetAudienceSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{referral.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {formatAdminMoney(referral.revenueImpact)} placeholder impact
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">{referral.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{referral.lifecycleDescription}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{referral.trackingStatus}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={referral.statusBadgeTone}>{referral.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.statusDescription}</p>
             </td>
           </tr>
         ))}

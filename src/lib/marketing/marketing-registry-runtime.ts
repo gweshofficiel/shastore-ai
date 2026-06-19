@@ -508,6 +508,19 @@ export {
   resolveMarketingGiftCodeCreditViewSafe
 } from "@/src/lib/marketing/marketing-gift-code-credit-runtime";
 export type {
+  MarketingReferralProgramType,
+  MarketingReferralView
+} from "@/src/lib/marketing/marketing-referral-runtime";
+export {
+  buildMarketingReferralViewsFromCampaigns,
+  buildMarketingReferralViewsFromRegistryItems,
+  buildMarketingReferralViewsSafe,
+  getMarketingReferralBadgeTone,
+  getMarketingReferralProgramTypeLabel,
+  MARKETING_REFERRAL_FALLBACK_VIEWS,
+  MARKETING_REFERRAL_PROGRAM_TYPES
+} from "@/src/lib/marketing/marketing-referral-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView
