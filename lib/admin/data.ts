@@ -23,6 +23,7 @@ import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-cou
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
+import { buildMarketingCampaignViewsSafe } from "@/src/lib/marketing/marketing-campaign-runtime";
 import { buildMarketingReferralViewsSafe } from "@/src/lib/marketing/marketing-referral-runtime";
 import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
@@ -1781,6 +1782,48 @@ export type AdminPlatformMarketingControl = {
     totalRevenueImpact: number;
     totalUsageCount: number;
   };
+  platformCampaigns: Array<{
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
+    campaignBadgeTone: "amber" | "blue" | "green" | "red";
+    campaignDescription: string;
+    campaignEngineStatus: string;
+    campaignLabel: string;
+    campaignProgramType: "newsletter" | "onboarding_sequence" | "platform_announcement" | "product_update";
+    campaignState: "campaign_disabled" | "campaign_ready" | "invalid" | "needs_review" | "unknown";
+    campaignSummary: string;
+    campaignTypeLabel: string;
+    code: string;
+    deliveryStatus: string;
+    description: string;
+    endDateDisplay: string | null;
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
+    metadataSummary: string;
+    name: string;
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
+    startDateDisplay: string | null;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    usageCount: number;
+  }>;
   referralAffiliates: Array<{
     commission: number;
     payoutStatus: string;
@@ -7203,6 +7246,7 @@ function buildAdminPlatformMarketingControl(params: {
     affiliateTrackingSummariesByRegistryKey,
     commissionSummariesByRegistryKey
   );
+  const platformCampaignLoad = buildMarketingCampaignViewsSafe(campaigns, couponMetadataByRegistryKey);
   const combinedWarning =
     [
       runtimeWarning,
@@ -7210,7 +7254,8 @@ function buildAdminPlatformMarketingControl(params: {
       promotionLoad.warning,
       giftCodeLoad.warning,
       referralLoad.warning,
-      affiliateLoad.warning
+      affiliateLoad.warning,
+      platformCampaignLoad.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -7226,6 +7271,7 @@ function buildAdminPlatformMarketingControl(params: {
     promotions: promotionLoad.promotions,
     affiliates: affiliateLoad.affiliates,
     referrals: referralLoad.referrals,
+    platformCampaigns: platformCampaignLoad.platformCampaigns,
     futureHooks: [
       "Platform coupon redemption",
       "Plan discount application",

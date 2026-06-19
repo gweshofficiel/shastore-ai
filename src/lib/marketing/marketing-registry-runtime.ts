@@ -431,6 +431,30 @@ export {
   sanitizeMarketingLifecycleNote
 } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
 export type {
+  MarketingCampaignIssue,
+  MarketingCampaignIssueSeverity,
+  MarketingCampaignProgramType,
+  MarketingCampaignReadinessView,
+  MarketingCampaignState,
+  MarketingCampaignView
+} from "@/src/lib/marketing/marketing-campaign-runtime";
+export {
+  buildMarketingCampaignViewsFromCampaigns,
+  buildMarketingCampaignViewsFromRegistryItems,
+  buildMarketingCampaignViewsSafe,
+  getMarketingCampaignBadgeTone,
+  getMarketingCampaignDescription,
+  getMarketingCampaignLabel,
+  getMarketingCampaignProgramBadgeTone,
+  getMarketingCampaignProgramTypeLabel,
+  isValidMarketingCampaignState,
+  listMarketingCampaignIssues,
+  MARKETING_CAMPAIGN_FALLBACK_VIEWS,
+  MARKETING_CAMPAIGN_PROGRAM_TYPES,
+  MARKETING_CAMPAIGN_STATES,
+  resolveMarketingCampaignState
+} from "@/src/lib/marketing/marketing-campaign-runtime";
+export type {
   MarketingCouponDiscountType,
   MarketingCouponView
 } from "@/src/lib/marketing/marketing-coupon-runtime";

@@ -29,6 +29,10 @@ import {
   getMarketingAffiliateProgramTypeLabel
 } from "@/src/lib/marketing/marketing-affiliate-runtime";
 import {
+  getMarketingCampaignProgramBadgeTone,
+  getMarketingCampaignProgramTypeLabel
+} from "@/src/lib/marketing/marketing-campaign-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
 } from "@/src/lib/marketing/marketing-status-runtime";
@@ -472,6 +476,60 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={affiliate.statusBadgeTone}>{affiliate.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.statusDescription}</p>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Campaign", "Program", "Audience", "Schedule", "Usage", "Lifecycle", "Readiness", "Status"]}>
+        {control.platformCampaigns.map((campaign) => (
+          <tr key={campaign.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{campaign.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.code}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.slug}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.description}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingCampaignProgramBadgeTone(campaign.campaignProgramType)}>
+                {getMarketingCampaignProgramTypeLabel(campaign.campaignProgramType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.campaignTypeLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">{campaign.deliveryStatus}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.audienceBadgeTone}>{campaign.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{campaign.targetAudienceSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">
+                Start {campaign.startDateDisplay ? formatAdminDate(campaign.startDateDisplay) : "Unscheduled"}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                End {campaign.endDateDisplay ? formatAdminDate(campaign.endDateDisplay) : "Unscheduled"}
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{campaign.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {formatAdminMoney(campaign.revenueImpact)} placeholder impact
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">{campaign.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.lifecycleDescription}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.campaignBadgeTone}>{campaign.campaignLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.campaignDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{campaign.campaignEngineStatus}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.campaignSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.statusBadgeTone}>{campaign.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.statusDescription}</p>
             </td>
           </tr>
         ))}
