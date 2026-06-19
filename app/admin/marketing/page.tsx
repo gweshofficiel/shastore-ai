@@ -481,7 +481,7 @@ export default async function AdminMarketingPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Campaign", "Program", "Audience", "Schedule", "Usage", "Lifecycle", "Readiness", "Status"]}>
+      <AdminTable headers={["Campaign", "Program", "Audience", "Schedule", "Usage", "Lifecycle", "Email", "Readiness", "Status"]}>
         {control.platformCampaigns.map((campaign) => (
           <tr key={campaign.registryKey}>
             <td className="px-5 py-4">
@@ -520,6 +520,17 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <p className="text-xs font-semibold text-slate-500">{campaign.lifecycleLabel}</p>
               <p className="mt-1 text-xs text-slate-500">{campaign.lifecycleDescription}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.emailBadgeTone}>{campaign.emailLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.emailDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">Subject {campaign.emailSubjectLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">Template {campaign.emailTemplateLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">Sender {campaign.senderLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">{campaign.emailEngineStatus}</p>
+              <AdminBadge tone={campaign.massSendBadgeTone}>{campaign.massSendLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.massSendDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{campaign.emailSummary}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={campaign.campaignBadgeTone}>{campaign.campaignLabel}</AdminBadge>

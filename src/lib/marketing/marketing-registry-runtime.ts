@@ -455,6 +455,47 @@ export {
   resolveMarketingCampaignState
 } from "@/src/lib/marketing/marketing-campaign-runtime";
 export type {
+  MarketingCampaignEmailInput,
+  MarketingCampaignEmailIssue,
+  MarketingCampaignEmailIssueSeverity,
+  MarketingCampaignEmailState,
+  MarketingCampaignEmailSummaryRecord,
+  MarketingCampaignEmailSummaryStatus,
+  MarketingCampaignEmailSource,
+  MarketingCampaignEmailView,
+  MarketingCampaignMassSendState
+} from "@/src/lib/marketing/marketing-campaign-email-runtime";
+export {
+  getMarketingCampaignEmailBadgeTone,
+  getMarketingCampaignEmailDescription,
+  getMarketingCampaignEmailLabel,
+  getMarketingCampaignMassSendBadgeTone,
+  getMarketingCampaignMassSendDescription,
+  getMarketingCampaignMassSendLabel,
+  indexMarketingCampaignEmailSummariesByRegistryKey,
+  isMarketingCampaignEmailReady,
+  isValidMarketingCampaignEmailState,
+  isValidMarketingCampaignEmailSummaryStatus,
+  isValidMarketingCampaignMassSendState,
+  listMarketingCampaignEmailIssues,
+  listMarketingCampaignEmailSummariesReadOnly,
+  listMarketingCampaignEmailSummariesReadOnlySafe,
+  MARKETING_CAMPAIGN_EMAIL_FALLBACK_SUMMARIES,
+  MARKETING_CAMPAIGN_EMAIL_STATES,
+  MARKETING_CAMPAIGN_EMAIL_SUMMARY_STATUSES,
+  MARKETING_CAMPAIGN_MASS_SEND_STATES,
+  parseMarketingCampaignEmailSummary,
+  parseMarketingCampaignEmailSummaryStatus,
+  resolveMarketingCampaignEmailSenderLabel,
+  resolveMarketingCampaignEmailState,
+  resolveMarketingCampaignEmailSubjectLabel,
+  resolveMarketingCampaignEmailSummaryText,
+  resolveMarketingCampaignEmailTemplateLabel,
+  resolveMarketingCampaignEmailView,
+  resolveMarketingCampaignEmailViewSafe,
+  resolveMarketingCampaignMassSendState
+} from "@/src/lib/marketing/marketing-campaign-email-runtime";
+export type {
   MarketingCouponDiscountType,
   MarketingCouponView
 } from "@/src/lib/marketing/marketing-coupon-runtime";
