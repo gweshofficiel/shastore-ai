@@ -1678,7 +1678,24 @@ export type AdminPlatformMarketingControl = {
     audienceLabel: string;
     code: string;
     creditAmount: number;
+    creditAmountDisplay: string;
+    creditGrantingStatus: string;
+    creditLabel: string;
+    creditReadinessBadgeTone: "amber" | "blue" | "green" | "red";
+    creditReadinessDescription: string;
+    creditReadinessLabel: string;
+    creditReadinessReady: boolean;
+    creditReadinessState:
+      | "already_used"
+      | "expired"
+      | "needs_review"
+      | "not_ready"
+      | "paused"
+      | "ready"
+      | "unknown";
     creditType: "fixed_credit" | "platform_credit" | "subscription_credit";
+    creditTypeLabel: string;
+    creditUnitDisplay: string;
     description: string;
     giftCodeDescription: string;
     giftCodeLabel: string;
@@ -1701,6 +1718,7 @@ export type AdminPlatformMarketingControl = {
       | "paused"
       | "redeemable"
       | "unknown";
+    redemptionReadinessLabel: string;
     redemptionStatus: string;
     registryKey: string;
     revenueImpact: number;

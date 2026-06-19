@@ -14,8 +14,7 @@ import {
   getMarketingCouponDiscountTypeLabel
 } from "@/src/lib/marketing/marketing-coupon-runtime";
 import {
-  getMarketingGiftCodeBadgeTone,
-  getMarketingGiftCodeCreditTypeLabel
+  getMarketingGiftCodeBadgeTone
 } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import {
   getMarketingPromotionBadgeTone,
@@ -314,13 +313,19 @@ export default async function AdminMarketingPage() {
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={getMarketingGiftCodeBadgeTone(giftCode.creditType)}>
-                {getMarketingGiftCodeCreditTypeLabel(giftCode.creditType)}
+                {giftCode.creditTypeLabel}
               </AdminBadge>
-              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.giftCodeLabel}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">
-                {formatAdminMoney(giftCode.creditAmount)} placeholder
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.creditLabel}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{giftCode.creditAmountDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">{giftCode.creditUnitDisplay}</p>
+              <div className="mt-2">
+                <AdminBadge tone={giftCode.creditReadinessBadgeTone}>{giftCode.creditReadinessLabel}</AdminBadge>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.creditReadinessDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{giftCode.creditGrantingStatus}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Redemption readiness: {giftCode.redemptionReadinessLabel}
               </p>
-              <p className="mt-1 text-xs text-slate-600">{giftCode.planCredit}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={giftCode.audienceBadgeTone}>{giftCode.audienceLabel}</AdminBadge>

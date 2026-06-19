@@ -489,6 +489,25 @@ export {
   resolveMarketingGiftCodeRedemptionViewSafe
 } from "@/src/lib/marketing/marketing-gift-code-redemption-runtime";
 export type {
+  MarketingGiftCodeCreditInput,
+  MarketingGiftCodeCreditIssue,
+  MarketingGiftCodeCreditIssueSeverity,
+  MarketingGiftCodeCreditReadinessState,
+  MarketingGiftCodeCreditView
+} from "@/src/lib/marketing/marketing-gift-code-credit-runtime";
+export {
+  getMarketingGiftCodeCreditReadinessBadgeTone,
+  getMarketingGiftCodeCreditReadinessDescription,
+  getMarketingGiftCodeCreditReadinessLabel,
+  isMarketingGiftCodeCreditReadinessReady,
+  isValidMarketingGiftCodeCreditReadinessState,
+  listMarketingGiftCodeCreditIssues,
+  MARKETING_GIFT_CODE_CREDIT_READINESS_STATES,
+  resolveMarketingGiftCodeCreditReadinessState,
+  resolveMarketingGiftCodeCreditView,
+  resolveMarketingGiftCodeCreditViewSafe
+} from "@/src/lib/marketing/marketing-gift-code-credit-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView
