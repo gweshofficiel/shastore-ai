@@ -19,6 +19,10 @@ import {
   parseMarketingStatus,
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
+import {
+  resolveMarketingAudienceView,
+  type MarketingAudience
+} from "@/src/lib/marketing/marketing-audience-runtime";
 
 export type MarketingRegistryType = MarketingType;
 
@@ -43,6 +47,10 @@ export type MarketingRegistryItemRecord = {
 };
 
 export type MarketingRegistryCampaignView = {
+  audienceBadgeTone: ReturnType<typeof resolveMarketingAudienceView>["audienceBadgeTone"];
+  audienceDescription: string;
+  audienceKey: MarketingAudience | null;
+  audienceLabel: string;
   endDate: string | null;
   id: string;
   name: string;
@@ -54,6 +62,7 @@ export type MarketingRegistryCampaignView = {
   statusDescription: string;
   statusLabel: string;
   targetAudience: string;
+  targetAudienceSummary: string;
   type: MarketingType;
   typeBadgeTone: ReturnType<typeof getMarketingTypeBadgeTone>;
   typeDescription: string;
@@ -193,8 +202,18 @@ export function toMarketingRegistryCampaignView(
 ): MarketingRegistryCampaignView {
   const metadata = item.metadata;
   const resolvedStatus = statusOverride ?? item.status;
+  const audience = resolveMarketingAudienceView({
+    marketingType: item.marketingType,
+    metadata,
+    registryKey: item.registryKey,
+    targetAudience: item.targetAudience
+  });
 
   return {
+    audienceBadgeTone: audience.audienceBadgeTone,
+    audienceDescription: audience.audienceDescription,
+    audienceKey: audience.audienceKey,
+    audienceLabel: audience.audienceLabel,
     endDate: text(metadata.end_date, 80) || null,
     id: item.registryKey,
     name: item.name,
@@ -205,7 +224,8 @@ export function toMarketingRegistryCampaignView(
     statusBadgeTone: getMarketingStatusBadgeTone(resolvedStatus),
     statusDescription: getMarketingStatusDescription(resolvedStatus),
     statusLabel: getMarketingStatusLabel(resolvedStatus),
-    targetAudience: item.targetAudience,
+    targetAudience: audience.targetAudienceSummary,
+    targetAudienceSummary: audience.targetAudienceSummary,
     type: item.marketingType,
     typeBadgeTone: getMarketingTypeBadgeTone(item.marketingType),
     typeDescription: getMarketingTypeDescription(item.marketingType),
@@ -357,6 +377,29 @@ export async function listMarketingRegistryItemsReadOnlySafe(): Promise<{
   }
 }
 
+export type {
+  MarketingAudience,
+  MarketingAudienceBadgeTone,
+  MarketingAudienceCatalogEntry,
+  MarketingAudienceStats,
+  MarketingAudienceView
+} from "@/src/lib/marketing/marketing-audience-runtime";
+export {
+  assertValidMarketingAudience,
+  countMarketingItemsByAudience,
+  getMarketingAudienceBadgeTone,
+  getMarketingAudienceDescription,
+  getMarketingAudienceLabel,
+  isValidMarketingAudience,
+  listMarketingAudienceCatalog,
+  MARKETING_AUDIENCES,
+  parseMarketingAudience,
+  resolveMarketingAudienceDescription,
+  resolveMarketingAudienceKey,
+  resolveMarketingAudienceLabel,
+  resolveMarketingAudienceView,
+  sanitizeMarketingAudienceSummary
+} from "@/src/lib/marketing/marketing-audience-runtime";
 export type {
   MarketingStatus,
   MarketingStatusBadgeTone,

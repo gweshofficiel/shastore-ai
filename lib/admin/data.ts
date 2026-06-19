@@ -1520,6 +1520,19 @@ export type AdminMarketplaceControl = {
 export type AdminPlatformMarketingControl = {
   runtimeWarning?: string | null;
   campaigns: Array<{
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
     endDate: string | null;
     id: string;
     name: string;
@@ -1531,6 +1544,7 @@ export type AdminPlatformMarketingControl = {
     statusDescription: string;
     statusLabel: string;
     targetAudience: string;
+    targetAudienceSummary: string;
     type: "affiliate" | "campaign" | "coupon" | "gift_code" | "promotion" | "referral";
     typeBadgeTone: "amber" | "blue" | "green" | "red";
     typeDescription: string;

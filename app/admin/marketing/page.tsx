@@ -104,7 +104,11 @@ export default async function AdminMarketingPage() {
               <AdminBadge tone={campaign.statusBadgeTone}>{campaign.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.statusDescription}</p>
             </td>
-            <td className="px-5 py-4 text-slate-600">{campaign.targetAudience}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={campaign.audienceBadgeTone}>{campaign.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{campaign.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{campaign.targetAudienceSummary}</p>
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.startDate)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.endDate)}</td>
             <td className="px-5 py-4 text-slate-600">{campaign.usage} placeholder</td>
