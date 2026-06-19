@@ -30,6 +30,7 @@ import {
   buildMarketingSecurityCertificationSafe,
   collectMarketingMetadataSummariesForCertification
 } from "@/src/lib/marketing/marketing-security-certification";
+import { buildMarketingProductionCertificationSafe } from "@/src/lib/marketing/marketing-production-certification";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -1837,6 +1838,22 @@ export type AdminPlatformMarketingControl = {
       passed: boolean;
     }>;
     securityReviewPassed: boolean;
+    totalChecks: number;
+  };
+  marketingProductionCertification: {
+    certificationDescription: string;
+    certifiedAt: string;
+    conversionComplete: boolean;
+    failedChecks: number;
+    passedChecks: number;
+    productionReady: boolean;
+    productionReview: Array<{
+      category: string;
+      message: string;
+      passed: boolean;
+    }>;
+    supportedStatuses: readonly ("active" | "archived" | "draft" | "expired" | "paused")[];
+    supportedTypes: readonly ("affiliate" | "campaign" | "coupon" | "gift_code" | "promotion" | "referral")[];
     totalChecks: number;
   };
   platformCampaigns: Array<{
@@ -7388,12 +7405,23 @@ function buildAdminPlatformMarketingControl(params: {
     }),
     runtimeWarning: combinedWarning
   });
+  const marketingProductionCertification = buildMarketingProductionCertificationSafe({
+    campaigns,
+    campaignAnalytics,
+    couponAnalytics,
+    marketingAudit,
+    marketingSecurityCertification,
+    overview: countMarketingStatusOverview(campaigns),
+    promotionMetrics,
+    runtimeWarning: combinedWarning
+  });
 
   return {
     campaigns,
     campaignAnalytics,
     couponAnalytics,
     marketingAudit,
+    marketingProductionCertification,
     marketingSecurityCertification,
     coupons: couponLoad.coupons,
     giftCodes: giftCodeLoad.giftCodes,

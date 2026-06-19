@@ -184,7 +184,7 @@ export function buildMarketingSecurityCertification(
   return {
     certificationDescription:
       failedChecks === 0
-        ? "Marketing security certification passed for loaded admin foundations MK-1 to MK-27."
+        ? "Marketing security certification passed for loaded admin foundations MK-1 to MK-28."
         : "Marketing security certification completed with items that need attention.",
     certifiedAt: new Date().toISOString(),
     failedChecks,

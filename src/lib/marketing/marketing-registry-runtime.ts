@@ -836,6 +836,17 @@ export {
   sanitizeMarketingSecurityText
 } from "@/src/lib/marketing/marketing-security-certification";
 export type {
+  MarketingProductionCertificationInput,
+  MarketingProductionCertificationSummary,
+  MarketingProductionReviewItem
+} from "@/src/lib/marketing/marketing-production-certification";
+export {
+  buildMarketingProductionCertification,
+  buildMarketingProductionCertificationSafe,
+  MARKETING_PRODUCTION_CERTIFICATION_FALLBACK_SUMMARY,
+  verifyMarketingProductionMetadataSafe
+} from "@/src/lib/marketing/marketing-production-certification";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

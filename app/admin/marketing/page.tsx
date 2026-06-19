@@ -235,6 +235,33 @@ export default async function AdminMarketingPage() {
         {control.marketingSecurityCertification.certificationDescription}
       </p>
 
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Production status",
+            value: control.marketingProductionCertification.productionReady ? "Ready" : "Needs attention"
+          },
+          {
+            label: "Conversion MK-29",
+            value: control.marketingProductionCertification.conversionComplete ? "Certified" : "Incomplete"
+          },
+          { label: "Checks passed", value: control.marketingProductionCertification.passedChecks },
+          { label: "Checks failed", value: control.marketingProductionCertification.failedChecks },
+          { label: "Marketing types", value: control.marketingProductionCertification.supportedTypes.length },
+          { label: "Marketing statuses", value: control.marketingProductionCertification.supportedStatuses.length },
+          {
+            label: "Certified at",
+            value: control.marketingProductionCertification.certifiedAt
+              ? formatAdminDate(control.marketingProductionCertification.certifiedAt)
+              : "Unknown"
+          },
+          { label: "Admin stability", value: "Stable" }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">
+        {control.marketingProductionCertification.certificationDescription}
+      </p>
+
       <AdminTable
         headers={[
           "Name",
