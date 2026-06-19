@@ -444,6 +444,25 @@ export {
   MARKETING_COUPON_FALLBACK_VIEWS
 } from "@/src/lib/marketing/marketing-coupon-runtime";
 export type {
+  MarketingCouponValidationInput,
+  MarketingCouponValidationIssue,
+  MarketingCouponValidationIssueSeverity,
+  MarketingCouponValidationState,
+  MarketingCouponValidationView
+} from "@/src/lib/marketing/marketing-coupon-validation-runtime";
+export {
+  assertValidMarketingCouponValidationInput,
+  getMarketingCouponValidationBadgeTone,
+  getMarketingCouponValidationDescription,
+  getMarketingCouponValidationLabel,
+  isMarketingCouponValidationReady,
+  isValidMarketingCouponValidationState,
+  listMarketingCouponValidationIssues,
+  resolveMarketingCouponValidationState,
+  resolveMarketingCouponValidationView,
+  resolveMarketingCouponValidationViewSafe
+} from "@/src/lib/marketing/marketing-coupon-validation-runtime";
+export type {
   MarketingStatus,
   MarketingStatusBadgeTone,
   MarketingStatusCatalogEntry,

@@ -1582,6 +1582,16 @@ export type AdminPlatformMarketingControl = {
     targetAudienceSummary: string;
     usageCount: number;
     usageLimit: string;
+    validationBadgeTone: "amber" | "blue" | "green" | "red";
+    validationDescription: string;
+    validationIssues: Array<{
+      code: string;
+      message: string;
+      severity: "error" | "warning";
+    }>;
+    validationLabel: string;
+    validationReady: boolean;
+    validationState: "invalid" | "needs_review" | "valid";
   }>;
   futureHooks: string[];
   giftCodes: Array<{
@@ -6872,10 +6882,11 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
 
 function buildAdminPlatformMarketingControl(params: {
   campaigns: AdminPlatformMarketingControl["campaigns"];
+  couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
   runtimeWarning?: string | null;
 }): AdminPlatformMarketingControl {
-  const { campaigns, runtimeWarning = null } = params;
-  const couponLoad = buildMarketingCouponViewsSafe(campaigns);
+  const { campaigns, couponMetadataByRegistryKey = new Map(), runtimeWarning = null } = params;
+  const couponLoad = buildMarketingCouponViewsSafe(campaigns, couponMetadataByRegistryKey);
   const combinedWarning = runtimeWarning ?? couponLoad.warning ?? null;
 
   return {
@@ -6926,6 +6937,9 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
 
   return buildAdminPlatformMarketingControl({
     campaigns,
+    couponMetadataByRegistryKey: new Map(
+      MARKETING_REGISTRY_FALLBACK_ITEMS.map((item) => [item.registryKey, item.metadata])
+    ),
     runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
   });
 }
@@ -6960,6 +6974,7 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
 
   return buildAdminPlatformMarketingControl({
     campaigns,
+    couponMetadataByRegistryKey: new Map(registryLoad.items.map((item) => [item.registryKey, item.metadata])),
     runtimeWarning: registryLoad.warning
   });
 }

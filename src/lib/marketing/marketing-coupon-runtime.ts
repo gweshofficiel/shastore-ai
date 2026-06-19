@@ -8,6 +8,10 @@ import {
   parseMarketingStatus,
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
+import {
+  resolveMarketingCouponValidationViewSafe,
+  type MarketingCouponValidationView
+} from "@/src/lib/marketing/marketing-coupon-validation-runtime";
 import type { MarketingType } from "@/src/lib/marketing/marketing-type-runtime";
 
 type MarketingCouponCampaignSource = {
@@ -48,7 +52,7 @@ export type MarketingCouponView = {
   targetAudienceSummary: string;
   usageCount: number;
   usageLimit: string;
-};
+} & MarketingCouponValidationView;
 
 export const MARKETING_COUPON_DISCOUNT_TYPES: readonly MarketingCouponDiscountType[] = [
   "percentage",
@@ -78,51 +82,6 @@ const registryCouponDisplayMap: Record<
     usageLimit: "Internal review only"
   }
 };
-
-export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
-  {
-    amount: "10%",
-    code: "PLATFORM-WELCOME",
-    couponDescription: "Platform coupon foundation for welcome plan credit.",
-    couponLabel: "Platform coupon",
-    description: "Platform coupon foundation for welcome plan credit.",
-    discountType: "percentage",
-    metadataSummary: "Foundation coupon display only. No validation or redemption.",
-    name: "Welcome Plan Credit",
-    planEligibility: "Starter, Growth, Pro",
-    registryKey: "platform-coupon:welcome-plan-credit",
-    revenueImpact: 0,
-    slug: "welcome-plan-credit",
-    status: "draft",
-    statusBadgeTone: "amber",
-    statusDescription: getMarketingStatusDescription("draft"),
-    statusLabel: getMarketingStatusLabel("draft"),
-    targetAudienceSummary: "New SHASTORE platform subscribers",
-    usageCount: 0,
-    usageLimit: "Placeholder limit"
-  },
-  {
-    amount: "1 month credit",
-    code: "PLAN-CREDIT-DRAFT",
-    couponDescription: "Legacy coupon-table display linked to annual upgrade promotion foundation.",
-    couponLabel: "Plan credit coupon",
-    description: "Legacy coupon-table display linked to annual upgrade promotion foundation.",
-    discountType: "plan_credit",
-    metadataSummary: "Legacy admin display row. No billing discount application.",
-    name: "Annual Upgrade Promotion",
-    planEligibility: "Growth, Pro",
-    registryKey: "platform-promotion:annual-upgrade",
-    revenueImpact: 0,
-    slug: "annual-upgrade",
-    status: "draft",
-    statusBadgeTone: "amber",
-    statusDescription: getMarketingStatusDescription("draft"),
-    statusLabel: getMarketingStatusLabel("draft"),
-    targetAudienceSummary: "Monthly plan customers",
-    usageCount: 0,
-    usageLimit: "Internal review only"
-  }
-];
 
 function text(value: unknown, maxLength = 500) {
   if (typeof value !== "string") return "";
@@ -183,10 +142,94 @@ function metadataValue(metadata: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+function attachMarketingCouponValidation(
+  view: Omit<MarketingCouponView, keyof MarketingCouponValidationView> & Partial<MarketingCouponValidationView>,
+  params: {
+    exists?: boolean;
+    marketingType: MarketingType;
+    metadata?: Record<string, unknown>;
+  }
+): MarketingCouponView {
+  const validation = resolveMarketingCouponValidationViewSafe({
+    code: view.code,
+    exists: params.exists,
+    marketingType: params.marketingType,
+    metadata: params.metadata,
+    registryKey: view.registryKey,
+    slug: view.slug,
+    status: view.status,
+    targetAudienceSummary: view.targetAudienceSummary
+  });
+
+  return {
+    ...view,
+    ...validation
+  };
+}
+
+export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
+  attachMarketingCouponValidation(
+    {
+      amount: "10%",
+      code: "PLATFORM-WELCOME",
+      couponDescription: "Platform coupon foundation for welcome plan credit.",
+      couponLabel: "Platform coupon",
+      description: "Platform coupon foundation for welcome plan credit.",
+      discountType: "percentage",
+      metadataSummary: "Foundation coupon display only. Validation-readiness checks only.",
+      name: "Welcome Plan Credit",
+      planEligibility: "Starter, Growth, Pro",
+      registryKey: "platform-coupon:welcome-plan-credit",
+      revenueImpact: 0,
+      slug: "welcome-plan-credit",
+      status: "draft",
+      statusBadgeTone: "amber",
+      statusDescription: getMarketingStatusDescription("draft"),
+      statusLabel: getMarketingStatusLabel("draft"),
+      targetAudienceSummary: "New SHASTORE platform subscribers",
+      usageCount: 0,
+      usageLimit: "Placeholder limit"
+    },
+    {
+      exists: true,
+      marketingType: "coupon",
+      metadata: { section: "Platform coupons", source: "marketing_registry_fallback" }
+    }
+  ),
+  attachMarketingCouponValidation(
+    {
+      amount: "1 month credit",
+      code: "PLAN-CREDIT-DRAFT",
+      couponDescription: "Legacy coupon-table display linked to annual upgrade promotion foundation.",
+      couponLabel: "Plan credit coupon",
+      description: "Legacy coupon-table display linked to annual upgrade promotion foundation.",
+      discountType: "plan_credit",
+      metadataSummary: "Legacy admin display row. No billing discount application.",
+      name: "Annual Upgrade Promotion",
+      planEligibility: "Growth, Pro",
+      registryKey: "platform-promotion:annual-upgrade",
+      revenueImpact: 0,
+      slug: "annual-upgrade",
+      status: "draft",
+      statusBadgeTone: "amber",
+      statusDescription: getMarketingStatusDescription("draft"),
+      statusLabel: getMarketingStatusLabel("draft"),
+      targetAudienceSummary: "Monthly plan customers",
+      usageCount: 0,
+      usageLimit: "Internal review only"
+    },
+    {
+      exists: true,
+      marketingType: "promotion",
+      metadata: { section: "Platform promotions", source: "marketing_registry_fallback" }
+    }
+  )
+];
+
 function buildMetadataSummary(metadata: Record<string, unknown>) {
   const summary = sanitizeCouponDisplayValue(
     metadataValue(metadata, ["metadata_summary", "summary", "public_summary"]),
-    "Foundation coupon display only. No validation or redemption."
+    "Foundation coupon display only. Validation-readiness checks only."
   );
 
   if (secretPattern.test(summary)) {
@@ -217,41 +260,48 @@ function toMarketingCouponViewFromCampaign(
     campaign.typeDescription || "Platform coupon foundation."
   );
 
-  return {
-    amount: sanitizeCouponDisplayValue(
-      metadataValue(metadata, ["amount", "amount_label", "discount_amount"]),
-      mapped?.amount ?? "Placeholder amount"
-    ),
-    code: buildCouponCode({ metadata, registryKey, slug }),
-    couponDescription: description,
-    couponLabel: campaign.type === "coupon" ? "Platform coupon" : "Plan credit coupon",
-    description,
-    discountType: parseMarketingCouponDiscountType(
-      metadataValue(metadata, ["discount_type", "coupon_discount_type"]) || mapped?.discountType
-    ),
-    metadataSummary: buildMetadataSummary(metadata),
-    name: sanitizeCouponDisplayValue(campaign.name, "Marketing coupon"),
-    planEligibility: sanitizeCouponDisplayValue(
-      metadataValue(metadata, ["plan_eligibility", "eligible_plans"]),
-      mapped?.planEligibility ?? "Internal review only"
-    ),
-    registryKey,
-    revenueImpact: Math.max(0, campaign.revenueImpact),
-    slug,
-    status,
-    statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-    statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-    statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-    targetAudienceSummary: sanitizeCouponDisplayValue(
-      campaign.targetAudienceSummary,
-      campaign.audienceLabel || "Audience summary unavailable."
-    ),
-    usageCount: Math.max(0, Math.trunc(campaign.usage)),
-    usageLimit: sanitizeCouponDisplayValue(
-      metadataValue(metadata, ["usage_limit", "coupon_usage_limit"]),
-      mapped?.usageLimit ?? "Placeholder limit"
-    )
-  };
+  return attachMarketingCouponValidation(
+    {
+      amount: sanitizeCouponDisplayValue(
+        metadataValue(metadata, ["amount", "amount_label", "discount_amount"]),
+        mapped?.amount ?? "Placeholder amount"
+      ),
+      code: buildCouponCode({ metadata, registryKey, slug }),
+      couponDescription: description,
+      couponLabel: campaign.type === "coupon" ? "Platform coupon" : "Plan credit coupon",
+      description,
+      discountType: parseMarketingCouponDiscountType(
+        metadataValue(metadata, ["discount_type", "coupon_discount_type"]) || mapped?.discountType
+      ),
+      metadataSummary: buildMetadataSummary(metadata),
+      name: sanitizeCouponDisplayValue(campaign.name, "Marketing coupon"),
+      planEligibility: sanitizeCouponDisplayValue(
+        metadataValue(metadata, ["plan_eligibility", "eligible_plans"]),
+        mapped?.planEligibility ?? "Internal review only"
+      ),
+      registryKey,
+      revenueImpact: Math.max(0, campaign.revenueImpact),
+      slug,
+      status,
+      statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+      statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+      statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+      targetAudienceSummary: sanitizeCouponDisplayValue(
+        campaign.targetAudienceSummary,
+        campaign.audienceLabel || "Audience summary unavailable."
+      ),
+      usageCount: Math.max(0, Math.trunc(campaign.usage)),
+      usageLimit: sanitizeCouponDisplayValue(
+        metadataValue(metadata, ["usage_limit", "coupon_usage_limit"]),
+        mapped?.usageLimit ?? "Placeholder limit"
+      )
+    },
+    {
+      exists: Boolean(registryKey),
+      marketingType: campaign.type,
+      metadata
+    }
+  );
 }
 
 function toMarketingCouponViewFromRegistryItem(
@@ -285,7 +335,8 @@ function toMarketingCouponViewFromRegistryItem(
 }
 
 export function buildMarketingCouponViewsFromCampaigns(
-  campaigns: MarketingCouponCampaignSource[]
+  campaigns: MarketingCouponCampaignSource[],
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
 ): MarketingCouponView[] {
   const views: MarketingCouponView[] = [];
 
@@ -293,7 +344,7 @@ export function buildMarketingCouponViewsFromCampaigns(
     const couponView = toMarketingCouponViewFromCampaign({
       ...campaign,
       description: undefined,
-      metadata: undefined,
+      metadata: metadataByRegistryKey.get(campaign.id),
       slug: campaign.id.split(":").pop()
     });
 
@@ -311,7 +362,7 @@ export function buildMarketingCouponViewsFromCampaigns(
     const supplementView = toMarketingCouponViewFromCampaign({
       ...promotionSupplement,
       description: undefined,
-      metadata: undefined,
+      metadata: metadataByRegistryKey.get("platform-promotion:annual-upgrade"),
       slug: "annual-upgrade"
     });
 
@@ -352,11 +403,12 @@ export function buildMarketingCouponViewsFromRegistryItems(
 }
 
 export function buildMarketingCouponViewsSafe(
-  campaigns: MarketingCouponCampaignSource[]
+  campaigns: MarketingCouponCampaignSource[],
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
 ): { coupons: MarketingCouponView[]; warning: string | null } {
   try {
     return {
-      coupons: buildMarketingCouponViewsFromCampaigns(campaigns),
+      coupons: buildMarketingCouponViewsFromCampaigns(campaigns, metadataByRegistryKey),
       warning: null
     };
   } catch (error) {
