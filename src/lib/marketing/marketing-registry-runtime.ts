@@ -481,6 +481,34 @@ export {
   resolveMarketingCouponEligibilityViewSafe
 } from "@/src/lib/marketing/marketing-coupon-eligibility-runtime";
 export type {
+  MarketingCouponUsageInput,
+  MarketingCouponUsageSummaryRecord,
+  MarketingCouponUsageTrackingSource,
+  MarketingCouponUsageTrackingState,
+  MarketingCouponUsageTrackingStatus,
+  MarketingCouponUsageView
+} from "@/src/lib/marketing/marketing-coupon-usage-runtime";
+export {
+  getMarketingCouponUsageTrackingBadgeTone,
+  getMarketingCouponUsageTrackingDescription,
+  getMarketingCouponUsageTrackingLabel,
+  indexMarketingCouponUsageSummariesByRegistryKey,
+  isValidMarketingCouponUsageTrackingStatus,
+  listMarketingCouponUsageSummariesReadOnly,
+  listMarketingCouponUsageSummariesReadOnlySafe,
+  MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
+  MARKETING_COUPON_USAGE_TRACKING_STATUSES,
+  parseMarketingCouponUsageSummary,
+  parseMarketingCouponUsageTrackingStatus,
+  resolveMarketingCouponUsageCount,
+  resolveMarketingCouponUsageLimitLabel,
+  resolveMarketingCouponUsageSummaryText,
+  resolveMarketingCouponUsageTrackingSource,
+  resolveMarketingCouponUsageTrackingState,
+  resolveMarketingCouponUsageView,
+  resolveMarketingCouponUsageViewSafe
+} from "@/src/lib/marketing/marketing-coupon-usage-runtime";
+export type {
   MarketingStatus,
   MarketingStatusBadgeTone,
   MarketingStatusCatalogEntry,

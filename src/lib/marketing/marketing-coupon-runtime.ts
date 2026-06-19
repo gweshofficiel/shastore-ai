@@ -9,6 +9,14 @@ import {
   type MarketingStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import {
+  MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
+  resolveMarketingCouponUsageCount,
+  resolveMarketingCouponUsageLimitLabel,
+  resolveMarketingCouponUsageViewSafe,
+  type MarketingCouponUsageSummaryRecord,
+  type MarketingCouponUsageView
+} from "@/src/lib/marketing/marketing-coupon-usage-runtime";
+import {
   resolveMarketingCouponEligibilityViewSafe,
   type MarketingCouponEligibilityView
 } from "@/src/lib/marketing/marketing-coupon-eligibility-runtime";
@@ -57,7 +65,8 @@ export type MarketingCouponView = {
   usageCount: number;
   usageLimit: string;
 } & MarketingCouponValidationView &
-  MarketingCouponEligibilityView;
+  MarketingCouponEligibilityView &
+  MarketingCouponUsageView;
 
 export const MARKETING_COUPON_DISCOUNT_TYPES: readonly MarketingCouponDiscountType[] = [
   "percentage",
@@ -147,18 +156,24 @@ function metadataValue(metadata: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+const fallbackUsageSummariesByRegistryKey = new Map(
+  MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+);
+
 function attachMarketingCouponRuntimeLayers(
   view: Omit<
     MarketingCouponView,
-    keyof MarketingCouponValidationView | keyof MarketingCouponEligibilityView
+    keyof MarketingCouponValidationView | keyof MarketingCouponEligibilityView | keyof MarketingCouponUsageView
   > &
     Partial<MarketingCouponValidationView> &
-    Partial<MarketingCouponEligibilityView>,
+    Partial<MarketingCouponEligibilityView> &
+    Partial<MarketingCouponUsageView>,
   params: {
     exists?: boolean;
     lifecycleState?: MarketingStatus;
     marketingType: MarketingType;
     metadata?: Record<string, unknown>;
+    usageSummaryRecord?: MarketingCouponUsageSummaryRecord | null;
   }
 ): MarketingCouponView {
   const validation = resolveMarketingCouponValidationViewSafe({
@@ -184,10 +199,23 @@ function attachMarketingCouponRuntimeLayers(
     validationState: validation.validationState
   });
 
+  const usageInput = {
+    code: view.code,
+    registryKey: view.registryKey,
+    usageCount: view.usageCount,
+    usageLimit: view.usageLimit,
+    usageSummaryRecord: params.usageSummaryRecord
+  };
+
+  const usage = resolveMarketingCouponUsageViewSafe(usageInput);
+
   return {
     ...view,
+    usageCount: resolveMarketingCouponUsageCount(usageInput),
+    usageLimit: resolveMarketingCouponUsageLimitLabel(usageInput),
     ...validation,
-    ...eligibility
+    ...eligibility,
+    ...usage
   };
 }
 
@@ -218,7 +246,8 @@ export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
       exists: true,
       lifecycleState: "draft",
       marketingType: "coupon",
-      metadata: { section: "Platform coupons", source: "marketing_registry_fallback" }
+      metadata: { section: "Platform coupons", source: "marketing_registry_fallback" },
+      usageSummaryRecord: fallbackUsageSummariesByRegistryKey.get("platform-coupon:welcome-plan-credit") ?? null
     }
   ),
   attachMarketingCouponRuntimeLayers(
@@ -247,7 +276,8 @@ export const MARKETING_COUPON_FALLBACK_VIEWS: readonly MarketingCouponView[] = [
       exists: true,
       lifecycleState: "draft",
       marketingType: "promotion",
-      metadata: { section: "Platform promotions", source: "marketing_registry_fallback" }
+      metadata: { section: "Platform promotions", source: "marketing_registry_fallback" },
+      usageSummaryRecord: fallbackUsageSummariesByRegistryKey.get("platform-promotion:annual-upgrade") ?? null
     }
   )
 ];
@@ -270,7 +300,8 @@ function toMarketingCouponViewFromCampaign(
     description?: string;
     metadata?: Record<string, unknown>;
     slug?: string;
-  }
+  },
+  usageSummariesByRegistryKey: Map<string, MarketingCouponUsageSummaryRecord> = new Map()
 ): MarketingCouponView | null {
   if (campaign.type !== "coupon" && campaign.id !== "platform-promotion:annual-upgrade") {
     return null;
@@ -326,14 +357,16 @@ function toMarketingCouponViewFromCampaign(
       exists: Boolean(registryKey),
       lifecycleState: campaign.lifecycleState ?? status,
       marketingType: campaign.type,
-      metadata
+      metadata,
+      usageSummaryRecord: usageSummariesByRegistryKey.get(registryKey) ?? null
     }
   );
 }
 
 function toMarketingCouponViewFromRegistryItem(
   item: MarketingRegistryItemRecord,
-  statusOverride?: MarketingStatus
+  statusOverride?: MarketingStatus,
+  usageSummariesByRegistryKey: Map<string, MarketingCouponUsageSummaryRecord> = new Map()
 ): MarketingCouponView | null {
   if (item.marketingType !== "coupon" && item.registryKey !== "platform-promotion:annual-upgrade") {
     return null;
@@ -341,39 +374,46 @@ function toMarketingCouponViewFromRegistryItem(
 
   const status = statusOverride ?? item.status;
 
-  return toMarketingCouponViewFromCampaign({
-    audienceLabel: "",
-    description: item.description,
-    id: item.registryKey,
-    lifecycleState: status,
-    metadata: item.metadata,
-    name: item.name,
-    revenueImpact: item.revenueImpact,
-    slug: item.slug,
-    status,
-    statusBadgeTone: getMarketingStatusBadgeTone(status),
-    statusDescription: getMarketingStatusDescription(status),
-    statusLabel: getMarketingStatusLabel(status),
-    targetAudienceSummary: item.targetAudience,
-    type: item.marketingType,
-    typeDescription: "Platform coupon foundation.",
-    usage: item.usageCount
-  });
+  return toMarketingCouponViewFromCampaign(
+    {
+      audienceLabel: "",
+      description: item.description,
+      id: item.registryKey,
+      lifecycleState: status,
+      metadata: item.metadata,
+      name: item.name,
+      revenueImpact: item.revenueImpact,
+      slug: item.slug,
+      status,
+      statusBadgeTone: getMarketingStatusBadgeTone(status),
+      statusDescription: getMarketingStatusDescription(status),
+      statusLabel: getMarketingStatusLabel(status),
+      targetAudienceSummary: item.targetAudience,
+      type: item.marketingType,
+      typeDescription: "Platform coupon foundation.",
+      usage: item.usageCount
+    },
+    usageSummariesByRegistryKey
+  );
 }
 
 export function buildMarketingCouponViewsFromCampaigns(
   campaigns: MarketingCouponCampaignSource[],
-  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
+  usageSummariesByRegistryKey: Map<string, MarketingCouponUsageSummaryRecord> = new Map()
 ): MarketingCouponView[] {
   const views: MarketingCouponView[] = [];
 
   for (const campaign of campaigns) {
-    const couponView = toMarketingCouponViewFromCampaign({
-      ...campaign,
-      description: undefined,
-      metadata: metadataByRegistryKey.get(campaign.id),
-      slug: campaign.id.split(":").pop()
-    });
+    const couponView = toMarketingCouponViewFromCampaign(
+      {
+        ...campaign,
+        description: undefined,
+        metadata: metadataByRegistryKey.get(campaign.id),
+        slug: campaign.id.split(":").pop()
+      },
+      usageSummariesByRegistryKey
+    );
 
     if (couponView) {
       views.push(couponView);
@@ -386,12 +426,15 @@ export function buildMarketingCouponViewsFromCampaigns(
     promotionSupplement &&
     !views.some((view) => view.registryKey === "platform-promotion:annual-upgrade")
   ) {
-    const supplementView = toMarketingCouponViewFromCampaign({
-      ...promotionSupplement,
-      description: undefined,
-      metadata: metadataByRegistryKey.get("platform-promotion:annual-upgrade"),
-      slug: "annual-upgrade"
-    });
+    const supplementView = toMarketingCouponViewFromCampaign(
+      {
+        ...promotionSupplement,
+        description: undefined,
+        metadata: metadataByRegistryKey.get("platform-promotion:annual-upgrade"),
+        slug: "annual-upgrade"
+      },
+      usageSummariesByRegistryKey
+    );
 
     if (supplementView) {
       views.push(supplementView);
@@ -407,14 +450,16 @@ export function buildMarketingCouponViewsFromCampaigns(
 
 export function buildMarketingCouponViewsFromRegistryItems(
   items: MarketingRegistryItemRecord[],
-  statusByRegistryKey: Map<string, MarketingStatus> = new Map()
+  statusByRegistryKey: Map<string, MarketingStatus> = new Map(),
+  usageSummariesByRegistryKey: Map<string, MarketingCouponUsageSummaryRecord> = new Map()
 ): MarketingCouponView[] {
   const views: MarketingCouponView[] = [];
 
   for (const item of items) {
     const couponView = toMarketingCouponViewFromRegistryItem(
       item,
-      statusByRegistryKey.get(item.registryKey) ?? item.status
+      statusByRegistryKey.get(item.registryKey) ?? item.status,
+      usageSummariesByRegistryKey
     );
 
     if (couponView) {
@@ -431,11 +476,16 @@ export function buildMarketingCouponViewsFromRegistryItems(
 
 export function buildMarketingCouponViewsSafe(
   campaigns: MarketingCouponCampaignSource[],
-  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map()
+  metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
+  usageSummariesByRegistryKey: Map<string, MarketingCouponUsageSummaryRecord> = new Map()
 ): { coupons: MarketingCouponView[]; warning: string | null } {
   try {
     return {
-      coupons: buildMarketingCouponViewsFromCampaigns(campaigns, metadataByRegistryKey),
+      coupons: buildMarketingCouponViewsFromCampaigns(
+        campaigns,
+        metadataByRegistryKey,
+        usageSummariesByRegistryKey
+      ),
       warning: null
     };
   } catch (error) {

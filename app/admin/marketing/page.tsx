@@ -170,7 +170,7 @@ export default async function AdminMarketingPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Coupon code", "Discount type", "Amount", "Plan eligibility", "Usage limit", "Validation", "Status"]}>
+      <AdminTable headers={["Coupon code", "Discount type", "Amount", "Plan eligibility", "Usage", "Validation", "Status"]}>
         {control.coupons.map((coupon) => (
           <tr key={coupon.registryKey}>
             <td className="px-5 py-4">
@@ -187,7 +187,14 @@ export default async function AdminMarketingPage() {
             </td>
             <td className="px-5 py-4 text-slate-600">{coupon.amount}</td>
             <td className="px-5 py-4 text-slate-600">{coupon.planEligibility}</td>
-            <td className="px-5 py-4 text-slate-600">{coupon.usageLimit}</td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{coupon.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">{coupon.usageLimit}</p>
+              <div className="mt-2">
+                <AdminBadge tone={coupon.usageTrackingBadgeTone}>{coupon.usageTrackingLabel}</AdminBadge>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.usageSummary}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={coupon.validationBadgeTone}>{coupon.validationLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{coupon.validationDescription}</p>

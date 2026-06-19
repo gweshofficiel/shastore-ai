@@ -3,7 +3,9 @@ import { planLimitsConfig } from "@/lib/billing/plan-limits";
 import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import {
+  MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
   MARKETING_REGISTRY_FALLBACK_ITEMS,
+  indexMarketingCouponUsageSummariesByRegistryKey,
   toMarketingRegistryCampaignView
 } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
@@ -12,6 +14,7 @@ import {
   resolveMarketingRegistryStatus
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
+import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import {
   internalTeamRoleMeta,
   internalTeamRoles,
@@ -1602,6 +1605,12 @@ export type AdminPlatformMarketingControl = {
     eligibilityLabel: string;
     eligibilityReady: boolean;
     eligibilityState: "eligible" | "needs_review" | "not_eligible" | "unknown";
+    usageSummary: string;
+    usageTrackingBadgeTone: "amber" | "blue" | "green" | "red";
+    usageTrackingDescription: string;
+    usageTrackingLabel: string;
+    usageTrackingSource: "fallback" | "registry" | "summary_table";
+    usageTrackingState: "placeholder" | "tracked" | "unknown" | "untracked";
   }>;
   futureHooks: string[];
   giftCodes: Array<{
@@ -6893,10 +6902,20 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
 function buildAdminPlatformMarketingControl(params: {
   campaigns: AdminPlatformMarketingControl["campaigns"];
   couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
+  couponUsageSummariesByRegistryKey?: Map<string, MarketingCouponUsageSummaryRecord>;
   runtimeWarning?: string | null;
 }): AdminPlatformMarketingControl {
-  const { campaigns, couponMetadataByRegistryKey = new Map(), runtimeWarning = null } = params;
-  const couponLoad = buildMarketingCouponViewsSafe(campaigns, couponMetadataByRegistryKey);
+  const {
+    campaigns,
+    couponMetadataByRegistryKey = new Map(),
+    couponUsageSummariesByRegistryKey = new Map(),
+    runtimeWarning = null
+  } = params;
+  const couponLoad = buildMarketingCouponViewsSafe(
+    campaigns,
+    couponMetadataByRegistryKey,
+    couponUsageSummariesByRegistryKey
+  );
   const combinedWarning = runtimeWarning ?? couponLoad.warning ?? null;
 
   return {
@@ -6950,14 +6969,19 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
     couponMetadataByRegistryKey: new Map(
       MARKETING_REGISTRY_FALLBACK_ITEMS.map((item) => [item.registryKey, item.metadata])
     ),
+    couponUsageSummariesByRegistryKey: new Map(
+      MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+    ),
     runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
   });
 }
 
 export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformMarketingControl> {
-  const { listMarketingRegistryItemsReadOnlySafe, toMarketingRegistryCampaignView } = await import(
-    "@/src/lib/marketing/marketing-registry-runtime"
-  );
+  const {
+    listMarketingCouponUsageSummariesReadOnlySafe,
+    listMarketingRegistryItemsReadOnlySafe,
+    toMarketingRegistryCampaignView
+  } = await import("@/src/lib/marketing/marketing-registry-runtime");
   const { supabase } = await getAdminUsersBase();
   const monitoringEvents = await safeSelect(
     supabase,
@@ -6970,7 +6994,10 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   );
   const latestActionByCampaign = indexLatestMarketingPlatformActions(marketingEvents);
 
-  const registryLoad = await listMarketingRegistryItemsReadOnlySafe();
+  const [registryLoad, usageLoad] = await Promise.all([
+    listMarketingRegistryItemsReadOnlySafe(),
+    listMarketingCouponUsageSummariesReadOnlySafe()
+  ]);
   const campaigns = registryLoad.items.map((item) =>
     toMarketingRegistryCampaignView(
       item,
@@ -6981,11 +7008,13 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
       })
     )
   );
+  const runtimeWarning = [registryLoad.warning, usageLoad.warning].filter(Boolean).join(" ") || null;
 
   return buildAdminPlatformMarketingControl({
     campaigns,
     couponMetadataByRegistryKey: new Map(registryLoad.items.map((item) => [item.registryKey, item.metadata])),
-    runtimeWarning: registryLoad.warning
+    couponUsageSummariesByRegistryKey: indexMarketingCouponUsageSummariesByRegistryKey(usageLoad.summaries),
+    runtimeWarning
   });
 }
 
