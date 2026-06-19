@@ -4,10 +4,12 @@ import { getBillingPlan } from "@/lib/billing/plans";
 import { getAdminAccess } from "@/lib/admin-access";
 import {
   MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES,
+  MARKETING_COMMISSION_FALLBACK_SUMMARIES,
   MARKETING_COUPON_USAGE_FALLBACK_SUMMARIES,
   MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES,
   MARKETING_REGISTRY_FALLBACK_ITEMS,
   indexMarketingAffiliateTrackingSummariesByRegistryKey,
+  indexMarketingCommissionSummariesByRegistryKey,
   indexMarketingCouponUsageSummariesByRegistryKey,
   indexMarketingReferralTrackingSummariesByRegistryKey,
   toMarketingRegistryCampaignView
@@ -26,6 +28,7 @@ import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/m
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import type { MarketingAffiliateTrackingSummaryRecord } from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
+import type { MarketingCommissionSummaryRecord } from "@/src/lib/marketing/marketing-commission-runtime";
 import type { MarketingReferralTrackingSummaryRecord } from "@/src/lib/marketing/marketing-referral-tracking-runtime";
 import {
   internalTeamRoleMeta,
@@ -1804,8 +1807,18 @@ export type AdminPlatformMarketingControl = {
       | null;
     audienceLabel: string;
     code: string;
+    commissionBadgeTone: "amber" | "blue" | "green" | "red";
+    commissionDescription: string;
     commissionDisplay: string;
+    commissionEngineStatus: string;
+    commissionLabel: string;
+    commissionModelLabel: string;
+    commissionRateDisplay: string;
+    commissionReady: boolean;
+    commissionState: "commission_disabled" | "commission_ready" | "invalid" | "needs_review" | "unknown";
+    commissionSummary: string;
     description: string;
+    estimatedCommissionDisplay: string;
     lifecycleDescription: string;
     lifecycleLabel: string;
     lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
@@ -1848,8 +1861,18 @@ export type AdminPlatformMarketingControl = {
       | null;
     audienceLabel: string;
     code: string;
+    commissionBadgeTone: "amber" | "blue" | "green" | "red";
+    commissionDescription: string;
     commissionDisplay: string;
+    commissionEngineStatus: string;
+    commissionLabel: string;
+    commissionModelLabel: string;
+    commissionRateDisplay: string;
+    commissionReady: boolean;
+    commissionState: "commission_disabled" | "commission_ready" | "invalid" | "needs_review" | "unknown";
+    commissionSummary: string;
     description: string;
+    estimatedCommissionDisplay: string;
     lifecycleDescription: string;
     lifecycleLabel: string;
     lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
@@ -7146,6 +7169,7 @@ export async function getAdminMarketplaceControl(): Promise<AdminMarketplaceCont
 function buildAdminPlatformMarketingControl(params: {
   affiliateTrackingSummariesByRegistryKey?: Map<string, MarketingAffiliateTrackingSummaryRecord>;
   campaigns: AdminPlatformMarketingControl["campaigns"];
+  commissionSummariesByRegistryKey?: Map<string, MarketingCommissionSummaryRecord>;
   couponMetadataByRegistryKey?: Map<string, Record<string, unknown>>;
   couponUsageSummariesByRegistryKey?: Map<string, MarketingCouponUsageSummaryRecord>;
   referralTrackingSummariesByRegistryKey?: Map<string, MarketingReferralTrackingSummaryRecord>;
@@ -7154,6 +7178,7 @@ function buildAdminPlatformMarketingControl(params: {
   const {
     affiliateTrackingSummariesByRegistryKey = new Map(),
     campaigns,
+    commissionSummariesByRegistryKey = new Map(),
     couponMetadataByRegistryKey = new Map(),
     couponUsageSummariesByRegistryKey = new Map(),
     referralTrackingSummariesByRegistryKey = new Map(),
@@ -7169,12 +7194,14 @@ function buildAdminPlatformMarketingControl(params: {
   const referralLoad = buildMarketingReferralViewsSafe(
     campaigns,
     couponMetadataByRegistryKey,
-    referralTrackingSummariesByRegistryKey
+    referralTrackingSummariesByRegistryKey,
+    commissionSummariesByRegistryKey
   );
   const affiliateLoad = buildMarketingAffiliateViewsSafe(
     campaigns,
     couponMetadataByRegistryKey,
-    affiliateTrackingSummariesByRegistryKey
+    affiliateTrackingSummariesByRegistryKey,
+    commissionSummariesByRegistryKey
   );
   const combinedWarning =
     [
@@ -7247,6 +7274,9 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
     affiliateTrackingSummariesByRegistryKey: new Map(
       MARKETING_AFFILIATE_TRACKING_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
     ),
+    commissionSummariesByRegistryKey: new Map(
+      MARKETING_COMMISSION_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
+    ),
     runtimeWarning: "Marketing registry runtime unavailable. Showing fallback registry rows."
   });
 }
@@ -7254,6 +7284,7 @@ export function createFallbackAdminPlatformMarketingControl(): AdminPlatformMark
 export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformMarketingControl> {
   const {
     listMarketingAffiliateTrackingSummariesReadOnlySafe,
+    listMarketingCommissionSummariesReadOnlySafe,
     listMarketingCouponUsageSummariesReadOnlySafe,
     listMarketingReferralTrackingSummariesReadOnlySafe,
     listMarketingRegistryItemsReadOnlySafe,
@@ -7271,12 +7302,14 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   );
   const latestActionByCampaign = indexLatestMarketingPlatformActions(marketingEvents);
 
-  const [registryLoad, usageLoad, referralTrackingLoad, affiliateTrackingLoad] = await Promise.all([
-    listMarketingRegistryItemsReadOnlySafe(),
-    listMarketingCouponUsageSummariesReadOnlySafe(),
-    listMarketingReferralTrackingSummariesReadOnlySafe(),
-    listMarketingAffiliateTrackingSummariesReadOnlySafe()
-  ]);
+  const [registryLoad, usageLoad, referralTrackingLoad, affiliateTrackingLoad, commissionLoad] =
+    await Promise.all([
+      listMarketingRegistryItemsReadOnlySafe(),
+      listMarketingCouponUsageSummariesReadOnlySafe(),
+      listMarketingReferralTrackingSummariesReadOnlySafe(),
+      listMarketingAffiliateTrackingSummariesReadOnlySafe(),
+      listMarketingCommissionSummariesReadOnlySafe()
+    ]);
   const campaigns = registryLoad.items.map((item) =>
     toMarketingRegistryCampaignView(
       item,
@@ -7288,7 +7321,13 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
     )
   );
   const runtimeWarning =
-    [registryLoad.warning, usageLoad.warning, referralTrackingLoad.warning, affiliateTrackingLoad.warning]
+    [
+      registryLoad.warning,
+      usageLoad.warning,
+      referralTrackingLoad.warning,
+      affiliateTrackingLoad.warning,
+      commissionLoad.warning
+    ]
       .filter(Boolean)
       .join(" ") || null;
 
@@ -7297,6 +7336,9 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
       affiliateTrackingLoad.summaries
     ),
     campaigns,
+    commissionSummariesByRegistryKey: indexMarketingCommissionSummariesByRegistryKey(
+      commissionLoad.summaries
+    ),
     couponMetadataByRegistryKey: new Map(registryLoad.items.map((item) => [item.registryKey, item.metadata])),
     couponUsageSummariesByRegistryKey: indexMarketingCouponUsageSummariesByRegistryKey(usageLoad.summaries),
     referralTrackingSummariesByRegistryKey: indexMarketingReferralTrackingSummariesByRegistryKey(

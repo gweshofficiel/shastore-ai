@@ -9,6 +9,12 @@ import {
   getMarketingLifecycleLabel,
   type MarketingLifecycleActionDefinition
 } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
+import {
+  MARKETING_COMMISSION_FALLBACK_SUMMARIES,
+  resolveMarketingCommissionViewSafe,
+  type MarketingCommissionSummaryRecord,
+  type MarketingCommissionView
+} from "@/src/lib/marketing/marketing-commission-runtime";
 import type { MarketingRegistryItemRecord } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
   MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES,
@@ -70,7 +76,8 @@ export type MarketingReferralView = {
   trackingStatus: string;
   usageCount: number;
 } & MarketingAudienceView &
-  MarketingReferralTrackingView;
+  MarketingReferralTrackingView &
+  MarketingCommissionView;
 
 export const MARKETING_REFERRAL_PROGRAM_TYPES: readonly MarketingReferralProgramType[] = [
   "owner_invite",
@@ -167,8 +174,45 @@ function buildMetadataSummary(metadata: Record<string, unknown>) {
   return summary;
 }
 
+function attachMarketingReferralCommissionLayer(
+  view: Omit<MarketingReferralView, keyof MarketingCommissionView> &
+    Partial<MarketingCommissionView> &
+    MarketingAudienceView &
+    MarketingReferralTrackingView,
+  params: {
+    commissionSummaryRecord?: MarketingCommissionSummaryRecord | null;
+  }
+): MarketingReferralView {
+  const commission = resolveMarketingCommissionViewSafe({
+    code: view.code,
+    commissionSummaryRecord: params.commissionSummaryRecord,
+    exists: true,
+    lifecycleState: view.lifecycleState,
+    marketingType: "referral",
+    metadata: undefined,
+    metadataSummary: view.metadataSummary,
+    registryKey: view.registryKey,
+    revenueImpact: view.revenueImpact,
+    slug: view.slug,
+    status: view.status,
+    trackedConversionsCount: view.trackedConversionsCount,
+    trackingReady: view.trackingReady,
+    trackingState: view.trackingState,
+    usageCount: view.usageCount
+  });
+
+  return {
+    ...view,
+    ...commission,
+    commissionDisplay: commission.estimatedCommissionDisplay
+  };
+}
+
 function attachMarketingReferralTrackingLayer(
-  view: Omit<MarketingReferralView, keyof MarketingReferralTrackingView> &
+  view: Omit<
+    MarketingReferralView,
+    keyof MarketingReferralTrackingView | keyof MarketingCommissionView
+  > &
     Partial<MarketingReferralTrackingView> &
     MarketingAudienceView,
   params: {
@@ -178,7 +222,9 @@ function attachMarketingReferralTrackingLayer(
     metadata?: Record<string, unknown>;
     trackingSummaryRecord?: MarketingReferralTrackingSummaryRecord | null;
   }
-): MarketingReferralView {
+): Omit<MarketingReferralView, keyof MarketingCommissionView> &
+  MarketingAudienceView &
+  MarketingReferralTrackingView {
   const tracking = resolveMarketingReferralTrackingViewSafe({
     code: view.code,
     exists: params.exists,
@@ -201,14 +247,21 @@ function attachMarketingReferralTrackingLayer(
 }
 
 function attachMarketingReferralAudience(
-  view: Omit<MarketingReferralView, keyof MarketingAudienceView | keyof MarketingReferralTrackingView> &
+  view: Omit<
+    MarketingReferralView,
+    keyof MarketingAudienceView | keyof MarketingReferralTrackingView | keyof MarketingCommissionView
+  > &
     Partial<MarketingAudienceView>,
   params: {
     metadata?: Record<string, unknown>;
     registryKey: string;
     targetAudience: string;
   }
-): Omit<MarketingReferralView, keyof MarketingReferralTrackingView> & MarketingAudienceView {
+): Omit<
+  MarketingReferralView,
+  keyof MarketingReferralTrackingView | keyof MarketingCommissionView
+> &
+  MarketingAudienceView {
   const audience = resolveMarketingAudienceView({
     marketingType: "referral",
     metadata: params.metadata,
@@ -228,7 +281,8 @@ function toMarketingReferralViewFromCampaign(
     metadata?: Record<string, unknown>;
     slug?: string;
   },
-  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map()
+  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map(),
+  commissionSummariesByRegistryKey: Map<string, MarketingCommissionSummaryRecord> = new Map()
 ): MarketingReferralView | null {
   if (campaign.type !== "referral") {
     return null;
@@ -248,48 +302,53 @@ function toMarketingReferralViewFromCampaign(
     metadataValue(metadata, ["referral_program_type", "program_type"]) || mapped?.referralProgramType
   );
 
-  return attachMarketingReferralTrackingLayer(
-    attachMarketingReferralAudience(
+  return attachMarketingReferralCommissionLayer(
+    attachMarketingReferralTrackingLayer(
+      attachMarketingReferralAudience(
+        {
+          code: buildReferralDisplayCode({ metadata, registryKey, slug }),
+          commissionDisplay: "0.00 placeholder",
+          description,
+          lifecycleDescription:
+            campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+          lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+          lifecycleState,
+          metadataSummary: buildMetadataSummary(metadata),
+          name: sanitizeReferralDisplayValue(campaign.name, "Marketing referral program"),
+          payoutStatus: "No payout system connected",
+          referralDescription: description,
+          referralLabel: "Platform referral program",
+          referralProgramType,
+          registryKey,
+          revenueImpact: Math.max(0, campaign.revenueImpact),
+          slug,
+          status,
+          statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+          statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+          statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+          targetAudienceSummary: sanitizeReferralDisplayValue(
+            campaign.targetAudienceSummary,
+            campaign.audienceLabel || "Audience summary unavailable."
+          ),
+          trackingStatus: "No referral tracking connected",
+          usageCount: Math.max(0, Math.trunc(campaign.usage))
+        },
+        {
+          metadata,
+          registryKey,
+          targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+        }
+      ),
       {
-        code: buildReferralDisplayCode({ metadata, registryKey, slug }),
-        commissionDisplay: "0.00 placeholder",
-        description,
-        lifecycleDescription:
-          campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-        lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+        exists: true,
         lifecycleState,
-        metadataSummary: buildMetadataSummary(metadata),
-        name: sanitizeReferralDisplayValue(campaign.name, "Marketing referral program"),
-        payoutStatus: "No payout system connected",
-        referralDescription: description,
-        referralLabel: "Platform referral program",
-        referralProgramType,
-        registryKey,
-        revenueImpact: Math.max(0, campaign.revenueImpact),
-        slug,
-        status,
-        statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-        statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-        statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-        targetAudienceSummary: sanitizeReferralDisplayValue(
-          campaign.targetAudienceSummary,
-          campaign.audienceLabel || "Audience summary unavailable."
-        ),
-        trackingStatus: "No referral tracking connected",
-        usageCount: Math.max(0, Math.trunc(campaign.usage))
-      },
-      {
+        marketingType: "referral",
         metadata,
-        registryKey,
-        targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+        trackingSummaryRecord: trackingSummariesByRegistryKey.get(registryKey) ?? null
       }
     ),
     {
-      exists: true,
-      lifecycleState,
-      marketingType: "referral",
-      metadata,
-      trackingSummaryRecord: trackingSummariesByRegistryKey.get(registryKey) ?? null
+      commissionSummaryRecord: commissionSummariesByRegistryKey.get(registryKey) ?? null
     }
   );
 }
@@ -297,7 +356,8 @@ function toMarketingReferralViewFromCampaign(
 function toMarketingReferralViewFromRegistryItem(
   item: MarketingRegistryItemRecord,
   statusOverride?: MarketingStatus,
-  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map()
+  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map(),
+  commissionSummariesByRegistryKey: Map<string, MarketingCommissionSummaryRecord> = new Map()
 ): MarketingReferralView | null {
   if (item.marketingType !== "referral") {
     return null;
@@ -324,16 +384,23 @@ function toMarketingReferralViewFromRegistryItem(
       typeDescription: "Platform referral program foundation.",
       usage: item.usageCount
     },
-    trackingSummariesByRegistryKey
+    trackingSummariesByRegistryKey,
+    commissionSummariesByRegistryKey
   );
 }
 
 const fallbackTrackingSummariesByRegistryKey = new Map(
   MARKETING_REFERRAL_TRACKING_FALLBACK_SUMMARIES.map((summary) => [summary.registryKey, summary])
 );
+const fallbackCommissionSummariesByRegistryKey = new Map(
+  MARKETING_COMMISSION_FALLBACK_SUMMARIES.filter((summary) => summary.marketingType === "referral").map(
+    (summary) => [summary.registryKey, summary]
+  )
+);
 
 export const MARKETING_REFERRAL_FALLBACK_VIEWS: readonly MarketingReferralView[] = [
-  attachMarketingReferralTrackingLayer(
+  attachMarketingReferralCommissionLayer(
+    attachMarketingReferralTrackingLayer(
     attachMarketingReferralAudience(
       {
         code: "REF-OWNER-INVITE",
@@ -372,13 +439,18 @@ export const MARKETING_REFERRAL_FALLBACK_VIEWS: readonly MarketingReferralView[]
       metadata: { section: "Referral program", source: "marketing_registry_fallback" },
       trackingSummaryRecord: fallbackTrackingSummariesByRegistryKey.get("referral:owner-invite") ?? null
     }
+    ),
+    {
+      commissionSummaryRecord: fallbackCommissionSummariesByRegistryKey.get("referral:owner-invite") ?? null
+    }
   )
 ];
 
 export function buildMarketingReferralViewsFromCampaigns(
   campaigns: MarketingReferralCampaignSource[],
   metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
-  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map()
+  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map(),
+  commissionSummariesByRegistryKey: Map<string, MarketingCommissionSummaryRecord> = new Map()
 ): MarketingReferralView[] {
   const views: MarketingReferralView[] = [];
 
@@ -392,7 +464,8 @@ export function buildMarketingReferralViewsFromCampaigns(
         metadata: metadataByRegistryKey.get(campaign.id),
         slug: campaign.id.split(":").pop()
       },
-      trackingSummariesByRegistryKey
+      trackingSummariesByRegistryKey,
+      commissionSummariesByRegistryKey
     );
 
     if (referralView) {
@@ -410,7 +483,8 @@ export function buildMarketingReferralViewsFromCampaigns(
 export function buildMarketingReferralViewsFromRegistryItems(
   items: MarketingRegistryItemRecord[],
   statusByRegistryKey: Map<string, MarketingStatus> = new Map(),
-  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map()
+  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map(),
+  commissionSummariesByRegistryKey: Map<string, MarketingCommissionSummaryRecord> = new Map()
 ): MarketingReferralView[] {
   const views: MarketingReferralView[] = [];
 
@@ -418,7 +492,8 @@ export function buildMarketingReferralViewsFromRegistryItems(
     const referralView = toMarketingReferralViewFromRegistryItem(
       item,
       statusByRegistryKey.get(item.registryKey) ?? item.status,
-      trackingSummariesByRegistryKey
+      trackingSummariesByRegistryKey,
+      commissionSummariesByRegistryKey
     );
 
     if (referralView) {
@@ -436,14 +511,16 @@ export function buildMarketingReferralViewsFromRegistryItems(
 export function buildMarketingReferralViewsSafe(
   campaigns: MarketingReferralCampaignSource[],
   metadataByRegistryKey: Map<string, Record<string, unknown>> = new Map(),
-  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map()
+  trackingSummariesByRegistryKey: Map<string, MarketingReferralTrackingSummaryRecord> = new Map(),
+  commissionSummariesByRegistryKey: Map<string, MarketingCommissionSummaryRecord> = new Map()
 ): { referrals: MarketingReferralView[]; warning: string | null } {
   try {
     return {
       referrals: buildMarketingReferralViewsFromCampaigns(
         campaigns,
         metadataByRegistryKey,
-        trackingSummariesByRegistryKey
+        trackingSummariesByRegistryKey,
+        commissionSummariesByRegistryKey
       ),
       warning: null
     };

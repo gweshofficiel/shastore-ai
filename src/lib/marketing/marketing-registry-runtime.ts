@@ -596,6 +596,41 @@ export {
   resolveMarketingAffiliateTrackingViewSafe
 } from "@/src/lib/marketing/marketing-affiliate-tracking-runtime";
 export type {
+  MarketingCommissionInput,
+  MarketingCommissionIssue,
+  MarketingCommissionIssueSeverity,
+  MarketingCommissionState,
+  MarketingCommissionSummaryRecord,
+  MarketingCommissionSummaryStatus,
+  MarketingCommissionSource,
+  MarketingCommissionView
+} from "@/src/lib/marketing/marketing-commission-runtime";
+export {
+  getMarketingCommissionBadgeTone,
+  getMarketingCommissionDescription,
+  getMarketingCommissionLabel,
+  indexMarketingCommissionSummariesByRegistryKey,
+  isMarketingCommissionReady,
+  isValidMarketingCommissionState,
+  isValidMarketingCommissionSummaryStatus,
+  listMarketingCommissionIssues,
+  listMarketingCommissionSummariesReadOnly,
+  listMarketingCommissionSummariesReadOnlySafe,
+  MARKETING_COMMISSION_FALLBACK_SUMMARIES,
+  MARKETING_COMMISSION_STATES,
+  MARKETING_COMMISSION_SUMMARY_STATUSES,
+  parseMarketingCommissionSummary,
+  parseMarketingCommissionSummaryStatus,
+  resolveMarketingCommissionEstimatedDisplay,
+  resolveMarketingCommissionModelLabel,
+  resolveMarketingCommissionRateDisplay,
+  resolveMarketingCommissionState,
+  resolveMarketingCommissionSummaryText,
+  resolveMarketingCommissionTrackedConversions,
+  resolveMarketingCommissionView,
+  resolveMarketingCommissionViewSafe
+} from "@/src/lib/marketing/marketing-commission-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView

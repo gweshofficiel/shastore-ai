@@ -378,7 +378,13 @@ export default async function AdminMarketingPage() {
                 {getMarketingReferralProgramTypeLabel(referral.referralProgramType)}
               </AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{referral.referralLabel}</p>
-              <p className="mt-1 text-xs text-slate-600">{referral.commissionDisplay}</p>
+              <AdminBadge tone={referral.commissionBadgeTone}>{referral.commissionLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{referral.commissionDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{referral.commissionModelLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">Rate {referral.commissionRateDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">Estimated {referral.estimatedCommissionDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">{referral.commissionEngineStatus}</p>
+              <p className="mt-1 text-xs text-slate-500">{referral.commissionSummary}</p>
               <p className="mt-1 text-xs text-slate-600">{referral.payoutStatus}</p>
             </td>
             <td className="px-5 py-4">
@@ -429,7 +435,13 @@ export default async function AdminMarketingPage() {
                 {getMarketingAffiliateProgramTypeLabel(affiliate.affiliateProgramType)}
               </AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.affiliateLabel}</p>
-              <p className="mt-1 text-xs text-slate-600">{affiliate.commissionDisplay}</p>
+              <AdminBadge tone={affiliate.commissionBadgeTone}>{affiliate.commissionLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.commissionDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{affiliate.commissionModelLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">Rate {affiliate.commissionRateDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">Estimated {affiliate.estimatedCommissionDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">{affiliate.commissionEngineStatus}</p>
+              <p className="mt-1 text-xs text-slate-500">{affiliate.commissionSummary}</p>
               <p className="mt-1 text-xs text-slate-600">{affiliate.payoutStatus}</p>
             </td>
             <td className="px-5 py-4">
