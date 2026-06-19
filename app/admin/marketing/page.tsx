@@ -25,6 +25,10 @@ import {
   getMarketingReferralProgramTypeLabel
 } from "@/src/lib/marketing/marketing-referral-runtime";
 import {
+  getMarketingAffiliateBadgeTone,
+  getMarketingAffiliateProgramTypeLabel
+} from "@/src/lib/marketing/marketing-affiliate-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
 } from "@/src/lib/marketing/marketing-status-runtime";
@@ -405,6 +409,48 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={referral.statusBadgeTone}>{referral.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{referral.statusDescription}</p>
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Affiliate", "Program", "Audience", "Usage", "Lifecycle", "Tracking", "Status"]}>
+        {control.affiliates.map((affiliate) => (
+          <tr key={affiliate.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{affiliate.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.code}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.slug}</p>
+              <p className="mt-1 text-xs text-slate-500">{affiliate.affiliateDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{affiliate.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingAffiliateBadgeTone(affiliate.affiliateProgramType)}>
+                {getMarketingAffiliateProgramTypeLabel(affiliate.affiliateProgramType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.affiliateLabel}</p>
+              <p className="mt-1 text-xs text-slate-600">{affiliate.commissionDisplay}</p>
+              <p className="mt-1 text-xs text-slate-600">{affiliate.payoutStatus}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={affiliate.audienceBadgeTone}>{affiliate.audienceLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.audienceDescription}</p>
+              <p className="mt-1 text-sm text-slate-600">{affiliate.targetAudienceSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{affiliate.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {formatAdminMoney(affiliate.revenueImpact)} placeholder impact
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">{affiliate.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{affiliate.lifecycleDescription}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{affiliate.trackingStatus}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={affiliate.statusBadgeTone}>{affiliate.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{affiliate.statusDescription}</p>
             </td>
           </tr>
         ))}

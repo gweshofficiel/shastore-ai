@@ -18,6 +18,7 @@ import {
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
+import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
 import { buildMarketingReferralViewsSafe } from "@/src/lib/marketing/marketing-referral-runtime";
 import { buildMarketingPromotionMetricsSummarySafe } from "@/src/lib/marketing/marketing-promotion-metrics-runtime";
 import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
@@ -1781,6 +1782,43 @@ export type AdminPlatformMarketingControl = {
     referrer: string;
     status: "active" | "archived" | "draft" | "expired" | "paused";
     type: "affiliate" | "referral";
+  }>;
+  affiliates: Array<{
+    affiliateDescription: string;
+    affiliateLabel: string;
+    affiliateProgramType: "agency_partner" | "creator_partner" | "platform_partner";
+    audienceBadgeTone: "amber" | "blue" | "green" | "red";
+    audienceDescription: string;
+    audienceKey:
+      | "admins"
+      | "affiliates"
+      | "all_users"
+      | "creators"
+      | "existing_users"
+      | "new_users"
+      | "resellers"
+      | "store_owners"
+      | null;
+    audienceLabel: string;
+    code: string;
+    commissionDisplay: string;
+    description: string;
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
+    metadataSummary: string;
+    name: string;
+    payoutStatus: string;
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    trackingStatus: string;
+    usageCount: number;
   }>;
   referrals: Array<{
     audienceBadgeTone: "amber" | "blue" | "green" | "red";
@@ -7118,8 +7156,16 @@ function buildAdminPlatformMarketingControl(params: {
     couponMetadataByRegistryKey,
     referralTrackingSummariesByRegistryKey
   );
+  const affiliateLoad = buildMarketingAffiliateViewsSafe(campaigns, couponMetadataByRegistryKey);
   const combinedWarning =
-    [runtimeWarning, couponLoad.warning, promotionLoad.warning, giftCodeLoad.warning, referralLoad.warning]
+    [
+      runtimeWarning,
+      couponLoad.warning,
+      promotionLoad.warning,
+      giftCodeLoad.warning,
+      referralLoad.warning,
+      affiliateLoad.warning
+    ]
       .filter(Boolean)
       .join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
@@ -7132,6 +7178,7 @@ function buildAdminPlatformMarketingControl(params: {
     giftCodes: giftCodeLoad.giftCodes,
     promotionMetrics,
     promotions: promotionLoad.promotions,
+    affiliates: affiliateLoad.affiliates,
     referrals: referralLoad.referrals,
     futureHooks: [
       "Platform coupon redemption",
@@ -7151,14 +7198,14 @@ function buildAdminPlatformMarketingControl(params: {
         status: referral.status,
         type: "referral" as const
       })),
-      {
+      ...affiliateLoad.affiliates.map((affiliate) => ({
         commission: 0,
-        payoutStatus: "Placeholder only",
-        referredUsers: 0,
-        referrer: "Creator Affiliate Foundation",
-        status: campaigns.find((campaign) => campaign.id === "affiliate:creator-partners")?.status ?? "draft",
+        payoutStatus: affiliate.payoutStatus,
+        referredUsers: affiliate.usageCount,
+        referrer: affiliate.name,
+        status: affiliate.status,
         type: "affiliate" as const
-      }
+      }))
     ],
     runtimeWarning: combinedWarning
   };

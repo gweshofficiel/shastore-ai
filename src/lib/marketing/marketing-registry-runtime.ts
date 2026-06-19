@@ -552,6 +552,19 @@ export {
   resolveMarketingReferralTrackingViewSafe
 } from "@/src/lib/marketing/marketing-referral-tracking-runtime";
 export type {
+  MarketingAffiliateProgramType,
+  MarketingAffiliateView
+} from "@/src/lib/marketing/marketing-affiliate-runtime";
+export {
+  buildMarketingAffiliateViewsFromCampaigns,
+  buildMarketingAffiliateViewsFromRegistryItems,
+  buildMarketingAffiliateViewsSafe,
+  getMarketingAffiliateBadgeTone,
+  getMarketingAffiliateProgramTypeLabel,
+  MARKETING_AFFILIATE_FALLBACK_VIEWS,
+  MARKETING_AFFILIATE_PROGRAM_TYPES
+} from "@/src/lib/marketing/marketing-affiliate-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView
