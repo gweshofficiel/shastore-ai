@@ -444,6 +444,19 @@ export {
   MARKETING_COUPON_FALLBACK_VIEWS
 } from "@/src/lib/marketing/marketing-coupon-runtime";
 export type {
+  MarketingPromotionIncentiveType,
+  MarketingPromotionView
+} from "@/src/lib/marketing/marketing-promotion-runtime";
+export {
+  buildMarketingPromotionViewsFromCampaigns,
+  buildMarketingPromotionViewsFromRegistryItems,
+  buildMarketingPromotionViewsSafe,
+  getMarketingPromotionBadgeTone,
+  getMarketingPromotionIncentiveTypeLabel,
+  MARKETING_PROMOTION_FALLBACK_VIEWS,
+  MARKETING_PROMOTION_INCENTIVE_TYPES
+} from "@/src/lib/marketing/marketing-promotion-runtime";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

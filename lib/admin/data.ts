@@ -15,6 +15,7 @@ import {
 } from "@/src/lib/marketing/marketing-status-runtime";
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
+import { buildMarketingPromotionViewsSafe } from "@/src/lib/marketing/marketing-promotion-runtime";
 import type { MarketingCouponUsageSummaryRecord } from "@/src/lib/marketing/marketing-coupon-usage-runtime";
 import {
   internalTeamRoleMeta,
@@ -1612,6 +1613,28 @@ export type AdminPlatformMarketingControl = {
     usageTrackingLabel: string;
     usageTrackingSource: "fallback" | "registry" | "summary_table";
     usageTrackingState: "placeholder" | "tracked" | "unknown" | "untracked";
+  }>;
+  promotions: Array<{
+    description: string;
+    incentiveLabel: string;
+    incentiveType: "fixed" | "percentage" | "plan_credit" | "upgrade_offer";
+    lifecycleDescription: string;
+    lifecycleLabel: string;
+    lifecycleState: "active" | "archived" | "draft" | "expired" | "paused";
+    metadataSummary: string;
+    name: string;
+    planScope: string;
+    promotionDescription: string;
+    promotionLabel: string;
+    registryKey: string;
+    revenueImpact: number;
+    slug: string;
+    status: "active" | "archived" | "draft" | "expired" | "paused";
+    statusBadgeTone: "amber" | "blue" | "green" | "red";
+    statusDescription: string;
+    statusLabel: string;
+    targetAudienceSummary: string;
+    usageCount: number;
   }>;
   futureHooks: string[];
   giftCodes: Array<{
@@ -6931,13 +6954,16 @@ function buildAdminPlatformMarketingControl(params: {
     couponMetadataByRegistryKey,
     couponUsageSummariesByRegistryKey
   );
-  const combinedWarning = runtimeWarning ?? couponLoad.warning ?? null;
+  const promotionLoad = buildMarketingPromotionViewsSafe(campaigns, couponMetadataByRegistryKey);
+  const combinedWarning =
+    [runtimeWarning, couponLoad.warning, promotionLoad.warning].filter(Boolean).join(" ") || null;
   const couponAnalytics = buildMarketingCouponAnalyticsSummarySafe(couponLoad.coupons);
 
   return {
     campaigns,
     couponAnalytics,
     coupons: couponLoad.coupons,
+    promotions: promotionLoad.promotions,
     futureHooks: [
       "Platform coupon redemption",
       "Plan discount application",

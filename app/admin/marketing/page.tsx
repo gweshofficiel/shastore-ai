@@ -14,6 +14,10 @@ import {
   getMarketingCouponDiscountTypeLabel
 } from "@/src/lib/marketing/marketing-coupon-runtime";
 import {
+  getMarketingPromotionBadgeTone,
+  getMarketingPromotionIncentiveTypeLabel
+} from "@/src/lib/marketing/marketing-promotion-runtime";
+import {
   getMarketingStatusBadgeTone,
   getMarketingStatusLabel
 } from "@/src/lib/marketing/marketing-status-runtime";
@@ -179,6 +183,44 @@ export default async function AdminMarketingPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminMoney(campaign.revenueImpact)} placeholder</td>
             <td className="px-5 py-4">
               <MarketingCampaignSafeActions campaign={campaign} />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        headers={["Promotion", "Incentive", "Plan scope", "Audience", "Usage", "Lifecycle", "Status"]}
+      >
+        {control.promotions.map((promotion) => (
+          <tr key={promotion.registryKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{promotion.name}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.slug}</p>
+              <p className="mt-1 text-xs text-slate-500">{promotion.promotionDescription}</p>
+              <p className="mt-1 text-xs text-slate-500">{promotion.metadataSummary}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getMarketingPromotionBadgeTone(promotion.incentiveType)}>
+                {getMarketingPromotionIncentiveTypeLabel(promotion.incentiveType)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.incentiveLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.promotionLabel}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{promotion.planScope}</td>
+            <td className="px-5 py-4 text-slate-600">{promotion.targetAudienceSummary}</td>
+            <td className="px-5 py-4">
+              <p className="font-semibold text-slate-950">{promotion.usageCount}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {formatAdminMoney(promotion.revenueImpact)} placeholder impact
+              </p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">{promotion.lifecycleLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">{promotion.lifecycleDescription}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={promotion.statusBadgeTone}>{promotion.statusLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{promotion.statusDescription}</p>
             </td>
           </tr>
         ))}
