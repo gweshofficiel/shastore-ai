@@ -337,7 +337,11 @@ export default async function AdminMarketingPage() {
               <p className="text-xs font-semibold text-slate-500">{giftCode.lifecycleLabel}</p>
               <p className="mt-1 text-xs text-slate-500">{giftCode.lifecycleDescription}</p>
             </td>
-            <td className="px-5 py-4 text-slate-600">{giftCode.redemptionStatus}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={giftCode.redemptionBadgeTone}>{giftCode.redemptionLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.redemptionDescription}</p>
+              <p className="mt-1 text-xs text-slate-600">{giftCode.redemptionEngineStatus}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={giftCode.statusBadgeTone}>{giftCode.statusLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{giftCode.statusDescription}</p>

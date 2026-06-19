@@ -1688,6 +1688,19 @@ export type AdminPlatformMarketingControl = {
     metadataSummary: string;
     name: string;
     planCredit: string;
+    redemptionBadgeTone: "amber" | "blue" | "green" | "red";
+    redemptionDescription: string;
+    redemptionEngineStatus: string;
+    redemptionLabel: string;
+    redemptionReady: boolean;
+    redemptionState:
+      | "already_used"
+      | "expired"
+      | "needs_review"
+      | "not_redeemable"
+      | "paused"
+      | "redeemable"
+      | "unknown";
     redemptionStatus: string;
     registryKey: string;
     revenueImpact: number;

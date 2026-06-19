@@ -470,6 +470,25 @@ export {
   MARKETING_GIFT_CODE_FALLBACK_VIEWS
 } from "@/src/lib/marketing/marketing-gift-code-runtime";
 export type {
+  MarketingGiftCodeRedemptionInput,
+  MarketingGiftCodeRedemptionIssue,
+  MarketingGiftCodeRedemptionIssueSeverity,
+  MarketingGiftCodeRedemptionState,
+  MarketingGiftCodeRedemptionView
+} from "@/src/lib/marketing/marketing-gift-code-redemption-runtime";
+export {
+  getMarketingGiftCodeRedemptionBadgeTone,
+  getMarketingGiftCodeRedemptionDescription,
+  getMarketingGiftCodeRedemptionLabel,
+  isMarketingGiftCodeRedemptionReady,
+  isValidMarketingGiftCodeRedemptionState,
+  listMarketingGiftCodeRedemptionIssues,
+  MARKETING_GIFT_CODE_REDEMPTION_STATES,
+  resolveMarketingGiftCodeRedemptionState,
+  resolveMarketingGiftCodeRedemptionView,
+  resolveMarketingGiftCodeRedemptionViewSafe
+} from "@/src/lib/marketing/marketing-gift-code-redemption-runtime";
+export type {
   MarketingPromotionScheduleState,
   MarketingPromotionSchedulingInput,
   MarketingPromotionSchedulingView

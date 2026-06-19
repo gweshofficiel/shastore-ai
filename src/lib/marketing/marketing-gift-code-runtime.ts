@@ -9,6 +9,10 @@ import {
   getMarketingLifecycleLabel,
   type MarketingLifecycleActionDefinition
 } from "@/src/lib/marketing/marketing-campaign-lifecycle-runtime";
+import {
+  resolveMarketingGiftCodeRedemptionViewSafe,
+  type MarketingGiftCodeRedemptionView
+} from "@/src/lib/marketing/marketing-gift-code-redemption-runtime";
 import type { MarketingRegistryItemRecord } from "@/src/lib/marketing/marketing-registry-runtime";
 import {
   getMarketingStatusBadgeTone,
@@ -63,7 +67,8 @@ export type MarketingGiftCodeView = {
   statusLabel: string;
   targetAudienceSummary: string;
   usageCount: number;
-} & MarketingAudienceView;
+} & MarketingAudienceView &
+  MarketingGiftCodeRedemptionView;
 
 export const MARKETING_GIFT_CODE_CREDIT_TYPES: readonly MarketingGiftCodeCreditType[] = [
   "subscription_credit",
@@ -168,14 +173,47 @@ function buildMetadataSummary(metadata: Record<string, unknown>) {
   return summary;
 }
 
+function attachMarketingGiftCodeRedemptionLayer(
+  view: Omit<MarketingGiftCodeView, keyof MarketingGiftCodeRedemptionView> &
+    Partial<MarketingGiftCodeRedemptionView> &
+    MarketingAudienceView,
+  params: {
+    exists?: boolean;
+    lifecycleState?: MarketingStatus;
+    marketingType: MarketingType;
+    metadata?: Record<string, unknown>;
+  }
+): MarketingGiftCodeView {
+  const redemption = resolveMarketingGiftCodeRedemptionViewSafe({
+    code: view.code,
+    creditAmount: view.creditAmount,
+    exists: params.exists,
+    lifecycleState: params.lifecycleState ?? view.lifecycleState,
+    marketingType: params.marketingType,
+    metadata: params.metadata,
+    registryKey: view.registryKey,
+    slug: view.slug,
+    status: view.status,
+    targetAudienceSummary: view.targetAudienceSummary,
+    usageCount: view.usageCount
+  });
+
+  return {
+    ...view,
+    ...redemption,
+    redemptionStatus: redemption.redemptionEngineStatus
+  };
+}
+
 function attachMarketingGiftCodeAudience(
-  view: Omit<MarketingGiftCodeView, keyof MarketingAudienceView> & Partial<MarketingAudienceView>,
+  view: Omit<MarketingGiftCodeView, keyof MarketingAudienceView | keyof MarketingGiftCodeRedemptionView> &
+    Partial<MarketingAudienceView>,
   params: {
     metadata?: Record<string, unknown>;
     registryKey: string;
     targetAudience: string;
   }
-): MarketingGiftCodeView {
+): Omit<MarketingGiftCodeView, keyof MarketingGiftCodeRedemptionView> & MarketingAudienceView {
   const audience = resolveMarketingAudienceView({
     marketingType: "gift_code",
     metadata: params.metadata,
@@ -214,44 +252,52 @@ function toMarketingGiftCodeViewFromCampaign(
     metadataValue(metadata, ["credit_amount", "amount"]) || (mapped?.creditAmount ?? campaign.revenueImpact)
   );
 
-  return attachMarketingGiftCodeAudience(
+  return attachMarketingGiftCodeRedemptionLayer(
+    attachMarketingGiftCodeAudience(
+      {
+        code: buildGiftCodeDisplayCode({ metadata, registryKey, slug }),
+        creditAmount,
+        creditType: parseMarketingGiftCodeCreditType(
+          metadataValue(metadata, ["credit_type", "gift_code_credit_type"]) || mapped?.creditType
+        ),
+        description,
+        giftCodeDescription: description,
+        giftCodeLabel: "Platform gift code",
+        lifecycleDescription:
+          campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
+        lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+        lifecycleState,
+        metadataSummary: buildMetadataSummary(metadata),
+        name: sanitizeGiftCodeDisplayValue(campaign.name, "Marketing gift code"),
+        planCredit: sanitizeGiftCodeDisplayValue(
+          metadataValue(metadata, ["plan_credit", "credit_label", "credit_description"]),
+          mapped?.planCredit ?? "Platform credit placeholder"
+        ),
+        redemptionStatus: "No redemption engine connected",
+        registryKey,
+        revenueImpact: Math.max(0, campaign.revenueImpact),
+        slug,
+        status,
+        statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
+        statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
+        statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
+        targetAudienceSummary: sanitizeGiftCodeDisplayValue(
+          campaign.targetAudienceSummary,
+          campaign.audienceLabel || "Audience summary unavailable."
+        ),
+        usageCount: Math.max(0, Math.trunc(campaign.usage))
+      },
+      {
+        metadata,
+        registryKey,
+        targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+      }
+    ),
     {
-      code: buildGiftCodeDisplayCode({ metadata, registryKey, slug }),
-      creditAmount,
-      creditType: parseMarketingGiftCodeCreditType(
-        metadataValue(metadata, ["credit_type", "gift_code_credit_type"]) || mapped?.creditType
-      ),
-      description,
-      giftCodeDescription: description,
-      giftCodeLabel: "Platform gift code",
-      lifecycleDescription:
-        campaign.lifecycleDescription ?? getMarketingLifecycleDescription(lifecycleState),
-      lifecycleLabel: campaign.lifecycleLabel ?? getMarketingLifecycleLabel(lifecycleState),
+      exists: true,
       lifecycleState,
-      metadataSummary: buildMetadataSummary(metadata),
-      name: sanitizeGiftCodeDisplayValue(campaign.name, "Marketing gift code"),
-      planCredit: sanitizeGiftCodeDisplayValue(
-        metadataValue(metadata, ["plan_credit", "credit_label", "credit_description"]),
-        mapped?.planCredit ?? "Platform credit placeholder"
-      ),
-      redemptionStatus: "No redemption engine connected",
-      registryKey,
-      revenueImpact: Math.max(0, campaign.revenueImpact),
-      slug,
-      status,
-      statusBadgeTone: campaign.statusBadgeTone ?? getMarketingStatusBadgeTone(status),
-      statusDescription: campaign.statusDescription ?? getMarketingStatusDescription(status),
-      statusLabel: campaign.statusLabel ?? getMarketingStatusLabel(status),
-      targetAudienceSummary: sanitizeGiftCodeDisplayValue(
-        campaign.targetAudienceSummary,
-        campaign.audienceLabel || "Audience summary unavailable."
-      ),
-      usageCount: Math.max(0, Math.trunc(campaign.usage))
-    },
-    {
-      metadata,
-      registryKey,
-      targetAudience: campaign.targetAudienceSummary || campaign.audienceLabel || ""
+      marketingType: "gift_code",
+      metadata
     }
   );
 }
@@ -287,35 +333,43 @@ function toMarketingGiftCodeViewFromRegistryItem(
 }
 
 export const MARKETING_GIFT_CODE_FALLBACK_VIEWS: readonly MarketingGiftCodeView[] = [
-  attachMarketingGiftCodeAudience(
+  attachMarketingGiftCodeRedemptionLayer(
+    attachMarketingGiftCodeAudience(
+      {
+        code: "GIFT-LAUNCH-CREDIT",
+        creditAmount: 0,
+        creditType: "subscription_credit",
+        description: "Gift code foundation for launch credit distribution.",
+        giftCodeDescription: "Gift code foundation for launch credit distribution.",
+        giftCodeLabel: "Platform gift code",
+        lifecycleDescription: getMarketingLifecycleDescription("draft"),
+        lifecycleLabel: getMarketingLifecycleLabel("draft"),
+        lifecycleState: "draft",
+        metadataSummary: "Foundation gift code display only. No redemption or credit granting.",
+        name: "Launch Credit Gift Code",
+        planCredit: "Platform subscription credit placeholder",
+        redemptionStatus: "No redemption engine connected",
+        registryKey: "gift-code:launch-credit",
+        revenueImpact: 0,
+        slug: "launch-credit",
+        status: "draft",
+        statusBadgeTone: "amber",
+        statusDescription: getMarketingStatusDescription("draft"),
+        statusLabel: getMarketingStatusLabel("draft"),
+        targetAudienceSummary: "Selected launch partners",
+        usageCount: 0
+      },
+      {
+        metadata: { section: "Gift codes", source: "marketing_registry_fallback" },
+        registryKey: "gift-code:launch-credit",
+        targetAudience: "Selected launch partners"
+      }
+    ),
     {
-      code: "GIFT-LAUNCH-CREDIT",
-      creditAmount: 0,
-      creditType: "subscription_credit",
-      description: "Gift code foundation for launch credit distribution.",
-      giftCodeDescription: "Gift code foundation for launch credit distribution.",
-      giftCodeLabel: "Platform gift code",
-      lifecycleDescription: getMarketingLifecycleDescription("draft"),
-      lifecycleLabel: getMarketingLifecycleLabel("draft"),
+      exists: true,
       lifecycleState: "draft",
-      metadataSummary: "Foundation gift code display only. No redemption or credit granting.",
-      name: "Launch Credit Gift Code",
-      planCredit: "Platform subscription credit placeholder",
-      redemptionStatus: "No redemption engine connected",
-      registryKey: "gift-code:launch-credit",
-      revenueImpact: 0,
-      slug: "launch-credit",
-      status: "draft",
-      statusBadgeTone: "amber",
-      statusDescription: getMarketingStatusDescription("draft"),
-      statusLabel: getMarketingStatusLabel("draft"),
-      targetAudienceSummary: "Selected launch partners",
-      usageCount: 0
-    },
-    {
-      metadata: { section: "Gift codes", source: "marketing_registry_fallback" },
-      registryKey: "gift-code:launch-credit",
-      targetAudience: "Selected launch partners"
+      marketingType: "gift_code",
+      metadata: { section: "Gift codes", source: "marketing_registry_fallback" }
     }
   )
 ];
