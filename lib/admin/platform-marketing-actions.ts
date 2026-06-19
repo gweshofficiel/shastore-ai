@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  assertMarketingLifecycleActionReady,
+  canRecordMarketingPlatformAction,
+  isValidMarketingActionType,
+  isValidMarketingRegistryKey,
+  sanitizeMarketingSecurityText
+} from "@/src/lib/marketing/marketing-security-certification";
 
 type PlatformMarketingAction =
   | "admin_platform_marketing_activate_campaign"
@@ -11,24 +18,65 @@ type PlatformMarketingAction =
   | "admin_platform_marketing_pause_campaign"
   | "admin_platform_marketing_view_usage";
 
-function cleanText(value: FormDataEntryValue | null) {
-  return typeof value === "string" ? value.trim() : "";
+function cleanFormText(value: FormDataEntryValue | null, maxLength = 200) {
+  return sanitizeMarketingSecurityText(typeof value === "string" ? value : "", maxLength);
 }
 
 async function recordPlatformMarketingAction(formData: FormData, action: PlatformMarketingAction) {
   const access = await getAdminAccess();
-  const campaignId = cleanText(formData.get("campaignId"));
-  const campaignName = cleanText(formData.get("campaignName"));
-  const campaignType = cleanText(formData.get("campaignType"));
 
-  if (!campaignId) {
-    throw new Error("Missing platform marketing campaign id.");
+  if (!canRecordMarketingPlatformAction(access)) {
+    throw new Error("Marketing platform actions require marketing operator or super admin access.");
   }
+
+  const campaignId = cleanFormText(formData.get("campaignId"), 160);
+  const campaignName = cleanFormText(formData.get("campaignName"), 200);
+  const campaignType = cleanFormText(formData.get("campaignType"), 40);
+  const campaignStatus = cleanFormText(formData.get("campaignStatus"), 40);
+
+  if (!isValidMarketingRegistryKey(campaignId)) {
+    throw new Error("Invalid platform marketing campaign id.");
+  }
+
+  if (campaignType && !isValidMarketingActionType(campaignType)) {
+    throw new Error("Invalid platform marketing campaign type.");
+  }
+
+  assertMarketingLifecycleActionReady({
+    action,
+    status: campaignStatus || "draft"
+  });
 
   const admin = createAdminClient();
 
   if (!admin) {
     throw new Error("Service-role admin access is required for platform marketing controls.");
+  }
+
+  const { data: registryRow, error: registryError } = await admin
+    .from("marketing_registry_items")
+    .select("registry_key, marketing_type, status")
+    .eq("registry_key", campaignId)
+    .maybeSingle();
+
+  if (registryError) {
+    throw new Error("Unable to verify platform marketing campaign safely.");
+  }
+
+  const registryItem = registryRow as
+    | {
+        marketing_type: string;
+        registry_key: string;
+        status: string;
+      }
+    | null;
+
+  if (!registryItem) {
+    throw new Error("Unknown platform marketing campaign.");
+  }
+
+  if (campaignType && registryItem.marketing_type !== campaignType) {
+    throw new Error("Platform marketing campaign type mismatch.");
   }
 
   await admin.from("monitoring_events" as never).insert({
@@ -38,8 +86,9 @@ async function recordPlatformMarketingAction(formData: FormData, action: Platfor
     event_type: action,
     metadata: {
       campaign_id: campaignId,
-      campaign_name: campaignName,
-      campaign_type: campaignType,
+      campaign_name: campaignName || sanitizeMarketingSecurityText(registryItem.registry_key, 200),
+      campaign_status: sanitizeMarketingSecurityText(registryItem.status, 40) || "draft",
+      campaign_type: sanitizeMarketingSecurityText(registryItem.marketing_type, 40),
       note: "Placeholder platform marketing action only. No store coupon, store discount campaign, store email campaign, mass send, redemption, or payout was modified.",
       source: "super_admin_platform_marketing_center"
     },

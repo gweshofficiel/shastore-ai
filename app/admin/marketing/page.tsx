@@ -71,6 +71,7 @@ function CampaignHiddenFields({
     <>
       <input name="campaignId" type="hidden" value={campaign.id} />
       <input name="campaignName" type="hidden" value={campaign.name} />
+      <input name="campaignStatus" type="hidden" value={campaign.status} />
       <input name="campaignType" type="hidden" value={campaign.type} />
     </>
   );
@@ -106,7 +107,12 @@ function MarketingCampaignSafeActions({
         <form action={lifecycleActionHandlers[action.action]} key={action.action}>
           <CampaignHiddenFields campaign={campaign} />
           <button
-            className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${lifecycleActionButtonClass[action.action]}`}
+            className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${
+              action.ready
+                ? lifecycleActionButtonClass[action.action]
+                : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+            }`}
+            disabled={!action.ready}
             title={action.description}
             type="submit"
           >
@@ -204,6 +210,30 @@ export default async function AdminMarketingPage() {
         ]}
       />
       <p className="-mt-4 text-xs font-semibold text-slate-500">{control.marketingAudit.auditDescription}</p>
+
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Security review",
+            value: control.marketingSecurityCertification.securityReviewPassed ? "Passed" : "Needs attention"
+          },
+          { label: "Checks passed", value: control.marketingSecurityCertification.passedChecks },
+          { label: "Checks failed", value: control.marketingSecurityCertification.failedChecks },
+          { label: "Total checks", value: control.marketingSecurityCertification.totalChecks },
+          {
+            label: "Certified at",
+            value: control.marketingSecurityCertification.certifiedAt
+              ? formatAdminDate(control.marketingSecurityCertification.certifiedAt)
+              : "Unknown"
+          },
+          { label: "Page load", value: "Read-only" },
+          { label: "Execution", value: "Disabled" },
+          { label: "RLS", value: "Service role only" }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">
+        {control.marketingSecurityCertification.certificationDescription}
+      </p>
 
       <AdminTable
         headers={[

@@ -816,6 +816,26 @@ export {
   resolveMarketingAuditState
 } from "@/src/lib/marketing/marketing-audit-runtime";
 export type {
+  MarketingSecurityCertificationInput,
+  MarketingSecurityCertificationSummary,
+  MarketingSecurityReviewItem
+} from "@/src/lib/marketing/marketing-security-certification";
+export {
+  assertMarketingLifecycleActionReady,
+  buildMarketingSecurityCertification,
+  buildMarketingSecurityCertificationSafe,
+  canRecordMarketingPlatformAction,
+  collectMarketingMetadataSummariesForCertification,
+  containsMarketingSecretPattern,
+  isValidMarketingActionType,
+  isValidMarketingRegistryKey,
+  MARKETING_REGISTRY_KEY_PATTERN,
+  MARKETING_SECRET_PATTERN,
+  MARKETING_SECURITY_CERTIFICATION_FALLBACK_SUMMARY,
+  mapMarketingPlatformActionToLifecycleAction,
+  sanitizeMarketingSecurityText
+} from "@/src/lib/marketing/marketing-security-certification";
+export type {
   MarketingCouponValidationInput,
   MarketingCouponValidationIssue,
   MarketingCouponValidationIssueSeverity,

@@ -26,6 +26,10 @@ import {
 import { buildMarketingCouponViewsSafe } from "@/src/lib/marketing/marketing-coupon-runtime";
 import { buildMarketingAuditSummarySafe } from "@/src/lib/marketing/marketing-audit-runtime";
 import { buildMarketingCampaignAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-campaign-analytics-runtime";
+import {
+  buildMarketingSecurityCertificationSafe,
+  collectMarketingMetadataSummariesForCertification
+} from "@/src/lib/marketing/marketing-security-certification";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -1821,6 +1825,19 @@ export type AdminPlatformMarketingControl = {
     reviewedStatus: string;
     riskyMetadataCount: number;
     totalMarketingItems: number;
+  };
+  marketingSecurityCertification: {
+    certificationDescription: string;
+    certifiedAt: string;
+    failedChecks: number;
+    passedChecks: number;
+    securityReview: Array<{
+      category: string;
+      message: string;
+      passed: boolean;
+    }>;
+    securityReviewPassed: boolean;
+    totalChecks: number;
   };
   platformCampaigns: Array<{
     audienceBadgeTone: "amber" | "blue" | "green" | "red";
@@ -7359,12 +7376,25 @@ function buildAdminPlatformMarketingControl(params: {
         })),
     runtimeWarning: combinedWarning
   });
+  const marketingSecurityCertification = buildMarketingSecurityCertificationSafe({
+    metadataSummaries: collectMarketingMetadataSummariesForCertification({
+      affiliates: affiliateLoad.affiliates,
+      campaigns: [],
+      coupons: couponLoad.coupons,
+      giftCodes: giftCodeLoad.giftCodes,
+      platformCampaigns: platformCampaignLoad.platformCampaigns,
+      promotions: promotionLoad.promotions,
+      referrals: referralLoad.referrals
+    }),
+    runtimeWarning: combinedWarning
+  });
 
   return {
     campaigns,
     campaignAnalytics,
     couponAnalytics,
     marketingAudit,
+    marketingSecurityCertification,
     coupons: couponLoad.coupons,
     giftCodes: giftCodeLoad.giftCodes,
     promotionMetrics,
