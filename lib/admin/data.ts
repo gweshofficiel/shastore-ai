@@ -39,6 +39,10 @@ import {
   type EmailTemplateDisplayStatus
 } from "@/src/lib/email/email-registry-runtime";
 import { buildEmailRegistryTypeStatsSafe } from "@/src/lib/email/email-type-runtime";
+import {
+  buildEmailQueueStatusSummaryFromLogsSafe,
+  buildEmailRegistryStatusStatsSafe
+} from "@/src/lib/email/email-status-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -2077,6 +2081,20 @@ export type AdminEmailControl = {
     templateItems: number;
     totalItems: number;
     transactionalSectionItems: number;
+  };
+  emailStatusStats: {
+    activeItems: number;
+    configuredItems: number;
+    disabledItems: number;
+    draftItems: number;
+    failedItems: number;
+    healthyItems: number;
+    missingItems: number;
+    monitoringItems: number;
+    placeholderItems: number;
+    reservedPlaceholderItems: number;
+    totalItems: number;
+    unknownItems: number;
   };
   futureHooks: string[];
   overview: {
@@ -7672,13 +7690,7 @@ function buildAdminEmailControl(params: {
     return fallback;
   }
 
-  const queue = {
-    cancelled: emailLogs.filter((log) => text(log.status) === "cancelled").length,
-    failed: emailLogs.filter((log) => text(log.status) === "failed").length,
-    queued: emailLogs.filter((log) => ["pending", "queued"].includes(text(log.status))).length,
-    retryPending: emailLogs.filter((log) => text(log.status) === "retry_pending").length,
-    sent: emailLogs.filter((log) => text(log.status) === "sent").length
-  };
+  const queue = buildEmailQueueStatusSummaryFromLogsSafe(emailLogs);
   const failedEmails = emailLogs
     .filter((log) => text(log.status) === "failed")
     .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))
@@ -7721,9 +7733,11 @@ function buildAdminEmailControl(params: {
   const templates = registryViews.templates;
   const providers = registryViews.providers;
   const emailTypeStats = buildEmailRegistryTypeStatsSafe(registryItems);
+  const emailStatusStats = buildEmailRegistryStatusStatsSafe(registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
+    emailStatusStats,
     emailTypeStats,
     failedEmails,
     futureHooks: registryViews.futureHooks,

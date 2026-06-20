@@ -6,21 +6,24 @@ import {
   parseEmailRegistryType,
   type EmailRegistryType
 } from "@/src/lib/email/email-type-runtime";
+import {
+  mapRegistryStatusToCampaignScopeStatus,
+  mapRegistryStatusToTemplateStatus,
+  mapRegistryStatusToTransactionalStatus,
+  parseEmailRegistryStatus,
+  type EmailCampaignScopeStatus,
+  type EmailRegistryStatus,
+  type EmailTemplateDisplayStatus,
+  type EmailTransactionalSectionStatus
+} from "@/src/lib/email/email-status-runtime";
 
 export type { EmailRegistryType } from "@/src/lib/email/email-type-runtime";
-
-export type EmailRegistryStatus =
-  | "active"
-  | "configured"
-  | "disabled"
-  | "draft"
-  | "failed"
-  | "healthy"
-  | "missing"
-  | "monitoring"
-  | "placeholder"
-  | "reserved_placeholder"
-  | "unknown";
+export type {
+  EmailCampaignScopeStatus,
+  EmailRegistryStatus,
+  EmailTemplateDisplayStatus,
+  EmailTransactionalSectionStatus
+} from "@/src/lib/email/email-status-runtime";
 
 export type EmailTemplateCategory =
   | "billing"
@@ -31,12 +34,6 @@ export type EmailTemplateCategory =
   | "welcome";
 
 export type EmailTemplateLanguage = "Arabic" | "English" | "French";
-
-export type EmailTemplateDisplayStatus = "active" | "disabled" | "draft";
-
-export type EmailTransactionalSectionStatus = "active" | "draft" | "placeholder";
-
-export type EmailCampaignScopeStatus = "monitoring" | "placeholder";
 
 export type EmailProviderKey = "future" | "resend" | "smtp";
 
@@ -88,20 +85,6 @@ export type EmailRegistryCampaignScopeView = {
   total: number;
 };
 
-export const EMAIL_REGISTRY_STATUSES: readonly EmailRegistryStatus[] = [
-  "draft",
-  "active",
-  "placeholder",
-  "configured",
-  "missing",
-  "healthy",
-  "failed",
-  "monitoring",
-  "reserved_placeholder",
-  "unknown",
-  "disabled"
-] as const;
-
 const registrySelect =
   "id, registry_key, slug, name, registry_type, status, category, provider_key, description, usage_count, metadata, created_at, updated_at";
 
@@ -137,10 +120,6 @@ function requireAdminClient() {
   }
 
   return admin;
-}
-
-function isValidEmailRegistryStatus(value: unknown): value is EmailRegistryStatus {
-  return typeof value === "string" && EMAIL_REGISTRY_STATUSES.includes(value as EmailRegistryStatus);
 }
 
 function isValidEmailTemplateCategory(value: unknown): value is EmailTemplateCategory {
@@ -193,12 +172,18 @@ export function parseEmailRegistryItem(row: unknown): EmailRegistryItemRecord | 
   const slug = text(record.slug, 160);
   const name = text(record.name, 200);
   const registryType = parseEmailRegistryType(record.registry_type);
-  const status = isValidEmailRegistryStatus(record.status) ? record.status : null;
+  const status = parseEmailRegistryStatus(record.status);
 
   if (!id || !registryKey || !slug || !name || !registryType || !status) {
     if (id && registryKey && !registryType) {
       console.warn(
         `[email-registry-runtime] skipped registry item with invalid registry_type: ${text(record.registry_type, 80) || "empty"}`
+      );
+    }
+
+    if (id && registryKey && registryType && !status) {
+      console.warn(
+        `[email-registry-runtime] skipped registry item with invalid status: ${text(record.status, 80) || "empty"}`
       );
     }
     return null;
@@ -222,23 +207,6 @@ export function parseEmailRegistryItem(row: unknown): EmailRegistryItemRecord | 
 }
 
 export { filterEmailRegistryItemsByType };
-
-function mapRegistryStatusToTemplateStatus(status: EmailRegistryStatus): EmailTemplateDisplayStatus {
-  if (status === "active" || status === "configured" || status === "healthy") return "active";
-  if (status === "disabled") return "disabled";
-  return "draft";
-}
-
-function mapRegistryStatusToTransactionalStatus(status: EmailRegistryStatus): EmailTransactionalSectionStatus {
-  if (status === "active" || status === "configured" || status === "healthy") return "active";
-  if (status === "placeholder" || status === "reserved_placeholder") return "placeholder";
-  return "draft";
-}
-
-function mapRegistryStatusToCampaignScopeStatus(status: EmailRegistryStatus): EmailCampaignScopeStatus {
-  if (status === "monitoring") return "monitoring";
-  return "placeholder";
-}
 
 export function buildEmailRegistryMetadataSummary(item: EmailRegistryItemRecord) {
   if (item.description) return item.description;
@@ -822,3 +790,37 @@ export {
   resolveEmailRegistryTypeDescription,
   resolveEmailRegistryTypeLabel
 } from "@/src/lib/email/email-type-runtime";
+export type {
+  EmailCenterStatus,
+  EmailQueueLogStatus,
+  EmailQueueStatusSummary,
+  EmailRegistryStatusStats,
+  EmailStatusBadgeTone,
+  EmailStatusCatalogEntry
+} from "@/src/lib/email/email-status-runtime";
+export {
+  assertValidEmailRegistryStatus,
+  buildEmailQueueStatusSummaryFromLogsSafe,
+  buildEmailRegistryStatusStatsSafe,
+  countEmailRegistryItemsByStatus,
+  EMAIL_CENTER_STATUSES,
+  EMAIL_QUEUE_LOG_STATUSES,
+  EMAIL_REGISTRY_STATUSES,
+  getEmailStatusBadgeTone,
+  getEmailStatusDescription,
+  getEmailStatusLabel,
+  groupEmailRegistryItemsByStatus,
+  isValidEmailCenterStatus,
+  isValidEmailQueueLogStatus,
+  isValidEmailRegistryStatus,
+  listEmailStatusCatalog,
+  mapRegistryStatusToCampaignScopeStatus,
+  mapRegistryStatusToTemplateStatus,
+  mapRegistryStatusToTransactionalStatus,
+  parseEmailCenterStatus,
+  parseEmailQueueLogStatus,
+  parseEmailRegistryStatus,
+  resolveEmailStatusBadgeTone,
+  resolveEmailStatusDescription,
+  resolveEmailStatusLabel
+} from "@/src/lib/email/email-status-runtime";
