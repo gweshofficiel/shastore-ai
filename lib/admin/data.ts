@@ -31,6 +31,13 @@ import {
   collectMarketingMetadataSummariesForCertification
 } from "@/src/lib/marketing/marketing-security-certification";
 import { buildMarketingProductionCertificationSafe } from "@/src/lib/marketing/marketing-production-certification";
+import {
+  buildEmailRegistryViewsSafe,
+  EMAIL_REGISTRY_FALLBACK_ITEMS,
+  listEmailRegistryItemsReadOnlySafe,
+  type EmailProviderKey,
+  type EmailTemplateDisplayStatus
+} from "@/src/lib/email/email-registry-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -2084,6 +2091,7 @@ export type AdminEmailControl = {
     retryPending: number;
     sent: number;
   };
+  runtimeWarning?: string | null;
   templates: Array<{
     category: "billing" | "domain_email_setup" | "order" | "security" | "support" | "welcome";
     id: string;
@@ -7582,18 +7590,51 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   });
 }
 
-export async function getAdminEmailControl(): Promise<AdminEmailControl> {
-  const { supabase } = await getAdminUsersBase();
-  const [emailLogs, storeMarketingMessages, monitoringEvents] = await Promise.all([
-    safeSelect(
-      supabase,
-      "email_event_logs",
-      "id, recipient, subject, template_key, status, error_message, last_error, created_at",
-      500
-    ),
-    safeSelect(supabase, "store_marketing_messages", "id, type, status, updated_at, created_at", 500),
-    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
-  ]);
+function resolveEmailProviderStatus(providerKey: EmailProviderKey) {
+  if (providerKey === "resend") {
+    return {
+      configurationStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+          ? envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+          : ("missing" as const),
+      healthStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
+        process.env.RESEND_API_KEY?.trim() &&
+        process.env.EMAIL_FROM?.trim()
+          ? ("healthy" as const)
+          : ("missing_config" as const),
+      secretStatus:
+        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+          : ("missing" as const)
+    };
+  }
+
+  if (providerKey === "smtp") {
+    const configurationStatus = envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]);
+
+    return {
+      configurationStatus,
+      healthStatus: configurationStatus === "configured" ? ("warning" as const) : ("placeholder" as const),
+      secretStatus: integrationSecretStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"])
+    };
+  }
+
+  return {
+    configurationStatus: "missing" as const,
+    healthStatus: "placeholder" as const,
+    secretStatus: "no_secret_required" as const
+  };
+}
+
+function buildAdminEmailControl(params: {
+  emailLogs: AnyRecord[];
+  monitoringEvents: AnyRecord[];
+  registryItems: import("@/src/lib/email/email-registry-runtime").EmailRegistryItemRecord[];
+  registryWarning?: string | null;
+  storeMarketingMessages: AnyRecord[];
+}): AdminEmailControl {
+  const { emailLogs, monitoringEvents, registryItems, registryWarning = null, storeMarketingMessages } = params;
   const adminEmailEvents = monitoringEvents
     .filter((event) => text(event.event_type).startsWith("admin_email_"))
     .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at));
@@ -7610,8 +7651,8 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
 
   function templateStatus(
     templateId: string,
-    fallback: AdminEmailControl["templates"][number]["status"]
-  ): AdminEmailControl["templates"][number]["status"] {
+    fallback: EmailTemplateDisplayStatus
+  ): EmailTemplateDisplayStatus {
     const eventType = text(latestEventByTemplate.get(templateId)?.event_type);
 
     if (eventType === "admin_email_disable_template") {
@@ -7628,64 +7669,6 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
     retryPending: emailLogs.filter((log) => text(log.status) === "retry_pending").length,
     sent: emailLogs.filter((log) => text(log.status) === "sent").length
   };
-  const templates: AdminEmailControl["templates"] = [
-    {
-      category: "welcome",
-      id: "welcome:platform-user",
-      language: "English",
-      lastUpdated: null,
-      name: "Platform welcome email",
-      status: templateStatus("welcome:platform-user", "draft")
-    },
-    {
-      category: "billing",
-      id: "billing:subscription-activated",
-      language: "English",
-      lastUpdated: null,
-      name: "Subscription activated",
-      status: templateStatus("billing:subscription-activated", "active")
-    },
-    {
-      category: "billing",
-      id: "billing:payment-failed",
-      language: "English",
-      lastUpdated: null,
-      name: "Payment failed",
-      status: templateStatus("billing:payment-failed", "active")
-    },
-    {
-      category: "order",
-      id: "order:platform-receipt-placeholder",
-      language: "English",
-      lastUpdated: null,
-      name: "Platform order receipt placeholder",
-      status: templateStatus("order:platform-receipt-placeholder", "draft")
-    },
-    {
-      category: "domain_email_setup",
-      id: "domain-email:setup-instructions",
-      language: "English",
-      lastUpdated: null,
-      name: "Domain and email setup instructions",
-      status: templateStatus("domain-email:setup-instructions", "draft")
-    },
-    {
-      category: "support",
-      id: "support:ticket-update",
-      language: "English",
-      lastUpdated: null,
-      name: "Support ticket update",
-      status: templateStatus("support:ticket-update", "draft")
-    },
-    {
-      category: "security",
-      id: "security:account-alert",
-      language: "English",
-      lastUpdated: null,
-      name: "Security account alert",
-      status: templateStatus("security:account-alert", "draft")
-    }
-  ];
   const failedEmails = emailLogs
     .filter((log) => text(log.status) === "failed")
     .sort((left, right) => dateValue(right.created_at) - dateValue(left.created_at))
@@ -7701,66 +7684,37 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
     .map((message) => text(message.updated_at) || text(message.created_at))
     .filter(Boolean)
     .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
-  const providers: AdminEmailControl["providers"] = [
-    {
-      configurationStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-          ? envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-          : "missing",
-      healthStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
-        process.env.RESEND_API_KEY?.trim() &&
-        process.env.EMAIL_FROM?.trim()
-          ? "healthy"
-          : "missing_config",
-      name: "Resend",
-      provider: "resend",
-      secretStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-          : "missing"
+  const registryViews = buildEmailRegistryViewsSafe({
+    items: registryItems,
+    resolveCampaignTotals: (slug) => {
+      if (slug === "platform-campaigns") {
+        return {
+          lastActivity: null,
+          total: adminEmailEvents.filter((event) => text(event.event_type) === "admin_email_template_preview").length
+        };
+      }
+
+      if (slug === "store-owner-campaigns") {
+        return {
+          lastActivity: latestStoreMarketingActivity,
+          total: storeMarketingMessages.length
+        };
+      }
+
+      return { lastActivity: null, total: 0 };
     },
-    {
-      configurationStatus: envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]),
-      healthStatus: envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]) === "configured" ? "warning" : "placeholder",
-      name: "SMTP placeholder",
-      provider: "smtp",
-      secretStatus: integrationSecretStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"])
-    },
-    {
-      configurationStatus: "missing",
-      healthStatus: "placeholder",
-      name: "Future providers placeholder",
-      provider: "future",
-      secretStatus: "no_secret_required"
-    }
-  ];
+    resolveProviderStatus: resolveEmailProviderStatus,
+    resolveTemplateStatus: templateStatus
+  });
+  const combinedWarning =
+    [registryWarning, registryViews.warning].filter(Boolean).join(" ") || null;
+  const templates = registryViews.templates;
+  const providers = registryViews.providers;
 
   return {
-    campaignMonitoring: [
-      {
-        lastActivity: null,
-        name: "Platform campaigns",
-        note: "Platform campaign email sending is reserved for a future safe queue.",
-        status: "placeholder",
-        total: adminEmailEvents.filter((event) => text(event.event_type) === "admin_email_template_preview").length
-      },
-      {
-        lastActivity: latestStoreMarketingActivity,
-        name: "Store Owner campaigns summary",
-        note: "Read-only summary only. Store Owner campaigns are not edited in Super Admin Email Center.",
-        status: "monitoring",
-        total: storeMarketingMessages.length
-      }
-    ],
+    campaignMonitoring: registryViews.campaignMonitoring,
     failedEmails,
-    futureHooks: [
-      "Edit template",
-      "Send test email",
-      "Retry failed email",
-      "Export email logs",
-      "Provider health check"
-    ],
+    futureHooks: registryViews.futureHooks,
     overview: {
       activeTemplates: templates.filter((template) => template.status === "active").length,
       failedEmails: queue.failed,
@@ -7771,46 +7725,43 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
     },
     providers,
     queue,
+    runtimeWarning: combinedWarning,
     templates,
-    transactionalSections: [
-      {
-        key: "welcome",
-        name: "Welcome emails",
-        note: "Platform onboarding email foundation only.",
-        status: "draft"
-      },
-      {
-        key: "billing",
-        name: "Billing emails",
-        note: "Uses existing billing notification email templates when provider is configured.",
-        status: "active"
-      },
-      {
-        key: "order",
-        name: "Order emails",
-        note: "Store order emails remain managed by Store Owner email systems.",
-        status: "placeholder"
-      },
-      {
-        key: "domain_email_setup",
-        name: "Domain/email setup emails",
-        note: "Professional Email mailbox setup remains in Domains & Hosting.",
-        status: "draft"
-      },
-      {
-        key: "support",
-        name: "Support emails",
-        note: "Support notification email templates are reserved placeholders.",
-        status: "draft"
-      },
-      {
-        key: "security",
-        name: "Security emails",
-        note: "Security alert email templates are reserved placeholders.",
-        status: "draft"
-      }
-    ]
+    transactionalSections: registryViews.transactionalSections
   };
+}
+
+export function createFallbackAdminEmailControl(): AdminEmailControl {
+  return buildAdminEmailControl({
+    emailLogs: [],
+    monitoringEvents: [],
+    registryItems: [...EMAIL_REGISTRY_FALLBACK_ITEMS],
+    registryWarning: "Email registry runtime unavailable. Showing fallback registry rows.",
+    storeMarketingMessages: []
+  });
+}
+
+export async function getAdminEmailControl(): Promise<AdminEmailControl> {
+  const { supabase } = await getAdminUsersBase();
+  const [registryLoad, emailLogs, storeMarketingMessages, monitoringEvents] = await Promise.all([
+    listEmailRegistryItemsReadOnlySafe(),
+    safeSelect(
+      supabase,
+      "email_event_logs",
+      "id, recipient, subject, template_key, status, error_message, last_error, created_at",
+      500
+    ),
+    safeSelect(supabase, "store_marketing_messages", "id, type, status, updated_at, created_at", 500),
+    safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500)
+  ]);
+
+  return buildAdminEmailControl({
+    emailLogs,
+    monitoringEvents,
+    registryItems: registryLoad.items,
+    registryWarning: registryLoad.warning,
+    storeMarketingMessages
+  });
 }
 
 export async function getAdminNotificationControl(): Promise<AdminNotificationControl> {

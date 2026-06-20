@@ -5,13 +5,27 @@ import {
   AdminTable,
   formatAdminDate
 } from "@/components/admin/admin-control";
-import { getAdminEmailControl } from "@/lib/admin/data";
+import type { AdminEmailControl } from "@/lib/admin/data";
+import { loadPlatformEmailControlSafe } from "@/lib/admin/email-loader";
 import {
   disableEmailTemplatePlaceholder,
   markFailedEmailReviewed,
   previewEmailTemplate,
   retryEmailPlaceholder
 } from "@/lib/admin/email-actions";
+
+function EmailRuntimeRecoveryNotice({ message }: { message: string }) {
+  return (
+    <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Email registry recovery</p>
+      <p className="mt-2 text-sm font-semibold text-amber-900">
+        Email registry data could not be loaded from runtime storage. The admin shell is still available with fallback
+        registry rows.
+      </p>
+      <p className="mt-2 text-xs font-semibold text-amber-800">{message}</p>
+    </div>
+  );
+}
 
 function toneForStatus(status: string) {
   if (["active", "configured", "healthy", "monitoring", "sent"].includes(status)) {
@@ -32,7 +46,7 @@ function toneForStatus(status: string) {
 function TemplateHiddenFields({
   template
 }: {
-  template: Awaited<ReturnType<typeof getAdminEmailControl>>["templates"][number];
+  template: AdminEmailControl["templates"][number];
 }) {
   return (
     <>
@@ -46,7 +60,7 @@ function TemplateHiddenFields({
 function FailedEmailHiddenFields({
   email
 }: {
-  email: Awaited<ReturnType<typeof getAdminEmailControl>>["failedEmails"][number];
+  email: AdminEmailControl["failedEmails"][number];
 }) {
   return (
     <>
@@ -57,7 +71,8 @@ function FailedEmailHiddenFields({
 }
 
 export default async function AdminEmailPage() {
-  const control = await getAdminEmailControl();
+  const { control, ok, warning } = await loadPlatformEmailControlSafe();
+  const recoveryMessage = warning ?? control.runtimeWarning ?? null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -65,6 +80,8 @@ export default async function AdminEmailPage() {
         description="Platform-level monitoring for shared SHASTORE transactional emails, templates, provider status, queues, and failures. Store Owner campaigns and Professional Email mailboxes remain managed in their own systems."
         title="Email Center"
       />
+
+      {!ok && recoveryMessage ? <EmailRuntimeRecoveryNotice message={recoveryMessage} /> : null}
 
       <AdminStatGrid
         stats={[
