@@ -31,11 +31,11 @@ import {
   collectMarketingMetadataSummariesForCertification
 } from "@/src/lib/marketing/marketing-security-certification";
 import { buildMarketingProductionCertificationSafe } from "@/src/lib/marketing/marketing-production-certification";
+import { buildEmailProviderStatsSafe } from "@/src/lib/email/email-provider-runtime";
 import {
   buildEmailRegistryViewsSafe,
   EMAIL_REGISTRY_FALLBACK_ITEMS,
   listEmailRegistryItemsReadOnlySafe,
-  type EmailProviderKey,
   type EmailTemplateDisplayStatus
 } from "@/src/lib/email/email-registry-runtime";
 import { buildEmailRegistryTypeStatsSafe } from "@/src/lib/email/email-type-runtime";
@@ -2095,6 +2095,16 @@ export type AdminEmailControl = {
     reservedPlaceholderItems: number;
     totalItems: number;
     unknownItems: number;
+  };
+  emailProviderStats: {
+    configuredProviders: number;
+    futurePlaceholderProviders: number;
+    healthyProviders: number;
+    missingProviders: number;
+    partialProviders: number;
+    resendProviders: number;
+    smtpPlaceholderProviders: number;
+    totalProviders: number;
   };
   futureHooks: string[];
   overview: {
@@ -7618,43 +7628,6 @@ export async function getAdminPlatformMarketingControl(): Promise<AdminPlatformM
   });
 }
 
-function resolveEmailProviderStatus(providerKey: EmailProviderKey) {
-  if (providerKey === "resend") {
-    return {
-      configurationStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-          ? envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-          : ("missing" as const),
-      healthStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
-        process.env.RESEND_API_KEY?.trim() &&
-        process.env.EMAIL_FROM?.trim()
-          ? ("healthy" as const)
-          : ("missing_config" as const),
-      secretStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-          : ("missing" as const)
-    };
-  }
-
-  if (providerKey === "smtp") {
-    const configurationStatus = envConfigurationStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"]);
-
-    return {
-      configurationStatus,
-      healthStatus: configurationStatus === "configured" ? ("warning" as const) : ("placeholder" as const),
-      secretStatus: integrationSecretStatus(["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"])
-    };
-  }
-
-  return {
-    configurationStatus: "missing" as const,
-    healthStatus: "placeholder" as const,
-    secretStatus: "no_secret_required" as const
-  };
-}
-
 function buildAdminEmailControl(params: {
   emailLogs: AnyRecord[];
   monitoringEvents: AnyRecord[];
@@ -7725,7 +7698,6 @@ function buildAdminEmailControl(params: {
 
       return { lastActivity: null, total: 0 };
     },
-    resolveProviderStatus: resolveEmailProviderStatus,
     resolveTemplateStatus: templateStatus
   });
   const combinedWarning =
@@ -7734,9 +7706,11 @@ function buildAdminEmailControl(params: {
   const providers = registryViews.providers;
   const emailTypeStats = buildEmailRegistryTypeStatsSafe(registryItems);
   const emailStatusStats = buildEmailRegistryStatusStatsSafe(registryItems);
+  const emailProviderStats = buildEmailProviderStatsSafe(registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
+    emailProviderStats,
     emailStatusStats,
     emailTypeStats,
     failedEmails,

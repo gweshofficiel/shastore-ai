@@ -7,6 +7,10 @@ import {
   type EmailRegistryType
 } from "@/src/lib/email/email-type-runtime";
 import {
+  buildEmailProviderViewsSafe,
+  type EmailRegistryProviderView
+} from "@/src/lib/email/email-provider-runtime";
+import {
   mapRegistryStatusToCampaignScopeStatus,
   mapRegistryStatusToTemplateStatus,
   mapRegistryStatusToTransactionalStatus,
@@ -35,7 +39,7 @@ export type EmailTemplateCategory =
 
 export type EmailTemplateLanguage = "Arabic" | "English" | "French";
 
-export type EmailProviderKey = "future" | "resend" | "smtp";
+export type { EmailProviderKey, EmailRegistryProviderView } from "@/src/lib/email/email-provider-runtime";
 
 export type EmailRegistryItemRecord = {
   category: string;
@@ -51,14 +55,6 @@ export type EmailRegistryItemRecord = {
   status: EmailRegistryStatus;
   updatedAt: string | null;
   usageCount: number;
-};
-
-export type EmailRegistryProviderView = {
-  configurationStatus: "configured" | "missing" | "partial";
-  healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
-  name: string;
-  provider: EmailProviderKey;
-  secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
 };
 
 export type EmailRegistryTemplateView = {
@@ -137,10 +133,6 @@ function isValidEmailTemplateLanguage(value: unknown): value is EmailTemplateLan
   return value === "Arabic" || value === "English" || value === "French";
 }
 
-function isValidEmailProviderKey(value: unknown): value is EmailProviderKey {
-  return value === "future" || value === "resend" || value === "smtp";
-}
-
 function sanitizeRegistryMetadata(metadata: Record<string, unknown>) {
   const sanitized: Record<string, unknown> = {};
 
@@ -213,27 +205,8 @@ export function buildEmailRegistryMetadataSummary(item: EmailRegistryItemRecord)
   return "Email registry foundation only.";
 }
 
-export function buildEmailRegistryProvidersView(
-  items: EmailRegistryItemRecord[],
-  resolveProviderStatus: (providerKey: EmailProviderKey) => Pick<
-    EmailRegistryProviderView,
-    "configurationStatus" | "healthStatus" | "secretStatus"
-  >
-): EmailRegistryProviderView[] {
-  const providerItems = filterEmailRegistryItemsByType(items, "provider");
-
-  return providerItems
-    .map((item) => {
-      const provider = isValidEmailProviderKey(item.providerKey) ? item.providerKey : null;
-      if (!provider) return null;
-
-      return {
-        name: item.name,
-        provider,
-        ...resolveProviderStatus(provider)
-      };
-    })
-    .filter((provider): provider is EmailRegistryProviderView => Boolean(provider));
+export function buildEmailRegistryProvidersView(items: EmailRegistryItemRecord[]): EmailRegistryProviderView[] {
+  return buildEmailProviderViewsSafe(items);
 }
 
 export function buildEmailRegistryTemplatesView(
@@ -732,10 +705,6 @@ export async function listEmailRegistryItemsReadOnlySafe(): Promise<{
 export function buildEmailRegistryViewsSafe(params: {
   items: EmailRegistryItemRecord[] | null | undefined;
   resolveCampaignTotals: (slug: string) => { lastActivity: string | null; total: number };
-  resolveProviderStatus: (providerKey: EmailProviderKey) => Pick<
-    EmailRegistryProviderView,
-    "configurationStatus" | "healthStatus" | "secretStatus"
-  >;
   resolveTemplateStatus?: (templateId: string, fallback: EmailTemplateDisplayStatus) => EmailTemplateDisplayStatus;
 }) {
   try {
@@ -744,7 +713,7 @@ export function buildEmailRegistryViewsSafe(params: {
     return {
       campaignMonitoring: buildEmailRegistryCampaignMonitoringView(items, params.resolveCampaignTotals),
       futureHooks: buildEmailRegistryFutureHooksView(items),
-      providers: buildEmailRegistryProvidersView(items, params.resolveProviderStatus),
+      providers: buildEmailRegistryProvidersView(items),
       templates: buildEmailRegistryTemplatesView(items, params.resolveTemplateStatus),
       transactionalSections: buildEmailRegistryTransactionalSectionsView(items),
       warning: null as string | null
@@ -757,7 +726,7 @@ export function buildEmailRegistryViewsSafe(params: {
     return {
       campaignMonitoring: buildEmailRegistryCampaignMonitoringView(fallbackItems, params.resolveCampaignTotals),
       futureHooks: buildEmailRegistryFutureHooksView(fallbackItems),
-      providers: buildEmailRegistryProvidersView(fallbackItems, params.resolveProviderStatus),
+      providers: buildEmailRegistryProvidersView(fallbackItems),
       templates: buildEmailRegistryTemplatesView(fallbackItems, params.resolveTemplateStatus),
       transactionalSections: buildEmailRegistryTransactionalSectionsView(fallbackItems),
       warning: "Email registry views failed safely. Showing fallback registry rows."
@@ -824,3 +793,26 @@ export {
   resolveEmailStatusDescription,
   resolveEmailStatusLabel
 } from "@/src/lib/email/email-status-runtime";
+export type {
+  EmailProviderCatalogEntry,
+  EmailProviderConfigurationStatus,
+  EmailProviderHealthStatus,
+  EmailProviderRuntimeRecord,
+  EmailProviderSecretStatus,
+  EmailProviderStats,
+  EmailProviderType
+} from "@/src/lib/email/email-provider-runtime";
+export {
+  buildEmailProviderRuntimeRecordsSafe,
+  buildEmailProviderStatsSafe,
+  buildEmailProviderViewsSafe,
+  EMAIL_PROVIDER_KEYS,
+  getEmailProviderDescription,
+  getEmailProviderHealthLabel,
+  getEmailProviderLabel,
+  getEmailProviderType,
+  isValidEmailProviderKey,
+  listEmailProviderCatalog,
+  parseEmailProviderKey,
+  resolveEmailProviderStatusSafe
+} from "@/src/lib/email/email-provider-runtime";
