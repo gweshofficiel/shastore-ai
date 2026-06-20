@@ -816,3 +816,23 @@ export {
   parseEmailProviderKey,
   resolveEmailProviderStatusSafe
 } from "@/src/lib/email/email-provider-runtime";
+export type {
+  EmailProviderHealthBadgeTone,
+  EmailProviderHealthRecord,
+  EmailProviderHealthRegistryItem,
+  EmailProviderHealthState,
+  EmailProviderHealthStats
+} from "@/src/lib/email/email-provider-health-runtime";
+export {
+  buildEmailProviderHealthRecordsSafe,
+  buildEmailProviderHealthStatsSafe,
+  EMAIL_PROVIDER_HEALTH_STATES,
+  getEmailProviderHealthBadgeTone,
+  getEmailProviderHealthStateDescription,
+  getEmailProviderHealthStateLabel,
+  isValidEmailProviderHealthState,
+  listEmailProviderHealthCatalog,
+  parseEmailProviderHealthState,
+  resolveEmailProviderHealthStateSafe,
+  resolveEmailProviderLastCheckedLabelSafe
+} from "@/src/lib/email/email-provider-health-runtime";

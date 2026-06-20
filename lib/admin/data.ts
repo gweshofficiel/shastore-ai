@@ -33,6 +33,10 @@ import {
 import { buildMarketingProductionCertificationSafe } from "@/src/lib/marketing/marketing-production-certification";
 import { buildEmailProviderStatsSafe } from "@/src/lib/email/email-provider-runtime";
 import {
+  buildEmailProviderHealthRecordsSafe,
+  buildEmailProviderHealthStatsSafe
+} from "@/src/lib/email/email-provider-health-runtime";
+import {
   buildEmailRegistryViewsSafe,
   EMAIL_REGISTRY_FALLBACK_ITEMS,
   listEmailRegistryItemsReadOnlySafe,
@@ -2105,6 +2109,34 @@ export type AdminEmailControl = {
     resendProviders: number;
     smtpPlaceholderProviders: number;
     totalProviders: number;
+  };
+  emailProviderHealth: Array<{
+    configurationState: "configured" | "missing" | "partial";
+    healthLabel: string;
+    healthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "missing_config"
+      | "monitoring"
+      | "not_configured"
+      | "placeholder"
+      | "unknown";
+    lastCheckedLabel: string;
+    metadataSummary: string;
+    providerKey: "future" | "resend" | "smtp";
+    providerLabel: string;
+  }>;
+  emailProviderHealthStats: {
+    degradedProviders: number;
+    failedProviders: number;
+    healthyProviders: number;
+    missingConfigProviders: number;
+    monitoringProviders: number;
+    notConfiguredProviders: number;
+    placeholderProviders: number;
+    totalProviders: number;
+    unknownProviders: number;
   };
   futureHooks: string[];
   overview: {
@@ -7707,9 +7739,13 @@ function buildAdminEmailControl(params: {
   const emailTypeStats = buildEmailRegistryTypeStatsSafe(registryItems);
   const emailStatusStats = buildEmailRegistryStatusStatsSafe(registryItems);
   const emailProviderStats = buildEmailProviderStatsSafe(registryItems);
+  const emailProviderHealth = buildEmailProviderHealthRecordsSafe(registryItems);
+  const emailProviderHealthStats = buildEmailProviderHealthStatsSafe(registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
+    emailProviderHealth,
+    emailProviderHealthStats,
     emailProviderStats,
     emailStatusStats,
     emailTypeStats,
