@@ -38,6 +38,7 @@ import {
   type EmailProviderKey,
   type EmailTemplateDisplayStatus
 } from "@/src/lib/email/email-registry-runtime";
+import { buildEmailRegistryTypeStatsSafe } from "@/src/lib/email/email-type-runtime";
 import { buildMarketingCouponAnalyticsSummarySafe } from "@/src/lib/marketing/marketing-coupon-analytics-runtime";
 import { buildMarketingGiftCodeViewsSafe } from "@/src/lib/marketing/marketing-gift-code-runtime";
 import { buildMarketingAffiliateViewsSafe } from "@/src/lib/marketing/marketing-affiliate-runtime";
@@ -2068,6 +2069,15 @@ export type AdminEmailControl = {
     id: string;
     recipientMasked: string;
   }>;
+  emailTypeStats: {
+    campaignScopeItems: number;
+    futureHookItems: number;
+    providerItems: number;
+    queueSummaryItems: number;
+    templateItems: number;
+    totalItems: number;
+    transactionalSectionItems: number;
+  };
   futureHooks: string[];
   overview: {
     activeTemplates: number;
@@ -7710,9 +7720,11 @@ function buildAdminEmailControl(params: {
     [registryWarning, registryViews.warning].filter(Boolean).join(" ") || null;
   const templates = registryViews.templates;
   const providers = registryViews.providers;
+  const emailTypeStats = buildEmailRegistryTypeStatsSafe(registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
+    emailTypeStats,
     failedEmails,
     futureHooks: registryViews.futureHooks,
     overview: {

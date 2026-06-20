@@ -1,14 +1,13 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  filterEmailRegistryItemsByType,
+  parseEmailRegistryType,
+  type EmailRegistryType
+} from "@/src/lib/email/email-type-runtime";
 
-export type EmailRegistryType =
-  | "campaign_scope"
-  | "future_hook"
-  | "provider"
-  | "queue_summary"
-  | "template"
-  | "transactional_section";
+export type { EmailRegistryType } from "@/src/lib/email/email-type-runtime";
 
 export type EmailRegistryStatus =
   | "active"
@@ -89,15 +88,6 @@ export type EmailRegistryCampaignScopeView = {
   total: number;
 };
 
-export const EMAIL_REGISTRY_TYPES: readonly EmailRegistryType[] = [
-  "provider",
-  "template",
-  "transactional_section",
-  "queue_summary",
-  "campaign_scope",
-  "future_hook"
-] as const;
-
 export const EMAIL_REGISTRY_STATUSES: readonly EmailRegistryStatus[] = [
   "draft",
   "active",
@@ -147,10 +137,6 @@ function requireAdminClient() {
   }
 
   return admin;
-}
-
-function isValidEmailRegistryType(value: unknown): value is EmailRegistryType {
-  return typeof value === "string" && EMAIL_REGISTRY_TYPES.includes(value as EmailRegistryType);
 }
 
 function isValidEmailRegistryStatus(value: unknown): value is EmailRegistryStatus {
@@ -206,10 +192,15 @@ export function parseEmailRegistryItem(row: unknown): EmailRegistryItemRecord | 
   const registryKey = text(record.registry_key, 160);
   const slug = text(record.slug, 160);
   const name = text(record.name, 200);
-  const registryType = isValidEmailRegistryType(record.registry_type) ? record.registry_type : null;
+  const registryType = parseEmailRegistryType(record.registry_type);
   const status = isValidEmailRegistryStatus(record.status) ? record.status : null;
 
   if (!id || !registryKey || !slug || !name || !registryType || !status) {
+    if (id && registryKey && !registryType) {
+      console.warn(
+        `[email-registry-runtime] skipped registry item with invalid registry_type: ${text(record.registry_type, 80) || "empty"}`
+      );
+    }
     return null;
   }
 
@@ -230,12 +221,7 @@ export function parseEmailRegistryItem(row: unknown): EmailRegistryItemRecord | 
   };
 }
 
-export function filterEmailRegistryItemsByType<T extends EmailRegistryType>(
-  items: EmailRegistryItemRecord[],
-  registryType: T
-) {
-  return items.filter((item) => item.registryType === registryType);
-}
+export { filterEmailRegistryItemsByType };
 
 function mapRegistryStatusToTemplateStatus(status: EmailRegistryStatus): EmailTemplateDisplayStatus {
   if (status === "active" || status === "configured" || status === "healthy") return "active";
@@ -810,3 +796,29 @@ export function buildEmailRegistryViewsSafe(params: {
     };
   }
 }
+
+export type {
+  EmailRegistryTypeBadgeTone,
+  EmailRegistryTypeCatalogEntry,
+  EmailRegistryTypeGroup,
+  EmailRegistryTypeSection,
+  EmailRegistryTypeStats
+} from "@/src/lib/email/email-type-runtime";
+export {
+  assertValidEmailRegistryType,
+  buildEmailRegistryTypeStatsSafe,
+  countEmailRegistryItemsByType,
+  EMAIL_REGISTRY_TYPES,
+  getEmailRegistryTypeBadgeTone,
+  getEmailRegistryTypeDescription,
+  getEmailRegistryTypeLabel,
+  getEmailRegistryTypeSection,
+  getEmailRegistryTypeSectionLabel,
+  groupEmailRegistryItemsByType,
+  isValidEmailRegistryType,
+  listEmailRegistryTypeCatalog,
+  parseEmailRegistryType,
+  resolveEmailRegistryTypeBadgeTone,
+  resolveEmailRegistryTypeDescription,
+  resolveEmailRegistryTypeLabel
+} from "@/src/lib/email/email-type-runtime";
