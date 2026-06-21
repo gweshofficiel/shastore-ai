@@ -885,3 +885,17 @@ export {
   parseEmailTemplateValidationState,
   validateEmailTemplateReadinessSafe
 } from "@/src/lib/email/email-template-validation-runtime";
+export type {
+  EmailWelcomeEmailRecord,
+  EmailWelcomeEmailStats,
+  EmailWelcomeReadinessState
+} from "@/src/lib/email/email-welcome-runtime";
+export {
+  buildEmailWelcomeEmailRecordsSafe,
+  buildEmailWelcomeEmailStatsSafe,
+  EMAIL_WELCOME_READINESS_STATES,
+  getEmailWelcomeReadinessStateDescription,
+  getEmailWelcomeReadinessStateLabel,
+  listEmailWelcomeReadinessCatalog,
+  resolveEmailWelcomeReadinessStateSafe
+} from "@/src/lib/email/email-welcome-runtime";
