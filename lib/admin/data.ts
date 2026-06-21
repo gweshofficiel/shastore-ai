@@ -57,6 +57,10 @@ import {
   buildEmailCampaignEmailStatsSafe
 } from "@/src/lib/email/email-campaign-runtime";
 import {
+  buildEmailAnalyticsRuntimeStatsSafe,
+  buildEmailAnalyticsRuntimeSummarySafe
+} from "@/src/lib/email/email-analytics-runtime";
+import {
   buildEmailCampaignMonitoringRuntimeStatsSafe,
   buildEmailCampaignMonitoringRuntimeSummarySafe,
   buildEmailCampaignMonitoringScopeRecordsSafe
@@ -2327,6 +2331,33 @@ export type AdminEmailControl = {
       | "warning";
     queueHealthStateLabel: string;
   }>;
+  emailAnalyticsRuntimeSummary: {
+    activeTemplatesCount: number;
+    campaignReadinessCount: number;
+    cancelledCount: number;
+    failedCount: number;
+    metadataSummary: string;
+    monitoringHealthSummary: string;
+    needsReviewCount: number;
+    providersConfiguredCount: number;
+    queuedCount: number;
+    retryPendingCount: number;
+    sentCount: number;
+    templatesCount: number;
+  };
+  emailAnalyticsRuntimeStats: {
+    activeTemplatesAnalyticsItems: number;
+    campaignReadyAnalyticsItems: number;
+    cancelledAnalyticsItems: number;
+    failedAnalyticsItems: number;
+    needsReviewAnalyticsItems: number;
+    providersConfiguredAnalyticsItems: number;
+    queuedAnalyticsItems: number;
+    retryPendingAnalyticsItems: number;
+    sentAnalyticsItems: number;
+    templatesAnalyticsItems: number;
+    totalQueueAnalyticsItems: number;
+  };
   failedEmails: Array<{
     createdAt: string;
     emailType: string;
@@ -8701,6 +8732,17 @@ function buildAdminEmailControl(params: {
     campaignMonitoringSnapshot,
     registryItems
   );
+  const emailAnalyticsSnapshot = {
+    campaignEmailStats: emailCampaignEmailStats,
+    campaignMonitoringStats: emailCampaignMonitoringRuntimeStats,
+    campaignMonitoringSummary: emailCampaignMonitoringRuntimeSummary,
+    providerStats: emailProviderStats,
+    queueSummary: emailQueueRuntimeSummary,
+    templateRegistryStats: emailTemplateRegistryStats,
+    templateValidationStats: emailTemplateValidationStats
+  };
+  const emailAnalyticsRuntimeSummary = buildEmailAnalyticsRuntimeSummarySafe(emailAnalyticsSnapshot);
+  const emailAnalyticsRuntimeStats = buildEmailAnalyticsRuntimeStatsSafe(emailAnalyticsSnapshot);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8726,6 +8768,8 @@ function buildAdminEmailControl(params: {
     emailCampaignMonitoringRuntimeStats,
     emailCampaignMonitoringRuntimeSummary,
     emailCampaignMonitoringScopeRecords,
+    emailAnalyticsRuntimeStats,
+    emailAnalyticsRuntimeSummary,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,

@@ -1088,3 +1088,13 @@ export {
   mapFailureStateToMonitoringStateSafe,
   resolveEmailCampaignMonitoringAggregateStateSafe
 } from "@/src/lib/email/email-campaign-monitoring-runtime";
+export type {
+  EmailAnalyticsFoundationSnapshot,
+  EmailAnalyticsRuntimeStats,
+  EmailAnalyticsRuntimeSummary
+} from "@/src/lib/email/email-analytics-runtime";
+export {
+  buildEmailAnalyticsRuntimeStatsSafe,
+  buildEmailAnalyticsRuntimeSummarySafe,
+  listEmailAnalyticsRuntimeCatalog
+} from "@/src/lib/email/email-analytics-runtime";
