@@ -969,3 +969,18 @@ export {
   listEmailSecurityReadinessCatalog,
   resolveEmailSecurityReadinessStateSafe
 } from "@/src/lib/email/email-security-runtime";
+export type {
+  EmailQueueLogSnapshot,
+  EmailQueueRuntimeState,
+  EmailQueueRuntimeStats,
+  EmailQueueRuntimeSummary
+} from "@/src/lib/email/email-queue-runtime";
+export {
+  buildEmailQueueRuntimeStatsSafe,
+  buildEmailQueueRuntimeSummarySafe,
+  EMAIL_QUEUE_RUNTIME_STATES,
+  getEmailQueueRuntimeStateDescription,
+  getEmailQueueRuntimeStateLabel,
+  listEmailQueueRuntimeCatalog,
+  parseEmailQueueRuntimeStateSafe
+} from "@/src/lib/email/email-queue-runtime";

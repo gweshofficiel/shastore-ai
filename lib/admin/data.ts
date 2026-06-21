@@ -49,6 +49,10 @@ import {
   buildEmailOrderEmailStatsSafe
 } from "@/src/lib/email/email-order-runtime";
 import {
+  buildEmailQueueRuntimeStatsSafe,
+  buildEmailQueueRuntimeSummarySafe
+} from "@/src/lib/email/email-queue-runtime";
+import {
   buildEmailSecurityEmailRecordsSafe,
   buildEmailSecurityEmailStatsSafe
 } from "@/src/lib/email/email-security-runtime";
@@ -2618,6 +2622,30 @@ export type AdminEmailControl = {
     readySecurityEmails: number;
     totalSecurityEmails: number;
     unknownSecurityEmails: number;
+  };
+  emailQueueRuntimeSummary: {
+    cancelledCount: number;
+    failedCount: number;
+    lastActivityLabel: string;
+    metadataSummary: string;
+    pausedCount: number;
+    processingCount: number;
+    queuedCount: number;
+    retryPendingCount: number;
+    sentCount: number;
+    totalCount: number;
+    unknownCount: number;
+  };
+  emailQueueRuntimeStats: {
+    cancelledQueueItems: number;
+    failedQueueItems: number;
+    pausedQueueItems: number;
+    processingQueueItems: number;
+    queuedQueueItems: number;
+    retryPendingQueueItems: number;
+    sentQueueItems: number;
+    totalQueueItems: number;
+    unknownQueueItems: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -8287,6 +8315,8 @@ function buildAdminEmailControl(params: {
   const emailSupportEmailStats = buildEmailSupportEmailStatsSafe(registryItems, templateStatus);
   const emailSecurityEmails = buildEmailSecurityEmailRecordsSafe(registryItems, templateStatus);
   const emailSecurityEmailStats = buildEmailSecurityEmailStatsSafe(registryItems, templateStatus);
+  const emailQueueRuntimeSummary = buildEmailQueueRuntimeSummarySafe(emailLogs, registryItems);
+  const emailQueueRuntimeStats = buildEmailQueueRuntimeStatsSafe(emailLogs, registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8310,6 +8340,8 @@ function buildAdminEmailControl(params: {
     emailSupportEmails,
     emailSecurityEmailStats,
     emailSecurityEmails,
+    emailQueueRuntimeStats,
+    emailQueueRuntimeSummary,
     emailOrderEmailStats,
     emailOrderEmails,
     emailWelcomeEmailStats,
