@@ -57,6 +57,10 @@ import {
   buildEmailCampaignEmailStatsSafe
 } from "@/src/lib/email/email-campaign-runtime";
 import {
+  buildEmailAuditRuntimeStatsSafe,
+  buildEmailAuditRuntimeSummarySafe
+} from "@/src/lib/email/email-audit-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -2362,6 +2366,33 @@ export type AdminEmailControl = {
     sentAnalyticsItems: number;
     templatesAnalyticsItems: number;
     totalQueueAnalyticsItems: number;
+  };
+  emailAuditRuntimeSummary: {
+    auditState:
+      | "audit_ready"
+      | "incomplete"
+      | "invalid"
+      | "missing_required_fields"
+      | "needs_review"
+      | "risky_metadata"
+      | "unknown";
+    auditStateLabel: string;
+    invalidItemCount: number;
+    lastUpdatedLabel: string;
+    metadataSummary: string;
+    missingRequiredRuntimeFieldsCount: number;
+    needsReviewCount: number;
+    riskyMetadataCount: number;
+  };
+  emailAuditRuntimeStats: {
+    auditReadyAuditItems: number;
+    incompleteAuditItems: number;
+    invalidAuditItems: number;
+    missingRequiredFieldsAuditItems: number;
+    needsReviewAuditItems: number;
+    riskyMetadataAuditItems: number;
+    totalAuditItems: number;
+    unknownAuditItems: number;
   };
   failedEmails: Array<{
     createdAt: string;
@@ -8815,6 +8846,23 @@ function buildAdminEmailControl(params: {
   };
   const emailAnalyticsRuntimeSummary = buildEmailAnalyticsRuntimeSummarySafe(emailAnalyticsSnapshot);
   const emailAnalyticsRuntimeStats = buildEmailAnalyticsRuntimeStatsSafe(emailAnalyticsSnapshot);
+  const emailAuditSnapshot = {
+    analyticsSummary: emailAnalyticsRuntimeSummary,
+    campaignEmailStats: emailCampaignEmailStats,
+    campaignMonitoringStats: emailCampaignMonitoringRuntimeStats,
+    failureStats: emailFailureRuntimeStats,
+    failoverSummary: emailProviderFailoverRuntimeSummary,
+    lastActivityCandidates: [
+      text(adminEmailEvents[0]?.created_at),
+      ...registryItems.map((item) => text(item.updatedAt)).filter(Boolean)
+    ],
+    providerHealthStats: emailProviderHealthStats,
+    providerStats: emailProviderStats,
+    templateValidationStats: emailTemplateValidationStats,
+    typeStats: emailTypeStats
+  };
+  const emailAuditRuntimeSummary = buildEmailAuditRuntimeSummarySafe(emailAuditSnapshot, registryItems);
+  const emailAuditRuntimeStats = buildEmailAuditRuntimeStatsSafe(emailAuditSnapshot, registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8845,6 +8893,8 @@ function buildAdminEmailControl(params: {
     emailCampaignMonitoringScopeRecords,
     emailAnalyticsRuntimeStats,
     emailAnalyticsRuntimeSummary,
+    emailAuditRuntimeStats,
+    emailAuditRuntimeSummary,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,

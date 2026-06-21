@@ -1116,3 +1116,21 @@ export {
   listEmailProviderFailoverReadinessCatalog,
   resolveEmailProviderFailoverReadinessStateSafe
 } from "@/src/lib/email/email-provider-failover-runtime";
+export type {
+  EmailAuditFoundationSnapshot,
+  EmailAuditRegistryItem,
+  EmailAuditRuntimeStats,
+  EmailAuditRuntimeSummary,
+  EmailAuditState
+} from "@/src/lib/email/email-audit-runtime";
+export {
+  buildEmailAuditRuntimeStatsSafe,
+  buildEmailAuditRuntimeSummarySafe,
+  countRegistryMissingRequiredFieldsSafe,
+  countRegistryRiskyMetadataSafe,
+  EMAIL_AUDIT_STATES,
+  getEmailAuditStateDescription,
+  getEmailAuditStateLabel,
+  listEmailAuditRuntimeCatalog,
+  resolveEmailAuditStateSafe
+} from "@/src/lib/email/email-audit-runtime";
