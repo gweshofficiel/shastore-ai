@@ -984,3 +984,19 @@ export {
   listEmailQueueRuntimeCatalog,
   parseEmailQueueRuntimeStateSafe
 } from "@/src/lib/email/email-queue-runtime";
+export type {
+  EmailRetryLogSnapshot,
+  EmailRetryReadinessState,
+  EmailRetryRuntimeStats,
+  EmailRetryRuntimeSummary
+} from "@/src/lib/email/email-retry-runtime";
+export {
+  buildEmailRetryRuntimeStatsSafe,
+  buildEmailRetryRuntimeSummarySafe,
+  EMAIL_RETRY_READINESS_STATES,
+  getEmailRetryReadinessStateDescription,
+  getEmailRetryReadinessStateLabel,
+  listEmailRetryReadinessCatalog,
+  resolveEmailRetryReadinessStateSafe,
+  resolveEmailRetryStateForLogSafe
+} from "@/src/lib/email/email-retry-runtime";

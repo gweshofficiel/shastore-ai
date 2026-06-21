@@ -53,6 +53,10 @@ import {
   buildEmailQueueRuntimeSummarySafe
 } from "@/src/lib/email/email-queue-runtime";
 import {
+  buildEmailRetryRuntimeStatsSafe,
+  buildEmailRetryRuntimeSummarySafe
+} from "@/src/lib/email/email-retry-runtime";
+import {
   buildEmailSecurityEmailRecordsSafe,
   buildEmailSecurityEmailStatsSafe
 } from "@/src/lib/email/email-security-runtime";
@@ -2646,6 +2650,32 @@ export type AdminEmailControl = {
     sentQueueItems: number;
     totalQueueItems: number;
     unknownQueueItems: number;
+  };
+  emailRetryRuntimeSummary: {
+    failedCount: number;
+    lastRetryLabel: string;
+    metadataSummary: string;
+    nextRetryLabel: string;
+    retryAttemptsSummary: string;
+    retryPendingCount: number;
+    retryReadinessState:
+      | "failed"
+      | "not_retryable"
+      | "retry_blocked"
+      | "retry_exhausted"
+      | "retry_pending"
+      | "retry_ready"
+      | "unknown";
+    retryReadinessStateLabel: string;
+  };
+  emailRetryRuntimeStats: {
+    failedRetryItems: number;
+    notRetryableRetryItems: number;
+    retryBlockedRetryItems: number;
+    retryExhaustedRetryItems: number;
+    retryPendingRetryItems: number;
+    retryReadyRetryItems: number;
+    unknownRetryItems: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -8317,6 +8347,8 @@ function buildAdminEmailControl(params: {
   const emailSecurityEmailStats = buildEmailSecurityEmailStatsSafe(registryItems, templateStatus);
   const emailQueueRuntimeSummary = buildEmailQueueRuntimeSummarySafe(emailLogs, registryItems);
   const emailQueueRuntimeStats = buildEmailQueueRuntimeStatsSafe(emailLogs, registryItems);
+  const emailRetryRuntimeSummary = buildEmailRetryRuntimeSummarySafe(emailLogs, registryItems);
+  const emailRetryRuntimeStats = buildEmailRetryRuntimeStatsSafe(emailLogs, registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8342,6 +8374,8 @@ function buildAdminEmailControl(params: {
     emailSecurityEmails,
     emailQueueRuntimeStats,
     emailQueueRuntimeSummary,
+    emailRetryRuntimeStats,
+    emailRetryRuntimeSummary,
     emailOrderEmailStats,
     emailOrderEmails,
     emailWelcomeEmailStats,
