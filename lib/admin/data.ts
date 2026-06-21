@@ -57,6 +57,11 @@ import {
   buildEmailCampaignEmailStatsSafe
 } from "@/src/lib/email/email-campaign-runtime";
 import {
+  buildEmailCampaignMonitoringRuntimeStatsSafe,
+  buildEmailCampaignMonitoringRuntimeSummarySafe,
+  buildEmailCampaignMonitoringScopeRecordsSafe
+} from "@/src/lib/email/email-campaign-monitoring-runtime";
+import {
   buildEmailCampaignQueueRuntimeStatsSafe,
   buildEmailCampaignQueueRuntimeSummarySafe,
   buildEmailCampaignQueueScopeRecordsSafe
@@ -2230,6 +2235,97 @@ export type AdminEmailControl = {
     queueReadinessStateLabel: string;
     retryPendingCount: number;
     sentCount: number;
+  }>;
+  emailCampaignMonitoringRuntimeSummary: {
+    campaignAnalyticsHookReserved: boolean;
+    campaignHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    campaignHealthStateLabel: string;
+    deliverySummaryState: string;
+    deliverySummaryStateLabel: string;
+    exportEmailLogsHookReserved: boolean;
+    failureSummaryState: string;
+    failureSummaryStateLabel: string;
+    lastActivityLabel: string;
+    metadataSummary: string;
+    monitoringReadinessState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    monitoringReadinessStateLabel: string;
+    queueHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    queueHealthStateLabel: string;
+  };
+  emailCampaignMonitoringRuntimeStats: {
+    degradedMonitoringItems: number;
+    failedMonitoringItems: number;
+    healthyMonitoringItems: number;
+    monitoringMonitoringItems: number;
+    needsReviewMonitoringItems: number;
+    pausedMonitoringItems: number;
+    totalMonitoringItems: number;
+    unknownMonitoringItems: number;
+    warningMonitoringItems: number;
+  };
+  emailCampaignMonitoringScopeRecords: Array<{
+    campaignHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    campaignHealthStateLabel: string;
+    campaignScopeLabel: string;
+    campaignScopeSlug: string;
+    deliverySummaryState: string;
+    deliverySummaryStateLabel: string;
+    failureSummaryState: string;
+    failureSummaryStateLabel: string;
+    lastActivityLabel: string;
+    metadataSummary: string;
+    monitoringReadinessState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    monitoringReadinessStateLabel: string;
+    queueHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "monitoring"
+      | "needs_review"
+      | "paused"
+      | "unknown"
+      | "warning";
+    queueHealthStateLabel: string;
   }>;
   failedEmails: Array<{
     createdAt: string;
@@ -8583,6 +8679,28 @@ function buildAdminEmailControl(params: {
     storeMarketingMessages,
     resolveCampaignTotals
   );
+  const campaignMonitoringSnapshot = {
+    campaignEmails: emailCampaignEmails,
+    campaignMonitoring: registryViews.campaignMonitoring,
+    campaignQueueScopeRecords: emailCampaignQueueScopeRecords,
+    campaignQueueSummary: emailCampaignQueueRuntimeSummary,
+    deliverySummary: emailDeliveryRuntimeSummary,
+    failureSummary: emailFailureRuntimeSummary,
+    futureHooks: registryViews.futureHooks,
+    queueSummary: emailQueueRuntimeSummary
+  };
+  const emailCampaignMonitoringScopeRecords = buildEmailCampaignMonitoringScopeRecordsSafe(
+    campaignMonitoringSnapshot,
+    registryItems
+  );
+  const emailCampaignMonitoringRuntimeSummary = buildEmailCampaignMonitoringRuntimeSummarySafe(
+    campaignMonitoringSnapshot,
+    registryItems
+  );
+  const emailCampaignMonitoringRuntimeStats = buildEmailCampaignMonitoringRuntimeStatsSafe(
+    campaignMonitoringSnapshot,
+    registryItems
+  );
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8605,6 +8723,9 @@ function buildAdminEmailControl(params: {
     emailCampaignQueueRuntimeStats,
     emailCampaignQueueRuntimeSummary,
     emailCampaignQueueScopeRecords,
+    emailCampaignMonitoringRuntimeStats,
+    emailCampaignMonitoringRuntimeSummary,
+    emailCampaignMonitoringScopeRecords,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,
