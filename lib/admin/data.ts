@@ -57,6 +57,11 @@ import {
   buildEmailCampaignEmailStatsSafe
 } from "@/src/lib/email/email-campaign-runtime";
 import {
+  buildEmailProviderFailoverRecordsSafe,
+  buildEmailProviderFailoverRuntimeStatsSafe,
+  buildEmailProviderFailoverRuntimeSummarySafe
+} from "@/src/lib/email/email-provider-failover-runtime";
+import {
   buildEmailAnalyticsRuntimeStatsSafe,
   buildEmailAnalyticsRuntimeSummarySafe
 } from "@/src/lib/email/email-analytics-runtime";
@@ -3041,6 +3046,70 @@ export type AdminEmailControl = {
     placeholderProviders: number;
     totalProviders: number;
     unknownProviders: number;
+  };
+  emailProviderFailoverRecords: Array<{
+    backupProviderLabel: string | null;
+    failoverReadinessState:
+      | "backup_available"
+      | "disabled"
+      | "failover_ready"
+      | "needs_review"
+      | "no_backup"
+      | "primary_only"
+      | "provider_unhealthy"
+      | "unknown";
+    failoverReadinessStateLabel: string;
+    metadataSummary: string;
+    primaryProviderLabel: string;
+    providerHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "missing_config"
+      | "monitoring"
+      | "not_configured"
+      | "placeholder"
+      | "unknown";
+    providerHealthStateLabel: string;
+    providerKey: "future" | "resend" | "smtp";
+    providerLabel: string;
+    providerRole: "backup" | "primary" | "reserved";
+  }>;
+  emailProviderFailoverRuntimeSummary: {
+    backupProviderLabel: string | null;
+    failoverReadinessState:
+      | "backup_available"
+      | "disabled"
+      | "failover_ready"
+      | "needs_review"
+      | "no_backup"
+      | "primary_only"
+      | "provider_unhealthy"
+      | "unknown";
+    failoverReadinessStateLabel: string;
+    metadataSummary: string;
+    primaryProviderLabel: string;
+    providerHealthState:
+      | "degraded"
+      | "failed"
+      | "healthy"
+      | "missing_config"
+      | "monitoring"
+      | "not_configured"
+      | "placeholder"
+      | "unknown";
+    providerHealthStateLabel: string;
+  };
+  emailProviderFailoverRuntimeStats: {
+    backupAvailableFailoverItems: number;
+    disabledFailoverItems: number;
+    failoverReadyFailoverItems: number;
+    needsReviewFailoverItems: number;
+    noBackupFailoverItems: number;
+    primaryOnlyFailoverItems: number;
+    providerUnhealthyFailoverItems: number;
+    totalFailoverItems: number;
+    unknownFailoverItems: number;
   };
   futureHooks: string[];
   overview: {
@@ -8646,6 +8715,9 @@ function buildAdminEmailControl(params: {
   const emailProviderStats = buildEmailProviderStatsSafe(registryItems);
   const emailProviderHealth = buildEmailProviderHealthRecordsSafe(registryItems);
   const emailProviderHealthStats = buildEmailProviderHealthStatsSafe(registryItems);
+  const emailProviderFailoverRecords = buildEmailProviderFailoverRecordsSafe(registryItems);
+  const emailProviderFailoverRuntimeSummary = buildEmailProviderFailoverRuntimeSummarySafe(registryItems);
+  const emailProviderFailoverRuntimeStats = buildEmailProviderFailoverRuntimeStatsSafe(registryItems);
   const emailTemplateRegistry = buildEmailTemplateRegistryRecordsSafe(registryItems, templateStatus);
   const emailTemplateRegistryStats = buildEmailTemplateRegistryStatsSafe(registryItems, templateStatus);
   const emailTemplateCategoryStats = buildEmailTemplateCategoryStatsSafe(registryItems);
@@ -8748,6 +8820,9 @@ function buildAdminEmailControl(params: {
     campaignMonitoring: registryViews.campaignMonitoring,
     emailProviderHealth,
     emailProviderHealthStats,
+    emailProviderFailoverRecords,
+    emailProviderFailoverRuntimeStats,
+    emailProviderFailoverRuntimeSummary,
     emailProviderStats,
     emailStatusStats,
     emailTemplateCategoryGroups,

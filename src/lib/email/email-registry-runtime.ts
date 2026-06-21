@@ -1098,3 +1098,21 @@ export {
   buildEmailAnalyticsRuntimeSummarySafe,
   listEmailAnalyticsRuntimeCatalog
 } from "@/src/lib/email/email-analytics-runtime";
+export type {
+  EmailProviderFailoverFoundationSnapshot,
+  EmailProviderFailoverReadinessState,
+  EmailProviderFailoverRecord,
+  EmailProviderFailoverRuntimeStats,
+  EmailProviderFailoverRuntimeSummary
+} from "@/src/lib/email/email-provider-failover-runtime";
+export {
+  buildEmailProviderFailoverRecordsFromSnapshotSafe,
+  buildEmailProviderFailoverRecordsSafe,
+  buildEmailProviderFailoverRuntimeStatsSafe,
+  buildEmailProviderFailoverRuntimeSummarySafe,
+  EMAIL_PROVIDER_FAILOVER_READINESS_STATES,
+  getEmailProviderFailoverReadinessStateDescription,
+  getEmailProviderFailoverReadinessStateLabel,
+  listEmailProviderFailoverReadinessCatalog,
+  resolveEmailProviderFailoverReadinessStateSafe
+} from "@/src/lib/email/email-provider-failover-runtime";
