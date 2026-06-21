@@ -829,3 +829,22 @@ export {
   resolveEmailTemplateCategoryLabel,
   resolveEmailTemplateCenterCategorySafe
 } from "@/src/lib/email/email-template-category-runtime";
+export type {
+  EmailTemplateVersionBadgeTone,
+  EmailTemplateVersionRecord,
+  EmailTemplateVersionState,
+  EmailTemplateVersionStats
+} from "@/src/lib/email/email-template-version-runtime";
+export {
+  buildEmailTemplateVersionRecordsSafe,
+  buildEmailTemplateVersionStatsSafe,
+  EMAIL_TEMPLATE_VERSION_STATES,
+  getEmailTemplateVersionBadgeTone,
+  getEmailTemplateVersionStateDescription,
+  getEmailTemplateVersionStateLabel,
+  isValidEmailTemplateVersionState,
+  listEmailTemplateVersionCatalog,
+  parseEmailTemplateVersionState,
+  resolveEmailTemplateLastUpdatedLabelSafe,
+  resolveEmailTemplateVersionStateSafe
+} from "@/src/lib/email/email-template-version-runtime";

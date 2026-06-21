@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailTemplateVersionRecordsSafe,
+  buildEmailTemplateVersionStatsSafe
+} from "@/src/lib/email/email-template-version-runtime";
+import {
   buildEmailTemplateCategoryStatsSafe,
   groupEmailTemplateRecordsByCategorySafe
 } from "@/src/lib/email/email-template-category-runtime";
@@ -2156,6 +2160,33 @@ export type AdminEmailControl = {
     description: string;
     templateCount: number;
   }>;
+  emailTemplateVersionRecords: Array<{
+    currentVersionLabel: string | null;
+    draftVersionLabel: string | null;
+    lastUpdatedLabel: string;
+    metadataSummary: string;
+    publishedVersionLabel: string | null;
+    templateKey: string;
+    versionState:
+      | "draft_available"
+      | "invalid"
+      | "needs_review"
+      | "published"
+      | "unknown"
+      | "unversioned"
+      | "versioned";
+    versionStateLabel: string;
+  }>;
+  emailTemplateVersionStats: {
+    draftAvailableTemplates: number;
+    invalidTemplates: number;
+    needsReviewTemplates: number;
+    publishedTemplates: number;
+    totalTemplates: number;
+    unknownTemplates: number;
+    unversionedTemplates: number;
+    versionedTemplates: number;
+  };
   emailProviderStats: {
     configuredProviders: number;
     futurePlaceholderProviders: number;
@@ -7806,6 +7837,8 @@ function buildAdminEmailControl(params: {
     description: group.description,
     templateCount: group.items.length
   }));
+  const emailTemplateVersionRecords = buildEmailTemplateVersionRecordsSafe(emailTemplateRegistry);
+  const emailTemplateVersionStats = buildEmailTemplateVersionStatsSafe(emailTemplateRegistry);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7817,6 +7850,8 @@ function buildAdminEmailControl(params: {
     emailTemplateCategoryStats,
     emailTemplateRegistry,
     emailTemplateRegistryStats,
+    emailTemplateVersionRecords,
+    emailTemplateVersionStats,
     emailTypeStats,
     failedEmails,
     futureHooks: registryViews.futureHooks,
