@@ -12,7 +12,6 @@ import {
 } from "@/src/lib/email/email-provider-runtime";
 import {
   mapRegistryStatusToCampaignScopeStatus,
-  mapRegistryStatusToTemplateStatus,
   mapRegistryStatusToTransactionalStatus,
   parseEmailRegistryStatus,
   type EmailCampaignScopeStatus,
@@ -29,17 +28,10 @@ export type {
   EmailTransactionalSectionStatus
 } from "@/src/lib/email/email-status-runtime";
 
-export type EmailTemplateCategory =
-  | "billing"
-  | "domain_email_setup"
-  | "order"
-  | "security"
-  | "support"
-  | "welcome";
-
-export type EmailTemplateLanguage = "Arabic" | "English" | "French";
-
-export type { EmailProviderKey, EmailRegistryProviderView } from "@/src/lib/email/email-provider-runtime";
+import {
+  buildEmailTemplateRegistryViewsSafe,
+  type EmailRegistryTemplateView
+} from "@/src/lib/email/email-template-registry-runtime";
 
 export type EmailRegistryItemRecord = {
   category: string;
@@ -57,14 +49,12 @@ export type EmailRegistryItemRecord = {
   usageCount: number;
 };
 
-export type EmailRegistryTemplateView = {
-  category: EmailTemplateCategory;
-  id: string;
-  language: EmailTemplateLanguage;
-  lastUpdated: string | null;
-  name: string;
-  status: EmailTemplateDisplayStatus;
-};
+export type { EmailProviderKey, EmailRegistryProviderView } from "@/src/lib/email/email-provider-runtime";
+export type {
+  EmailRegistryTemplateView,
+  EmailTemplateCategory,
+  EmailTemplateLanguage
+} from "@/src/lib/email/email-template-registry-runtime";
 
 export type EmailRegistryTransactionalSectionView = {
   key: string;
@@ -116,21 +106,6 @@ function requireAdminClient() {
   }
 
   return admin;
-}
-
-function isValidEmailTemplateCategory(value: unknown): value is EmailTemplateCategory {
-  return (
-    value === "billing" ||
-    value === "domain_email_setup" ||
-    value === "order" ||
-    value === "security" ||
-    value === "support" ||
-    value === "welcome"
-  );
-}
-
-function isValidEmailTemplateLanguage(value: unknown): value is EmailTemplateLanguage {
-  return value === "Arabic" || value === "English" || value === "French";
 }
 
 function sanitizeRegistryMetadata(metadata: Record<string, unknown>) {
@@ -213,29 +188,7 @@ export function buildEmailRegistryTemplatesView(
   items: EmailRegistryItemRecord[],
   resolveTemplateStatus?: (templateId: string, fallback: EmailTemplateDisplayStatus) => EmailTemplateDisplayStatus
 ): EmailRegistryTemplateView[] {
-  const templateItems = filterEmailRegistryItemsByType(items, "template");
-
-  return templateItems
-    .map((item) => {
-      const metadata = item.metadata;
-      const templateId = text(metadata.template_id, 160) || item.registryKey;
-      const category = isValidEmailTemplateCategory(item.category) ? item.category : null;
-      const language = isValidEmailTemplateLanguage(metadata.language) ? metadata.language : "English";
-      const fallbackStatus = mapRegistryStatusToTemplateStatus(item.status);
-      const status = resolveTemplateStatus ? resolveTemplateStatus(templateId, fallbackStatus) : fallbackStatus;
-
-      if (!category) return null;
-
-      return {
-        category,
-        id: templateId,
-        language,
-        lastUpdated: item.updatedAt,
-        name: item.name,
-        status
-      };
-    })
-    .filter((template): template is EmailRegistryTemplateView => Boolean(template));
+  return buildEmailTemplateRegistryViewsSafe(items, resolveTemplateStatus);
 }
 
 export function buildEmailRegistryTransactionalSectionsView(
@@ -836,3 +789,21 @@ export {
   resolveEmailProviderHealthStateSafe,
   resolveEmailProviderLastCheckedLabelSafe
 } from "@/src/lib/email/email-provider-health-runtime";
+export type {
+  EmailTemplateRegistryRecord,
+  EmailTemplateRegistryStats
+} from "@/src/lib/email/email-template-registry-runtime";
+export {
+  buildEmailTemplateRegistryRecordsSafe,
+  buildEmailTemplateRegistryStatsSafe,
+  buildEmailTemplateRegistryViewsSafe,
+  EMAIL_TEMPLATE_CATEGORIES,
+  EMAIL_TEMPLATE_LANGUAGES,
+  getEmailTemplateCategoryDescription,
+  getEmailTemplateCategoryLabel,
+  isValidEmailTemplateCategory,
+  isValidEmailTemplateLanguage,
+  listEmailTemplateCategoryCatalog,
+  parseEmailTemplateCategory,
+  parseEmailTemplateLanguage
+} from "@/src/lib/email/email-template-registry-runtime";

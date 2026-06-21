@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailTemplateRegistryRecordsSafe,
+  buildEmailTemplateRegistryStatsSafe
+} from "@/src/lib/email/email-template-registry-runtime";
+import {
   buildEmailRegistryViewsSafe,
   EMAIL_REGISTRY_FALLBACK_ITEMS,
   listEmailRegistryItemsReadOnlySafe,
@@ -2099,6 +2103,35 @@ export type AdminEmailControl = {
     reservedPlaceholderItems: number;
     totalItems: number;
     unknownItems: number;
+  };
+  emailTemplateRegistry: Array<{
+    category: "billing" | "domain_email_setup" | "order" | "security" | "support" | "welcome";
+    categoryLabel: string;
+    description: string;
+    id: string;
+    language: "Arabic" | "English" | "French";
+    lastUpdated: string | null;
+    metadataSummary: string;
+    name: string;
+    providerKey: "future" | "resend" | "smtp" | null;
+    registryKey: string;
+    registryStatusLabel: string;
+    slug: string;
+    status: "active" | "disabled" | "draft";
+    templateKey: string;
+    usageCount: number;
+  }>;
+  emailTemplateRegistryStats: {
+    activeTemplates: number;
+    billingTemplates: number;
+    disabledTemplates: number;
+    domainEmailSetupTemplates: number;
+    draftTemplates: number;
+    orderTemplates: number;
+    securityTemplates: number;
+    supportTemplates: number;
+    totalTemplates: number;
+    welcomeTemplates: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -7741,6 +7774,8 @@ function buildAdminEmailControl(params: {
   const emailProviderStats = buildEmailProviderStatsSafe(registryItems);
   const emailProviderHealth = buildEmailProviderHealthRecordsSafe(registryItems);
   const emailProviderHealthStats = buildEmailProviderHealthStatsSafe(registryItems);
+  const emailTemplateRegistry = buildEmailTemplateRegistryRecordsSafe(registryItems, templateStatus);
+  const emailTemplateRegistryStats = buildEmailTemplateRegistryStatsSafe(registryItems, templateStatus);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7748,6 +7783,8 @@ function buildAdminEmailControl(params: {
     emailProviderHealthStats,
     emailProviderStats,
     emailStatusStats,
+    emailTemplateRegistry,
+    emailTemplateRegistryStats,
     emailTypeStats,
     failedEmails,
     futureHooks: registryViews.futureHooks,
