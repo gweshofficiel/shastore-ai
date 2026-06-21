@@ -69,6 +69,7 @@ import {
   buildEmailProductionHardeningSafe,
   verifyEmailProductionFoundationsPresent
 } from "@/src/lib/email/email-production-hardening";
+import { buildEmailProductionCertificationSafe } from "@/src/lib/email/email-production-certification";
 import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
@@ -2429,6 +2430,21 @@ export type AdminEmailControl = {
     }>;
     passedChecks: number;
     productionStable: boolean;
+    totalChecks: number;
+  };
+  emailProductionCertification: {
+    certificationDescription: string;
+    certifiedAt: string;
+    conversionComplete: boolean;
+    failedChecks: number;
+    passedChecks: number;
+    productionCertified: boolean;
+    productionReview: Array<{
+      category: string;
+      message: string;
+      passed: boolean;
+    }>;
+    productionReady: boolean;
     totalChecks: number;
   };
   failedEmails: Array<{
@@ -8988,6 +9004,14 @@ function buildAdminEmailControl(params: {
     reservedFutureHookCount: registryViews.futureHooks.length,
     runtimeWarning: combinedWarning
   });
+  const emailProductionCertification = buildEmailProductionCertificationSafe({
+    emailProductionHardening,
+    emailSecurityCertification,
+    overview,
+    registryItemCount: registryItems.length,
+    reservedFutureHookCount: registryViews.futureHooks.length,
+    runtimeWarning: combinedWarning
+  });
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -9022,6 +9046,7 @@ function buildAdminEmailControl(params: {
     emailAuditRuntimeSummary,
     emailSecurityCertification,
     emailProductionHardening,
+    emailProductionCertification,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,

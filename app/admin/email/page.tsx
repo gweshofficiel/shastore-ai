@@ -11,6 +11,7 @@ import {
   normalizeEmailAdminCountSafe,
   sanitizeEmailAdminDisplayTextSafe
 } from "@/src/lib/email/email-production-hardening";
+import { sanitizeEmailProductionCertificationText } from "@/src/lib/email/email-production-certification";
 import { sanitizeEmailSecurityText } from "@/src/lib/email/email-security-certification";
 import {
   disableEmailTemplatePlaceholder,
@@ -108,6 +109,22 @@ export default async function AdminEmailPage() {
         </div>
       ) : null}
 
+      {!control.emailProductionCertification.productionCertified ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Email production certification</p>
+          <p className="mt-2 text-sm font-semibold text-amber-900">
+            {sanitizeEmailProductionCertificationText(control.emailProductionCertification.certificationDescription, 500)}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Email production certification</p>
+          <p className="mt-2 text-sm font-semibold text-emerald-900">
+            {sanitizeEmailProductionCertificationText(control.emailProductionCertification.certificationDescription, 500)}
+          </p>
+        </div>
+      )}
+
       <AdminStatGrid
         stats={[
           { label: "Providers configured", value: normalizeEmailAdminCountSafe(control.overview.providersConfigured) },
@@ -170,6 +187,45 @@ export default async function AdminEmailPage() {
       />
       <p className="-mt-4 text-xs font-semibold text-slate-500">
         {sanitizeEmailAdminDisplayTextSafe(control.emailProductionHardening.hardeningDescription, 500)}
+      </p>
+
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Production certified",
+            value: control.emailProductionCertification.productionCertified ? "Certified" : "Needs attention"
+          },
+          {
+            label: "Conversion EM-29",
+            value: control.emailProductionCertification.conversionComplete ? "Complete" : "Incomplete"
+          },
+          {
+            label: "Production ready",
+            value: control.emailProductionCertification.productionReady ? "Ready" : "Needs attention"
+          },
+          {
+            label: "Checks passed",
+            value: normalizeEmailAdminCountSafe(control.emailProductionCertification.passedChecks)
+          },
+          {
+            label: "Checks failed",
+            value: normalizeEmailAdminCountSafe(control.emailProductionCertification.failedChecks)
+          },
+          {
+            label: "Total checks",
+            value: normalizeEmailAdminCountSafe(control.emailProductionCertification.totalChecks)
+          },
+          {
+            label: "Certified at",
+            value: control.emailProductionCertification.certifiedAt
+              ? formatAdminDate(control.emailProductionCertification.certifiedAt)
+              : "Unknown"
+          },
+          { label: "Admin stability", value: "Stable" }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">
+        {sanitizeEmailProductionCertificationText(control.emailProductionCertification.certificationDescription, 500)}
       </p>
 
       <AdminTable headers={["Provider", "Configured", "Health", "Secrets"]}>

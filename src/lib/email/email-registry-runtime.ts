@@ -1148,6 +1148,16 @@ export {
   verifyEmailProductionMetadataSafe
 } from "@/src/lib/email/email-production-hardening";
 export type {
+  EmailProductionCertificationReviewItem,
+  EmailProductionCertificationSummary
+} from "@/src/lib/email/email-production-certification";
+export {
+  buildEmailProductionCertification,
+  buildEmailProductionCertificationSafe,
+  EMAIL_PRODUCTION_CERTIFICATION_FALLBACK_SUMMARY,
+  sanitizeEmailProductionCertificationText
+} from "@/src/lib/email/email-production-certification";
+export type {
   EmailAuditFoundationSnapshot,
   EmailAuditRegistryItem,
   EmailAuditRuntimeStats,
