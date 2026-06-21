@@ -955,3 +955,17 @@ export {
   listEmailSupportReadinessCatalog,
   resolveEmailSupportReadinessStateSafe
 } from "@/src/lib/email/email-support-runtime";
+export type {
+  EmailSecurityEmailRecord,
+  EmailSecurityEmailStats,
+  EmailSecurityReadinessState
+} from "@/src/lib/email/email-security-runtime";
+export {
+  buildEmailSecurityEmailRecordsSafe,
+  buildEmailSecurityEmailStatsSafe,
+  EMAIL_SECURITY_READINESS_STATES,
+  getEmailSecurityReadinessStateDescription,
+  getEmailSecurityReadinessStateLabel,
+  listEmailSecurityReadinessCatalog,
+  resolveEmailSecurityReadinessStateSafe
+} from "@/src/lib/email/email-security-runtime";
