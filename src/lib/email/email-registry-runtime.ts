@@ -941,3 +941,17 @@ export {
   listEmailDomainEmailSetupReadinessCatalog,
   resolveEmailDomainEmailSetupReadinessStateSafe
 } from "@/src/lib/email/email-domain-email-setup-runtime";
+export type {
+  EmailSupportEmailRecord,
+  EmailSupportEmailStats,
+  EmailSupportReadinessState
+} from "@/src/lib/email/email-support-runtime";
+export {
+  buildEmailSupportEmailRecordsSafe,
+  buildEmailSupportEmailStatsSafe,
+  EMAIL_SUPPORT_READINESS_STATES,
+  getEmailSupportReadinessStateDescription,
+  getEmailSupportReadinessStateLabel,
+  listEmailSupportReadinessCatalog,
+  resolveEmailSupportReadinessStateSafe
+} from "@/src/lib/email/email-support-runtime";

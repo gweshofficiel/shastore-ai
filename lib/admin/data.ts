@@ -49,6 +49,10 @@ import {
   buildEmailOrderEmailStatsSafe
 } from "@/src/lib/email/email-order-runtime";
 import {
+  buildEmailSupportEmailRecordsSafe,
+  buildEmailSupportEmailStatsSafe
+} from "@/src/lib/email/email-support-runtime";
+import {
   buildEmailWelcomeEmailRecordsSafe,
   buildEmailWelcomeEmailStatsSafe
 } from "@/src/lib/email/email-welcome-runtime";
@@ -2496,6 +2500,63 @@ export type AdminEmailControl = {
     readyDomainEmailSetupEmails: number;
     totalDomainEmailSetupEmails: number;
     unknownDomainEmailSetupEmails: number;
+  };
+  emailSupportEmails: Array<{
+    metadataSummary: string;
+    name: string;
+    previewState:
+      | "invalid"
+      | "needs_review"
+      | "placeholder"
+      | "preview_ready"
+      | "preview_unavailable"
+      | "unknown";
+    previewStateLabel: string;
+    providerKey: "future" | "resend" | "smtp" | null;
+    readinessState:
+      | "draft"
+      | "invalid"
+      | "missing_provider"
+      | "missing_template"
+      | "needs_review"
+      | "placeholder"
+      | "ready"
+      | "unknown";
+    readinessStateLabel: string;
+    status: "active" | "disabled" | "draft";
+    templateCategory: "support";
+    templateKey: string;
+    validationState:
+      | "invalid"
+      | "missing_body"
+      | "missing_subject"
+      | "missing_variables"
+      | "needs_review"
+      | "placeholder"
+      | "unsafe_content"
+      | "unknown"
+      | "valid";
+    validationStateLabel: string;
+    versionState:
+      | "draft_available"
+      | "invalid"
+      | "needs_review"
+      | "published"
+      | "unknown"
+      | "unversioned"
+      | "versioned";
+    versionStateLabel: string;
+  }>;
+  emailSupportEmailStats: {
+    draftSupportEmails: number;
+    invalidSupportEmails: number;
+    missingProviderSupportEmails: number;
+    missingTemplateSupportEmails: number;
+    needsReviewSupportEmails: number;
+    placeholderSupportEmails: number;
+    readySupportEmails: number;
+    totalSupportEmails: number;
+    unknownSupportEmails: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -8161,6 +8222,8 @@ function buildAdminEmailControl(params: {
   const emailOrderEmailStats = buildEmailOrderEmailStatsSafe(registryItems, templateStatus);
   const emailDomainEmailSetupEmails = buildEmailDomainEmailSetupEmailRecordsSafe(registryItems, templateStatus);
   const emailDomainEmailSetupEmailStats = buildEmailDomainEmailSetupEmailStatsSafe(registryItems, templateStatus);
+  const emailSupportEmails = buildEmailSupportEmailRecordsSafe(registryItems, templateStatus);
+  const emailSupportEmailStats = buildEmailSupportEmailStatsSafe(registryItems, templateStatus);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8180,6 +8243,8 @@ function buildAdminEmailControl(params: {
     emailBillingEmails,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
+    emailSupportEmailStats,
+    emailSupportEmails,
     emailOrderEmailStats,
     emailOrderEmails,
     emailWelcomeEmailStats,
