@@ -71,6 +71,11 @@ import {
 } from "@/src/lib/email/email-production-hardening";
 import { buildEmailProductionCertificationSafe } from "@/src/lib/email/email-production-certification";
 import {
+  buildNotificationRegistryViewsSafe,
+  listNotificationRegistryItemsReadOnlySafe,
+  NOTIFICATION_REGISTRY_FALLBACK_ITEMS
+} from "@/src/lib/notifications/notification-registry-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3273,6 +3278,7 @@ export type AdminNotificationControl = {
     key: "ai_visuals" | "billing" | "domains" | "email_setup" | "security" | "store_publishing" | "support" | "system_health";
     label: string;
   }>;
+  runtimeWarning: string | null;
 };
 
 export type AdminSEOControl = {
@@ -9115,7 +9121,8 @@ export async function getAdminEmailControl(): Promise<AdminEmailControl> {
 
 export async function getAdminNotificationControl(): Promise<AdminNotificationControl> {
   const { supabase } = await getAdminUsersBase();
-  const [notifications, emailLogs, monitoringEvents] = await Promise.all([
+  const [registryLoad, notifications, emailLogs, monitoringEvents] = await Promise.all([
+    listNotificationRegistryItemsReadOnlySafe(),
     safeSelect(supabase, "notifications", "id, user_id, workspace_id, store_id, type, title, status, read_at, created_at", 500),
     safeSelect(
       supabase,
@@ -9125,6 +9132,33 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
     ),
     safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, metadata, store_id, user_id, created_at", 500)
   ]);
+
+  return buildAdminNotificationControl({
+    emailLogs,
+    monitoringEvents,
+    notifications,
+    registryItems: registryLoad.items,
+    registryWarning: registryLoad.warning
+  });
+}
+
+function maskedNotificationEntityId(value: unknown) {
+  const raw = text(value);
+  if (!raw) return "";
+  if (raw.length <= 8) return `${raw.slice(0, 2)}***`;
+  return `${raw.slice(0, 8)}...`;
+}
+
+function buildAdminNotificationControl(params: {
+  emailLogs: AnyRecord[];
+  monitoringEvents: AnyRecord[];
+  notifications: AnyRecord[];
+  registryItems: import("@/src/lib/notifications/notification-registry-runtime").NotificationRegistryItemRecord[];
+  registryWarning?: string | null;
+}): AdminNotificationControl {
+  const { emailLogs, monitoringEvents, notifications, registryItems, registryWarning = null } = params;
+  const registryViews = buildNotificationRegistryViewsSafe({ items: registryItems });
+  const combinedWarning = [registryWarning, registryViews.warning].filter(Boolean).join(" ") || null;
   const adminReviewEvents = monitoringEvents.filter(
     (event) => text(event.event_type) === "admin_notification_mark_reviewed"
   );
@@ -9205,10 +9239,13 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
         : "platform recipient",
     status: notificationStatus(notification.status, notification.read_at),
     storeOrUser:
-      text(notification.store_id) ||
-      text(notification.user_id) ||
-      text(notification.workspace_id) ||
-      "platform",
+      text(notification.store_id)
+        ? `store:${maskedNotificationEntityId(notification.store_id)}`
+        : text(notification.user_id)
+          ? `user:${maskedNotificationEntityId(notification.user_id)}`
+          : text(notification.workspace_id)
+            ? `workspace:${maskedNotificationEntityId(notification.workspace_id)}`
+            : "platform",
     type: text(notification.type, "system")
   }));
   const emailChannelLogs: AdminNotificationControl["logs"] = emailLogs.map((log) => ({
@@ -9233,7 +9270,11 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
         id: text(event.id) || `monitoring:${text(event.created_at)}`,
         recipientMasked: "platform admins",
         status: text(event.event_status) === "failed" ? "failed" as const : "queued" as const,
-        storeOrUser: text(event.store_id) || text(event.user_id) || text(event.entity_type, "platform"),
+        storeOrUser: text(event.store_id)
+          ? `store:${maskedNotificationEntityId(event.store_id)}`
+          : text(event.user_id)
+            ? `user:${maskedNotificationEntityId(event.user_id)}`
+            : text(event.entity_type, "platform"),
         type: text(event.event_type, "system_alert")
       };
     });
@@ -9247,97 +9288,85 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
     typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
   }
 
-  const channels: AdminNotificationControl["channels"] = [
-    {
-      configuredStatus: "configured",
-      healthStatus: "healthy",
-      key: "in_app",
-      name: "In-app",
-      secretStatus: "no_secret_required"
-    },
-    {
-      configuredStatus:
+  const channels: AdminNotificationControl["channels"] = registryViews.channels.map((channel) => {
+    if (channel.key === "email") {
+      const emailConfigured =
         process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
-        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured"
-          ? "configured"
-          : "missing",
-      healthStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
-        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured"
-          ? "healthy"
-          : "missing_config",
-      key: "email",
-      name: "Email",
-      secretStatus:
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-          ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-          : "missing"
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      key: "sms",
-      name: "SMS placeholder",
-      secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      key: "whatsapp",
-      name: "WhatsApp placeholder",
-      secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      key: "push",
-      name: "Push placeholder",
-      secretStatus: "no_secret_required"
-    },
-    {
-      configuredStatus: "configured",
-      healthStatus: monitoringEvents.some((event) => text(event.event_status) === "failed") ? "warning" : "healthy",
-      key: "system_alerts",
-      name: "System alerts",
-      secretStatus: "no_secret_required"
+        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured";
+
+      return {
+        ...channel,
+        configuredStatus: emailConfigured ? "configured" : "missing",
+        healthStatus: emailConfigured ? "healthy" : "missing_config",
+        secretStatus:
+          process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+            ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
+            : "missing"
+      };
     }
-  ];
-  const providerStatus: AdminNotificationControl["providerStatus"] = [
-    {
-      configuredStatus: channels.find((channel) => channel.key === "email")?.configuredStatus ?? "missing",
-      healthStatus: channels.find((channel) => channel.key === "email")?.healthStatus ?? "missing_config",
-      provider: "Email provider",
-      secretStatus: channels.find((channel) => channel.key === "email")?.secretStatus ?? "missing"
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      provider: "SMS provider",
-      secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      provider: "WhatsApp provider",
-      secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
-    },
-    {
-      configuredStatus: "placeholder",
-      healthStatus: "placeholder",
-      provider: "Push provider",
-      secretStatus: "no_secret_required"
+
+    if (channel.key === "sms") {
+      return {
+        ...channel,
+        secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
+      };
     }
-  ];
+
+    if (channel.key === "whatsapp") {
+      return {
+        ...channel,
+        secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
+      };
+    }
+
+    if (channel.key === "system_alerts") {
+      return {
+        ...channel,
+        healthStatus: monitoringEvents.some((event) => text(event.event_status) === "failed")
+          ? "warning"
+          : "healthy"
+      };
+    }
+
+    return channel;
+  });
+  const providerStatus: AdminNotificationControl["providerStatus"] = registryViews.providers.map((provider) => {
+    if (provider.provider === "Email provider") {
+      const emailChannel = channels.find((channel) => channel.key === "email");
+
+      return {
+        configuredStatus: emailChannel?.configuredStatus ?? provider.configuredStatus,
+        healthStatus: emailChannel?.healthStatus ?? provider.healthStatus,
+        provider: provider.provider,
+        secretStatus: emailChannel?.secretStatus ?? provider.secretStatus
+      };
+    }
+
+    if (provider.provider === "SMS provider") {
+      return {
+        ...provider,
+        secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
+      };
+    }
+
+    if (provider.provider === "WhatsApp provider") {
+      return {
+        ...provider,
+        secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
+      };
+    }
+
+    return provider;
+  });
+  const types: AdminNotificationControl["types"] = registryViews.types.map((type) => ({
+    count: typeCounts.get(type.key) ?? 0,
+    key: type.key,
+    label: type.label
+  }));
 
   return {
     channels,
-    futureHooks: [
-      "Retry failed notification",
-      "Configure channels",
-      "Send test notification",
-      "Export notification logs",
-      "Notification template editor"
-    ],
+    futureHooks: registryViews.futureHooks,
     logs,
     overview: {
       failed: logs.filter((log) => log.status === "failed").length,
@@ -9348,17 +9377,19 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
       unread: logs.filter((log) => log.status === "unread").length
     },
     providerStatus,
-    types: [
-      { count: typeCounts.get("billing") ?? 0, key: "billing", label: "Billing" },
-      { count: typeCounts.get("security") ?? 0, key: "security", label: "Security" },
-      { count: typeCounts.get("domains") ?? 0, key: "domains", label: "Domains" },
-      { count: typeCounts.get("email_setup") ?? 0, key: "email_setup", label: "Email setup" },
-      { count: typeCounts.get("ai_visuals") ?? 0, key: "ai_visuals", label: "AI visuals" },
-      { count: typeCounts.get("store_publishing") ?? 0, key: "store_publishing", label: "Store publishing" },
-      { count: typeCounts.get("support") ?? 0, key: "support", label: "Support" },
-      { count: typeCounts.get("system_health") ?? 0, key: "system_health", label: "System health" }
-    ]
+    runtimeWarning: combinedWarning,
+    types
   };
+}
+
+export function createFallbackAdminNotificationControl(): AdminNotificationControl {
+  return buildAdminNotificationControl({
+    emailLogs: [],
+    monitoringEvents: [],
+    notifications: [],
+    registryItems: [...NOTIFICATION_REGISTRY_FALLBACK_ITEMS],
+    registryWarning: "Notification registry runtime unavailable. Showing fallback registry rows."
+  });
 }
 
 export async function getAdminSEOControl(): Promise<AdminSEOControl> {

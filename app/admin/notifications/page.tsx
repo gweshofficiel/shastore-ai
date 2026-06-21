@@ -5,13 +5,27 @@ import {
   AdminTable,
   formatAdminDate
 } from "@/components/admin/admin-control";
-import { getAdminNotificationControl } from "@/lib/admin/data";
+import type { AdminNotificationControl } from "@/lib/admin/data";
+import { loadPlatformNotificationControlSafe } from "@/lib/admin/notification-loader";
 import {
   disableNotificationTemplatePlaceholder,
   markNotificationFailureReviewed,
   retryNotificationPlaceholder,
   viewNotificationDetails
 } from "@/lib/admin/notification-actions";
+
+function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
+  return (
+    <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Notification registry recovery</p>
+      <p className="mt-2 text-sm font-semibold text-amber-900">
+        Notification registry data could not be loaded from runtime storage. The admin shell is still available with
+        fallback registry rows.
+      </p>
+      <p className="mt-2 text-xs font-semibold text-amber-800">{message}</p>
+    </div>
+  );
+}
 
 function toneForStatus(status: string) {
   if (["configured", "healthy", "read", "sent"].includes(status)) {
@@ -32,7 +46,7 @@ function toneForStatus(status: string) {
 function NotificationHiddenFields({
   log
 }: {
-  log: Awaited<ReturnType<typeof getAdminNotificationControl>>["logs"][number];
+  log: AdminNotificationControl["logs"][number];
 }) {
   return (
     <>
@@ -44,7 +58,8 @@ function NotificationHiddenFields({
 }
 
 export default async function AdminNotificationsPage() {
-  const control = await getAdminNotificationControl();
+  const { control, ok, warning } = await loadPlatformNotificationControlSafe();
+  const recoveryMessage = warning ?? control.runtimeWarning ?? null;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -52,6 +67,10 @@ export default async function AdminNotificationsPage() {
         description="Platform-level notification governance across in-app, email, SMS, WhatsApp, system alerts, and future push notifications. This does not send Store Owner campaigns or modify user notification systems."
         title="Notification Center"
       />
+
+      {!ok && recoveryMessage ? (
+        <NotificationRuntimeRecoveryNotice message={recoveryMessage.slice(0, 500)} />
+      ) : null}
 
       <AdminStatGrid
         stats={[

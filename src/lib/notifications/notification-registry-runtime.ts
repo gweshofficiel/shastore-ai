@@ -1,0 +1,800 @@
+import "server-only";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export const NOTIFICATION_REGISTRY_TYPES = [
+  "channel",
+  "type",
+  "log_summary",
+  "provider",
+  "future_hook",
+  "metric"
+] as const;
+
+export type NotificationRegistryType = (typeof NOTIFICATION_REGISTRY_TYPES)[number];
+
+export const NOTIFICATION_REGISTRY_CHANNELS = [
+  "in_app",
+  "email",
+  "sms",
+  "whatsapp",
+  "push",
+  "system_alerts"
+] as const;
+
+export type NotificationRegistryChannel = (typeof NOTIFICATION_REGISTRY_CHANNELS)[number];
+
+export const NOTIFICATION_REGISTRY_TYPE_KEYS = [
+  "billing",
+  "security",
+  "domains",
+  "email_setup",
+  "ai_visuals",
+  "store_publishing",
+  "support",
+  "system_health"
+] as const;
+
+export type NotificationRegistryTypeKey = (typeof NOTIFICATION_REGISTRY_TYPE_KEYS)[number];
+
+export type NotificationRegistryItemRecord = {
+  channel: string;
+  configuredState: string;
+  createdAt: string | null;
+  description: string;
+  health: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  name: string;
+  notificationType: string;
+  registryType: NotificationRegistryType;
+  secretsState: string;
+  slug: string;
+  status: string;
+  updatedAt: string | null;
+  usageCount: number;
+};
+
+export type NotificationRegistryChannelView = {
+  configuredStatus: "configured" | "missing" | "placeholder";
+  healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+  key: NotificationRegistryChannel;
+  name: string;
+  secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+};
+
+export type NotificationRegistryTypeView = {
+  key: NotificationRegistryTypeKey;
+  label: string;
+};
+
+export type NotificationRegistryProviderView = {
+  configuredStatus: "configured" | "missing" | "placeholder";
+  healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
+  provider: string;
+  secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
+};
+
+const registrySelect =
+  "id, name, slug, registry_type, channel, notification_type, status, health, configured_state, secrets_state, description, usage_count, metadata, created_at, updated_at";
+
+const secretPattern =
+  /(?:api[_-]?key|secret|token|password|private[_-]?key|access[_-]?token|refresh[_-]?token|service[_-]?role|sb_secret|smtp|sms|whatsapp|push|provider[_-]?config|@[a-z0-9.-]+\.[a-z]{2,}|\b\d{10,}\b)/i;
+
+function text(value: unknown, maxLength = 500) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/\bjavascript:/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function safeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function safeNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function requireAdminClient() {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new Error("Service-role admin access is required for the notification registry.");
+  }
+
+  return admin;
+}
+
+function sanitizeRegistryMetadata(metadata: Record<string, unknown>) {
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(metadata)) {
+    const cleanedKey = text(key, 80);
+    if (!cleanedKey || secretPattern.test(cleanedKey)) continue;
+
+    if (typeof value === "string") {
+      const cleanedValue = text(value, 240);
+      if (!cleanedValue || secretPattern.test(cleanedValue)) continue;
+      sanitized[cleanedKey] = cleanedValue;
+      continue;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      sanitized[cleanedKey] = value;
+    }
+  }
+
+  return sanitized;
+}
+
+export function parseNotificationRegistryType(value: unknown): NotificationRegistryType | null {
+  const cleaned = text(value, 40);
+  return NOTIFICATION_REGISTRY_TYPES.includes(cleaned as NotificationRegistryType)
+    ? (cleaned as NotificationRegistryType)
+    : null;
+}
+
+export function parseNotificationRegistryChannel(value: unknown): NotificationRegistryChannel | null {
+  const cleaned = text(value, 40);
+  return NOTIFICATION_REGISTRY_CHANNELS.includes(cleaned as NotificationRegistryChannel)
+    ? (cleaned as NotificationRegistryChannel)
+    : null;
+}
+
+export function parseNotificationRegistryTypeKey(value: unknown): NotificationRegistryTypeKey | null {
+  const cleaned = text(value, 40);
+  return NOTIFICATION_REGISTRY_TYPE_KEYS.includes(cleaned as NotificationRegistryTypeKey)
+    ? (cleaned as NotificationRegistryTypeKey)
+    : null;
+}
+
+export function parseConfiguredState(value: unknown): NotificationRegistryChannelView["configuredStatus"] {
+  const cleaned = text(value, 40);
+
+  if (cleaned === "configured") return "configured";
+  if (cleaned === "missing") return "missing";
+  return "placeholder";
+}
+
+export function parseHealthState(value: unknown): NotificationRegistryChannelView["healthStatus"] {
+  const cleaned = text(value, 40);
+
+  if (cleaned === "healthy") return "healthy";
+  if (cleaned === "warning") return "warning";
+  if (cleaned === "missing_config") return "missing_config";
+  return "placeholder";
+}
+
+export function parseSecretsState(value: unknown): NotificationRegistryChannelView["secretStatus"] {
+  const cleaned = text(value, 40);
+
+  if (cleaned === "masked_configured") return "masked_configured";
+  if (cleaned === "masked_partial") return "masked_partial";
+  if (cleaned === "no_secret_required") return "no_secret_required";
+  return "missing";
+}
+
+export function parseNotificationRegistryItem(row: unknown): NotificationRegistryItemRecord | null {
+  if (!row || typeof row !== "object") return null;
+
+  const record = row as Record<string, unknown>;
+  const id = text(record.id, 120);
+  const slug = text(record.slug, 160);
+  const name = text(record.name, 200);
+  const registryType = parseNotificationRegistryType(record.registry_type);
+
+  if (!id || !slug || !name || !registryType) {
+    return null;
+  }
+
+  return {
+    channel: text(record.channel, 80),
+    configuredState: text(record.configured_state, 80),
+    createdAt: text(record.created_at, 80) || null,
+    description: text(record.description, 2000),
+    health: text(record.health, 80),
+    id,
+    metadata: sanitizeRegistryMetadata(safeRecord(record.metadata)),
+    name,
+    notificationType: text(record.notification_type, 80),
+    registryType,
+    secretsState: text(record.secrets_state, 80),
+    slug,
+    status: text(record.status, 80) || "unknown",
+    updatedAt: text(record.updated_at, 80) || null,
+    usageCount: Math.max(0, Math.trunc(safeNumber(record.usage_count)))
+  };
+}
+
+export function filterNotificationRegistryItemsByType(
+  items: NotificationRegistryItemRecord[],
+  registryType: NotificationRegistryType
+) {
+  return items.filter((item) => item.registryType === registryType);
+}
+
+export function buildNotificationRegistryMetadataSummary(item: NotificationRegistryItemRecord) {
+  if (item.description) return item.description;
+  return "Notification registry foundation only.";
+}
+
+export function buildNotificationRegistryChannelsView(
+  items: NotificationRegistryItemRecord[]
+): NotificationRegistryChannelView[] {
+  return filterNotificationRegistryItemsByType(items, "channel")
+    .map((item) => {
+      const key = parseNotificationRegistryChannel(item.channel);
+      if (!key) return null;
+
+      return {
+        configuredStatus: parseConfiguredState(item.configuredState),
+        healthStatus: parseHealthState(item.health),
+        key,
+        name: item.name,
+        secretStatus: parseSecretsState(item.secretsState)
+      };
+    })
+    .filter((item): item is NotificationRegistryChannelView => Boolean(item));
+}
+
+export function buildNotificationRegistryTypesView(
+  items: NotificationRegistryItemRecord[]
+): NotificationRegistryTypeView[] {
+  return filterNotificationRegistryItemsByType(items, "type")
+    .map((item) => {
+      const key = parseNotificationRegistryTypeKey(item.notificationType);
+      if (!key) return null;
+
+      return {
+        key,
+        label: item.name
+      };
+    })
+    .filter((item): item is NotificationRegistryTypeView => Boolean(item));
+}
+
+export function buildNotificationRegistryProvidersView(
+  items: NotificationRegistryItemRecord[]
+): NotificationRegistryProviderView[] {
+  return filterNotificationRegistryItemsByType(items, "provider").map((item) => ({
+    configuredStatus: parseConfiguredState(item.configuredState),
+    healthStatus: parseHealthState(item.health),
+    provider: item.name,
+    secretStatus: parseSecretsState(item.secretsState)
+  }));
+}
+
+export function buildNotificationRegistryFutureHooksView(items: NotificationRegistryItemRecord[]) {
+  return filterNotificationRegistryItemsByType(items, "future_hook").map((item) => item.name);
+}
+
+export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistryItemRecord[] = [
+  {
+    channel: "in_app",
+    configuredState: "configured",
+    createdAt: null,
+    description: "In-app notification channel foundation.",
+    health: "healthy",
+    id: "fallback-channel-in-app",
+    metadata: { source: "notification_registry_fallback" },
+    name: "In-app",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "no_secret_required",
+    slug: "in-app",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "email",
+    configuredState: "missing",
+    createdAt: null,
+    description: "Email notification channel foundation.",
+    health: "missing_config",
+    id: "fallback-channel-email",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Email",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "missing",
+    slug: "email",
+    status: "missing",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "sms",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "SMS notification channel placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-channel-sms",
+    metadata: { source: "notification_registry_fallback" },
+    name: "SMS placeholder",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "missing",
+    slug: "sms",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "whatsapp",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "WhatsApp notification channel placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-channel-whatsapp",
+    metadata: { source: "notification_registry_fallback" },
+    name: "WhatsApp placeholder",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "missing",
+    slug: "whatsapp",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "push",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Push notification channel placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-channel-push",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Push placeholder",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "no_secret_required",
+    slug: "push",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "system_alerts",
+    configuredState: "configured",
+    createdAt: null,
+    description: "System alerts notification channel foundation.",
+    health: "healthy",
+    id: "fallback-channel-system-alerts",
+    metadata: { source: "notification_registry_fallback" },
+    name: "System alerts",
+    notificationType: "",
+    registryType: "channel",
+    secretsState: "no_secret_required",
+    slug: "system-alerts",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Billing notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-billing",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Billing",
+    notificationType: "billing",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "billing",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Security notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-security",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Security",
+    notificationType: "security",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "security",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Domains notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-domains",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Domains",
+    notificationType: "domains",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "domains",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Email setup notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-email-setup",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Email setup",
+    notificationType: "email_setup",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "email-setup",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "AI visuals notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-ai-visuals",
+    metadata: { source: "notification_registry_fallback" },
+    name: "AI visuals",
+    notificationType: "ai_visuals",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "ai-visuals",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Store publishing notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-store-publishing",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Store publishing",
+    notificationType: "store_publishing",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "store-publishing",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Support notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-support",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Support",
+    notificationType: "support",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "support",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "System health notification type foundation.",
+    health: "healthy",
+    id: "fallback-type-system-health",
+    metadata: { source: "notification_registry_fallback" },
+    name: "System health",
+    notificationType: "system_health",
+    registryType: "type",
+    secretsState: "no_secret_required",
+    slug: "system-health",
+    status: "configured",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "email",
+    configuredState: "missing",
+    createdAt: null,
+    description: "Email provider notification foundation.",
+    health: "missing_config",
+    id: "fallback-provider-email",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Email provider",
+    notificationType: "",
+    registryType: "provider",
+    secretsState: "missing",
+    slug: "email-provider",
+    status: "missing",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "sms",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "SMS provider notification placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-provider-sms",
+    metadata: { source: "notification_registry_fallback" },
+    name: "SMS provider",
+    notificationType: "",
+    registryType: "provider",
+    secretsState: "missing",
+    slug: "sms-provider",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "whatsapp",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "WhatsApp provider notification placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-provider-whatsapp",
+    metadata: { source: "notification_registry_fallback" },
+    name: "WhatsApp provider",
+    notificationType: "",
+    registryType: "provider",
+    secretsState: "missing",
+    slug: "whatsapp-provider",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "push",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Push provider notification placeholder foundation.",
+    health: "placeholder",
+    id: "fallback-provider-push",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Push provider",
+    notificationType: "",
+    registryType: "provider",
+    secretsState: "no_secret_required",
+    slug: "push-provider",
+    status: "placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "in_app",
+    configuredState: "configured",
+    createdAt: null,
+    description: "In-app low_stock unread log summary foundation.",
+    health: "healthy",
+    id: "fallback-log-in-app-low-stock",
+    metadata: { source: "notification_registry_fallback", summary_key: "in_app:low_stock:unread" },
+    name: "In-app low_stock unread",
+    notificationType: "low_stock",
+    registryType: "log_summary",
+    secretsState: "no_secret_required",
+    slug: "in-app-low-stock-unread",
+    status: "unread",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "email",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Email review_request queued log summary foundation.",
+    health: "healthy",
+    id: "fallback-log-email-review-request",
+    metadata: { source: "notification_registry_fallback", summary_key: "email:review_request:queued" },
+    name: "Email review_request queued",
+    notificationType: "review_request",
+    registryType: "log_summary",
+    secretsState: "no_secret_required",
+    slug: "email-review-request-queued",
+    status: "queued",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "email",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Email thank_you queued log summary foundation.",
+    health: "healthy",
+    id: "fallback-log-email-thank-you",
+    metadata: { source: "notification_registry_fallback", summary_key: "email:thank_you:queued" },
+    name: "Email thank_you queued",
+    notificationType: "thank_you",
+    registryType: "log_summary",
+    secretsState: "no_secret_required",
+    slug: "email-thank-you-queued",
+    status: "queued",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "configured",
+    createdAt: null,
+    description: "Retry failed notification future hook placeholder.",
+    health: "healthy",
+    id: "fallback-hook-retry-failed",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Retry failed notification",
+    notificationType: "",
+    registryType: "future_hook",
+    secretsState: "no_secret_required",
+    slug: "retry-failed-notification",
+    status: "reserved_placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Configure channels future hook placeholder.",
+    health: "placeholder",
+    id: "fallback-hook-configure-channels",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Configure channels",
+    notificationType: "",
+    registryType: "future_hook",
+    secretsState: "no_secret_required",
+    slug: "configure-channels",
+    status: "reserved_placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Send test notification future hook placeholder.",
+    health: "placeholder",
+    id: "fallback-hook-send-test",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Send test notification",
+    notificationType: "",
+    registryType: "future_hook",
+    secretsState: "no_secret_required",
+    slug: "send-test-notification",
+    status: "reserved_placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Export notification logs future hook placeholder.",
+    health: "placeholder",
+    id: "fallback-hook-export-logs",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Export notification logs",
+    notificationType: "",
+    registryType: "future_hook",
+    secretsState: "no_secret_required",
+    slug: "export-notification-logs",
+    status: "reserved_placeholder",
+    updatedAt: null,
+    usageCount: 0
+  },
+  {
+    channel: "",
+    configuredState: "placeholder",
+    createdAt: null,
+    description: "Notification template editor future hook placeholder.",
+    health: "placeholder",
+    id: "fallback-hook-template-editor",
+    metadata: { source: "notification_registry_fallback" },
+    name: "Notification template editor",
+    notificationType: "",
+    registryType: "future_hook",
+    secretsState: "no_secret_required",
+    slug: "notification-template-editor",
+    status: "reserved_placeholder",
+    updatedAt: null,
+    usageCount: 0
+  }
+];
+
+export async function listNotificationRegistryItemsReadOnly(): Promise<NotificationRegistryItemRecord[]> {
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("notification_registry_items" as never)
+    .select(registrySelect as never)
+    .order("updated_at" as never, { ascending: false })
+    .limit(100);
+
+  if (error) {
+    throw new Error(`Notification registry items could not be listed: ${error.message}`);
+  }
+
+  return (Array.isArray(data) ? (data as unknown[]) : [])
+    .map((row) => parseNotificationRegistryItem(row))
+    .filter((item): item is NotificationRegistryItemRecord => Boolean(item));
+}
+
+export async function listNotificationRegistryItemsReadOnlySafe(): Promise<{
+  items: NotificationRegistryItemRecord[];
+  source: "database" | "fallback";
+  warning: string | null;
+}> {
+  try {
+    const items = await listNotificationRegistryItemsReadOnly();
+
+    if (!items.length) {
+      return {
+        items: [...NOTIFICATION_REGISTRY_FALLBACK_ITEMS],
+        source: "fallback",
+        warning: "Notification registry table is empty. Showing fallback registry rows."
+      };
+    }
+
+    return {
+      items,
+      source: "database",
+      warning: null
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[notification-registry-runtime] read-only registry load failed", error);
+
+    return {
+      items: [...NOTIFICATION_REGISTRY_FALLBACK_ITEMS],
+      source: "fallback",
+      warning: message
+    };
+  }
+}
+
+export function buildNotificationRegistryViewsSafe(params: {
+  items: NotificationRegistryItemRecord[] | null | undefined;
+}) {
+  try {
+    const items =
+      Array.isArray(params.items) && params.items.length ? params.items : [...NOTIFICATION_REGISTRY_FALLBACK_ITEMS];
+
+    return {
+      channels: buildNotificationRegistryChannelsView(items),
+      futureHooks: buildNotificationRegistryFutureHooksView(items),
+      providers: buildNotificationRegistryProvidersView(items),
+      types: buildNotificationRegistryTypesView(items),
+      warning: null as string | null
+    };
+  } catch (error) {
+    console.error("[notification-registry-runtime] registry view build failed", error);
+
+    const fallbackItems = [...NOTIFICATION_REGISTRY_FALLBACK_ITEMS];
+
+    return {
+      channels: buildNotificationRegistryChannelsView(fallbackItems),
+      futureHooks: buildNotificationRegistryFutureHooksView(fallbackItems),
+      providers: buildNotificationRegistryProvidersView(fallbackItems),
+      types: buildNotificationRegistryTypesView(fallbackItems),
+      warning: "Notification registry views could not be built safely. Showing fallback registry rows."
+    };
+  }
+}
