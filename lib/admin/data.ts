@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailTemplateValidationRecordsSafe,
+  buildEmailTemplateValidationStatsSafe
+} from "@/src/lib/email/email-template-validation-runtime";
+import {
   buildEmailTemplatePreviewRecordsSafe,
   buildEmailTemplatePreviewStatsSafe
 } from "@/src/lib/email/email-template-preview-runtime";
@@ -2215,6 +2219,35 @@ export type AdminEmailControl = {
     previewUnavailableTemplates: number;
     totalTemplates: number;
     unknownTemplates: number;
+  };
+  emailTemplateValidationRecords: Array<{
+    issueLabels: string[];
+    metadataSummary: string;
+    templateKey: string;
+    validationState:
+      | "invalid"
+      | "missing_body"
+      | "missing_subject"
+      | "missing_variables"
+      | "needs_review"
+      | "placeholder"
+      | "unsafe_content"
+      | "unknown"
+      | "valid";
+    validationStateLabel: string;
+    validationSummary: string;
+  }>;
+  emailTemplateValidationStats: {
+    invalidTemplates: number;
+    missingBodyTemplates: number;
+    missingSubjectTemplates: number;
+    missingVariablesTemplates: number;
+    needsReviewTemplates: number;
+    placeholderTemplates: number;
+    totalTemplates: number;
+    unknownTemplates: number;
+    unsafeContentTemplates: number;
+    validTemplates: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -7870,6 +7903,8 @@ function buildAdminEmailControl(params: {
   const emailTemplateVersionStats = buildEmailTemplateVersionStatsSafe(emailTemplateRegistry);
   const emailTemplatePreviewRecords = buildEmailTemplatePreviewRecordsSafe(emailTemplateRegistry);
   const emailTemplatePreviewStats = buildEmailTemplatePreviewStatsSafe(emailTemplateRegistry);
+  const emailTemplateValidationRecords = buildEmailTemplateValidationRecordsSafe(emailTemplateRegistry);
+  const emailTemplateValidationStats = buildEmailTemplateValidationStatsSafe(emailTemplateRegistry);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7883,6 +7918,8 @@ function buildAdminEmailControl(params: {
     emailTemplatePreviewStats,
     emailTemplateRegistry,
     emailTemplateRegistryStats,
+    emailTemplateValidationRecords,
+    emailTemplateValidationStats,
     emailTemplateVersionRecords,
     emailTemplateVersionStats,
     emailTypeStats,

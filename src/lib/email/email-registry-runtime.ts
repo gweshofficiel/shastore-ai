@@ -867,3 +867,21 @@ export {
   resolveEmailTemplatePreviewStateSafe,
   sanitizeEmailTemplatePreviewContent
 } from "@/src/lib/email/email-template-preview-runtime";
+export type {
+  EmailTemplateValidationBadgeTone,
+  EmailTemplateValidationRecord,
+  EmailTemplateValidationState,
+  EmailTemplateValidationStats
+} from "@/src/lib/email/email-template-validation-runtime";
+export {
+  buildEmailTemplateValidationRecordsSafe,
+  buildEmailTemplateValidationStatsSafe,
+  EMAIL_TEMPLATE_VALIDATION_STATES,
+  getEmailTemplateValidationBadgeTone,
+  getEmailTemplateValidationStateDescription,
+  getEmailTemplateValidationStateLabel,
+  isValidEmailTemplateValidationState,
+  listEmailTemplateValidationCatalog,
+  parseEmailTemplateValidationState,
+  validateEmailTemplateReadinessSafe
+} from "@/src/lib/email/email-template-validation-runtime";
