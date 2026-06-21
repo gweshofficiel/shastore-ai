@@ -53,6 +53,11 @@ import {
   buildEmailQueueRuntimeSummarySafe
 } from "@/src/lib/email/email-queue-runtime";
 import {
+  buildEmailFailureRuntimeRecordsSafe,
+  buildEmailFailureRuntimeStatsSafe,
+  buildEmailFailureRuntimeSummarySafe
+} from "@/src/lib/email/email-failure-runtime";
+import {
   buildEmailRetryRuntimeStatsSafe,
   buildEmailRetryRuntimeSummarySafe
 } from "@/src/lib/email/email-retry-runtime";
@@ -2676,6 +2681,69 @@ export type AdminEmailControl = {
     retryPendingRetryItems: number;
     retryReadyRetryItems: number;
     unknownRetryItems: number;
+  };
+  emailFailureRuntimeRecords: Array<{
+    errorCategoryLabel: string;
+    failureState:
+      | "failed"
+      | "no_failures"
+      | "provider_error"
+      | "recipient_error"
+      | "retry_exhausted"
+      | "retry_pending"
+      | "template_error"
+      | "unknown";
+    failureStateLabel: string;
+    id: string;
+    lastFailureLabel: string;
+    metadataSummary: string;
+    retryReadinessState:
+      | "failed"
+      | "not_retryable"
+      | "retry_blocked"
+      | "retry_exhausted"
+      | "retry_pending"
+      | "retry_ready"
+      | "unknown";
+    retryReadinessStateLabel: string;
+    sanitizedErrorSummary: string;
+    templateKey: string;
+  }>;
+  emailFailureRuntimeSummary: {
+    errorCategoryLabel: string;
+    failedCount: number;
+    failureState:
+      | "failed"
+      | "no_failures"
+      | "provider_error"
+      | "recipient_error"
+      | "retry_exhausted"
+      | "retry_pending"
+      | "template_error"
+      | "unknown";
+    failureStateLabel: string;
+    lastFailureLabel: string;
+    metadataSummary: string;
+    retryReadinessState:
+      | "failed"
+      | "not_retryable"
+      | "retry_blocked"
+      | "retry_exhausted"
+      | "retry_pending"
+      | "retry_ready"
+      | "unknown";
+    retryReadinessStateLabel: string;
+    sanitizedErrorSummary: string;
+  };
+  emailFailureRuntimeStats: {
+    failedFailureItems: number;
+    noFailuresItems: number;
+    providerErrorFailureItems: number;
+    recipientErrorFailureItems: number;
+    retryExhaustedFailureItems: number;
+    retryPendingFailureItems: number;
+    templateErrorFailureItems: number;
+    unknownFailureItems: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -8349,6 +8417,9 @@ function buildAdminEmailControl(params: {
   const emailQueueRuntimeStats = buildEmailQueueRuntimeStatsSafe(emailLogs, registryItems);
   const emailRetryRuntimeSummary = buildEmailRetryRuntimeSummarySafe(emailLogs, registryItems);
   const emailRetryRuntimeStats = buildEmailRetryRuntimeStatsSafe(emailLogs, registryItems);
+  const emailFailureRuntimeRecords = buildEmailFailureRuntimeRecordsSafe(emailLogs);
+  const emailFailureRuntimeSummary = buildEmailFailureRuntimeSummarySafe(emailLogs, registryItems);
+  const emailFailureRuntimeStats = buildEmailFailureRuntimeStatsSafe(emailLogs, registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8376,6 +8447,9 @@ function buildAdminEmailControl(params: {
     emailQueueRuntimeSummary,
     emailRetryRuntimeStats,
     emailRetryRuntimeSummary,
+    emailFailureRuntimeRecords,
+    emailFailureRuntimeStats,
+    emailFailureRuntimeSummary,
     emailOrderEmailStats,
     emailOrderEmails,
     emailWelcomeEmailStats,

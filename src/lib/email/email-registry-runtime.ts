@@ -1000,3 +1000,23 @@ export {
   resolveEmailRetryReadinessStateSafe,
   resolveEmailRetryStateForLogSafe
 } from "@/src/lib/email/email-retry-runtime";
+export type {
+  EmailFailureLogSnapshot,
+  EmailFailureRuntimeRecord,
+  EmailFailureRuntimeStats,
+  EmailFailureRuntimeSummary,
+  EmailFailureState
+} from "@/src/lib/email/email-failure-runtime";
+export {
+  buildEmailFailureRuntimeRecordsSafe,
+  buildEmailFailureRuntimeStatsSafe,
+  buildEmailFailureRuntimeSummarySafe,
+  EMAIL_FAILURE_STATES,
+  getEmailFailureStateDescription,
+  getEmailFailureStateLabel,
+  listEmailFailureCatalog,
+  resolveEmailFailureAggregateStateSafe,
+  resolveEmailFailureErrorCategoryLabel,
+  resolveEmailFailureStateForLogSafe,
+  sanitizeEmailFailureSummarySafe
+} from "@/src/lib/email/email-failure-runtime";
