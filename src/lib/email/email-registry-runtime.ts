@@ -927,3 +927,17 @@ export {
   listEmailOrderReadinessCatalog,
   resolveEmailOrderReadinessStateSafe
 } from "@/src/lib/email/email-order-runtime";
+export type {
+  EmailDomainEmailSetupEmailRecord,
+  EmailDomainEmailSetupEmailStats,
+  EmailDomainEmailSetupReadinessState
+} from "@/src/lib/email/email-domain-email-setup-runtime";
+export {
+  buildEmailDomainEmailSetupEmailRecordsSafe,
+  buildEmailDomainEmailSetupEmailStatsSafe,
+  EMAIL_DOMAIN_EMAIL_SETUP_READINESS_STATES,
+  getEmailDomainEmailSetupReadinessStateDescription,
+  getEmailDomainEmailSetupReadinessStateLabel,
+  listEmailDomainEmailSetupReadinessCatalog,
+  resolveEmailDomainEmailSetupReadinessStateSafe
+} from "@/src/lib/email/email-domain-email-setup-runtime";
