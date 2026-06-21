@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/admin-control";
 import type { AdminEmailControl } from "@/lib/admin/data";
 import { loadPlatformEmailControlSafe } from "@/lib/admin/email-loader";
+import { sanitizeEmailSecurityText } from "@/src/lib/email/email-security-certification";
 import {
   disableEmailTemplatePlaceholder,
   markFailedEmailReviewed,
@@ -81,7 +82,18 @@ export default async function AdminEmailPage() {
         title="Email Center"
       />
 
-      {!ok && recoveryMessage ? <EmailRuntimeRecoveryNotice message={recoveryMessage} /> : null}
+      {!ok && recoveryMessage ? (
+        <EmailRuntimeRecoveryNotice message={sanitizeEmailSecurityText(recoveryMessage, 500)} />
+      ) : null}
+
+      {!control.emailSecurityCertification.securityReviewPassed ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Email security certification</p>
+          <p className="mt-2 text-sm font-semibold text-amber-900">
+            {sanitizeEmailSecurityText(control.emailSecurityCertification.certificationDescription, 500)}
+          </p>
+        </div>
+      ) : null}
 
       <AdminStatGrid
         stats={[
@@ -95,6 +107,30 @@ export default async function AdminEmailPage() {
           { label: "Mailbox changes", value: 0 }
         ]}
       />
+
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Security review",
+            value: control.emailSecurityCertification.securityReviewPassed ? "Passed" : "Needs attention"
+          },
+          { label: "Checks passed", value: control.emailSecurityCertification.passedChecks },
+          { label: "Checks failed", value: control.emailSecurityCertification.failedChecks },
+          { label: "Total checks", value: control.emailSecurityCertification.totalChecks },
+          {
+            label: "Certified at",
+            value: control.emailSecurityCertification.certifiedAt
+              ? formatAdminDate(control.emailSecurityCertification.certifiedAt)
+              : "Unknown"
+          },
+          { label: "Page load", value: "Read-only" },
+          { label: "Execution", value: "Disabled" },
+          { label: "Provider secrets", value: "Masked only" }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">
+        {sanitizeEmailSecurityText(control.emailSecurityCertification.certificationDescription, 500)}
+      </p>
 
       <AdminTable headers={["Provider", "Configured", "Health", "Secrets"]}>
         {control.providers.map((provider) => (

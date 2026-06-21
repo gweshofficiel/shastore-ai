@@ -61,6 +61,11 @@ import {
   buildEmailAuditRuntimeSummarySafe
 } from "@/src/lib/email/email-audit-runtime";
 import {
+  buildEmailSecurityCertificationSafe,
+  collectEmailMetadataSummariesForCertification,
+  verifyEmailRuntimeFoundationsPresent
+} from "@/src/lib/email/email-security-certification";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -2393,6 +2398,19 @@ export type AdminEmailControl = {
     riskyMetadataAuditItems: number;
     totalAuditItems: number;
     unknownAuditItems: number;
+  };
+  emailSecurityCertification: {
+    certificationDescription: string;
+    certifiedAt: string;
+    failedChecks: number;
+    passedChecks: number;
+    securityReview: Array<{
+      category: string;
+      message: string;
+      passed: boolean;
+    }>;
+    securityReviewPassed: boolean;
+    totalChecks: number;
   };
   failedEmails: Array<{
     createdAt: string;
@@ -8863,6 +8881,51 @@ function buildAdminEmailControl(params: {
   };
   const emailAuditRuntimeSummary = buildEmailAuditRuntimeSummarySafe(emailAuditSnapshot, registryItems);
   const emailAuditRuntimeStats = buildEmailAuditRuntimeStatsSafe(emailAuditSnapshot, registryItems);
+  const emailSecurityCertification = buildEmailSecurityCertificationSafe({
+    errorSummaries: failedEmails.map((email) => email.errorSummary),
+    foundationsPresent: verifyEmailRuntimeFoundationsPresent({
+      emailAnalyticsRuntimeSummary,
+      emailAuditRuntimeSummary,
+      emailBillingEmails,
+      emailCampaignEmails,
+      emailCampaignMonitoringRuntimeSummary,
+      emailCampaignQueueRuntimeSummary,
+      emailDeliveryRuntimeSummary,
+      emailFailureRuntimeSummary,
+      emailProviderFailoverRuntimeSummary,
+      emailProviderHealth,
+      emailQueueRuntimeSummary,
+      emailRetryRuntimeSummary,
+      emailSecurityEmails,
+      emailTemplateRegistry,
+      emailTypeStats,
+      emailWelcomeEmails,
+      providers,
+      queue,
+      templates
+    }),
+    metadataSummaries: collectEmailMetadataSummariesForCertification({
+      auditMetadataSummary: emailAuditRuntimeSummary.metadataSummary,
+      billingEmails: emailBillingEmails,
+      campaignEmails: emailCampaignEmails,
+      campaignMonitoringScopeRecords: emailCampaignMonitoringScopeRecords,
+      campaignQueueScopeRecords: emailCampaignQueueScopeRecords,
+      domainEmailSetupEmails: emailDomainEmailSetupEmails,
+      failureRecords: emailFailureRuntimeRecords,
+      orderEmails: emailOrderEmails,
+      providerFailoverRecords: emailProviderFailoverRecords,
+      providerHealth: emailProviderHealth,
+      securityEmails: emailSecurityEmails,
+      supportEmails: emailSupportEmails,
+      templateRegistry: emailTemplateRegistry,
+      templateValidationRecords: emailTemplateValidationRecords,
+      transactionalSections: registryViews.transactionalSections,
+      welcomeEmails: emailWelcomeEmails
+    }),
+    providerSecretStatuses: providers.map((provider) => provider.secretStatus),
+    recipientDisplays: failedEmails.map((email) => email.recipientMasked),
+    runtimeWarning: combinedWarning
+  });
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8895,6 +8958,7 @@ function buildAdminEmailControl(params: {
     emailAnalyticsRuntimeSummary,
     emailAuditRuntimeStats,
     emailAuditRuntimeSummary,
+    emailSecurityCertification,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,

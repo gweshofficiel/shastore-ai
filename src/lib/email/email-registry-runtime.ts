@@ -1117,6 +1117,23 @@ export {
   resolveEmailProviderFailoverReadinessStateSafe
 } from "@/src/lib/email/email-provider-failover-runtime";
 export type {
+  EmailSecurityCertificationSummary,
+  EmailSecurityReviewItem
+} from "@/src/lib/email/email-security-certification";
+export {
+  buildEmailSecurityCertification,
+  buildEmailSecurityCertificationSafe,
+  collectEmailMetadataSummariesForCertification,
+  containsEmailSecuritySecretPattern,
+  EMAIL_SECURITY_CERTIFICATION_FALLBACK_SUMMARY,
+  EMAIL_SECURITY_SECRET_PATTERN,
+  isAllowedEmailProviderSecretStatus,
+  isSafelyMaskedRecipientDisplay,
+  isSafelySanitizedEmailErrorSummary,
+  sanitizeEmailSecurityText,
+  verifyEmailRuntimeFoundationsPresent
+} from "@/src/lib/email/email-security-certification";
+export type {
   EmailAuditFoundationSnapshot,
   EmailAuditRegistryItem,
   EmailAuditRuntimeStats,
