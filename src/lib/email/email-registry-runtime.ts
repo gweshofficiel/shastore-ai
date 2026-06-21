@@ -913,3 +913,17 @@ export {
   listEmailBillingReadinessCatalog,
   resolveEmailBillingReadinessStateSafe
 } from "@/src/lib/email/email-billing-runtime";
+export type {
+  EmailOrderEmailRecord,
+  EmailOrderEmailStats,
+  EmailOrderReadinessState
+} from "@/src/lib/email/email-order-runtime";
+export {
+  buildEmailOrderEmailRecordsSafe,
+  buildEmailOrderEmailStatsSafe,
+  EMAIL_ORDER_READINESS_STATES,
+  getEmailOrderReadinessStateDescription,
+  getEmailOrderReadinessStateLabel,
+  listEmailOrderReadinessCatalog,
+  resolveEmailOrderReadinessStateSafe
+} from "@/src/lib/email/email-order-runtime";
