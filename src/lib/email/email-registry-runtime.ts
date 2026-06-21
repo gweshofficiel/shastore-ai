@@ -1037,3 +1037,17 @@ export {
   resolveEmailDeliveryAggregateStateSafe,
   resolveEmailDeliveryRuntimeStateForLogSafe
 } from "@/src/lib/email/email-delivery-runtime";
+export type {
+  EmailCampaignEmailRecord,
+  EmailCampaignEmailStats,
+  EmailCampaignReadinessState
+} from "@/src/lib/email/email-campaign-runtime";
+export {
+  buildEmailCampaignEmailRecordsSafe,
+  buildEmailCampaignEmailStatsSafe,
+  EMAIL_CAMPAIGN_READINESS_STATES,
+  getEmailCampaignReadinessStateDescription,
+  getEmailCampaignReadinessStateLabel,
+  listEmailCampaignReadinessCatalog,
+  resolveEmailCampaignReadinessStateSafe
+} from "@/src/lib/email/email-campaign-runtime";

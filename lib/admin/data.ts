@@ -53,6 +53,10 @@ import {
   buildEmailQueueRuntimeSummarySafe
 } from "@/src/lib/email/email-queue-runtime";
 import {
+  buildEmailCampaignEmailRecordsSafe,
+  buildEmailCampaignEmailStatsSafe
+} from "@/src/lib/email/email-campaign-runtime";
+import {
   buildEmailDeliveryRuntimeStatsSafe,
   buildEmailDeliveryRuntimeSummarySafe
 } from "@/src/lib/email/email-delivery-runtime";
@@ -2131,6 +2135,34 @@ export type AdminEmailControl = {
     status: "monitoring" | "placeholder";
     total: number;
   }>;
+  emailCampaignEmails: Array<{
+    campaignEmailLabel: string;
+    campaignScopeLabel: string;
+    metadataSummary: string;
+    providerKey: "future" | "resend" | "smtp" | null;
+    readinessState:
+      | "campaign_ready"
+      | "disabled"
+      | "draft"
+      | "invalid"
+      | "missing_provider"
+      | "missing_template"
+      | "needs_review"
+      | "unknown";
+    readinessStateLabel: string;
+    templateKey: string;
+  }>;
+  emailCampaignEmailStats: {
+    campaignReadyCampaignEmails: number;
+    disabledCampaignEmails: number;
+    draftCampaignEmails: number;
+    invalidCampaignEmails: number;
+    missingProviderCampaignEmails: number;
+    missingTemplateCampaignEmails: number;
+    needsReviewCampaignEmails: number;
+    totalCampaignEmails: number;
+    unknownCampaignEmails: number;
+  };
   failedEmails: Array<{
     createdAt: string;
     emailType: string;
@@ -8388,25 +8420,26 @@ function buildAdminEmailControl(params: {
     .map((message) => text(message.updated_at) || text(message.created_at))
     .filter(Boolean)
     .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+  const resolveCampaignTotals = (slug: string) => {
+    if (slug === "platform-campaigns") {
+      return {
+        lastActivity: null,
+        total: adminEmailEvents.filter((event) => text(event.event_type) === "admin_email_template_preview").length
+      };
+    }
+
+    if (slug === "store-owner-campaigns") {
+      return {
+        lastActivity: latestStoreMarketingActivity,
+        total: storeMarketingMessages.length
+      };
+    }
+
+    return { lastActivity: null, total: 0 };
+  };
   const registryViews = buildEmailRegistryViewsSafe({
     items: registryItems,
-    resolveCampaignTotals: (slug) => {
-      if (slug === "platform-campaigns") {
-        return {
-          lastActivity: null,
-          total: adminEmailEvents.filter((event) => text(event.event_type) === "admin_email_template_preview").length
-        };
-      }
-
-      if (slug === "store-owner-campaigns") {
-        return {
-          lastActivity: latestStoreMarketingActivity,
-          total: storeMarketingMessages.length
-        };
-      }
-
-      return { lastActivity: null, total: 0 };
-    },
+    resolveCampaignTotals,
     resolveTemplateStatus: templateStatus
   });
   const combinedWarning =
@@ -8454,6 +8487,16 @@ function buildAdminEmailControl(params: {
   const emailFailureRuntimeStats = buildEmailFailureRuntimeStatsSafe(emailLogs, registryItems);
   const emailDeliveryRuntimeSummary = buildEmailDeliveryRuntimeSummarySafe(emailLogs, registryItems);
   const emailDeliveryRuntimeStats = buildEmailDeliveryRuntimeStatsSafe(emailLogs, registryItems);
+  const emailCampaignEmails = buildEmailCampaignEmailRecordsSafe(
+    registryItems,
+    resolveCampaignTotals,
+    templateStatus
+  );
+  const emailCampaignEmailStats = buildEmailCampaignEmailStatsSafe(
+    registryItems,
+    resolveCampaignTotals,
+    templateStatus
+  );
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8471,6 +8514,8 @@ function buildAdminEmailControl(params: {
     emailTemplateValidationStats,
     emailBillingEmailStats,
     emailBillingEmails,
+    emailCampaignEmailStats,
+    emailCampaignEmails,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,
