@@ -1051,3 +1051,20 @@ export {
   listEmailCampaignReadinessCatalog,
   resolveEmailCampaignReadinessStateSafe
 } from "@/src/lib/email/email-campaign-runtime";
+export type {
+  EmailCampaignQueueReadinessState,
+  EmailCampaignQueueRuntimeStats,
+  EmailCampaignQueueRuntimeSummary,
+  EmailCampaignQueueScopeRecord
+} from "@/src/lib/email/email-campaign-queue-runtime";
+export {
+  buildEmailCampaignQueueRuntimeStatsSafe,
+  buildEmailCampaignQueueRuntimeSummarySafe,
+  buildEmailCampaignQueueScopeRecordsSafe,
+  EMAIL_CAMPAIGN_QUEUE_READINESS_STATES,
+  getEmailCampaignQueueReadinessStateDescription,
+  getEmailCampaignQueueReadinessStateLabel,
+  isCampaignEmailLogSafe,
+  listEmailCampaignQueueReadinessCatalog,
+  resolveEmailCampaignQueueAggregateStateSafe
+} from "@/src/lib/email/email-campaign-queue-runtime";

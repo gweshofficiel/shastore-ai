@@ -57,6 +57,11 @@ import {
   buildEmailCampaignEmailStatsSafe
 } from "@/src/lib/email/email-campaign-runtime";
 import {
+  buildEmailCampaignQueueRuntimeStatsSafe,
+  buildEmailCampaignQueueRuntimeSummarySafe,
+  buildEmailCampaignQueueScopeRecordsSafe
+} from "@/src/lib/email/email-campaign-queue-runtime";
+import {
   buildEmailDeliveryRuntimeStatsSafe,
   buildEmailDeliveryRuntimeSummarySafe
 } from "@/src/lib/email/email-delivery-runtime";
@@ -2163,6 +2168,69 @@ export type AdminEmailControl = {
     totalCampaignEmails: number;
     unknownCampaignEmails: number;
   };
+  emailCampaignQueueRuntimeSummary: {
+    campaignCancelledCount: number;
+    campaignFailedCount: number;
+    campaignQueuedCount: number;
+    campaignRetryPendingCount: number;
+    campaignSentCount: number;
+    lastActivityLabel: string;
+    metadataSummary: string;
+    pausedCount: number;
+    processingCount: number;
+    queueReadinessState:
+      | "cancelled"
+      | "failed"
+      | "needs_review"
+      | "paused"
+      | "processing"
+      | "queue_ready"
+      | "queued"
+      | "retry_pending"
+      | "sent"
+      | "unknown";
+    queueReadinessStateLabel: string;
+    totalCount: number;
+    unknownCount: number;
+  };
+  emailCampaignQueueRuntimeStats: {
+    cancelledCampaignQueueItems: number;
+    failedCampaignQueueItems: number;
+    needsReviewCampaignQueueItems: number;
+    pausedCampaignQueueItems: number;
+    processingCampaignQueueItems: number;
+    queueReadyCampaignQueueItems: number;
+    queuedCampaignQueueItems: number;
+    retryPendingCampaignQueueItems: number;
+    sentCampaignQueueItems: number;
+    totalCampaignQueueItems: number;
+    unknownCampaignQueueItems: number;
+  };
+  emailCampaignQueueScopeRecords: Array<{
+    campaignScopeLabel: string;
+    campaignScopeSlug: string;
+    cancelledCount: number;
+    failedCount: number;
+    lastActivityLabel: string;
+    metadataSummary: string;
+    pausedCount: number;
+    processingCount: number;
+    queuedCount: number;
+    queueReadinessState:
+      | "cancelled"
+      | "failed"
+      | "needs_review"
+      | "paused"
+      | "processing"
+      | "queue_ready"
+      | "queued"
+      | "retry_pending"
+      | "sent"
+      | "unknown";
+    queueReadinessStateLabel: string;
+    retryPendingCount: number;
+    sentCount: number;
+  }>;
   failedEmails: Array<{
     createdAt: string;
     emailType: string;
@@ -8497,6 +8565,24 @@ function buildAdminEmailControl(params: {
     resolveCampaignTotals,
     templateStatus
   );
+  const emailCampaignQueueScopeRecords = buildEmailCampaignQueueScopeRecordsSafe(
+    registryItems,
+    emailLogs,
+    storeMarketingMessages,
+    resolveCampaignTotals
+  );
+  const emailCampaignQueueRuntimeSummary = buildEmailCampaignQueueRuntimeSummarySafe(
+    emailLogs,
+    registryItems,
+    storeMarketingMessages,
+    resolveCampaignTotals
+  );
+  const emailCampaignQueueRuntimeStats = buildEmailCampaignQueueRuntimeStatsSafe(
+    emailLogs,
+    registryItems,
+    storeMarketingMessages,
+    resolveCampaignTotals
+  );
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8516,6 +8602,9 @@ function buildAdminEmailControl(params: {
     emailBillingEmails,
     emailCampaignEmailStats,
     emailCampaignEmails,
+    emailCampaignQueueRuntimeStats,
+    emailCampaignQueueRuntimeSummary,
+    emailCampaignQueueScopeRecords,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,
