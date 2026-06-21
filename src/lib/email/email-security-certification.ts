@@ -62,7 +62,7 @@ const STATIC_SECURITY_REVIEW: EmailSecurityReviewItem[] = [
   },
   {
     category: "Foundations",
-    message: "Email Runtime foundations EM-1 to EM-26 remain display and readiness only with no execution paths connected.",
+    message: "Email Runtime foundations EM-1 to EM-27 remain display and readiness only with no execution paths connected.",
     passed: true
   }
 ];
@@ -154,7 +154,7 @@ function buildDynamicSecurityReview(input: EmailSecurityCertificationInput): Ema
     {
       category: "Foundations",
       message: input.foundationsPresent
-        ? "Email Runtime foundations EM-1 to EM-26 are present on the loaded admin control payload."
+        ? "Email Runtime foundations EM-1 to EM-27 are present on the loaded admin control payload."
         : "One or more Email Runtime foundation payloads were missing from the loaded admin control.",
       passed: input.foundationsPresent
     },
@@ -210,7 +210,7 @@ export function buildEmailSecurityCertification(
   return {
     certificationDescription:
       failedChecks === 0
-        ? "Email security certification passed for loaded admin foundations EM-1 to EM-26."
+        ? "Email security certification passed for loaded admin foundations EM-1 to EM-27."
         : "Email security certification completed with items that need attention.",
     certifiedAt: new Date().toISOString(),
     failedChecks,

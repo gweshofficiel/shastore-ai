@@ -66,6 +66,10 @@ import {
   verifyEmailRuntimeFoundationsPresent
 } from "@/src/lib/email/email-security-certification";
 import {
+  buildEmailProductionHardeningSafe,
+  verifyEmailProductionFoundationsPresent
+} from "@/src/lib/email/email-production-hardening";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -2410,6 +2414,21 @@ export type AdminEmailControl = {
       passed: boolean;
     }>;
     securityReviewPassed: boolean;
+    totalChecks: number;
+  };
+  emailProductionHardening: {
+    conversionComplete: boolean;
+    failedChecks: number;
+    hardenedAt: string;
+    hardeningDescription: string;
+    hardeningPassed: boolean;
+    hardeningReview: Array<{
+      category: string;
+      message: string;
+      passed: boolean;
+    }>;
+    passedChecks: number;
+    productionStable: boolean;
     totalChecks: number;
   };
   failedEmails: Array<{
@@ -8881,9 +8900,65 @@ function buildAdminEmailControl(params: {
   };
   const emailAuditRuntimeSummary = buildEmailAuditRuntimeSummarySafe(emailAuditSnapshot, registryItems);
   const emailAuditRuntimeStats = buildEmailAuditRuntimeStatsSafe(emailAuditSnapshot, registryItems);
+  const overview = {
+    activeTemplates: templates.filter((template) => template.status === "active").length,
+    failedEmails: queue.failed,
+    providersConfigured: providers.filter((provider) => provider.configurationStatus === "configured").length,
+    queuedEmails: queue.queued + queue.retryPending,
+    sentEmails: queue.sent,
+    totalTemplates: templates.length
+  };
+  const certificationMetadataSummaries = collectEmailMetadataSummariesForCertification({
+    auditMetadataSummary: emailAuditRuntimeSummary.metadataSummary,
+    billingEmails: emailBillingEmails,
+    campaignEmails: emailCampaignEmails,
+    campaignMonitoringScopeRecords: emailCampaignMonitoringScopeRecords,
+    campaignQueueScopeRecords: emailCampaignQueueScopeRecords,
+    domainEmailSetupEmails: emailDomainEmailSetupEmails,
+    failureRecords: emailFailureRuntimeRecords,
+    orderEmails: emailOrderEmails,
+    providerFailoverRecords: emailProviderFailoverRecords,
+    providerHealth: emailProviderHealth,
+    securityEmails: emailSecurityEmails,
+    supportEmails: emailSupportEmails,
+    templateRegistry: emailTemplateRegistry,
+    templateValidationRecords: emailTemplateValidationRecords,
+    transactionalSections: registryViews.transactionalSections,
+    welcomeEmails: emailWelcomeEmails
+  });
+  const foundationsPresent = verifyEmailRuntimeFoundationsPresent({
+    emailAnalyticsRuntimeSummary,
+    emailAuditRuntimeSummary,
+    emailBillingEmails,
+    emailCampaignEmails,
+    emailCampaignMonitoringRuntimeSummary,
+    emailCampaignQueueRuntimeSummary,
+    emailDeliveryRuntimeSummary,
+    emailFailureRuntimeSummary,
+    emailProviderFailoverRuntimeSummary,
+    emailProviderHealth,
+    emailQueueRuntimeSummary,
+    emailRetryRuntimeSummary,
+    emailSecurityEmails,
+    emailTemplateRegistry,
+    emailTypeStats,
+    emailWelcomeEmails,
+    providers,
+    queue,
+    templates
+  });
   const emailSecurityCertification = buildEmailSecurityCertificationSafe({
     errorSummaries: failedEmails.map((email) => email.errorSummary),
-    foundationsPresent: verifyEmailRuntimeFoundationsPresent({
+    foundationsPresent,
+    metadataSummaries: certificationMetadataSummaries,
+    providerSecretStatuses: providers.map((provider) => provider.secretStatus),
+    recipientDisplays: failedEmails.map((email) => email.recipientMasked),
+    runtimeWarning: combinedWarning
+  });
+  const emailProductionHardening = buildEmailProductionHardeningSafe({
+    emailSecurityCertification,
+    errorSummaries: failedEmails.map((email) => email.errorSummary),
+    foundationsPresent: verifyEmailProductionFoundationsPresent({
       emailAnalyticsRuntimeSummary,
       emailAuditRuntimeSummary,
       emailBillingEmails,
@@ -8896,6 +8971,7 @@ function buildAdminEmailControl(params: {
       emailProviderHealth,
       emailQueueRuntimeSummary,
       emailRetryRuntimeSummary,
+      emailSecurityCertification,
       emailSecurityEmails,
       emailTemplateRegistry,
       emailTypeStats,
@@ -8904,26 +8980,12 @@ function buildAdminEmailControl(params: {
       queue,
       templates
     }),
-    metadataSummaries: collectEmailMetadataSummariesForCertification({
-      auditMetadataSummary: emailAuditRuntimeSummary.metadataSummary,
-      billingEmails: emailBillingEmails,
-      campaignEmails: emailCampaignEmails,
-      campaignMonitoringScopeRecords: emailCampaignMonitoringScopeRecords,
-      campaignQueueScopeRecords: emailCampaignQueueScopeRecords,
-      domainEmailSetupEmails: emailDomainEmailSetupEmails,
-      failureRecords: emailFailureRuntimeRecords,
-      orderEmails: emailOrderEmails,
-      providerFailoverRecords: emailProviderFailoverRecords,
-      providerHealth: emailProviderHealth,
-      securityEmails: emailSecurityEmails,
-      supportEmails: emailSupportEmails,
-      templateRegistry: emailTemplateRegistry,
-      templateValidationRecords: emailTemplateValidationRecords,
-      transactionalSections: registryViews.transactionalSections,
-      welcomeEmails: emailWelcomeEmails
-    }),
+    metadataSummaries: certificationMetadataSummaries,
+    overview,
     providerSecretStatuses: providers.map((provider) => provider.secretStatus),
     recipientDisplays: failedEmails.map((email) => email.recipientMasked),
+    registryItemCount: registryItems.length,
+    reservedFutureHookCount: registryViews.futureHooks.length,
     runtimeWarning: combinedWarning
   });
 
@@ -8959,6 +9021,7 @@ function buildAdminEmailControl(params: {
     emailAuditRuntimeStats,
     emailAuditRuntimeSummary,
     emailSecurityCertification,
+    emailProductionHardening,
     emailDomainEmailSetupEmailStats,
     emailDomainEmailSetupEmails,
     emailSupportEmailStats,
@@ -8983,14 +9046,7 @@ function buildAdminEmailControl(params: {
     emailTypeStats,
     failedEmails,
     futureHooks: registryViews.futureHooks,
-    overview: {
-      activeTemplates: templates.filter((template) => template.status === "active").length,
-      failedEmails: queue.failed,
-      providersConfigured: providers.filter((provider) => provider.configurationStatus === "configured").length,
-      queuedEmails: queue.queued + queue.retryPending,
-      sentEmails: queue.sent,
-      totalTemplates: templates.length
-    },
+    overview,
     providers,
     queue,
     runtimeWarning: combinedWarning,

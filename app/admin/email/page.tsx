@@ -7,6 +7,10 @@ import {
 } from "@/components/admin/admin-control";
 import type { AdminEmailControl } from "@/lib/admin/data";
 import { loadPlatformEmailControlSafe } from "@/lib/admin/email-loader";
+import {
+  normalizeEmailAdminCountSafe,
+  sanitizeEmailAdminDisplayTextSafe
+} from "@/src/lib/email/email-production-hardening";
 import { sanitizeEmailSecurityText } from "@/src/lib/email/email-security-certification";
 import {
   disableEmailTemplatePlaceholder,
@@ -95,14 +99,23 @@ export default async function AdminEmailPage() {
         </div>
       ) : null}
 
+      {!control.emailProductionHardening.hardeningPassed ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Email production hardening</p>
+          <p className="mt-2 text-sm font-semibold text-amber-900">
+            {sanitizeEmailAdminDisplayTextSafe(control.emailProductionHardening.hardeningDescription, 500)}
+          </p>
+        </div>
+      ) : null}
+
       <AdminStatGrid
         stats={[
-          { label: "Providers configured", value: control.overview.providersConfigured },
-          { label: "Templates", value: control.overview.totalTemplates },
-          { label: "Active templates", value: control.overview.activeTemplates },
-          { label: "Queued/retry", value: control.overview.queuedEmails },
-          { label: "Sent", value: control.overview.sentEmails },
-          { label: "Failed", value: control.overview.failedEmails },
+          { label: "Providers configured", value: normalizeEmailAdminCountSafe(control.overview.providersConfigured) },
+          { label: "Templates", value: normalizeEmailAdminCountSafe(control.overview.totalTemplates) },
+          { label: "Active templates", value: normalizeEmailAdminCountSafe(control.overview.activeTemplates) },
+          { label: "Queued/retry", value: normalizeEmailAdminCountSafe(control.overview.queuedEmails) },
+          { label: "Sent", value: normalizeEmailAdminCountSafe(control.overview.sentEmails) },
+          { label: "Failed", value: normalizeEmailAdminCountSafe(control.overview.failedEmails) },
           { label: "Mass sends", value: 0 },
           { label: "Mailbox changes", value: 0 }
         ]}
@@ -132,6 +145,33 @@ export default async function AdminEmailPage() {
         {sanitizeEmailSecurityText(control.emailSecurityCertification.certificationDescription, 500)}
       </p>
 
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Production status",
+            value: control.emailProductionHardening.productionStable ? "Stable" : "Needs attention"
+          },
+          {
+            label: "Conversion EM-28",
+            value: control.emailProductionHardening.conversionComplete ? "Hardened" : "Incomplete"
+          },
+          { label: "Checks passed", value: normalizeEmailAdminCountSafe(control.emailProductionHardening.passedChecks) },
+          { label: "Checks failed", value: normalizeEmailAdminCountSafe(control.emailProductionHardening.failedChecks) },
+          { label: "Total checks", value: normalizeEmailAdminCountSafe(control.emailProductionHardening.totalChecks) },
+          {
+            label: "Hardened at",
+            value: control.emailProductionHardening.hardenedAt
+              ? formatAdminDate(control.emailProductionHardening.hardenedAt)
+              : "Unknown"
+          },
+          { label: "Page load", value: "Read-only" },
+          { label: "Execution", value: "Disabled" }
+        ]}
+      />
+      <p className="-mt-4 text-xs font-semibold text-slate-500">
+        {sanitizeEmailAdminDisplayTextSafe(control.emailProductionHardening.hardeningDescription, 500)}
+      </p>
+
       <AdminTable headers={["Provider", "Configured", "Health", "Secrets"]}>
         {control.providers.map((provider) => (
           <tr key={provider.provider}>
@@ -151,7 +191,9 @@ export default async function AdminEmailPage() {
           <tr key={section.key}>
             <td className="px-5 py-4 font-bold text-slate-950">{section.name}</td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(section.status)}>{section.status}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{section.note}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {sanitizeEmailAdminDisplayTextSafe(section.note, 240)}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -189,11 +231,11 @@ export default async function AdminEmailPage() {
 
       <AdminTable headers={["Queued", "Sent", "Failed", "Retry pending", "Cancelled"]}>
         <tr>
-          <td className="px-5 py-4 text-slate-600">{control.queue.queued}</td>
-          <td className="px-5 py-4 text-slate-600">{control.queue.sent}</td>
-          <td className="px-5 py-4 text-slate-600">{control.queue.failed}</td>
-          <td className="px-5 py-4 text-slate-600">{control.queue.retryPending}</td>
-          <td className="px-5 py-4 text-slate-600">{control.queue.cancelled}</td>
+          <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(control.queue.queued)}</td>
+          <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(control.queue.sent)}</td>
+          <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(control.queue.failed)}</td>
+          <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(control.queue.retryPending)}</td>
+          <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(control.queue.cancelled)}</td>
         </tr>
       </AdminTable>
 
@@ -205,7 +247,9 @@ export default async function AdminEmailPage() {
           <tr key={email.id}>
             <td className="px-5 py-4 font-bold text-slate-950">{email.recipientMasked}</td>
             <td className="px-5 py-4"><AdminBadge tone="red">{email.emailType}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{email.errorSummary}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {sanitizeEmailAdminDisplayTextSafe(email.errorSummary, 240)}
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(email.createdAt)}</td>
             <td className="px-5 py-4">
               <div className="grid min-w-52 gap-2">
@@ -231,10 +275,12 @@ export default async function AdminEmailPage() {
         {control.campaignMonitoring.map((campaign) => (
           <tr key={campaign.name}>
             <td className="px-5 py-4 font-bold text-slate-950">{campaign.name}</td>
-            <td className="px-5 py-4 text-slate-600">{campaign.total}</td>
+            <td className="px-5 py-4 text-slate-600">{normalizeEmailAdminCountSafe(campaign.total)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(campaign.lastActivity)}</td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(campaign.status)}>{campaign.status}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{campaign.note}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {sanitizeEmailAdminDisplayTextSafe(campaign.note, 240)}
+            </td>
           </tr>
         ))}
       </AdminTable>

@@ -1134,6 +1134,20 @@ export {
   verifyEmailRuntimeFoundationsPresent
 } from "@/src/lib/email/email-security-certification";
 export type {
+  EmailProductionHardeningReviewItem,
+  EmailProductionHardeningSummary
+} from "@/src/lib/email/email-production-hardening";
+export {
+  buildEmailProductionHardening,
+  buildEmailProductionHardeningSafe,
+  EMAIL_PRODUCTION_HARDENING_FALLBACK_SUMMARY,
+  normalizeEmailAdminCountSafe,
+  sanitizeEmailAdminDisplayTextSafe,
+  sanitizeEmailMetadataSummarySafe,
+  verifyEmailProductionFoundationsPresent,
+  verifyEmailProductionMetadataSafe
+} from "@/src/lib/email/email-production-hardening";
+export type {
   EmailAuditFoundationSnapshot,
   EmailAuditRegistryItem,
   EmailAuditRuntimeStats,
