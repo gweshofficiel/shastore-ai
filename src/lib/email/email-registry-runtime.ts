@@ -1020,3 +1020,20 @@ export {
   resolveEmailFailureStateForLogSafe,
   sanitizeEmailFailureSummarySafe
 } from "@/src/lib/email/email-failure-runtime";
+export type {
+  EmailDeliveryLogSnapshot,
+  EmailDeliveryRuntimeState,
+  EmailDeliveryRuntimeStats,
+  EmailDeliveryRuntimeSummary
+} from "@/src/lib/email/email-delivery-runtime";
+export {
+  buildEmailDeliveryRuntimeStatsSafe,
+  buildEmailDeliveryRuntimeSummarySafe,
+  EMAIL_DELIVERY_RUNTIME_STATES,
+  getEmailDeliveryRuntimeStateDescription,
+  getEmailDeliveryRuntimeStateLabel,
+  listEmailDeliveryRuntimeCatalog,
+  parseEmailDeliveryRuntimeStateSafe,
+  resolveEmailDeliveryAggregateStateSafe,
+  resolveEmailDeliveryRuntimeStateForLogSafe
+} from "@/src/lib/email/email-delivery-runtime";

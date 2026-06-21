@@ -53,6 +53,10 @@ import {
   buildEmailQueueRuntimeSummarySafe
 } from "@/src/lib/email/email-queue-runtime";
 import {
+  buildEmailDeliveryRuntimeStatsSafe,
+  buildEmailDeliveryRuntimeSummarySafe
+} from "@/src/lib/email/email-delivery-runtime";
+import {
   buildEmailFailureRuntimeRecordsSafe,
   buildEmailFailureRuntimeStatsSafe,
   buildEmailFailureRuntimeSummarySafe
@@ -2744,6 +2748,34 @@ export type AdminEmailControl = {
     retryPendingFailureItems: number;
     templateErrorFailureItems: number;
     unknownFailureItems: number;
+  };
+  emailDeliveryRuntimeSummary: {
+    cancelledCount: number;
+    deliveredCount: number;
+    deliveryState:
+      | "cancelled"
+      | "delivered"
+      | "failed"
+      | "queued"
+      | "retry_pending"
+      | "sent"
+      | "unknown";
+    deliveryStateLabel: string;
+    failedCount: number;
+    lastDeliveryLabel: string;
+    metadataSummary: string;
+    queuedCount: number;
+    retryPendingCount: number;
+    sentCount: number;
+  };
+  emailDeliveryRuntimeStats: {
+    cancelledDeliveryItems: number;
+    deliveredDeliveryItems: number;
+    failedDeliveryItems: number;
+    queuedDeliveryItems: number;
+    retryPendingDeliveryItems: number;
+    sentDeliveryItems: number;
+    unknownDeliveryItems: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -8420,6 +8452,8 @@ function buildAdminEmailControl(params: {
   const emailFailureRuntimeRecords = buildEmailFailureRuntimeRecordsSafe(emailLogs);
   const emailFailureRuntimeSummary = buildEmailFailureRuntimeSummarySafe(emailLogs, registryItems);
   const emailFailureRuntimeStats = buildEmailFailureRuntimeStatsSafe(emailLogs, registryItems);
+  const emailDeliveryRuntimeSummary = buildEmailDeliveryRuntimeSummarySafe(emailLogs, registryItems);
+  const emailDeliveryRuntimeStats = buildEmailDeliveryRuntimeStatsSafe(emailLogs, registryItems);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -8450,6 +8484,8 @@ function buildAdminEmailControl(params: {
     emailFailureRuntimeRecords,
     emailFailureRuntimeStats,
     emailFailureRuntimeSummary,
+    emailDeliveryRuntimeStats,
+    emailDeliveryRuntimeSummary,
     emailOrderEmailStats,
     emailOrderEmails,
     emailWelcomeEmailStats,
