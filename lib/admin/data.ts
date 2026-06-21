@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailBillingEmailRecordsSafe,
+  buildEmailBillingEmailStatsSafe
+} from "@/src/lib/email/email-billing-runtime";
+import {
   buildEmailWelcomeEmailRecordsSafe,
   buildEmailWelcomeEmailStatsSafe
 } from "@/src/lib/email/email-welcome-runtime";
@@ -2309,6 +2313,65 @@ export type AdminEmailControl = {
     readyWelcomeEmails: number;
     totalWelcomeEmails: number;
     unknownWelcomeEmails: number;
+  };
+  emailBillingEmails: Array<{
+    metadataSummary: string;
+    name: string;
+    previewState:
+      | "invalid"
+      | "needs_review"
+      | "placeholder"
+      | "preview_ready"
+      | "preview_unavailable"
+      | "unknown";
+    previewStateLabel: string;
+    providerKey: "future" | "resend" | "smtp" | null;
+    readinessState:
+      | "active"
+      | "draft"
+      | "invalid"
+      | "missing_provider"
+      | "missing_template"
+      | "needs_review"
+      | "placeholder"
+      | "ready"
+      | "unknown";
+    readinessStateLabel: string;
+    status: "active" | "disabled" | "draft";
+    templateCategory: "billing";
+    templateKey: string;
+    validationState:
+      | "invalid"
+      | "missing_body"
+      | "missing_subject"
+      | "missing_variables"
+      | "needs_review"
+      | "placeholder"
+      | "unsafe_content"
+      | "unknown"
+      | "valid";
+    validationStateLabel: string;
+    versionState:
+      | "draft_available"
+      | "invalid"
+      | "needs_review"
+      | "published"
+      | "unknown"
+      | "unversioned"
+      | "versioned";
+    versionStateLabel: string;
+  }>;
+  emailBillingEmailStats: {
+    activeBillingEmails: number;
+    draftBillingEmails: number;
+    invalidBillingEmails: number;
+    missingProviderBillingEmails: number;
+    missingTemplateBillingEmails: number;
+    needsReviewBillingEmails: number;
+    placeholderBillingEmails: number;
+    readyBillingEmails: number;
+    totalBillingEmails: number;
+    unknownBillingEmails: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -7968,6 +8031,8 @@ function buildAdminEmailControl(params: {
   const emailTemplateValidationStats = buildEmailTemplateValidationStatsSafe(emailTemplateRegistry);
   const emailWelcomeEmails = buildEmailWelcomeEmailRecordsSafe(registryItems, templateStatus);
   const emailWelcomeEmailStats = buildEmailWelcomeEmailStatsSafe(registryItems, templateStatus);
+  const emailBillingEmails = buildEmailBillingEmailRecordsSafe(registryItems, templateStatus);
+  const emailBillingEmailStats = buildEmailBillingEmailStatsSafe(registryItems, templateStatus);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7983,6 +8048,8 @@ function buildAdminEmailControl(params: {
     emailTemplateRegistryStats,
     emailTemplateValidationRecords,
     emailTemplateValidationStats,
+    emailBillingEmailStats,
+    emailBillingEmails,
     emailWelcomeEmailStats,
     emailWelcomeEmails,
     emailTemplateVersionRecords,

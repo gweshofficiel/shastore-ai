@@ -899,3 +899,17 @@ export {
   listEmailWelcomeReadinessCatalog,
   resolveEmailWelcomeReadinessStateSafe
 } from "@/src/lib/email/email-welcome-runtime";
+export type {
+  EmailBillingEmailRecord,
+  EmailBillingEmailStats,
+  EmailBillingReadinessState
+} from "@/src/lib/email/email-billing-runtime";
+export {
+  buildEmailBillingEmailRecordsSafe,
+  buildEmailBillingEmailStatsSafe,
+  EMAIL_BILLING_READINESS_STATES,
+  getEmailBillingReadinessStateDescription,
+  getEmailBillingReadinessStateLabel,
+  listEmailBillingReadinessCatalog,
+  resolveEmailBillingReadinessStateSafe
+} from "@/src/lib/email/email-billing-runtime";
