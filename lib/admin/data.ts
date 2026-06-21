@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailTemplateCategoryStatsSafe,
+  groupEmailTemplateRecordsByCategorySafe
+} from "@/src/lib/email/email-template-category-runtime";
+import {
   buildEmailTemplateRegistryRecordsSafe,
   buildEmailTemplateRegistryStatsSafe
 } from "@/src/lib/email/email-template-registry-runtime";
@@ -2133,6 +2137,25 @@ export type AdminEmailControl = {
     totalTemplates: number;
     welcomeTemplates: number;
   };
+  emailTemplateCategoryStats: {
+    billingTemplates: number;
+    campaignTemplates: number;
+    domainEmailSetupTemplates: number;
+    orderTemplates: number;
+    placeholderTemplates: number;
+    securityTemplates: number;
+    supportTemplates: number;
+    systemTemplates: number;
+    totalTemplates: number;
+    unknownTemplates: number;
+    welcomeTemplates: number;
+  };
+  emailTemplateCategoryGroups: Array<{
+    category: "billing" | "domain_email_setup" | "order" | "security" | "support" | "welcome";
+    categoryLabel: string;
+    description: string;
+    templateCount: number;
+  }>;
   emailProviderStats: {
     configuredProviders: number;
     futurePlaceholderProviders: number;
@@ -7776,6 +7799,13 @@ function buildAdminEmailControl(params: {
   const emailProviderHealthStats = buildEmailProviderHealthStatsSafe(registryItems);
   const emailTemplateRegistry = buildEmailTemplateRegistryRecordsSafe(registryItems, templateStatus);
   const emailTemplateRegistryStats = buildEmailTemplateRegistryStatsSafe(registryItems, templateStatus);
+  const emailTemplateCategoryStats = buildEmailTemplateCategoryStatsSafe(registryItems);
+  const emailTemplateCategoryGroups = groupEmailTemplateRecordsByCategorySafe(emailTemplateRegistry).map((group) => ({
+    category: group.category,
+    categoryLabel: group.categoryLabel,
+    description: group.description,
+    templateCount: group.items.length
+  }));
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7783,6 +7813,8 @@ function buildAdminEmailControl(params: {
     emailProviderHealthStats,
     emailProviderStats,
     emailStatusStats,
+    emailTemplateCategoryGroups,
+    emailTemplateCategoryStats,
     emailTemplateRegistry,
     emailTemplateRegistryStats,
     emailTypeStats,

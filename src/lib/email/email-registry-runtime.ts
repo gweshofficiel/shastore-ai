@@ -797,13 +797,35 @@ export {
   buildEmailTemplateRegistryRecordsSafe,
   buildEmailTemplateRegistryStatsSafe,
   buildEmailTemplateRegistryViewsSafe,
-  EMAIL_TEMPLATE_CATEGORIES,
   EMAIL_TEMPLATE_LANGUAGES,
-  getEmailTemplateCategoryDescription,
-  getEmailTemplateCategoryLabel,
-  isValidEmailTemplateCategory,
   isValidEmailTemplateLanguage,
-  listEmailTemplateCategoryCatalog,
-  parseEmailTemplateCategory,
   parseEmailTemplateLanguage
 } from "@/src/lib/email/email-template-registry-runtime";
+export type {
+  EmailTemplateCategoryBadgeTone,
+  EmailTemplateCategoryCatalogEntry,
+  EmailTemplateCategoryGroup,
+  EmailTemplateCategoryStats,
+  EmailTemplateCenterCategory
+} from "@/src/lib/email/email-template-category-runtime";
+export {
+  buildEmailTemplateCategoryStatsSafe,
+  EMAIL_TEMPLATE_CATEGORIES,
+  EMAIL_TEMPLATE_CENTER_CATEGORIES,
+  EMAIL_TEMPLATE_REGISTERED_CATEGORIES,
+  getEmailTemplateCategoryBadgeTone,
+  getEmailTemplateCategoryDescription,
+  getEmailTemplateCategoryLabel,
+  groupEmailTemplateRecordsByCategorySafe,
+  groupEmailTemplateRegistryItemsByCategorySafe,
+  isRegisteredEmailTemplateCategory,
+  isValidEmailTemplateCategory,
+  isValidEmailTemplateCenterCategory,
+  listEmailTemplateCategoryCatalog,
+  parseEmailTemplateCategory,
+  parseEmailTemplateCenterCategory,
+  resolveEmailTemplateCategoryBadgeTone,
+  resolveEmailTemplateCategoryDescription,
+  resolveEmailTemplateCategoryLabel,
+  resolveEmailTemplateCenterCategorySafe
+} from "@/src/lib/email/email-template-category-runtime";

@@ -8,14 +8,14 @@ import {
   type EmailRegistryStatus,
   type EmailTemplateDisplayStatus
 } from "@/src/lib/email/email-status-runtime";
+import {
+  getEmailTemplateCategoryDescription,
+  getEmailTemplateCategoryLabel,
+  parseEmailTemplateCategory,
+  type EmailTemplateCategory
+} from "@/src/lib/email/email-template-category-runtime";
 
-export type EmailTemplateCategory =
-  | "billing"
-  | "domain_email_setup"
-  | "order"
-  | "security"
-  | "support"
-  | "welcome";
+export type { EmailTemplateCategory } from "@/src/lib/email/email-template-category-runtime";
 
 export type EmailTemplateLanguage = "Arabic" | "English" | "French";
 
@@ -68,38 +68,11 @@ export type EmailTemplateRegistryStats = {
   welcomeTemplates: number;
 };
 
-export const EMAIL_TEMPLATE_CATEGORIES: readonly EmailTemplateCategory[] = [
-  "welcome",
-  "billing",
-  "order",
-  "domain_email_setup",
-  "support",
-  "security"
-] as const;
-
 export const EMAIL_TEMPLATE_LANGUAGES: readonly EmailTemplateLanguage[] = [
   "English",
   "Arabic",
   "French"
 ] as const;
-
-const categoryLabels: Record<EmailTemplateCategory, string> = {
-  billing: "Billing",
-  domain_email_setup: "Domain and email setup",
-  order: "Order",
-  security: "Security",
-  support: "Support",
-  welcome: "Welcome"
-};
-
-const categoryDescriptions: Record<EmailTemplateCategory, string> = {
-  billing: "Platform billing and subscription notification email template foundation.",
-  domain_email_setup: "Domain and professional email setup instruction template foundation.",
-  order: "Platform order receipt and order notification template foundation.",
-  security: "Security alert and account notification template foundation.",
-  support: "Support ticket and helpdesk notification template foundation.",
-  welcome: "Platform welcome and onboarding email template foundation."
-};
 
 const secretPattern =
   /(?:api[_-]?key|secret|token|password|private[_-]?key|access[_-]?token|refresh[_-]?token|service[_-]?role|sb_secret|smtp|provider[_-]?config|@[a-z0-9.-]+\.[a-z]{2,})/i;
@@ -147,15 +120,6 @@ function resolveSafeProviderKey(value: unknown): EmailProviderKey | null {
   return cleaned && isValidEmailProviderKey(cleaned) ? cleaned : null;
 }
 
-export function isValidEmailTemplateCategory(value: unknown): value is EmailTemplateCategory {
-  return typeof value === "string" && EMAIL_TEMPLATE_CATEGORIES.includes(value as EmailTemplateCategory);
-}
-
-export function parseEmailTemplateCategory(value: unknown): EmailTemplateCategory | null {
-  const cleaned = text(value, 120);
-  return isValidEmailTemplateCategory(cleaned) ? cleaned : null;
-}
-
 export function isValidEmailTemplateLanguage(value: unknown): value is EmailTemplateLanguage {
   return typeof value === "string" && EMAIL_TEMPLATE_LANGUAGES.includes(value as EmailTemplateLanguage);
 }
@@ -163,22 +127,6 @@ export function isValidEmailTemplateLanguage(value: unknown): value is EmailTemp
 export function parseEmailTemplateLanguage(value: unknown): EmailTemplateLanguage | null {
   const cleaned = text(value, 80);
   return isValidEmailTemplateLanguage(cleaned) ? cleaned : null;
-}
-
-export function getEmailTemplateCategoryLabel(category: EmailTemplateCategory) {
-  return categoryLabels[category];
-}
-
-export function getEmailTemplateCategoryDescription(category: EmailTemplateCategory) {
-  return categoryDescriptions[category];
-}
-
-export function listEmailTemplateCategoryCatalog() {
-  return EMAIL_TEMPLATE_CATEGORIES.map((category) => ({
-    category,
-    description: getEmailTemplateCategoryDescription(category),
-    label: getEmailTemplateCategoryLabel(category)
-  }));
 }
 
 function buildTemplateMetadataSummary(item: EmailTemplateRegistryItem) {
@@ -194,7 +142,7 @@ function buildTemplateMetadataSummary(item: EmailTemplateRegistryItem) {
   }
 
   const category = parseEmailTemplateCategory(item.category);
-  return category ? categoryDescriptions[category] : "Email template foundation only.";
+  return category ? getEmailTemplateCategoryDescription(category) : "Email template foundation only.";
 }
 
 function resolveTemplateDisplayStatus(
@@ -222,7 +170,7 @@ export function buildEmailTemplateRegistryRecordSafe(
     return {
       category,
       categoryLabel: getEmailTemplateCategoryLabel(category),
-      description: text(item.description, 2000) || categoryDescriptions[category],
+      description: text(item.description, 2000) || getEmailTemplateCategoryDescription(category),
       id: templateKey,
       language,
       lastUpdated: text(item.updatedAt, 80) || null,
