@@ -848,3 +848,22 @@ export {
   resolveEmailTemplateLastUpdatedLabelSafe,
   resolveEmailTemplateVersionStateSafe
 } from "@/src/lib/email/email-template-version-runtime";
+export type {
+  EmailTemplatePreviewBadgeTone,
+  EmailTemplatePreviewRecord,
+  EmailTemplatePreviewState,
+  EmailTemplatePreviewStats
+} from "@/src/lib/email/email-template-preview-runtime";
+export {
+  buildEmailTemplatePreviewRecordsSafe,
+  buildEmailTemplatePreviewStatsSafe,
+  EMAIL_TEMPLATE_PREVIEW_STATES,
+  getEmailTemplatePreviewBadgeTone,
+  getEmailTemplatePreviewStateDescription,
+  getEmailTemplatePreviewStateLabel,
+  isValidEmailTemplatePreviewState,
+  listEmailTemplatePreviewCatalog,
+  parseEmailTemplatePreviewState,
+  resolveEmailTemplatePreviewStateSafe,
+  sanitizeEmailTemplatePreviewContent
+} from "@/src/lib/email/email-template-preview-runtime";

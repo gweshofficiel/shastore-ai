@@ -37,6 +37,10 @@ import {
   buildEmailProviderHealthStatsSafe
 } from "@/src/lib/email/email-provider-health-runtime";
 import {
+  buildEmailTemplatePreviewRecordsSafe,
+  buildEmailTemplatePreviewStatsSafe
+} from "@/src/lib/email/email-template-preview-runtime";
+import {
   buildEmailTemplateVersionRecordsSafe,
   buildEmailTemplateVersionStatsSafe
 } from "@/src/lib/email/email-template-version-runtime";
@@ -2186,6 +2190,31 @@ export type AdminEmailControl = {
     unknownTemplates: number;
     unversionedTemplates: number;
     versionedTemplates: number;
+  };
+  emailTemplatePreviewRecords: Array<{
+    bodyPreviewSummary: string | null;
+    metadataSummary: string;
+    previewLabel: string;
+    previewState:
+      | "invalid"
+      | "needs_review"
+      | "placeholder"
+      | "preview_ready"
+      | "preview_unavailable"
+      | "unknown";
+    previewStateLabel: string;
+    subjectPreview: string | null;
+    templateKey: string;
+    variablePlaceholdersSummary: string | null;
+  }>;
+  emailTemplatePreviewStats: {
+    invalidTemplates: number;
+    needsReviewTemplates: number;
+    placeholderTemplates: number;
+    previewReadyTemplates: number;
+    previewUnavailableTemplates: number;
+    totalTemplates: number;
+    unknownTemplates: number;
   };
   emailProviderStats: {
     configuredProviders: number;
@@ -7839,6 +7868,8 @@ function buildAdminEmailControl(params: {
   }));
   const emailTemplateVersionRecords = buildEmailTemplateVersionRecordsSafe(emailTemplateRegistry);
   const emailTemplateVersionStats = buildEmailTemplateVersionStatsSafe(emailTemplateRegistry);
+  const emailTemplatePreviewRecords = buildEmailTemplatePreviewRecordsSafe(emailTemplateRegistry);
+  const emailTemplatePreviewStats = buildEmailTemplatePreviewStatsSafe(emailTemplateRegistry);
 
   return {
     campaignMonitoring: registryViews.campaignMonitoring,
@@ -7848,6 +7879,8 @@ function buildAdminEmailControl(params: {
     emailStatusStats,
     emailTemplateCategoryGroups,
     emailTemplateCategoryStats,
+    emailTemplatePreviewRecords,
+    emailTemplatePreviewStats,
     emailTemplateRegistry,
     emailTemplateRegistryStats,
     emailTemplateVersionRecords,
