@@ -60,6 +60,10 @@ import {
   getNotificationRuntimeCertificationSurfaceLabel
 } from "@/src/lib/notifications/notification-runtime-certification-runtime";
 import {
+  getNotificationProductionCertificationStatusLabel,
+  getNotificationProductionCertificationSurfaceLabel
+} from "@/src/lib/notifications/notification-production-certification-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -526,6 +530,33 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border-2 border-emerald-300 bg-emerald-100 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">
+          Notification production certification (NT-29)
+        </p>
+        <p className="mt-2 text-sm font-semibold text-emerald-950">
+          {sanitizeNotificationAdminDisplayTextSafe(
+            control.notificationProductionCertificationSummary.certificationDescription,
+            500
+          )}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-emerald-900">
+          {sanitizeNotificationAdminDisplayTextSafe(
+            control.notificationProductionCertificationSummary.safeSummary,
+            240
+          )}
+        </p>
+        <p className="mt-2 text-xs font-black text-emerald-900">
+          Notifications Runtime Conversion:{" "}
+          {control.notificationsRuntimeConversionComplete ? "Complete" : "Needs attention"}
+          {" · "}
+          Production mode:{" "}
+          {control.notificationProductionCertificationSummary.productionModeReady ? "Ready" : "Review required"}
+          {" · "}
+          Phases: {control.notificationProductionCertificationSummary.conversionPhasesCertified}
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -948,6 +979,26 @@ export default async function AdminNotificationsPage() {
             value: control.notificationRuntimeCertificationSummary.certificationPassed
               ? "Production-safe"
               : "Needs attention"
+          },
+          {
+            label: "Production-ready surfaces",
+            value: control.notificationProductionCertificationRuntimeStats.productionReadySurfaces
+          },
+          {
+            label: "Conversion-ready surfaces",
+            value: control.notificationProductionCertificationRuntimeStats.conversionReadySurfaces
+          },
+          {
+            label: "Production certification checks",
+            value: control.notificationProductionCertificationRuntimeStats.totalChecks
+          },
+          {
+            label: "NT-29 certification",
+            value: control.notificationProductionCertificationSummary.certificationPassed ? "Passed" : "Needs attention"
+          },
+          {
+            label: "Runtime conversion",
+            value: control.notificationsRuntimeConversionComplete ? "Complete" : "Incomplete"
           }
         ]}
       />
@@ -1961,6 +2012,62 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
               {displaySanitizedNotificationError(runtimeItem.safeSummary, "monitoring")}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={
+          !control.productionCertificationItems.length
+            ? "No notification production certification records found."
+            : null
+        }
+        headers={["Surface", "Status", "Read-only", "Security", "Production", "Conversion", "Summary"]}
+      >
+        {control.productionCertificationItems.map((productionItem) => (
+          <tr key={productionItem.certificationId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">
+                {getNotificationProductionCertificationSurfaceLabel(productionItem.surface)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{productionItem.surface}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge
+                tone={
+                  productionItem.certificationStatus === "production_ready"
+                    ? "green"
+                    : productionItem.certificationStatus === "fallback"
+                      ? "amber"
+                      : "red"
+                }
+              >
+                {getNotificationProductionCertificationStatusLabel(productionItem.certificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={productionItem.readOnlyReady ? "green" : "amber"}>
+                {productionItem.readOnlyReady ? "Yes" : "Fallback"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={productionItem.securityReady ? "green" : "red"}>
+                {productionItem.securityReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={productionItem.productionReady ? "green" : "red"}>
+                {productionItem.productionReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={productionItem.conversionReady ? "green" : "red"}>
+                {productionItem.conversionReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(productionItem.safeSummary, "monitoring")}
             </td>
           </tr>
         ))}
