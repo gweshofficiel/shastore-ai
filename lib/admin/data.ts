@@ -100,6 +100,14 @@ import {
   type NotificationCategory
 } from "@/src/lib/notifications/notification-category-runtime";
 import {
+  buildNotificationProviderStatsSafe,
+  buildNotificationProviderViewsSafe,
+  buildNotificationRegistryProviderStatsSafe,
+  getNotificationProviderLabel,
+  mapNotificationChannelToProvider,
+  type NotificationProviderKey
+} from "@/src/lib/notifications/notification-provider-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3287,6 +3295,8 @@ export type AdminNotificationControl = {
     recipientMasked: string;
     status: NotificationDeliveryStatus;
     statusLabel: string;
+    providerKey: NotificationProviderKey;
+    providerLabel: string;
     storeOrUser: string;
     type: string;
     typeBadgeTone: "amber" | "blue" | "green" | "red";
@@ -3368,11 +3378,39 @@ export type AdminNotificationControl = {
     totalNotifications: number;
   };
   providerStatus: Array<{
-    configuredStatus: "configured" | "missing" | "placeholder";
+    configuredStatus: "configured" | "missing" | "partial" | "placeholder";
+    description: string;
     healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
-    provider: string;
+    metadataSummary: string;
+    placeholderOnly: boolean;
+    providerKey: NotificationProviderKey;
+    providerLabel: string;
+    providerType: "active" | "internal" | "placeholder";
+    registryLabel: string;
     secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
   }>;
+  notificationProviderStats: {
+    activeProviders: number;
+    emailProviders: number;
+    internalInAppProviders: number;
+    placeholderProviders: number;
+    pushPlaceholderProviders: number;
+    smsPlaceholderProviders: number;
+    systemAlertProviders: number;
+    totalProviders: number;
+    whatsappPlaceholderProviders: number;
+  };
+  notificationRegistryProviderStats: {
+    activeProviders: number;
+    emailProviders: number;
+    internalInAppProviders: number;
+    placeholderProviders: number;
+    pushPlaceholderProviders: number;
+    smsPlaceholderProviders: number;
+    systemAlertProviders: number;
+    totalProviders: number;
+    whatsappPlaceholderProviders: number;
+  };
   types: Array<{
     badgeTone: "amber" | "blue" | "green" | "red";
     count: number;
@@ -9315,6 +9353,15 @@ function buildAdminNotificationControl(params: {
     };
   }
 
+  function mapNotificationLogProvider(channel: NotificationChannel) {
+    const providerKey = mapNotificationChannelToProvider(channel);
+
+    return {
+      providerKey,
+      providerLabel: getNotificationProviderLabel(providerKey)
+    };
+  }
+
   const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
     const rawType = text(notification.type, "system");
     const typeView = mapNotificationLogType(rawType);
@@ -9324,6 +9371,7 @@ function buildAdminNotificationControl(params: {
     return {
       ...categoryView,
       ...mapNotificationLogChannel("in_app"),
+      ...mapNotificationLogProvider("in_app"),
       createdAt: text(notification.created_at, new Date(0).toISOString()),
       errorSummary: null,
       id: text(notification.id) || `notification:${text(notification.created_at)}`,
@@ -9353,6 +9401,7 @@ function buildAdminNotificationControl(params: {
     return {
       ...categoryView,
       ...mapNotificationLogChannel("email"),
+      ...mapNotificationLogProvider("email"),
       createdAt: text(log.created_at, new Date(0).toISOString()),
       errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
       id: text(log.id) || `email:${text(log.created_at)}`,
@@ -9375,6 +9424,7 @@ function buildAdminNotificationControl(params: {
       return {
         ...categoryView,
         ...mapNotificationLogChannel("system_alert"),
+        ...mapNotificationLogProvider("system_alert"),
         createdAt: text(event.created_at, new Date(0).toISOString()),
         errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
         id: text(event.id) || `monitoring:${text(event.created_at)}`,
@@ -9397,6 +9447,7 @@ function buildAdminNotificationControl(params: {
   const notificationChannelStats = buildNotificationChannelStatsSafe(logs.map((log) => log.channel));
   const notificationCategoryStats = buildNotificationCategoryStatsSafe(logs.map((log) => log.category));
   const notificationRegistryCategoryStats = buildNotificationRegistryCategoryStatsSafe(registryItems);
+  const notificationRegistryProviderStats = buildNotificationRegistryProviderStatsSafe(registryItems);
   const notificationTypeStats = buildNotificationTypeStatsSafe(logs.map((log) => log.type));
   const typeCounts = new Map<NotificationType, number>();
 
@@ -9419,36 +9470,27 @@ function buildAdminNotificationControl(params: {
     }))
   });
   const channels: AdminNotificationControl["channels"] = channelViews.channels;
-  const combinedWarning =
-    [registryWarning, registryViews.warning, channelViews.warning].filter(Boolean).join(" ") || null;
-  const providerStatus: AdminNotificationControl["providerStatus"] = registryViews.providers.map((provider) => {
-    if (provider.provider === "Email provider") {
-      const emailChannel = channels.find((channel) => channel.channel === "email");
-
-      return {
-        configuredStatus: emailChannel?.configuredStatus ?? provider.configuredStatus,
-        healthStatus: emailChannel?.healthStatus ?? provider.healthStatus,
-        provider: provider.provider,
-        secretStatus: emailChannel?.secretStatus ?? provider.secretStatus
-      };
-    }
-
-    if (provider.provider === "SMS provider") {
-      return {
-        ...provider,
-        secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
-      };
-    }
-
-    if (provider.provider === "WhatsApp provider") {
-      return {
-        ...provider,
-        secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
-      };
-    }
-
-    return provider;
+  const providerViews = buildNotificationProviderViewsSafe({
+    monitoringHasFailed: monitoringEvents.some((event) => text(event.event_status) === "failed"),
+    registryProviders: registryItems
+      .filter((item) => item.registryType === "provider")
+      .map((item) => ({
+        channel: item.channel,
+        configuredState: item.configuredState,
+        description: item.description,
+        health: item.health,
+        metadata: item.metadata,
+        name: item.name,
+        secretsState: item.secretsState,
+        slug: item.slug
+      }))
   });
+  const providerStatus: AdminNotificationControl["providerStatus"] = providerViews.providers;
+  const notificationProviderStats = buildNotificationProviderStatsSafe(providerStatus);
+  const combinedWarning =
+    [registryWarning, registryViews.warning, channelViews.warning, providerViews.warning]
+      .filter(Boolean)
+      .join(" ") || null;
   const types: AdminNotificationControl["types"] = registryViews.types.map((type) => ({
     badgeTone: type.badgeTone,
     count: typeCounts.get(type.key) ?? 0,
@@ -9464,7 +9506,9 @@ function buildAdminNotificationControl(params: {
     notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryStatusStats,
+    notificationProviderStats,
     notificationRegistryCategoryStats,
+    notificationRegistryProviderStats,
     notificationRegistryStatusStats,
     notificationTypeStats,
     overview: {

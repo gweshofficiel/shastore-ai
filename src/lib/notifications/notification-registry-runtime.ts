@@ -19,6 +19,10 @@ import {
   resolveRegistryNotificationCategorySafe,
   type NotificationCategory
 } from "@/src/lib/notifications/notification-category-runtime";
+import {
+  resolveRegistryNotificationProviderSafe,
+  type NotificationProviderKey
+} from "@/src/lib/notifications/notification-provider-runtime";
 
 export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
 export type {
@@ -28,6 +32,7 @@ export type {
 } from "@/src/lib/notifications/notification-status-runtime";
 export type { NotificationChannel } from "@/src/lib/notifications/notification-channel-runtime";
 export type { NotificationCategory } from "@/src/lib/notifications/notification-category-runtime";
+export type { NotificationProviderKey } from "@/src/lib/notifications/notification-provider-runtime";
 export {
   buildNotificationTypeAdminViews,
   buildNotificationTypeStatsSafe,
@@ -121,6 +126,27 @@ export type {
   NotificationCategoryCatalogEntry,
   NotificationCategoryStats
 } from "@/src/lib/notifications/notification-category-runtime";
+export {
+  buildNotificationProviderStatsSafe,
+  buildNotificationProviderViewsSafe,
+  buildNotificationRegistryProviderStatsSafe,
+  getNotificationProviderDescription,
+  getNotificationProviderLabel,
+  listNotificationProviderCatalog,
+  mapNotificationChannelToProvider,
+  NOTIFICATION_PLACEHOLDER_PROVIDER_KEYS,
+  NOTIFICATION_PROVIDER_FUTURE_HOOKS,
+  NOTIFICATION_PROVIDER_KEYS,
+  parseNotificationProviderKey,
+  parseNotificationProviderKeySafe,
+  resolveNotificationProviderLabel,
+  resolveRegistryNotificationProviderSafe
+} from "@/src/lib/notifications/notification-provider-runtime";
+export type {
+  NotificationProviderCatalogEntry,
+  NotificationProviderStats,
+  NotificationProviderView
+} from "@/src/lib/notifications/notification-provider-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -162,6 +188,7 @@ export type NotificationRegistryItemRecord = {
   metadata: Record<string, unknown>;
   name: string;
   notificationCategory: NotificationCategory;
+  notificationProvider: NotificationProviderKey;
   notificationType: string;
   registryType: NotificationRegistryType;
   secretsState: string;
@@ -318,6 +345,13 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
       registryType: record.registry_type,
       slug: record.slug
     }),
+    notificationProvider: resolveRegistryNotificationProviderSafe({
+      channel: record.channel,
+      metadata,
+      name: record.name,
+      registryType: record.registry_type,
+      slug: record.slug
+    }),
     notificationType,
     registryType,
     secretsState: text(record.secrets_state, 80),
@@ -395,7 +429,10 @@ export function buildNotificationRegistryFutureHooksView(items: NotificationRegi
   return filterNotificationRegistryItemsByType(items, "future_hook").map((item) => item.name);
 }
 
-type NotificationRegistryFallbackItem = Omit<NotificationRegistryItemRecord, "notificationCategory">;
+type NotificationRegistryFallbackItem = Omit<
+  NotificationRegistryItemRecord,
+  "notificationCategory" | "notificationProvider"
+>;
 
 function finalizeNotificationRegistryFallbackItem(
   item: NotificationRegistryFallbackItem
@@ -406,6 +443,13 @@ function finalizeNotificationRegistryFallbackItem(
       metadata: item.metadata,
       name: item.name,
       notificationType: item.notificationType,
+      registryType: item.registryType,
+      slug: item.slug
+    }),
+    notificationProvider: resolveRegistryNotificationProviderSafe({
+      channel: item.channel,
+      metadata: item.metadata,
+      name: item.name,
       registryType: item.registryType,
       slug: item.slug
     })

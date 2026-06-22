@@ -22,6 +22,7 @@ import {
   getNotificationCategoryBadgeTone,
   listNotificationCategoryCatalog
 } from "@/src/lib/notifications/notification-category-runtime";
+import { listNotificationProviderCatalog } from "@/src/lib/notifications/notification-provider-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -102,9 +103,50 @@ export default async function AdminNotificationsPage() {
           { label: "Push placeholder", value: control.notificationChannelStats.pushItems },
           { label: "Transactional", value: control.notificationCategoryStats.transactionalItems },
           { label: "Billing category", value: control.notificationCategoryStats.billingItems },
-          { label: "System category", value: control.notificationCategoryStats.systemItems }
+          { label: "System category", value: control.notificationCategoryStats.systemItems },
+          { label: "Active providers", value: control.notificationProviderStats.activeProviders },
+          { label: "Placeholder providers", value: control.notificationProviderStats.placeholderProviders }
         ]}
       />
+
+      <AdminTable headers={["Provider", "Type", "Placeholder", "Configured", "Health", "Secrets", "Summary"]}>
+        {listNotificationProviderCatalog().map((entry) => {
+          const providerView = control.providerStatus.find((provider) => provider.providerKey === entry.providerKey);
+
+          return (
+            <tr key={entry.providerKey}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{entry.label}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{entry.providerKey}</p>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={entry.placeholderOnly ? "amber" : "green"}>{entry.providerType}</AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={entry.placeholderOnly ? "amber" : "green"}>
+                  {entry.placeholderOnly ? "placeholder only" : "foundation"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForChannelStatus(providerView?.configuredStatus ?? "placeholder")}>
+                  {providerView?.configuredStatus ?? "placeholder"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForChannelStatus(providerView?.healthStatus ?? "placeholder")}>
+                  {providerView?.healthStatus ?? "placeholder"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={providerView?.secretStatus === "missing" ? "red" : "slate"}>
+                  {providerView?.secretStatus ?? "missing"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{providerView?.metadataSummary ?? entry.description}</td>
+            </tr>
+          );
+        })}
+      </AdminTable>
 
       <AdminTable headers={["Category", "Log count", "Registry count", "Description"]}>
         {listNotificationCategoryCatalog().map((entry) => {
@@ -257,7 +299,7 @@ export default async function AdminNotificationsPage() {
 
       <AdminTable
         empty={!control.logs.length ? "No notification logs found." : null}
-        headers={["Channel", "Category", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
+        headers={["Channel", "Category", "Provider", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
       >
         {control.logs.map((log) => (
           <tr key={`${log.channel}:${log.id}`}>
@@ -268,6 +310,10 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4">
               <AdminBadge tone={getNotificationCategoryBadgeTone(log.category)}>{log.categoryLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{log.category}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{log.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{log.providerKey}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={log.typeBadgeTone}>{log.typeLabel}</AdminBadge>
@@ -308,17 +354,6 @@ export default async function AdminNotificationsPage() {
                 </form>
               </div>
             </td>
-          </tr>
-        ))}
-      </AdminTable>
-
-      <AdminTable headers={["Provider", "Configured", "Health", "Secrets"]}>
-        {control.providerStatus.map((provider) => (
-          <tr key={provider.provider}>
-            <td className="px-5 py-4 font-bold text-slate-950">{provider.provider}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(provider.configuredStatus)}>{provider.configuredStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(provider.healthStatus)}>{provider.healthStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={provider.secretStatus === "missing" ? "red" : "slate"}>{provider.secretStatus}</AdminBadge></td>
           </tr>
         ))}
       </AdminTable>
