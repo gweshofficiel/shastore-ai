@@ -125,7 +125,11 @@ export default async function AdminNotificationsPage() {
           { label: "Total templates", value: control.notificationTemplateStats.totalTemplates },
           { label: "Enabled templates", value: control.notificationTemplateStats.enabledTemplates },
           { label: "Preview-ready templates", value: control.notificationTemplateStats.previewReadyTemplates },
-          { label: "Placeholder templates", value: control.notificationTemplateStats.placeholderTemplates }
+          { label: "Placeholder templates", value: control.notificationTemplateStats.placeholderTemplates },
+          { label: "Total deliveries", value: control.notificationDeliveryRuntimeStats.totalDeliveries },
+          { label: "In-app deliveries", value: control.notificationDeliveryRuntimeStats.inAppDeliveries },
+          { label: "Email deliveries", value: control.notificationDeliveryRuntimeStats.emailDeliveries },
+          { label: "Failed deliveries", value: control.notificationDeliveryRuntimeStats.failedDeliveries }
         ]}
       />
 
@@ -352,6 +356,63 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.healthStatus)}>{channel.healthStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={channel.secretStatus === "missing" ? "red" : "slate"}>{channel.secretStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.runtimeState)}>{channel.runtimeState}</AdminBadge></td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={
+          control.deliveries.length === 1 &&
+          control.deliveries[0]?.deliveryId === "unknown_notification_delivery"
+            ? "No notification delivery records found."
+            : null
+        }
+        headers={[
+          "Delivery",
+          "Notification",
+          "Template",
+          "Channel",
+          "Provider",
+          "Status",
+          "Recipient",
+          "Attempts",
+          "Delivered",
+          "Read",
+          "Created",
+          "Error summary"
+        ]}
+      >
+        {control.deliveries.map((delivery) => (
+          <tr key={delivery.deliveryId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{delivery.deliveryId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{delivery.notificationId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{delivery.templateLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{delivery.templateKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(delivery.channel)}>{delivery.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{delivery.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{delivery.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{delivery.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationStatusBadgeTone(delivery.deliveryStatus)}>
+                {delivery.deliveryStatusLabel}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 font-bold text-slate-950">{delivery.recipientMasked}</td>
+            <td className="px-5 py-4 text-slate-600">{delivery.attemptCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.deliveredAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.readAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{delivery.errorSummary ?? "No safe error summary."}</td>
           </tr>
         ))}
       </AdminTable>

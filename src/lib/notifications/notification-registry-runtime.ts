@@ -165,6 +165,19 @@ export type {
   NotificationTemplateStats,
   NotificationTemplateView
 } from "@/src/lib/notifications/notification-template-runtime";
+export {
+  buildNotificationDeliveryRecordsSafe,
+  buildNotificationDeliveryRuntimeStatsSafe,
+  maskNotificationDeliveryRecipient,
+  NOTIFICATION_DELIVERY_FALLBACK_ID,
+  NOTIFICATION_DELIVERY_FUTURE_HOOKS,
+  parseNotificationDeliveryAttemptCountSafe,
+  sanitizeNotificationDeliveryErrorSummary
+} from "@/src/lib/notifications/notification-delivery-runtime";
+export type {
+  NotificationDeliveryRecord,
+  NotificationDeliveryRuntimeStats
+} from "@/src/lib/notifications/notification-delivery-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

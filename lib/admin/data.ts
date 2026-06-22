@@ -115,6 +115,11 @@ import {
   type NotificationTemplateView
 } from "@/src/lib/notifications/notification-template-runtime";
 import {
+  buildNotificationDeliveryRecordsSafe,
+  buildNotificationDeliveryRuntimeStatsSafe,
+  type NotificationDeliveryRecord
+} from "@/src/lib/notifications/notification-delivery-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3348,6 +3353,24 @@ export type AdminNotificationControl = {
     sentItems: number;
     totalItems: number;
   };
+  notificationDeliveryRuntimeStats: {
+    archivedDeliveries: number;
+    cancelledDeliveries: number;
+    deliveredDeliveries: number;
+    draftDeliveries: number;
+    emailDeliveries: number;
+    failedDeliveries: number;
+    inAppDeliveries: number;
+    placeholderChannelDeliveries: number;
+    queuedDeliveries: number;
+    readDeliveries: number;
+    retryDeliveries: number;
+    sentDeliveries: number;
+    systemAlertDeliveries: number;
+    totalDeliveries: number;
+    unknownDeliveries: number;
+  };
+  deliveries: NotificationDeliveryRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9300,7 +9323,7 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
     safeSelect(
       supabase,
       "email_event_logs",
-      "id, recipient, template_key, status, error_message, last_error, created_at",
+      "id, recipient, template_key, status, error_message, last_error, retry_count, attempt_count, sent_at, created_at, updated_at",
       500
     ),
     safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, metadata, store_id, user_id, created_at", 500)
@@ -9541,8 +9564,24 @@ function buildAdminNotificationControl(params: {
   });
   const templates: AdminNotificationControl["templates"] = templateViews.templates;
   const notificationTemplateStats = buildNotificationTemplateStatsSafe(templates);
+  const deliveryViews = buildNotificationDeliveryRecordsSafe({
+    emailLogs,
+    monitoringEvents: monitoringEvents.filter((event) =>
+      ["failed", "warning"].includes(text(event.event_status))
+    ),
+    notifications
+  });
+  const deliveries: AdminNotificationControl["deliveries"] = deliveryViews.deliveries;
+  const notificationDeliveryRuntimeStats = buildNotificationDeliveryRuntimeStatsSafe(deliveries);
   const combinedWarning =
-    [registryWarning, registryViews.warning, channelViews.warning, providerViews.warning, templateViews.warning]
+    [
+      registryWarning,
+      registryViews.warning,
+      channelViews.warning,
+      providerViews.warning,
+      templateViews.warning,
+      deliveryViews.warning
+    ]
       .filter(Boolean)
       .join(" ") || null;
   const types: AdminNotificationControl["types"] = registryViews.types.map((type) => ({
@@ -9555,10 +9594,12 @@ function buildAdminNotificationControl(params: {
 
   return {
     channels,
+    deliveries,
     futureHooks: registryViews.futureHooks,
     logs,
     notificationCategoryStats,
     notificationChannelStats,
+    notificationDeliveryRuntimeStats,
     notificationDeliveryStatusStats,
     notificationProviderStats,
     notificationRegistryCategoryStats,
