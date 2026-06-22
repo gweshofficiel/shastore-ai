@@ -30,6 +30,10 @@ import {
   sanitizeNotificationRecipientDisplaySafe
 } from "@/src/lib/notifications/notification-recipient-runtime";
 import {
+  getNotificationLogLevelLabel,
+  sanitizeNotificationLogMessageSafe
+} from "@/src/lib/notifications/notification-log-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -100,6 +104,22 @@ function toneForMonitorStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function toneForLogLevel(level: string) {
+  if (level === "info") {
+    return "blue" as const;
+  }
+
+  if (level === "warning") {
+    return "amber" as const;
+  }
+
+  if (level === "error") {
+    return "red" as const;
+  }
+
+  return "slate" as const;
 }
 
 function toneForSecurityProtection(state: string) {
@@ -381,6 +401,54 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
+      <AdminTable
+        empty={!control.logItems.length ? "No notification log runtime records found." : null}
+        headers={[
+          "Log",
+          "Level",
+          "Notification",
+          "Event",
+          "Delivery",
+          "Channel",
+          "Provider",
+          "Status",
+          "Message",
+          "Metadata",
+          "Created"
+        ]}
+      >
+        {control.logItems.map((logItem) => (
+          <tr key={logItem.logId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{logItem.logId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForLogLevel(logItem.logLevel)}>{logItem.logLevelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{logItem.logLevel}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{logItem.notificationReference}</td>
+            <td className="px-5 py-4 text-slate-600">{logItem.eventReference}</td>
+            <td className="px-5 py-4 text-slate-600">{logItem.deliveryReference}</td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{logItem.channelLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{logItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{logItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{logItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationStatusBadgeTone(logItem.status)}>{logItem.statusLabel}</AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {sanitizeNotificationLogMessageSafe(logItem.safeMessage, 240)}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{logItem.metadataSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(logItem.createdAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminStatGrid
         stats={[
           { label: "Total notifications", value: control.overview.totalNotifications },
@@ -457,7 +525,12 @@ export default async function AdminNotificationsPage() {
           { label: "Sent events", value: control.notificationEventRuntimeStats.sentEvents },
           { label: "Failed events", value: control.notificationEventRuntimeStats.failedEvents },
           { label: "Queued events", value: control.notificationEventRuntimeStats.queuedEvents },
-          { label: "Retry scheduled events", value: control.notificationEventRuntimeStats.retryScheduledEvents }
+          { label: "Retry scheduled events", value: control.notificationEventRuntimeStats.retryScheduledEvents },
+          { label: "Total log records", value: control.notificationLogRuntimeStats.totalLogs },
+          { label: "Info logs", value: control.notificationLogRuntimeStats.infoLogs },
+          { label: "Warning logs", value: control.notificationLogRuntimeStats.warningLogs },
+          { label: "Error logs", value: control.notificationLogRuntimeStats.errorLogs },
+          { label: "Debug hidden logs", value: control.notificationLogRuntimeStats.debugHiddenLogs }
         ]}
       />
 

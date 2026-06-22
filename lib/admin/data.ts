@@ -194,6 +194,12 @@ import {
   type NotificationEventRuntimeStats
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
+  buildNotificationLogRecordsSafe,
+  buildNotificationLogRuntimeStatsSafe,
+  type NotificationLogRecord,
+  type NotificationLogRuntimeStats
+} from "@/src/lib/notifications/notification-log-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3528,6 +3534,8 @@ export type AdminNotificationControl = {
   notificationRecipientRuntimeStats: NotificationRecipientRuntimeStats;
   eventItems: NotificationEventRecord[];
   notificationEventRuntimeStats: NotificationEventRuntimeStats;
+  logItems: NotificationLogRecord[];
+  notificationLogRuntimeStats: NotificationLogRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9746,6 +9754,9 @@ function buildAdminNotificationControl(params: {
   const eventViews = buildNotificationEventRecordsSafe({ logs });
   const eventItems: AdminNotificationControl["eventItems"] = eventViews.eventItems;
   const notificationEventRuntimeStats = buildNotificationEventRuntimeStatsSafe(eventItems);
+  const logViews = buildNotificationLogRecordsSafe({ deliveries, eventItems, logs });
+  const logItems: AdminNotificationControl["logItems"] = logViews.logItems;
+  const notificationLogRuntimeStats = buildNotificationLogRuntimeStatsSafe(logItems);
   const notificationDeliveryRuntimeStats = buildNotificationDeliveryRuntimeStatsSafe(deliveries);
   const queueViews = buildNotificationQueueRecordsSafe({
     emailLogs,
@@ -9829,7 +9840,8 @@ function buildAdminNotificationControl(params: {
       monitoringViews.warning,
       healthViews.warning,
       recipientViews.warning,
-      eventViews.warning
+      eventViews.warning,
+      logViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9889,6 +9901,7 @@ function buildAdminNotificationControl(params: {
     futureHooks: registryViews.futureHooks,
     health,
     healthItems,
+    logItems,
     logs,
     metricViews,
     metrics,
@@ -9899,6 +9912,7 @@ function buildAdminNotificationControl(params: {
     notificationChannelStats,
     notificationDeliveryRuntimeStats,
     notificationEventRuntimeStats,
+    notificationLogRuntimeStats,
     notificationDeliveryStatusStats,
     notificationFailureRuntimeStats,
     notificationAuditRuntimeStats,
