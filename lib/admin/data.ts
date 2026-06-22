@@ -188,6 +188,12 @@ import {
   type NotificationRecipientRuntimeStats
 } from "@/src/lib/notifications/notification-recipient-runtime";
 import {
+  buildNotificationEventRecordsSafe,
+  buildNotificationEventRuntimeStatsSafe,
+  type NotificationEventRecord,
+  type NotificationEventRuntimeStats
+} from "@/src/lib/notifications/notification-event-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3520,6 +3526,8 @@ export type AdminNotificationControl = {
   securityRecords: NotificationSecurityRecord[];
   recipientItems: NotificationRecipientRecord[];
   notificationRecipientRuntimeStats: NotificationRecipientRuntimeStats;
+  eventItems: NotificationEventRecord[];
+  notificationEventRuntimeStats: NotificationEventRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9735,6 +9743,9 @@ function buildAdminNotificationControl(params: {
   const recipientViews = buildNotificationRecipientRecordsSafe({ deliveries, logs });
   const recipientItems: AdminNotificationControl["recipientItems"] = recipientViews.recipientItems;
   const notificationRecipientRuntimeStats = buildNotificationRecipientRuntimeStatsSafe(recipientItems);
+  const eventViews = buildNotificationEventRecordsSafe({ logs });
+  const eventItems: AdminNotificationControl["eventItems"] = eventViews.eventItems;
+  const notificationEventRuntimeStats = buildNotificationEventRuntimeStatsSafe(eventItems);
   const notificationDeliveryRuntimeStats = buildNotificationDeliveryRuntimeStatsSafe(deliveries);
   const queueViews = buildNotificationQueueRecordsSafe({
     emailLogs,
@@ -9817,7 +9828,8 @@ function buildAdminNotificationControl(params: {
       auditViews.warning,
       monitoringViews.warning,
       healthViews.warning,
-      recipientViews.warning
+      recipientViews.warning,
+      eventViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9886,6 +9898,7 @@ function buildAdminNotificationControl(params: {
     notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryRuntimeStats,
+    notificationEventRuntimeStats,
     notificationDeliveryStatusStats,
     notificationFailureRuntimeStats,
     notificationAuditRuntimeStats,
@@ -9919,6 +9932,7 @@ function buildAdminNotificationControl(params: {
     providerStatus,
     queueItems,
     recipientItems,
+    eventItems,
     retryItems,
     runtimeWarning: sanitizedRuntimeWarning,
     securityRecords,

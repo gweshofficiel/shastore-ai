@@ -369,6 +369,24 @@ export type {
   NotificationRecipientRuntimeStats,
   NotificationRecipientType
 } from "@/src/lib/notifications/notification-recipient-runtime";
+export {
+  buildNotificationEventFallbackRecordSafe,
+  buildNotificationEventRecordsSafe,
+  buildNotificationEventRuntimeStatsSafe,
+  getNotificationEventTypeLabel,
+  listNotificationEventTypeCatalog,
+  mapNotificationDeliveryStatusToEventType,
+  NOTIFICATION_EVENT_FALLBACK_ID,
+  NOTIFICATION_EVENT_FUTURE_HOOKS,
+  NOTIFICATION_EVENT_TYPES,
+  sanitizeNotificationEventMetadataSafe
+} from "@/src/lib/notifications/notification-event-runtime";
+export type {
+  NotificationEventLogInput,
+  NotificationEventRecord,
+  NotificationEventRuntimeStats,
+  NotificationEventType
+} from "@/src/lib/notifications/notification-event-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

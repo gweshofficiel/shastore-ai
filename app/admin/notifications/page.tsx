@@ -30,6 +30,9 @@ import {
   sanitizeNotificationRecipientDisplaySafe
 } from "@/src/lib/notifications/notification-recipient-runtime";
 import {
+  getNotificationEventTypeLabel
+} from "@/src/lib/notifications/notification-event-runtime";
+import {
   getNotificationSecurityProtectionStateLabel,
   sanitizeNotificationAdminDisplayTextSafe
 } from "@/src/lib/notifications/notification-security-runtime";
@@ -330,6 +333,54 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
+      <AdminTable
+        empty={!control.eventItems.length ? "No notification event records found." : null}
+        headers={[
+          "Event",
+          "Key",
+          "Type",
+          "Notification",
+          "Recipient",
+          "Channel",
+          "Provider",
+          "Status",
+          "Occurred",
+          "Created",
+          "Summary",
+          "Metadata"
+        ]}
+      >
+        {control.eventItems.map((eventItem) => (
+          <tr key={eventItem.eventId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{eventItem.eventId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{eventItem.eventKey}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">{getNotificationEventTypeLabel(eventItem.eventType)}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{eventItem.eventType}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{eventItem.notificationReference}</td>
+            <td className="px-5 py-4 text-slate-600">{eventItem.recipientReference}</td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{eventItem.channelLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{eventItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{eventItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{eventItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationStatusBadgeTone(eventItem.status)}>{eventItem.statusLabel}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(eventItem.occurredAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(eventItem.createdAt)}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{eventItem.safeSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{eventItem.metadataSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminStatGrid
         stats={[
           { label: "Total notifications", value: control.overview.totalNotifications },
@@ -401,7 +452,12 @@ export default async function AdminNotificationsPage() {
           { label: "Total recipients", value: control.notificationRecipientRuntimeStats.totalRecipients },
           { label: "Email recipients", value: control.notificationRecipientRuntimeStats.emailRecipients },
           { label: "User recipients", value: control.notificationRecipientRuntimeStats.userRecipients },
-          { label: "Store recipients", value: control.notificationRecipientRuntimeStats.storeRecipients }
+          { label: "Store recipients", value: control.notificationRecipientRuntimeStats.storeRecipients },
+          { label: "Total events", value: control.notificationEventRuntimeStats.totalEvents },
+          { label: "Sent events", value: control.notificationEventRuntimeStats.sentEvents },
+          { label: "Failed events", value: control.notificationEventRuntimeStats.failedEvents },
+          { label: "Queued events", value: control.notificationEventRuntimeStats.queuedEvents },
+          { label: "Retry scheduled events", value: control.notificationEventRuntimeStats.retryScheduledEvents }
         ]}
       />
 
