@@ -42,6 +42,9 @@ import {
   type NotificationErrorSanitizationSource
 } from "@/src/lib/notifications/notification-error-sanitization-runtime";
 import {
+  getNotificationProviderAbstractionStatusLabel
+} from "@/src/lib/notifications/notification-provider-abstraction-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -60,6 +63,21 @@ function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
       <p className="mt-2 text-xs font-semibold text-amber-800">{message}</p>
     </div>
   );
+}
+
+function toneForProviderAbstractionStatus(status: string) {
+  switch (status) {
+    case "active_foundation":
+      return "green";
+    case "internal":
+      return "blue";
+    case "missing_config":
+      return "red";
+    case "placeholder":
+      return "amber";
+    default:
+      return "slate";
+  }
 }
 
 function toneForChannelStatus(status: string) {
@@ -399,6 +417,16 @@ export default async function AdminNotificationsPage() {
         </p>
         <p className="mt-2 text-xs font-semibold text-slate-600">
           {sanitizeNotificationAdminDisplayTextSafe(control.notificationErrorSanitizationSummary.safeSummary, 240)}
+        </p>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Notification provider abstraction</p>
+        <p className="mt-2 text-sm font-semibold text-slate-900">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationProviderAbstractionSummary.policyDescription, 500)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-slate-600">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationProviderAbstractionSummary.safeSummary, 240)}
         </p>
       </div>
 
@@ -754,7 +782,11 @@ export default async function AdminNotificationsPage() {
           { label: "Log-scoped safe actions", value: control.notificationSafeActionRuntimeStats.logScopedActions },
           { label: "Sanitized surfaces", value: control.notificationErrorSanitizationRuntimeStats.totalSurfaces },
           { label: "Ready sanitization surfaces", value: control.notificationErrorSanitizationRuntimeStats.readySurfaces },
-          { label: "Sanitized error fields", value: control.notificationErrorSanitizationRuntimeStats.totalSanitizedFields }
+          { label: "Sanitized error fields", value: control.notificationErrorSanitizationRuntimeStats.totalSanitizedFields },
+          { label: "Provider abstractions", value: control.notificationProviderAbstractionRuntimeStats.totalAbstractions },
+          { label: "Placeholder providers", value: control.notificationProviderAbstractionRuntimeStats.placeholderProviders },
+          { label: "Active foundation providers", value: control.notificationProviderAbstractionRuntimeStats.activeFoundationProviders },
+          { label: "Missing config providers", value: control.notificationProviderAbstractionRuntimeStats.missingConfigProviders }
         ]}
       />
 
@@ -898,10 +930,69 @@ export default async function AdminNotificationsPage() {
                   {providerView?.secretStatus ?? "missing"}
                 </AdminBadge>
               </td>
-              <td className="px-5 py-4 text-slate-600">{providerView?.metadataSummary ?? entry.description}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {displaySanitizedNotificationError(providerView?.metadataSummary ?? entry.description, "monitoring")}
+              </td>
             </tr>
           );
         })}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.providerAbstractionItems.length ? "No notification provider abstraction records found." : null}
+        headers={[
+          "Provider",
+          "Channel",
+          "Status",
+          "Capabilities",
+          "Config summary",
+          "Health reference",
+          "Summary",
+          "Updated",
+          "Action"
+        ]}
+      >
+        {control.providerAbstractionItems.map((abstractionItem) => (
+          <tr key={abstractionItem.abstractionId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{abstractionItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{abstractionItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{abstractionItem.supportedChannelLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{abstractionItem.supportedChannel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForProviderAbstractionStatus(abstractionItem.providerStatus)}>
+                {getNotificationProviderAbstractionStatusLabel(abstractionItem.providerStatus)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{abstractionItem.providerStatus}</p>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(abstractionItem.capabilitySummary, "monitoring")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(abstractionItem.configSummary, "monitoring")}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(abstractionItem.healthReference, "monitoring")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(abstractionItem.safeSummary, "monitoring")}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(abstractionItem.updatedAt)}</td>
+            <td className="px-5 py-4">
+              <button
+                className="h-9 w-full min-w-36 cursor-not-allowed rounded-full border border-slate-200 bg-slate-100 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                disabled
+                title="Provider actions remain guarded placeholders only. No send, test, or external provider execution."
+                type="button"
+              >
+                Provider placeholder
+              </button>
+            </td>
+          </tr>
+        ))}
       </AdminTable>
 
       <AdminTable

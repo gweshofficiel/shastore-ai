@@ -486,6 +486,29 @@ export type {
   NotificationErrorSanitizationSummary
 } from "@/src/lib/notifications/notification-error-sanitization-runtime";
 
+export {
+  buildNotificationProviderAbstractionFallbackRecordSafe,
+  buildNotificationProviderAbstractionRecordsSafe,
+  buildNotificationProviderAbstractionRuntimeStatsSafe,
+  buildNotificationProviderAbstractionSummarySafe,
+  getNotificationProviderAbstractionStatusLabel,
+  listNotificationProviderAbstractionCatalog,
+  mapNotificationProviderToChannel,
+  NOTIFICATION_PROVIDER_ABSTRACTION_FALLBACK_ID,
+  NOTIFICATION_PROVIDER_ABSTRACTION_FUTURE_HOOKS,
+  NOTIFICATION_PROVIDER_CAPABILITY_FLAGS,
+  resolveNotificationProviderAbstractionStatusSafe,
+  resolveNotificationProviderCapabilityFlagsSafe,
+  sanitizeNotificationProviderAbstractionMetadataSafe
+} from "@/src/lib/notifications/notification-provider-abstraction-runtime";
+export type {
+  NotificationProviderAbstractionRecord,
+  NotificationProviderAbstractionRuntimeStats,
+  NotificationProviderAbstractionStatus,
+  NotificationProviderAbstractionSummary,
+  NotificationProviderCapabilityFlag
+} from "@/src/lib/notifications/notification-provider-abstraction-runtime";
+
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
   "type",

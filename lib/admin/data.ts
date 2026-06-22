@@ -108,6 +108,14 @@ import {
   type NotificationProviderKey
 } from "@/src/lib/notifications/notification-provider-runtime";
 import {
+  buildNotificationProviderAbstractionRecordsSafe,
+  buildNotificationProviderAbstractionRuntimeStatsSafe,
+  buildNotificationProviderAbstractionSummarySafe,
+  type NotificationProviderAbstractionRecord,
+  type NotificationProviderAbstractionRuntimeStats,
+  type NotificationProviderAbstractionSummary
+} from "@/src/lib/notifications/notification-provider-abstraction-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3567,6 +3575,9 @@ export type AdminNotificationControl = {
   errorSanitizationItems: NotificationErrorSanitizationRecord[];
   notificationErrorSanitizationSummary: NotificationErrorSanitizationSummary;
   notificationErrorSanitizationRuntimeStats: NotificationErrorSanitizationRuntimeStats;
+  providerAbstractionItems: NotificationProviderAbstractionRecord[];
+  notificationProviderAbstractionSummary: NotificationProviderAbstractionSummary;
+  notificationProviderAbstractionRuntimeStats: NotificationProviderAbstractionRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9841,6 +9852,29 @@ function buildAdminNotificationControl(params: {
   });
   const monitoringItems: AdminNotificationControl["monitoringItems"] = monitoringViews.monitoringItems;
   const notificationMonitoringRuntimeStats = buildNotificationMonitoringRuntimeStatsSafe(monitoringItems);
+  const registryProviderSnapshots = registryItems
+    .filter((item) => item.registryType === "provider")
+    .map((item) => ({
+      channel: item.channel,
+      configuredState: item.configuredState,
+      description: item.description,
+      health: item.health,
+      metadata: item.metadata,
+      name: item.name,
+      secretsState: item.secretsState,
+      slug: item.slug
+    }));
+  const providerAbstractionViews = buildNotificationProviderAbstractionRecordsSafe({
+    monitoringItems,
+    providers: providerStatus,
+    registryProviders: registryProviderSnapshots
+  });
+  const providerAbstractionItems: AdminNotificationControl["providerAbstractionItems"] =
+    providerAbstractionViews.providerAbstractionItems;
+  const notificationProviderAbstractionRuntimeStats = buildNotificationProviderAbstractionRuntimeStatsSafe(
+    providerAbstractionItems
+  );
+  const notificationProviderAbstractionSummary = buildNotificationProviderAbstractionSummarySafe();
   const metrics = buildNotificationMetricsSnapshotSafe({
     channelStats: notificationChannelStats,
     deliveryStatusStats: notificationDeliveryStatusStats,
@@ -9895,7 +9929,8 @@ function buildAdminNotificationControl(params: {
       logViews.warning,
       reviewViews.warning,
       safeActionViews.warning,
-      errorSanitizationViews.warning
+      errorSanitizationViews.warning,
+      providerAbstractionViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -10004,6 +10039,9 @@ function buildAdminNotificationControl(params: {
     errorSanitizationItems,
     notificationErrorSanitizationSummary,
     notificationErrorSanitizationRuntimeStats,
+    providerAbstractionItems,
+    notificationProviderAbstractionSummary,
+    notificationProviderAbstractionRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
