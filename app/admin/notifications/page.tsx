@@ -30,9 +30,12 @@ import {
   sanitizeNotificationRecipientDisplaySafe
 } from "@/src/lib/notifications/notification-recipient-runtime";
 import {
-  getNotificationLogLevelLabel,
   sanitizeNotificationLogMessageSafe
 } from "@/src/lib/notifications/notification-log-runtime";
+import {
+  getNotificationReviewStatusLabel,
+  sanitizeNotificationReviewNoteSafe
+} from "@/src/lib/notifications/notification-review-runtime";
 import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
@@ -104,6 +107,23 @@ function toneForMonitorStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function toneForReviewStatus(status: string) {
+  switch (status) {
+    case "resolved":
+      return "green";
+    case "reviewed":
+      return "blue";
+    case "under_review":
+      return "amber";
+    case "ignored":
+      return "slate";
+    case "unreviewed":
+      return "red";
+    default:
+      return "slate";
+  }
 }
 
 function toneForLogLevel(level: string) {
@@ -449,6 +469,54 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
+      <AdminTable
+        empty={!control.reviewItems.length ? "No notification review runtime records found." : null}
+        headers={[
+          "Review",
+          "Status",
+          "Reviewed",
+          "Notification",
+          "Failure",
+          "Reviewer",
+          "Review note",
+          "Summary",
+          "Reviewed at",
+          "Created",
+          "Updated"
+        ]}
+      >
+        {control.reviewItems.map((reviewItem) => (
+          <tr key={reviewItem.reviewId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{reviewItem.reviewId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForReviewStatus(reviewItem.reviewStatus)}>
+                {getNotificationReviewStatusLabel(reviewItem.reviewStatus)}
+              </AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{reviewItem.reviewStatus}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={reviewItem.reviewed ? "blue" : "red"}>
+                {reviewItem.reviewed ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.notificationReference}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.failureReference}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.reviewerReference}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {sanitizeNotificationReviewNoteSafe(reviewItem.reviewNote, 240)}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {sanitizeNotificationAdminDisplayTextSafe(reviewItem.safeSummary, 240)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(reviewItem.reviewedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(reviewItem.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(reviewItem.updatedAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminStatGrid
         stats={[
           { label: "Total notifications", value: control.overview.totalNotifications },
@@ -530,7 +598,13 @@ export default async function AdminNotificationsPage() {
           { label: "Info logs", value: control.notificationLogRuntimeStats.infoLogs },
           { label: "Warning logs", value: control.notificationLogRuntimeStats.warningLogs },
           { label: "Error logs", value: control.notificationLogRuntimeStats.errorLogs },
-          { label: "Debug hidden logs", value: control.notificationLogRuntimeStats.debugHiddenLogs }
+          { label: "Debug hidden logs", value: control.notificationLogRuntimeStats.debugHiddenLogs },
+          { label: "Total review records", value: control.notificationReviewRuntimeStats.totalReviews },
+          { label: "Unreviewed reviews", value: control.notificationReviewRuntimeStats.unreviewedReviews },
+          { label: "Under review", value: control.notificationReviewRuntimeStats.underReviewItems },
+          { label: "Reviewed", value: control.notificationReviewRuntimeStats.reviewedReviews },
+          { label: "Resolved reviews", value: control.notificationReviewRuntimeStats.resolvedReviews },
+          { label: "Ignored reviews", value: control.notificationReviewRuntimeStats.ignoredReviews }
         ]}
       />
 

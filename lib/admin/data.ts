@@ -200,6 +200,12 @@ import {
   type NotificationLogRuntimeStats
 } from "@/src/lib/notifications/notification-log-runtime";
 import {
+  buildNotificationReviewRecordsSafe,
+  buildNotificationReviewRuntimeStatsSafe,
+  type NotificationReviewRecord,
+  type NotificationReviewRuntimeStats
+} from "@/src/lib/notifications/notification-review-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3536,6 +3542,8 @@ export type AdminNotificationControl = {
   notificationEventRuntimeStats: NotificationEventRuntimeStats;
   logItems: NotificationLogRecord[];
   notificationLogRuntimeStats: NotificationLogRuntimeStats;
+  reviewItems: NotificationReviewRecord[];
+  notificationReviewRuntimeStats: NotificationReviewRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9781,6 +9789,9 @@ function buildAdminNotificationControl(params: {
   const auditViews = buildNotificationAuditRecordsSafe({ monitoringEvents });
   const auditItems: AdminNotificationControl["auditItems"] = auditViews.auditItems;
   const notificationAuditRuntimeStats = buildNotificationAuditRuntimeStatsSafe(auditItems);
+  const reviewViews = buildNotificationReviewRecordsSafe({ auditItems, failureItems });
+  const reviewItems: AdminNotificationControl["reviewItems"] = reviewViews.reviewItems;
+  const notificationReviewRuntimeStats = buildNotificationReviewRuntimeStatsSafe(reviewItems);
   const monitoringViews = buildNotificationMonitoringRecordsSafe({
     channelSnapshots: channels,
     emailLogs,
@@ -9841,7 +9852,8 @@ function buildAdminNotificationControl(params: {
       healthViews.warning,
       recipientViews.warning,
       eventViews.warning,
-      logViews.warning
+      logViews.warning,
+      reviewViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9926,6 +9938,8 @@ function buildAdminNotificationControl(params: {
     notificationRegistryProviderStats,
     notificationRegistryStatusStats,
     notificationRecipientRuntimeStats,
+    notificationReviewRuntimeStats,
+    reviewItems,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {

@@ -406,6 +406,24 @@ export type {
   NotificationLogRuntimeStats,
   NotificationLogSourceInput
 } from "@/src/lib/notifications/notification-log-runtime";
+export {
+  buildNotificationReviewFallbackRecordSafe,
+  buildNotificationReviewRecordsSafe,
+  buildNotificationReviewRuntimeStatsSafe,
+  getNotificationReviewStatusLabel,
+  listNotificationReviewStatusCatalog,
+  NOTIFICATION_REVIEW_FALLBACK_ID,
+  NOTIFICATION_REVIEW_FUTURE_HOOKS,
+  NOTIFICATION_REVIEW_STATUSES,
+  resolveNotificationReviewStatusSafe,
+  sanitizeNotificationReviewMetadataSafe,
+  sanitizeNotificationReviewNoteSafe
+} from "@/src/lib/notifications/notification-review-runtime";
+export type {
+  NotificationReviewRecord,
+  NotificationReviewRuntimeStats,
+  NotificationReviewStatus
+} from "@/src/lib/notifications/notification-review-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
