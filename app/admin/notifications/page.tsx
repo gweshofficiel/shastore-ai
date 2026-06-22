@@ -56,6 +56,10 @@ import {
   getNotificationSecurityCertificationDomainStatusLabel
 } from "@/src/lib/notifications/notification-security-certification-runtime";
 import {
+  getNotificationRuntimeCertificationStatusLabel,
+  getNotificationRuntimeCertificationSurfaceLabel
+} from "@/src/lib/notifications/notification-runtime-certification-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -499,6 +503,29 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border border-slate-300 bg-slate-100 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-700">Notification runtime certification (NT-28)</p>
+        <p className="mt-2 text-sm font-semibold text-slate-950">
+          {sanitizeNotificationAdminDisplayTextSafe(
+            control.notificationRuntimeCertificationSummary.certificationDescription,
+            500
+          )}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-slate-800">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationRuntimeCertificationSummary.safeSummary, 240)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-slate-700">
+          Runtime: {control.notificationRuntimeCertificationSummary.certificationPassed ? "Production-safe" : "Needs attention"}
+          {" · "}
+          Surfaces certified: {control.notificationRuntimeCertificationRuntimeStats.certifiedSurfaces}/
+          {control.notificationRuntimeCertificationRuntimeStats.totalSurfaces}
+          {" · "}
+          Read-only: {control.notificationRuntimeCertificationSummary.readOnlyPassed ? "Verified" : "Fallback"}
+          {" · "}
+          RLS: Preserved
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -898,6 +925,28 @@ export default async function AdminNotificationsPage() {
             label: "NT-27 certification",
             value: control.notificationSecurityCertificationDomainSummary.certificationPassed
               ? "Passed"
+              : "Needs attention"
+          },
+          {
+            label: "Runtime certified surfaces",
+            value: control.notificationRuntimeCertificationRuntimeStats.certifiedSurfaces
+          },
+          {
+            label: "Runtime production-safe",
+            value: control.notificationRuntimeCertificationRuntimeStats.productionSafeSurfaces
+          },
+          {
+            label: "Runtime read-only surfaces",
+            value: control.notificationRuntimeCertificationRuntimeStats.readOnlySurfaces
+          },
+          {
+            label: "Runtime certification checks",
+            value: control.notificationRuntimeCertificationRuntimeStats.totalChecks
+          },
+          {
+            label: "NT-28 certification",
+            value: control.notificationRuntimeCertificationSummary.certificationPassed
+              ? "Production-safe"
               : "Needs attention"
           }
         ]}
@@ -1856,6 +1905,62 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
               {displaySanitizedNotificationError(securityDomainItem.safeSummary, "monitoring")}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={
+          !control.runtimeCertificationItems.length ? "No notification runtime certification records found." : null
+        }
+        headers={["Surface", "Status", "Read-only", "Security", "Production", "Checks", "Summary"]}
+      >
+        {control.runtimeCertificationItems.map((runtimeItem) => (
+          <tr key={runtimeItem.certificationId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">
+                {getNotificationRuntimeCertificationSurfaceLabel(runtimeItem.surface)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{runtimeItem.surface}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge
+                tone={
+                  runtimeItem.certificationStatus === "certified"
+                    ? "green"
+                    : runtimeItem.certificationStatus === "fallback"
+                      ? "amber"
+                      : "red"
+                }
+              >
+                {getNotificationRuntimeCertificationStatusLabel(runtimeItem.certificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={runtimeItem.readOnlyReady ? "green" : "amber"}>
+                {runtimeItem.readOnlyReady ? "Yes" : "Fallback"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={runtimeItem.securityReady ? "green" : "red"}>
+                {runtimeItem.securityReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={runtimeItem.productionSafe ? "green" : "red"}>
+                {runtimeItem.productionSafe ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {runtimeItem.checks.map((check) => (
+                <p key={check.checkId} className="text-xs">
+                  {check.passed ? "✓" : "✗"} {check.label}
+                </p>
+              ))}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(runtimeItem.safeSummary, "monitoring")}
             </td>
           </tr>
         ))}
