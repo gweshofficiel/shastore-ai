@@ -171,6 +171,17 @@ import {
   type NotificationHealthSnapshot
 } from "@/src/lib/notifications/notification-health-runtime";
 import {
+  buildNotificationSecurityCertificationSafe,
+  buildNotificationSecurityRecordsSafe,
+  buildNotificationSecurityRuntimeStatsSafe,
+  collectNotificationSecurityCertificationInput,
+  sanitizeNotificationAdminDisplayTextSafe,
+  verifyNotificationSecurityFoundationsPresent,
+  type NotificationSecurityCertificationSummary,
+  type NotificationSecurityRecord,
+  type NotificationSecurityRuntimeStats
+} from "@/src/lib/notifications/notification-security-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3498,6 +3509,9 @@ export type AdminNotificationControl = {
   health: NotificationHealthSnapshot;
   healthItems: NotificationHealthRecord[];
   notificationHealthRuntimeStats: NotificationHealthRuntimeStats;
+  notificationSecurityCertification: NotificationSecurityCertificationSummary;
+  notificationSecurityRuntimeStats: NotificationSecurityRuntimeStats;
+  securityRecords: NotificationSecurityRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9802,6 +9816,42 @@ function buildAdminNotificationControl(params: {
     key: type.key,
     label: type.label
   }));
+  const sanitizedRuntimeWarning = sanitizeNotificationAdminDisplayTextSafe(combinedWarning, 500) || null;
+  const securityFoundationsPresent = verifyNotificationSecurityFoundationsPresent({
+    analyticsReady: analytics.analyticsReady,
+    channelsPresent: channels.length > 0,
+    healthReady: health.healthReady,
+    metricsReady: true,
+    monitoringPresent: monitoringItems.length > 0,
+    providerStatusPresent: providerStatus.length > 0,
+    registryPresent: registryItems.length > 0,
+    templatesPresent: templates.length > 0,
+    typesPresent: registryViews.types.length > 0
+  });
+  const securityCertificationInput = collectNotificationSecurityCertificationInput({
+    auditItems,
+    channels,
+    deliveries,
+    failureItems,
+    foundationsPresent: securityFoundationsPresent,
+    healthItems,
+    logs,
+    monitoringItems,
+    providerStatus,
+    queueItems,
+    retryItems,
+    runtimeWarning: sanitizedRuntimeWarning,
+    templates
+  });
+  const notificationSecurityCertification = buildNotificationSecurityCertificationSafe(securityCertificationInput);
+  const securityRecords = buildNotificationSecurityRecordsSafe({
+    certification: securityCertificationInput,
+    certificationSummary: notificationSecurityCertification
+  });
+  const notificationSecurityRuntimeStats = buildNotificationSecurityRuntimeStatsSafe({
+    certification: notificationSecurityCertification,
+    securityRecords
+  });
 
   return {
     channels,
@@ -9828,6 +9878,8 @@ function buildAdminNotificationControl(params: {
     notificationFailureRuntimeStats,
     notificationAuditRuntimeStats,
     notificationMonitoringRuntimeStats,
+    notificationSecurityCertification,
+    notificationSecurityRuntimeStats,
     notificationQueueRuntimeStats,
     notificationRetryRuntimeStats,
     notificationProviderStats,
@@ -9854,7 +9906,8 @@ function buildAdminNotificationControl(params: {
     providerStatus,
     queueItems,
     retryItems,
-    runtimeWarning: combinedWarning,
+    runtimeWarning: sanitizedRuntimeWarning,
+    securityRecords,
     templates,
     types
   };

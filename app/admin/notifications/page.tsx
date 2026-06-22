@@ -25,6 +25,10 @@ import {
 import { listNotificationProviderCatalog } from "@/src/lib/notifications/notification-provider-runtime";
 import { getNotificationAnalyticsDimensionLabel } from "@/src/lib/notifications/notification-analytics-runtime";
 import { getNotificationHealthDomainLabel } from "@/src/lib/notifications/notification-health-runtime";
+import {
+  getNotificationSecurityProtectionStateLabel,
+  sanitizeNotificationAdminDisplayTextSafe
+} from "@/src/lib/notifications/notification-security-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -89,6 +93,18 @@ function toneForMonitorStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function toneForSecurityProtection(state: string) {
+  if (state === "protected") {
+    return "green" as const;
+  }
+
+  if (state === "needs_review") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
 }
 
 function toneForHealthStatus(status: string) {
@@ -189,8 +205,82 @@ export default async function AdminNotificationsPage() {
       />
 
       {!ok && recoveryMessage ? (
-        <NotificationRuntimeRecoveryNotice message={recoveryMessage.slice(0, 500)} />
+        <NotificationRuntimeRecoveryNotice message={sanitizeNotificationAdminDisplayTextSafe(recoveryMessage, 500)} />
       ) : null}
+
+      {!control.notificationSecurityCertification.securityReviewPassed ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Notification security certification</p>
+          <p className="mt-2 text-sm font-semibold text-amber-900">
+            {sanitizeNotificationAdminDisplayTextSafe(control.notificationSecurityCertification.certificationDescription, 500)}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Notification security certification</p>
+          <p className="mt-2 text-sm font-semibold text-emerald-900">
+            {sanitizeNotificationAdminDisplayTextSafe(control.notificationSecurityCertification.certificationDescription, 500)}
+          </p>
+        </div>
+      )}
+
+      <AdminStatGrid
+        stats={[
+          {
+            label: "Security review",
+            value: control.notificationSecurityCertification.securityReviewPassed ? "Passed" : "Needs attention"
+          },
+          { label: "Checks passed", value: control.notificationSecurityCertification.passedChecks },
+          { label: "Checks failed", value: control.notificationSecurityCertification.failedChecks },
+          { label: "Total checks", value: control.notificationSecurityCertification.totalChecks },
+          {
+            label: "Certified at",
+            value: control.notificationSecurityCertification.certifiedAt
+              ? formatAdminDate(control.notificationSecurityCertification.certifiedAt)
+              : "Unknown"
+          },
+          { label: "Page load", value: "Read-only" },
+          { label: "Execution", value: "Disabled" },
+          { label: "Provider secrets", value: "Masked only" }
+        ]}
+      />
+
+      <AdminTable headers={["Category", "Passed", "Message"]}>
+        {control.notificationSecurityCertification.securityReview.map((reviewItem) => (
+          <tr key={`${reviewItem.category}:${reviewItem.message.slice(0, 40)}`}>
+            <td className="px-5 py-4 font-bold text-slate-950">{reviewItem.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={reviewItem.passed ? "green" : "amber"}>
+                {reviewItem.passed ? "passed" : "needs attention"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {sanitizeNotificationAdminDisplayTextSafe(reviewItem.message, 500)}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.securityRecords.length ? "No notification security surface records found." : null}
+        headers={["Surface", "State", "Summary", "Metadata"]}
+      >
+        {control.securityRecords.map((securityRecord) => (
+          <tr key={securityRecord.securityId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{securityRecord.surfaceLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{securityRecord.surface}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForSecurityProtection(securityRecord.protectionState)}>
+                {getNotificationSecurityProtectionStateLabel(securityRecord.protectionState)}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{securityRecord.safeSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{securityRecord.metadataSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
 
       <AdminStatGrid
         stats={[
@@ -257,7 +347,9 @@ export default async function AdminNotificationsPage() {
           { label: "Healthy health records", value: control.notificationHealthRuntimeStats.healthyHealthItems },
           { label: "Degraded health records", value: control.notificationHealthRuntimeStats.degradedHealthItems },
           { label: "Unknown health records", value: control.notificationHealthRuntimeStats.unknownHealthItems },
-          { label: "Total health records", value: control.notificationHealthRuntimeStats.totalHealthItems }
+          { label: "Total health records", value: control.notificationHealthRuntimeStats.totalHealthItems },
+          { label: "Protected surfaces", value: control.notificationSecurityRuntimeStats.protectedSurfaces },
+          { label: "Surfaces needs review", value: control.notificationSecurityRuntimeStats.needsReviewSurfaces }
         ]}
       />
 

@@ -316,6 +316,41 @@ export type {
   NotificationHealthSnapshot,
   NotificationHealthStatus
 } from "@/src/lib/notifications/notification-health-runtime";
+export {
+  buildNotificationSecurityCertificationSafe,
+  buildNotificationSecurityRecordsSafe,
+  buildNotificationSecurityRuntimeStatsSafe,
+  collectNotificationSecurityCertificationInput,
+  containsNotificationSecuritySecretPattern,
+  getNotificationSecurityProtectionStateLabel,
+  getNotificationSecuritySurfaceLabel,
+  isAllowedNotificationProviderSecretStatus,
+  isSafelyMaskedNotificationIpReference,
+  isSafelyMaskedNotificationRecipientDisplay,
+  isSafelySanitizedNotificationDisplayText,
+  listNotificationSecuritySurfaceCatalog,
+  maskNotificationSecurityEmailSafe,
+  maskNotificationSecurityIdentifierSafe,
+  maskNotificationSecurityIpReferenceSafe,
+  maskNotificationSecurityPhoneSafe,
+  maskNotificationSecurityProviderReferenceSafe,
+  maskNotificationSecurityRecipientSafe,
+  maskNotificationSecurityUserAgentSafe,
+  NOTIFICATION_SECURITY_CERTIFICATION_FALLBACK_SUMMARY,
+  NOTIFICATION_SECURITY_FUTURE_HOOKS,
+  NOTIFICATION_SECURITY_SECRET_PATTERN,
+  sanitizeNotificationAdminDisplayTextSafe,
+  sanitizeNotificationSecurityText,
+  verifyNotificationSecurityFoundationsPresent
+} from "@/src/lib/notifications/notification-security-runtime";
+export type {
+  NotificationSecurityCertificationSummary,
+  NotificationSecurityProtectionState,
+  NotificationSecurityRecord,
+  NotificationSecurityReviewItem,
+  NotificationSecurityRuntimeStats,
+  NotificationSecuritySurface
+} from "@/src/lib/notifications/notification-security-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
