@@ -93,6 +93,13 @@ import {
   type NotificationChannel
 } from "@/src/lib/notifications/notification-channel-runtime";
 import {
+  buildNotificationCategoryStatsSafe,
+  buildNotificationRegistryCategoryStatsSafe,
+  classifyNotificationCategoryFromSource,
+  getNotificationCategoryLabel,
+  type NotificationCategory
+} from "@/src/lib/notifications/notification-category-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3270,6 +3277,8 @@ export type AdminNotificationControl = {
   }>;
   futureHooks: string[];
   logs: Array<{
+    category: NotificationCategory;
+    categoryLabel: string;
     channel: NotificationChannel;
     channelLabel: string;
     createdAt: string;
@@ -3284,6 +3293,20 @@ export type AdminNotificationControl = {
     typeKey: NotificationType;
     typeLabel: string;
   }>;
+  notificationCategoryStats: {
+    accountItems: number;
+    aiItems: number;
+    billingItems: number;
+    domainItems: number;
+    emailItems: number;
+    securityItems: number;
+    storeItems: number;
+    supportItems: number;
+    systemItems: number;
+    totalItems: number;
+    transactionalItems: number;
+    unknownItems: number;
+  };
   notificationChannelStats: {
     emailItems: number;
     inAppItems: number;
@@ -3305,6 +3328,20 @@ export type AdminNotificationControl = {
     retryItems: number;
     sentItems: number;
     totalItems: number;
+  };
+  notificationRegistryCategoryStats: {
+    accountItems: number;
+    aiItems: number;
+    billingItems: number;
+    domainItems: number;
+    emailItems: number;
+    securityItems: number;
+    storeItems: number;
+    supportItems: number;
+    systemItems: number;
+    totalItems: number;
+    transactionalItems: number;
+    unknownItems: number;
   };
   notificationRegistryStatusStats: {
     configuredItems: number;
@@ -9269,12 +9306,23 @@ function buildAdminNotificationControl(params: {
     };
   }
 
+  function mapNotificationLogCategory(...sources: unknown[]) {
+    const category = classifyNotificationCategoryFromSource(sources.filter(Boolean).join(" "));
+
+    return {
+      category,
+      categoryLabel: getNotificationCategoryLabel(category)
+    };
+  }
+
   const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
     const rawType = text(notification.type, "system");
     const typeView = mapNotificationLogType(rawType);
     const statusView = mapNotificationLogStatus(notification.status, notification.read_at);
+    const categoryView = mapNotificationLogCategory(notification.type, notification.title);
 
     return {
+      ...categoryView,
       ...mapNotificationLogChannel("in_app"),
       createdAt: text(notification.created_at, new Date(0).toISOString()),
       errorSummary: null,
@@ -9300,8 +9348,10 @@ function buildAdminNotificationControl(params: {
     const rawType = text(log.template_key, "email");
     const typeView = mapNotificationLogType(rawType);
     const statusView = mapNotificationLogStatus(log.status);
+    const categoryView = mapNotificationLogCategory(log.template_key);
 
     return {
+      ...categoryView,
       ...mapNotificationLogChannel("email"),
       createdAt: text(log.created_at, new Date(0).toISOString()),
       errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
@@ -9320,8 +9370,10 @@ function buildAdminNotificationControl(params: {
       const typeView = mapNotificationLogType(rawType);
       const eventStatus = text(event.event_status) === "failed" ? "failed" : "queued";
       const statusView = mapNotificationLogStatus(eventStatus);
+      const categoryView = mapNotificationLogCategory(event.event_type, metadata.note);
 
       return {
+        ...categoryView,
         ...mapNotificationLogChannel("system_alert"),
         createdAt: text(event.created_at, new Date(0).toISOString()),
         errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
@@ -9343,6 +9395,8 @@ function buildAdminNotificationControl(params: {
     logs.map((log) => ({ status: log.status }))
   );
   const notificationChannelStats = buildNotificationChannelStatsSafe(logs.map((log) => log.channel));
+  const notificationCategoryStats = buildNotificationCategoryStatsSafe(logs.map((log) => log.category));
+  const notificationRegistryCategoryStats = buildNotificationRegistryCategoryStatsSafe(registryItems);
   const notificationTypeStats = buildNotificationTypeStatsSafe(logs.map((log) => log.type));
   const typeCounts = new Map<NotificationType, number>();
 
@@ -9407,8 +9461,10 @@ function buildAdminNotificationControl(params: {
     channels,
     futureHooks: registryViews.futureHooks,
     logs,
+    notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryStatusStats,
+    notificationRegistryCategoryStats,
     notificationRegistryStatusStats,
     notificationTypeStats,
     overview: {

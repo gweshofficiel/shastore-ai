@@ -15,6 +15,10 @@ import {
   resolveRegistryNotificationChannelSafe,
   type NotificationChannel
 } from "@/src/lib/notifications/notification-channel-runtime";
+import {
+  resolveRegistryNotificationCategorySafe,
+  type NotificationCategory
+} from "@/src/lib/notifications/notification-category-runtime";
 
 export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
 export type {
@@ -23,6 +27,7 @@ export type {
   NotificationRegistryStatus
 } from "@/src/lib/notifications/notification-status-runtime";
 export type { NotificationChannel } from "@/src/lib/notifications/notification-channel-runtime";
+export type { NotificationCategory } from "@/src/lib/notifications/notification-category-runtime";
 export {
   buildNotificationTypeAdminViews,
   buildNotificationTypeStatsSafe,
@@ -95,6 +100,27 @@ export type {
   NotificationChannelView,
   NotificationRegistryChannelSnapshot
 } from "@/src/lib/notifications/notification-channel-runtime";
+export {
+  buildNotificationRegistryCategoryStatsSafe,
+  classifyNotificationCategoryFromSource,
+  getNotificationCategoryBadgeTone,
+  getNotificationCategoryDescription,
+  getNotificationCategoryLabel,
+  listNotificationCategoryCatalog,
+  mapNotificationTypeToCategory,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_FUTURE_HOOKS,
+  parseNotificationCategory,
+  parseNotificationCategorySafe,
+  resolveNotificationCategoryBadgeTone,
+  resolveNotificationCategoryLabel,
+  resolveRegistryNotificationCategorySafe
+} from "@/src/lib/notifications/notification-category-runtime";
+export type {
+  NotificationCategoryBadgeTone,
+  NotificationCategoryCatalogEntry,
+  NotificationCategoryStats
+} from "@/src/lib/notifications/notification-category-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -135,6 +161,7 @@ export type NotificationRegistryItemRecord = {
   id: string;
   metadata: Record<string, unknown>;
   name: string;
+  notificationCategory: NotificationCategory;
   notificationType: string;
   registryType: NotificationRegistryType;
   secretsState: string;
@@ -272,6 +299,9 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
     return null;
   }
 
+  const metadata = sanitizeRegistryMetadata(safeRecord(record.metadata));
+  const notificationType = parseNotificationType(record.notification_type) ?? text(record.notification_type, 80);
+
   return {
     channel: resolveRegistryNotificationChannelSafe(record.channel),
     configuredState: text(record.configured_state, 80),
@@ -279,9 +309,16 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
     description: text(record.description, 2000),
     health: text(record.health, 80),
     id,
-    metadata: sanitizeRegistryMetadata(safeRecord(record.metadata)),
+    metadata,
     name,
-    notificationType: parseNotificationType(record.notification_type) ?? text(record.notification_type, 80),
+    notificationCategory: resolveRegistryNotificationCategorySafe({
+      metadata,
+      name: record.name,
+      notificationType: record.notification_type,
+      registryType: record.registry_type,
+      slug: record.slug
+    }),
+    notificationType,
     registryType,
     secretsState: text(record.secrets_state, 80),
     slug,
@@ -358,7 +395,24 @@ export function buildNotificationRegistryFutureHooksView(items: NotificationRegi
   return filterNotificationRegistryItemsByType(items, "future_hook").map((item) => item.name);
 }
 
-export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistryItemRecord[] = [
+type NotificationRegistryFallbackItem = Omit<NotificationRegistryItemRecord, "notificationCategory">;
+
+function finalizeNotificationRegistryFallbackItem(
+  item: NotificationRegistryFallbackItem
+): NotificationRegistryItemRecord {
+  return {
+    ...item,
+    notificationCategory: resolveRegistryNotificationCategorySafe({
+      metadata: item.metadata,
+      name: item.name,
+      notificationType: item.notificationType,
+      registryType: item.registryType,
+      slug: item.slug
+    })
+  };
+}
+
+const NOTIFICATION_REGISTRY_FALLBACK_ITEMS_RAW: readonly NotificationRegistryFallbackItem[] = [
   {
     channel: "in_app",
     configuredState: "configured",
@@ -802,6 +856,9 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   }
 ];
+
+export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistryItemRecord[] =
+  NOTIFICATION_REGISTRY_FALLBACK_ITEMS_RAW.map(finalizeNotificationRegistryFallbackItem);
 
 export async function listNotificationRegistryItemsReadOnly(): Promise<NotificationRegistryItemRecord[]> {
   const admin = requireAdminClient();

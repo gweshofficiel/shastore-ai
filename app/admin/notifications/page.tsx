@@ -18,6 +18,10 @@ import {
   getNotificationChannelBadgeTone,
   listNotificationChannelCatalog
 } from "@/src/lib/notifications/notification-channel-runtime";
+import {
+  getNotificationCategoryBadgeTone,
+  listNotificationCategoryCatalog
+} from "@/src/lib/notifications/notification-category-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -95,9 +99,69 @@ export default async function AdminNotificationsPage() {
           { label: "System alert logs", value: control.notificationChannelStats.systemAlertItems },
           { label: "SMS placeholder", value: control.notificationChannelStats.smsItems },
           { label: "WhatsApp placeholder", value: control.notificationChannelStats.whatsappItems },
-          { label: "Push placeholder", value: control.notificationChannelStats.pushItems }
+          { label: "Push placeholder", value: control.notificationChannelStats.pushItems },
+          { label: "Transactional", value: control.notificationCategoryStats.transactionalItems },
+          { label: "Billing category", value: control.notificationCategoryStats.billingItems },
+          { label: "System category", value: control.notificationCategoryStats.systemItems }
         ]}
       />
+
+      <AdminTable headers={["Category", "Log count", "Registry count", "Description"]}>
+        {listNotificationCategoryCatalog().map((entry) => {
+          const logCount =
+            entry.category === "transactional"
+              ? control.notificationCategoryStats.transactionalItems
+              : entry.category === "account"
+                ? control.notificationCategoryStats.accountItems
+                : entry.category === "billing"
+                  ? control.notificationCategoryStats.billingItems
+                  : entry.category === "security"
+                    ? control.notificationCategoryStats.securityItems
+                    : entry.category === "store"
+                      ? control.notificationCategoryStats.storeItems
+                      : entry.category === "domain"
+                        ? control.notificationCategoryStats.domainItems
+                        : entry.category === "email"
+                          ? control.notificationCategoryStats.emailItems
+                          : entry.category === "ai"
+                            ? control.notificationCategoryStats.aiItems
+                            : entry.category === "support"
+                              ? control.notificationCategoryStats.supportItems
+                              : control.notificationCategoryStats.systemItems;
+          const registryCount =
+            entry.category === "transactional"
+              ? control.notificationRegistryCategoryStats.transactionalItems
+              : entry.category === "account"
+                ? control.notificationRegistryCategoryStats.accountItems
+                : entry.category === "billing"
+                  ? control.notificationRegistryCategoryStats.billingItems
+                  : entry.category === "security"
+                    ? control.notificationRegistryCategoryStats.securityItems
+                    : entry.category === "store"
+                      ? control.notificationRegistryCategoryStats.storeItems
+                      : entry.category === "domain"
+                        ? control.notificationRegistryCategoryStats.domainItems
+                        : entry.category === "email"
+                          ? control.notificationRegistryCategoryStats.emailItems
+                          : entry.category === "ai"
+                            ? control.notificationRegistryCategoryStats.aiItems
+                            : entry.category === "support"
+                              ? control.notificationRegistryCategoryStats.supportItems
+                              : control.notificationRegistryCategoryStats.systemItems;
+
+          return (
+            <tr key={entry.category}>
+              <td className="px-5 py-4">
+                <AdminBadge tone={getNotificationCategoryBadgeTone(entry.category)}>{entry.label}</AdminBadge>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{entry.category}</p>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{logCount}</td>
+              <td className="px-5 py-4 text-slate-600">{registryCount}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.description}</td>
+            </tr>
+          );
+        })}
+      </AdminTable>
 
       <AdminTable headers={["Channel", "Runtime", "Placeholder", "Logs", "Description"]}>
         {listNotificationChannelCatalog().map((entry) => {
@@ -193,13 +257,17 @@ export default async function AdminNotificationsPage() {
 
       <AdminTable
         empty={!control.logs.length ? "No notification logs found." : null}
-        headers={["Channel", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
+        headers={["Channel", "Category", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
       >
         {control.logs.map((log) => (
           <tr key={`${log.channel}:${log.id}`}>
             <td className="px-5 py-4">
               <AdminBadge tone={getNotificationChannelBadgeTone(log.channel)}>{log.channelLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{log.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationCategoryBadgeTone(log.category)}>{log.categoryLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{log.category}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={log.typeBadgeTone}>{log.typeLabel}</AdminBadge>
