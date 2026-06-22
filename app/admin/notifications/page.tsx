@@ -69,6 +69,22 @@ function toneForTemplateState(state: string) {
   return "slate" as const;
 }
 
+function toneForAuditActor(actorType: string) {
+  if (actorType === "super_admin") {
+    return "blue" as const;
+  }
+
+  if (actorType === "system") {
+    return "slate" as const;
+  }
+
+  if (actorType === "platform") {
+    return "green" as const;
+  }
+
+  return "amber" as const;
+}
+
 function toneForFailureStatus(status: string) {
   if (["retry_pending"].includes(status)) {
     return "amber" as const;
@@ -185,7 +201,11 @@ export default async function AdminNotificationsPage() {
           { label: "Failure records", value: control.notificationFailureRuntimeStats.totalFailures },
           { label: "Unreviewed failures", value: control.notificationFailureRuntimeStats.unreviewedFailures },
           { label: "Reviewed failures", value: control.notificationFailureRuntimeStats.reviewedFailures },
-          { label: "Provider errors", value: control.notificationFailureRuntimeStats.providerErrorFailures }
+          { label: "Provider errors", value: control.notificationFailureRuntimeStats.providerErrorFailures },
+          { label: "Audit records", value: control.notificationAuditRuntimeStats.totalAuditItems },
+          { label: "Super Admin actions", value: control.notificationAuditRuntimeStats.superAdminActions },
+          { label: "Mark reviewed audits", value: control.notificationAuditRuntimeStats.markReviewedActions },
+          { label: "Retry placeholder audits", value: control.notificationAuditRuntimeStats.retryPlaceholderActions }
         ]}
       />
 
@@ -624,6 +644,50 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.reviewedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{failureItem.failureReason ?? "No safe failure reason."}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.auditItems.length ? "No notification audit records found." : null}
+        headers={[
+          "Audit",
+          "Notification",
+          "Actor",
+          "Action",
+          "Target",
+          "Summary",
+          "Metadata",
+          "IP ref",
+          "User agent",
+          "Created"
+        ]}
+      >
+        {control.auditItems.map((auditItem) => (
+          <tr key={auditItem.auditId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{auditItem.auditId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{auditItem.notificationId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForAuditActor(auditItem.actorType)}>{auditItem.actorType}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{auditItem.actorIdReference}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{auditItem.actionLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{auditItem.action}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{auditItem.targetType}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{auditItem.targetIdReference}</p>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{auditItem.safeSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{auditItem.metadataSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.ipReference}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.userAgentSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(auditItem.createdAt)}</td>
           </tr>
         ))}
       </AdminTable>

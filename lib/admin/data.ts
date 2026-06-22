@@ -135,6 +135,11 @@ import {
   type NotificationFailureRecord
 } from "@/src/lib/notifications/notification-failure-runtime";
 import {
+  buildNotificationAuditRecordsSafe,
+  buildNotificationAuditRuntimeStatsSafe,
+  type NotificationAuditRecord
+} from "@/src/lib/notifications/notification-audit-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3428,6 +3433,18 @@ export type AdminNotificationControl = {
     unknownFailures: number;
   };
   failureItems: NotificationFailureRecord[];
+  notificationAuditRuntimeStats: {
+    disableTemplateActions: number;
+    markReviewedActions: number;
+    platformActions: number;
+    retryPlaceholderActions: number;
+    superAdminActions: number;
+    systemActions: number;
+    totalAuditItems: number;
+    unknownActions: number;
+    viewDetailsActions: number;
+  };
+  auditItems: NotificationAuditRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9383,7 +9400,7 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
       "id, recipient, template_key, status, error_message, last_error, retry_count, attempt_count, sent_at, locked_at, next_retry_at, last_attempt_at, created_at, updated_at",
       500
     ),
-    safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, metadata, store_id, user_id, created_at", 500)
+    safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, entity_id, metadata, store_id, user_id, created_at", 500)
   ]);
 
   return buildAdminNotificationControl({
@@ -9661,6 +9678,9 @@ function buildAdminNotificationControl(params: {
   });
   const failureItems: AdminNotificationControl["failureItems"] = failureViews.failureItems;
   const notificationFailureRuntimeStats = buildNotificationFailureRuntimeStatsSafe(failureItems);
+  const auditViews = buildNotificationAuditRecordsSafe({ monitoringEvents });
+  const auditItems: AdminNotificationControl["auditItems"] = auditViews.auditItems;
+  const notificationAuditRuntimeStats = buildNotificationAuditRuntimeStatsSafe(auditItems);
   const combinedWarning =
     [
       registryWarning,
@@ -9671,7 +9691,8 @@ function buildAdminNotificationControl(params: {
       deliveryViews.warning,
       queueViews.warning,
       retryViews.warning,
-      failureViews.warning
+      failureViews.warning,
+      auditViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9685,6 +9706,7 @@ function buildAdminNotificationControl(params: {
 
   return {
     channels,
+    auditItems,
     deliveries,
     failureItems,
     futureHooks: registryViews.futureHooks,
@@ -9694,6 +9716,7 @@ function buildAdminNotificationControl(params: {
     notificationDeliveryRuntimeStats,
     notificationDeliveryStatusStats,
     notificationFailureRuntimeStats,
+    notificationAuditRuntimeStats,
     notificationQueueRuntimeStats,
     notificationRetryRuntimeStats,
     notificationProviderStats,

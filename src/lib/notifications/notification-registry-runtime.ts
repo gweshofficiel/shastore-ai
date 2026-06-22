@@ -229,6 +229,25 @@ export type {
   NotificationFailureRuntimeStats,
   NotificationFailureStatus
 } from "@/src/lib/notifications/notification-failure-runtime";
+export {
+  buildNotificationAuditRecordsSafe,
+  buildNotificationAuditRuntimeStatsSafe,
+  getNotificationAuditActionLabel,
+  listNotificationAuditActionCatalog,
+  maskNotificationAuditIpReference,
+  NOTIFICATION_AUDIT_ACTIONS,
+  NOTIFICATION_AUDIT_FUTURE_HOOKS,
+  parseNotificationAuditActorType,
+  sanitizeNotificationAuditMetadata,
+  sanitizeNotificationAuditSummary,
+  sanitizeNotificationAuditUserAgent
+} from "@/src/lib/notifications/notification-audit-runtime";
+export type {
+  NotificationAuditAction,
+  NotificationAuditActorType,
+  NotificationAuditRecord,
+  NotificationAuditRuntimeStats
+} from "@/src/lib/notifications/notification-audit-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
