@@ -48,6 +48,10 @@ import {
   getNotificationReadOnlyProtectionSurfaceLabel
 } from "@/src/lib/notifications/notification-read-only-protection-runtime";
 import {
+  getNotificationDataCertificationStatusLabel,
+  getNotificationDataCertificationSurfaceLabel
+} from "@/src/lib/notifications/notification-data-certification-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -446,6 +450,24 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Notification data certification (NT-26)</p>
+        <p className="mt-2 text-sm font-semibold text-emerald-950">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationDataCertificationSummary.certificationDescription, 500)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-emerald-900">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationDataCertificationSummary.safeSummary, 240)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-emerald-800">
+          Certification: {control.notificationDataCertificationSummary.certificationPassed ? "Passed" : "Needs attention"}
+          {" · "}
+          Checks passed: {control.notificationDataCertificationSummary.passedChecks}/
+          {control.notificationDataCertificationSummary.totalChecks}
+          {" · "}
+          Page load: Read-only
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -809,6 +831,21 @@ export default async function AdminNotificationsPage() {
           {
             label: "Read-only verified",
             value: control.notificationReadOnlyProtectionVerified ? "Yes" : "Fallback"
+          },
+          { label: "Data certified surfaces", value: control.notificationDataCertificationRuntimeStats.certifiedSurfaces },
+          { label: "Data fallback surfaces", value: control.notificationDataCertificationRuntimeStats.fallbackSurfaces },
+          {
+            label: "Data needs review",
+            value: control.notificationDataCertificationRuntimeStats.needsReviewSurfaces
+          },
+          { label: "Data certification checks", value: control.notificationDataCertificationRuntimeStats.totalChecks },
+          {
+            label: "Data checks passed",
+            value: control.notificationDataCertificationRuntimeStats.totalChecksPassed
+          },
+          {
+            label: "Data certification",
+            value: control.notificationDataCertificationSummary.certificationPassed ? "Passed" : "Needs attention"
           }
         ]}
       />
@@ -1664,6 +1701,60 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
               {displaySanitizedNotificationError(sanitizationItem.safeSummary, sanitizationItem.source)}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.dataCertificationItems.length ? "No notification data certification records found." : null}
+        headers={["Surface", "Status", "Sanitized", "Masked", "Read-only", "Checks", "Summary"]}
+      >
+        {control.dataCertificationItems.map((certificationItem) => (
+          <tr key={certificationItem.certificationId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">
+                {getNotificationDataCertificationSurfaceLabel(certificationItem.surface)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{certificationItem.surface}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge
+                tone={
+                  certificationItem.certificationStatus === "certified"
+                    ? "green"
+                    : certificationItem.certificationStatus === "fallback"
+                      ? "amber"
+                      : "red"
+                }
+              >
+                {getNotificationDataCertificationStatusLabel(certificationItem.certificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={certificationItem.sanitizationReady ? "green" : "red"}>
+                {certificationItem.sanitizationReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={certificationItem.maskingReady ? "green" : "red"}>
+                {certificationItem.maskingReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={certificationItem.readOnlyReady ? "green" : "amber"}>
+                {certificationItem.readOnlyReady ? "Yes" : "Fallback"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {certificationItem.checks.map((check) => (
+                <p key={check.checkId} className="text-xs">
+                  {check.passed ? "✓" : "✗"} {check.label}
+                </p>
+              ))}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(certificationItem.safeSummary, "monitoring")}
             </td>
           </tr>
         ))}

@@ -537,6 +537,31 @@ export type {
   NotificationReadOnlySurfaceAvailability
 } from "@/src/lib/notifications/notification-read-only-protection-runtime";
 
+export {
+  buildNotificationDataCertificationFallbackRecordSafe,
+  buildNotificationDataCertificationRecordsSafe,
+  buildNotificationDataCertificationRuntimeStatsSafe,
+  buildNotificationDataCertificationSummarySafe,
+  certifyNotificationDisplaySamplesSafe,
+  collectNotificationDataCertificationInput,
+  getNotificationDataCertificationStatusLabel,
+  getNotificationDataCertificationSurfaceLabel,
+  listNotificationDataCertificationCatalog,
+  NOTIFICATION_DATA_CERTIFICATION_FALLBACK_ID,
+  NOTIFICATION_DATA_CERTIFICATION_FUTURE_HOOKS,
+  NOTIFICATION_DATA_CERTIFICATION_SURFACES
+} from "@/src/lib/notifications/notification-data-certification-runtime";
+export type {
+  NotificationDataCertificationCheckItem,
+  NotificationDataCertificationInput,
+  NotificationDataCertificationRecord,
+  NotificationDataCertificationRuntimeStats,
+  NotificationDataCertificationStatus,
+  NotificationDataCertificationSummary,
+  NotificationDataCertificationSurface,
+  NotificationDataCertificationSurfaceAvailability
+} from "@/src/lib/notifications/notification-data-certification-runtime";
+
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
   "type",

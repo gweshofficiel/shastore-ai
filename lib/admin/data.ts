@@ -125,6 +125,15 @@ import {
   type NotificationReadOnlyProtectionSummary
 } from "@/src/lib/notifications/notification-read-only-protection-runtime";
 import {
+  buildNotificationDataCertificationRecordsSafe,
+  buildNotificationDataCertificationRuntimeStatsSafe,
+  buildNotificationDataCertificationSummarySafe,
+  collectNotificationDataCertificationInput,
+  type NotificationDataCertificationRecord,
+  type NotificationDataCertificationRuntimeStats,
+  type NotificationDataCertificationSummary
+} from "@/src/lib/notifications/notification-data-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3591,6 +3600,9 @@ export type AdminNotificationControl = {
   notificationReadOnlyProtectionSummary: NotificationReadOnlyProtectionSummary;
   notificationReadOnlyProtectionRuntimeStats: NotificationReadOnlyProtectionRuntimeStats;
   notificationReadOnlyProtectionVerified: boolean;
+  dataCertificationItems: NotificationDataCertificationRecord[];
+  notificationDataCertificationSummary: NotificationDataCertificationSummary;
+  notificationDataCertificationRuntimeStats: NotificationDataCertificationRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -10038,6 +10050,67 @@ function buildAdminNotificationControl(params: {
     safeActionItems,
     securityRecords
   });
+  const notificationSurfaceAvailability = {
+    analytics: analytics.analyticsReady,
+    audit: sanitizedErrors.auditItems.length > 0,
+    categories: notificationCategoryStats.totalItems > 0,
+    channels: channels.length > 0,
+    deliveries: sanitizedErrors.deliveries.length > 0,
+    events: sanitizedErrors.eventItems.length > 0,
+    failures: sanitizedErrors.failureItems.length > 0,
+    health: health.healthReady,
+    logs: sanitizedErrors.logItems.length > 0 || sanitizedErrors.logs.length > 0,
+    metrics: true,
+    monitoring: sanitizedErrors.monitoringItems.length > 0,
+    provider_abstraction: providerAbstractionItems.length > 0,
+    providers: providerStatus.length > 0,
+    queue: sanitizedErrors.queueItems.length > 0,
+    recipients: recipientItems.length > 0,
+    registry: registryItems.length > 0,
+    retries: sanitizedErrors.retryItems.length > 0,
+    reviews: sanitizedErrors.reviewItems.length > 0,
+    safe_actions: sanitizedErrors.safeActionItems.length > 0,
+    statuses: notificationDeliveryStatusStats.totalItems > 0,
+    templates: templates.length > 0,
+    types: types.length > 0,
+    read_only_protection: notificationReadOnlyProtectionVerified
+  };
+  const dataCertificationInput = collectNotificationDataCertificationInput({
+    auditItems: sanitizedErrors.auditItems,
+    channels,
+    deliveries: sanitizedErrors.deliveries,
+    errorSanitizationReady:
+      notificationErrorSanitizationRuntimeStats.readySurfaces >=
+      notificationErrorSanitizationRuntimeStats.totalSurfaces,
+    eventItems: sanitizedErrors.eventItems,
+    failureItems: sanitizedErrors.failureItems,
+    foundationsPresent: securityFoundationsPresent,
+    healthItems: sanitizedErrors.healthItems,
+    logItems: sanitizedErrors.logItems,
+    logs: sanitizedErrors.logs,
+    monitoringItems: sanitizedErrors.monitoringItems,
+    providerAbstractionItems,
+    providerStatus,
+    queueItems: sanitizedErrors.queueItems,
+    readOnlyProtectionVerified: notificationReadOnlyProtectionVerified,
+    recipientItems,
+    retryItems: sanitizedErrors.retryItems,
+    reviewItems: sanitizedErrors.reviewItems,
+    runtimeWarning: sanitizedRuntimeWarning,
+    safeActionItems: sanitizedErrors.safeActionItems,
+    securityReviewPassed: notificationSecurityCertification.securityReviewPassed,
+    surfaceAvailability: notificationSurfaceAvailability,
+    templates
+  });
+  const dataCertificationViews = buildNotificationDataCertificationRecordsSafe(dataCertificationInput);
+  const dataCertificationItems: AdminNotificationControl["dataCertificationItems"] =
+    dataCertificationViews.dataCertificationItems;
+  const notificationDataCertificationRuntimeStats =
+    buildNotificationDataCertificationRuntimeStatsSafe(dataCertificationItems);
+  const notificationDataCertificationSummary = buildNotificationDataCertificationSummarySafe(
+    dataCertificationItems,
+    dataCertificationInput
+  );
 
   return {
     channels,
@@ -10091,6 +10164,9 @@ function buildAdminNotificationControl(params: {
     notificationReadOnlyProtectionSummary,
     notificationReadOnlyProtectionRuntimeStats,
     notificationReadOnlyProtectionVerified,
+    dataCertificationItems,
+    notificationDataCertificationSummary,
+    notificationDataCertificationRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
@@ -10114,7 +10190,9 @@ function buildAdminNotificationControl(params: {
     eventItems: sanitizedErrors.eventItems,
     retryItems: sanitizedErrors.retryItems,
     runtimeWarning:
-      [sanitizedRuntimeWarning, readOnlyProtectionViews.warning].filter(Boolean).join(" ") || null,
+      [sanitizedRuntimeWarning, readOnlyProtectionViews.warning, dataCertificationViews.warning]
+        .filter(Boolean)
+        .join(" ") || null,
     securityRecords: sanitizedErrors.securityRecords,
     templates,
     types
