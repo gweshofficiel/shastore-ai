@@ -69,6 +69,26 @@ function toneForTemplateState(state: string) {
   return "slate" as const;
 }
 
+function toneForQueueStatus(status: string) {
+  if (["queued", "sent"].includes(status)) {
+    return "blue" as const;
+  }
+
+  if (["processing", "retry_pending"].includes(status)) {
+    return "amber" as const;
+  }
+
+  if (["failed", "cancelled"].includes(status)) {
+    return "red" as const;
+  }
+
+  if (status === "paused") {
+    return "slate" as const;
+  }
+
+  return "amber" as const;
+}
+
 function NotificationHiddenFields({
   log
 }: {
@@ -129,7 +149,11 @@ export default async function AdminNotificationsPage() {
           { label: "Total deliveries", value: control.notificationDeliveryRuntimeStats.totalDeliveries },
           { label: "In-app deliveries", value: control.notificationDeliveryRuntimeStats.inAppDeliveries },
           { label: "Email deliveries", value: control.notificationDeliveryRuntimeStats.emailDeliveries },
-          { label: "Failed deliveries", value: control.notificationDeliveryRuntimeStats.failedDeliveries }
+          { label: "Failed deliveries", value: control.notificationDeliveryRuntimeStats.failedDeliveries },
+          { label: "Queue items", value: control.notificationQueueRuntimeStats.totalQueueItems },
+          { label: "Queued", value: control.notificationQueueRuntimeStats.queuedItems },
+          { label: "Processing", value: control.notificationQueueRuntimeStats.processingItems },
+          { label: "Retry pending", value: control.notificationQueueRuntimeStats.retryPendingItems }
         ]}
       />
 
@@ -413,6 +437,57 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.readAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{delivery.errorSummary ?? "No safe error summary."}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.queueItems.length ? "No notification queue records found." : null}
+        headers={[
+          "Queue",
+          "Notification",
+          "Channel",
+          "Provider",
+          "Status",
+          "Priority",
+          "Attempts",
+          "Scheduled",
+          "Locked",
+          "Processed",
+          "Created",
+          "Error summary"
+        ]}
+      >
+        {control.queueItems.map((queueItem) => (
+          <tr key={queueItem.queueId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{queueItem.queueId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{queueItem.notificationId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(queueItem.channel)}>{queueItem.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{queueItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{queueItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{queueItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForQueueStatus(queueItem.status)}>{queueItem.statusLabel}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={queueItem.priority === "high" ? "red" : queueItem.priority === "low" ? "slate" : "blue"}>
+                {queueItem.priorityLabel}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{queueItem.attemptCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.scheduledAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.lockedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.processedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{queueItem.errorSummary ?? "No safe error summary."}</td>
           </tr>
         ))}
       </AdminTable>

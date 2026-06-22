@@ -120,6 +120,11 @@ import {
   type NotificationDeliveryRecord
 } from "@/src/lib/notifications/notification-delivery-runtime";
 import {
+  buildNotificationQueueRecordsSafe,
+  buildNotificationQueueRuntimeStatsSafe,
+  type NotificationQueueRecord
+} from "@/src/lib/notifications/notification-queue-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3371,6 +3376,20 @@ export type AdminNotificationControl = {
     unknownDeliveries: number;
   };
   deliveries: NotificationDeliveryRecord[];
+  notificationQueueRuntimeStats: {
+    emailQueueItems: number;
+    failedItems: number;
+    inAppQueueItems: number;
+    placeholderChannelQueueItems: number;
+    processingItems: number;
+    queuedItems: number;
+    retryPendingItems: number;
+    sentItems: number;
+    systemAlertQueueItems: number;
+    totalQueueItems: number;
+    unknownItems: number;
+  };
+  queueItems: NotificationQueueRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9323,7 +9342,7 @@ export async function getAdminNotificationControl(): Promise<AdminNotificationCo
     safeSelect(
       supabase,
       "email_event_logs",
-      "id, recipient, template_key, status, error_message, last_error, retry_count, attempt_count, sent_at, created_at, updated_at",
+      "id, recipient, template_key, status, error_message, last_error, retry_count, attempt_count, sent_at, locked_at, next_retry_at, last_attempt_at, created_at, updated_at",
       500
     ),
     safeSelect(supabase, "monitoring_events", "id, event_type, event_status, entity_type, metadata, store_id, user_id, created_at", 500)
@@ -9573,6 +9592,13 @@ function buildAdminNotificationControl(params: {
   });
   const deliveries: AdminNotificationControl["deliveries"] = deliveryViews.deliveries;
   const notificationDeliveryRuntimeStats = buildNotificationDeliveryRuntimeStatsSafe(deliveries);
+  const queueViews = buildNotificationQueueRecordsSafe({
+    emailLogs,
+    monitoringEvents,
+    notifications
+  });
+  const queueItems: AdminNotificationControl["queueItems"] = queueViews.queueItems;
+  const notificationQueueRuntimeStats = buildNotificationQueueRuntimeStatsSafe(queueItems);
   const combinedWarning =
     [
       registryWarning,
@@ -9580,7 +9606,8 @@ function buildAdminNotificationControl(params: {
       channelViews.warning,
       providerViews.warning,
       templateViews.warning,
-      deliveryViews.warning
+      deliveryViews.warning,
+      queueViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9601,6 +9628,7 @@ function buildAdminNotificationControl(params: {
     notificationChannelStats,
     notificationDeliveryRuntimeStats,
     notificationDeliveryStatusStats,
+    notificationQueueRuntimeStats,
     notificationProviderStats,
     notificationRegistryCategoryStats,
     notificationRegistryProviderStats,
@@ -9623,6 +9651,7 @@ function buildAdminNotificationControl(params: {
       totalNotifications: logs.length
     },
     providerStatus,
+    queueItems,
     runtimeWarning: combinedWarning,
     templates,
     types

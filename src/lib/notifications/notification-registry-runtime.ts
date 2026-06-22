@@ -178,6 +178,24 @@ export type {
   NotificationDeliveryRecord,
   NotificationDeliveryRuntimeStats
 } from "@/src/lib/notifications/notification-delivery-runtime";
+export {
+  buildNotificationQueueRecordsSafe,
+  buildNotificationQueueRuntimeStatsSafe,
+  getNotificationQueuePriorityLabel,
+  getNotificationQueueStatusLabel,
+  listNotificationQueueStatusCatalog,
+  NOTIFICATION_QUEUE_FUTURE_HOOKS,
+  NOTIFICATION_QUEUE_STATUSES,
+  parseNotificationQueueAttemptCountSafe,
+  parseNotificationQueuePrioritySafe,
+  parseNotificationQueueStatusSafe
+} from "@/src/lib/notifications/notification-queue-runtime";
+export type {
+  NotificationQueuePriority,
+  NotificationQueueRecord,
+  NotificationQueueRuntimeStats,
+  NotificationQueueStatus
+} from "@/src/lib/notifications/notification-queue-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
