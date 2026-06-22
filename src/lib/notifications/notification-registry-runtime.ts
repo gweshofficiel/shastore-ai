@@ -562,6 +562,31 @@ export type {
   NotificationDataCertificationSurfaceAvailability
 } from "@/src/lib/notifications/notification-data-certification-runtime";
 
+export {
+  buildNotificationSecurityCertificationDomainFallbackRecordSafe,
+  buildNotificationSecurityCertificationDomainRecordsSafe,
+  buildNotificationSecurityCertificationDomainRuntimeStatsSafe,
+  buildNotificationSecurityCertificationDomainSummarySafe,
+  collectNotificationSecurityCertificationDomainInput,
+  containsRawNotificationPayloadPattern,
+  containsUnsafeNotificationHtml,
+  getNotificationSecurityCertificationDomainLabel,
+  getNotificationSecurityCertificationDomainStatusLabel,
+  listNotificationSecurityCertificationDomainCatalog,
+  NOTIFICATION_SECURITY_CERTIFICATION_DOMAIN_FALLBACK_ID,
+  NOTIFICATION_SECURITY_CERTIFICATION_DOMAINS,
+  NOTIFICATION_SECURITY_CERTIFICATION_FUTURE_HOOKS
+} from "@/src/lib/notifications/notification-security-certification-runtime";
+export type {
+  NotificationSecurityCertificationDomain,
+  NotificationSecurityCertificationDomainCheck,
+  NotificationSecurityCertificationDomainInput,
+  NotificationSecurityCertificationDomainRecord,
+  NotificationSecurityCertificationDomainRuntimeStats,
+  NotificationSecurityCertificationDomainStatus,
+  NotificationSecurityCertificationDomainSummary
+} from "@/src/lib/notifications/notification-security-certification-runtime";
+
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
   "type",

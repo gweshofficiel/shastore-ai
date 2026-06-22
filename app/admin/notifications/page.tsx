@@ -52,6 +52,10 @@ import {
   getNotificationDataCertificationSurfaceLabel
 } from "@/src/lib/notifications/notification-data-certification-runtime";
 import {
+  getNotificationSecurityCertificationDomainLabel,
+  getNotificationSecurityCertificationDomainStatusLabel
+} from "@/src/lib/notifications/notification-security-certification-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -468,6 +472,33 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border border-violet-200 bg-violet-50 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Notification security certification (NT-27)</p>
+        <p className="mt-2 text-sm font-semibold text-violet-950">
+          {sanitizeNotificationAdminDisplayTextSafe(
+            control.notificationSecurityCertificationDomainSummary.certificationDescription,
+            500
+          )}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-violet-900">
+          {sanitizeNotificationAdminDisplayTextSafe(
+            control.notificationSecurityCertificationDomainSummary.safeSummary,
+            240
+          )}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-violet-800">
+          Certification:{" "}
+          {control.notificationSecurityCertificationDomainSummary.certificationPassed ? "Passed" : "Needs attention"}
+          {" · "}
+          RLS: {control.notificationSecurityCertificationDomainSummary.rlsPassed ? "Protected" : "Review"}
+          {" · "}
+          Masking: {control.notificationSecurityCertificationDomainSummary.maskingPassed ? "Protected" : "Review"}
+          {" · "}
+          Secrets:{" "}
+          {control.notificationSecurityCertificationDomainSummary.secretsProtectedPassed ? "Protected" : "Review"}
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -846,6 +877,28 @@ export default async function AdminNotificationsPage() {
           {
             label: "Data certification",
             value: control.notificationDataCertificationSummary.certificationPassed ? "Passed" : "Needs attention"
+          },
+          {
+            label: "Security certified domains",
+            value: control.notificationSecurityCertificationDomainRuntimeStats.certifiedDomains
+          },
+          {
+            label: "Security needs review",
+            value: control.notificationSecurityCertificationDomainRuntimeStats.needsReviewDomains
+          },
+          {
+            label: "Security domain checks",
+            value: control.notificationSecurityCertificationDomainRuntimeStats.totalChecks
+          },
+          {
+            label: "Security checks passed",
+            value: control.notificationSecurityCertificationDomainRuntimeStats.totalChecksPassed
+          },
+          {
+            label: "NT-27 certification",
+            value: control.notificationSecurityCertificationDomainSummary.certificationPassed
+              ? "Passed"
+              : "Needs attention"
           }
         ]}
       />
@@ -1755,6 +1808,54 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
               {displaySanitizedNotificationError(certificationItem.safeSummary, "monitoring")}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={
+          !control.securityCertificationDomainItems.length
+            ? "No notification security certification domain records found."
+            : null
+        }
+        headers={["Domain", "Status", "Protected", "Checks", "Summary"]}
+      >
+        {control.securityCertificationDomainItems.map((securityDomainItem) => (
+          <tr key={securityDomainItem.certificationId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">
+                {getNotificationSecurityCertificationDomainLabel(securityDomainItem.domain)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{securityDomainItem.domain}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge
+                tone={
+                  securityDomainItem.certificationStatus === "certified"
+                    ? "green"
+                    : securityDomainItem.certificationStatus === "fallback"
+                      ? "amber"
+                      : "red"
+                }
+              >
+                {getNotificationSecurityCertificationDomainStatusLabel(securityDomainItem.certificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={securityDomainItem.protectionReady ? "green" : "red"}>
+                {securityDomainItem.protectionReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {securityDomainItem.checks.map((check) => (
+                <p key={check.checkId} className="text-xs">
+                  {check.passed ? "✓" : "✗"} {check.label}
+                </p>
+              ))}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(securityDomainItem.safeSummary, "monitoring")}
             </td>
           </tr>
         ))}

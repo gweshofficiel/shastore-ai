@@ -134,6 +134,15 @@ import {
   type NotificationDataCertificationSummary
 } from "@/src/lib/notifications/notification-data-certification-runtime";
 import {
+  buildNotificationSecurityCertificationDomainRecordsSafe,
+  buildNotificationSecurityCertificationDomainRuntimeStatsSafe,
+  buildNotificationSecurityCertificationDomainSummarySafe,
+  collectNotificationSecurityCertificationDomainInput,
+  type NotificationSecurityCertificationDomainRecord,
+  type NotificationSecurityCertificationDomainRuntimeStats,
+  type NotificationSecurityCertificationDomainSummary
+} from "@/src/lib/notifications/notification-security-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3603,6 +3612,9 @@ export type AdminNotificationControl = {
   dataCertificationItems: NotificationDataCertificationRecord[];
   notificationDataCertificationSummary: NotificationDataCertificationSummary;
   notificationDataCertificationRuntimeStats: NotificationDataCertificationRuntimeStats;
+  securityCertificationDomainItems: NotificationSecurityCertificationDomainRecord[];
+  notificationSecurityCertificationDomainSummary: NotificationSecurityCertificationDomainSummary;
+  notificationSecurityCertificationDomainRuntimeStats: NotificationSecurityCertificationDomainRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -10111,6 +10123,42 @@ function buildAdminNotificationControl(params: {
     dataCertificationItems,
     dataCertificationInput
   );
+  const securityCertificationDomainInput = collectNotificationSecurityCertificationDomainInput({
+    auditItems: sanitizedErrors.auditItems,
+    channels,
+    dataCertificationPassed: notificationDataCertificationSummary.certificationPassed,
+    deliveries: sanitizedErrors.deliveries,
+    errorSanitizationReady:
+      notificationErrorSanitizationRuntimeStats.readySurfaces >=
+      notificationErrorSanitizationRuntimeStats.totalSurfaces,
+    failureItems: sanitizedErrors.failureItems,
+    foundationsPresent: securityFoundationsPresent,
+    healthItems: sanitizedErrors.healthItems,
+    logItems: sanitizedErrors.logItems,
+    logs: sanitizedErrors.logs,
+    monitoringItems: sanitizedErrors.monitoringItems,
+    providerStatus,
+    queueItems: sanitizedErrors.queueItems,
+    readOnlyProtectionVerified: notificationReadOnlyProtectionVerified,
+    recipientItems,
+    retryItems: sanitizedErrors.retryItems,
+    reviewItems: sanitizedErrors.reviewItems,
+    runtimeWarning: sanitizedRuntimeWarning,
+    safeActionItems: sanitizedErrors.safeActionItems,
+    securityReviewPassed: notificationSecurityCertification.securityReviewPassed,
+    templates
+  });
+  const securityCertificationDomainViews = buildNotificationSecurityCertificationDomainRecordsSafe(
+    securityCertificationDomainInput
+  );
+  const securityCertificationDomainItems: AdminNotificationControl["securityCertificationDomainItems"] =
+    securityCertificationDomainViews.securityCertificationDomainItems;
+  const notificationSecurityCertificationDomainRuntimeStats =
+    buildNotificationSecurityCertificationDomainRuntimeStatsSafe(securityCertificationDomainItems);
+  const notificationSecurityCertificationDomainSummary = buildNotificationSecurityCertificationDomainSummarySafe(
+    securityCertificationDomainItems,
+    securityCertificationDomainInput
+  );
 
   return {
     channels,
@@ -10167,6 +10215,9 @@ function buildAdminNotificationControl(params: {
     dataCertificationItems,
     notificationDataCertificationSummary,
     notificationDataCertificationRuntimeStats,
+    securityCertificationDomainItems,
+    notificationSecurityCertificationDomainSummary,
+    notificationSecurityCertificationDomainRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
@@ -10190,7 +10241,12 @@ function buildAdminNotificationControl(params: {
     eventItems: sanitizedErrors.eventItems,
     retryItems: sanitizedErrors.retryItems,
     runtimeWarning:
-      [sanitizedRuntimeWarning, readOnlyProtectionViews.warning, dataCertificationViews.warning]
+      [
+        sanitizedRuntimeWarning,
+        readOnlyProtectionViews.warning,
+        dataCertificationViews.warning,
+        securityCertificationDomainViews.warning
+      ]
         .filter(Boolean)
         .join(" ") || null,
     securityRecords: sanitizedErrors.securityRecords,
