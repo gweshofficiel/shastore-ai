@@ -509,6 +509,34 @@ export type {
   NotificationProviderCapabilityFlag
 } from "@/src/lib/notifications/notification-provider-abstraction-runtime";
 
+export {
+  assertNotificationRuntimeMutationBlocked,
+  buildNotificationReadOnlyProtectionFallbackRecordSafe,
+  buildNotificationReadOnlyProtectionRecordsSafe,
+  buildNotificationReadOnlyProtectionRuntimeStatsSafe,
+  buildNotificationReadOnlyProtectionSummarySafe,
+  getNotificationReadOnlyProtectionFallback,
+  getNotificationReadOnlyProtectionSurfaceLabel,
+  isNotificationPageLoadReadOnlyModeEnabled,
+  listNotificationReadOnlyBlockedMutationsForSurface,
+  listNotificationReadOnlyProtectionCatalog,
+  NOTIFICATION_PAGE_LOAD_READ_ONLY_MODE,
+  NOTIFICATION_READ_ONLY_BLOCKED_MUTATIONS,
+  NOTIFICATION_READ_ONLY_PROTECTION_FALLBACK_ID,
+  NOTIFICATION_READ_ONLY_PROTECTION_FUTURE_HOOKS,
+  NOTIFICATION_READ_ONLY_PROTECTION_SURFACES,
+  sanitizeNotificationReadOnlyProtectionMessage,
+  sanitizeNotificationReadOnlyProtectionMetadataSafe,
+  verifyNotificationReadOnlyProtectionPresent
+} from "@/src/lib/notifications/notification-read-only-protection-runtime";
+export type {
+  NotificationReadOnlyProtectionRecord,
+  NotificationReadOnlyProtectionRuntimeStats,
+  NotificationReadOnlyProtectionSummary,
+  NotificationReadOnlyProtectionSurface,
+  NotificationReadOnlySurfaceAvailability
+} from "@/src/lib/notifications/notification-read-only-protection-runtime";
+
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
   "type",

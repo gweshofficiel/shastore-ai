@@ -45,6 +45,9 @@ import {
   getNotificationProviderAbstractionStatusLabel
 } from "@/src/lib/notifications/notification-provider-abstraction-runtime";
 import {
+  getNotificationReadOnlyProtectionSurfaceLabel
+} from "@/src/lib/notifications/notification-read-only-protection-runtime";
+import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
 import {
@@ -430,6 +433,19 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Notification read-only protection</p>
+        <p className="mt-2 text-sm font-semibold text-blue-950">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationReadOnlyProtectionSummary.policyDescription, 500)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-blue-900">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationReadOnlyProtectionSummary.safeSummary, 240)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-blue-800">
+          Read-only verified: {control.notificationReadOnlyProtectionVerified ? "Yes" : "Fallback"}
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -786,7 +802,14 @@ export default async function AdminNotificationsPage() {
           { label: "Provider abstractions", value: control.notificationProviderAbstractionRuntimeStats.totalAbstractions },
           { label: "Placeholder providers", value: control.notificationProviderAbstractionRuntimeStats.placeholderProviders },
           { label: "Active foundation providers", value: control.notificationProviderAbstractionRuntimeStats.activeFoundationProviders },
-          { label: "Missing config providers", value: control.notificationProviderAbstractionRuntimeStats.missingConfigProviders }
+          { label: "Missing config providers", value: control.notificationProviderAbstractionRuntimeStats.missingConfigProviders },
+          { label: "Read-only surfaces", value: control.notificationReadOnlyProtectionRuntimeStats.readOnlySurfaces },
+          { label: "Protected surfaces", value: control.notificationReadOnlyProtectionRuntimeStats.protectedSurfaces },
+          { label: "Unavailable surfaces", value: control.notificationReadOnlyProtectionRuntimeStats.unavailableSurfaces },
+          {
+            label: "Read-only verified",
+            value: control.notificationReadOnlyProtectionVerified ? "Yes" : "Fallback"
+          }
         ]}
       />
 
@@ -1592,6 +1615,32 @@ export default async function AdminNotificationsPage() {
               </td>
             </tr>
           ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.readOnlyProtectionItems.length ? "No notification read-only protection records found." : null}
+        headers={["Surface", "Ready", "Blocked mutations", "Guarantee", "Summary"]}
+      >
+        {control.readOnlyProtectionItems.map((protectionItem) => (
+          <tr key={protectionItem.protectionId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{getNotificationReadOnlyProtectionSurfaceLabel(protectionItem.surface)}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{protectionItem.surface}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={protectionItem.protectionReady ? "green" : "amber"}>
+                {protectionItem.protectionReady ? "Protected" : "Fallback"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{protectionItem.blockedMutations.join(", ")}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(protectionItem.readOnlyGuarantee, "monitoring")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(protectionItem.safeSummary, "monitoring")}
+            </td>
+          </tr>
+        ))}
       </AdminTable>
 
       <AdminTable

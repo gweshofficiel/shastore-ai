@@ -116,6 +116,15 @@ import {
   type NotificationProviderAbstractionSummary
 } from "@/src/lib/notifications/notification-provider-abstraction-runtime";
 import {
+  buildNotificationReadOnlyProtectionRecordsSafe,
+  buildNotificationReadOnlyProtectionRuntimeStatsSafe,
+  buildNotificationReadOnlyProtectionSummarySafe,
+  verifyNotificationReadOnlyProtectionPresent,
+  type NotificationReadOnlyProtectionRecord,
+  type NotificationReadOnlyProtectionRuntimeStats,
+  type NotificationReadOnlyProtectionSummary
+} from "@/src/lib/notifications/notification-read-only-protection-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3578,6 +3587,10 @@ export type AdminNotificationControl = {
   providerAbstractionItems: NotificationProviderAbstractionRecord[];
   notificationProviderAbstractionSummary: NotificationProviderAbstractionSummary;
   notificationProviderAbstractionRuntimeStats: NotificationProviderAbstractionRuntimeStats;
+  readOnlyProtectionItems: NotificationReadOnlyProtectionRecord[];
+  notificationReadOnlyProtectionSummary: NotificationReadOnlyProtectionSummary;
+  notificationReadOnlyProtectionRuntimeStats: NotificationReadOnlyProtectionRuntimeStats;
+  notificationReadOnlyProtectionVerified: boolean;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9977,6 +9990,38 @@ function buildAdminNotificationControl(params: {
     certification: notificationSecurityCertification,
     securityRecords
   });
+  const readOnlyProtectionViews = buildNotificationReadOnlyProtectionRecordsSafe({
+    surfaceAvailability: {
+      analytics: analytics.analyticsReady,
+      audit: auditItems.length > 0,
+      categories: notificationCategoryStats.totalItems > 0,
+      channels: channels.length > 0,
+      deliveries: deliveries.length > 0,
+      events: eventItems.length > 0,
+      failures: failureItems.length > 0,
+      health: health.healthReady,
+      logs: logItems.length > 0 || logs.length > 0,
+      metrics: true,
+      monitoring: monitoringItems.length > 0,
+      provider_abstraction: providerAbstractionItems.length > 0,
+      providers: providerStatus.length > 0,
+      queue: queueItems.length > 0,
+      recipients: recipientItems.length > 0,
+      registry: registryItems.length > 0,
+      retries: retryItems.length > 0,
+      reviews: reviewItems.length > 0,
+      safe_actions: safeActionItems.length > 0,
+      statuses: notificationDeliveryStatusStats.totalItems > 0,
+      templates: templates.length > 0,
+      types: types.length > 0
+    }
+  });
+  const readOnlyProtectionItems: AdminNotificationControl["readOnlyProtectionItems"] =
+    readOnlyProtectionViews.readOnlyProtectionItems;
+  const notificationReadOnlyProtectionRuntimeStats =
+    buildNotificationReadOnlyProtectionRuntimeStatsSafe(readOnlyProtectionItems);
+  const notificationReadOnlyProtectionSummary = buildNotificationReadOnlyProtectionSummarySafe();
+  const notificationReadOnlyProtectionVerified = verifyNotificationReadOnlyProtectionPresent(readOnlyProtectionItems);
   const sanitizedErrors = applyNotificationControlErrorSanitizationSafe({
     auditItems,
     deliveries,
@@ -10042,6 +10087,10 @@ function buildAdminNotificationControl(params: {
     providerAbstractionItems,
     notificationProviderAbstractionSummary,
     notificationProviderAbstractionRuntimeStats,
+    readOnlyProtectionItems,
+    notificationReadOnlyProtectionSummary,
+    notificationReadOnlyProtectionRuntimeStats,
+    notificationReadOnlyProtectionVerified,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
@@ -10064,7 +10113,8 @@ function buildAdminNotificationControl(params: {
     recipientItems,
     eventItems: sanitizedErrors.eventItems,
     retryItems: sanitizedErrors.retryItems,
-    runtimeWarning: sanitizedRuntimeWarning,
+    runtimeWarning:
+      [sanitizedRuntimeWarning, readOnlyProtectionViews.warning].filter(Boolean).join(" ") || null,
     securityRecords: sanitizedErrors.securityRecords,
     templates,
     types
