@@ -248,6 +248,21 @@ export type {
   NotificationAuditRecord,
   NotificationAuditRuntimeStats
 } from "@/src/lib/notifications/notification-audit-runtime";
+export {
+  buildNotificationMonitoringRecordsSafe,
+  buildNotificationMonitoringRuntimeStatsSafe,
+  getNotificationMonitorStatusLabel,
+  listNotificationMonitorStatusCatalog,
+  NOTIFICATION_MONITORING_FUTURE_HOOKS,
+  NOTIFICATION_MONITOR_STATUSES,
+  parseNotificationMonitorStatusSafe,
+  sanitizeNotificationMonitoringMetadata
+} from "@/src/lib/notifications/notification-monitoring-runtime";
+export type {
+  NotificationMonitoringRecord,
+  NotificationMonitoringRuntimeStats,
+  NotificationMonitorStatus
+} from "@/src/lib/notifications/notification-monitoring-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

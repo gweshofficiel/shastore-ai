@@ -69,6 +69,26 @@ function toneForTemplateState(state: string) {
   return "slate" as const;
 }
 
+function toneForMonitorStatus(status: string) {
+  if (status === "healthy") {
+    return "green" as const;
+  }
+
+  if (["warning", "degraded"].includes(status)) {
+    return "amber" as const;
+  }
+
+  if (["failed", "missing_config"].includes(status)) {
+    return "red" as const;
+  }
+
+  if (status === "placeholder") {
+    return "slate" as const;
+  }
+
+  return "amber" as const;
+}
+
 function toneForAuditActor(actorType: string) {
   if (actorType === "super_admin") {
     return "blue" as const;
@@ -205,7 +225,11 @@ export default async function AdminNotificationsPage() {
           { label: "Audit records", value: control.notificationAuditRuntimeStats.totalAuditItems },
           { label: "Super Admin actions", value: control.notificationAuditRuntimeStats.superAdminActions },
           { label: "Mark reviewed audits", value: control.notificationAuditRuntimeStats.markReviewedActions },
-          { label: "Retry placeholder audits", value: control.notificationAuditRuntimeStats.retryPlaceholderActions }
+          { label: "Retry placeholder audits", value: control.notificationAuditRuntimeStats.retryPlaceholderActions },
+          { label: "Monitors", value: control.notificationMonitoringRuntimeStats.totalMonitors },
+          { label: "Healthy monitors", value: control.notificationMonitoringRuntimeStats.healthyMonitors },
+          { label: "Warning monitors", value: control.notificationMonitoringRuntimeStats.warningMonitors },
+          { label: "Failure signals", value: control.notificationMonitoringRuntimeStats.totalFailureSignals }
         ]}
       />
 
@@ -688,6 +712,53 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{auditItem.ipReference}</td>
             <td className="px-5 py-4 text-slate-600">{auditItem.userAgentSummary}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(auditItem.createdAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.monitoringItems.length ? "No notification monitoring records found." : null}
+        headers={[
+          "Monitor",
+          "Channel",
+          "Provider",
+          "Status",
+          "Failures",
+          "Checked",
+          "Last success",
+          "Last failure",
+          "Latency",
+          "Summary",
+          "Metadata",
+          "Updated"
+        ]}
+      >
+        {control.monitoringItems.map((monitorItem) => (
+          <tr key={monitorItem.monitorId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{monitorItem.monitorId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(monitorItem.channel)}>{monitorItem.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{monitorItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{monitorItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{monitorItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForMonitorStatus(monitorItem.status)}>{monitorItem.statusLabel}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{monitorItem.failureCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(monitorItem.checkedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(monitorItem.lastSuccessAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(monitorItem.lastFailureAt)}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {monitorItem.latencyMs === null ? "Not measured" : `${monitorItem.latencyMs} ms`}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{monitorItem.safeSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{monitorItem.metadataSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(monitorItem.updatedAt)}</td>
           </tr>
         ))}
       </AdminTable>
