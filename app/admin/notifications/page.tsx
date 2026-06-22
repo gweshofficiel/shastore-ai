@@ -14,6 +14,10 @@ import {
   viewNotificationDetails
 } from "@/lib/admin/notification-actions";
 import { getNotificationStatusBadgeTone } from "@/src/lib/notifications/notification-status-runtime";
+import {
+  getNotificationChannelBadgeTone,
+  listNotificationChannelCatalog
+} from "@/src/lib/notifications/notification-channel-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -86,10 +90,53 @@ export default async function AdminNotificationsPage() {
           { label: "Reviewed failures", value: control.overview.reviewedFailures },
           { label: "Registry configured", value: control.notificationRegistryStatusStats.configuredItems },
           { label: "Registry placeholders", value: control.notificationRegistryStatusStats.placeholderItems },
-          { label: "SMS sends", value: 0 },
-          { label: "WhatsApp sends", value: 0 }
+          { label: "In-app logs", value: control.notificationChannelStats.inAppItems },
+          { label: "Email logs", value: control.notificationChannelStats.emailItems },
+          { label: "System alert logs", value: control.notificationChannelStats.systemAlertItems },
+          { label: "SMS placeholder", value: control.notificationChannelStats.smsItems },
+          { label: "WhatsApp placeholder", value: control.notificationChannelStats.whatsappItems },
+          { label: "Push placeholder", value: control.notificationChannelStats.pushItems }
         ]}
       />
+
+      <AdminTable headers={["Channel", "Runtime", "Placeholder", "Logs", "Description"]}>
+        {listNotificationChannelCatalog().map((entry) => {
+          const channelView = control.channels.find((channel) => channel.channel === entry.channel);
+          const logCount =
+            entry.channel === "in_app"
+              ? control.notificationChannelStats.inAppItems
+              : entry.channel === "email"
+                ? control.notificationChannelStats.emailItems
+                : entry.channel === "system_alert"
+                  ? control.notificationChannelStats.systemAlertItems
+                  : entry.channel === "sms"
+                    ? control.notificationChannelStats.smsItems
+                    : entry.channel === "whatsapp"
+                      ? control.notificationChannelStats.whatsappItems
+                      : control.notificationChannelStats.pushItems;
+
+          return (
+            <tr key={entry.channel}>
+              <td className="px-5 py-4">
+                <AdminBadge tone={getNotificationChannelBadgeTone(entry.channel)}>{entry.label}</AdminBadge>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{entry.channel}</p>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={toneForChannelStatus(channelView?.runtimeState ?? "placeholder")}>
+                  {channelView?.runtimeState ?? "placeholder"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={entry.placeholderOnly ? "amber" : "green"}>
+                  {entry.placeholderOnly ? "placeholder only" : "active foundation"}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{logCount}</td>
+              <td className="px-5 py-4 text-slate-600">{entry.description}</td>
+            </tr>
+          );
+        })}
+      </AdminTable>
 
       <AdminTable headers={["Delivery status", "Count", "Description"]}>
         {[
@@ -113,16 +160,20 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Channel", "Configured", "Health", "Secrets"]}>
+      <AdminTable headers={["Channel", "Configured", "Health", "Secrets", "Runtime"]}>
         {control.channels.map((channel) => (
-          <tr key={channel.key}>
+          <tr key={channel.channel}>
             <td className="px-5 py-4">
-              <p className="font-bold text-slate-950">{channel.name}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-500">{channel.key}</p>
+              <p className="font-bold text-slate-950">{channel.channelLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{channel.channel}</p>
+              {channel.placeholderOnly ? (
+                <p className="mt-1 text-xs font-semibold text-amber-700">Placeholder only</p>
+              ) : null}
             </td>
             <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.configuredStatus)}>{channel.configuredStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.healthStatus)}>{channel.healthStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={channel.secretStatus === "missing" ? "red" : "slate"}>{channel.secretStatus}</AdminBadge></td>
+            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.runtimeState)}>{channel.runtimeState}</AdminBadge></td>
           </tr>
         ))}
       </AdminTable>
@@ -146,7 +197,10 @@ export default async function AdminNotificationsPage() {
       >
         {control.logs.map((log) => (
           <tr key={`${log.channel}:${log.id}`}>
-            <td className="px-5 py-4"><AdminBadge tone="blue">{log.channel}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(log.channel)}>{log.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{log.channel}</p>
+            </td>
             <td className="px-5 py-4">
               <AdminBadge tone={log.typeBadgeTone}>{log.typeLabel}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{log.type}</p>

@@ -10,6 +10,11 @@ import {
   parseNotificationRegistryItemStatusSafe,
   type NotificationCenterStatus
 } from "@/src/lib/notifications/notification-status-runtime";
+import {
+  parseNotificationChannel,
+  resolveRegistryNotificationChannelSafe,
+  type NotificationChannel
+} from "@/src/lib/notifications/notification-channel-runtime";
 
 export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
 export type {
@@ -17,6 +22,7 @@ export type {
   NotificationDeliveryStatus,
   NotificationRegistryStatus
 } from "@/src/lib/notifications/notification-status-runtime";
+export type { NotificationChannel } from "@/src/lib/notifications/notification-channel-runtime";
 export {
   buildNotificationTypeAdminViews,
   buildNotificationTypeStatsSafe,
@@ -63,6 +69,32 @@ export type {
   NotificationStatusBadgeTone,
   NotificationStatusCatalogEntry
 } from "@/src/lib/notifications/notification-status-runtime";
+export {
+  buildNotificationChannelAdminViews,
+  buildNotificationChannelStatsSafe,
+  buildNotificationChannelViewsSafe,
+  getNotificationChannelBadgeTone,
+  getNotificationChannelDescription,
+  getNotificationChannelLabel,
+  isNotificationPlaceholderChannel,
+  listNotificationChannelCatalog,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_CHANNEL_FUTURE_HOOKS,
+  NOTIFICATION_PLACEHOLDER_CHANNELS,
+  parseNotificationChannel,
+  parseNotificationChannelSafe,
+  resolveNotificationChannelBadgeTone,
+  resolveNotificationChannelLabel,
+  resolveRegistryNotificationChannelSafe
+} from "@/src/lib/notifications/notification-channel-runtime";
+export type {
+  NotificationChannelBadgeTone,
+  NotificationChannelCatalogEntry,
+  NotificationChannelRuntimeState,
+  NotificationChannelStats,
+  NotificationChannelView,
+  NotificationRegistryChannelSnapshot
+} from "@/src/lib/notifications/notification-channel-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -81,10 +113,11 @@ export const NOTIFICATION_REGISTRY_CHANNELS = [
   "sms",
   "whatsapp",
   "push",
+  "system_alert",
   "system_alerts"
 ] as const;
 
-export type NotificationRegistryChannel = (typeof NOTIFICATION_REGISTRY_CHANNELS)[number];
+export type NotificationRegistryChannel = NotificationChannel | "system_alerts";
 
 export type NotificationRegistryTypeView = {
   badgeTone: import("@/src/lib/notifications/notification-type-runtime").NotificationTypeBadgeTone;
@@ -94,7 +127,7 @@ export type NotificationRegistryTypeView = {
 };
 
 export type NotificationRegistryItemRecord = {
-  channel: string;
+  channel: NotificationChannel;
   configuredState: string;
   createdAt: string | null;
   description: string;
@@ -114,7 +147,7 @@ export type NotificationRegistryItemRecord = {
 export type NotificationRegistryChannelView = {
   configuredStatus: "configured" | "missing" | "placeholder";
   healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
-  key: NotificationRegistryChannel;
+  key: NotificationChannel;
   name: string;
   secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
 };
@@ -192,11 +225,8 @@ export function parseNotificationRegistryType(value: unknown): NotificationRegis
     : null;
 }
 
-export function parseNotificationRegistryChannel(value: unknown): NotificationRegistryChannel | null {
-  const cleaned = text(value, 40);
-  return NOTIFICATION_REGISTRY_CHANNELS.includes(cleaned as NotificationRegistryChannel)
-    ? (cleaned as NotificationRegistryChannel)
-    : null;
+export function parseNotificationRegistryChannel(value: unknown): NotificationChannel | null {
+  return parseNotificationChannel(value);
 }
 
 export function parseNotificationRegistryTypeKey(value: unknown): NotificationType | null {
@@ -243,7 +273,7 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
   }
 
   return {
-    channel: text(record.channel, 80),
+    channel: resolveRegistryNotificationChannelSafe(record.channel),
     configuredState: text(record.configured_state, 80),
     createdAt: text(record.created_at, 80) || null,
     description: text(record.description, 2000),
@@ -415,7 +445,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "system_alerts",
+    channel: "system_alert",
     configuredState: "configured",
     createdAt: null,
     description: "System alerts notification channel foundation.",
@@ -432,7 +462,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Billing notification type foundation.",
@@ -449,7 +479,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Security notification type foundation.",
@@ -466,7 +496,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Domains notification type foundation.",
@@ -483,7 +513,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Email setup notification type foundation.",
@@ -500,7 +530,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "AI visuals notification type foundation.",
@@ -517,7 +547,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Store publishing notification type foundation.",
@@ -534,7 +564,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Support notification type foundation.",
@@ -551,7 +581,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "System health notification type foundation.",
@@ -687,7 +717,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "configured",
     createdAt: null,
     description: "Retry failed notification future hook placeholder.",
@@ -704,7 +734,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "placeholder",
     createdAt: null,
     description: "Configure channels future hook placeholder.",
@@ -721,7 +751,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "placeholder",
     createdAt: null,
     description: "Send test notification future hook placeholder.",
@@ -738,7 +768,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "placeholder",
     createdAt: null,
     description: "Export notification logs future hook placeholder.",
@@ -755,7 +785,7 @@ export const NOTIFICATION_REGISTRY_FALLBACK_ITEMS: readonly NotificationRegistry
     usageCount: 0
   },
   {
-    channel: "",
+    channel: "in_app",
     configuredState: "placeholder",
     createdAt: null,
     description: "Notification template editor future hook placeholder.",

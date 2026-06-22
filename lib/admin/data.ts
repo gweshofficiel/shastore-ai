@@ -86,6 +86,13 @@ import {
   type NotificationDeliveryStatus
 } from "@/src/lib/notifications/notification-status-runtime";
 import {
+  buildNotificationChannelStatsSafe,
+  buildNotificationChannelViewsSafe,
+  getNotificationChannelLabel,
+  parseNotificationChannelSafe,
+  type NotificationChannel
+} from "@/src/lib/notifications/notification-channel-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3252,15 +3259,19 @@ export type AdminEmailControl = {
 
 export type AdminNotificationControl = {
   channels: Array<{
+    channel: NotificationChannel;
+    channelLabel: string;
     configuredStatus: "configured" | "missing" | "placeholder";
+    description: string;
     healthStatus: "healthy" | "missing_config" | "placeholder" | "warning";
-    key: "email" | "in_app" | "push" | "sms" | "system_alerts" | "whatsapp";
-    name: string;
+    placeholderOnly: boolean;
+    runtimeState: "active" | "missing_config" | "placeholder";
     secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
   }>;
   futureHooks: string[];
   logs: Array<{
-    channel: "email" | "in_app" | "system_alert";
+    channel: NotificationChannel;
+    channelLabel: string;
     createdAt: string;
     errorSummary: string | null;
     id: string;
@@ -3273,6 +3284,16 @@ export type AdminNotificationControl = {
     typeKey: NotificationType;
     typeLabel: string;
   }>;
+  notificationChannelStats: {
+    emailItems: number;
+    inAppItems: number;
+    pushItems: number;
+    smsItems: number;
+    systemAlertItems: number;
+    totalItems: number;
+    unknownItems: number;
+    whatsappItems: number;
+  };
   notificationDeliveryStatusStats: {
     archivedItems: number;
     cancelledItems: number;
@@ -9214,7 +9235,6 @@ function buildAdminNotificationControl(params: {
 }): AdminNotificationControl {
   const { emailLogs, monitoringEvents, notifications, registryItems, registryWarning = null } = params;
   const registryViews = buildNotificationRegistryViewsSafe({ items: registryItems });
-  const combinedWarning = [registryWarning, registryViews.warning].filter(Boolean).join(" ") || null;
   const notificationRegistryStatusStats = buildNotificationRegistryStatusStatsSafe(registryItems);
   const adminReviewEvents = monitoringEvents.filter(
     (event) => text(event.event_type) === "admin_notification_mark_reviewed"
@@ -9240,13 +9260,22 @@ function buildAdminNotificationControl(params: {
     };
   }
 
+  function mapNotificationLogChannel(value: unknown) {
+    const channel = parseNotificationChannelSafe(value);
+
+    return {
+      channel,
+      channelLabel: getNotificationChannelLabel(channel)
+    };
+  }
+
   const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
     const rawType = text(notification.type, "system");
     const typeView = mapNotificationLogType(rawType);
     const statusView = mapNotificationLogStatus(notification.status, notification.read_at);
 
     return {
-      channel: "in_app",
+      ...mapNotificationLogChannel("in_app"),
       createdAt: text(notification.created_at, new Date(0).toISOString()),
       errorSummary: null,
       id: text(notification.id) || `notification:${text(notification.created_at)}`,
@@ -9273,7 +9302,7 @@ function buildAdminNotificationControl(params: {
     const statusView = mapNotificationLogStatus(log.status);
 
     return {
-      channel: "email",
+      ...mapNotificationLogChannel("email"),
       createdAt: text(log.created_at, new Date(0).toISOString()),
       errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
       id: text(log.id) || `email:${text(log.created_at)}`,
@@ -9293,7 +9322,7 @@ function buildAdminNotificationControl(params: {
       const statusView = mapNotificationLogStatus(eventStatus);
 
       return {
-        channel: "system_alert" as const,
+        ...mapNotificationLogChannel("system_alert"),
         createdAt: text(event.created_at, new Date(0).toISOString()),
         errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
         id: text(event.id) || `monitoring:${text(event.created_at)}`,
@@ -9313,6 +9342,7 @@ function buildAdminNotificationControl(params: {
   const notificationDeliveryStatusStats = buildNotificationDeliveryStatusSummaryFromLogsSafe(
     logs.map((log) => ({ status: log.status }))
   );
+  const notificationChannelStats = buildNotificationChannelStatsSafe(logs.map((log) => log.channel));
   const notificationTypeStats = buildNotificationTypeStatsSafe(logs.map((log) => log.type));
   const typeCounts = new Map<NotificationType, number>();
 
@@ -9320,51 +9350,26 @@ function buildAdminNotificationControl(params: {
     typeCounts.set(log.typeKey, (typeCounts.get(log.typeKey) ?? 0) + 1);
   }
 
-  const channels: AdminNotificationControl["channels"] = registryViews.channels.map((channel) => {
-    if (channel.key === "email") {
-      const emailConfigured =
-        process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
-        envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured";
-
-      return {
-        ...channel,
-        configuredStatus: emailConfigured ? "configured" : "missing",
-        healthStatus: emailConfigured ? "healthy" : "missing_config",
-        secretStatus:
-          process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
-            ? integrationSecretStatus(["RESEND_API_KEY", "EMAIL_FROM"])
-            : "missing"
-      };
-    }
-
-    if (channel.key === "sms") {
-      return {
-        ...channel,
-        secretStatus: integrationSecretStatus(["SMS_PROVIDER_API_KEY"])
-      };
-    }
-
-    if (channel.key === "whatsapp") {
-      return {
-        ...channel,
-        secretStatus: integrationSecretStatus(["WHATSAPP_PROVIDER_TOKEN"])
-      };
-    }
-
-    if (channel.key === "system_alerts") {
-      return {
-        ...channel,
-        healthStatus: monitoringEvents.some((event) => text(event.event_status) === "failed")
-          ? "warning"
-          : "healthy"
-      };
-    }
-
-    return channel;
+  const emailConfigured =
+    process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend" &&
+    envConfigurationStatus(["RESEND_API_KEY", "EMAIL_FROM"]) === "configured";
+  const channelViews = buildNotificationChannelViewsSafe({
+    emailConfigured,
+    monitoringHasFailed: monitoringEvents.some((event) => text(event.event_status) === "failed"),
+    registryChannels: registryViews.channels.map((channel) => ({
+      configuredStatus: channel.configuredStatus,
+      healthStatus: channel.healthStatus,
+      key: channel.key,
+      name: channel.name,
+      secretStatus: channel.secretStatus
+    }))
   });
+  const channels: AdminNotificationControl["channels"] = channelViews.channels;
+  const combinedWarning =
+    [registryWarning, registryViews.warning, channelViews.warning].filter(Boolean).join(" ") || null;
   const providerStatus: AdminNotificationControl["providerStatus"] = registryViews.providers.map((provider) => {
     if (provider.provider === "Email provider") {
-      const emailChannel = channels.find((channel) => channel.key === "email");
+      const emailChannel = channels.find((channel) => channel.channel === "email");
 
       return {
         configuredStatus: emailChannel?.configuredStatus ?? provider.configuredStatus,
@@ -9402,6 +9407,7 @@ function buildAdminNotificationControl(params: {
     channels,
     futureHooks: registryViews.futureHooks,
     logs,
+    notificationChannelStats,
     notificationDeliveryStatusStats,
     notificationRegistryStatusStats,
     notificationTypeStats,
