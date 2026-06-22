@@ -213,6 +213,22 @@ export type {
   NotificationRetryRuntimeStats,
   NotificationRetryStatus
 } from "@/src/lib/notifications/notification-retry-runtime";
+export {
+  buildNotificationFailureRecordsSafe,
+  buildNotificationFailureRuntimeStatsSafe,
+  getNotificationFailureStatusLabel,
+  listNotificationFailureStatusCatalog,
+  NOTIFICATION_FAILURE_FUTURE_HOOKS,
+  NOTIFICATION_FAILURE_STATUSES,
+  parseNotificationFailureCodeSafe,
+  parseNotificationFailureStatusSafe,
+  sanitizeNotificationFailureReason
+} from "@/src/lib/notifications/notification-failure-runtime";
+export type {
+  NotificationFailureRecord,
+  NotificationFailureRuntimeStats,
+  NotificationFailureStatus
+} from "@/src/lib/notifications/notification-failure-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

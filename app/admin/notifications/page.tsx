@@ -69,6 +69,18 @@ function toneForTemplateState(state: string) {
   return "slate" as const;
 }
 
+function toneForFailureStatus(status: string) {
+  if (["retry_pending"].includes(status)) {
+    return "amber" as const;
+  }
+
+  if (["failed", "provider_error", "recipient_error", "retry_exhausted", "template_error"].includes(status)) {
+    return "red" as const;
+  }
+
+  return "slate" as const;
+}
+
 function toneForRetryStatus(status: string) {
   if (["retry_pending", "retry_ready"].includes(status)) {
     return "amber" as const;
@@ -169,7 +181,11 @@ export default async function AdminNotificationsPage() {
           { label: "Retry records", value: control.notificationRetryRuntimeStats.totalRetryItems },
           { label: "Retry pending records", value: control.notificationRetryRuntimeStats.retryPendingItems },
           { label: "Retry exhausted", value: control.notificationRetryRuntimeStats.retryExhaustedItems },
-          { label: "Failed retries", value: control.notificationRetryRuntimeStats.failedRetryItems }
+          { label: "Failed retries", value: control.notificationRetryRuntimeStats.failedRetryItems },
+          { label: "Failure records", value: control.notificationFailureRuntimeStats.totalFailures },
+          { label: "Unreviewed failures", value: control.notificationFailureRuntimeStats.unreviewedFailures },
+          { label: "Reviewed failures", value: control.notificationFailureRuntimeStats.reviewedFailures },
+          { label: "Provider errors", value: control.notificationFailureRuntimeStats.providerErrorFailures }
         ]}
       />
 
@@ -553,6 +569,61 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.lastRetryAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{retryItem.failureReason ?? "No safe failure reason."}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.failureItems.length ? "No notification failure records found." : null}
+        headers={[
+          "Failure",
+          "Notification",
+          "Delivery ref",
+          "Queue ref",
+          "Retry ref",
+          "Channel",
+          "Provider",
+          "Status",
+          "Code",
+          "Reviewed",
+          "Reviewed at",
+          "Created",
+          "Failure reason"
+        ]}
+      >
+        {control.failureItems.map((failureItem) => (
+          <tr key={failureItem.failureId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{failureItem.failureId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{failureItem.notificationId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{failureItem.deliveryReference}</td>
+            <td className="px-5 py-4 text-slate-600">{failureItem.queueReference}</td>
+            <td className="px-5 py-4 text-slate-600">{failureItem.retryReference}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(failureItem.channel)}>{failureItem.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{failureItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{failureItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{failureItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForFailureStatus(failureItem.failureStatus)}>
+                {failureItem.failureStatusLabel}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{failureItem.failureCode}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={failureItem.reviewed ? "green" : "amber"}>
+                {failureItem.reviewed ? "reviewed" : "unreviewed"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.reviewedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{failureItem.failureReason ?? "No safe failure reason."}</td>
           </tr>
         ))}
       </AdminTable>

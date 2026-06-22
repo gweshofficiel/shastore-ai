@@ -130,6 +130,11 @@ import {
   type NotificationRetryRecord
 } from "@/src/lib/notifications/notification-retry-runtime";
 import {
+  buildNotificationFailureRecordsSafe,
+  buildNotificationFailureRuntimeStatsSafe,
+  type NotificationFailureRecord
+} from "@/src/lib/notifications/notification-failure-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3409,6 +3414,20 @@ export type AdminNotificationControl = {
     unknownRetryItems: number;
   };
   retryItems: NotificationRetryRecord[];
+  notificationFailureRuntimeStats: {
+    emailFailures: number;
+    providerErrorFailures: number;
+    recipientErrorFailures: number;
+    retryExhaustedFailures: number;
+    retryPendingFailures: number;
+    reviewedFailures: number;
+    systemAlertFailures: number;
+    templateErrorFailures: number;
+    totalFailures: number;
+    unreviewedFailures: number;
+    unknownFailures: number;
+  };
+  failureItems: NotificationFailureRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9396,6 +9415,17 @@ function buildAdminNotificationControl(params: {
   const adminReviewEvents = monitoringEvents.filter(
     (event) => text(event.event_type) === "admin_notification_mark_reviewed"
   );
+  const reviewedByNotificationId = new Map<string, string>();
+
+  for (const event of adminReviewEvents) {
+    const metadata = isRecord(event.metadata) ? event.metadata : {};
+    const notificationId = text(metadata.notification_id);
+    const reviewedAt = text(event.created_at);
+
+    if (notificationId && reviewedAt) {
+      reviewedByNotificationId.set(notificationId, reviewedAt);
+    }
+  }
 
   function mapNotificationLogType(rawType: unknown) {
     const resolved = resolveNotificationTypeFromSourceSafe(rawType);
@@ -9624,6 +9654,13 @@ function buildAdminNotificationControl(params: {
   });
   const retryItems: AdminNotificationControl["retryItems"] = retryViews.retryItems;
   const notificationRetryRuntimeStats = buildNotificationRetryRuntimeStatsSafe(retryItems);
+  const failureViews = buildNotificationFailureRecordsSafe({
+    emailLogs,
+    monitoringEvents: monitoringEvents.filter((event) => text(event.event_status) === "failed"),
+    reviewedByNotificationId
+  });
+  const failureItems: AdminNotificationControl["failureItems"] = failureViews.failureItems;
+  const notificationFailureRuntimeStats = buildNotificationFailureRuntimeStatsSafe(failureItems);
   const combinedWarning =
     [
       registryWarning,
@@ -9633,7 +9670,8 @@ function buildAdminNotificationControl(params: {
       templateViews.warning,
       deliveryViews.warning,
       queueViews.warning,
-      retryViews.warning
+      retryViews.warning,
+      failureViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9648,12 +9686,14 @@ function buildAdminNotificationControl(params: {
   return {
     channels,
     deliveries,
+    failureItems,
     futureHooks: registryViews.futureHooks,
     logs,
     notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryRuntimeStats,
     notificationDeliveryStatusStats,
+    notificationFailureRuntimeStats,
     notificationQueueRuntimeStats,
     notificationRetryRuntimeStats,
     notificationProviderStats,
