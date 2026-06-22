@@ -6,8 +6,17 @@ import {
   parseNotificationType,
   type NotificationType
 } from "@/src/lib/notifications/notification-type-runtime";
+import {
+  parseNotificationRegistryItemStatusSafe,
+  type NotificationCenterStatus
+} from "@/src/lib/notifications/notification-status-runtime";
 
 export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
+export type {
+  NotificationCenterStatus,
+  NotificationDeliveryStatus,
+  NotificationRegistryStatus
+} from "@/src/lib/notifications/notification-status-runtime";
 export {
   buildNotificationTypeAdminViews,
   buildNotificationTypeStatsSafe,
@@ -29,6 +38,31 @@ export type {
   NotificationTypeCatalogEntry,
   NotificationTypeStats
 } from "@/src/lib/notifications/notification-type-runtime";
+export {
+  buildNotificationDeliveryStatusStatsSafe,
+  buildNotificationDeliveryStatusSummaryFromLogsSafe,
+  buildNotificationRegistryStatusStatsSafe,
+  getNotificationStatusBadgeTone,
+  getNotificationStatusDescription,
+  getNotificationStatusLabel,
+  listNotificationDeliveryStatusCatalog,
+  listNotificationStatusCatalog,
+  NOTIFICATION_DELIVERY_STATUSES,
+  NOTIFICATION_REGISTRY_STATUSES,
+  NOTIFICATION_STATUS_FUTURE_HOOKS,
+  parseNotificationDeliveryStatusSafe,
+  parseNotificationRegistryItemStatusSafe,
+  parseNotificationRegistryStatus,
+  resolveNotificationDeliveryStatusBadgeTone,
+  resolveNotificationStatusBadgeTone,
+  resolveNotificationStatusLabel
+} from "@/src/lib/notifications/notification-status-runtime";
+export type {
+  NotificationDeliveryStatusStats,
+  NotificationRegistryStatusStats,
+  NotificationStatusBadgeTone,
+  NotificationStatusCatalogEntry
+} from "@/src/lib/notifications/notification-status-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -72,7 +106,7 @@ export type NotificationRegistryItemRecord = {
   registryType: NotificationRegistryType;
   secretsState: string;
   slug: string;
-  status: string;
+  status: NotificationCenterStatus;
   updatedAt: string | null;
   usageCount: number;
 };
@@ -221,7 +255,7 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
     registryType,
     secretsState: text(record.secrets_state, 80),
     slug,
-    status: text(record.status, 80) || "unknown",
+    status: parseNotificationRegistryItemStatusSafe(record.status),
     updatedAt: text(record.updated_at, 80) || null,
     usageCount: Math.max(0, Math.trunc(safeNumber(record.usage_count)))
   };

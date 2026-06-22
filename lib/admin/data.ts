@@ -79,6 +79,13 @@ import {
   type NotificationType
 } from "@/src/lib/notifications/notification-registry-runtime";
 import {
+  buildNotificationDeliveryStatusSummaryFromLogsSafe,
+  buildNotificationRegistryStatusStatsSafe,
+  getNotificationStatusLabel,
+  parseNotificationDeliveryStatusSafe,
+  type NotificationDeliveryStatus
+} from "@/src/lib/notifications/notification-status-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3258,20 +3265,49 @@ export type AdminNotificationControl = {
     errorSummary: string | null;
     id: string;
     recipientMasked: string;
-    status: "cancelled" | "failed" | "queued" | "read" | "retry_pending" | "sent" | "unread";
+    status: NotificationDeliveryStatus;
+    statusLabel: string;
     storeOrUser: string;
     type: string;
     typeBadgeTone: "amber" | "blue" | "green" | "red";
     typeKey: NotificationType;
     typeLabel: string;
   }>;
+  notificationDeliveryStatusStats: {
+    archivedItems: number;
+    cancelledItems: number;
+    deliveredItems: number;
+    draftItems: number;
+    failedItems: number;
+    queuedItems: number;
+    readItems: number;
+    retryItems: number;
+    sentItems: number;
+    totalItems: number;
+  };
+  notificationRegistryStatusStats: {
+    configuredItems: number;
+    failedItems: number;
+    healthyItems: number;
+    missingItems: number;
+    placeholderItems: number;
+    reservedPlaceholderItems: number;
+    reviewedItems: number;
+    totalItems: number;
+    unknownItems: number;
+    warningItems: number;
+  };
   overview: {
+    archived: number;
+    cancelled: number;
+    delivered: number;
+    draft: number;
     failed: number;
     queued: number;
     reviewedFailures: number;
+    retry: number;
     sent: number;
     totalNotifications: number;
-    unread: number;
   };
   providerStatus: Array<{
     configuredStatus: "configured" | "missing" | "placeholder";
@@ -9179,6 +9215,7 @@ function buildAdminNotificationControl(params: {
   const { emailLogs, monitoringEvents, notifications, registryItems, registryWarning = null } = params;
   const registryViews = buildNotificationRegistryViewsSafe({ items: registryItems });
   const combinedWarning = [registryWarning, registryViews.warning].filter(Boolean).join(" ") || null;
+  const notificationRegistryStatusStats = buildNotificationRegistryStatusStatsSafe(registryItems);
   const adminReviewEvents = monitoringEvents.filter(
     (event) => text(event.event_type) === "admin_notification_mark_reviewed"
   );
@@ -9194,39 +9231,19 @@ function buildAdminNotificationControl(params: {
     };
   }
 
-  function notificationStatus(value: unknown, readAt?: unknown): AdminNotificationControl["logs"][number]["status"] {
-    const status = text(value).toLowerCase();
+  function mapNotificationLogStatus(value: unknown, readAt?: unknown) {
+    const status = parseNotificationDeliveryStatusSafe(value, { readAt });
 
-    if (status === "failed") {
-      return "failed";
-    }
-
-    if (status === "queued" || status === "pending") {
-      return "queued";
-    }
-
-    if (status === "retry_pending") {
-      return "retry_pending";
-    }
-
-    if (status === "cancelled" || status === "canceled") {
-      return "cancelled";
-    }
-
-    if (status === "sent") {
-      return "sent";
-    }
-
-    if (status === "read" || readAt) {
-      return "read";
-    }
-
-    return "unread";
+    return {
+      status,
+      statusLabel: getNotificationStatusLabel(status)
+    };
   }
 
   const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
     const rawType = text(notification.type, "system");
     const typeView = mapNotificationLogType(rawType);
+    const statusView = mapNotificationLogStatus(notification.status, notification.read_at);
 
     return {
       channel: "in_app",
@@ -9238,7 +9255,7 @@ function buildAdminNotificationControl(params: {
         : text(notification.workspace_id)
           ? `workspace:${text(notification.workspace_id).slice(0, 8)}...`
           : "platform recipient",
-      status: notificationStatus(notification.status, notification.read_at),
+      ...statusView,
       storeOrUser:
         text(notification.store_id)
           ? `store:${maskedNotificationEntityId(notification.store_id)}`
@@ -9253,6 +9270,7 @@ function buildAdminNotificationControl(params: {
   const emailChannelLogs: AdminNotificationControl["logs"] = emailLogs.map((log) => {
     const rawType = text(log.template_key, "email");
     const typeView = mapNotificationLogType(rawType);
+    const statusView = mapNotificationLogStatus(log.status);
 
     return {
       channel: "email",
@@ -9260,7 +9278,7 @@ function buildAdminNotificationControl(params: {
       errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
       id: text(log.id) || `email:${text(log.created_at)}`,
       recipientMasked: maskedEmail(log.recipient),
-      status: notificationStatus(log.status),
+      ...statusView,
       storeOrUser: "email_event_logs",
       ...typeView
     };
@@ -9271,6 +9289,8 @@ function buildAdminNotificationControl(params: {
       const metadata = isRecord(event.metadata) ? event.metadata : {};
       const rawType = text(event.event_type, "system_alert");
       const typeView = mapNotificationLogType(rawType);
+      const eventStatus = text(event.event_status) === "failed" ? "failed" : "queued";
+      const statusView = mapNotificationLogStatus(eventStatus);
 
       return {
         channel: "system_alert" as const,
@@ -9278,7 +9298,7 @@ function buildAdminNotificationControl(params: {
         errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
         id: text(event.id) || `monitoring:${text(event.created_at)}`,
         recipientMasked: "platform admins",
-        status: text(event.event_status) === "failed" ? "failed" as const : "queued" as const,
+        ...statusView,
         storeOrUser: text(event.store_id)
           ? `store:${maskedNotificationEntityId(event.store_id)}`
           : text(event.user_id)
@@ -9290,6 +9310,9 @@ function buildAdminNotificationControl(params: {
   const logs = [...inAppLogs, ...emailChannelLogs, ...systemAlertLogs]
     .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
     .slice(0, 100);
+  const notificationDeliveryStatusStats = buildNotificationDeliveryStatusSummaryFromLogsSafe(
+    logs.map((log) => ({ status: log.status }))
+  );
   const notificationTypeStats = buildNotificationTypeStatsSafe(logs.map((log) => log.type));
   const typeCounts = new Map<NotificationType, number>();
 
@@ -9379,14 +9402,23 @@ function buildAdminNotificationControl(params: {
     channels,
     futureHooks: registryViews.futureHooks,
     logs,
+    notificationDeliveryStatusStats,
+    notificationRegistryStatusStats,
     notificationTypeStats,
     overview: {
-      failed: logs.filter((log) => log.status === "failed").length,
-      queued: logs.filter((log) => log.status === "queued" || log.status === "retry_pending").length,
+      archived: notificationDeliveryStatusStats.archivedItems,
+      cancelled: notificationDeliveryStatusStats.cancelledItems,
+      delivered: notificationDeliveryStatusStats.deliveredItems,
+      draft: notificationDeliveryStatusStats.draftItems,
+      failed: notificationDeliveryStatusStats.failedItems,
+      queued: notificationDeliveryStatusStats.queuedItems,
       reviewedFailures: adminReviewEvents.length,
-      sent: logs.filter((log) => log.status === "sent" || log.status === "read").length,
-      totalNotifications: logs.length,
-      unread: logs.filter((log) => log.status === "unread").length
+      retry: notificationDeliveryStatusStats.retryItems,
+      sent:
+        notificationDeliveryStatusStats.sentItems +
+        notificationDeliveryStatusStats.readItems +
+        notificationDeliveryStatusStats.deliveredItems,
+      totalNotifications: logs.length
     },
     providerStatus,
     runtimeWarning: combinedWarning,

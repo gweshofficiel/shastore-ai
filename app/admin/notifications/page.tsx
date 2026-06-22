@@ -13,6 +13,7 @@ import {
   retryNotificationPlaceholder,
   viewNotificationDetails
 } from "@/lib/admin/notification-actions";
+import { getNotificationStatusBadgeTone } from "@/src/lib/notifications/notification-status-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -27,7 +28,7 @@ function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   );
 }
 
-function toneForStatus(status: string) {
+function toneForChannelStatus(status: string) {
   if (["configured", "healthy", "read", "sent"].includes(status)) {
     return "green" as const;
   }
@@ -36,7 +37,7 @@ function toneForStatus(status: string) {
     return "red" as const;
   }
 
-  if (["partial", "queued", "retry_pending", "unread", "warning"].includes(status)) {
+  if (["partial", "queued", "retry", "retry_pending", "unread", "warning"].includes(status)) {
     return "amber" as const;
   }
 
@@ -75,15 +76,42 @@ export default async function AdminNotificationsPage() {
       <AdminStatGrid
         stats={[
           { label: "Total notifications", value: control.overview.totalNotifications },
-          { label: "Sent/read", value: control.overview.sent },
+          { label: "Draft", value: control.overview.draft },
+          { label: "Queued", value: control.overview.queued },
+          { label: "Sent/delivered/read", value: control.overview.sent },
           { label: "Failed", value: control.overview.failed },
-          { label: "Queued/retry", value: control.overview.queued },
-          { label: "Unread", value: control.overview.unread },
+          { label: "Retry", value: control.overview.retry },
+          { label: "Cancelled", value: control.overview.cancelled },
+          { label: "Archived", value: control.overview.archived },
           { label: "Reviewed failures", value: control.overview.reviewedFailures },
+          { label: "Registry configured", value: control.notificationRegistryStatusStats.configuredItems },
+          { label: "Registry placeholders", value: control.notificationRegistryStatusStats.placeholderItems },
           { label: "SMS sends", value: 0 },
           { label: "WhatsApp sends", value: 0 }
         ]}
       />
+
+      <AdminTable headers={["Delivery status", "Count", "Description"]}>
+        {[
+          { count: control.notificationDeliveryStatusStats.draftItems, status: "draft" as const },
+          { count: control.notificationDeliveryStatusStats.queuedItems, status: "queued" as const },
+          { count: control.notificationDeliveryStatusStats.sentItems, status: "sent" as const },
+          { count: control.notificationDeliveryStatusStats.deliveredItems, status: "delivered" as const },
+          { count: control.notificationDeliveryStatusStats.readItems, status: "read" as const },
+          { count: control.notificationDeliveryStatusStats.failedItems, status: "failed" as const },
+          { count: control.notificationDeliveryStatusStats.retryItems, status: "retry" as const },
+          { count: control.notificationDeliveryStatusStats.cancelledItems, status: "cancelled" as const },
+          { count: control.notificationDeliveryStatusStats.archivedItems, status: "archived" as const }
+        ].map((entry) => (
+          <tr key={entry.status}>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationStatusBadgeTone(entry.status)}>{entry.status}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{entry.count}</td>
+            <td className="px-5 py-4 text-slate-600">Read-only delivery status summary. No queue execution connected.</td>
+          </tr>
+        ))}
+      </AdminTable>
 
       <AdminTable headers={["Channel", "Configured", "Health", "Secrets"]}>
         {control.channels.map((channel) => (
@@ -92,8 +120,8 @@ export default async function AdminNotificationsPage() {
               <p className="font-bold text-slate-950">{channel.name}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">{channel.key}</p>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(channel.configuredStatus)}>{channel.configuredStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(channel.healthStatus)}>{channel.healthStatus}</AdminBadge></td>
+            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.configuredStatus)}>{channel.configuredStatus}</AdminBadge></td>
+            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(channel.healthStatus)}>{channel.healthStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={channel.secretStatus === "missing" ? "red" : "slate"}>{channel.secretStatus}</AdminBadge></td>
           </tr>
         ))}
@@ -125,7 +153,9 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="px-5 py-4 font-bold text-slate-950">{log.recipientMasked}</td>
             <td className="px-5 py-4 text-slate-600">{log.storeOrUser}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(log.status)}>{log.status}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationStatusBadgeTone(log.status)}>{log.statusLabel}</AdminBadge>
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(log.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{log.errorSummary ?? "No safe error summary."}</td>
             <td className="px-5 py-4">
@@ -164,8 +194,8 @@ export default async function AdminNotificationsPage() {
         {control.providerStatus.map((provider) => (
           <tr key={provider.provider}>
             <td className="px-5 py-4 font-bold text-slate-950">{provider.provider}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(provider.configuredStatus)}>{provider.configuredStatus}</AdminBadge></td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(provider.healthStatus)}>{provider.healthStatus}</AdminBadge></td>
+            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(provider.configuredStatus)}>{provider.configuredStatus}</AdminBadge></td>
+            <td className="px-5 py-4"><AdminBadge tone={toneForChannelStatus(provider.healthStatus)}>{provider.healthStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={provider.secretStatus === "missing" ? "red" : "slate"}>{provider.secretStatus}</AdminBadge></td>
           </tr>
         ))}
