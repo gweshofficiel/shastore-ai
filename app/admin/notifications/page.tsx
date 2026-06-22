@@ -99,14 +99,15 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Notification type", "Logs"]}>
+      <AdminTable headers={["Notification type", "Logs", "Description"]}>
         {control.types.map((type) => (
           <tr key={type.key}>
             <td className="px-5 py-4">
-              <p className="font-bold text-slate-950">{type.label}</p>
+              <AdminBadge tone={type.badgeTone}>{type.label}</AdminBadge>
               <p className="mt-1 text-xs font-semibold text-slate-500">{type.key}</p>
             </td>
             <td className="px-5 py-4 text-slate-600">{type.count}</td>
+            <td className="px-5 py-4 text-slate-600">{type.description}</td>
           </tr>
         ))}
       </AdminTable>
@@ -118,7 +119,10 @@ export default async function AdminNotificationsPage() {
         {control.logs.map((log) => (
           <tr key={`${log.channel}:${log.id}`}>
             <td className="px-5 py-4"><AdminBadge tone="blue">{log.channel}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{log.type}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={log.typeBadgeTone}>{log.typeLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{log.type}</p>
+            </td>
             <td className="px-5 py-4 font-bold text-slate-950">{log.recipientMasked}</td>
             <td className="px-5 py-4 text-slate-600">{log.storeOrUser}</td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(log.status)}>{log.status}</AdminBadge></td>

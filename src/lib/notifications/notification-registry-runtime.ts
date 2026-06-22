@@ -1,6 +1,34 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  listNotificationTypeCatalog,
+  parseNotificationType,
+  type NotificationType
+} from "@/src/lib/notifications/notification-type-runtime";
+
+export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
+export {
+  buildNotificationTypeAdminViews,
+  buildNotificationTypeStatsSafe,
+  classifyNotificationTypeFromSource,
+  countNotificationItemsByType,
+  getNotificationTypeBadgeTone,
+  getNotificationTypeDescription,
+  getNotificationTypeLabel,
+  isValidNotificationType,
+  listNotificationTypeCatalog,
+  NOTIFICATION_TYPES,
+  parseNotificationType,
+  resolveNotificationTypeBadgeTone,
+  resolveNotificationTypeFromSourceSafe,
+  resolveNotificationTypeLabel
+} from "@/src/lib/notifications/notification-type-runtime";
+export type {
+  NotificationTypeBadgeTone,
+  NotificationTypeCatalogEntry,
+  NotificationTypeStats
+} from "@/src/lib/notifications/notification-type-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -24,18 +52,12 @@ export const NOTIFICATION_REGISTRY_CHANNELS = [
 
 export type NotificationRegistryChannel = (typeof NOTIFICATION_REGISTRY_CHANNELS)[number];
 
-export const NOTIFICATION_REGISTRY_TYPE_KEYS = [
-  "billing",
-  "security",
-  "domains",
-  "email_setup",
-  "ai_visuals",
-  "store_publishing",
-  "support",
-  "system_health"
-] as const;
-
-export type NotificationRegistryTypeKey = (typeof NOTIFICATION_REGISTRY_TYPE_KEYS)[number];
+export type NotificationRegistryTypeView = {
+  badgeTone: import("@/src/lib/notifications/notification-type-runtime").NotificationTypeBadgeTone;
+  description: string;
+  key: NotificationType;
+  label: string;
+};
 
 export type NotificationRegistryItemRecord = {
   channel: string;
@@ -61,11 +83,6 @@ export type NotificationRegistryChannelView = {
   key: NotificationRegistryChannel;
   name: string;
   secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
-};
-
-export type NotificationRegistryTypeView = {
-  key: NotificationRegistryTypeKey;
-  label: string;
 };
 
 export type NotificationRegistryProviderView = {
@@ -148,11 +165,8 @@ export function parseNotificationRegistryChannel(value: unknown): NotificationRe
     : null;
 }
 
-export function parseNotificationRegistryTypeKey(value: unknown): NotificationRegistryTypeKey | null {
-  const cleaned = text(value, 40);
-  return NOTIFICATION_REGISTRY_TYPE_KEYS.includes(cleaned as NotificationRegistryTypeKey)
-    ? (cleaned as NotificationRegistryTypeKey)
-    : null;
+export function parseNotificationRegistryTypeKey(value: unknown): NotificationType | null {
+  return parseNotificationType(value);
 }
 
 export function parseConfiguredState(value: unknown): NotificationRegistryChannelView["configuredStatus"] {
@@ -203,7 +217,7 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
     id,
     metadata: sanitizeRegistryMetadata(safeRecord(record.metadata)),
     name,
-    notificationType: text(record.notification_type, 80),
+    notificationType: parseNotificationType(record.notification_type) ?? text(record.notification_type, 80),
     registryType,
     secretsState: text(record.secrets_state, 80),
     slug,
@@ -247,17 +261,22 @@ export function buildNotificationRegistryChannelsView(
 export function buildNotificationRegistryTypesView(
   items: NotificationRegistryItemRecord[]
 ): NotificationRegistryTypeView[] {
-  return filterNotificationRegistryItemsByType(items, "type")
-    .map((item) => {
-      const key = parseNotificationRegistryTypeKey(item.notificationType);
-      if (!key) return null;
+  const registryTypeItems = filterNotificationRegistryItemsByType(items, "type");
+  const registryLabelsByType = Object.fromEntries(
+    registryTypeItems
+      .map((item) => {
+        const key = parseNotificationType(item.notificationType);
+        return key ? [key, item.name] as const : null;
+      })
+      .filter((entry): entry is readonly [NotificationType, string] => Boolean(entry))
+  ) as Partial<Record<NotificationType, string>>;
 
-      return {
-        key,
-        label: item.name
-      };
-    })
-    .filter((item): item is NotificationRegistryTypeView => Boolean(item));
+  return listNotificationTypeCatalog().map((entry) => ({
+    badgeTone: entry.badgeTone,
+    description: entry.description,
+    key: entry.type,
+    label: registryLabelsByType[entry.type] ?? entry.label
+  }));
 }
 
 export function buildNotificationRegistryProvidersView(

@@ -72,8 +72,11 @@ import {
 import { buildEmailProductionCertificationSafe } from "@/src/lib/email/email-production-certification";
 import {
   buildNotificationRegistryViewsSafe,
+  buildNotificationTypeStatsSafe,
   listNotificationRegistryItemsReadOnlySafe,
-  NOTIFICATION_REGISTRY_FALLBACK_ITEMS
+  NOTIFICATION_REGISTRY_FALLBACK_ITEMS,
+  resolveNotificationTypeFromSourceSafe,
+  type NotificationType
 } from "@/src/lib/notifications/notification-registry-runtime";
 import {
   buildEmailProviderFailoverRecordsSafe,
@@ -3258,6 +3261,9 @@ export type AdminNotificationControl = {
     status: "cancelled" | "failed" | "queued" | "read" | "retry_pending" | "sent" | "unread";
     storeOrUser: string;
     type: string;
+    typeBadgeTone: "amber" | "blue" | "green" | "red";
+    typeKey: NotificationType;
+    typeLabel: string;
   }>;
   overview: {
     failed: number;
@@ -3274,10 +3280,24 @@ export type AdminNotificationControl = {
     secretStatus: "masked_configured" | "masked_partial" | "missing" | "no_secret_required";
   }>;
   types: Array<{
+    badgeTone: "amber" | "blue" | "green" | "red";
     count: number;
-    key: "ai_visuals" | "billing" | "domains" | "email_setup" | "security" | "store_publishing" | "support" | "system_health";
+    description: string;
+    key: NotificationType;
     label: string;
   }>;
+  notificationTypeStats: {
+    aiVisualsItems: number;
+    billingItems: number;
+    domainsItems: number;
+    emailSetupItems: number;
+    securityItems: number;
+    storePublishingItems: number;
+    supportItems: number;
+    systemHealthItems: number;
+    totalItems: number;
+    unknownItems: number;
+  };
   runtimeWarning: string | null;
 };
 
@@ -9163,38 +9183,15 @@ function buildAdminNotificationControl(params: {
     (event) => text(event.event_type) === "admin_notification_mark_reviewed"
   );
 
-  function notificationTypeBucket(value: string): AdminNotificationControl["types"][number]["key"] {
-    const lower = value.toLowerCase();
+  function mapNotificationLogType(rawType: unknown) {
+    const resolved = resolveNotificationTypeFromSourceSafe(rawType);
 
-    if (lower.includes("billing") || lower.includes("payment") || lower.includes("subscription") || lower.includes("invoice")) {
-      return "billing";
-    }
-
-    if (lower.includes("security") || lower.includes("login") || lower.includes("access")) {
-      return "security";
-    }
-
-    if (lower.includes("domain")) {
-      return "domains";
-    }
-
-    if (lower.includes("email") || lower.includes("mailbox")) {
-      return "email_setup";
-    }
-
-    if (lower.includes("ai")) {
-      return "ai_visuals";
-    }
-
-    if (lower.includes("publish") || lower.includes("launch")) {
-      return "store_publishing";
-    }
-
-    if (lower.includes("support") || lower.includes("ticket")) {
-      return "support";
-    }
-
-    return "system_health";
+    return {
+      type: resolved.source,
+      typeBadgeTone: resolved.typeBadgeTone,
+      typeKey: resolved.type,
+      typeLabel: resolved.typeLabel
+    };
   }
 
   function notificationStatus(value: unknown, readAt?: unknown): AdminNotificationControl["logs"][number]["status"] {
@@ -9227,41 +9224,53 @@ function buildAdminNotificationControl(params: {
     return "unread";
   }
 
-  const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => ({
-    channel: "in_app",
-    createdAt: text(notification.created_at, new Date(0).toISOString()),
-    errorSummary: null,
-    id: text(notification.id) || `notification:${text(notification.created_at)}`,
-    recipientMasked: text(notification.user_id)
-      ? `user:${text(notification.user_id).slice(0, 8)}...`
-      : text(notification.workspace_id)
-        ? `workspace:${text(notification.workspace_id).slice(0, 8)}...`
-        : "platform recipient",
-    status: notificationStatus(notification.status, notification.read_at),
-    storeOrUser:
-      text(notification.store_id)
-        ? `store:${maskedNotificationEntityId(notification.store_id)}`
-        : text(notification.user_id)
-          ? `user:${maskedNotificationEntityId(notification.user_id)}`
-          : text(notification.workspace_id)
-            ? `workspace:${maskedNotificationEntityId(notification.workspace_id)}`
-            : "platform",
-    type: text(notification.type, "system")
-  }));
-  const emailChannelLogs: AdminNotificationControl["logs"] = emailLogs.map((log) => ({
-    channel: "email",
-    createdAt: text(log.created_at, new Date(0).toISOString()),
-    errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
-    id: text(log.id) || `email:${text(log.created_at)}`,
-    recipientMasked: maskedEmail(log.recipient),
-    status: notificationStatus(log.status),
-    storeOrUser: "email_event_logs",
-    type: text(log.template_key, "email")
-  }));
+  const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
+    const rawType = text(notification.type, "system");
+    const typeView = mapNotificationLogType(rawType);
+
+    return {
+      channel: "in_app",
+      createdAt: text(notification.created_at, new Date(0).toISOString()),
+      errorSummary: null,
+      id: text(notification.id) || `notification:${text(notification.created_at)}`,
+      recipientMasked: text(notification.user_id)
+        ? `user:${text(notification.user_id).slice(0, 8)}...`
+        : text(notification.workspace_id)
+          ? `workspace:${text(notification.workspace_id).slice(0, 8)}...`
+          : "platform recipient",
+      status: notificationStatus(notification.status, notification.read_at),
+      storeOrUser:
+        text(notification.store_id)
+          ? `store:${maskedNotificationEntityId(notification.store_id)}`
+          : text(notification.user_id)
+            ? `user:${maskedNotificationEntityId(notification.user_id)}`
+            : text(notification.workspace_id)
+              ? `workspace:${maskedNotificationEntityId(notification.workspace_id)}`
+              : "platform",
+      ...typeView
+    };
+  });
+  const emailChannelLogs: AdminNotificationControl["logs"] = emailLogs.map((log) => {
+    const rawType = text(log.template_key, "email");
+    const typeView = mapNotificationLogType(rawType);
+
+    return {
+      channel: "email",
+      createdAt: text(log.created_at, new Date(0).toISOString()),
+      errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
+      id: text(log.id) || `email:${text(log.created_at)}`,
+      recipientMasked: maskedEmail(log.recipient),
+      status: notificationStatus(log.status),
+      storeOrUser: "email_event_logs",
+      ...typeView
+    };
+  });
   const systemAlertLogs: AdminNotificationControl["logs"] = monitoringEvents
     .filter((event) => ["failed", "warning"].includes(text(event.event_status)))
     .map((event) => {
       const metadata = isRecord(event.metadata) ? event.metadata : {};
+      const rawType = text(event.event_type, "system_alert");
+      const typeView = mapNotificationLogType(rawType);
 
       return {
         channel: "system_alert" as const,
@@ -9275,17 +9284,17 @@ function buildAdminNotificationControl(params: {
           : text(event.user_id)
             ? `user:${maskedNotificationEntityId(event.user_id)}`
             : text(event.entity_type, "platform"),
-        type: text(event.event_type, "system_alert")
+        ...typeView
       };
     });
   const logs = [...inAppLogs, ...emailChannelLogs, ...systemAlertLogs]
     .sort((left, right) => dateValue(right.createdAt) - dateValue(left.createdAt))
     .slice(0, 100);
-  const typeCounts = new Map<AdminNotificationControl["types"][number]["key"], number>();
+  const notificationTypeStats = buildNotificationTypeStatsSafe(logs.map((log) => log.type));
+  const typeCounts = new Map<NotificationType, number>();
 
   for (const log of logs) {
-    const key = notificationTypeBucket(log.type);
-    typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
+    typeCounts.set(log.typeKey, (typeCounts.get(log.typeKey) ?? 0) + 1);
   }
 
   const channels: AdminNotificationControl["channels"] = registryViews.channels.map((channel) => {
@@ -9359,7 +9368,9 @@ function buildAdminNotificationControl(params: {
     return provider;
   });
   const types: AdminNotificationControl["types"] = registryViews.types.map((type) => ({
+    badgeTone: type.badgeTone,
     count: typeCounts.get(type.key) ?? 0,
+    description: type.description,
     key: type.key,
     label: type.label
   }));
@@ -9368,6 +9379,7 @@ function buildAdminNotificationControl(params: {
     channels,
     futureHooks: registryViews.futureHooks,
     logs,
+    notificationTypeStats,
     overview: {
       failed: logs.filter((log) => log.status === "failed").length,
       queued: logs.filter((log) => log.status === "queued" || log.status === "retry_pending").length,
