@@ -454,6 +454,37 @@ export type {
   NotificationSafeActionRuntimeStats,
   NotificationSafeActionTone
 } from "@/src/lib/notifications/notification-safe-action-runtime";
+export {
+  applyNotificationControlErrorSanitizationSafe,
+  buildNotificationErrorSanitizationFallbackRecordSafe,
+  buildNotificationErrorSanitizationRecordsSafe,
+  buildNotificationErrorSanitizationRuntimeStatsSafe,
+  buildNotificationErrorSanitizationSummarySafe,
+  getNotificationErrorSanitizationFallback,
+  getNotificationErrorSanitizationSourceLabel,
+  listNotificationErrorSanitizationCatalog,
+  NOTIFICATION_ERROR_SANITIZATION_FALLBACK_ID,
+  NOTIFICATION_ERROR_SANITIZATION_FUTURE_HOOKS,
+  NOTIFICATION_ERROR_SANITIZATION_SOURCES,
+  sanitizeNotificationAuditRecordErrorsSafe,
+  sanitizeNotificationDeliveryRecordErrorsSafe,
+  sanitizeNotificationErrorDisplaySafe,
+  sanitizeNotificationErrorForSourceSafe,
+  sanitizeNotificationFailureRecordErrorsSafe,
+  sanitizeNotificationHealthRecordErrorsSafe,
+  sanitizeNotificationLogRecordErrorsSafe,
+  sanitizeNotificationMonitoringRecordErrorsSafe,
+  sanitizeNotificationQueueRecordErrorsSafe,
+  sanitizeNotificationRetryRecordErrorsSafe,
+  sanitizeNotificationReviewRecordErrorsSafe,
+  sanitizeNotificationSafeActionRecordErrorsSafe
+} from "@/src/lib/notifications/notification-error-sanitization-runtime";
+export type {
+  NotificationErrorSanitizationRecord,
+  NotificationErrorSanitizationRuntimeStats,
+  NotificationErrorSanitizationSource,
+  NotificationErrorSanitizationSummary
+} from "@/src/lib/notifications/notification-error-sanitization-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

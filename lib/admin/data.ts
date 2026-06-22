@@ -214,6 +214,15 @@ import {
   type NotificationSafeActionRuntimeStats
 } from "@/src/lib/notifications/notification-safe-action-runtime";
 import {
+  applyNotificationControlErrorSanitizationSafe,
+  buildNotificationErrorSanitizationRecordsSafe,
+  buildNotificationErrorSanitizationRuntimeStatsSafe,
+  buildNotificationErrorSanitizationSummarySafe,
+  type NotificationErrorSanitizationRecord,
+  type NotificationErrorSanitizationRuntimeStats,
+  type NotificationErrorSanitizationSummary
+} from "@/src/lib/notifications/notification-error-sanitization-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3555,6 +3564,9 @@ export type AdminNotificationControl = {
   safeActionItems: NotificationSafeActionRecord[];
   notificationSafeActionPolicy: NotificationSafeActionPolicySummary;
   notificationSafeActionRuntimeStats: NotificationSafeActionRuntimeStats;
+  errorSanitizationItems: NotificationErrorSanitizationRecord[];
+  notificationErrorSanitizationSummary: NotificationErrorSanitizationSummary;
+  notificationErrorSanitizationRuntimeStats: NotificationErrorSanitizationRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9814,6 +9826,12 @@ function buildAdminNotificationControl(params: {
   const safeActionItems: AdminNotificationControl["safeActionItems"] = safeActionViews.safeActionItems;
   const notificationSafeActionRuntimeStats = buildNotificationSafeActionRuntimeStatsSafe(safeActionItems);
   const notificationSafeActionPolicy = buildNotificationSafeActionPolicySummarySafe();
+  const errorSanitizationViews = buildNotificationErrorSanitizationRecordsSafe();
+  const errorSanitizationItems: AdminNotificationControl["errorSanitizationItems"] =
+    errorSanitizationViews.errorSanitizationItems;
+  const notificationErrorSanitizationRuntimeStats =
+    buildNotificationErrorSanitizationRuntimeStatsSafe(errorSanitizationItems);
+  const notificationErrorSanitizationSummary = buildNotificationErrorSanitizationSummarySafe();
   const monitoringViews = buildNotificationMonitoringRecordsSafe({
     channelSnapshots: channels,
     emailLogs,
@@ -9876,7 +9894,8 @@ function buildAdminNotificationControl(params: {
       eventViews.warning,
       logViews.warning,
       reviewViews.warning,
-      safeActionViews.warning
+      safeActionViews.warning,
+      errorSanitizationViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9923,24 +9942,40 @@ function buildAdminNotificationControl(params: {
     certification: notificationSecurityCertification,
     securityRecords
   });
-
-  return {
-    channels,
+  const sanitizedErrors = applyNotificationControlErrorSanitizationSafe({
     auditItems,
-    analytics,
-    analyticsBreakdownItems,
-    analyticsPeriodViews,
-    analyticsRateViews,
     deliveries,
+    eventItems,
     failureItems,
-    futureHooks: registryViews.futureHooks,
     health,
     healthItems,
     logItems,
     logs,
+    monitoringItems,
+    queueItems,
+    retryItems,
+    reviewItems,
+    safeActionItems,
+    securityRecords
+  });
+
+  return {
+    channels,
+    auditItems: sanitizedErrors.auditItems,
+    analytics,
+    analyticsBreakdownItems,
+    analyticsPeriodViews,
+    analyticsRateViews,
+    deliveries: sanitizedErrors.deliveries,
+    failureItems: sanitizedErrors.failureItems,
+    futureHooks: registryViews.futureHooks,
+    health: sanitizedErrors.health ?? health,
+    healthItems: sanitizedErrors.healthItems,
+    logItems: sanitizedErrors.logItems,
+    logs: sanitizedErrors.logs as AdminNotificationControl["logs"],
     metricViews,
     metrics,
-    monitoringItems,
+    monitoringItems: sanitizedErrors.monitoringItems,
     notificationAnalyticsRuntimeStats,
     notificationHealthRuntimeStats,
     notificationCategoryStats,
@@ -9962,10 +9997,13 @@ function buildAdminNotificationControl(params: {
     notificationRegistryStatusStats,
     notificationRecipientRuntimeStats,
     notificationReviewRuntimeStats,
-    reviewItems,
-    safeActionItems,
+    reviewItems: sanitizedErrors.reviewItems,
+    safeActionItems: sanitizedErrors.safeActionItems,
     notificationSafeActionPolicy,
     notificationSafeActionRuntimeStats,
+    errorSanitizationItems,
+    notificationErrorSanitizationSummary,
+    notificationErrorSanitizationRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
@@ -9984,12 +10022,12 @@ function buildAdminNotificationControl(params: {
       totalNotifications: logs.length
     },
     providerStatus,
-    queueItems,
+    queueItems: sanitizedErrors.queueItems,
     recipientItems,
-    eventItems,
-    retryItems,
+    eventItems: sanitizedErrors.eventItems,
+    retryItems: sanitizedErrors.retryItems,
     runtimeWarning: sanitizedRuntimeWarning,
-    securityRecords,
+    securityRecords: sanitizedErrors.securityRecords,
     templates,
     types
   };

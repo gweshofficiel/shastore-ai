@@ -28,11 +28,7 @@ import {
   sanitizeNotificationRecipientDisplaySafe
 } from "@/src/lib/notifications/notification-recipient-runtime";
 import {
-  sanitizeNotificationLogMessageSafe
-} from "@/src/lib/notifications/notification-log-runtime";
-import {
-  getNotificationReviewStatusLabel,
-  sanitizeNotificationReviewNoteSafe
+  getNotificationReviewStatusLabel
 } from "@/src/lib/notifications/notification-review-runtime";
 import {
   buildNotificationLogSafeActionsSafe,
@@ -40,6 +36,11 @@ import {
   type NotificationSafeActionDefinition,
   type NotificationSafeActionTone
 } from "@/src/lib/notifications/notification-safe-action-runtime";
+import {
+  getNotificationErrorSanitizationFallback,
+  sanitizeNotificationErrorDisplaySafe,
+  type NotificationErrorSanitizationSource
+} from "@/src/lib/notifications/notification-error-sanitization-runtime";
 import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
@@ -230,6 +231,16 @@ function toneForQueueStatus(status: string) {
   return "amber" as const;
 }
 
+function displaySanitizedNotificationError(
+  value: string | null | undefined,
+  source: NotificationErrorSanitizationSource
+) {
+  return sanitizeNotificationErrorDisplaySafe(value, {
+    fallback: getNotificationErrorSanitizationFallback(source),
+    source
+  });
+}
+
 function NotificationHiddenFields({
   log
 }: {
@@ -381,6 +392,16 @@ export default async function AdminNotificationsPage() {
         </p>
       </div>
 
+      <div className="rounded-3xl border border-slate-200 bg-white p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Notification error sanitization</p>
+        <p className="mt-2 text-sm font-semibold text-slate-900">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationErrorSanitizationSummary.policyDescription, 500)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-slate-600">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationErrorSanitizationSummary.safeSummary, 240)}
+        </p>
+      </div>
+
       <AdminStatGrid
         stats={[
           {
@@ -433,8 +454,12 @@ export default async function AdminNotificationsPage() {
                 {getNotificationSecurityProtectionStateLabel(securityRecord.protectionState)}
               </AdminBadge>
             </td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{securityRecord.safeSummary}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{securityRecord.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(securityRecord.safeSummary, "monitoring")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(securityRecord.metadataSummary, "monitoring")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -525,8 +550,12 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(eventItem.occurredAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(eventItem.createdAt)}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{eventItem.safeSummary}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{eventItem.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(eventItem.safeSummary, "audit")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(eventItem.metadataSummary, "audit")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -571,9 +600,11 @@ export default async function AdminNotificationsPage() {
               <AdminBadge tone={getNotificationStatusBadgeTone(logItem.status)}>{logItem.statusLabel}</AdminBadge>
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
-              {sanitizeNotificationLogMessageSafe(logItem.safeMessage, 240)}
+              {displaySanitizedNotificationError(logItem.safeMessage, "log")}
             </td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{logItem.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(logItem.metadataSummary, "log")}
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(logItem.createdAt)}</td>
           </tr>
         ))}
@@ -615,10 +646,10 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{reviewItem.failureReference}</td>
             <td className="px-5 py-4 text-slate-600">{reviewItem.reviewerReference}</td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
-              {sanitizeNotificationReviewNoteSafe(reviewItem.reviewNote, 240)}
+              {displaySanitizedNotificationError(reviewItem.reviewNote, "review")}
             </td>
             <td className="max-w-xs px-5 py-4 text-slate-600">
-              {sanitizeNotificationAdminDisplayTextSafe(reviewItem.safeSummary, 240)}
+              {displaySanitizedNotificationError(reviewItem.safeSummary, "review")}
             </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(reviewItem.reviewedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(reviewItem.createdAt)}</td>
@@ -720,7 +751,10 @@ export default async function AdminNotificationsPage() {
           { label: "Disabled actions", value: control.notificationSafeActionRuntimeStats.disabledActions },
           { label: "Placeholder submit actions", value: control.notificationSafeActionRuntimeStats.placeholderSubmitActions },
           { label: "Global safe actions", value: control.notificationSafeActionRuntimeStats.globalActions },
-          { label: "Log-scoped safe actions", value: control.notificationSafeActionRuntimeStats.logScopedActions }
+          { label: "Log-scoped safe actions", value: control.notificationSafeActionRuntimeStats.logScopedActions },
+          { label: "Sanitized surfaces", value: control.notificationErrorSanitizationRuntimeStats.totalSurfaces },
+          { label: "Ready sanitization surfaces", value: control.notificationErrorSanitizationRuntimeStats.readySurfaces },
+          { label: "Sanitized error fields", value: control.notificationErrorSanitizationRuntimeStats.totalSanitizedFields }
         ]}
       />
 
@@ -820,8 +854,12 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.lastSuccessAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.lastFailureAt)}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{healthItem.safeSummary}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{healthItem.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(healthItem.safeSummary, "health")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(healthItem.metadataSummary, "health")}
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.updatedAt)}</td>
           </tr>
         ))}
@@ -1106,7 +1144,9 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.deliveredAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.readAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(delivery.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{delivery.errorSummary ?? "No safe error summary."}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(delivery.errorSummary, "delivery")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -1157,7 +1197,9 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.lockedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.processedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{queueItem.errorSummary ?? "No safe error summary."}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(queueItem.errorSummary, "queue")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -1206,7 +1248,9 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.nextRetryAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.lastRetryAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{retryItem.failureReason ?? "No safe failure reason."}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(retryItem.failureReason, "retry")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -1261,7 +1305,9 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.reviewedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(failureItem.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{failureItem.failureReason ?? "No safe failure reason."}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(failureItem.failureReason, "failure")}
+            </td>
           </tr>
         ))}
       </AdminTable>
@@ -1301,8 +1347,12 @@ export default async function AdminNotificationsPage() {
               <p className="font-bold text-slate-950">{auditItem.targetType}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">{auditItem.targetIdReference}</p>
             </td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{auditItem.safeSummary}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{auditItem.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(auditItem.safeSummary, "audit")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(auditItem.metadataSummary, "audit")}
+            </td>
             <td className="px-5 py-4 text-slate-600">{auditItem.ipReference}</td>
             <td className="px-5 py-4 text-slate-600">{auditItem.userAgentSummary}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(auditItem.createdAt)}</td>
@@ -1350,8 +1400,12 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">
               {monitorItem.latencyMs === null ? "Not measured" : `${monitorItem.latencyMs} ms`}
             </td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{monitorItem.safeSummary}</td>
-            <td className="max-w-xs px-5 py-4 text-slate-600">{monitorItem.metadataSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(monitorItem.safeSummary, "monitoring")}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(monitorItem.metadataSummary, "monitoring")}
+            </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(monitorItem.updatedAt)}</td>
           </tr>
         ))}
@@ -1402,7 +1456,9 @@ export default async function AdminNotificationsPage() {
               <AdminBadge tone={getNotificationStatusBadgeTone(log.status)}>{log.statusLabel}</AdminBadge>
             </td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(log.createdAt)}</td>
-            <td className="px-5 py-4 text-slate-600">{log.errorSummary ?? "No safe error summary."}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(log.errorSummary, "log")}
+            </td>
             <td className="px-5 py-4">
               <NotificationSafeActions log={log} />
             </td>
@@ -1435,16 +1491,42 @@ export default async function AdminNotificationsPage() {
                 <AdminBadge tone={actionItem.ready ? "green" : "red"}>{actionItem.ready ? "Yes" : "No"}</AdminBadge>
               </td>
               <td className="max-w-xs px-5 py-4 text-slate-600">
-                {sanitizeNotificationAdminDisplayTextSafe(actionItem.guardMessage, 240)}
+                {displaySanitizedNotificationError(actionItem.guardMessage, "safe_action")}
               </td>
               <td className="max-w-xs px-5 py-4 text-slate-600">
-                {sanitizeNotificationAdminDisplayTextSafe(actionItem.safeSummary, 240)}
+                {displaySanitizedNotificationError(actionItem.safeSummary, "safe_action")}
               </td>
               <td className="px-5 py-4">
                 <NotificationGlobalSafeActionButton action={actionItem} />
               </td>
             </tr>
           ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.errorSanitizationItems.length ? "No notification error sanitization records found." : null}
+        headers={["Surface", "Fields", "Ready", "Fallback", "Summary"]}
+      >
+        {control.errorSanitizationItems.map((sanitizationItem) => (
+          <tr key={sanitizationItem.sanitizationId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{sanitizationItem.sourceLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{sanitizationItem.source}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{sanitizationItem.sanitizedFields.join(", ")}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={sanitizationItem.sanitizationReady ? "green" : "red"}>
+                {sanitizationItem.sanitizationReady ? "Yes" : "No"}
+              </AdminBadge>
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(sanitizationItem.fallbackMessage, sanitizationItem.source)}
+            </td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {displaySanitizedNotificationError(sanitizationItem.safeSummary, sanitizationItem.source)}
+            </td>
+          </tr>
+        ))}
       </AdminTable>
 
       <AdminTable headers={["Future hook", "Status"]}>
