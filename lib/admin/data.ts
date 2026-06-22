@@ -151,6 +151,18 @@ import {
   type NotificationMetricsSnapshot
 } from "@/src/lib/notifications/notification-metrics-runtime";
 import {
+  buildNotificationAnalyticsBreakdownViewsSafe,
+  buildNotificationAnalyticsPeriodViewsSafe,
+  buildNotificationAnalyticsRateViewsSafe,
+  buildNotificationAnalyticsRuntimeStatsSafe,
+  buildNotificationAnalyticsSnapshotSafe,
+  type NotificationAnalyticsBreakdownItem,
+  type NotificationAnalyticsPeriodView,
+  type NotificationAnalyticsRateView,
+  type NotificationAnalyticsRuntimeStats,
+  type NotificationAnalyticsSnapshot
+} from "@/src/lib/notifications/notification-analytics-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3470,6 +3482,11 @@ export type AdminNotificationControl = {
   monitoringItems: NotificationMonitoringRecord[];
   metrics: NotificationMetricsSnapshot;
   metricViews: NotificationMetricView[];
+  analytics: NotificationAnalyticsSnapshot;
+  analyticsBreakdownItems: NotificationAnalyticsBreakdownItem[];
+  analyticsPeriodViews: NotificationAnalyticsPeriodView[];
+  analyticsRateViews: NotificationAnalyticsRateView[];
+  notificationAnalyticsRuntimeStats: NotificationAnalyticsRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9723,6 +9740,19 @@ function buildAdminNotificationControl(params: {
     reviewedFailuresCount: adminReviewEvents.length
   });
   const metricViews = buildNotificationMetricViewsSafe(metrics);
+  const analyticsReferenceMs = Date.now();
+  const analytics = buildNotificationAnalyticsSnapshotSafe({
+    deliveryStatusStats: notificationDeliveryStatusStats,
+    logs,
+    referenceMs: analyticsReferenceMs
+  });
+  const analyticsBreakdownItems = buildNotificationAnalyticsBreakdownViewsSafe(logs);
+  const analyticsRateViews = buildNotificationAnalyticsRateViewsSafe(analytics);
+  const analyticsPeriodViews = buildNotificationAnalyticsPeriodViewsSafe({
+    logs,
+    referenceMs: analyticsReferenceMs
+  });
+  const notificationAnalyticsRuntimeStats = buildNotificationAnalyticsRuntimeStatsSafe(analytics);
   const combinedWarning =
     [
       registryWarning,
@@ -9750,6 +9780,10 @@ function buildAdminNotificationControl(params: {
   return {
     channels,
     auditItems,
+    analytics,
+    analyticsBreakdownItems,
+    analyticsPeriodViews,
+    analyticsRateViews,
     deliveries,
     failureItems,
     futureHooks: registryViews.futureHooks,
@@ -9757,6 +9791,7 @@ function buildAdminNotificationControl(params: {
     metricViews,
     metrics,
     monitoringItems,
+    notificationAnalyticsRuntimeStats,
     notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryRuntimeStats,

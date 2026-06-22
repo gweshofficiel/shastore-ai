@@ -23,6 +23,7 @@ import {
   listNotificationCategoryCatalog
 } from "@/src/lib/notifications/notification-category-runtime";
 import { listNotificationProviderCatalog } from "@/src/lib/notifications/notification-provider-runtime";
+import { getNotificationAnalyticsDimensionLabel } from "@/src/lib/notifications/notification-analytics-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -229,7 +230,16 @@ export default async function AdminNotificationsPage() {
           { label: "Monitors", value: control.notificationMonitoringRuntimeStats.totalMonitors },
           { label: "Healthy monitors", value: control.notificationMonitoringRuntimeStats.healthyMonitors },
           { label: "Warning monitors", value: control.notificationMonitoringRuntimeStats.warningMonitors },
-          { label: "Failure signals", value: control.notificationMonitoringRuntimeStats.totalFailureSignals }
+          { label: "Failure signals", value: control.notificationMonitoringRuntimeStats.totalFailureSignals },
+          { label: "Analytics analyzed", value: control.notificationAnalyticsRuntimeStats.totalAnalyticsItems },
+          { label: "Delivery success rate", value: `${control.analytics.deliverySuccessRate.toFixed(1)}%` },
+          { label: "Failure rate", value: `${control.analytics.failureRate.toFixed(1)}%` },
+          { label: "Retry rate", value: `${control.analytics.retryRate.toFixed(1)}%` },
+          { label: "Read rate", value: `${control.analytics.readRate.toFixed(1)}%` },
+          { label: "Queued volume", value: control.analytics.queuedVolume },
+          { label: "Daily analytics", value: control.notificationAnalyticsRuntimeStats.dailyAnalyticsItems },
+          { label: "Weekly analytics", value: control.notificationAnalyticsRuntimeStats.weeklyAnalyticsItems },
+          { label: "Monthly analytics", value: control.notificationAnalyticsRuntimeStats.monthlyAnalyticsItems }
         ]}
       />
 
@@ -242,6 +252,51 @@ export default async function AdminNotificationsPage() {
             </td>
             <td className="px-5 py-4 text-slate-950">{metric.value}</td>
             <td className="px-5 py-4 text-slate-600">{metric.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Rate", "Value", "Description"]}>
+        {control.analyticsRateViews.map((rateView) => (
+          <tr key={rateView.key}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{rateView.label}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{rateView.key}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-950">{rateView.valueLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{rateView.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Period", "Count", "Description"]}>
+        {control.analyticsPeriodViews.map((periodView) => (
+          <tr key={periodView.key}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{periodView.label}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{periodView.key}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-950">{periodView.count}</td>
+            <td className="px-5 py-4 text-slate-600">{periodView.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.analyticsBreakdownItems.length ? "No notification analytics breakdown available." : null}
+        headers={["Dimension", "Key", "Label", "Count", "Share", "Description"]}
+      >
+        {control.analyticsBreakdownItems.map((breakdownItem) => (
+          <tr key={`${breakdownItem.dimension}:${breakdownItem.key}`}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{getNotificationAnalyticsDimensionLabel(breakdownItem.dimension)}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{breakdownItem.dimension}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{breakdownItem.key}</td>
+            <td className="px-5 py-4 text-slate-950">{breakdownItem.label}</td>
+            <td className="px-5 py-4 text-slate-950">{breakdownItem.count}</td>
+            <td className="px-5 py-4 text-slate-600">{breakdownItem.sharePercent.toFixed(1)}%</td>
+            <td className="px-5 py-4 text-slate-600">{breakdownItem.description}</td>
           </tr>
         ))}
       </AdminTable>

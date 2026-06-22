@@ -274,6 +274,28 @@ export type {
   NotificationMetricsSnapshot,
   NotificationMetricView
 } from "@/src/lib/notifications/notification-metrics-runtime";
+export {
+  buildNotificationAnalyticsBreakdownViewsSafe,
+  buildNotificationAnalyticsPeriodViewsSafe,
+  buildNotificationAnalyticsRateViewsSafe,
+  buildNotificationAnalyticsRuntimeStatsSafe,
+  buildNotificationAnalyticsSnapshotSafe,
+  getNotificationAnalyticsDimensionLabel,
+  listNotificationAnalyticsDimensionCatalog,
+  NOTIFICATION_ANALYTICS_DEFAULT,
+  NOTIFICATION_ANALYTICS_FUTURE_HOOKS,
+  resolveNotificationAnalyticsLogInput
+} from "@/src/lib/notifications/notification-analytics-runtime";
+export type {
+  NotificationAnalyticsBreakdownItem,
+  NotificationAnalyticsDimension,
+  NotificationAnalyticsLogInput,
+  NotificationAnalyticsPeriodKey,
+  NotificationAnalyticsPeriodView,
+  NotificationAnalyticsRateView,
+  NotificationAnalyticsRuntimeStats,
+  NotificationAnalyticsSnapshot
+} from "@/src/lib/notifications/notification-analytics-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
