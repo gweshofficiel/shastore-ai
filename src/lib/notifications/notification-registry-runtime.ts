@@ -23,6 +23,9 @@ import {
   resolveRegistryNotificationProviderSafe,
   type NotificationProviderKey
 } from "@/src/lib/notifications/notification-provider-runtime";
+import {
+  parseNotificationTemplateKeySafe
+} from "@/src/lib/notifications/notification-template-runtime";
 
 export type { NotificationType } from "@/src/lib/notifications/notification-type-runtime";
 export type {
@@ -147,6 +150,21 @@ export type {
   NotificationProviderStats,
   NotificationProviderView
 } from "@/src/lib/notifications/notification-provider-runtime";
+export {
+  buildNotificationTemplateStatsSafe,
+  buildNotificationTemplateViewsSafe,
+  NOTIFICATION_TEMPLATE_FALLBACK_KEY,
+  NOTIFICATION_TEMPLATE_FUTURE_HOOKS,
+  parseNotificationTemplateKey,
+  parseNotificationTemplateKeySafe,
+  resolveNotificationTemplateLabel,
+  sanitizeNotificationTemplatePreviewContent
+} from "@/src/lib/notifications/notification-template-runtime";
+export type {
+  NotificationTemplateEnabledState,
+  NotificationTemplateStats,
+  NotificationTemplateView
+} from "@/src/lib/notifications/notification-template-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
@@ -189,6 +207,7 @@ export type NotificationRegistryItemRecord = {
   name: string;
   notificationCategory: NotificationCategory;
   notificationProvider: NotificationProviderKey;
+  notificationTemplateKey: string;
   notificationType: string;
   registryType: NotificationRegistryType;
   secretsState: string;
@@ -352,6 +371,11 @@ export function parseNotificationRegistryItem(row: unknown): NotificationRegistr
       registryType: record.registry_type,
       slug: record.slug
     }),
+    notificationTemplateKey: parseNotificationTemplateKeySafe(
+      metadata.notification_template_key ??
+        metadata.template_key ??
+        (registryType === "log_summary" ? record.slug : record.notification_type)
+    ),
     notificationType,
     registryType,
     secretsState: text(record.secrets_state, 80),
@@ -431,12 +455,16 @@ export function buildNotificationRegistryFutureHooksView(items: NotificationRegi
 
 type NotificationRegistryFallbackItem = Omit<
   NotificationRegistryItemRecord,
-  "notificationCategory" | "notificationProvider"
+  "notificationCategory" | "notificationProvider" | "notificationTemplateKey"
 >;
 
 function finalizeNotificationRegistryFallbackItem(
   item: NotificationRegistryFallbackItem
 ): NotificationRegistryItemRecord {
+  const notificationTemplateKey = parseNotificationTemplateKeySafe(
+    item.registryType === "log_summary" ? item.slug : item.notificationType || item.slug
+  );
+
   return {
     ...item,
     notificationCategory: resolveRegistryNotificationCategorySafe({
@@ -452,7 +480,8 @@ function finalizeNotificationRegistryFallbackItem(
       name: item.name,
       registryType: item.registryType,
       slug: item.slug
-    })
+    }),
+    notificationTemplateKey
   };
 }
 

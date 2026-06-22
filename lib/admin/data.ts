@@ -108,6 +108,13 @@ import {
   type NotificationProviderKey
 } from "@/src/lib/notifications/notification-provider-runtime";
 import {
+  buildNotificationTemplateStatsSafe,
+  buildNotificationTemplateViewsSafe,
+  parseNotificationTemplateKeySafe,
+  resolveNotificationTemplateLabel,
+  type NotificationTemplateView
+} from "@/src/lib/notifications/notification-template-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3298,6 +3305,8 @@ export type AdminNotificationControl = {
     providerKey: NotificationProviderKey;
     providerLabel: string;
     storeOrUser: string;
+    templateKey: string;
+    templateLabel: string;
     type: string;
     typeBadgeTone: "amber" | "blue" | "green" | "red";
     typeKey: NotificationType;
@@ -3411,6 +3420,18 @@ export type AdminNotificationControl = {
     totalProviders: number;
     whatsappPlaceholderProviders: number;
   };
+  notificationTemplateStats: {
+    disabledTemplates: number;
+    emailTemplates: number;
+    enabledTemplates: number;
+    inAppTemplates: number;
+    placeholderTemplates: number;
+    previewReadyTemplates: number;
+    systemTemplates: number;
+    totalTemplates: number;
+    unknownTemplates: number;
+  };
+  templates: NotificationTemplateView[];
   types: Array<{
     badgeTone: "amber" | "blue" | "green" | "red";
     count: number;
@@ -9362,6 +9383,15 @@ function buildAdminNotificationControl(params: {
     };
   }
 
+  function mapNotificationLogTemplate(templateKey: unknown) {
+    const key = parseNotificationTemplateKeySafe(templateKey);
+
+    return {
+      templateKey: key,
+      templateLabel: resolveNotificationTemplateLabel(key)
+    };
+  }
+
   const inAppLogs: AdminNotificationControl["logs"] = notifications.map((notification) => {
     const rawType = text(notification.type, "system");
     const typeView = mapNotificationLogType(rawType);
@@ -9372,6 +9402,7 @@ function buildAdminNotificationControl(params: {
       ...categoryView,
       ...mapNotificationLogChannel("in_app"),
       ...mapNotificationLogProvider("in_app"),
+      ...mapNotificationLogTemplate(`in_app:${rawType}`),
       createdAt: text(notification.created_at, new Date(0).toISOString()),
       errorSummary: null,
       id: text(notification.id) || `notification:${text(notification.created_at)}`,
@@ -9402,6 +9433,7 @@ function buildAdminNotificationControl(params: {
       ...categoryView,
       ...mapNotificationLogChannel("email"),
       ...mapNotificationLogProvider("email"),
+      ...mapNotificationLogTemplate(log.template_key),
       createdAt: text(log.created_at, new Date(0).toISOString()),
       errorSummary: text(log.status) === "failed" ? safeEmailSummary(log.last_error || log.error_message) : null,
       id: text(log.id) || `email:${text(log.created_at)}`,
@@ -9425,6 +9457,7 @@ function buildAdminNotificationControl(params: {
         ...categoryView,
         ...mapNotificationLogChannel("system_alert"),
         ...mapNotificationLogProvider("system_alert"),
+        ...mapNotificationLogTemplate(`system_alert:${rawType}`),
         createdAt: text(event.created_at, new Date(0).toISOString()),
         errorSummary: safeEmailSummary(metadata.error || metadata.message || metadata.note || event.event_type),
         id: text(event.id) || `monitoring:${text(event.created_at)}`,
@@ -9487,8 +9520,29 @@ function buildAdminNotificationControl(params: {
   });
   const providerStatus: AdminNotificationControl["providerStatus"] = providerViews.providers;
   const notificationProviderStats = buildNotificationProviderStatsSafe(providerStatus);
+  const disabledTemplateKeys = monitoringEvents
+    .filter((event) => text(event.event_type) === "admin_notification_disable_template")
+    .map((event) => {
+      const metadata = isRecord(event.metadata) ? event.metadata : {};
+      return text(metadata.notification_type) || text(metadata.template_key);
+    })
+    .filter(Boolean);
+  const templateViews = buildNotificationTemplateViewsSafe({
+    disabledTemplateKeys,
+    emailLogs,
+    notifications,
+    registryItems: registryItems.map((item) => ({
+      createdAt: item.createdAt,
+      notificationType: item.notificationType,
+      registryType: item.registryType,
+      slug: item.slug,
+      updatedAt: item.updatedAt
+    }))
+  });
+  const templates: AdminNotificationControl["templates"] = templateViews.templates;
+  const notificationTemplateStats = buildNotificationTemplateStatsSafe(templates);
   const combinedWarning =
-    [registryWarning, registryViews.warning, channelViews.warning, providerViews.warning]
+    [registryWarning, registryViews.warning, channelViews.warning, providerViews.warning, templateViews.warning]
       .filter(Boolean)
       .join(" ") || null;
   const types: AdminNotificationControl["types"] = registryViews.types.map((type) => ({
@@ -9510,6 +9564,7 @@ function buildAdminNotificationControl(params: {
     notificationRegistryCategoryStats,
     notificationRegistryProviderStats,
     notificationRegistryStatusStats,
+    notificationTemplateStats,
     notificationTypeStats,
     overview: {
       archived: notificationDeliveryStatusStats.archivedItems,
@@ -9528,6 +9583,7 @@ function buildAdminNotificationControl(params: {
     },
     providerStatus,
     runtimeWarning: combinedWarning,
+    templates,
     types
   };
 }

@@ -53,6 +53,22 @@ function toneForChannelStatus(status: string) {
   return "blue" as const;
 }
 
+function toneForTemplateState(state: string) {
+  if (["enabled", "preview_ready"].includes(state)) {
+    return "green" as const;
+  }
+
+  if (["disabled", "preview_unavailable"].includes(state)) {
+    return "red" as const;
+  }
+
+  if (["placeholder", "unknown"].includes(state)) {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
 function NotificationHiddenFields({
   log
 }: {
@@ -105,7 +121,11 @@ export default async function AdminNotificationsPage() {
           { label: "Billing category", value: control.notificationCategoryStats.billingItems },
           { label: "System category", value: control.notificationCategoryStats.systemItems },
           { label: "Active providers", value: control.notificationProviderStats.activeProviders },
-          { label: "Placeholder providers", value: control.notificationProviderStats.placeholderProviders }
+          { label: "Placeholder providers", value: control.notificationProviderStats.placeholderProviders },
+          { label: "Total templates", value: control.notificationTemplateStats.totalTemplates },
+          { label: "Enabled templates", value: control.notificationTemplateStats.enabledTemplates },
+          { label: "Preview-ready templates", value: control.notificationTemplateStats.previewReadyTemplates },
+          { label: "Placeholder templates", value: control.notificationTemplateStats.placeholderTemplates }
         ]}
       />
 
@@ -146,6 +166,58 @@ export default async function AdminNotificationsPage() {
             </tr>
           );
         })}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.templates.length ? "No notification templates found." : null}
+        headers={[
+          "Template",
+          "Type",
+          "Channel",
+          "Category",
+          "Provider",
+          "Subject preview",
+          "Body preview",
+          "State",
+          "Preview",
+          "Usage",
+          "Updated"
+        ]}
+      >
+        {control.templates.map((template) => (
+          <tr key={template.templateKey}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{template.templateName}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.templateKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="blue">{template.notificationTypeLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.notificationType}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(template.channel)}>{template.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationCategoryBadgeTone(template.category)}>{template.categoryLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.category}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{template.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{template.providerKey}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.subjectPreview}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{template.bodyPreview}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForTemplateState(template.enabledState)}>{template.enabledState}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForTemplateState(template.previewState)}>{template.previewState}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{template.usageCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(template.updatedAt ?? template.createdAt)}</td>
+          </tr>
+        ))}
       </AdminTable>
 
       <AdminTable headers={["Category", "Log count", "Registry count", "Description"]}>
@@ -299,7 +371,7 @@ export default async function AdminNotificationsPage() {
 
       <AdminTable
         empty={!control.logs.length ? "No notification logs found." : null}
-        headers={["Channel", "Category", "Provider", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
+        headers={["Channel", "Category", "Provider", "Template", "Type", "Recipient", "Store/user", "Status", "Created", "Error summary", "Safe actions"]}
       >
         {control.logs.map((log) => (
           <tr key={`${log.channel}:${log.id}`}>
@@ -314,6 +386,10 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4">
               <p className="font-bold text-slate-950">{log.providerLabel}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">{log.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{log.templateLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{log.templateKey}</p>
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={log.typeBadgeTone}>{log.typeLabel}</AdminBadge>
