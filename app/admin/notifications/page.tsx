@@ -24,6 +24,7 @@ import {
 } from "@/src/lib/notifications/notification-category-runtime";
 import { listNotificationProviderCatalog } from "@/src/lib/notifications/notification-provider-runtime";
 import { getNotificationAnalyticsDimensionLabel } from "@/src/lib/notifications/notification-analytics-runtime";
+import { getNotificationHealthDomainLabel } from "@/src/lib/notifications/notification-health-runtime";
 
 function NotificationRuntimeRecoveryNotice({ message }: { message: string }) {
   return (
@@ -88,6 +89,18 @@ function toneForMonitorStatus(status: string) {
   }
 
   return "amber" as const;
+}
+
+function toneForHealthStatus(status: string) {
+  if (status === "healthy") {
+    return "green" as const;
+  }
+
+  if (status === "degraded") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
 }
 
 function toneForAuditActor(actorType: string) {
@@ -239,7 +252,12 @@ export default async function AdminNotificationsPage() {
           { label: "Queued volume", value: control.analytics.queuedVolume },
           { label: "Daily analytics", value: control.notificationAnalyticsRuntimeStats.dailyAnalyticsItems },
           { label: "Weekly analytics", value: control.notificationAnalyticsRuntimeStats.weeklyAnalyticsItems },
-          { label: "Monthly analytics", value: control.notificationAnalyticsRuntimeStats.monthlyAnalyticsItems }
+          { label: "Monthly analytics", value: control.notificationAnalyticsRuntimeStats.monthlyAnalyticsItems },
+          { label: "Overall health", value: control.health.overallStatusLabel },
+          { label: "Healthy health records", value: control.notificationHealthRuntimeStats.healthyHealthItems },
+          { label: "Degraded health records", value: control.notificationHealthRuntimeStats.degradedHealthItems },
+          { label: "Unknown health records", value: control.notificationHealthRuntimeStats.unknownHealthItems },
+          { label: "Total health records", value: control.notificationHealthRuntimeStats.totalHealthItems }
         ]}
       />
 
@@ -297,6 +315,51 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-950">{breakdownItem.count}</td>
             <td className="px-5 py-4 text-slate-600">{breakdownItem.sharePercent.toFixed(1)}%</td>
             <td className="px-5 py-4 text-slate-600">{breakdownItem.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.healthItems.length ? "No notification health records found." : null}
+        headers={[
+          "Health",
+          "Domain",
+          "Reference",
+          "Status",
+          "Degraded",
+          "Last success",
+          "Last failure",
+          "Summary",
+          "Metadata",
+          "Updated"
+        ]}
+      >
+        {control.healthItems.map((healthItem) => (
+          <tr key={healthItem.healthId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{healthItem.healthId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{getNotificationHealthDomainLabel(healthItem.domain)}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{healthItem.domain}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{healthItem.referenceLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{healthItem.referenceKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForHealthStatus(healthItem.status)}>{healthItem.statusLabel}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={healthItem.degraded ? "amber" : "green"}>
+                {healthItem.degraded ? "degraded" : "stable"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.lastSuccessAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.lastFailureAt)}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{healthItem.safeSummary}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">{healthItem.metadataSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(healthItem.updatedAt)}</td>
           </tr>
         ))}
       </AdminTable>

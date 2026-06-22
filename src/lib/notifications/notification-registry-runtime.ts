@@ -296,6 +296,26 @@ export type {
   NotificationAnalyticsRuntimeStats,
   NotificationAnalyticsSnapshot
 } from "@/src/lib/notifications/notification-analytics-runtime";
+export {
+  buildNotificationHealthRecordsSafe,
+  buildNotificationHealthRuntimeStatsSafe,
+  buildNotificationHealthSnapshotSafe,
+  getNotificationHealthDomainLabel,
+  getNotificationHealthStatusLabel,
+  listNotificationHealthDomainCatalog,
+  mapMonitorStatusToHealthStatus,
+  mapProviderHealthToHealthStatus,
+  NOTIFICATION_HEALTH_DEFAULT,
+  NOTIFICATION_HEALTH_FUTURE_HOOKS,
+  sanitizeNotificationHealthMetadata
+} from "@/src/lib/notifications/notification-health-runtime";
+export type {
+  NotificationHealthDomain,
+  NotificationHealthRecord,
+  NotificationHealthRuntimeStats,
+  NotificationHealthSnapshot,
+  NotificationHealthStatus
+} from "@/src/lib/notifications/notification-health-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

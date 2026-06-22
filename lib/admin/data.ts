@@ -163,6 +163,14 @@ import {
   type NotificationAnalyticsSnapshot
 } from "@/src/lib/notifications/notification-analytics-runtime";
 import {
+  buildNotificationHealthRecordsSafe,
+  buildNotificationHealthRuntimeStatsSafe,
+  buildNotificationHealthSnapshotSafe,
+  type NotificationHealthRecord,
+  type NotificationHealthRuntimeStats,
+  type NotificationHealthSnapshot
+} from "@/src/lib/notifications/notification-health-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3487,6 +3495,9 @@ export type AdminNotificationControl = {
   analyticsPeriodViews: NotificationAnalyticsPeriodView[];
   analyticsRateViews: NotificationAnalyticsRateView[];
   notificationAnalyticsRuntimeStats: NotificationAnalyticsRuntimeStats;
+  health: NotificationHealthSnapshot;
+  healthItems: NotificationHealthRecord[];
+  notificationHealthRuntimeStats: NotificationHealthRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9753,6 +9764,20 @@ function buildAdminNotificationControl(params: {
     referenceMs: analyticsReferenceMs
   });
   const notificationAnalyticsRuntimeStats = buildNotificationAnalyticsRuntimeStatsSafe(analytics);
+  const healthViews = buildNotificationHealthRecordsSafe({
+    deliveries,
+    failureItems,
+    failureStats: notificationFailureRuntimeStats,
+    monitoringItems,
+    providerStatus,
+    queueItems,
+    queueStats: notificationQueueRuntimeStats,
+    retryItems,
+    retryStats: notificationRetryRuntimeStats
+  });
+  const healthItems: AdminNotificationControl["healthItems"] = healthViews.healthItems;
+  const health = buildNotificationHealthSnapshotSafe(healthItems);
+  const notificationHealthRuntimeStats = buildNotificationHealthRuntimeStatsSafe(healthItems);
   const combinedWarning =
     [
       registryWarning,
@@ -9765,7 +9790,8 @@ function buildAdminNotificationControl(params: {
       retryViews.warning,
       failureViews.warning,
       auditViews.warning,
-      monitoringViews.warning
+      monitoringViews.warning,
+      healthViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9787,11 +9813,14 @@ function buildAdminNotificationControl(params: {
     deliveries,
     failureItems,
     futureHooks: registryViews.futureHooks,
+    health,
+    healthItems,
     logs,
     metricViews,
     metrics,
     monitoringItems,
     notificationAnalyticsRuntimeStats,
+    notificationHealthRuntimeStats,
     notificationCategoryStats,
     notificationChannelStats,
     notificationDeliveryRuntimeStats,
