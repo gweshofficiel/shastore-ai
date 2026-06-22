@@ -26,6 +26,10 @@ import { listNotificationProviderCatalog } from "@/src/lib/notifications/notific
 import { getNotificationAnalyticsDimensionLabel } from "@/src/lib/notifications/notification-analytics-runtime";
 import { getNotificationHealthDomainLabel } from "@/src/lib/notifications/notification-health-runtime";
 import {
+  getNotificationRecipientTypeLabel,
+  sanitizeNotificationRecipientDisplaySafe
+} from "@/src/lib/notifications/notification-recipient-runtime";
+import {
   getNotificationSecurityProtectionStateLabel,
   sanitizeNotificationAdminDisplayTextSafe
 } from "@/src/lib/notifications/notification-security-runtime";
@@ -282,6 +286,50 @@ export default async function AdminNotificationsPage() {
         ))}
       </AdminTable>
 
+      <AdminTable
+        empty={!control.recipientItems.length ? "No notification recipient records found." : null}
+        headers={[
+          "Recipient",
+          "Type",
+          "Tenant",
+          "Notification",
+          "Channel",
+          "Status",
+          "Masked email",
+          "Masked phone",
+          "Created",
+          "Updated",
+          "Summary"
+        ]}
+      >
+        {control.recipientItems.map((recipientItem) => (
+          <tr key={recipientItem.recipientId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{recipientItem.recipientReference}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{recipientItem.recipientId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">{getNotificationRecipientTypeLabel(recipientItem.recipientType)}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{recipientItem.recipientType}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{recipientItem.tenantReference}</td>
+            <td className="px-5 py-4 text-slate-600">{recipientItem.notificationReference}</td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{recipientItem.preferredChannelLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{recipientItem.preferredChannel}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{recipientItem.deliveryStatusSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{recipientItem.maskedEmail ?? "Not applicable"}</td>
+            <td className="px-5 py-4 text-slate-600">{recipientItem.maskedPhone ?? "Not applicable"}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(recipientItem.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(recipientItem.updatedAt)}</td>
+            <td className="max-w-xs px-5 py-4 text-slate-600">
+              {sanitizeNotificationRecipientDisplaySafe(recipientItem.safeSummary, 240)}
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminStatGrid
         stats={[
           { label: "Total notifications", value: control.overview.totalNotifications },
@@ -349,7 +397,11 @@ export default async function AdminNotificationsPage() {
           { label: "Unknown health records", value: control.notificationHealthRuntimeStats.unknownHealthItems },
           { label: "Total health records", value: control.notificationHealthRuntimeStats.totalHealthItems },
           { label: "Protected surfaces", value: control.notificationSecurityRuntimeStats.protectedSurfaces },
-          { label: "Surfaces needs review", value: control.notificationSecurityRuntimeStats.needsReviewSurfaces }
+          { label: "Surfaces needs review", value: control.notificationSecurityRuntimeStats.needsReviewSurfaces },
+          { label: "Total recipients", value: control.notificationRecipientRuntimeStats.totalRecipients },
+          { label: "Email recipients", value: control.notificationRecipientRuntimeStats.emailRecipients },
+          { label: "User recipients", value: control.notificationRecipientRuntimeStats.userRecipients },
+          { label: "Store recipients", value: control.notificationRecipientRuntimeStats.storeRecipients }
         ]}
       />
 

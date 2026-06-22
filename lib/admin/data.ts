@@ -182,6 +182,12 @@ import {
   type NotificationSecurityRuntimeStats
 } from "@/src/lib/notifications/notification-security-runtime";
 import {
+  buildNotificationRecipientRecordsSafe,
+  buildNotificationRecipientRuntimeStatsSafe,
+  type NotificationRecipientRecord,
+  type NotificationRecipientRuntimeStats
+} from "@/src/lib/notifications/notification-recipient-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3512,6 +3518,8 @@ export type AdminNotificationControl = {
   notificationSecurityCertification: NotificationSecurityCertificationSummary;
   notificationSecurityRuntimeStats: NotificationSecurityRuntimeStats;
   securityRecords: NotificationSecurityRecord[];
+  recipientItems: NotificationRecipientRecord[];
+  notificationRecipientRuntimeStats: NotificationRecipientRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9724,6 +9732,9 @@ function buildAdminNotificationControl(params: {
     notifications
   });
   const deliveries: AdminNotificationControl["deliveries"] = deliveryViews.deliveries;
+  const recipientViews = buildNotificationRecipientRecordsSafe({ deliveries, logs });
+  const recipientItems: AdminNotificationControl["recipientItems"] = recipientViews.recipientItems;
+  const notificationRecipientRuntimeStats = buildNotificationRecipientRuntimeStatsSafe(recipientItems);
   const notificationDeliveryRuntimeStats = buildNotificationDeliveryRuntimeStatsSafe(deliveries);
   const queueViews = buildNotificationQueueRecordsSafe({
     emailLogs,
@@ -9805,7 +9816,8 @@ function buildAdminNotificationControl(params: {
       failureViews.warning,
       auditViews.warning,
       monitoringViews.warning,
-      healthViews.warning
+      healthViews.warning,
+      recipientViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9886,6 +9898,7 @@ function buildAdminNotificationControl(params: {
     notificationRegistryCategoryStats,
     notificationRegistryProviderStats,
     notificationRegistryStatusStats,
+    notificationRecipientRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
@@ -9905,6 +9918,7 @@ function buildAdminNotificationControl(params: {
     },
     providerStatus,
     queueItems,
+    recipientItems,
     retryItems,
     runtimeWarning: sanitizedRuntimeWarning,
     securityRecords,
