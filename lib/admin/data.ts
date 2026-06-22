@@ -125,6 +125,11 @@ import {
   type NotificationQueueRecord
 } from "@/src/lib/notifications/notification-queue-runtime";
 import {
+  buildNotificationRetryRecordsSafe,
+  buildNotificationRetryRuntimeStatsSafe,
+  type NotificationRetryRecord
+} from "@/src/lib/notifications/notification-retry-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3390,6 +3395,20 @@ export type AdminNotificationControl = {
     unknownItems: number;
   };
   queueItems: NotificationQueueRecord[];
+  notificationRetryRuntimeStats: {
+    emailRetryItems: number;
+    failedRetryItems: number;
+    inAppRetryItems: number;
+    placeholderChannelRetryItems: number;
+    retryBlockedItems: number;
+    retryExhaustedItems: number;
+    retryPendingItems: number;
+    retryReadyItems: number;
+    systemAlertRetryItems: number;
+    totalRetryItems: number;
+    unknownRetryItems: number;
+  };
+  retryItems: NotificationRetryRecord[];
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9599,6 +9618,12 @@ function buildAdminNotificationControl(params: {
   });
   const queueItems: AdminNotificationControl["queueItems"] = queueViews.queueItems;
   const notificationQueueRuntimeStats = buildNotificationQueueRuntimeStatsSafe(queueItems);
+  const retryViews = buildNotificationRetryRecordsSafe({
+    emailLogs,
+    monitoringEvents
+  });
+  const retryItems: AdminNotificationControl["retryItems"] = retryViews.retryItems;
+  const notificationRetryRuntimeStats = buildNotificationRetryRuntimeStatsSafe(retryItems);
   const combinedWarning =
     [
       registryWarning,
@@ -9607,7 +9632,8 @@ function buildAdminNotificationControl(params: {
       providerViews.warning,
       templateViews.warning,
       deliveryViews.warning,
-      queueViews.warning
+      queueViews.warning,
+      retryViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9629,6 +9655,7 @@ function buildAdminNotificationControl(params: {
     notificationDeliveryRuntimeStats,
     notificationDeliveryStatusStats,
     notificationQueueRuntimeStats,
+    notificationRetryRuntimeStats,
     notificationProviderStats,
     notificationRegistryCategoryStats,
     notificationRegistryProviderStats,
@@ -9652,6 +9679,7 @@ function buildAdminNotificationControl(params: {
     },
     providerStatus,
     queueItems,
+    retryItems,
     runtimeWarning: combinedWarning,
     templates,
     types

@@ -69,6 +69,18 @@ function toneForTemplateState(state: string) {
   return "slate" as const;
 }
 
+function toneForRetryStatus(status: string) {
+  if (["retry_pending", "retry_ready"].includes(status)) {
+    return "amber" as const;
+  }
+
+  if (["failed", "retry_exhausted", "retry_blocked"].includes(status)) {
+    return "red" as const;
+  }
+
+  return "slate" as const;
+}
+
 function toneForQueueStatus(status: string) {
   if (["queued", "sent"].includes(status)) {
     return "blue" as const;
@@ -153,7 +165,11 @@ export default async function AdminNotificationsPage() {
           { label: "Queue items", value: control.notificationQueueRuntimeStats.totalQueueItems },
           { label: "Queued", value: control.notificationQueueRuntimeStats.queuedItems },
           { label: "Processing", value: control.notificationQueueRuntimeStats.processingItems },
-          { label: "Retry pending", value: control.notificationQueueRuntimeStats.retryPendingItems }
+          { label: "Retry pending", value: control.notificationQueueRuntimeStats.retryPendingItems },
+          { label: "Retry records", value: control.notificationRetryRuntimeStats.totalRetryItems },
+          { label: "Retry pending records", value: control.notificationRetryRuntimeStats.retryPendingItems },
+          { label: "Retry exhausted", value: control.notificationRetryRuntimeStats.retryExhaustedItems },
+          { label: "Failed retries", value: control.notificationRetryRuntimeStats.failedRetryItems }
         ]}
       />
 
@@ -488,6 +504,55 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.processedAt)}</td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queueItem.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{queueItem.errorSummary ?? "No safe error summary."}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={!control.retryItems.length ? "No notification retry records found." : null}
+        headers={[
+          "Retry",
+          "Notification",
+          "Queue ref",
+          "Delivery ref",
+          "Channel",
+          "Provider",
+          "Status",
+          "Attempt",
+          "Max",
+          "Next retry",
+          "Last retry",
+          "Created",
+          "Failure reason"
+        ]}
+      >
+        {control.retryItems.map((retryItem) => (
+          <tr key={retryItem.retryId}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{retryItem.retryId}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{retryItem.notificationId}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{retryItem.queueReference}</td>
+            <td className="px-5 py-4 text-slate-600">{retryItem.deliveryReference}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={getNotificationChannelBadgeTone(retryItem.channel)}>{retryItem.channelLabel}</AdminBadge>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{retryItem.channel}</p>
+            </td>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{retryItem.providerLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{retryItem.providerKey}</p>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForRetryStatus(retryItem.retryStatus)}>{retryItem.retryStatusLabel}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{retryItem.attemptNumber}</td>
+            <td className="px-5 py-4 text-slate-600">{retryItem.maxAttempts}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.nextRetryAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.lastRetryAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(retryItem.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{retryItem.failureReason ?? "No safe failure reason."}</td>
           </tr>
         ))}
       </AdminTable>

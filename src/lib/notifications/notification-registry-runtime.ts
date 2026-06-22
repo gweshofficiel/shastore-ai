@@ -196,6 +196,23 @@ export type {
   NotificationQueueRuntimeStats,
   NotificationQueueStatus
 } from "@/src/lib/notifications/notification-queue-runtime";
+export {
+  buildNotificationRetryRecordsSafe,
+  buildNotificationRetryRuntimeStatsSafe,
+  getNotificationRetryStatusLabel,
+  listNotificationRetryStatusCatalog,
+  NOTIFICATION_RETRY_DEFAULT_MAX_ATTEMPTS,
+  NOTIFICATION_RETRY_FUTURE_HOOKS,
+  NOTIFICATION_RETRY_STATUSES,
+  parseNotificationRetryMaxAttemptsSafe,
+  parseNotificationRetryStatusSafe,
+  sanitizeNotificationRetryFailureReason
+} from "@/src/lib/notifications/notification-retry-runtime";
+export type {
+  NotificationRetryRecord,
+  NotificationRetryRuntimeStats,
+  NotificationRetryStatus
+} from "@/src/lib/notifications/notification-retry-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
