@@ -233,6 +233,19 @@ export default async function AdminNotificationsPage() {
         ]}
       />
 
+      <AdminTable headers={["Metric", "Value", "Description"]}>
+        {control.metricViews.map((metric) => (
+          <tr key={metric.key}>
+            <td className="px-5 py-4">
+              <p className="font-bold text-slate-950">{metric.label}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{metric.key}</p>
+            </td>
+            <td className="px-5 py-4 text-slate-950">{metric.value}</td>
+            <td className="px-5 py-4 text-slate-600">{metric.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
       <AdminTable headers={["Provider", "Type", "Placeholder", "Configured", "Health", "Secrets", "Summary"]}>
         {listNotificationProviderCatalog().map((entry) => {
           const providerView = control.providerStatus.find((provider) => provider.providerKey === entry.providerKey);

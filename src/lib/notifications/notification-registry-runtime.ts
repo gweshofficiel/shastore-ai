@@ -263,6 +263,17 @@ export type {
   NotificationMonitoringRuntimeStats,
   NotificationMonitorStatus
 } from "@/src/lib/notifications/notification-monitoring-runtime";
+export {
+  buildNotificationMetricViewsSafe,
+  buildNotificationMetricsSnapshotSafe,
+  listNotificationMetricCatalog,
+  NOTIFICATION_METRICS_DEFAULT,
+  NOTIFICATION_METRICS_FUTURE_HOOKS
+} from "@/src/lib/notifications/notification-metrics-runtime";
+export type {
+  NotificationMetricsSnapshot,
+  NotificationMetricView
+} from "@/src/lib/notifications/notification-metrics-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",
