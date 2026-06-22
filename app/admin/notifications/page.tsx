@@ -8,9 +8,7 @@ import {
 import type { AdminNotificationControl } from "@/lib/admin/data";
 import { loadPlatformNotificationControlSafe } from "@/lib/admin/notification-loader";
 import {
-  disableNotificationTemplatePlaceholder,
   markNotificationFailureReviewed,
-  retryNotificationPlaceholder,
   viewNotificationDetails
 } from "@/lib/admin/notification-actions";
 import { getNotificationStatusBadgeTone } from "@/src/lib/notifications/notification-status-runtime";
@@ -36,6 +34,12 @@ import {
   getNotificationReviewStatusLabel,
   sanitizeNotificationReviewNoteSafe
 } from "@/src/lib/notifications/notification-review-runtime";
+import {
+  buildNotificationLogSafeActionsSafe,
+  type NotificationSafeAction,
+  type NotificationSafeActionDefinition,
+  type NotificationSafeActionTone
+} from "@/src/lib/notifications/notification-safe-action-runtime";
 import {
   getNotificationEventTypeLabel
 } from "@/src/lib/notifications/notification-event-runtime";
@@ -240,6 +244,102 @@ function NotificationHiddenFields({
   );
 }
 
+const notificationSafeActionHandlers: Partial<
+  Record<NotificationSafeAction, (formData: FormData) => Promise<void>>
+> = {
+  review_failure: markNotificationFailureReviewed,
+  view_details: viewNotificationDetails
+};
+
+const notificationSafeActionButtonClass: Record<NotificationSafeActionTone, string> = {
+  amber: "border border-amber-200 bg-amber-50 text-amber-700",
+  blue: "border border-blue-200 bg-blue-50 text-blue-700",
+  red: "border border-red-200 bg-red-50 text-red-700",
+  slate: "border border-slate-200 bg-slate-100 text-slate-500",
+  white: "border border-slate-200 bg-white text-slate-700"
+};
+
+function NotificationSafeActionButton({
+  action,
+  log
+}: {
+  action: NotificationSafeActionDefinition;
+  log: AdminNotificationControl["logs"][number];
+}) {
+  const handler = notificationSafeActionHandlers[action.action];
+  const buttonClass = action.ready
+    ? notificationSafeActionButtonClass[action.tone]
+    : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400";
+
+  if (!action.ready || !handler) {
+    return (
+      <button
+        className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${buttonClass}`}
+        disabled
+        title={sanitizeNotificationAdminDisplayTextSafe(action.guardMessage, 240)}
+        type="button"
+      >
+        {action.label}
+      </button>
+    );
+  }
+
+  return (
+    <form action={handler}>
+      <NotificationHiddenFields log={log} />
+      <button
+        className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${buttonClass}`}
+        title={sanitizeNotificationAdminDisplayTextSafe(action.description, 240)}
+        type="submit"
+      >
+        {action.label}
+      </button>
+    </form>
+  );
+}
+
+function NotificationSafeActions({
+  log
+}: {
+  log: AdminNotificationControl["logs"][number];
+}) {
+  const actions = buildNotificationLogSafeActionsSafe({
+    channel: log.channel,
+    id: log.id,
+    status: log.status,
+    type: log.type
+  });
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      {actions.map((action) => (
+        <NotificationSafeActionButton action={action} key={action.action} log={log} />
+      ))}
+    </div>
+  );
+}
+
+function NotificationGlobalSafeActionButton({
+  action
+}: {
+  action: AdminNotificationControl["safeActionItems"][number];
+}) {
+  const buttonClass = action.ready
+    ? notificationSafeActionButtonClass[action.tone]
+    : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400";
+
+  return (
+    <button
+      className={`h-9 w-full rounded-full px-3 text-xs font-black uppercase tracking-[0.14em] ${buttonClass}`}
+      disabled
+      title={sanitizeNotificationAdminDisplayTextSafe(action.guardMessage, 240)}
+      type="button"
+    >
+      {action.label}
+    </button>
+  );
+}
+
 export default async function AdminNotificationsPage() {
   const { control, ok, warning } = await loadPlatformNotificationControlSafe();
   const recoveryMessage = warning ?? control.runtimeWarning ?? null;
@@ -270,6 +370,16 @@ export default async function AdminNotificationsPage() {
           </p>
         </div>
       )}
+
+      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Notification safe action policy</p>
+        <p className="mt-2 text-sm font-semibold text-slate-900">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationSafeActionPolicy.policyDescription, 500)}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-slate-600">
+          {sanitizeNotificationAdminDisplayTextSafe(control.notificationSafeActionPolicy.safeSummary, 240)}
+        </p>
+      </div>
 
       <AdminStatGrid
         stats={[
@@ -604,7 +714,13 @@ export default async function AdminNotificationsPage() {
           { label: "Under review", value: control.notificationReviewRuntimeStats.underReviewItems },
           { label: "Reviewed", value: control.notificationReviewRuntimeStats.reviewedReviews },
           { label: "Resolved reviews", value: control.notificationReviewRuntimeStats.resolvedReviews },
-          { label: "Ignored reviews", value: control.notificationReviewRuntimeStats.ignoredReviews }
+          { label: "Ignored reviews", value: control.notificationReviewRuntimeStats.ignoredReviews },
+          { label: "Total safe actions", value: control.notificationSafeActionRuntimeStats.totalActions },
+          { label: "Guarded actions", value: control.notificationSafeActionRuntimeStats.guardedActions },
+          { label: "Disabled actions", value: control.notificationSafeActionRuntimeStats.disabledActions },
+          { label: "Placeholder submit actions", value: control.notificationSafeActionRuntimeStats.placeholderSubmitActions },
+          { label: "Global safe actions", value: control.notificationSafeActionRuntimeStats.globalActions },
+          { label: "Log-scoped safe actions", value: control.notificationSafeActionRuntimeStats.logScopedActions }
         ]}
       />
 
@@ -1288,35 +1404,47 @@ export default async function AdminNotificationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(log.createdAt)}</td>
             <td className="px-5 py-4 text-slate-600">{log.errorSummary ?? "No safe error summary."}</td>
             <td className="px-5 py-4">
-              <div className="grid min-w-52 gap-2">
-                <form action={markNotificationFailureReviewed}>
-                  <NotificationHiddenFields log={log} />
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
-                    Mark reviewed
-                  </button>
-                </form>
-                <form action={retryNotificationPlaceholder}>
-                  <NotificationHiddenFields log={log} />
-                  <button className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                    Retry placeholder
-                  </button>
-                </form>
-                <form action={disableNotificationTemplatePlaceholder}>
-                  <NotificationHiddenFields log={log} />
-                  <button className="h-9 w-full rounded-full border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-red-700" type="submit">
-                    Disable template
-                  </button>
-                </form>
-                <form action={viewNotificationDetails}>
-                  <NotificationHiddenFields log={log} />
-                  <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                    View details
-                  </button>
-                </form>
-              </div>
+              <NotificationSafeActions log={log} />
             </td>
           </tr>
         ))}
+      </AdminTable>
+
+      <AdminTable
+        empty={
+          !control.safeActionItems.filter((item) => item.scope === "global").length
+            ? "No notification safe action catalog records found."
+            : null
+        }
+        headers={["Action", "Mode", "Ready", "Guard", "Summary", "Control"]}
+      >
+        {control.safeActionItems
+          .filter((item) => item.scope === "global")
+          .map((actionItem) => (
+            <tr key={actionItem.actionId}>
+              <td className="px-5 py-4">
+                <p className="font-bold text-slate-950">{actionItem.label}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{actionItem.action}</p>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={actionItem.executionMode === "disabled" ? "red" : "blue"}>
+                  {actionItem.executionMode.replace(/_/g, " ")}
+                </AdminBadge>
+              </td>
+              <td className="px-5 py-4">
+                <AdminBadge tone={actionItem.ready ? "green" : "red"}>{actionItem.ready ? "Yes" : "No"}</AdminBadge>
+              </td>
+              <td className="max-w-xs px-5 py-4 text-slate-600">
+                {sanitizeNotificationAdminDisplayTextSafe(actionItem.guardMessage, 240)}
+              </td>
+              <td className="max-w-xs px-5 py-4 text-slate-600">
+                {sanitizeNotificationAdminDisplayTextSafe(actionItem.safeSummary, 240)}
+              </td>
+              <td className="px-5 py-4">
+                <NotificationGlobalSafeActionButton action={actionItem} />
+              </td>
+            </tr>
+          ))}
       </AdminTable>
 
       <AdminTable headers={["Future hook", "Status"]}>

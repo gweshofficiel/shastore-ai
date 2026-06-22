@@ -1,6 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  assertNotificationSafeActionSubmitAllowed,
+  mapNotificationAdminActionToSafeAction,
+  sanitizeNotificationSafeActionErrorMessage
+} from "@/src/lib/notifications/notification-safe-action-runtime";
 import { getAdminAccess } from "@/lib/admin-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -15,6 +20,13 @@ function cleanText(value: FormDataEntryValue | null) {
 }
 
 async function recordNotificationAdminAction(formData: FormData, action: NotificationAdminAction) {
+  const safeAction = mapNotificationAdminActionToSafeAction(action);
+  if (!safeAction) {
+    throw new Error(sanitizeNotificationSafeActionErrorMessage("Unknown notification admin action."));
+  }
+
+  assertNotificationSafeActionSubmitAllowed(safeAction);
+
   const access = await getAdminAccess();
   const notificationId = cleanText(formData.get("notificationId"));
   const notificationType = cleanText(formData.get("notificationType"));
@@ -55,10 +67,12 @@ export async function markNotificationFailureReviewed(formData: FormData) {
 }
 
 export async function retryNotificationPlaceholder(formData: FormData) {
+  assertNotificationSafeActionSubmitAllowed("retry_failure");
   await recordNotificationAdminAction(formData, "admin_notification_retry_placeholder");
 }
 
 export async function disableNotificationTemplatePlaceholder(formData: FormData) {
+  assertNotificationSafeActionSubmitAllowed("disable_template");
   await recordNotificationAdminAction(formData, "admin_notification_disable_template");
 }
 

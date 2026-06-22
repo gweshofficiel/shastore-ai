@@ -424,6 +424,36 @@ export type {
   NotificationReviewRuntimeStats,
   NotificationReviewStatus
 } from "@/src/lib/notifications/notification-review-runtime";
+export {
+  buildNotificationSafeActionFallbackRecordSafe,
+  buildNotificationLogSafeActionsSafe,
+  buildNotificationSafeActionPolicySummarySafe,
+  buildNotificationSafeActionRecordsSafe,
+  buildNotificationSafeActionRuntimeStatsSafe,
+  assertNotificationSafeActionSubmitAllowed,
+  getNotificationSafeActionDescription,
+  getNotificationSafeActionGuardMessage,
+  getNotificationSafeActionLabel,
+  isNotificationSafeActionSubmitAllowed,
+  listNotificationSafeActionCatalog,
+  mapNotificationAdminActionToSafeAction,
+  NOTIFICATION_SAFE_ACTION_FALLBACK_ID,
+  NOTIFICATION_SAFE_ACTION_FUTURE_HOOKS,
+  NOTIFICATION_SAFE_ACTIONS,
+  resolveNotificationSafeActionExecutionMode,
+  sanitizeNotificationSafeActionErrorMessage,
+  sanitizeNotificationSafeActionMetadataSafe
+} from "@/src/lib/notifications/notification-safe-action-runtime";
+export type {
+  NotificationLogSafeActionInput,
+  NotificationSafeAction,
+  NotificationSafeActionDefinition,
+  NotificationSafeActionExecutionMode,
+  NotificationSafeActionPolicySummary,
+  NotificationSafeActionRecord,
+  NotificationSafeActionRuntimeStats,
+  NotificationSafeActionTone
+} from "@/src/lib/notifications/notification-safe-action-runtime";
 
 export const NOTIFICATION_REGISTRY_TYPES = [
   "channel",

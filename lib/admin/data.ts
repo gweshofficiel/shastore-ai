@@ -206,6 +206,14 @@ import {
   type NotificationReviewRuntimeStats
 } from "@/src/lib/notifications/notification-review-runtime";
 import {
+  buildNotificationSafeActionPolicySummarySafe,
+  buildNotificationSafeActionRecordsSafe,
+  buildNotificationSafeActionRuntimeStatsSafe,
+  type NotificationSafeActionPolicySummary,
+  type NotificationSafeActionRecord,
+  type NotificationSafeActionRuntimeStats
+} from "@/src/lib/notifications/notification-safe-action-runtime";
+import {
   buildEmailProviderFailoverRecordsSafe,
   buildEmailProviderFailoverRuntimeStatsSafe,
   buildEmailProviderFailoverRuntimeSummarySafe
@@ -3544,6 +3552,9 @@ export type AdminNotificationControl = {
   notificationLogRuntimeStats: NotificationLogRuntimeStats;
   reviewItems: NotificationReviewRecord[];
   notificationReviewRuntimeStats: NotificationReviewRuntimeStats;
+  safeActionItems: NotificationSafeActionRecord[];
+  notificationSafeActionPolicy: NotificationSafeActionPolicySummary;
+  notificationSafeActionRuntimeStats: NotificationSafeActionRuntimeStats;
   notificationRegistryCategoryStats: {
     accountItems: number;
     aiItems: number;
@@ -9792,6 +9803,17 @@ function buildAdminNotificationControl(params: {
   const reviewViews = buildNotificationReviewRecordsSafe({ auditItems, failureItems });
   const reviewItems: AdminNotificationControl["reviewItems"] = reviewViews.reviewItems;
   const notificationReviewRuntimeStats = buildNotificationReviewRuntimeStatsSafe(reviewItems);
+  const safeActionViews = buildNotificationSafeActionRecordsSafe({
+    logs: logs.map((log) => ({
+      channel: log.channel,
+      id: log.id,
+      status: log.status,
+      type: log.type
+    }))
+  });
+  const safeActionItems: AdminNotificationControl["safeActionItems"] = safeActionViews.safeActionItems;
+  const notificationSafeActionRuntimeStats = buildNotificationSafeActionRuntimeStatsSafe(safeActionItems);
+  const notificationSafeActionPolicy = buildNotificationSafeActionPolicySummarySafe();
   const monitoringViews = buildNotificationMonitoringRecordsSafe({
     channelSnapshots: channels,
     emailLogs,
@@ -9853,7 +9875,8 @@ function buildAdminNotificationControl(params: {
       recipientViews.warning,
       eventViews.warning,
       logViews.warning,
-      reviewViews.warning
+      reviewViews.warning,
+      safeActionViews.warning
     ]
       .filter(Boolean)
       .join(" ") || null;
@@ -9940,6 +9963,9 @@ function buildAdminNotificationControl(params: {
     notificationRecipientRuntimeStats,
     notificationReviewRuntimeStats,
     reviewItems,
+    safeActionItems,
+    notificationSafeActionPolicy,
+    notificationSafeActionRuntimeStats,
     notificationTemplateStats,
     notificationTypeStats,
     overview: {
