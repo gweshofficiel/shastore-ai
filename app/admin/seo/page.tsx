@@ -83,7 +83,12 @@ export default async function AdminSEOPage() {
           <tr key={page.slug}>
             <td className="px-5 py-4 font-bold text-slate-950">{page.page}</td>
             <td className="px-5 py-4 text-slate-600">{page.slug}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.metaTitleStatus)}>{page.metaTitleStatus}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <p className="max-w-xs text-sm font-semibold text-slate-900">{page.metaTitle}</p>
+              <div className="mt-2">
+                <AdminBadge tone={toneForStatus(page.metaTitleStatus)}>{page.metaTitleStatus}</AdminBadge>
+              </div>
+            </td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.metaDescriptionStatus)}>{page.metaDescriptionStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.canonicalStatus)}>{page.canonicalStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.openGraphStatus)}>{page.openGraphStatus}</AdminBadge></td>

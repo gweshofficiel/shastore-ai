@@ -166,6 +166,7 @@ import {
   listSeoPages,
   mapSeoPageRuntimeToAdminSeoPage
 } from "@/src/lib/seo/seo-page-runtime";
+import { mapMetaTitleRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-title-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3776,6 +3777,7 @@ export type AdminSEOControl = {
     languageStatus: "placeholder" | "ready";
     lastUpdated: string | null;
     metaDescriptionStatus: "missing" | "ready";
+    metaTitle: string;
     metaTitleStatus: "missing" | "ready";
     openGraphStatus: "placeholder" | "ready";
     page: string;
@@ -10382,7 +10384,10 @@ export function createFallbackAdminNotificationControl(): AdminNotificationContr
 
 export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const seoPages = await listSeoPages();
-  const pages: AdminSEOControl["pages"] = seoPages.map(mapSeoPageRuntimeToAdminSeoPage);
+  const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => ({
+    ...mapSeoPageRuntimeToAdminSeoPage(seoPage),
+    ...mapMetaTitleRuntimeToAdminFields(seoPage)
+  }));
   const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
   const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];
   const isProduction = process.env.NODE_ENV === "production";
