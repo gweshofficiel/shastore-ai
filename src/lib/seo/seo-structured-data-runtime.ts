@@ -29,6 +29,10 @@ import {
   getProductSchemaPlaceholder,
   mapProductSchemaRuntimeToAdminFields
 } from "@/src/lib/seo/seo-product-schema-runtime";
+import {
+  getFaqSchemaPlaceholder,
+  mapFaqSchemaRuntimeToAdminFields
+} from "@/src/lib/seo/seo-faq-schema-runtime";
 
 export type StructuredDataRuntimeStatus = "placeholder" | "ready";
 
@@ -77,15 +81,6 @@ export const SEO_STRUCTURED_DATA_DEFAULT_ORGANIZATION = "SHASTORE AI" as const;
 export const SEO_STRUCTURED_DATA_DEFAULT_DESCRIPTION =
   "AI copy and template-based ecommerce landing pages for products." as const;
 
-const STATIC_STRUCTURED_DATA_TYPES: readonly StructuredDataTypeDefinition[] = [
-  {
-    key: "faq",
-    name: "FAQ schema placeholder",
-    note: "Reserved for platform FAQ and store FAQ pages without duplicating Store Owner SEO.",
-    status: "placeholder"
-  }
-] as const;
-
 function siteBaseUrl() {
   return getAppBaseUrl().replace(/\/+$/, "");
 }
@@ -109,20 +104,12 @@ function buildWebPageSchema(params: {
   };
 }
 
-function buildFaqPlaceholder(): StructuredDataSchemaObject {
-  return {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: [],
-    name: "FAQ schema placeholder"
-  };
-}
-
 export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
   const organization = mapOrganizationSchemaRuntimeToAdminFields();
   const website = mapWebsiteSchemaRuntimeToAdminFields();
   const breadcrumb = mapBreadcrumbSchemaRuntimeToAdminFields();
   const product = mapProductSchemaRuntimeToAdminFields();
+  const faq = mapFaqSchemaRuntimeToAdminFields();
 
   return [
     {
@@ -149,7 +136,12 @@ export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
       note: product.note,
       status: product.status
     },
-    ...STATIC_STRUCTURED_DATA_TYPES.map((item) => ({ ...item }))
+    {
+      key: "faq",
+      name: faq.name,
+      note: faq.note,
+      status: faq.status
+    }
   ];
 }
 
@@ -207,7 +199,7 @@ function buildStructuredDataFromPage(page: SeoPageRuntime): StructuredDataRouteR
         itemListElement: []
       },
       getProductSchemaPlaceholder(),
-      buildFaqPlaceholder()
+      getFaqSchemaPlaceholder()
     ],
     sourceLabel: page.label,
     types: listStructuredDataTypes()
@@ -274,5 +266,5 @@ export function mapStructuredDataRuntimeToAdminFields(): StructuredDataRuntimeSu
   };
 }
 
-// SEO-15+ placeholders: FAQ JSON-LD stay disconnected.
-export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = ["seo_faq_schema"] as const;
+// SEO-16+ placeholders: structured data editor and public content integration stay disconnected.
+export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = ["seo_structured_data_editor"] as const;

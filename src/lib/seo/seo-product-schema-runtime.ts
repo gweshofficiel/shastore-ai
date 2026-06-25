@@ -287,5 +287,5 @@ export function mapProductSchemaRuntimeToAdminFields() {
   };
 }
 
-// SEO-15+ placeholders: public product runtime integration stays disconnected.
+// SEO-16+ placeholders: public product runtime integration stays disconnected.
 export const SEO_PRODUCT_SCHEMA_FUTURE_HOOKS = ["seo_product_public_runtime_integration"] as const;
