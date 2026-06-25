@@ -14,6 +14,22 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForAuditStatus(status: string) {
+  if (status === "audit_ready") {
+    return "green" as const;
+  }
+
+  if (status === "incomplete") {
+    return "red" as const;
+  }
+
+  if (status === "needs_review") {
+    return "amber" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForStatus(status: string) {
   if (["configured", "ready"].includes(status)) {
     return "green" as const;
@@ -214,13 +230,29 @@ export default async function AdminSEOPage() {
           <tr key={hook}>
             <td className="px-5 py-4 font-bold text-slate-950">{hook}</td>
             <td className="px-5 py-4">
-              <button
-                className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-                disabled
-                type="button"
-              >
-                Reserved placeholder
-              </button>
+              {hook === control.seoAudit.exportHookLabel ? (
+                <div className="space-y-2">
+                  <AdminBadge tone={toneForAuditStatus(control.seoAudit.runtimeStatus)}>
+                    {control.seoAudit.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.seoAudit.summary}</p>
+                  <button
+                    className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                    disabled
+                    type="button"
+                  >
+                    Export placeholder
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  type="button"
+                >
+                  Reserved placeholder
+                </button>
+              )}
             </td>
           </tr>
         ))}

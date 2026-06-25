@@ -177,6 +177,7 @@ import { mapStructuredDataRuntimeToAdminFields } from "@/src/lib/seo/seo-structu
 import { mapSearchConsoleRuntimeToAdminFields } from "@/src/lib/seo/seo-search-console-runtime";
 import { mapAnalyticsRuntimeToAdminFields } from "@/src/lib/seo/seo-analytics-runtime";
 import { mapIndexingWarningRuntimeToAdminFields } from "@/src/lib/seo/seo-indexing-warning-runtime";
+import { mapSeoAuditRuntimeToAdminFields } from "@/src/lib/seo/seo-audit-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3772,6 +3773,13 @@ export type AdminSEOControl = {
     status: "configured" | "missing" | "placeholder";
   }>;
   futureHooks: string[];
+  seoAudit: {
+    exportHookLabel: string;
+    exportPlaceholderStatus: "placeholder";
+    readOnly: true;
+    runtimeStatus: "audit_ready" | "incomplete" | "needs_review" | "placeholder";
+    summary: string;
+  };
   overview: {
     canonicalReady: number;
     indexedPagesPlaceholder: string;
@@ -10415,6 +10423,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
   const isProduction = process.env.NODE_ENV === "production";
   const indexingWarningRuntime = await mapIndexingWarningRuntimeToAdminFields(isProduction);
+  const seoAuditRuntime = await mapSeoAuditRuntimeToAdminFields();
 
   return {
     analyticsReadiness: [
@@ -10427,8 +10436,15 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       "AI SEO generator",
       "Sitemap regeneration",
       "Search Console integration",
-      "SEO audit export"
+      seoAuditRuntime.exportHookLabel
     ],
+    seoAudit: {
+      exportHookLabel: seoAuditRuntime.exportHookLabel,
+      exportPlaceholderStatus: seoAuditRuntime.exportPlaceholderStatus,
+      readOnly: true as const,
+      runtimeStatus: seoAuditRuntime.runtimeStatus,
+      summary: seoAuditRuntime.summary
+    },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
       indexedPagesPlaceholder: searchConsoleRuntime.indexedPagesPlaceholder,
