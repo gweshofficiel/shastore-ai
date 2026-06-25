@@ -174,6 +174,7 @@ import { mapSeoLanguageRuntimeToAdminFields } from "@/src/lib/seo/seo-language-r
 import { mapSitemapRuntimeToAdminFields } from "@/src/lib/seo/seo-sitemap-runtime";
 import { mapRobotsRuntimeToAdminFields } from "@/src/lib/seo/seo-robots-runtime";
 import { mapStructuredDataRuntimeToAdminFields } from "@/src/lib/seo/seo-structured-data-runtime";
+import { mapSearchConsoleRuntimeToAdminFields } from "@/src/lib/seo/seo-search-console-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -10408,6 +10409,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const sitemapRuntime = await mapSitemapRuntimeToAdminFields();
   const robotsRuntime = await mapRobotsRuntimeToAdminFields();
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
+  const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
   const isProduction = process.env.NODE_ENV === "production";
 
   return {
@@ -10417,11 +10419,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
         note: "Platform GA readiness placeholder only. Store Owner analytics remain separate.",
         status: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ? "configured" : "placeholder"
       },
-      {
-        name: "Search Console placeholder",
-        note: "Search Console verification and indexing data are not connected in this phase.",
-        status: "placeholder"
-      },
+      searchConsoleRuntime.analyticsReadinessItem,
       {
         name: "Indexing warnings placeholder",
         note: isProduction ? "Production indexing warnings can attach here." : "Non-production environment should be reviewed before indexing.",
@@ -10437,7 +10435,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     ],
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
-      indexedPagesPlaceholder: "Search Console not connected",
+      indexedPagesPlaceholder: searchConsoleRuntime.indexedPagesPlaceholder,
       languageReady: pages.filter((page) => page.languageStatus === "ready").length,
       missingMetaDescriptions: pages.filter((page) => page.metaDescriptionStatus === "missing").length,
       missingMetaTitles: pages.filter((page) => page.metaTitleStatus === "missing").length,
