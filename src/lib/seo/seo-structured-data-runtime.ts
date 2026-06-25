@@ -13,6 +13,10 @@ import {
 } from "@/src/lib/seo/seo-page-runtime";
 import { isRobotsAllowedRoute, normalizeRobotsRoute } from "@/src/lib/seo/seo-robots-runtime";
 import { listSitemapEntries } from "@/src/lib/seo/seo-sitemap-runtime";
+import {
+  getOrganizationSchema,
+  mapOrganizationSchemaRuntimeToAdminFields
+} from "@/src/lib/seo/seo-organization-schema-runtime";
 
 export type StructuredDataRuntimeStatus = "placeholder" | "ready";
 
@@ -61,13 +65,7 @@ export const SEO_STRUCTURED_DATA_DEFAULT_ORGANIZATION = "SHASTORE AI" as const;
 export const SEO_STRUCTURED_DATA_DEFAULT_DESCRIPTION =
   "AI copy and template-based ecommerce landing pages for products." as const;
 
-const STRUCTURED_DATA_TYPE_DEFINITIONS: readonly StructuredDataTypeDefinition[] = [
-  {
-    key: "organization",
-    name: "Organization schema",
-    note: "Platform organization schema is represented by root metadata and reserved for JSON-LD hardening.",
-    status: "ready"
-  },
+const STATIC_STRUCTURED_DATA_TYPES: readonly StructuredDataTypeDefinition[] = [
   {
     key: "website",
     name: "Website schema",
@@ -101,15 +99,6 @@ function siteBaseUrl() {
 function absoluteUrl(path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${siteBaseUrl()}${normalizedPath}`;
-}
-
-function buildOrganizationSchema(): StructuredDataSchemaObject {
-  return {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: SEO_STRUCTURED_DATA_DEFAULT_ORGANIZATION,
-    url: siteBaseUrl()
-  };
 }
 
 function buildWebsiteSchema(description: string): StructuredDataSchemaObject {
@@ -167,7 +156,17 @@ function buildFaqPlaceholder(): StructuredDataSchemaObject {
 }
 
 export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
-  return STRUCTURED_DATA_TYPE_DEFINITIONS.map((item) => ({ ...item }));
+  const organization = mapOrganizationSchemaRuntimeToAdminFields();
+
+  return [
+    {
+      key: "organization",
+      name: organization.name,
+      note: organization.note,
+      status: organization.status
+    },
+    ...STATIC_STRUCTURED_DATA_TYPES.map((item) => ({ ...item }))
+  ];
 }
 
 export function getStructuredDataRuntimeStatus(): StructuredDataRuntimeStatus {
@@ -209,7 +208,7 @@ function buildStructuredDataFromPage(page: SeoPageRuntime): StructuredDataRouteR
     allowed: true,
     route: safeRoute,
     schemas: [
-      buildOrganizationSchema(),
+      getOrganizationSchema(),
       buildWebsiteSchema(description),
       buildWebPageSchema({
         description,
@@ -285,8 +284,9 @@ export function mapStructuredDataRuntimeToAdminFields(): StructuredDataRuntimeSu
   };
 }
 
-// SEO-11+ placeholders: full breadcrumb, product, and FAQ JSON-LD stay disconnected.
+// SEO-12+ placeholders: full breadcrumb, product, and FAQ JSON-LD stay disconnected.
 export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = [
+  "seo_website_schema",
   "seo_breadcrumb_schema",
   "seo_product_schema",
   "seo_faq_schema"
