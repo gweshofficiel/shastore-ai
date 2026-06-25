@@ -21,6 +21,10 @@ import {
   getWebsiteSchema,
   mapWebsiteSchemaRuntimeToAdminFields
 } from "@/src/lib/seo/seo-website-schema-runtime";
+import {
+  buildBreadcrumbSchemaFromSeoPage,
+  mapBreadcrumbSchemaRuntimeToAdminFields
+} from "@/src/lib/seo/seo-breadcrumb-schema-runtime";
 
 export type StructuredDataRuntimeStatus = "placeholder" | "ready";
 
@@ -71,12 +75,6 @@ export const SEO_STRUCTURED_DATA_DEFAULT_DESCRIPTION =
 
 const STATIC_STRUCTURED_DATA_TYPES: readonly StructuredDataTypeDefinition[] = [
   {
-    key: "breadcrumb",
-    name: "Breadcrumb schema",
-    note: "Reserved for public platform and store route breadcrumbs.",
-    status: "placeholder"
-  },
-  {
     key: "product",
     name: "Product schema placeholder",
     note: "Store product structured data belongs to Store Owner SEO and storefront runtime.",
@@ -113,15 +111,6 @@ function buildWebPageSchema(params: {
   };
 }
 
-function buildBreadcrumbPlaceholder(): StructuredDataSchemaObject {
-  return {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [],
-    name: "Breadcrumb schema placeholder"
-  };
-}
-
 function buildProductPlaceholder(): StructuredDataSchemaObject {
   return {
     "@context": "https://schema.org",
@@ -146,6 +135,7 @@ function buildFaqPlaceholder(): StructuredDataSchemaObject {
 export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
   const organization = mapOrganizationSchemaRuntimeToAdminFields();
   const website = mapWebsiteSchemaRuntimeToAdminFields();
+  const breadcrumb = mapBreadcrumbSchemaRuntimeToAdminFields();
 
   return [
     {
@@ -159,6 +149,12 @@ export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
       name: website.name,
       note: website.note,
       status: website.status
+    },
+    {
+      key: "breadcrumb",
+      name: breadcrumb.name,
+      note: breadcrumb.note,
+      status: breadcrumb.status
     },
     ...STATIC_STRUCTURED_DATA_TYPES.map((item) => ({ ...item }))
   ];
@@ -199,6 +195,8 @@ function buildStructuredDataFromPage(page: SeoPageRuntime): StructuredDataRouteR
   const description = metaDescription.metaDescription || SEO_STRUCTURED_DATA_DEFAULT_DESCRIPTION;
   const title = metaTitle.metaTitle || SEO_STRUCTURED_DATA_DEFAULT_ORGANIZATION;
 
+  const breadcrumbSchema = buildBreadcrumbSchemaFromSeoPage(page);
+
   return {
     allowed: true,
     route: safeRoute,
@@ -210,7 +208,11 @@ function buildStructuredDataFromPage(page: SeoPageRuntime): StructuredDataRouteR
         route: safeRoute,
         title
       }),
-      buildBreadcrumbPlaceholder(),
+      breadcrumbSchema ?? {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: []
+      },
       buildProductPlaceholder(),
       buildFaqPlaceholder()
     ],
@@ -279,9 +281,5 @@ export function mapStructuredDataRuntimeToAdminFields(): StructuredDataRuntimeSu
   };
 }
 
-// SEO-13+ placeholders: full breadcrumb, product, and FAQ JSON-LD stay disconnected.
-export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = [
-  "seo_breadcrumb_schema",
-  "seo_product_schema",
-  "seo_faq_schema"
-] as const;
+// SEO-14+ placeholders: product and FAQ JSON-LD stay disconnected.
+export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = ["seo_product_schema", "seo_faq_schema"] as const;
