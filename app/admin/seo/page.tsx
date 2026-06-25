@@ -95,7 +95,12 @@ export default async function AdminSEOPage() {
                 <AdminBadge tone={toneForStatus(page.metaDescriptionStatus)}>{page.metaDescriptionStatus}</AdminBadge>
               </div>
             </td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.canonicalStatus)}>{page.canonicalStatus}</AdminBadge></td>
+            <td className="px-5 py-4">
+              <p className="max-w-xs text-sm font-semibold text-slate-900">{page.canonicalPath}</p>
+              <div className="mt-2">
+                <AdminBadge tone={toneForStatus(page.canonicalStatus)}>{page.canonicalStatus}</AdminBadge>
+              </div>
+            </td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.openGraphStatus)}>{page.openGraphStatus}</AdminBadge></td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(page.languageStatus)}>{page.languageStatus}</AdminBadge></td>
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>

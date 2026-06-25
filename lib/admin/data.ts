@@ -168,6 +168,7 @@ import {
 } from "@/src/lib/seo/seo-page-runtime";
 import { mapMetaTitleRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-title-runtime";
 import { mapMetaDescriptionRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-description-runtime";
+import { mapCanonicalRuntimeToAdminFields } from "@/src/lib/seo/seo-canonical-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3774,6 +3775,7 @@ export type AdminSEOControl = {
     structuredDataStatus: "placeholder" | "ready";
   };
   pages: Array<{
+    canonicalPath: string;
     canonicalStatus: "missing" | "ready";
     languageStatus: "placeholder" | "ready";
     lastUpdated: string | null;
@@ -10389,7 +10391,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => ({
     ...mapSeoPageRuntimeToAdminSeoPage(seoPage),
     ...mapMetaTitleRuntimeToAdminFields(seoPage),
-    ...mapMetaDescriptionRuntimeToAdminFields(seoPage)
+    ...mapMetaDescriptionRuntimeToAdminFields(seoPage),
+    ...mapCanonicalRuntimeToAdminFields(seoPage)
   }));
   const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
   const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];

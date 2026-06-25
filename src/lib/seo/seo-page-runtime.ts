@@ -210,7 +210,5 @@ export function listSeoPageRuntimeCatalog() {
   );
 }
 
-// SEO-5+ placeholders: canonical runtime and AI SEO stay disconnected.
-export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = [
-  "seo_canonical_runtime"
-] as const;
+// SEO-6+ placeholders stay disconnected.
+export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_open_graph_runtime"] as const;
