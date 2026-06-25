@@ -176,6 +176,7 @@ import { mapRobotsRuntimeToAdminFields } from "@/src/lib/seo/seo-robots-runtime"
 import { mapStructuredDataRuntimeToAdminFields } from "@/src/lib/seo/seo-structured-data-runtime";
 import { mapSearchConsoleRuntimeToAdminFields } from "@/src/lib/seo/seo-search-console-runtime";
 import { mapAnalyticsRuntimeToAdminFields } from "@/src/lib/seo/seo-analytics-runtime";
+import { mapIndexingWarningRuntimeToAdminFields } from "@/src/lib/seo/seo-indexing-warning-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -10413,16 +10414,13 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
   const isProduction = process.env.NODE_ENV === "production";
+  const indexingWarningRuntime = await mapIndexingWarningRuntimeToAdminFields(isProduction);
 
   return {
     analyticsReadiness: [
       analyticsRuntime.analyticsReadinessItem,
       searchConsoleRuntime.analyticsReadinessItem,
-      {
-        name: "Indexing warnings placeholder",
-        note: isProduction ? "Production indexing warnings can attach here." : "Non-production environment should be reviewed before indexing.",
-        status: isProduction ? "placeholder" : "missing"
-      }
+      indexingWarningRuntime.analyticsReadinessItem
     ],
     futureHooks: [
       "SEO editor",

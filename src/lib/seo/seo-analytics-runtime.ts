@@ -117,7 +117,7 @@ export function mapAnalyticsRuntimeToAdminFields() {
   };
 }
 
-// SEO-18+ placeholders: OAuth, measurement ID wiring, and tracking script integration stay disconnected.
+// SEO-19+ placeholders: OAuth, measurement ID wiring, and tracking script integration stay disconnected.
 export const SEO_ANALYTICS_FUTURE_HOOKS = [
   "seo_analytics_oauth",
   "seo_analytics_tracking_integration"
