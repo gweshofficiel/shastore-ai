@@ -124,7 +124,7 @@ export function mapMetaDescriptionRuntimeToAdminFields(page: SeoPageRuntime) {
   };
 }
 
-// SEO-6+ placeholders: meta description editing and AI generation stay disconnected.
+// SEO-7+ placeholders: meta description editing and AI generation stay disconnected.
 export const SEO_META_DESCRIPTION_FUTURE_HOOKS = [
   "seo_meta_description_editor",
   "seo_meta_description_ai_generator"

@@ -17,6 +17,8 @@ export type SeoRegistryItem = {
   metaDescription: string;
   metaTitle: string;
   openGraphEnabled: boolean;
+  openGraphExplicitlyDisabled: boolean;
+  openGraphImagePath: string;
   reviewed: boolean;
   route: string;
   slug: string;
@@ -84,6 +86,15 @@ function hasOpenGraphEnabled(openGraph: Record<string, unknown>) {
   return Boolean(status && !status.toLowerCase().includes("placeholder") && status !== "missing");
 }
 
+function hasOpenGraphExplicitlyDisabled(openGraph: Record<string, unknown>) {
+  if (openGraph.enabled === false) {
+    return true;
+  }
+
+  const status = text(openGraph.status).toLowerCase();
+  return status === "disabled" || status === "off";
+}
+
 function buildFallbackSeoRegistryItem(definition: SeoRegistryDefinition): SeoRegistryItem {
   return {
     canonicalPath: definition.route,
@@ -95,6 +106,8 @@ function buildFallbackSeoRegistryItem(definition: SeoRegistryDefinition): SeoReg
     metaDescription: "",
     metaTitle: `${definition.label} - SHASTORE AI`,
     openGraphEnabled: false,
+    openGraphExplicitlyDisabled: false,
+    openGraphImagePath: "",
     reviewed: false,
     route: definition.route,
     slug: definition.slug,
@@ -119,6 +132,8 @@ function buildSeoRegistryItemFromPlatformPage(
       text(page.seoDescription, 500) || "Platform SEO metadata is missing from content storage.",
     metaTitle: text(page.seoTitle, 180) || `${page.title || definition.label} - SHASTORE AI`,
     openGraphEnabled: hasOpenGraphEnabled(openGraph),
+    openGraphExplicitlyDisabled: hasOpenGraphExplicitlyDisabled(openGraph),
+    openGraphImagePath: text(openGraph.image_url, 1000),
     reviewed: false,
     route: page.routePath || definition.route,
     slug: page.slug || definition.slug,

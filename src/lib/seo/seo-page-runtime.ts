@@ -22,6 +22,8 @@ export type SeoPageRuntime = {
   metaTitle: string;
   metaTitleStatus: SeoPageRuntimeStatus;
   openGraphEnabled: boolean;
+  openGraphExplicitlyDisabled: boolean;
+  openGraphImagePath: string;
   openGraphStatus: SeoPageRuntimeStatus;
   reviewed: boolean;
   route: string;
@@ -98,6 +100,8 @@ export function buildSeoPageRuntimeFromRegistryItem(item: SeoRegistryItem): SeoP
     metaTitle: item.metaTitle,
     metaTitleStatus,
     openGraphEnabled: item.openGraphEnabled,
+    openGraphExplicitlyDisabled: item.openGraphExplicitlyDisabled,
+    openGraphImagePath: item.openGraphImagePath,
     openGraphStatus,
     reviewed: item.reviewed,
     route: item.route,
@@ -129,6 +133,8 @@ export function buildFallbackSeoPageRuntime(params?: { route?: string; slug?: st
     metaTitle: "SHASTORE AI",
     metaTitleStatus: "ready",
     openGraphEnabled: false,
+    openGraphExplicitlyDisabled: false,
+    openGraphImagePath: "",
     openGraphStatus: "placeholder",
     reviewed: false,
     route,
@@ -210,5 +216,5 @@ export function listSeoPageRuntimeCatalog() {
   );
 }
 
-// SEO-6+ placeholders stay disconnected.
-export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_open_graph_runtime"] as const;
+// SEO-7+ placeholders stay disconnected.
+export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_language_runtime"] as const;

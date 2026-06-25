@@ -169,6 +169,7 @@ import {
 import { mapMetaTitleRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-title-runtime";
 import { mapMetaDescriptionRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-description-runtime";
 import { mapCanonicalRuntimeToAdminFields } from "@/src/lib/seo/seo-canonical-runtime";
+import { mapOpenGraphRuntimeToAdminFields } from "@/src/lib/seo/seo-open-graph-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3784,6 +3785,7 @@ export type AdminSEOControl = {
     metaTitle: string;
     metaTitleStatus: "missing" | "ready";
     openGraphStatus: "placeholder" | "ready";
+    openGraphTitle: string;
     page: string;
     slug: string;
   }>;
@@ -10392,7 +10394,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     ...mapSeoPageRuntimeToAdminSeoPage(seoPage),
     ...mapMetaTitleRuntimeToAdminFields(seoPage),
     ...mapMetaDescriptionRuntimeToAdminFields(seoPage),
-    ...mapCanonicalRuntimeToAdminFields(seoPage)
+    ...mapCanonicalRuntimeToAdminFields(seoPage),
+    ...mapOpenGraphRuntimeToAdminFields(seoPage)
   }));
   const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
   const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];

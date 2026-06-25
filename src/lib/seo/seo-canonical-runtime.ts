@@ -158,5 +158,5 @@ export function mapCanonicalRuntimeToAdminFields(page: SeoPageRuntime) {
   };
 }
 
-// SEO-6+ placeholders: canonical editing and sitemap integration stay disconnected.
+// SEO-7+ placeholders: canonical editing and sitemap integration stay disconnected.
 export const SEO_CANONICAL_FUTURE_HOOKS = ["seo_canonical_editor", "seo_canonical_sitemap_integration"] as const;
