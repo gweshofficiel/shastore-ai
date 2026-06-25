@@ -163,6 +163,10 @@ import {
   type NotificationProductionCertificationSummary
 } from "@/src/lib/notifications/notification-production-certification-runtime";
 import {
+  getSeoRegistry,
+  mapSeoRegistryItemToAdminSeoPage
+} from "@/src/lib/seo/seo-registry-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -10377,27 +10381,8 @@ export function createFallbackAdminNotificationControl(): AdminNotificationContr
 }
 
 export async function getAdminSEOControl(): Promise<AdminSEOControl> {
-  const platformWebsite = await getAdminPlatformWebsiteControl();
-  const pages: AdminSEOControl["pages"] = platformWebsite.pages.map((page) => {
-    const metaTitleStatus = page.metaTitle.trim() ? "ready" : "missing";
-    const metaDescriptionStatus = page.metaDescription.trim() ? "ready" : "missing";
-    const canonicalStatus = page.canonical.trim() ? "ready" : "missing";
-    const openGraphStatus = page.openGraph.trim() && !page.openGraph.toLowerCase().includes("placeholder")
-      ? "ready"
-      : "placeholder";
-    const languageStatus = page.languages.some((language) => language.status === "ready") ? "ready" : "placeholder";
-
-    return {
-      canonicalStatus,
-      languageStatus,
-      lastUpdated: page.lastUpdated,
-      metaDescriptionStatus,
-      metaTitleStatus,
-      openGraphStatus,
-      page: page.title,
-      slug: page.slug
-    };
-  });
+  const seoRegistry = await getSeoRegistry();
+  const pages: AdminSEOControl["pages"] = seoRegistry.map(mapSeoRegistryItemToAdminSeoPage);
   const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
   const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];
   const isProduction = process.env.NODE_ENV === "production";
