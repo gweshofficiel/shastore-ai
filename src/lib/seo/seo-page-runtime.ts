@@ -216,5 +216,5 @@ export function listSeoPageRuntimeCatalog() {
   );
 }
 
-// SEO-10+ placeholders stay disconnected.
-export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_structured_data_runtime"] as const;
+// SEO-11+ placeholders stay disconnected.
+export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_analytics_runtime"] as const;

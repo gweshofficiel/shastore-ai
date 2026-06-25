@@ -184,5 +184,5 @@ export async function mapRobotsRuntimeToAdminFields(): Promise<RobotsRuntimeSumm
   };
 }
 
-// SEO-10+ placeholders: robots.txt regeneration and environment overrides stay disconnected.
+// SEO-11+ placeholders: robots.txt regeneration and environment overrides stay disconnected.
 export const SEO_ROBOTS_FUTURE_HOOKS = ["seo_robots_regeneration", "seo_robots_environment_overrides"] as const;

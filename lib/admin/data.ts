@@ -173,6 +173,7 @@ import { mapOpenGraphRuntimeToAdminFields } from "@/src/lib/seo/seo-open-graph-r
 import { mapSeoLanguageRuntimeToAdminFields } from "@/src/lib/seo/seo-language-runtime";
 import { mapSitemapRuntimeToAdminFields } from "@/src/lib/seo/seo-sitemap-runtime";
 import { mapRobotsRuntimeToAdminFields } from "@/src/lib/seo/seo-robots-runtime";
+import { mapStructuredDataRuntimeToAdminFields } from "@/src/lib/seo/seo-structured-data-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -10406,34 +10407,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   }));
   const sitemapRuntime = await mapSitemapRuntimeToAdminFields();
   const robotsRuntime = await mapRobotsRuntimeToAdminFields();
+  const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const isProduction = process.env.NODE_ENV === "production";
-  const structuredData: AdminSEOControl["structuredData"] = [
-    {
-      name: "Organization schema",
-      note: "Platform organization schema is represented by root metadata and reserved for JSON-LD hardening.",
-      status: "ready"
-    },
-    {
-      name: "Website schema",
-      note: "Root platform website metadata is ready; explicit Website JSON-LD remains a future enhancement.",
-      status: "ready"
-    },
-    {
-      name: "Breadcrumb schema",
-      note: "Reserved for public platform and store route breadcrumbs.",
-      status: "placeholder"
-    },
-    {
-      name: "Product schema placeholder",
-      note: "Store product structured data belongs to Store Owner SEO and storefront runtime.",
-      status: "placeholder"
-    },
-    {
-      name: "FAQ schema placeholder",
-      note: "Reserved for platform FAQ and store FAQ pages without duplicating Store Owner SEO.",
-      status: "placeholder"
-    }
-  ];
 
   return {
     analyticsReadiness: [
@@ -10468,12 +10443,12 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       missingMetaTitles: pages.filter((page) => page.metaTitleStatus === "missing").length,
       robotsStatus: robotsRuntime.status,
       sitemapStatus: sitemapRuntime.status,
-      structuredDataStatus: structuredData.every((item) => item.status === "ready") ? "ready" : "placeholder"
+      structuredDataStatus: structuredDataRuntime.structuredDataStatus,
     },
     pages,
     robots: robotsRuntime,
     sitemap: sitemapRuntime,
-    structuredData
+    structuredData: structuredDataRuntime.structuredData
   };
 }
 
