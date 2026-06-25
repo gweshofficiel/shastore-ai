@@ -236,5 +236,5 @@ export async function mapSitemapRuntimeToAdminFields(): Promise<SitemapRuntimeSu
   };
 }
 
-// SEO-9+ placeholders: sitemap regeneration and store route merging stay disconnected.
+// SEO-10+ placeholders: sitemap regeneration and store route merging stay disconnected.
 export const SEO_SITEMAP_FUTURE_HOOKS = ["seo_sitemap_regeneration", "seo_sitemap_store_merge"] as const;

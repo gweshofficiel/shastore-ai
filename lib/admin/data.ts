@@ -172,6 +172,7 @@ import { mapCanonicalRuntimeToAdminFields } from "@/src/lib/seo/seo-canonical-ru
 import { mapOpenGraphRuntimeToAdminFields } from "@/src/lib/seo/seo-open-graph-runtime";
 import { mapSeoLanguageRuntimeToAdminFields } from "@/src/lib/seo/seo-language-runtime";
 import { mapSitemapRuntimeToAdminFields } from "@/src/lib/seo/seo-sitemap-runtime";
+import { mapRobotsRuntimeToAdminFields } from "@/src/lib/seo/seo-robots-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3796,6 +3797,7 @@ export type AdminSEOControl = {
     allowedPaths: string[];
     blockedPaths: string[];
     environmentWarning: string;
+    platformRouteCount: number;
     status: "ready" | "warning";
   };
   sitemap: {
@@ -10403,9 +10405,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     ...mapSeoLanguageRuntimeToAdminFields(seoPage)
   }));
   const sitemapRuntime = await mapSitemapRuntimeToAdminFields();
-  const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];
+  const robotsRuntime = await mapRobotsRuntimeToAdminFields();
   const isProduction = process.env.NODE_ENV === "production";
-  const robotsStatus = blockedPaths.includes("/admin/") && blockedPaths.includes("/api/") ? "ready" : "warning";
   const structuredData: AdminSEOControl["structuredData"] = [
     {
       name: "Organization schema",
@@ -10465,19 +10466,12 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       languageReady: pages.filter((page) => page.languageStatus === "ready").length,
       missingMetaDescriptions: pages.filter((page) => page.metaDescriptionStatus === "missing").length,
       missingMetaTitles: pages.filter((page) => page.metaTitleStatus === "missing").length,
-      robotsStatus,
+      robotsStatus: robotsRuntime.status,
       sitemapStatus: sitemapRuntime.status,
       structuredDataStatus: structuredData.every((item) => item.status === "ready") ? "ready" : "placeholder"
     },
     pages,
-    robots: {
-      allowedPaths: ["/", "/l/", "/store/"],
-      blockedPaths,
-      environmentWarning: isProduction
-        ? "Production robots allow public routes and block admin/dashboard/private routes."
-        : "Non-production environment: confirm deployment URL and indexing before launch.",
-      status: robotsStatus
-    },
+    robots: robotsRuntime,
     sitemap: sitemapRuntime,
     structuredData
   };
