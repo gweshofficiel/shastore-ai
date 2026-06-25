@@ -114,7 +114,7 @@ export function mapSearchConsoleRuntimeToAdminFields() {
   };
 }
 
-// SEO-17+ placeholders: OAuth, token storage, and Google API integration stay disconnected.
+// SEO-18+ placeholders: OAuth, token storage, and Google API integration stay disconnected.
 export const SEO_SEARCH_CONSOLE_FUTURE_HOOKS = [
   "seo_search_console_oauth",
   "seo_search_console_api_integration"

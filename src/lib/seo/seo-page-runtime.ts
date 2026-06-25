@@ -216,5 +216,5 @@ export function listSeoPageRuntimeCatalog() {
   );
 }
 
-// SEO-17+ placeholders stay disconnected.
+// SEO-18+ placeholders stay disconnected.
 export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = ["seo_indexing_warnings_runtime"] as const;
