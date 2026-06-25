@@ -210,7 +210,7 @@ export function listSeoRegistryCatalog() {
   }));
 }
 
-// SEO-2+ placeholders: editor, AI generator, and review persistence stay disconnected.
+// SEO-3+ placeholders: meta editing, AI generator, and review persistence stay disconnected.
 export const SEO_REGISTRY_FUTURE_HOOKS = [
   "seo_editor",
   "ai_seo_generator",
