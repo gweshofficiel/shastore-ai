@@ -17,6 +17,10 @@ import {
   getOrganizationSchema,
   mapOrganizationSchemaRuntimeToAdminFields
 } from "@/src/lib/seo/seo-organization-schema-runtime";
+import {
+  getWebsiteSchema,
+  mapWebsiteSchemaRuntimeToAdminFields
+} from "@/src/lib/seo/seo-website-schema-runtime";
 
 export type StructuredDataRuntimeStatus = "placeholder" | "ready";
 
@@ -67,12 +71,6 @@ export const SEO_STRUCTURED_DATA_DEFAULT_DESCRIPTION =
 
 const STATIC_STRUCTURED_DATA_TYPES: readonly StructuredDataTypeDefinition[] = [
   {
-    key: "website",
-    name: "Website schema",
-    note: "Root platform website metadata is ready; explicit Website JSON-LD remains a future enhancement.",
-    status: "ready"
-  },
-  {
     key: "breadcrumb",
     name: "Breadcrumb schema",
     note: "Reserved for public platform and store route breadcrumbs.",
@@ -99,16 +97,6 @@ function siteBaseUrl() {
 function absoluteUrl(path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${siteBaseUrl()}${normalizedPath}`;
-}
-
-function buildWebsiteSchema(description: string): StructuredDataSchemaObject {
-  return {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    description,
-    name: SEO_STRUCTURED_DATA_DEFAULT_ORGANIZATION,
-    url: siteBaseUrl()
-  };
 }
 
 function buildWebPageSchema(params: {
@@ -157,6 +145,7 @@ function buildFaqPlaceholder(): StructuredDataSchemaObject {
 
 export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
   const organization = mapOrganizationSchemaRuntimeToAdminFields();
+  const website = mapWebsiteSchemaRuntimeToAdminFields();
 
   return [
     {
@@ -164,6 +153,12 @@ export function listStructuredDataTypes(): StructuredDataTypeDefinition[] {
       name: organization.name,
       note: organization.note,
       status: organization.status
+    },
+    {
+      key: "website",
+      name: website.name,
+      note: website.note,
+      status: website.status
     },
     ...STATIC_STRUCTURED_DATA_TYPES.map((item) => ({ ...item }))
   ];
@@ -209,7 +204,7 @@ function buildStructuredDataFromPage(page: SeoPageRuntime): StructuredDataRouteR
     route: safeRoute,
     schemas: [
       getOrganizationSchema(),
-      buildWebsiteSchema(description),
+      getWebsiteSchema(description),
       buildWebPageSchema({
         description,
         route: safeRoute,
@@ -284,9 +279,8 @@ export function mapStructuredDataRuntimeToAdminFields(): StructuredDataRuntimeSu
   };
 }
 
-// SEO-12+ placeholders: full breadcrumb, product, and FAQ JSON-LD stay disconnected.
+// SEO-13+ placeholders: full breadcrumb, product, and FAQ JSON-LD stay disconnected.
 export const SEO_STRUCTURED_DATA_FUTURE_HOOKS = [
-  "seo_website_schema",
   "seo_breadcrumb_schema",
   "seo_product_schema",
   "seo_faq_schema"

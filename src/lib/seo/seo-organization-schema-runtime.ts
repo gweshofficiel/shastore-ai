@@ -197,7 +197,7 @@ export function mapOrganizationSchemaRuntimeToAdminFields() {
   };
 }
 
-// SEO-12+ placeholders: organization editor and dynamic sameAs links stay disconnected.
+// SEO-13+ placeholders: organization editor and dynamic sameAs links stay disconnected.
 export const SEO_ORGANIZATION_SCHEMA_FUTURE_HOOKS = [
   "seo_organization_schema_editor",
   "seo_organization_same_as_links"
