@@ -210,8 +210,7 @@ export function listSeoPageRuntimeCatalog() {
   );
 }
 
-// SEO-4+ placeholders: meta description editing, canonical runtime, and AI SEO stay disconnected.
+// SEO-5+ placeholders: canonical runtime and AI SEO stay disconnected.
 export const SEO_PAGE_RUNTIME_FUTURE_HOOKS = [
-  "seo_meta_description_editor",
   "seo_canonical_runtime"
 ] as const;

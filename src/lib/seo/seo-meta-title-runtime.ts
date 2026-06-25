@@ -121,5 +121,5 @@ export function mapMetaTitleRuntimeToAdminFields(page: SeoPageRuntime) {
   };
 }
 
-// SEO-4+ placeholders: meta title editing and AI generation stay disconnected.
+// SEO-5+ placeholders: meta title editing and AI generation stay disconnected.
 export const SEO_META_TITLE_FUTURE_HOOKS = ["seo_meta_title_editor", "seo_meta_title_ai_generator"] as const;
