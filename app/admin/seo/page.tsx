@@ -14,6 +14,22 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForReportStatus(status: string) {
+  if (status === "report_ready") {
+    return "green" as const;
+  }
+
+  if (status === "incomplete") {
+    return "red" as const;
+  }
+
+  if (status === "needs_review") {
+    return "amber" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForAuditStatus(status: string) {
   if (status === "audit_ready") {
     return "green" as const;
@@ -242,6 +258,27 @@ export default async function AdminSEOPage() {
                     type="button"
                   >
                     Export placeholder
+                  </button>
+                </div>
+              ) : hook === control.seoReport.exportHookLabel ? (
+                <div className="space-y-2">
+                  <AdminBadge tone={toneForReportStatus(control.seoReport.runtimeStatus)}>
+                    {control.seoReport.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.seoReport.summary}</p>
+                  {control.seoReport.recommendations.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
+                      {control.seoReport.recommendations.map((recommendation) => (
+                        <li key={recommendation}>{recommendation}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <button
+                    className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                    disabled
+                    type="button"
+                  >
+                    Download placeholder
                   </button>
                 </div>
               ) : (

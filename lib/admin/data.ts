@@ -178,6 +178,7 @@ import { mapSearchConsoleRuntimeToAdminFields } from "@/src/lib/seo/seo-search-c
 import { mapAnalyticsRuntimeToAdminFields } from "@/src/lib/seo/seo-analytics-runtime";
 import { mapIndexingWarningRuntimeToAdminFields } from "@/src/lib/seo/seo-indexing-warning-runtime";
 import { mapSeoAuditRuntimeToAdminFields } from "@/src/lib/seo/seo-audit-runtime";
+import { mapSeoReportRuntimeToAdminFields } from "@/src/lib/seo/seo-report-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3778,6 +3779,14 @@ export type AdminSEOControl = {
     exportPlaceholderStatus: "placeholder";
     readOnly: true;
     runtimeStatus: "audit_ready" | "incomplete" | "needs_review" | "placeholder";
+    summary: string;
+  };
+  seoReport: {
+    exportHookLabel: string;
+    exportPlaceholderStatus: "placeholder";
+    readOnly: true;
+    recommendations: string[];
+    runtimeStatus: "incomplete" | "needs_review" | "placeholder" | "report_ready";
     summary: string;
   };
   overview: {
@@ -10424,6 +10433,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const isProduction = process.env.NODE_ENV === "production";
   const indexingWarningRuntime = await mapIndexingWarningRuntimeToAdminFields(isProduction);
   const seoAuditRuntime = await mapSeoAuditRuntimeToAdminFields();
+  const seoReportRuntime = await mapSeoReportRuntimeToAdminFields();
 
   return {
     analyticsReadiness: [
@@ -10436,7 +10446,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       "AI SEO generator",
       "Sitemap regeneration",
       "Search Console integration",
-      seoAuditRuntime.exportHookLabel
+      seoAuditRuntime.exportHookLabel,
+      seoReportRuntime.exportHookLabel
     ],
     seoAudit: {
       exportHookLabel: seoAuditRuntime.exportHookLabel,
@@ -10444,6 +10455,14 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       readOnly: true as const,
       runtimeStatus: seoAuditRuntime.runtimeStatus,
       summary: seoAuditRuntime.summary
+    },
+    seoReport: {
+      exportHookLabel: seoReportRuntime.exportHookLabel,
+      exportPlaceholderStatus: seoReportRuntime.exportPlaceholderStatus,
+      readOnly: true as const,
+      recommendations: seoReportRuntime.recommendations,
+      runtimeStatus: seoReportRuntime.runtimeStatus,
+      summary: seoReportRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
