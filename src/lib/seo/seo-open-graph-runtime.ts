@@ -190,5 +190,5 @@ export function mapOpenGraphRuntimeToAdminFields(page: SeoPageRuntime) {
   };
 }
 
-// SEO-7+ placeholders: open graph editing and AI generation stay disconnected.
+// SEO-8+ placeholders: open graph editing and AI generation stay disconnected.
 export const SEO_OPEN_GRAPH_FUTURE_HOOKS = ["seo_open_graph_editor", "seo_open_graph_ai_generator"] as const;
