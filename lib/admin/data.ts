@@ -171,6 +171,7 @@ import { mapMetaDescriptionRuntimeToAdminFields } from "@/src/lib/seo/seo-meta-d
 import { mapCanonicalRuntimeToAdminFields } from "@/src/lib/seo/seo-canonical-runtime";
 import { mapOpenGraphRuntimeToAdminFields } from "@/src/lib/seo/seo-open-graph-runtime";
 import { mapSeoLanguageRuntimeToAdminFields } from "@/src/lib/seo/seo-language-runtime";
+import { mapSitemapRuntimeToAdminFields } from "@/src/lib/seo/seo-sitemap-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3798,6 +3799,7 @@ export type AdminSEOControl = {
     status: "ready" | "warning";
   };
   sitemap: {
+    entryCount: number;
     excludedRoutes: string[];
     includedRoutes: string[];
     lastGenerated: string;
@@ -10400,10 +10402,9 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     ...mapOpenGraphRuntimeToAdminFields(seoPage),
     ...mapSeoLanguageRuntimeToAdminFields(seoPage)
   }));
-  const includedRoutes = ["/", "/pricing", "/reseller", "/l/[slug]", "/store/[slug]", "/store/[slug]/product/[productId]", "/store/[slug]/category/[categorySlug]", "/store/[slug]/pages/[pageSlug]"];
+  const sitemapRuntime = await mapSitemapRuntimeToAdminFields();
   const blockedPaths = ["/admin/", "/api/", "/dashboard/", "/store/*/account", "/store/*/cart", "/store/*/compare", "/store/*/order/", "/store/*/receipt/", "/store/*/track", "/store/*/wishlist"];
   const isProduction = process.env.NODE_ENV === "production";
-  const sitemapStatus = includedRoutes.length ? "ready" : "warning";
   const robotsStatus = blockedPaths.includes("/admin/") && blockedPaths.includes("/api/") ? "ready" : "warning";
   const structuredData: AdminSEOControl["structuredData"] = [
     {
@@ -10465,7 +10466,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       missingMetaDescriptions: pages.filter((page) => page.metaDescriptionStatus === "missing").length,
       missingMetaTitles: pages.filter((page) => page.metaTitleStatus === "missing").length,
       robotsStatus,
-      sitemapStatus,
+      sitemapStatus: sitemapRuntime.status,
       structuredDataStatus: structuredData.every((item) => item.status === "ready") ? "ready" : "placeholder"
     },
     pages,
@@ -10477,12 +10478,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
         : "Non-production environment: confirm deployment URL and indexing before launch.",
       status: robotsStatus
     },
-    sitemap: {
-      excludedRoutes: ["/admin/*", "/api/*", "/dashboard/*", "/store/*/account", "/store/*/cart", "/store/*/checkout", "/store/*/order/*"],
-      includedRoutes,
-      lastGenerated: "Generated dynamically by app/sitemap.ts",
-      status: sitemapStatus
-    },
+    sitemap: sitemapRuntime,
     structuredData
   };
 }

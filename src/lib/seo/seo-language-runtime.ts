@@ -170,5 +170,5 @@ export function mapSeoLanguageRuntimeToAdminFields(page: SeoPageRuntime) {
   };
 }
 
-// SEO-8+ placeholders: language editor and hreflang runtime stay disconnected.
+// SEO-9+ placeholders: language editor and hreflang runtime stay disconnected.
 export const SEO_LANGUAGE_FUTURE_HOOKS = ["seo_language_editor", "seo_hreflang_runtime"] as const;
