@@ -88,6 +88,8 @@ export type ReportsRegistryRuntimeContext = {
   storeReportNeedsAttention?: boolean;
   userReportLastGenerated?: string;
   userReportNeedsAttention?: boolean;
+  subscriptionReportLastGenerated?: string;
+  subscriptionReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -569,6 +571,16 @@ function applyRuntimeContext(
         "User Reports runtime (profiles, account_profiles, account_roles, workspace_members, internal_team_members, reseller_profiles, stores, commerce_customers).",
       lastGeneratedState: context.userReportLastGenerated ?? definition.lastGeneratedState,
       status: context.userReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-5-subscription-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Subscription Reports runtime (user_subscriptions, invoices, billing_events).",
+      lastGeneratedState: context.subscriptionReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.subscriptionReportNeedsAttention ? "review" : definition.status
     };
   }
 

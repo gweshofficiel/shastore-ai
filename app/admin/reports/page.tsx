@@ -401,6 +401,129 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-5 Subscription Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.subscriptionReports.status)}>
+            {control.subscriptionReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.subscriptionReports.rangeLabel}</span>
+        </div>
+
+        {control.subscriptionReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.subscriptionReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.subscriptionReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No subscription source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total subscriptions", value: control.subscriptionReports.metrics.totalSubscriptions },
+            { label: "Active subscriptions", value: control.subscriptionReports.metrics.activeSubscriptions },
+            { label: "Free subscriptions", value: control.subscriptionReports.metrics.freeSubscriptions },
+            { label: "Paid subscriptions", value: control.subscriptionReports.metrics.paidSubscriptions },
+            { label: "Trial subscriptions", value: control.subscriptionReports.metrics.trialSubscriptions },
+            {
+              label: "Newly activated",
+              value: control.subscriptionReports.metrics.newlyActivatedSubscriptions
+            },
+            {
+              label: "Cancelled/expired",
+              value: control.subscriptionReports.metrics.cancelledExpiredSubscriptions
+            }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.subscriptionReports.summary}
+          {control.subscriptionReports.lastUpdatedAt
+            ? ` · Last subscription activity ${control.subscriptionReports.lastUpdatedAt}`
+            : " · No subscription activity timestamps recorded"}
+        </p>
+
+        {control.subscriptionReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.subscriptionReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Plan", "Count", "Availability"]}>
+          {control.subscriptionReports.subscriptionsByPlan.length ? (
+            control.subscriptionReports.subscriptionsByPlan.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No subscription plan breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Status", "Count", "Availability"]}>
+          {control.subscriptionReports.subscriptionsByStatus.length ? (
+            control.subscriptionReports.subscriptionsByStatus.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No subscription status breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Provider", "Count", "Availability"]}>
+          {control.subscriptionReports.subscriptionsByProvider.length ? (
+            control.subscriptionReports.subscriptionsByProvider.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No subscription provider breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

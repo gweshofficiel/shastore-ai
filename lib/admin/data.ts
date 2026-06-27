@@ -192,6 +192,7 @@ import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/report
 import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue-reports-runtime";
 import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-reports-runtime";
 import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-reports-runtime";
+import { mapSubscriptionReportsRuntimeToAdminFields } from "@/src/lib/reports/subscription-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4095,6 +4096,43 @@ export type AdminReportingControl = {
       dataAvailability: "available" | "planned";
       label: string;
     }>;
+    warnings: string[];
+  };
+  subscriptionReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      activeSubscriptions: number;
+      cancelledExpiredSubscriptions: number;
+      freeSubscriptions: number;
+      newlyActivatedSubscriptions: number;
+      paidSubscriptions: number;
+      totalSubscriptions: number;
+      trialSubscriptions: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    subscriptionsByPlan: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    subscriptionsByProvider: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    subscriptionsByStatus: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    summary: string;
     warnings: string[];
   };
   reports: Array<{
@@ -10855,7 +10893,8 @@ export async function getAdminReportingControl(
     platformHealth,
     revenueReportsRuntime,
     storeReportsRuntime,
-    userReportsRuntime
+    userReportsRuntime,
+    subscriptionReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10867,7 +10906,8 @@ export async function getAdminReportingControl(
     getAdminPlatformHealth(),
     mapRevenueReportsRuntimeToAdminFields(selectedRange),
     mapStoreReportsRuntimeToAdminFields(selectedRange),
-    mapUserReportsRuntimeToAdminFields(selectedRange)
+    mapUserReportsRuntimeToAdminFields(selectedRange),
+    mapSubscriptionReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10881,6 +10921,8 @@ export async function getAdminReportingControl(
     storeReportNeedsAttention: storeReportsRuntime.status === "needs_attention",
     userReportLastGenerated: userReportsRuntime.lastGeneratedState,
     userReportNeedsAttention: userReportsRuntime.status === "needs_attention",
+    subscriptionReportLastGenerated: subscriptionReportsRuntime.lastGeneratedState,
+    subscriptionReportNeedsAttention: subscriptionReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -10964,6 +11006,23 @@ export async function getAdminReportingControl(
       summary: userReportsRuntime.summary,
       usersByRole: userReportsRuntime.usersByRole,
       warnings: userReportsRuntime.warnings
+    },
+    subscriptionReports: {
+      errorMessage: subscriptionReportsRuntime.errorMessage,
+      generatedAt: subscriptionReportsRuntime.generatedAt,
+      lastGeneratedState: subscriptionReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: subscriptionReportsRuntime.lastUpdatedAt,
+      loadingState: subscriptionReportsRuntime.loadingState,
+      metrics: subscriptionReportsRuntime.metrics,
+      rangeLabel: subscriptionReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: subscriptionReportsRuntime.selectedRange,
+      status: subscriptionReportsRuntime.status,
+      subscriptionsByPlan: subscriptionReportsRuntime.subscriptionsByPlan,
+      subscriptionsByProvider: subscriptionReportsRuntime.subscriptionsByProvider,
+      subscriptionsByStatus: subscriptionReportsRuntime.subscriptionsByStatus,
+      summary: subscriptionReportsRuntime.summary,
+      warnings: subscriptionReportsRuntime.warnings
     },
     reports,
     selectedRange,
