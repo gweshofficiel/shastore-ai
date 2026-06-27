@@ -204,6 +204,11 @@ import { mapSecurityReportsRuntimeToAdminFields } from "@/src/lib/reports/securi
 import { mapOperationsReportsRuntimeToAdminFields } from "@/src/lib/reports/operations-reports-runtime";
 import { mapReportViewerRuntimeToAdminFields } from "@/src/lib/reports/report-viewer-runtime";
 import {
+  buildReportStatusRuntimeInput,
+  mapReportStatusRuntimeToAdminFields,
+  withReportRuntimeStatusFields
+} from "@/src/lib/reports/report-status-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3971,6 +3976,20 @@ export type AdminSEOControl = {
   }>;
 };
 
+type AdminReportRuntimeStatusFields = {
+  runtimeStatus:
+    | "active"
+    | "available"
+    | "certified"
+    | "degraded"
+    | "empty"
+    | "error"
+    | "inactive"
+    | "partial"
+    | "planned";
+  runtimeStatusDescription: string;
+};
+
 export type AdminReportingControl = {
   categories: Array<{
     description: string;
@@ -4047,7 +4066,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   storeReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4079,7 +4098,7 @@ export type AdminReportingControl = {
     }>;
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   userReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4107,7 +4126,7 @@ export type AdminReportingControl = {
       label: string;
     }>;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   subscriptionReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4144,7 +4163,7 @@ export type AdminReportingControl = {
     }>;
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   paymentReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4193,7 +4212,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   aiReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4237,7 +4256,7 @@ export type AdminReportingControl = {
       label: string;
     }>;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   domainEmailReports: {
     domainsByExtension: Array<{
       count: number;
@@ -4290,7 +4309,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   marketplaceReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4331,7 +4350,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   securityReports: {
     errorMessage: string | null;
     eventsByCategory: Array<{
@@ -4373,7 +4392,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   operationsReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4412,7 +4431,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  };
+  } & AdminReportRuntimeStatusFields;
   reportViewer: {
     catalog: Array<{
       category: string;
@@ -4440,6 +4459,17 @@ export type AdminReportingControl = {
       title: string;
       viewerState: "available" | "empty" | "error" | "not_found" | "planned";
       visibility: string;
+      runtimeStatus:
+        | "active"
+        | "available"
+        | "certified"
+        | "degraded"
+        | "empty"
+        | "error"
+        | "inactive"
+        | "partial"
+        | "planned";
+      runtimeStatusDescription: string;
     }>;
     errorMessage: string | null;
     generatedAt: string;
@@ -4472,11 +4502,76 @@ export type AdminReportingControl = {
       title: string;
       viewerState: "available" | "empty" | "error" | "not_found" | "planned";
       visibility: string;
+      runtimeStatus:
+        | "active"
+        | "available"
+        | "certified"
+        | "degraded"
+        | "empty"
+        | "error"
+        | "inactive"
+        | "partial"
+        | "planned";
+      runtimeStatusDescription: string;
     } | null;
     selectedReportKey: string | null;
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     viewableReportCount: number;
+    warnings: string[];
+  };
+  reportStatus: {
+    countsByStatus: Record<
+      "active" | "available" | "certified" | "degraded" | "empty" | "error" | "inactive" | "partial" | "planned",
+      number
+    >;
+    entries: Array<{
+      badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+      description: string;
+      readOnly: true;
+      registryStatus: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeStatus:
+        | "active"
+        | "available"
+        | "certified"
+        | "degraded"
+        | "empty"
+        | "error"
+        | "inactive"
+        | "partial"
+        | "planned";
+      title: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    readOnly: true;
+    status: "needs_attention" | "ready" | "unavailable";
+    statusByReportKey: Record<
+      string,
+      {
+        badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+        description: string;
+        readOnly: true;
+        registryStatus: string;
+        reportKey: string;
+        roadmapPhase: string;
+        runtimeStatus:
+          | "active"
+          | "available"
+          | "certified"
+          | "degraded"
+          | "empty"
+          | "error"
+          | "inactive"
+          | "partial"
+          | "planned";
+        title: string;
+      }
+    >;
+    summary: string;
     warnings: string[];
   };
   reports: Array<{
@@ -4504,6 +4599,17 @@ export type AdminReportingControl = {
     reportId: string;
     reportKey: string;
     roadmapPhase: string;
+    runtimeStatus:
+      | "active"
+      | "available"
+      | "certified"
+      | "degraded"
+      | "empty"
+      | "error"
+      | "inactive"
+      | "partial"
+      | "planned";
+    runtimeStatusDescription: string;
     safeActionsAvailability: "available" | "placeholder" | "unavailable";
     safeActionsLabel: string;
     status: "inactive" | "planned" | "placeholder" | "ready" | "review";
@@ -11389,13 +11495,97 @@ export async function getAdminReportingControl(
       summary: userReportsRuntime.summary
     }
   });
+  const reportStatusRuntime = await mapReportStatusRuntimeToAdminFields(
+    buildReportStatusRuntimeInput({
+      aiReports: {
+        errorMessage: aiReportsRuntime.errorMessage,
+        loadingState: aiReportsRuntime.loadingState,
+        status: aiReportsRuntime.status,
+        warnings: aiReportsRuntime.warnings
+      },
+      domainEmailReports: {
+        errorMessage: domainEmailReportsRuntime.errorMessage,
+        loadingState: domainEmailReportsRuntime.loadingState,
+        status: domainEmailReportsRuntime.status,
+        warnings: domainEmailReportsRuntime.warnings
+      },
+      marketplaceReports: {
+        errorMessage: marketplaceReportsRuntime.errorMessage,
+        loadingState: marketplaceReportsRuntime.loadingState,
+        status: marketplaceReportsRuntime.status,
+        warnings: marketplaceReportsRuntime.warnings
+      },
+      operationsReports: {
+        errorMessage: operationsReportsRuntime.errorMessage,
+        loadingState: operationsReportsRuntime.loadingState,
+        status: operationsReportsRuntime.status,
+        warnings: operationsReportsRuntime.warnings
+      },
+      paymentReports: {
+        errorMessage: paymentReportsRuntime.errorMessage,
+        loadingState: paymentReportsRuntime.loadingState,
+        status: paymentReportsRuntime.status,
+        warnings: paymentReportsRuntime.warnings
+      },
+      registry: preliminaryRegistryRuntime.registry,
+      registryReports: preliminaryRegistryRuntime.reports,
+      reportViewer: {
+        catalog: reportViewerRuntime.catalog.map((entry) => ({
+          reportKey: entry.reportKey,
+          title: entry.title,
+          viewerState: entry.viewerState
+        })),
+        status: reportViewerRuntime.status
+      },
+      revenueReports: {
+        errorMessage: revenueReportsRuntime.errorMessage,
+        loadingState: revenueReportsRuntime.loadingState,
+        status: revenueReportsRuntime.status,
+        warnings: revenueReportsRuntime.warnings
+      },
+      securityReports: {
+        errorMessage: securityReportsRuntime.errorMessage,
+        loadingState: securityReportsRuntime.loadingState,
+        status: securityReportsRuntime.status,
+        warnings: securityReportsRuntime.warnings
+      },
+      storeReports: {
+        errorMessage: storeReportsRuntime.errorMessage,
+        loadingState: storeReportsRuntime.loadingState,
+        status: storeReportsRuntime.status,
+        warnings: storeReportsRuntime.warnings
+      },
+      subscriptionReports: {
+        errorMessage: subscriptionReportsRuntime.errorMessage,
+        loadingState: subscriptionReportsRuntime.loadingState,
+        status: subscriptionReportsRuntime.status,
+        warnings: subscriptionReportsRuntime.warnings
+      },
+      userReports: {
+        errorMessage: userReportsRuntime.errorMessage,
+        loadingState: userReportsRuntime.loadingState,
+        status: userReportsRuntime.status,
+        warnings: userReportsRuntime.warnings
+      }
+    })
+  );
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
+    reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
+    reportStatusNeedsAttention: reportStatusRuntime.status === "needs_attention",
     reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
     reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention"
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
-  const reports: AdminReportingControl["reports"] = registryRuntime.reports;
+  const reports: AdminReportingControl["reports"] = registryRuntime.reports.map((report) => {
+    const statusEntry = reportStatusRuntime.statusByReportKey[report.reportKey];
+
+    return {
+      ...report,
+      runtimeStatus: statusEntry?.runtimeStatus ?? "planned",
+      runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied."
+    };
+  });
   const viewQuery = selectedReportKey ? `&view=${encodeURIComponent(selectedReportKey)}` : "";
   const dateFilters: AdminReportingControl["dateFilters"] = [
     { active: selectedRange === "today", href: `/admin/reports?range=today${viewQuery}`, label: "Today", value: "today" },
@@ -11430,7 +11620,8 @@ export async function getAdminReportingControl(
       summary: registryRuntime.registry.summary,
       totalEntries: registryRuntime.registry.totalEntries
     },
-    revenueReports: {
+    revenueReports: withReportRuntimeStatusFields(
+      {
       currencyBreakdown: revenueReportsRuntime.currencyBreakdown,
       errorMessage: revenueReportsRuntime.errorMessage,
       generatedAt: revenueReportsRuntime.generatedAt,
@@ -11445,8 +11636,12 @@ export async function getAdminReportingControl(
       status: revenueReportsRuntime.status,
       summary: revenueReportsRuntime.summary,
       warnings: revenueReportsRuntime.warnings
-    },
-    storeReports: {
+      },
+      "rp-2-revenue-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    storeReports: withReportRuntimeStatusFields(
+      {
       errorMessage: storeReportsRuntime.errorMessage,
       generatedAt: storeReportsRuntime.generatedAt,
       lastGeneratedState: storeReportsRuntime.lastGeneratedState,
@@ -11461,8 +11656,12 @@ export async function getAdminReportingControl(
       storesByStatus: storeReportsRuntime.storesByStatus,
       summary: storeReportsRuntime.summary,
       warnings: storeReportsRuntime.warnings
-    },
-    userReports: {
+      },
+      "rp-3-store-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    userReports: withReportRuntimeStatusFields(
+      {
       errorMessage: userReportsRuntime.errorMessage,
       generatedAt: userReportsRuntime.generatedAt,
       lastGeneratedState: userReportsRuntime.lastGeneratedState,
@@ -11476,8 +11675,12 @@ export async function getAdminReportingControl(
       summary: userReportsRuntime.summary,
       usersByRole: userReportsRuntime.usersByRole,
       warnings: userReportsRuntime.warnings
-    },
-    subscriptionReports: {
+      },
+      "rp-4-user-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    subscriptionReports: withReportRuntimeStatusFields(
+      {
       errorMessage: subscriptionReportsRuntime.errorMessage,
       generatedAt: subscriptionReportsRuntime.generatedAt,
       lastGeneratedState: subscriptionReportsRuntime.lastGeneratedState,
@@ -11493,8 +11696,12 @@ export async function getAdminReportingControl(
       subscriptionsByStatus: subscriptionReportsRuntime.subscriptionsByStatus,
       summary: subscriptionReportsRuntime.summary,
       warnings: subscriptionReportsRuntime.warnings
-    },
-    paymentReports: {
+      },
+      "rp-5-subscription-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    paymentReports: withReportRuntimeStatusFields(
+      {
       errorMessage: paymentReportsRuntime.errorMessage,
       generatedAt: paymentReportsRuntime.generatedAt,
       lastGeneratedState: paymentReportsRuntime.lastGeneratedState,
@@ -11511,8 +11718,12 @@ export async function getAdminReportingControl(
       status: paymentReportsRuntime.status,
       summary: paymentReportsRuntime.summary,
       warnings: paymentReportsRuntime.warnings
-    },
-    aiReports: {
+      },
+      "rp-6-payment-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    aiReports: withReportRuntimeStatusFields(
+      {
       errorMessage: aiReportsRuntime.errorMessage,
       generatedAt: aiReportsRuntime.generatedAt,
       lastGeneratedState: aiReportsRuntime.lastGeneratedState,
@@ -11529,8 +11740,12 @@ export async function getAdminReportingControl(
       usageByUserRole: aiReportsRuntime.usageByUserRole,
       usageByWorkspaceOrStore: aiReportsRuntime.usageByWorkspaceOrStore,
       warnings: aiReportsRuntime.warnings
-    },
-    domainEmailReports: {
+      },
+      "rp-7-ai-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    domainEmailReports: withReportRuntimeStatusFields(
+      {
       domainsByExtension: domainEmailReportsRuntime.domainsByExtension,
       domainsByProvider: domainEmailReportsRuntime.domainsByProvider,
       domainsByStatus: domainEmailReportsRuntime.domainsByStatus,
@@ -11548,8 +11763,12 @@ export async function getAdminReportingControl(
       status: domainEmailReportsRuntime.status,
       summary: domainEmailReportsRuntime.summary,
       warnings: domainEmailReportsRuntime.warnings
-    },
-    marketplaceReports: {
+      },
+      "rp-8-domain-email-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    marketplaceReports: withReportRuntimeStatusFields(
+      {
       errorMessage: marketplaceReportsRuntime.errorMessage,
       generatedAt: marketplaceReportsRuntime.generatedAt,
       itemsByCategory: marketplaceReportsRuntime.itemsByCategory,
@@ -11565,8 +11784,12 @@ export async function getAdminReportingControl(
       status: marketplaceReportsRuntime.status,
       summary: marketplaceReportsRuntime.summary,
       warnings: marketplaceReportsRuntime.warnings
-    },
-    securityReports: {
+      },
+      "rp-9-marketplace-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    securityReports: withReportRuntimeStatusFields(
+      {
       errorMessage: securityReportsRuntime.errorMessage,
       eventsByCategory: securityReportsRuntime.eventsByCategory,
       eventsBySeverity: securityReportsRuntime.eventsBySeverity,
@@ -11582,8 +11805,12 @@ export async function getAdminReportingControl(
       status: securityReportsRuntime.status,
       summary: securityReportsRuntime.summary,
       warnings: securityReportsRuntime.warnings
-    },
-    operationsReports: {
+      },
+      "rp-10-security-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
+    operationsReports: withReportRuntimeStatusFields(
+      {
       errorMessage: operationsReportsRuntime.errorMessage,
       generatedAt: operationsReportsRuntime.generatedAt,
       issuesByCategory: operationsReportsRuntime.issuesByCategory,
@@ -11598,20 +11825,53 @@ export async function getAdminReportingControl(
       status: operationsReportsRuntime.status,
       summary: operationsReportsRuntime.summary,
       warnings: operationsReportsRuntime.warnings
-    },
+      },
+      "rp-11-operations-reports",
+      reportStatusRuntime.statusByReportKey
+    ),
     reportViewer: {
-      catalog: reportViewerRuntime.catalog,
+      catalog: reportViewerRuntime.catalog.map((entry) => {
+        const statusEntry = reportStatusRuntime.statusByReportKey[entry.reportKey];
+
+        return {
+          ...entry,
+          runtimeStatus: statusEntry?.runtimeStatus ?? "planned",
+          runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied."
+        };
+      }),
       errorMessage: reportViewerRuntime.errorMessage,
       generatedAt: reportViewerRuntime.generatedAt,
       lastGeneratedState: reportViewerRuntime.lastGeneratedState,
       loadingState: reportViewerRuntime.loadingState,
       readOnly: true as const,
-      selectedReport: reportViewerRuntime.selectedReport,
+      selectedReport: reportViewerRuntime.selectedReport
+        ? {
+            ...reportViewerRuntime.selectedReport,
+            runtimeStatus:
+              reportStatusRuntime.statusByReportKey[reportViewerRuntime.selectedReport.reportKey]?.runtimeStatus ??
+              "planned",
+            runtimeStatusDescription:
+              reportStatusRuntime.statusByReportKey[reportViewerRuntime.selectedReport.reportKey]?.description ??
+              "Report status unavailable; safe planned fallback applied."
+          }
+        : null,
       selectedReportKey: reportViewerRuntime.selectedReportKey,
       status: reportViewerRuntime.status,
       summary: reportViewerRuntime.summary,
       viewableReportCount: reportViewerRuntime.viewableReportCount,
       warnings: reportViewerRuntime.warnings
+    },
+    reportStatus: {
+      countsByStatus: reportStatusRuntime.countsByStatus,
+      entries: reportStatusRuntime.entries,
+      errorMessage: reportStatusRuntime.errorMessage,
+      generatedAt: reportStatusRuntime.generatedAt,
+      lastGeneratedState: reportStatusRuntime.lastGeneratedState,
+      readOnly: true as const,
+      status: reportStatusRuntime.status,
+      statusByReportKey: reportStatusRuntime.statusByReportKey,
+      summary: reportStatusRuntime.summary,
+      warnings: reportStatusRuntime.warnings
     },
     reports,
     selectedRange,

@@ -104,6 +104,8 @@ export type ReportsRegistryRuntimeContext = {
   operationsReportNeedsAttention?: boolean;
   reportViewerLastGenerated?: string;
   reportViewerNeedsAttention?: boolean;
+  reportStatusLastGenerated?: string;
+  reportStatusNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -326,10 +328,10 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "not_applicable",
-    dataSourceDescription: "Registry status fields derived from runtime definitions.",
+    dataSourceDescription: "Report Status runtime (registry metadata + RP-2 through RP-11 adapter signals). Read-only on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Status history"],
-    lastGeneratedState: "Live registry",
+    lastGeneratedState: "Live status layer",
     reportId: "platform:report-status",
     reportKey: "rp-13-report-status",
     roadmapPhase: "RP-13",
@@ -667,6 +669,16 @@ function applyRuntimeContext(
         "Report Viewer runtime (RP-1 registry + RP-2 through RP-11 adapters). Read-only on page load.",
       lastGeneratedState: context.reportViewerLastGenerated ?? definition.lastGeneratedState,
       status: context.reportViewerNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-13-report-status") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Status runtime (registry metadata + RP-2 through RP-11 adapter signals). Read-only on page load.",
+      lastGeneratedState: context.reportStatusLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportStatusNeedsAttention ? "review" : definition.status
     };
   }
 

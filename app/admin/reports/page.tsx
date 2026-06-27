@@ -12,6 +12,11 @@ import {
   isViewableReportKey
 } from "@/src/lib/reports/report-viewer-runtime";
 import {
+  reportRuntimeStatusBadgeTone,
+  reportRuntimeStatusLabel,
+  REPORT_RUNTIME_STATUSES
+} from "@/src/lib/reports/report-status-runtime";
+import {
   exportReportPlaceholder,
   markReportReviewed,
   scheduleReportPlaceholder
@@ -71,6 +76,20 @@ function toneForViewerState(state: string) {
   }
 
   return "slate" as const;
+}
+
+function ReportRuntimeStatusBadge({
+  description,
+  status
+}: {
+  description?: string;
+  status: string;
+}) {
+  return (
+    <span title={description}>
+      <AdminBadge tone={reportRuntimeStatusBadgeTone(status)}>{reportRuntimeStatusLabel(status)}</AdminBadge>
+    </span>
+  );
 }
 
 function ReportHiddenFields({
@@ -155,7 +174,13 @@ export default async function AdminReportsPage({
       <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-2 Revenue Reports</span>
-          <AdminBadge tone={toneForStatus(control.revenueReports.status)}>{control.revenueReports.status}</AdminBadge>
+          <AdminBadge tone={toneForStatus(control.revenueReports.status)}>
+            {control.revenueReports.status}
+          </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.revenueReports.runtimeStatusDescription}
+            status={control.revenueReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.revenueReports.rangeLabel}</span>
         </div>
 
@@ -260,6 +285,10 @@ export default async function AdminReportsPage({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-3 Store Reports</span>
           <AdminBadge tone={toneForStatus(control.storeReports.status)}>{control.storeReports.status}</AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.storeReports.runtimeStatusDescription}
+            status={control.storeReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.storeReports.rangeLabel}</span>
         </div>
 
@@ -351,6 +380,10 @@ export default async function AdminReportsPage({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-4 User Reports</span>
           <AdminBadge tone={toneForStatus(control.userReports.status)}>{control.userReports.status}</AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.userReports.runtimeStatusDescription}
+            status={control.userReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.userReports.rangeLabel}</span>
         </div>
 
@@ -428,6 +461,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.subscriptionReports.status)}>
             {control.subscriptionReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.subscriptionReports.runtimeStatusDescription}
+            status={control.subscriptionReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.subscriptionReports.rangeLabel}</span>
         </div>
 
@@ -551,6 +588,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.paymentReports.status)}>
             {control.paymentReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.paymentReports.runtimeStatusDescription}
+            status={control.paymentReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.paymentReports.rangeLabel}</span>
         </div>
 
@@ -696,6 +737,10 @@ export default async function AdminReportsPage({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-7 AI Reports</span>
           <AdminBadge tone={toneForStatus(control.aiReports.status)}>{control.aiReports.status}</AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.aiReports.runtimeStatusDescription}
+            status={control.aiReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.aiReports.rangeLabel}</span>
         </div>
 
@@ -840,6 +885,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.domainEmailReports.status)}>
             {control.domainEmailReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.domainEmailReports.runtimeStatusDescription}
+            status={control.domainEmailReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.domainEmailReports.rangeLabel}</span>
         </div>
 
@@ -1008,6 +1057,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.marketplaceReports.status)}>
             {control.marketplaceReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.marketplaceReports.runtimeStatusDescription}
+            status={control.marketplaceReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.marketplaceReports.rangeLabel}</span>
         </div>
 
@@ -1135,6 +1188,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.securityReports.status)}>
             {control.securityReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.securityReports.runtimeStatusDescription}
+            status={control.securityReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.securityReports.rangeLabel}</span>
         </div>
 
@@ -1247,6 +1304,10 @@ export default async function AdminReportsPage({
           <AdminBadge tone={toneForStatus(control.operationsReports.status)}>
             {control.operationsReports.status}
           </AdminBadge>
+          <ReportRuntimeStatusBadge
+            description={control.operationsReports.runtimeStatusDescription}
+            status={control.operationsReports.runtimeStatus}
+          />
           <span className="text-xs text-slate-600">{control.operationsReports.rangeLabel}</span>
         </div>
 
@@ -1395,9 +1456,17 @@ export default async function AdminReportsPage({
               <AdminBadge tone={toneForStatus(control.reportViewer.selectedReport.status)}>
                 {control.reportViewer.selectedReport.status}
               </AdminBadge>
+              <ReportRuntimeStatusBadge
+                description={control.reportViewer.selectedReport.runtimeStatusDescription}
+                status={control.reportViewer.selectedReport.runtimeStatus}
+              />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                <span className="font-bold text-slate-950">Runtime status:</span>{" "}
+                {control.reportViewer.selectedReport.runtimeStatusDescription}
+              </p>
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-950">Report key:</span>{" "}
                 {control.reportViewer.selectedReport.reportKey}
@@ -1488,11 +1557,71 @@ export default async function AdminReportsPage({
         )}
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-13 Report Status
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportStatus.status)}>{control.reportStatus.status}</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportStatus.summary}</span>
+        </div>
+
+        {control.reportStatus.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportStatus.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={REPORT_RUNTIME_STATUSES.map((status) => ({
+            label: reportRuntimeStatusLabel(status),
+            value: control.reportStatus.countsByStatus[status]
+          }))}
+        />
+
+        {control.reportStatus.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportStatus.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Report", "Registry status", "Runtime status", "Description"]}>
+          {control.reportStatus.entries.length ? (
+            control.reportStatus.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {entry.roadmapPhase} · {entry.reportKey}
+                  </p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={toneForStatus(entry.registryStatus)}>{entry.registryStatus}</AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeStatusBadge description={entry.description} status={entry.runtimeStatus} />
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.description}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                No report status entries are available yet. Safe planned fallbacks remain read-only.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
           "Category",
           "Status",
+          "Runtime status",
           "Visibility",
           "Last generated",
           "Export",
@@ -1515,6 +1644,12 @@ export default async function AdminReportsPage({
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForStatus(report.status)}>{report.status}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <ReportRuntimeStatusBadge
+                description={report.runtimeStatusDescription}
+                status={report.runtimeStatus}
+              />
             </td>
             <td className="px-5 py-4">
               <AdminBadge tone={toneForVisibility(report.visibility)}>{report.visibility}</AdminBadge>
