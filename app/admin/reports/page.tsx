@@ -673,6 +673,146 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-7 AI Reports</span>
+          <AdminBadge tone={toneForStatus(control.aiReports.status)}>{control.aiReports.status}</AdminBadge>
+          <span className="text-xs text-slate-600">{control.aiReports.rangeLabel}</span>
+        </div>
+
+        {control.aiReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.aiReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.aiReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No AI source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total AI requests", value: control.aiReports.metrics.totalAIRequests },
+            { label: "Successful AI requests", value: control.aiReports.metrics.successfulAIRequests },
+            { label: "Failed AI requests", value: control.aiReports.metrics.failedAIRequests },
+            { label: "Blocked or unsafe attempts", value: control.aiReports.metrics.blockedOrUnsafeAttempts },
+            { label: "Credits usage", value: control.aiReports.metrics.creditsUsage },
+            {
+              label: "Estimated cost",
+              value: formatAdminMoney(control.aiReports.metrics.estimatedCost)
+            }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.aiReports.summary}
+          {control.aiReports.lastUpdatedAt
+            ? ` · Last AI activity ${control.aiReports.lastUpdatedAt}`
+            : " · No AI activity timestamps recorded"}
+        </p>
+
+        {control.aiReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.aiReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Latest activity", "Feature", "Provider", "Scope", "Status", "Availability"]}>
+          {control.aiReports.latestAIActivity.length ? (
+            control.aiReports.latestAIActivity.map((item) => (
+              <tr key={`${item.activityAt}-${item.feature}-${item.provider}-${item.scopeLabel}`}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.activityAt}</td>
+                <td className="px-5 py-4 text-slate-600">{item.feature}</td>
+                <td className="px-5 py-4 text-slate-600">{item.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{item.scopeLabel}</td>
+                <td className="px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No latest AI activity is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["AI feature", "Count", "Availability"]}>
+          {control.aiReports.usageByFeature.length ? (
+            control.aiReports.usageByFeature.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No AI feature breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Workspace or store", "Count", "Availability"]}>
+          {control.aiReports.usageByWorkspaceOrStore.length ? (
+            control.aiReports.usageByWorkspaceOrStore.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No workspace or store AI breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["User role", "Count", "Availability"]}>
+          {control.aiReports.usageByUserRole.length ? (
+            control.aiReports.usageByUserRole.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No user role AI breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

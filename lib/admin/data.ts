@@ -194,6 +194,7 @@ import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-rep
 import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-reports-runtime";
 import { mapSubscriptionReportsRuntimeToAdminFields } from "@/src/lib/reports/subscription-reports-runtime";
 import { mapPaymentReportsRuntimeToAdminFields } from "@/src/lib/reports/payment-reports-runtime";
+import { mapAIReportsRuntimeToAdminFields } from "@/src/lib/reports/ai-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4183,6 +4184,50 @@ export type AdminReportingControl = {
     selectedRange: "today" | "7d" | "30d" | "month" | "year";
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
+    warnings: string[];
+  };
+  aiReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    latestAIActivity: Array<{
+      activityAt: string;
+      dataAvailability: "available" | "planned";
+      feature: string;
+      provider: string;
+      scopeLabel: string;
+      status: string;
+    }>;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      blockedOrUnsafeAttempts: number;
+      creditsUsage: number;
+      estimatedCost: number;
+      failedAIRequests: number;
+      successfulAIRequests: number;
+      totalAIRequests: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    usageByFeature: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    usageByUserRole: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    usageByWorkspaceOrStore: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
     warnings: string[];
   };
   reports: Array<{
@@ -10945,7 +10990,8 @@ export async function getAdminReportingControl(
     storeReportsRuntime,
     userReportsRuntime,
     subscriptionReportsRuntime,
-    paymentReportsRuntime
+    paymentReportsRuntime,
+    aiReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10959,7 +11005,8 @@ export async function getAdminReportingControl(
     mapStoreReportsRuntimeToAdminFields(selectedRange),
     mapUserReportsRuntimeToAdminFields(selectedRange),
     mapSubscriptionReportsRuntimeToAdminFields(selectedRange),
-    mapPaymentReportsRuntimeToAdminFields(selectedRange)
+    mapPaymentReportsRuntimeToAdminFields(selectedRange),
+    mapAIReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10977,6 +11024,8 @@ export async function getAdminReportingControl(
     subscriptionReportNeedsAttention: subscriptionReportsRuntime.status === "needs_attention",
     paymentReportLastGenerated: paymentReportsRuntime.lastGeneratedState,
     paymentReportNeedsAttention: paymentReportsRuntime.status === "needs_attention",
+    aiReportLastGenerated: aiReportsRuntime.lastGeneratedState,
+    aiReportNeedsAttention: aiReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -11095,6 +11144,24 @@ export async function getAdminReportingControl(
       status: paymentReportsRuntime.status,
       summary: paymentReportsRuntime.summary,
       warnings: paymentReportsRuntime.warnings
+    },
+    aiReports: {
+      errorMessage: aiReportsRuntime.errorMessage,
+      generatedAt: aiReportsRuntime.generatedAt,
+      lastGeneratedState: aiReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: aiReportsRuntime.lastUpdatedAt,
+      latestAIActivity: aiReportsRuntime.latestAIActivity,
+      loadingState: aiReportsRuntime.loadingState,
+      metrics: aiReportsRuntime.metrics,
+      rangeLabel: aiReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: aiReportsRuntime.selectedRange,
+      status: aiReportsRuntime.status,
+      summary: aiReportsRuntime.summary,
+      usageByFeature: aiReportsRuntime.usageByFeature,
+      usageByUserRole: aiReportsRuntime.usageByUserRole,
+      usageByWorkspaceOrStore: aiReportsRuntime.usageByWorkspaceOrStore,
+      warnings: aiReportsRuntime.warnings
     },
     reports,
     selectedRange,

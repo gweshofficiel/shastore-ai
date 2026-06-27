@@ -92,6 +92,8 @@ export type ReportsRegistryRuntimeContext = {
   subscriptionReportNeedsAttention?: boolean;
   paymentReportLastGenerated?: string;
   paymentReportNeedsAttention?: boolean;
+  aiReportLastGenerated?: string;
+  aiReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -599,7 +601,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-7-ai-reports") {
     return {
       ...definition,
-      status: context.aiFailedJobs ? "review" : definition.status
+      dataSourceDescription:
+        "AI Reports runtime (ai_audit_logs, ai_generation_queue, ai_generation_results, openai_credit_ledger, stores).",
+      lastGeneratedState: context.aiReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.aiReportNeedsAttention ? "review" : definition.status
     };
   }
 
