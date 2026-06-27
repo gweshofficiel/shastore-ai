@@ -110,6 +110,8 @@ export type ReportsRegistryRuntimeContext = {
   reportVisibilityNeedsAttention?: boolean;
   reportSafeActionsLastGenerated?: string;
   reportSafeActionsNeedsAttention?: boolean;
+  reportAggregationLastGenerated?: string;
+  reportAggregationNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -379,7 +381,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "not_applicable",
-    dataSourceDescription: "Overview metrics reused from existing admin aggregates.",
+    dataSourceDescription:
+      "Report Aggregation runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-2 through RP-11 adapters). Read-only on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Cross-report aggregation"],
     lastGeneratedState: "Live aggregate",
@@ -705,6 +708,16 @@ function applyRuntimeContext(
         "Report Safe Actions runtime (registry metadata + RP-13 status + RP-14 visibility + RP-12 viewer). Read-only on page load.",
       lastGeneratedState: context.reportSafeActionsLastGenerated ?? definition.lastGeneratedState,
       status: context.reportSafeActionsNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-16-report-aggregation") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Aggregation runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-2 through RP-11 adapters). Read-only on page load.",
+      lastGeneratedState: context.reportAggregationLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportAggregationNeedsAttention ? "review" : definition.status
     };
   }
 

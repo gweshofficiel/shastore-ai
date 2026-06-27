@@ -219,6 +219,10 @@ import {
   withReportRuntimeSafeActionsFields
 } from "@/src/lib/reports/report-safe-actions-runtime";
 import {
+  buildReportAggregationRuntimeInput,
+  mapReportAggregationRuntimeToAdminFields
+} from "@/src/lib/reports/report-aggregation-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -4810,6 +4814,43 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     superAdminReportsOnly: true;
+    warnings: string[];
+  };
+  reportAggregation: {
+    byCategory: Array<{ count: number; label: string }>;
+    byRegistryStatus: Array<{ count: number; label: string }>;
+    byRuntimeStatus: Array<{ count: number; label: string }>;
+    byRuntimeVisibility: Array<{ count: number; label: string }>;
+    bySafeAction: Array<{ count: number; label: string }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    latestSafeActivity: Array<{
+      activityAt: string;
+      activityType: string;
+      readOnly: true;
+      reportKey: string;
+      summary: string;
+      title: string;
+    }>;
+    latestSafeActivitySummary: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded";
+    readOnly: true;
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      availableReports: number;
+      certifiedReports: number;
+      degradedReports: number;
+      emptyReports: number;
+      partialReports: number;
+      plannedReports: number;
+      reportsWithEmptyState: number;
+      reportsWithLockedActions: number;
+      reportsWithRuntimeData: number;
+      totalRegisteredReports: number;
+    };
     warnings: string[];
   };
   reports: Array<{
@@ -11870,16 +11911,97 @@ export async function getAdminReportingControl(
       )
     })
   );
+  const reportAggregationRuntime = await mapReportAggregationRuntimeToAdminFields(
+    buildReportAggregationRuntimeInput({
+      aiReports: {
+        errorMessage: aiReportsRuntime.errorMessage,
+        loadingState: aiReportsRuntime.loadingState,
+        status: aiReportsRuntime.status
+      },
+      domainEmailReports: {
+        errorMessage: domainEmailReportsRuntime.errorMessage,
+        loadingState: domainEmailReportsRuntime.loadingState,
+        status: domainEmailReportsRuntime.status
+      },
+      marketplaceReports: {
+        errorMessage: marketplaceReportsRuntime.errorMessage,
+        loadingState: marketplaceReportsRuntime.loadingState,
+        status: marketplaceReportsRuntime.status
+      },
+      operationsReports: {
+        errorMessage: operationsReportsRuntime.errorMessage,
+        loadingState: operationsReportsRuntime.loadingState,
+        status: operationsReportsRuntime.status
+      },
+      paymentReports: {
+        errorMessage: paymentReportsRuntime.errorMessage,
+        loadingState: paymentReportsRuntime.loadingState,
+        status: paymentReportsRuntime.status
+      },
+      registryReports: preliminaryRegistryRuntime.reports,
+      registryTotalEntries: preliminaryRegistryRuntime.registry.totalEntries,
+      reportSafeActionsByReportKey: Object.fromEntries(
+        Object.entries(reportSafeActionsRuntime.actionsByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeSafeAction: entry.runtimeSafeAction, viewEnabled: entry.viewEnabled }
+        ])
+      ),
+      reportStatusByReportKey: Object.fromEntries(
+        Object.entries(reportStatusRuntime.statusByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeStatus: entry.runtimeStatus }
+        ])
+      ),
+      reportVisibilityByReportKey: Object.fromEntries(
+        Object.entries(reportVisibilityRuntime.visibilityByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeVisibility: entry.runtimeVisibility }
+        ])
+      ),
+      reportViewerCatalog: reportViewerRuntime.catalog.map((entry) => ({
+        latestSafeActivity: entry.latestSafeActivity,
+        reportKey: entry.reportKey,
+        title: entry.title
+      })),
+      revenueReports: {
+        errorMessage: revenueReportsRuntime.errorMessage,
+        loadingState: revenueReportsRuntime.loadingState,
+        status: revenueReportsRuntime.status
+      },
+      securityReports: {
+        errorMessage: securityReportsRuntime.errorMessage,
+        loadingState: securityReportsRuntime.loadingState,
+        status: securityReportsRuntime.status
+      },
+      storeReports: {
+        errorMessage: storeReportsRuntime.errorMessage,
+        loadingState: storeReportsRuntime.loadingState,
+        status: storeReportsRuntime.status
+      },
+      subscriptionReports: {
+        errorMessage: subscriptionReportsRuntime.errorMessage,
+        loadingState: subscriptionReportsRuntime.loadingState,
+        status: subscriptionReportsRuntime.status
+      },
+      userReports: {
+        errorMessage: userReportsRuntime.errorMessage,
+        loadingState: userReportsRuntime.loadingState,
+        status: userReportsRuntime.status
+      }
+    })
+  );
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
+    reportAggregationLastGenerated: reportAggregationRuntime.lastGeneratedState,
+    reportAggregationNeedsAttention: reportAggregationRuntime.status === "needs_attention",
+    reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
+    reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
     reportStatusNeedsAttention: reportStatusRuntime.status === "needs_attention",
     reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
     reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention",
     reportVisibilityLastGenerated: reportVisibilityRuntime.lastGeneratedState,
-    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention",
-    reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
-    reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention"
+    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention"
   });
   const reports: AdminReportingControl["reports"] = registryRuntime.reports.map((report) => {
     const statusEntry = reportStatusRuntime.statusByReportKey[report.reportKey];
@@ -12285,6 +12407,25 @@ export async function getAdminReportingControl(
       summary: reportSafeActionsRuntime.summary,
       superAdminReportsOnly: true as const,
       warnings: reportSafeActionsRuntime.warnings
+    },
+    reportAggregation: {
+      byCategory: reportAggregationRuntime.byCategory,
+      byRegistryStatus: reportAggregationRuntime.byRegistryStatus,
+      byRuntimeStatus: reportAggregationRuntime.byRuntimeStatus,
+      byRuntimeVisibility: reportAggregationRuntime.byRuntimeVisibility,
+      bySafeAction: reportAggregationRuntime.bySafeAction,
+      errorMessage: reportAggregationRuntime.errorMessage,
+      generatedAt: reportAggregationRuntime.generatedAt,
+      lastGeneratedState: reportAggregationRuntime.lastGeneratedState,
+      latestSafeActivity: reportAggregationRuntime.latestSafeActivity,
+      latestSafeActivitySummary: reportAggregationRuntime.latestSafeActivitySummary,
+      loadingState: reportAggregationRuntime.loadingState,
+      readOnly: true as const,
+      status: reportAggregationRuntime.status,
+      summary: reportAggregationRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportAggregationRuntime.totals,
+      warnings: reportAggregationRuntime.warnings
     },
     reports,
     selectedRange,

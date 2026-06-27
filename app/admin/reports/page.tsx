@@ -84,6 +84,22 @@ function toneForViewerState(state: string) {
   return "slate" as const;
 }
 
+function toneForAggregationLoadingState(state: string) {
+  if (state === "loaded") {
+    return "green" as const;
+  }
+
+  if (state === "degraded") {
+    return "amber" as const;
+  }
+
+  if (state === "error") {
+    return "red" as const;
+  }
+
+  return "blue" as const;
+}
+
 function ReportRuntimeStatusBadge({
   description,
   status
@@ -1605,6 +1621,31 @@ export default async function AdminReportsPage({
 
         <p className="text-sm text-slate-600">{control.reportViewer.summary}</p>
 
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+              Cross-report aggregation
+            </span>
+            <AdminBadge tone={toneForStatus(control.reportAggregation.status)}>
+              {control.reportAggregation.status}
+            </AdminBadge>
+            <AdminBadge tone={toneForAggregationLoadingState(control.reportAggregation.loadingState)}>
+              {control.reportAggregation.loadingState}
+            </AdminBadge>
+          </div>
+          <p className="text-sm text-slate-600">{control.reportAggregation.summary}</p>
+          <p className="text-xs text-slate-500">{control.reportAggregation.latestSafeActivitySummary}</p>
+          <AdminStatGrid
+            stats={[
+              { label: "Registered", value: control.reportAggregation.totals.totalRegisteredReports },
+              { label: "Available", value: control.reportAggregation.totals.availableReports },
+              { label: "Runtime data", value: control.reportAggregation.totals.reportsWithRuntimeData },
+              { label: "Empty state", value: control.reportAggregation.totals.reportsWithEmptyState },
+              { label: "Locked actions", value: control.reportAggregation.totals.reportsWithLockedActions }
+            ]}
+          />
+        </div>
+
         {control.reportViewer.warnings.length > 0 ? (
           <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
             {control.reportViewer.warnings.map((warning) => (
@@ -1961,6 +2002,174 @@ export default async function AdminReportsPage({
             <tr>
               <td className="px-5 py-4 text-slate-600" colSpan={8}>
                 No safe action guards are available yet. All actions remain locked as a safe fallback.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-16 Report Aggregation
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportAggregation.status)}>
+            {control.reportAggregation.status}
+          </AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportAggregation.loadingState)}>
+            {control.reportAggregation.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportAggregation.summary}</span>
+        </div>
+
+        {control.reportAggregation.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportAggregation.errorMessage}
+          </p>
+        ) : null}
+
+        {control.reportAggregation.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No registry reports are available to aggregate yet. Safe empty fallbacks remain read-only.
+          </p>
+        ) : null}
+
+        {control.reportAggregation.loadingState === "degraded" ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Aggregation includes degraded, partial, or empty runtime signals. Review report modules before taking action.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total registered", value: control.reportAggregation.totals.totalRegisteredReports },
+            { label: "Available", value: control.reportAggregation.totals.availableReports },
+            { label: "Planned", value: control.reportAggregation.totals.plannedReports },
+            { label: "Empty", value: control.reportAggregation.totals.emptyReports },
+            { label: "Partial", value: control.reportAggregation.totals.partialReports },
+            { label: "Degraded", value: control.reportAggregation.totals.degradedReports },
+            { label: "Certified", value: control.reportAggregation.totals.certifiedReports },
+            { label: "Runtime data", value: control.reportAggregation.totals.reportsWithRuntimeData },
+            { label: "Empty state", value: control.reportAggregation.totals.reportsWithEmptyState },
+            { label: "Locked actions", value: control.reportAggregation.totals.reportsWithLockedActions }
+          ]}
+        />
+
+        {control.reportAggregation.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportAggregation.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <p className="text-sm text-slate-600">{control.reportAggregation.latestSafeActivitySummary}</p>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <AdminTable headers={["Runtime status", "Reports"]}>
+            {control.reportAggregation.byRuntimeStatus.length ? (
+              control.reportAggregation.byRuntimeStatus.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={2}>
+                  No runtime status breakdown is available yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <AdminTable headers={["Runtime visibility", "Reports"]}>
+            {control.reportAggregation.byRuntimeVisibility.length ? (
+              control.reportAggregation.byRuntimeVisibility.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={2}>
+                  No runtime visibility breakdown is available yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <AdminTable headers={["Category", "Reports"]}>
+            {control.reportAggregation.byCategory.length ? (
+              control.reportAggregation.byCategory.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={2}>
+                  No category breakdown is available yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <AdminTable headers={["Registry status", "Reports"]}>
+            {control.reportAggregation.byRegistryStatus.length ? (
+              control.reportAggregation.byRegistryStatus.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={2}>
+                  No registry status breakdown is available yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <AdminTable headers={["Safe action guard", "Reports"]}>
+            {control.reportAggregation.bySafeAction.length ? (
+              control.reportAggregation.bySafeAction.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={2}>
+                  No safe action breakdown is available yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+        </div>
+
+        <AdminTable headers={["Report", "Activity", "Timestamp", "Summary"]}>
+          {control.reportAggregation.latestSafeActivity.length ? (
+            control.reportAggregation.latestSafeActivity.map((item) => (
+              <tr key={`${item.reportKey}-${item.activityAt}-${item.activityType}`}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{item.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.reportKey}</p>
+                </td>
+                <td className="px-5 py-4 text-slate-600">{item.activityType}</td>
+                <td className="px-5 py-4 text-slate-600">{item.activityAt}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{item.summary}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                No latest safe activity summary is available across viewable reports yet.
               </td>
             </tr>
           )}
