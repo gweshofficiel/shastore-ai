@@ -8,10 +8,13 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminReportingControl } from "@/lib/admin/data";
 import {
+  buildReportViewerHref,
+  isViewableReportKey
+} from "@/src/lib/reports/report-viewer-runtime";
+import {
   exportReportPlaceholder,
   markReportReviewed,
-  scheduleReportPlaceholder,
-  viewReportPlaceholder
+  scheduleReportPlaceholder
 } from "@/lib/admin/report-actions";
 
 function toneForStatus(status: string) {
@@ -54,6 +57,22 @@ function toneForVisibility(visibility: string) {
   return "slate" as const;
 }
 
+function toneForViewerState(state: string) {
+  if (state === "available") {
+    return "green" as const;
+  }
+
+  if (state === "error" || state === "not_found") {
+    return "red" as const;
+  }
+
+  if (state === "empty" || state === "planned") {
+    return "blue" as const;
+  }
+
+  return "slate" as const;
+}
+
 function ReportHiddenFields({
   report
 }: {
@@ -71,10 +90,10 @@ function ReportHiddenFields({
 export default async function AdminReportsPage({
   searchParams
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; view?: string }>;
 }) {
   const query = await searchParams;
-  const control = await getAdminReportingControl(query.range as never);
+  const control = await getAdminReportingControl(query.range as never, { view: query.view ?? null });
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -1317,6 +1336,158 @@ export default async function AdminReportsPage({
         </div>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-12 Report Viewer
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportViewer.status)}>{control.reportViewer.status}</AdminBadge>
+          <span className="text-xs text-slate-600">
+            {control.reportViewer.viewableReportCount} viewable reports · read-only
+          </span>
+        </div>
+
+        {control.reportViewer.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportViewer.errorMessage}
+          </p>
+        ) : null}
+
+        {control.reportViewer.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            The Report Viewer catalog is empty. Registry and runtime adapters remain read-only.
+          </p>
+        ) : null}
+
+        <p className="text-sm text-slate-600">{control.reportViewer.summary}</p>
+
+        {control.reportViewer.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportViewer.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          {control.reportViewer.catalog.map((report) => (
+            <Link
+              className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${
+                control.reportViewer.selectedReportKey === report.reportKey
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-slate-50 text-slate-600"
+              }`}
+              href={buildReportViewerHref(control.selectedRange, report.reportKey)}
+              key={report.reportKey}
+            >
+              {report.roadmapPhase} · {report.title}
+            </Link>
+          ))}
+        </div>
+
+        {control.reportViewer.selectedReport ? (
+          <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-black text-slate-950">{control.reportViewer.selectedReport.title}</h3>
+              <AdminBadge tone={toneForViewerState(control.reportViewer.selectedReport.viewerState)}>
+                {control.reportViewer.selectedReport.viewerState}
+              </AdminBadge>
+              <AdminBadge tone={toneForStatus(control.reportViewer.selectedReport.status)}>
+                {control.reportViewer.selectedReport.status}
+              </AdminBadge>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Report key:</span>{" "}
+                {control.reportViewer.selectedReport.reportKey}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Category:</span>{" "}
+                {control.reportViewer.selectedReport.category}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Visibility:</span>{" "}
+                {control.reportViewer.selectedReport.visibility}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Last generated:</span>{" "}
+                {control.reportViewer.selectedReport.lastGeneratedState}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Export:</span>{" "}
+                {control.reportViewer.selectedReport.exportAvailabilityState}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Safe actions:</span>{" "}
+                {control.reportViewer.selectedReport.safeActionsState}
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-slate-950">Certification:</span>{" "}
+                {control.reportViewer.selectedReport.certificationState}
+              </p>
+              <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                <span className="font-bold text-slate-950">Data source:</span>{" "}
+                {control.reportViewer.selectedReport.dataSourceDescription}
+              </p>
+              <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                <span className="font-bold text-slate-950">Runtime metrics:</span>{" "}
+                {control.reportViewer.selectedReport.runtimeMetricsSummary}
+              </p>
+            </div>
+
+            {control.reportViewer.selectedReport.futureHooks.length ? (
+              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                {control.reportViewer.selectedReport.futureHooks.map((hook) => (
+                  <li key={hook}>{hook}</li>
+                ))}
+              </ul>
+            ) : null}
+
+            {control.reportViewer.selectedReport.errorMessage ? (
+              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {control.reportViewer.selectedReport.errorMessage}
+              </p>
+            ) : null}
+
+            {control.reportViewer.selectedReport.emptyMessage ? (
+              <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                {control.reportViewer.selectedReport.emptyMessage}
+              </p>
+            ) : null}
+
+            <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
+              {control.reportViewer.selectedReport.latestSafeActivity.length ? (
+                control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
+                  <tr key={`${item.activityAt}-${item.activityType}-${item.summary}`}>
+                    <td className="px-5 py-4">
+                      <p className="font-bold text-slate-950">{item.activityType}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item.activityAt}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <AdminBadge tone={item.status === "failed" || item.status === "open" ? "red" : "blue"}>
+                        {item.status}
+                      </AdminBadge>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-slate-600">{item.summary}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                    No latest safe activity is available for this report yet.
+                  </td>
+                </tr>
+              )}
+            </AdminTable>
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Select a report from the viewer catalog to open a read-only details view.
+          </p>
+        )}
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -1354,15 +1525,22 @@ export default async function AdminReportsPage({
               {report.supportsSafeActions ? (
                 <div className="grid min-w-52 gap-2">
                   <p className="text-xs text-slate-500">{report.safeActionsLabel}</p>
-                  <form action={viewReportPlaceholder}>
-                    <ReportHiddenFields report={report} />
-                    <button
-                      className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                      type="submit"
+                  {isViewableReportKey(report.reportKey) ? (
+                    <Link
+                      className="flex h-9 w-full items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                      href={buildReportViewerHref(control.selectedRange, report.reportKey)}
                     >
                       View report
+                    </Link>
+                  ) : (
+                    <button
+                      className="h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                      disabled
+                      type="button"
+                    >
+                      Viewer unavailable
                     </button>
-                  </form>
+                  )}
                   <form action={markReportReviewed}>
                     <ReportHiddenFields report={report} />
                     <button

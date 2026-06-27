@@ -102,6 +102,8 @@ export type ReportsRegistryRuntimeContext = {
   securityReportNeedsAttention?: boolean;
   operationsReportLastGenerated?: string;
   operationsReportNeedsAttention?: boolean;
+  reportViewerLastGenerated?: string;
+  reportViewerNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -308,16 +310,16 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Platform",
-    certificationState: "planned",
-    dataSourceDescription: "Read-only report viewer placeholder. No report generation on page load.",
+    certificationState: "not_applicable",
+    dataSourceDescription: "Report Viewer runtime (RP-1 registry + RP-2 through RP-11 adapters). Read-only on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Inline viewer", "Report drill-down"],
-    lastGeneratedState: "Not generated",
+    lastGeneratedState: "Viewer catalog",
     reportId: "platform:report-viewer",
     reportKey: "rp-12-report-viewer",
     roadmapPhase: "RP-12",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Viewer",
     visibility: "super_admin"
   },
@@ -655,6 +657,16 @@ function applyRuntimeContext(
         "Operations Reports runtime (store_orders, orders, delivery_assignments, order_events, store_delivery_events, store_return_requests, delivery_incidents, support_tickets).",
       lastGeneratedState: context.operationsReportLastGenerated ?? definition.lastGeneratedState,
       status: context.operationsReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-12-report-viewer") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Viewer runtime (RP-1 registry + RP-2 through RP-11 adapters). Read-only on page load.",
+      lastGeneratedState: context.reportViewerLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportViewerNeedsAttention ? "review" : definition.status
     };
   }
 

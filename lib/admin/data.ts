@@ -188,7 +188,10 @@ import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-d
 import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-security-certification-runtime";
 import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-runtime-certification-runtime";
 import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-production-certification-runtime";
-import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/reports-registry-runtime";
+import {
+  mapReportsRegistryRuntimeToAdminFields,
+  type ReportsRegistryRuntimeContext
+} from "@/src/lib/reports/reports-registry-runtime";
 import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue-reports-runtime";
 import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-reports-runtime";
 import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-reports-runtime";
@@ -199,6 +202,7 @@ import { mapDomainEmailReportsRuntimeToAdminFields } from "@/src/lib/reports/dom
 import { mapMarketplaceReportsRuntimeToAdminFields } from "@/src/lib/reports/marketplace-reports-runtime";
 import { mapSecurityReportsRuntimeToAdminFields } from "@/src/lib/reports/security-reports-runtime";
 import { mapOperationsReportsRuntimeToAdminFields } from "@/src/lib/reports/operations-reports-runtime";
+import { mapReportViewerRuntimeToAdminFields } from "@/src/lib/reports/report-viewer-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4407,6 +4411,72 @@ export type AdminReportingControl = {
     selectedRange: "today" | "7d" | "30d" | "month" | "year";
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
+    warnings: string[];
+  };
+  reportViewer: {
+    catalog: Array<{
+      category: string;
+      certificationState: string;
+      dataSourceDescription: string;
+      emptyMessage: string | null;
+      errorMessage: string | null;
+      exportAvailabilityState: string;
+      futureHooks: string[];
+      lastGeneratedState: string;
+      latestSafeActivity: Array<{
+        activityAt: string;
+        activityType: string;
+        dataAvailability: "available" | "planned";
+        status: string;
+        summary: string;
+      }>;
+      readOnly: true;
+      reportId: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeMetricsSummary: string;
+      safeActionsState: string;
+      status: string;
+      title: string;
+      viewerState: "available" | "empty" | "error" | "not_found" | "planned";
+      visibility: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "empty" | "error" | "loaded";
+    readOnly: true;
+    selectedReport: {
+      category: string;
+      certificationState: string;
+      dataSourceDescription: string;
+      emptyMessage: string | null;
+      errorMessage: string | null;
+      exportAvailabilityState: string;
+      futureHooks: string[];
+      lastGeneratedState: string;
+      latestSafeActivity: Array<{
+        activityAt: string;
+        activityType: string;
+        dataAvailability: "available" | "planned";
+        status: string;
+        summary: string;
+      }>;
+      readOnly: true;
+      reportId: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeMetricsSummary: string;
+      safeActionsState: string;
+      status: string;
+      title: string;
+      viewerState: "available" | "empty" | "error" | "not_found" | "planned";
+      visibility: string;
+    } | null;
+    selectedReportKey: string | null;
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    viewableReportCount: number;
     warnings: string[];
   };
   reports: Array<{
@@ -11150,12 +11220,14 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
 }
 
 export async function getAdminReportingControl(
-  range: AdminReportingControl["selectedRange"] = "30d"
+  range: AdminReportingControl["selectedRange"] = "30d",
+  options: { view?: string | null } = {}
 ): Promise<AdminReportingControl> {
   const selectedRange: AdminReportingControl["selectedRange"] =
     range === "today" || range === "7d" || range === "30d" || range === "month" || range === "year"
       ? range
       : "30d";
+  const selectedReportKey = options.view?.trim() || null;
   const [
     analytics,
     users,
@@ -11195,7 +11267,7 @@ export async function getAdminReportingControl(
     mapSecurityReportsRuntimeToAdminFields(selectedRange),
     mapOperationsReportsRuntimeToAdminFields(selectedRange)
   ]);
-  const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
+  const registryContextBase: ReportsRegistryRuntimeContext = {
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
     domainsFailedOperations: Boolean(domainsHosting.overview.failedOperations),
     marketplacePendingReview: Boolean(marketplace.overview.pendingReviewItems),
@@ -11222,15 +11294,115 @@ export async function getAdminReportingControl(
     operationsReportLastGenerated: operationsReportsRuntime.lastGeneratedState,
     operationsReportNeedsAttention: operationsReportsRuntime.status === "needs_attention",
     selectedRange
+  };
+  const preliminaryRegistryRuntime = mapReportsRegistryRuntimeToAdminFields(registryContextBase);
+  const reportViewerRuntime = await mapReportViewerRuntimeToAdminFields({
+    aiReports: {
+      errorMessage: aiReportsRuntime.errorMessage,
+      lastGeneratedState: aiReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: aiReportsRuntime.lastUpdatedAt,
+      latestAIActivity: aiReportsRuntime.latestAIActivity,
+      loadingState: aiReportsRuntime.loadingState,
+      status: aiReportsRuntime.status,
+      summary: aiReportsRuntime.summary
+    },
+    domainEmailReports: {
+      errorMessage: domainEmailReportsRuntime.errorMessage,
+      lastGeneratedState: domainEmailReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: domainEmailReportsRuntime.lastUpdatedAt,
+      latestDomainActivity: domainEmailReportsRuntime.latestDomainActivity,
+      latestEmailActivity: domainEmailReportsRuntime.latestEmailActivity,
+      loadingState: domainEmailReportsRuntime.loadingState,
+      status: domainEmailReportsRuntime.status,
+      summary: domainEmailReportsRuntime.summary
+    },
+    marketplaceReports: {
+      errorMessage: marketplaceReportsRuntime.errorMessage,
+      lastGeneratedState: marketplaceReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: marketplaceReportsRuntime.lastUpdatedAt,
+      latestMarketplaceActivity: marketplaceReportsRuntime.latestMarketplaceActivity,
+      loadingState: marketplaceReportsRuntime.loadingState,
+      status: marketplaceReportsRuntime.status,
+      summary: marketplaceReportsRuntime.summary
+    },
+    operationsReports: {
+      errorMessage: operationsReportsRuntime.errorMessage,
+      lastGeneratedState: operationsReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: operationsReportsRuntime.lastUpdatedAt,
+      latestOperationsActivity: operationsReportsRuntime.latestOperationsActivity,
+      loadingState: operationsReportsRuntime.loadingState,
+      status: operationsReportsRuntime.status,
+      summary: operationsReportsRuntime.summary
+    },
+    paymentReports: {
+      errorMessage: paymentReportsRuntime.errorMessage,
+      lastGeneratedState: paymentReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: paymentReportsRuntime.lastUpdatedAt,
+      latestPaymentActivity: paymentReportsRuntime.latestPaymentActivity,
+      loadingState: paymentReportsRuntime.loadingState,
+      status: paymentReportsRuntime.status,
+      summary: paymentReportsRuntime.summary
+    },
+    registry: preliminaryRegistryRuntime.registry,
+    registryContext: registryContextBase,
+    registryReports: preliminaryRegistryRuntime.reports,
+    revenueReports: {
+      errorMessage: revenueReportsRuntime.errorMessage,
+      lastGeneratedState: revenueReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: revenueReportsRuntime.lastUpdatedAt,
+      loadingState: revenueReportsRuntime.loadingState,
+      status: revenueReportsRuntime.status,
+      summary: revenueReportsRuntime.summary
+    },
+    securityReports: {
+      errorMessage: securityReportsRuntime.errorMessage,
+      lastGeneratedState: securityReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: securityReportsRuntime.lastUpdatedAt,
+      latestSecurityActivity: securityReportsRuntime.latestSecurityActivity,
+      loadingState: securityReportsRuntime.loadingState,
+      status: securityReportsRuntime.status,
+      summary: securityReportsRuntime.summary
+    },
+    selectedReportKey,
+    storeReports: {
+      errorMessage: storeReportsRuntime.errorMessage,
+      lastGeneratedState: storeReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: storeReportsRuntime.lastUpdatedAt,
+      loadingState: storeReportsRuntime.loadingState,
+      status: storeReportsRuntime.status,
+      summary: storeReportsRuntime.summary
+    },
+    subscriptionReports: {
+      errorMessage: subscriptionReportsRuntime.errorMessage,
+      lastGeneratedState: subscriptionReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: subscriptionReportsRuntime.lastUpdatedAt,
+      loadingState: subscriptionReportsRuntime.loadingState,
+      status: subscriptionReportsRuntime.status,
+      summary: subscriptionReportsRuntime.summary
+    },
+    userReports: {
+      errorMessage: userReportsRuntime.errorMessage,
+      lastGeneratedState: userReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: userReportsRuntime.lastUpdatedAt,
+      loadingState: userReportsRuntime.loadingState,
+      status: userReportsRuntime.status,
+      summary: userReportsRuntime.summary
+    }
+  });
+  const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
+    ...registryContextBase,
+    reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
+    reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention"
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
   const reports: AdminReportingControl["reports"] = registryRuntime.reports;
+  const viewQuery = selectedReportKey ? `&view=${encodeURIComponent(selectedReportKey)}` : "";
   const dateFilters: AdminReportingControl["dateFilters"] = [
-    { active: selectedRange === "today", href: "/admin/reports?range=today", label: "Today", value: "today" },
-    { active: selectedRange === "7d", href: "/admin/reports?range=7d", label: "7 days", value: "7d" },
-    { active: selectedRange === "30d", href: "/admin/reports?range=30d", label: "30 days", value: "30d" },
-    { active: selectedRange === "month", href: "/admin/reports?range=month", label: "Month", value: "month" },
-    { active: selectedRange === "year", href: "/admin/reports?range=year", label: "Year", value: "year" }
+    { active: selectedRange === "today", href: `/admin/reports?range=today${viewQuery}`, label: "Today", value: "today" },
+    { active: selectedRange === "7d", href: `/admin/reports?range=7d${viewQuery}`, label: "7 days", value: "7d" },
+    { active: selectedRange === "30d", href: `/admin/reports?range=30d${viewQuery}`, label: "30 days", value: "30d" },
+    { active: selectedRange === "month", href: `/admin/reports?range=month${viewQuery}`, label: "Month", value: "month" },
+    { active: selectedRange === "year", href: `/admin/reports?range=year${viewQuery}`, label: "Year", value: "year" }
   ];
 
   return {
@@ -11426,6 +11598,20 @@ export async function getAdminReportingControl(
       status: operationsReportsRuntime.status,
       summary: operationsReportsRuntime.summary,
       warnings: operationsReportsRuntime.warnings
+    },
+    reportViewer: {
+      catalog: reportViewerRuntime.catalog,
+      errorMessage: reportViewerRuntime.errorMessage,
+      generatedAt: reportViewerRuntime.generatedAt,
+      lastGeneratedState: reportViewerRuntime.lastGeneratedState,
+      loadingState: reportViewerRuntime.loadingState,
+      readOnly: true as const,
+      selectedReport: reportViewerRuntime.selectedReport,
+      selectedReportKey: reportViewerRuntime.selectedReportKey,
+      status: reportViewerRuntime.status,
+      summary: reportViewerRuntime.summary,
+      viewableReportCount: reportViewerRuntime.viewableReportCount,
+      warnings: reportViewerRuntime.warnings
     },
     reports,
     selectedRange,
