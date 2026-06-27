@@ -214,6 +214,11 @@ import {
   withReportRuntimeVisibilityFields
 } from "@/src/lib/reports/report-visibility-runtime";
 import {
+  buildReportSafeActionsRuntimeInput,
+  mapReportSafeActionsRuntimeToAdminFields,
+  withReportRuntimeSafeActionsFields
+} from "@/src/lib/reports/report-safe-actions-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -4006,7 +4011,86 @@ type AdminReportRuntimeVisibilityFields = {
   runtimeVisibilityDescription: string;
 };
 
-type AdminReportRuntimeFields = AdminReportRuntimeStatusFields & AdminReportRuntimeVisibilityFields;
+type AdminReportRuntimeSafeActionsFields = {
+  runtimeSafeAction:
+    | "action_locked"
+    | "certify_disabled"
+    | "export_disabled"
+    | "generate_disabled"
+    | "planned_action"
+    | "review_disabled"
+    | "schedule_disabled"
+    | "view_disabled"
+    | "view_enabled";
+  runtimeSafeActionDescription: string;
+  runtimeSafeActions: {
+    certify:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+    export:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+    generate:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+    review:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+    schedule:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+    view:
+      | "action_locked"
+      | "certify_disabled"
+      | "export_disabled"
+      | "generate_disabled"
+      | "planned_action"
+      | "review_disabled"
+      | "schedule_disabled"
+      | "view_disabled"
+      | "view_enabled";
+  };
+  viewEnabled: boolean;
+};
+
+type AdminReportRuntimeFields = AdminReportRuntimeStatusFields &
+  AdminReportRuntimeVisibilityFields &
+  AdminReportRuntimeSafeActionsFields;
 
 export type AdminReportingControl = {
   categories: Array<{
@@ -4496,6 +4580,19 @@ export type AdminReportingControl = {
         | "restricted"
         | "super_admin_only";
       runtimeVisibilityDescription: string;
+      runtimeSafeAction:
+        | "action_locked"
+        | "certify_disabled"
+        | "export_disabled"
+        | "generate_disabled"
+        | "planned_action"
+        | "review_disabled"
+        | "schedule_disabled"
+        | "view_disabled"
+        | "view_enabled";
+      runtimeSafeActionDescription: string;
+      runtimeSafeActions: AdminReportRuntimeSafeActionsFields["runtimeSafeActions"];
+      viewEnabled: boolean;
     }>;
     errorMessage: string | null;
     generatedAt: string;
@@ -4547,6 +4644,19 @@ export type AdminReportingControl = {
         | "restricted"
         | "super_admin_only";
       runtimeVisibilityDescription: string;
+      runtimeSafeAction:
+        | "action_locked"
+        | "certify_disabled"
+        | "export_disabled"
+        | "generate_disabled"
+        | "planned_action"
+        | "review_disabled"
+        | "schedule_disabled"
+        | "view_disabled"
+        | "view_enabled";
+      runtimeSafeActionDescription: string;
+      runtimeSafeActions: AdminReportRuntimeSafeActionsFields["runtimeSafeActions"];
+      viewEnabled: boolean;
     } | null;
     selectedReportKey: string | null;
     status: "needs_attention" | "ready" | "unavailable";
@@ -4659,6 +4769,49 @@ export type AdminReportingControl = {
     >;
     warnings: string[];
   };
+  reportSafeActions: {
+    actionsByReportKey: Record<
+      string,
+      {
+        actions: AdminReportRuntimeSafeActionsFields["runtimeSafeActions"];
+        badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+        description: string;
+        readOnly: true;
+        registrySafeActionsAvailability: string;
+        reportKey: string;
+        roadmapPhase: string;
+        runtimeSafeAction: AdminReportRuntimeSafeActionsFields["runtimeSafeAction"];
+        superAdminOnly: true;
+        title: string;
+        viewEnabled: boolean;
+      }
+    >;
+    countsBySafeAction: Record<
+      AdminReportRuntimeSafeActionsFields["runtimeSafeAction"],
+      number
+    >;
+    entries: Array<{
+      actions: AdminReportRuntimeSafeActionsFields["runtimeSafeActions"];
+      badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+      description: string;
+      readOnly: true;
+      registrySafeActionsAvailability: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeSafeAction: AdminReportRuntimeSafeActionsFields["runtimeSafeAction"];
+      superAdminOnly: true;
+      title: string;
+      viewEnabled: boolean;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    readOnly: true;
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    warnings: string[];
+  };
   reports: Array<{
     category:
       | "AI Reports"
@@ -4703,6 +4856,10 @@ export type AdminReportingControl = {
       | "restricted"
       | "super_admin_only";
     runtimeVisibilityDescription: string;
+    runtimeSafeAction: AdminReportRuntimeSafeActionsFields["runtimeSafeAction"];
+    runtimeSafeActionDescription: string;
+    runtimeSafeActions: AdminReportRuntimeSafeActionsFields["runtimeSafeActions"];
+    viewEnabled: boolean;
     safeActionsAvailability: "available" | "placeholder" | "unavailable";
     safeActionsLabel: string;
     status: "inactive" | "planned" | "placeholder" | "ready" | "review";
@@ -11422,12 +11579,17 @@ function withReportRuntimeFields<T extends Record<string, unknown>>(
   module: T,
   reportKey: string,
   statusByReportKey: Parameters<typeof withReportRuntimeStatusFields>[2],
-  visibilityByReportKey: Parameters<typeof withReportRuntimeVisibilityFields>[2]
+  visibilityByReportKey: Parameters<typeof withReportRuntimeVisibilityFields>[2],
+  actionsByReportKey: Parameters<typeof withReportRuntimeSafeActionsFields>[2]
 ) {
-  return withReportRuntimeVisibilityFields(
-    withReportRuntimeStatusFields(module, reportKey, statusByReportKey),
+  return withReportRuntimeSafeActionsFields(
+    withReportRuntimeVisibilityFields(
+      withReportRuntimeStatusFields(module, reportKey, statusByReportKey),
+      reportKey,
+      visibilityByReportKey
+    ),
     reportKey,
-    visibilityByReportKey
+    actionsByReportKey
   );
 }
 
@@ -11687,6 +11849,27 @@ export async function getAdminReportingControl(
       )
     })
   );
+  const reportSafeActionsRuntime = await mapReportSafeActionsRuntimeToAdminFields(
+    buildReportSafeActionsRuntimeInput({
+      registryContext: registryContextBase,
+      registryReports: preliminaryRegistryRuntime.reports,
+      statusByReportKey: Object.fromEntries(
+        Object.entries(reportStatusRuntime.statusByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeStatus: entry.runtimeStatus }
+        ])
+      ),
+      visibilityByReportKey: Object.fromEntries(
+        Object.entries(reportVisibilityRuntime.visibilityByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeVisibility: entry.runtimeVisibility }
+        ])
+      ),
+      viewerStateByReportKey: Object.fromEntries(
+        reportViewerRuntime.catalog.map((entry) => [entry.reportKey, entry.viewerState])
+      )
+    })
+  );
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -11694,11 +11877,14 @@ export async function getAdminReportingControl(
     reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
     reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention",
     reportVisibilityLastGenerated: reportVisibilityRuntime.lastGeneratedState,
-    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention"
+    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention",
+    reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
+    reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention"
   });
   const reports: AdminReportingControl["reports"] = registryRuntime.reports.map((report) => {
     const statusEntry = reportStatusRuntime.statusByReportKey[report.reportKey];
     const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[report.reportKey];
+    const safeActionsEntry = reportSafeActionsRuntime.actionsByReportKey[report.reportKey];
 
     return {
       ...report,
@@ -11707,7 +11893,20 @@ export async function getAdminReportingControl(
       runtimeVisibility: visibilityEntry?.runtimeVisibility ?? "super_admin_only",
       runtimeVisibilityDescription:
         visibilityEntry?.description ??
-        "Report visibility unavailable; safe Super Admin only fallback applied."
+        "Report visibility unavailable; safe Super Admin only fallback applied.",
+      runtimeSafeAction: safeActionsEntry?.runtimeSafeAction ?? "action_locked",
+      runtimeSafeActionDescription:
+        safeActionsEntry?.description ?? "Report safe actions unavailable; safe locked fallback applied.",
+      runtimeSafeActions:
+        safeActionsEntry?.actions ?? {
+          certify: "certify_disabled",
+          export: "export_disabled",
+          generate: "generate_disabled",
+          review: "review_disabled",
+          schedule: "schedule_disabled",
+          view: "view_disabled"
+        },
+      viewEnabled: safeActionsEntry?.viewEnabled ?? false
     };
   });
   const viewQuery = selectedReportKey ? `&view=${encodeURIComponent(selectedReportKey)}` : "";
@@ -11764,7 +11963,8 @@ export async function getAdminReportingControl(
       },
       "rp-2-revenue-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     storeReports: withReportRuntimeFields(
       {
@@ -11785,7 +11985,8 @@ export async function getAdminReportingControl(
       },
       "rp-3-store-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     userReports: withReportRuntimeFields(
       {
@@ -11805,7 +12006,8 @@ export async function getAdminReportingControl(
       },
       "rp-4-user-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     subscriptionReports: withReportRuntimeFields(
       {
@@ -11827,7 +12029,8 @@ export async function getAdminReportingControl(
       },
       "rp-5-subscription-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     paymentReports: withReportRuntimeFields(
       {
@@ -11850,7 +12053,8 @@ export async function getAdminReportingControl(
       },
       "rp-6-payment-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     aiReports: withReportRuntimeFields(
       {
@@ -11873,7 +12077,8 @@ export async function getAdminReportingControl(
       },
       "rp-7-ai-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     domainEmailReports: withReportRuntimeFields(
       {
@@ -11897,7 +12102,8 @@ export async function getAdminReportingControl(
       },
       "rp-8-domain-email-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     marketplaceReports: withReportRuntimeFields(
       {
@@ -11919,7 +12125,8 @@ export async function getAdminReportingControl(
       },
       "rp-9-marketplace-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     securityReports: withReportRuntimeFields(
       {
@@ -11941,7 +12148,8 @@ export async function getAdminReportingControl(
       },
       "rp-10-security-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     operationsReports: withReportRuntimeFields(
       {
@@ -11962,12 +12170,14 @@ export async function getAdminReportingControl(
       },
       "rp-11-operations-reports",
       reportStatusRuntime.statusByReportKey,
-      reportVisibilityRuntime.visibilityByReportKey
+      reportVisibilityRuntime.visibilityByReportKey,
+      reportSafeActionsRuntime.actionsByReportKey
     ),
     reportViewer: {
       catalog: reportViewerRuntime.catalog.map((entry) => {
         const statusEntry = reportStatusRuntime.statusByReportKey[entry.reportKey];
         const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[entry.reportKey];
+        const safeActionsEntry = reportSafeActionsRuntime.actionsByReportKey[entry.reportKey];
 
         return {
           ...entry,
@@ -11976,7 +12186,20 @@ export async function getAdminReportingControl(
           runtimeVisibility: visibilityEntry?.runtimeVisibility ?? "super_admin_only",
           runtimeVisibilityDescription:
             visibilityEntry?.description ??
-            "Report visibility unavailable; safe Super Admin only fallback applied."
+            "Report visibility unavailable; safe Super Admin only fallback applied.",
+          runtimeSafeAction: safeActionsEntry?.runtimeSafeAction ?? "action_locked",
+          runtimeSafeActionDescription:
+            safeActionsEntry?.description ?? "Report safe actions unavailable; safe locked fallback applied.",
+          runtimeSafeActions:
+            safeActionsEntry?.actions ?? {
+              certify: "certify_disabled",
+              export: "export_disabled",
+              generate: "generate_disabled",
+              review: "review_disabled",
+              schedule: "schedule_disabled",
+              view: "view_disabled"
+            },
+          viewEnabled: safeActionsEntry?.viewEnabled ?? false
         };
       }),
       errorMessage: reportViewerRuntime.errorMessage,
@@ -11998,7 +12221,25 @@ export async function getAdminReportingControl(
                 ?.runtimeVisibility ?? "super_admin_only",
             runtimeVisibilityDescription:
               reportVisibilityRuntime.visibilityByReportKey[reportViewerRuntime.selectedReport.reportKey]
-                ?.description ?? "Report visibility unavailable; safe Super Admin only fallback applied."
+                ?.description ?? "Report visibility unavailable; safe Super Admin only fallback applied.",
+            runtimeSafeAction:
+              reportSafeActionsRuntime.actionsByReportKey[reportViewerRuntime.selectedReport.reportKey]
+                ?.runtimeSafeAction ?? "action_locked",
+            runtimeSafeActionDescription:
+              reportSafeActionsRuntime.actionsByReportKey[reportViewerRuntime.selectedReport.reportKey]
+                ?.description ?? "Report safe actions unavailable; safe locked fallback applied.",
+            runtimeSafeActions:
+              reportSafeActionsRuntime.actionsByReportKey[reportViewerRuntime.selectedReport.reportKey]?.actions ?? {
+                certify: "certify_disabled",
+                export: "export_disabled",
+                generate: "generate_disabled",
+                review: "review_disabled",
+                schedule: "schedule_disabled",
+                view: "view_disabled"
+              },
+            viewEnabled:
+              reportSafeActionsRuntime.actionsByReportKey[reportViewerRuntime.selectedReport.reportKey]?.viewEnabled ??
+              false
           }
         : null,
       selectedReportKey: reportViewerRuntime.selectedReportKey,
@@ -12031,6 +12272,19 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       visibilityByReportKey: reportVisibilityRuntime.visibilityByReportKey,
       warnings: reportVisibilityRuntime.warnings
+    },
+    reportSafeActions: {
+      actionsByReportKey: reportSafeActionsRuntime.actionsByReportKey,
+      countsBySafeAction: reportSafeActionsRuntime.countsBySafeAction,
+      entries: reportSafeActionsRuntime.entries,
+      errorMessage: reportSafeActionsRuntime.errorMessage,
+      generatedAt: reportSafeActionsRuntime.generatedAt,
+      lastGeneratedState: reportSafeActionsRuntime.lastGeneratedState,
+      readOnly: true as const,
+      status: reportSafeActionsRuntime.status,
+      summary: reportSafeActionsRuntime.summary,
+      superAdminReportsOnly: true as const,
+      warnings: reportSafeActionsRuntime.warnings
     },
     reports,
     selectedRange,

@@ -22,10 +22,11 @@ import {
   REPORT_RUNTIME_VISIBILITIES
 } from "@/src/lib/reports/report-visibility-runtime";
 import {
-  exportReportPlaceholder,
-  markReportReviewed,
-  scheduleReportPlaceholder
-} from "@/lib/admin/report-actions";
+  reportRuntimeSafeActionBadgeTone,
+  reportRuntimeSafeActionDescription,
+  reportRuntimeSafeActionLabel,
+  REPORT_RUNTIME_SAFE_ACTIONS
+} from "@/src/lib/reports/report-safe-actions-runtime";
 
 function toneForStatus(status: string) {
   if (status === "ready" || status === "registry_ready") {
@@ -113,17 +114,90 @@ function ReportRuntimeVisibilityBadge({
   );
 }
 
-function ReportHiddenFields({
-  report
+function ReportRuntimeSafeActionBadge({
+  description,
+  safeAction
 }: {
-  report: Awaited<ReturnType<typeof getAdminReportingControl>>["reports"][number];
+  description?: string;
+  safeAction: string;
 }) {
   return (
-    <>
-      <input name="reportId" type="hidden" value={report.reportId} />
-      <input name="reportName" type="hidden" value={report.name} />
-      <input name="category" type="hidden" value={report.category} />
-    </>
+    <span title={description}>
+      <AdminBadge tone={reportRuntimeSafeActionBadgeTone(safeAction)}>
+        {reportRuntimeSafeActionLabel(safeAction)}
+      </AdminBadge>
+    </span>
+  );
+}
+
+function ReportRegistrySafeActionsCell({
+  report,
+  selectedRange
+}: {
+  report: Awaited<ReturnType<typeof getAdminReportingControl>>["reports"][number];
+  selectedRange: string;
+}) {
+  const disabledButtonClass =
+    "h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400";
+
+  return (
+    <div className="grid min-w-52 gap-2">
+      <ReportRuntimeSafeActionBadge
+        description={report.runtimeSafeActionDescription}
+        safeAction={report.runtimeSafeAction}
+      />
+      <p className="text-xs text-slate-500">{report.runtimeSafeActionDescription}</p>
+      {report.viewEnabled && isViewableReportKey(report.reportKey) ? (
+        <Link
+          className="flex h-9 w-full items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+          href={buildReportViewerHref(selectedRange, report.reportKey)}
+          title={reportRuntimeSafeActionDescription("view_enabled")}
+        >
+          View report
+        </Link>
+      ) : (
+        <button
+          className={disabledButtonClass}
+          disabled
+          title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.view)}
+          type="button"
+        >
+          View disabled
+        </button>
+      )}
+      <button
+        className={disabledButtonClass}
+        disabled
+        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.export)}
+        type="button"
+      >
+        Export disabled
+      </button>
+      <button
+        className={disabledButtonClass}
+        disabled
+        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.schedule)}
+        type="button"
+      >
+        Schedule disabled
+      </button>
+      <button
+        className={disabledButtonClass}
+        disabled
+        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.review)}
+        type="button"
+      >
+        Review disabled
+      </button>
+      <button
+        className={disabledButtonClass}
+        disabled
+        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.certify)}
+        type="button"
+      >
+        Certify disabled
+      </button>
+    </div>
   );
 }
 
@@ -213,6 +287,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeVisibilityBadge
             description={control.revenueReports.runtimeVisibilityDescription}
             visibility={control.revenueReports.runtimeVisibility}
+          />
+          <ReportRuntimeSafeActionBadge
+            description={control.revenueReports.runtimeSafeActionDescription}
+            safeAction={control.revenueReports.runtimeSafeAction}
           />
           <span className="text-xs text-slate-600">{control.revenueReports.rangeLabel}</span>
         </div>
@@ -326,6 +404,10 @@ export default async function AdminReportsPage({
             description={control.storeReports.runtimeVisibilityDescription}
             visibility={control.storeReports.runtimeVisibility}
           />
+          <ReportRuntimeSafeActionBadge
+            description={control.storeReports.runtimeSafeActionDescription}
+            safeAction={control.storeReports.runtimeSafeAction}
+          />
           <span className="text-xs text-slate-600">{control.storeReports.rangeLabel}</span>
         </div>
 
@@ -425,6 +507,10 @@ export default async function AdminReportsPage({
             description={control.userReports.runtimeVisibilityDescription}
             visibility={control.userReports.runtimeVisibility}
           />
+          <ReportRuntimeSafeActionBadge
+            description={control.userReports.runtimeSafeActionDescription}
+            safeAction={control.userReports.runtimeSafeAction}
+          />
           <span className="text-xs text-slate-600">{control.userReports.rangeLabel}</span>
         </div>
 
@@ -509,6 +595,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeVisibilityBadge
             description={control.subscriptionReports.runtimeVisibilityDescription}
             visibility={control.subscriptionReports.runtimeVisibility}
+          />
+          <ReportRuntimeSafeActionBadge
+            description={control.subscriptionReports.runtimeSafeActionDescription}
+            safeAction={control.subscriptionReports.runtimeSafeAction}
           />
           <span className="text-xs text-slate-600">{control.subscriptionReports.rangeLabel}</span>
         </div>
@@ -640,6 +730,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeVisibilityBadge
             description={control.paymentReports.runtimeVisibilityDescription}
             visibility={control.paymentReports.runtimeVisibility}
+          />
+          <ReportRuntimeSafeActionBadge
+            description={control.paymentReports.runtimeSafeActionDescription}
+            safeAction={control.paymentReports.runtimeSafeAction}
           />
           <span className="text-xs text-slate-600">{control.paymentReports.rangeLabel}</span>
         </div>
@@ -794,6 +888,10 @@ export default async function AdminReportsPage({
             description={control.aiReports.runtimeVisibilityDescription}
             visibility={control.aiReports.runtimeVisibility}
           />
+          <ReportRuntimeSafeActionBadge
+            description={control.aiReports.runtimeSafeActionDescription}
+            safeAction={control.aiReports.runtimeSafeAction}
+          />
           <span className="text-xs text-slate-600">{control.aiReports.rangeLabel}</span>
         </div>
 
@@ -945,6 +1043,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeVisibilityBadge
             description={control.domainEmailReports.runtimeVisibilityDescription}
             visibility={control.domainEmailReports.runtimeVisibility}
+          />
+          <ReportRuntimeSafeActionBadge
+            description={control.domainEmailReports.runtimeSafeActionDescription}
+            safeAction={control.domainEmailReports.runtimeSafeAction}
           />
           <span className="text-xs text-slate-600">{control.domainEmailReports.rangeLabel}</span>
         </div>
@@ -1122,6 +1224,10 @@ export default async function AdminReportsPage({
             description={control.marketplaceReports.runtimeVisibilityDescription}
             visibility={control.marketplaceReports.runtimeVisibility}
           />
+          <ReportRuntimeSafeActionBadge
+            description={control.marketplaceReports.runtimeSafeActionDescription}
+            safeAction={control.marketplaceReports.runtimeSafeAction}
+          />
           <span className="text-xs text-slate-600">{control.marketplaceReports.rangeLabel}</span>
         </div>
 
@@ -1257,6 +1363,10 @@ export default async function AdminReportsPage({
             description={control.securityReports.runtimeVisibilityDescription}
             visibility={control.securityReports.runtimeVisibility}
           />
+          <ReportRuntimeSafeActionBadge
+            description={control.securityReports.runtimeSafeActionDescription}
+            safeAction={control.securityReports.runtimeSafeAction}
+          />
           <span className="text-xs text-slate-600">{control.securityReports.rangeLabel}</span>
         </div>
 
@@ -1376,6 +1486,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeVisibilityBadge
             description={control.operationsReports.runtimeVisibilityDescription}
             visibility={control.operationsReports.runtimeVisibility}
+          />
+          <ReportRuntimeSafeActionBadge
+            description={control.operationsReports.runtimeSafeActionDescription}
+            safeAction={control.operationsReports.runtimeSafeAction}
           />
           <span className="text-xs text-slate-600">{control.operationsReports.rangeLabel}</span>
         </div>
@@ -1533,6 +1647,10 @@ export default async function AdminReportsPage({
                 description={control.reportViewer.selectedReport.runtimeVisibilityDescription}
                 visibility={control.reportViewer.selectedReport.runtimeVisibility}
               />
+              <ReportRuntimeSafeActionBadge
+                description={control.reportViewer.selectedReport.runtimeSafeActionDescription}
+                safeAction={control.reportViewer.selectedReport.runtimeSafeAction}
+              />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1543,6 +1661,10 @@ export default async function AdminReportsPage({
               <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
                 <span className="font-bold text-slate-950">Runtime visibility:</span>{" "}
                 {control.reportViewer.selectedReport.runtimeVisibilityDescription}
+              </p>
+              <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                <span className="font-bold text-slate-950">Safe actions guard:</span>{" "}
+                {control.reportViewer.selectedReport.runtimeSafeActionDescription}
               </p>
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-950">Report key:</span>{" "}
@@ -1566,7 +1688,7 @@ export default async function AdminReportsPage({
               </p>
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-950">Safe actions:</span>{" "}
-                {control.reportViewer.selectedReport.safeActionsState}
+                {control.reportViewer.selectedReport.runtimeSafeActionDescription}
               </p>
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-950">Certification:</span>{" "}
@@ -1756,6 +1878,95 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-15 Safe Actions
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportSafeActions.status)}>{control.reportSafeActions.status}</AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportSafeActions.summary}</span>
+        </div>
+
+        {control.reportSafeActions.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportSafeActions.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={REPORT_RUNTIME_SAFE_ACTIONS.map((safeAction) => ({
+            label: reportRuntimeSafeActionLabel(safeAction),
+            value: control.reportSafeActions.countsBySafeAction[safeAction]
+          }))}
+        />
+
+        {control.reportSafeActions.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportSafeActions.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={["Report", "View", "Export", "Schedule", "Review", "Certify", "Primary guard", "Description"]}
+        >
+          {control.reportSafeActions.entries.length ? (
+            control.reportSafeActions.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {entry.roadmapPhase} · {entry.reportKey}
+                  </p>
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge
+                    description={reportRuntimeSafeActionDescription(entry.actions.view)}
+                    safeAction={entry.actions.view}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge
+                    description={reportRuntimeSafeActionDescription(entry.actions.export)}
+                    safeAction={entry.actions.export}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge
+                    description={reportRuntimeSafeActionDescription(entry.actions.schedule)}
+                    safeAction={entry.actions.schedule}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge
+                    description={reportRuntimeSafeActionDescription(entry.actions.review)}
+                    safeAction={entry.actions.review}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge
+                    description={reportRuntimeSafeActionDescription(entry.actions.certify)}
+                    safeAction={entry.actions.certify}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeSafeActionBadge description={entry.description} safeAction={entry.runtimeSafeAction} />
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.description}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={8}>
+                No safe action guards are available yet. All actions remain locked as a safe fallback.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -1801,65 +2012,7 @@ export default async function AdminReportsPage({
             <td className="px-5 py-4 text-slate-600">{report.lastGenerated}</td>
             <td className="px-5 py-4 text-slate-600">{report.exportPlaceholder}</td>
             <td className="px-5 py-4">
-              {report.supportsSafeActions ? (
-                <div className="grid min-w-52 gap-2">
-                  <p className="text-xs text-slate-500">{report.safeActionsLabel}</p>
-                  {isViewableReportKey(report.reportKey) ? (
-                    <Link
-                      className="flex h-9 w-full items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                      href={buildReportViewerHref(control.selectedRange, report.reportKey)}
-                    >
-                      View report
-                    </Link>
-                  ) : (
-                    <button
-                      className="h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-                      disabled
-                      type="button"
-                    >
-                      Viewer unavailable
-                    </button>
-                  )}
-                  <form action={markReportReviewed}>
-                    <ReportHiddenFields report={report} />
-                    <button
-                      className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
-                      type="submit"
-                    >
-                      Mark reviewed
-                    </button>
-                  </form>
-                  <form action={exportReportPlaceholder}>
-                    <ReportHiddenFields report={report} />
-                    <button
-                      className="h-9 w-full rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700"
-                      type="submit"
-                    >
-                      Export placeholder
-                    </button>
-                  </form>
-                  <form action={scheduleReportPlaceholder}>
-                    <ReportHiddenFields report={report} />
-                    <button
-                      className="h-9 w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
-                      type="submit"
-                    >
-                      Schedule placeholder
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div className="grid gap-2">
-                  <p className="text-xs text-slate-600">{report.safeActionsLabel}</p>
-                  <button
-                    className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
-                    disabled
-                    type="button"
-                  >
-                    Read-only
-                  </button>
-                </div>
-              )}
+              <ReportRegistrySafeActionsCell report={report} selectedRange={control.selectedRange} />
             </td>
             <td className="px-5 py-4 text-sm text-slate-600">{report.dataSourceDescription}</td>
             <td className="px-5 py-4">

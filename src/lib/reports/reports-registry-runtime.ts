@@ -108,6 +108,8 @@ export type ReportsRegistryRuntimeContext = {
   reportStatusNeedsAttention?: boolean;
   reportVisibilityLastGenerated?: string;
   reportVisibilityNeedsAttention?: boolean;
+  reportSafeActionsLastGenerated?: string;
+  reportSafeActionsNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -361,10 +363,11 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "planned",
-    dataSourceDescription: "Monitoring-event placeholders only. No destructive report mutations.",
+    dataSourceDescription:
+      "Report Safe Actions runtime (registry metadata + RP-13 status + RP-14 visibility + RP-12 viewer). Read-only on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Action catalog expansion"],
-    lastGeneratedState: "Monitoring placeholders",
+    lastGeneratedState: "Live action guard",
     reportId: "platform:safe-actions",
     reportKey: "rp-15-safe-actions",
     roadmapPhase: "RP-15",
@@ -692,6 +695,16 @@ function applyRuntimeContext(
         "Report Visibility runtime (registry metadata + RP-13 status signals). Read-only on page load.",
       lastGeneratedState: context.reportVisibilityLastGenerated ?? definition.lastGeneratedState,
       status: context.reportVisibilityNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-15-safe-actions") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Safe Actions runtime (registry metadata + RP-13 status + RP-14 visibility + RP-12 viewer). Read-only on page load.",
+      lastGeneratedState: context.reportSafeActionsLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportSafeActionsNeedsAttention ? "review" : definition.status
     };
   }
 
