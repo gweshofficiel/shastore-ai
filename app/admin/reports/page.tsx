@@ -981,6 +981,133 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-9 Marketplace Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.marketplaceReports.status)}>
+            {control.marketplaceReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.marketplaceReports.rangeLabel}</span>
+        </div>
+
+        {control.marketplaceReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.marketplaceReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.marketplaceReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No marketplace source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            {
+              label: "Total marketplace items",
+              value: control.marketplaceReports.metrics.totalMarketplaceItems
+            },
+            { label: "Approved items", value: control.marketplaceReports.metrics.approvedItems },
+            { label: "Pending review items", value: control.marketplaceReports.metrics.pendingReviewItems },
+            { label: "Draft items", value: control.marketplaceReports.metrics.draftItems },
+            { label: "Rejected items", value: control.marketplaceReports.metrics.rejectedItems },
+            { label: "Archived items", value: control.marketplaceReports.metrics.archivedItems },
+            { label: "Creators", value: control.marketplaceReports.metrics.creatorsCount },
+            { label: "Live installs", value: control.marketplaceReports.metrics.liveInstalls },
+            {
+              label: "Payments processed",
+              value: control.marketplaceReports.metrics.marketplacePaymentsProcessed
+            }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.marketplaceReports.summary}
+          {control.marketplaceReports.lastUpdatedAt
+            ? ` · Last marketplace activity ${control.marketplaceReports.lastUpdatedAt}`
+            : " · No marketplace activity timestamps recorded"}
+        </p>
+
+        {control.marketplaceReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.marketplaceReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Latest activity", "Type", "Item", "Status", "Availability"]}>
+          {control.marketplaceReports.latestMarketplaceActivity.length ? (
+            control.marketplaceReports.latestMarketplaceActivity.map((item) => (
+              <tr key={`${item.activityAt}-${item.activityType}-${item.itemLabel}-${item.status}`}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.activityAt}</td>
+                <td className="px-5 py-4 text-slate-600">{item.activityType}</td>
+                <td className="px-5 py-4 text-slate-600">{item.itemLabel}</td>
+                <td className="px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={5}>
+                No latest marketplace activity is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Marketplace category", "Count", "Availability"]}>
+          {control.marketplaceReports.itemsByCategory.length ? (
+            control.marketplaceReports.itemsByCategory.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No marketplace category breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Item status", "Count", "Availability"]}>
+          {control.marketplaceReports.itemsByStatus.length ? (
+            control.marketplaceReports.itemsByStatus.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No marketplace status breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

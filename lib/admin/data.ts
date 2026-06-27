@@ -196,6 +196,7 @@ import { mapSubscriptionReportsRuntimeToAdminFields } from "@/src/lib/reports/su
 import { mapPaymentReportsRuntimeToAdminFields } from "@/src/lib/reports/payment-reports-runtime";
 import { mapAIReportsRuntimeToAdminFields } from "@/src/lib/reports/ai-reports-runtime";
 import { mapDomainEmailReportsRuntimeToAdminFields } from "@/src/lib/reports/domain-email-reports-runtime";
+import { mapMarketplaceReportsRuntimeToAdminFields } from "@/src/lib/reports/marketplace-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4276,6 +4277,47 @@ export type AdminReportingControl = {
       pendingEmailServices: number;
       totalDomains: number;
       totalEmailServices: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    warnings: string[];
+  };
+  marketplaceReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    itemsByCategory: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    itemsByStatus: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    latestMarketplaceActivity: Array<{
+      activityAt: string;
+      activityType: string;
+      dataAvailability: "available" | "planned";
+      itemLabel: string;
+      status: string;
+    }>;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      approvedItems: number;
+      archivedItems: number;
+      creatorsCount: number;
+      draftItems: number;
+      liveInstalls: number;
+      marketplacePaymentsProcessed: number;
+      pendingReviewItems: number;
+      rejectedItems: number;
+      totalMarketplaceItems: number;
     };
     rangeLabel: string;
     readOnly: true;
@@ -11046,7 +11088,8 @@ export async function getAdminReportingControl(
     subscriptionReportsRuntime,
     paymentReportsRuntime,
     aiReportsRuntime,
-    domainEmailReportsRuntime
+    domainEmailReportsRuntime,
+    marketplaceReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -11062,7 +11105,8 @@ export async function getAdminReportingControl(
     mapSubscriptionReportsRuntimeToAdminFields(selectedRange),
     mapPaymentReportsRuntimeToAdminFields(selectedRange),
     mapAIReportsRuntimeToAdminFields(selectedRange),
-    mapDomainEmailReportsRuntimeToAdminFields(selectedRange)
+    mapDomainEmailReportsRuntimeToAdminFields(selectedRange),
+    mapMarketplaceReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -11084,6 +11128,8 @@ export async function getAdminReportingControl(
     aiReportNeedsAttention: aiReportsRuntime.status === "needs_attention",
     domainEmailReportLastGenerated: domainEmailReportsRuntime.lastGeneratedState,
     domainEmailReportNeedsAttention: domainEmailReportsRuntime.status === "needs_attention",
+    marketplaceReportLastGenerated: marketplaceReportsRuntime.lastGeneratedState,
+    marketplaceReportNeedsAttention: marketplaceReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -11239,6 +11285,23 @@ export async function getAdminReportingControl(
       status: domainEmailReportsRuntime.status,
       summary: domainEmailReportsRuntime.summary,
       warnings: domainEmailReportsRuntime.warnings
+    },
+    marketplaceReports: {
+      errorMessage: marketplaceReportsRuntime.errorMessage,
+      generatedAt: marketplaceReportsRuntime.generatedAt,
+      itemsByCategory: marketplaceReportsRuntime.itemsByCategory,
+      itemsByStatus: marketplaceReportsRuntime.itemsByStatus,
+      lastGeneratedState: marketplaceReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: marketplaceReportsRuntime.lastUpdatedAt,
+      latestMarketplaceActivity: marketplaceReportsRuntime.latestMarketplaceActivity,
+      loadingState: marketplaceReportsRuntime.loadingState,
+      metrics: marketplaceReportsRuntime.metrics,
+      rangeLabel: marketplaceReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: marketplaceReportsRuntime.selectedRange,
+      status: marketplaceReportsRuntime.status,
+      summary: marketplaceReportsRuntime.summary,
+      warnings: marketplaceReportsRuntime.warnings
     },
     reports,
     selectedRange,

@@ -96,6 +96,8 @@ export type ReportsRegistryRuntimeContext = {
   aiReportNeedsAttention?: boolean;
   domainEmailReportLastGenerated?: string;
   domainEmailReportNeedsAttention?: boolean;
+  marketplaceReportLastGenerated?: string;
+  marketplaceReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -257,7 +259,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Marketplace Reports",
     certificationState: "not_applicable",
-    dataSourceDescription: "getAdminMarketplaceControl approval pipeline aggregate.",
+    dataSourceDescription:
+      "Marketplace Reports runtime (marketplace_items, marketplace_creator_accounts, marketplace_install_events, marketplace_revenue_events, marketplace_purchases).",
     exportAvailabilityState: "placeholder",
     futureHooks: ["Marketplace export"],
     lastGeneratedState: "Live aggregate",
@@ -624,7 +627,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-9-marketplace-reports") {
     return {
       ...definition,
-      status: context.marketplacePendingReview ? "review" : definition.status
+      dataSourceDescription:
+        "Marketplace Reports runtime (marketplace_items, marketplace_creator_accounts, marketplace_install_events, marketplace_revenue_events, marketplace_purchases).",
+      lastGeneratedState: context.marketplaceReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.marketplaceReportNeedsAttention ? "review" : definition.status
     };
   }
 
