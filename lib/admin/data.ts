@@ -223,6 +223,13 @@ import {
   mapReportAggregationRuntimeToAdminFields
 } from "@/src/lib/reports/report-aggregation-runtime";
 import {
+  buildReportFilterableReports,
+  buildReportingCenterHref,
+  emptyReportFilterQuery,
+  mapReportFiltersRuntimeToAdminFields,
+  type ReportFilterQuery
+} from "@/src/lib/reports/report-filters-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -4851,6 +4858,64 @@ export type AdminReportingControl = {
       reportsWithRuntimeData: number;
       totalRegisteredReports: number;
     };
+    warnings: string[];
+  };
+  reportFilters: {
+    activeFilters: Array<{
+      dimension:
+        | "action"
+        | "availability"
+        | "category"
+        | "certification"
+        | "q"
+        | "status"
+        | "type"
+        | "visibility";
+      label: string;
+      value: string;
+    }>;
+    appliedFilterCount: number;
+    emptyMessage: string | null;
+    errorMessage: string | null;
+    filteredAggregation: {
+      availableReports: number;
+      byCategory: Array<{ count: number; label: string }>;
+      byRuntimeStatus: Array<{ count: number; label: string }>;
+      byRuntimeVisibility: Array<{ count: number; label: string }>;
+      emptyReports: number;
+      plannedReports: number;
+      reportsWithLockedActions: number;
+      reportsWithRuntimeData: number;
+      totalRegisteredReports: number;
+    };
+    filteredReportCount: number;
+    filterOptions: {
+      actions: string[];
+      availabilities: string[];
+      categories: string[];
+      certifications: string[];
+      statuses: string[];
+      types: string[];
+      visibilities: string[];
+    };
+    generatedAt: string;
+    lastGeneratedState: string;
+    query: {
+      action: string | null;
+      availability: string | null;
+      category: string | null;
+      certification: string | null;
+      q: string | null;
+      status: string | null;
+      type: string | null;
+      visibility: string | null;
+    };
+    readOnly: true;
+    resetHref: string;
+    status: "empty" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totalReportCount: number;
     warnings: string[];
   };
   reports: Array<{
@@ -11636,13 +11701,14 @@ function withReportRuntimeFields<T extends Record<string, unknown>>(
 
 export async function getAdminReportingControl(
   range: AdminReportingControl["selectedRange"] = "30d",
-  options: { view?: string | null } = {}
+  options: { filters?: ReportFilterQuery; view?: string | null } = {}
 ): Promise<AdminReportingControl> {
   const selectedRange: AdminReportingControl["selectedRange"] =
     range === "today" || range === "7d" || range === "30d" || range === "month" || range === "year"
       ? range
       : "30d";
   const selectedReportKey = options.view?.trim() || null;
+  const activeFilters = options.filters ?? emptyReportFilterQuery();
   const [
     analytics,
     users,
@@ -11990,20 +12056,7 @@ export async function getAdminReportingControl(
       }
     })
   );
-  const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
-    ...registryContextBase,
-    reportAggregationLastGenerated: reportAggregationRuntime.lastGeneratedState,
-    reportAggregationNeedsAttention: reportAggregationRuntime.status === "needs_attention",
-    reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
-    reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
-    reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
-    reportStatusNeedsAttention: reportStatusRuntime.status === "needs_attention",
-    reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
-    reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention",
-    reportVisibilityLastGenerated: reportVisibilityRuntime.lastGeneratedState,
-    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention"
-  });
-  const reports: AdminReportingControl["reports"] = registryRuntime.reports.map((report) => {
+  const allReports: AdminReportingControl["reports"] = preliminaryRegistryRuntime.reports.map((report) => {
     const statusEntry = reportStatusRuntime.statusByReportKey[report.reportKey];
     const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[report.reportKey];
     const safeActionsEntry = reportSafeActionsRuntime.actionsByReportKey[report.reportKey];
@@ -12031,13 +12084,76 @@ export async function getAdminReportingControl(
       viewEnabled: safeActionsEntry?.viewEnabled ?? false
     };
   });
-  const viewQuery = selectedReportKey ? `&view=${encodeURIComponent(selectedReportKey)}` : "";
+  const adapterLoadingStateByReportKey: Record<string, "empty" | "error" | "loaded" | undefined> = {
+    "rp-2-revenue-reports": revenueReportsRuntime.loadingState,
+    "rp-3-store-reports": storeReportsRuntime.loadingState,
+    "rp-4-user-reports": userReportsRuntime.loadingState,
+    "rp-5-subscription-reports": subscriptionReportsRuntime.loadingState,
+    "rp-6-payment-reports": paymentReportsRuntime.loadingState,
+    "rp-7-ai-reports": aiReportsRuntime.loadingState,
+    "rp-8-domain-email-reports": domainEmailReportsRuntime.loadingState,
+    "rp-9-marketplace-reports": marketplaceReportsRuntime.loadingState,
+    "rp-10-security-reports": securityReportsRuntime.loadingState,
+    "rp-11-operations-reports": operationsReportsRuntime.loadingState
+  };
+  const reportFiltersRuntime = await mapReportFiltersRuntimeToAdminFields({
+    query: activeFilters,
+    range: selectedRange,
+    reports: buildReportFilterableReports({
+      adapterLoadingStateByReportKey,
+      reports: allReports
+    }),
+    view: selectedReportKey
+  });
+  const filteredReportKeySet = new Set(reportFiltersRuntime.filteredReportKeys);
+  const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
+  const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
+    ...registryContextBase,
+    reportAggregationLastGenerated: reportAggregationRuntime.lastGeneratedState,
+    reportAggregationNeedsAttention: reportAggregationRuntime.status === "needs_attention",
+    reportFiltersLastGenerated: reportFiltersRuntime.lastGeneratedState,
+    reportFiltersNeedsAttention:
+      reportFiltersRuntime.status === "empty" || reportFiltersRuntime.status === "unavailable",
+    reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
+    reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
+    reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
+    reportStatusNeedsAttention: reportStatusRuntime.status === "needs_attention",
+    reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
+    reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention",
+    reportVisibilityLastGenerated: reportVisibilityRuntime.lastGeneratedState,
+    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention"
+  });
   const dateFilters: AdminReportingControl["dateFilters"] = [
-    { active: selectedRange === "today", href: `/admin/reports?range=today${viewQuery}`, label: "Today", value: "today" },
-    { active: selectedRange === "7d", href: `/admin/reports?range=7d${viewQuery}`, label: "7 days", value: "7d" },
-    { active: selectedRange === "30d", href: `/admin/reports?range=30d${viewQuery}`, label: "30 days", value: "30d" },
-    { active: selectedRange === "month", href: `/admin/reports?range=month${viewQuery}`, label: "Month", value: "month" },
-    { active: selectedRange === "year", href: `/admin/reports?range=year${viewQuery}`, label: "Year", value: "year" }
+    {
+      active: selectedRange === "today",
+      href: buildReportingCenterHref({ filters: activeFilters, range: "today", view: selectedReportKey }),
+      label: "Today",
+      value: "today"
+    },
+    {
+      active: selectedRange === "7d",
+      href: buildReportingCenterHref({ filters: activeFilters, range: "7d", view: selectedReportKey }),
+      label: "7 days",
+      value: "7d"
+    },
+    {
+      active: selectedRange === "30d",
+      href: buildReportingCenterHref({ filters: activeFilters, range: "30d", view: selectedReportKey }),
+      label: "30 days",
+      value: "30d"
+    },
+    {
+      active: selectedRange === "month",
+      href: buildReportingCenterHref({ filters: activeFilters, range: "month", view: selectedReportKey }),
+      label: "Month",
+      value: "month"
+    },
+    {
+      active: selectedRange === "year",
+      href: buildReportingCenterHref({ filters: activeFilters, range: "year", view: selectedReportKey }),
+      label: "Year",
+      value: "year"
+    }
   ];
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
 
@@ -12296,7 +12412,9 @@ export async function getAdminReportingControl(
       reportSafeActionsRuntime.actionsByReportKey
     ),
     reportViewer: {
-      catalog: reportViewerRuntime.catalog.map((entry) => {
+      catalog: reportViewerRuntime.catalog
+        .filter((entry) => filteredReportKeySet.has(entry.reportKey))
+        .map((entry) => {
         const statusEntry = reportStatusRuntime.statusByReportKey[entry.reportKey];
         const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[entry.reportKey];
         const safeActionsEntry = reportSafeActionsRuntime.actionsByReportKey[entry.reportKey];
@@ -12367,7 +12485,9 @@ export async function getAdminReportingControl(
       selectedReportKey: reportViewerRuntime.selectedReportKey,
       status: reportViewerRuntime.status,
       summary: reportViewerRuntime.summary,
-      viewableReportCount: reportViewerRuntime.viewableReportCount,
+      viewableReportCount: reportViewerRuntime.catalog.filter((entry) =>
+        filteredReportKeySet.has(entry.reportKey)
+      ).length,
       warnings: reportViewerRuntime.warnings
     },
     reportStatus: {
@@ -12426,6 +12546,25 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportAggregationRuntime.totals,
       warnings: reportAggregationRuntime.warnings
+    },
+    reportFilters: {
+      activeFilters: reportFiltersRuntime.activeFilters,
+      appliedFilterCount: reportFiltersRuntime.appliedFilterCount,
+      emptyMessage: reportFiltersRuntime.emptyMessage,
+      errorMessage: reportFiltersRuntime.errorMessage,
+      filteredAggregation: reportFiltersRuntime.filteredAggregation,
+      filteredReportCount: reportFiltersRuntime.filteredReportKeys.length,
+      filterOptions: reportFiltersRuntime.filterOptions,
+      generatedAt: reportFiltersRuntime.generatedAt,
+      lastGeneratedState: reportFiltersRuntime.lastGeneratedState,
+      query: reportFiltersRuntime.query,
+      readOnly: true as const,
+      resetHref: reportFiltersRuntime.resetHref,
+      status: reportFiltersRuntime.status,
+      summary: reportFiltersRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totalReportCount: reportFiltersRuntime.totalReportCount,
+      warnings: reportFiltersRuntime.warnings
     },
     reports,
     selectedRange,

@@ -8,9 +8,14 @@ import {
 } from "@/components/admin/admin-control";
 import { getAdminReportingControl } from "@/lib/admin/data";
 import {
-  buildReportViewerHref,
   isViewableReportKey
 } from "@/src/lib/reports/report-viewer-runtime";
+import {
+  buildReportFilterToggleHref,
+  buildReportingCenterHref,
+  parseReportFilterQuery,
+  reportFilterComparableValue
+} from "@/src/lib/reports/report-filters-runtime";
 import {
   reportRuntimeStatusBadgeTone,
   reportRuntimeStatusLabel,
@@ -148,10 +153,12 @@ function ReportRuntimeSafeActionBadge({
 
 function ReportRegistrySafeActionsCell({
   report,
-  selectedRange
+  selectedRange,
+  activeFilters
 }: {
   report: Awaited<ReturnType<typeof getAdminReportingControl>>["reports"][number];
   selectedRange: string;
+  activeFilters: Awaited<ReturnType<typeof getAdminReportingControl>>["reportFilters"]["query"];
 }) {
   const disabledButtonClass =
     "h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400";
@@ -166,7 +173,11 @@ function ReportRegistrySafeActionsCell({
       {report.viewEnabled && isViewableReportKey(report.reportKey) ? (
         <Link
           className="flex h-9 w-full items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-          href={buildReportViewerHref(selectedRange, report.reportKey)}
+          href={buildReportingCenterHref({
+            filters: activeFilters,
+            range: selectedRange,
+            view: report.reportKey
+          })}
           title={reportRuntimeSafeActionDescription("view_enabled")}
         >
           View report
@@ -220,10 +231,43 @@ function ReportRegistrySafeActionsCell({
 export default async function AdminReportsPage({
   searchParams
 }: {
-  searchParams: Promise<{ range?: string; view?: string }>;
+  searchParams: Promise<{
+    action?: string;
+    availability?: string;
+    category?: string;
+    certification?: string;
+    q?: string;
+    range?: string;
+    status?: string;
+    type?: string;
+    view?: string;
+    visibility?: string;
+  }>;
 }) {
   const query = await searchParams;
-  const control = await getAdminReportingControl(query.range as never, { view: query.view ?? null });
+  const activeFilters = parseReportFilterQuery(query);
+  const control = await getAdminReportingControl(query.range as never, {
+    filters: activeFilters,
+    view: query.view ?? null
+  });
+  const aggregationTotals =
+    control.reportFilters.appliedFilterCount > 0
+      ? {
+          ...control.reportFilters.filteredAggregation,
+          reportsWithEmptyState: control.reportFilters.filteredAggregation.emptyReports
+        }
+      : {
+          availableReports: control.reportAggregation.totals.availableReports,
+          byCategory: control.reportAggregation.byCategory,
+          byRuntimeStatus: control.reportAggregation.byRuntimeStatus,
+          byRuntimeVisibility: control.reportAggregation.byRuntimeVisibility,
+          emptyReports: control.reportAggregation.totals.emptyReports,
+          plannedReports: control.reportAggregation.totals.plannedReports,
+          reportsWithLockedActions: control.reportAggregation.totals.reportsWithLockedActions,
+          reportsWithRuntimeData: control.reportAggregation.totals.reportsWithRuntimeData,
+          reportsWithEmptyState: control.reportAggregation.totals.reportsWithEmptyState,
+          totalRegisteredReports: control.reportAggregation.totals.totalRegisteredReports
+        };
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -1637,11 +1681,11 @@ export default async function AdminReportsPage({
           <p className="text-xs text-slate-500">{control.reportAggregation.latestSafeActivitySummary}</p>
           <AdminStatGrid
             stats={[
-              { label: "Registered", value: control.reportAggregation.totals.totalRegisteredReports },
-              { label: "Available", value: control.reportAggregation.totals.availableReports },
-              { label: "Runtime data", value: control.reportAggregation.totals.reportsWithRuntimeData },
-              { label: "Empty state", value: control.reportAggregation.totals.reportsWithEmptyState },
-              { label: "Locked actions", value: control.reportAggregation.totals.reportsWithLockedActions }
+              { label: "Registered", value: aggregationTotals.totalRegisteredReports },
+              { label: "Available", value: aggregationTotals.availableReports },
+              { label: "Runtime data", value: aggregationTotals.reportsWithRuntimeData },
+              { label: "Empty state", value: aggregationTotals.reportsWithEmptyState },
+              { label: "Locked actions", value: aggregationTotals.reportsWithLockedActions }
             ]}
           />
         </div>
@@ -1662,7 +1706,11 @@ export default async function AdminReportsPage({
                   ? "border-blue-200 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-slate-50 text-slate-600"
               }`}
-              href={buildReportViewerHref(control.selectedRange, report.reportKey)}
+              href={buildReportingCenterHref({
+                filters: activeFilters,
+                range: control.selectedRange,
+                view: report.reportKey
+              })}
               key={report.reportKey}
             >
               {report.roadmapPhase} · {report.title}
@@ -2043,18 +2091,49 @@ export default async function AdminReportsPage({
 
         <AdminStatGrid
           stats={[
-            { label: "Total registered", value: control.reportAggregation.totals.totalRegisteredReports },
-            { label: "Available", value: control.reportAggregation.totals.availableReports },
-            { label: "Planned", value: control.reportAggregation.totals.plannedReports },
-            { label: "Empty", value: control.reportAggregation.totals.emptyReports },
-            { label: "Partial", value: control.reportAggregation.totals.partialReports },
-            { label: "Degraded", value: control.reportAggregation.totals.degradedReports },
-            { label: "Certified", value: control.reportAggregation.totals.certifiedReports },
-            { label: "Runtime data", value: control.reportAggregation.totals.reportsWithRuntimeData },
-            { label: "Empty state", value: control.reportAggregation.totals.reportsWithEmptyState },
-            { label: "Locked actions", value: control.reportAggregation.totals.reportsWithLockedActions }
+            { label: "Total registered", value: aggregationTotals.totalRegisteredReports },
+            { label: "Available", value: aggregationTotals.availableReports },
+            { label: "Planned", value: aggregationTotals.plannedReports },
+            { label: "Empty", value: aggregationTotals.emptyReports },
+            {
+              label: "Partial",
+              value:
+                control.reportFilters.appliedFilterCount > 0
+                  ? control.reportFilters.filteredAggregation.byRuntimeStatus.find((item) =>
+                      item.label.includes("partial")
+                    )?.count ?? 0
+                  : control.reportAggregation.totals.partialReports
+            },
+            {
+              label: "Degraded",
+              value:
+                control.reportFilters.appliedFilterCount > 0
+                  ? control.reportFilters.filteredAggregation.byRuntimeStatus
+                      .filter((item) => item.label.includes("degraded") || item.label.includes("error"))
+                      .reduce((total, item) => total + item.count, 0)
+                  : control.reportAggregation.totals.degradedReports
+            },
+            {
+              label: "Certified",
+              value:
+                control.reportFilters.appliedFilterCount > 0
+                  ? control.reportFilters.filteredAggregation.byRuntimeStatus.find((item) =>
+                      item.label.includes("certified")
+                    )?.count ?? 0
+                  : control.reportAggregation.totals.certifiedReports
+            },
+            { label: "Runtime data", value: aggregationTotals.reportsWithRuntimeData },
+            { label: "Empty state", value: aggregationTotals.reportsWithEmptyState },
+            { label: "Locked actions", value: aggregationTotals.reportsWithLockedActions }
           ]}
         />
+
+        {control.reportFilters.appliedFilterCount > 0 ? (
+          <p className="text-xs text-slate-500">
+            Aggregation totals above reflect active report filters ({control.reportFilters.filteredReportCount}/
+            {control.reportFilters.totalReportCount} reports).
+          </p>
+        ) : null}
 
         {control.reportAggregation.warnings.length > 0 ? (
           <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
@@ -2068,8 +2147,14 @@ export default async function AdminReportsPage({
 
         <div className="grid gap-4 xl:grid-cols-2">
           <AdminTable headers={["Runtime status", "Reports"]}>
-            {control.reportAggregation.byRuntimeStatus.length ? (
-              control.reportAggregation.byRuntimeStatus.map((item) => (
+            {(control.reportFilters.appliedFilterCount > 0
+              ? aggregationTotals.byRuntimeStatus
+              : control.reportAggregation.byRuntimeStatus
+            ).length ? (
+              (control.reportFilters.appliedFilterCount > 0
+                ? aggregationTotals.byRuntimeStatus
+                : control.reportAggregation.byRuntimeStatus
+              ).map((item) => (
                 <tr key={item.label}>
                   <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
                   <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -2085,8 +2170,14 @@ export default async function AdminReportsPage({
           </AdminTable>
 
           <AdminTable headers={["Runtime visibility", "Reports"]}>
-            {control.reportAggregation.byRuntimeVisibility.length ? (
-              control.reportAggregation.byRuntimeVisibility.map((item) => (
+            {(control.reportFilters.appliedFilterCount > 0
+              ? aggregationTotals.byRuntimeVisibility
+              : control.reportAggregation.byRuntimeVisibility
+            ).length ? (
+              (control.reportFilters.appliedFilterCount > 0
+                ? aggregationTotals.byRuntimeVisibility
+                : control.reportAggregation.byRuntimeVisibility
+              ).map((item) => (
                 <tr key={item.label}>
                   <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
                   <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -2102,8 +2193,14 @@ export default async function AdminReportsPage({
           </AdminTable>
 
           <AdminTable headers={["Category", "Reports"]}>
-            {control.reportAggregation.byCategory.length ? (
-              control.reportAggregation.byCategory.map((item) => (
+            {(control.reportFilters.appliedFilterCount > 0
+              ? aggregationTotals.byCategory
+              : control.reportAggregation.byCategory
+            ).length ? (
+              (control.reportFilters.appliedFilterCount > 0
+                ? aggregationTotals.byCategory
+                : control.reportAggregation.byCategory
+              ).map((item) => (
                 <tr key={item.label}>
                   <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
                   <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -2176,6 +2273,280 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-17 Report Filters
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportFilters.status)}>{control.reportFilters.status}</AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportFilters.summary}</span>
+        </div>
+
+        {control.reportFilters.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportFilters.errorMessage}
+          </p>
+        ) : null}
+
+        {control.reportFilters.emptyMessage ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            {control.reportFilters.emptyMessage}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+            href={control.reportFilters.resetHref}
+          >
+            Reset filters
+          </Link>
+          <span className="text-xs text-slate-500">
+            {control.reportFilters.filteredReportCount}/{control.reportFilters.totalReportCount} reports visible
+          </span>
+        </div>
+
+        {control.reportFilters.activeFilters.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportFilters.activeFilters.map((filter) => (
+              <Link
+                className="rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                href={buildReportFilterToggleHref({
+                  current: activeFilters,
+                  dimension: filter.dimension,
+                  range: control.selectedRange,
+                  value: filter.value,
+                  view: control.reportViewer.selectedReportKey
+                })}
+                key={`${filter.dimension}-${filter.value}`}
+              >
+                {filter.label}: {filter.value} · remove
+              </Link>
+            ))}
+          </div>
+        ) : null}
+
+        <form action="/admin/reports" className="flex flex-wrap items-end gap-2" method="get">
+          <input name="range" type="hidden" value={control.selectedRange} />
+          {control.reportViewer.selectedReportKey ? (
+            <input name="view" type="hidden" value={control.reportViewer.selectedReportKey} />
+          ) : null}
+          {activeFilters.category ? <input name="category" type="hidden" value={activeFilters.category} /> : null}
+          {activeFilters.status ? <input name="status" type="hidden" value={activeFilters.status} /> : null}
+          {activeFilters.visibility ? <input name="visibility" type="hidden" value={activeFilters.visibility} /> : null}
+          {activeFilters.certification ? (
+            <input name="certification" type="hidden" value={activeFilters.certification} />
+          ) : null}
+          {activeFilters.action ? <input name="action" type="hidden" value={activeFilters.action} /> : null}
+          {activeFilters.availability ? (
+            <input name="availability" type="hidden" value={activeFilters.availability} />
+          ) : null}
+          {activeFilters.type ? <input name="type" type="hidden" value={activeFilters.type} /> : null}
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Search keyword
+            <input
+              className="h-10 min-w-64 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.q ?? ""}
+              name="q"
+              placeholder="Report name, key, or category"
+              type="search"
+            />
+          </label>
+          <button
+            className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            type="submit"
+          >
+            Apply search
+          </button>
+        </form>
+
+        {control.reportFilters.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportFilters.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Category</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.categories.map((category) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.category === reportFilterComparableValue(category)
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "category",
+                    range: control.selectedRange,
+                    value: category,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={category}
+                >
+                  {category}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Runtime status</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.statuses.map((status) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.status === status
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "status",
+                    range: control.selectedRange,
+                    value: status,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={status}
+                >
+                  {status.replace(/_/g, " ")}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Runtime visibility</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.visibilities.map((visibility) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.visibility === visibility
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "visibility",
+                    range: control.selectedRange,
+                    value: visibility,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={visibility}
+                >
+                  {visibility.replace(/_/g, " ")}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Certification</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.certifications.map((certification) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.certification === reportFilterComparableValue(certification)
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "certification",
+                    range: control.selectedRange,
+                    value: certification,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={certification}
+                >
+                  {certification.replace(/_/g, " ")}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Safe action</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.actions.map((action) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.action === action
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "action",
+                    range: control.selectedRange,
+                    value: action,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={action}
+                >
+                  {action.replace(/_/g, " ")}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Data availability</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.availabilities.map((availability) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.availability === availability
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "availability",
+                    range: control.selectedRange,
+                    value: availability,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={availability}
+                >
+                  {availability}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Report type</p>
+            <div className="flex flex-wrap gap-2">
+              {control.reportFilters.filterOptions.types.map((type) => (
+                <Link
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
+                    activeFilters.type === type
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                  href={buildReportFilterToggleHref({
+                    current: activeFilters,
+                    dimension: "type",
+                    range: control.selectedRange,
+                    value: type,
+                    view: control.reportViewer.selectedReportKey
+                  })}
+                  key={type}
+                >
+                  {type}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -2191,7 +2562,8 @@ export default async function AdminReportsPage({
           "Certification"
         ]}
       >
-        {control.reports.map((report) => (
+        {control.reports.length ? (
+        control.reports.map((report) => (
           <tr key={report.reportKey}>
             <td className="px-5 py-4">
               <p className="font-bold text-slate-950">{report.name}</p>
@@ -2221,7 +2593,11 @@ export default async function AdminReportsPage({
             <td className="px-5 py-4 text-slate-600">{report.lastGenerated}</td>
             <td className="px-5 py-4 text-slate-600">{report.exportPlaceholder}</td>
             <td className="px-5 py-4">
-              <ReportRegistrySafeActionsCell report={report} selectedRange={control.selectedRange} />
+              <ReportRegistrySafeActionsCell
+                activeFilters={activeFilters}
+                report={report}
+                selectedRange={control.selectedRange}
+              />
             </td>
             <td className="px-5 py-4 text-sm text-slate-600">{report.dataSourceDescription}</td>
             <td className="px-5 py-4">
@@ -2237,7 +2613,15 @@ export default async function AdminReportsPage({
               </AdminBadge>
             </td>
           </tr>
-        ))}
+        ))
+        ) : (
+          <tr>
+            <td className="px-5 py-4 text-slate-600" colSpan={11}>
+              {control.reportFilters.emptyMessage ??
+                "No reports are available in the registry list for the current filters."}
+            </td>
+          </tr>
+        )}
       </AdminTable>
 
       <AdminTable headers={["Aggregated data sources", "Count"]}>

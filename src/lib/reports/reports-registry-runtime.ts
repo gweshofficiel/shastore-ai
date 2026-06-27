@@ -112,6 +112,8 @@ export type ReportsRegistryRuntimeContext = {
   reportSafeActionsNeedsAttention?: boolean;
   reportAggregationLastGenerated?: string;
   reportAggregationNeedsAttention?: boolean;
+  reportFiltersLastGenerated?: string;
+  reportFiltersNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -397,7 +399,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "not_applicable",
-    dataSourceDescription: "Date range filters on Reporting Center page load.",
+    dataSourceDescription:
+      "Report Filters runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation). Read-only URL query filters on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Advanced filters"],
     lastGeneratedState: "Live registry",
@@ -724,7 +727,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-17-report-filters") {
     return {
       ...definition,
-      lastGeneratedState: `Range ${context.selectedRange}`
+      dataSourceDescription:
+        "Report Filters runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation). Read-only URL query filters on page load.",
+      lastGeneratedState: context.reportFiltersLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportFiltersNeedsAttention ? "review" : definition.status
     };
   }
 
