@@ -205,7 +205,7 @@ export default async function AdminSEOPage() {
         ]}
       />
 
-      <AdminTable headers={["SEO data certification", "Status", "Readiness"]}>
+      <AdminTable headers={["SEO certification", "Status", "Readiness"]}>
         <tr>
           <td className="px-5 py-4 font-bold text-slate-950">Data certification readiness</td>
           <td className="px-5 py-4">
@@ -222,6 +222,28 @@ export default async function AdminSEOPage() {
             {control.seoDataCertification.warnings.length > 0 ? (
               <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
                 {control.seoDataCertification.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </td>
+        </tr>
+        <tr>
+          <td className="px-5 py-4 font-bold text-slate-950">Security certification readiness</td>
+          <td className="px-5 py-4">
+            <AdminBadge tone={toneForCertificationStatus(control.seoSecurityCertification.status)}>
+              {control.seoSecurityCertification.status}
+            </AdminBadge>
+          </td>
+          <td className="px-5 py-4 text-slate-600">
+            <p className="text-sm">{control.seoSecurityCertification.summary}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {control.seoSecurityCertification.passedChecks}/{control.seoSecurityCertification.totalChecks} checks passed
+              · generated {formatAdminDate(control.seoSecurityCertification.generatedAt)}
+            </p>
+            {control.seoSecurityCertification.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
+                {control.seoSecurityCertification.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>

@@ -185,6 +185,7 @@ import { mapSeoExportRuntimeToAdminFields } from "@/src/lib/seo/seo-export-runti
 import { mapSeoEditorRuntimeToAdminFields } from "@/src/lib/seo/seo-editor-runtime";
 import { mapAiSeoRuntimeToAdminFields } from "@/src/lib/seo/seo-ai-runtime";
 import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-data-certification-runtime";
+import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-security-certification-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3864,6 +3865,16 @@ export type AdminSEOControl = {
     summary: string;
   };
   seoDataCertification: {
+    failedChecks: number;
+    generatedAt: string;
+    passedChecks: number;
+    readOnly: true;
+    status: "certified" | "needs_attention";
+    summary: string;
+    totalChecks: number;
+    warnings: string[];
+  };
+  seoSecurityCertification: {
     failedChecks: number;
     generatedAt: string;
     passedChecks: number;
@@ -10514,7 +10525,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     seoReportRuntime,
     seoReviewRuntime,
     seoExportRuntime,
-    seoDataCertificationRuntime
+    seoDataCertificationRuntime,
+    seoSecurityCertificationRuntime
   ] = await Promise.all([
     mapSitemapRuntimeToAdminFields(),
     mapRobotsRuntimeToAdminFields(),
@@ -10523,7 +10535,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     mapSeoReportRuntimeToAdminFields(),
     mapSeoReviewRuntimeToAdminFields(),
     mapSeoExportRuntimeToAdminFields(),
-    mapSeoDataCertificationRuntimeToAdminFields()
+    mapSeoDataCertificationRuntimeToAdminFields(),
+    mapSeoSecurityCertificationRuntimeToAdminFields()
   ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
@@ -10621,6 +10634,16 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       summary: seoDataCertificationRuntime.summary,
       totalChecks: seoDataCertificationRuntime.totalChecks,
       warnings: seoDataCertificationRuntime.warnings
+    },
+    seoSecurityCertification: {
+      failedChecks: seoSecurityCertificationRuntime.failedChecks,
+      generatedAt: seoSecurityCertificationRuntime.generatedAt,
+      passedChecks: seoSecurityCertificationRuntime.passedChecks,
+      readOnly: true as const,
+      status: seoSecurityCertificationRuntime.status,
+      summary: seoSecurityCertificationRuntime.summary,
+      totalChecks: seoSecurityCertificationRuntime.totalChecks,
+      warnings: seoSecurityCertificationRuntime.warnings
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
