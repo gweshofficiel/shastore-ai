@@ -14,6 +14,18 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForAiSeoStatus(status: string) {
+  if (status === "ai_ready") {
+    return "green" as const;
+  }
+
+  if (status === "invalid") {
+    return "red" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForEditorStatus(status: string) {
   if (status === "editor_ready") {
     return "green" as const;
@@ -374,6 +386,28 @@ export default async function AdminSEOPage() {
                     type="button"
                   >
                     Editor placeholder
+                  </button>
+                </div>
+              ) : hook === control.aiSeo.hookLabel ? (
+                <div className="space-y-2">
+                  <AdminBadge tone={toneForAiSeoStatus(control.aiSeo.runtimeStatus)}>
+                    {control.aiSeo.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.aiSeo.summary}</p>
+                  <p className="text-xs text-slate-600">{control.aiSeo.message}</p>
+                  <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
+                    {control.aiSeo.futureFields.map((field) => (
+                      <li key={field.id}>
+                        {field.label} — {field.implemented ? "implemented" : "validation-only"}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                    disabled
+                    type="button"
+                  >
+                    Generate placeholder
                   </button>
                 </div>
               ) : hook === control.seoAudit.exportHookLabel ? (

@@ -183,6 +183,7 @@ import { mapSeoReviewRuntimeToAdminFields } from "@/src/lib/seo/seo-review-runti
 import { mapSeoSafeActionRuntimeToAdminFields } from "@/src/lib/seo/seo-safe-action-runtime";
 import { mapSeoExportRuntimeToAdminFields } from "@/src/lib/seo/seo-export-runtime";
 import { mapSeoEditorRuntimeToAdminFields } from "@/src/lib/seo/seo-editor-runtime";
+import { mapAiSeoRuntimeToAdminFields } from "@/src/lib/seo/seo-ai-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3840,6 +3841,25 @@ export type AdminSEOControl = {
     hookLabel: string;
     readOnly: true;
     runtimeStatus: "editor_ready" | "invalid" | "placeholder";
+    summary: string;
+  };
+  aiSeo: {
+    futureFields: Array<{
+      description: string;
+      id:
+        | "canonicalSuggestion"
+        | "keywordFocus"
+        | "language"
+        | "metaDescriptionSuggestion"
+        | "metaTitleSuggestion"
+        | "targetPage";
+      implemented: false;
+      label: string;
+    }>;
+    hookLabel: string;
+    message: string;
+    readOnly: true;
+    runtimeStatus: "ai_ready" | "invalid" | "placeholder";
     summary: string;
   };
   overview: {
@@ -10497,6 +10517,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
   const seoSafeActionsRuntime = mapSeoSafeActionRuntimeToAdminFields();
   const seoEditorRuntime = mapSeoEditorRuntimeToAdminFields();
+  const aiSeoRuntime = mapAiSeoRuntimeToAdminFields();
   const reviewItemsBySlug = new Map(seoReviewRuntime.items.map((item) => [item.slug, item]));
 
   const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => {
@@ -10524,7 +10545,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     ],
     futureHooks: [
       seoEditorRuntime.hookLabel,
-      "AI SEO generator",
+      aiSeoRuntime.hookLabel,
       "Sitemap regeneration",
       "Search Console integration",
       seoAuditRuntime.exportHookLabel,
@@ -10569,6 +10590,14 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       readOnly: true as const,
       runtimeStatus: seoEditorRuntime.runtimeStatus,
       summary: seoEditorRuntime.summary
+    },
+    aiSeo: {
+      futureFields: aiSeoRuntime.futureFields,
+      hookLabel: aiSeoRuntime.hookLabel,
+      message: aiSeoRuntime.message,
+      readOnly: true as const,
+      runtimeStatus: aiSeoRuntime.runtimeStatus,
+      summary: aiSeoRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
