@@ -223,12 +223,15 @@ import {
   mapReportAggregationRuntimeToAdminFields
 } from "@/src/lib/reports/report-aggregation-runtime";
 import {
-  buildReportFilterableReports,
   buildReportingCenterHref,
   emptyReportFilterQuery,
   mapReportFiltersRuntimeToAdminFields,
   type ReportFilterQuery
 } from "@/src/lib/reports/report-filters-runtime";
+import {
+  buildReportSearchableReports,
+  mapReportSearchRuntimeToAdminFields
+} from "@/src/lib/reports/report-search-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4912,6 +4915,24 @@ export type AdminReportingControl = {
     };
     readOnly: true;
     resetHref: string;
+    status: "empty" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totalReportCount: number;
+    warnings: string[];
+  };
+  reportSearch: {
+    emptyMessage: string | null;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    matchedReportCount: number;
+    query: {
+      q: string | null;
+    };
+    readOnly: true;
+    resetHref: string;
+    searchableFields: string[];
     status: "empty" | "ready" | "unavailable";
     summary: string;
     superAdminReportsOnly: true;
@@ -12096,13 +12117,23 @@ export async function getAdminReportingControl(
     "rp-10-security-reports": securityReportsRuntime.loadingState,
     "rp-11-operations-reports": operationsReportsRuntime.loadingState
   };
+  const searchableReports = buildReportSearchableReports({
+    adapterLoadingStateByReportKey,
+    reports: allReports
+  });
+  const reportSearchRuntime = await mapReportSearchRuntimeToAdminFields({
+    filters: activeFilters,
+    range: selectedRange,
+    reports: searchableReports,
+    view: selectedReportKey
+  });
+  const searchScopedReports = activeFilters.q
+    ? searchableReports.filter((report) => reportSearchRuntime.matchedReportKeys.includes(report.reportKey))
+    : searchableReports;
   const reportFiltersRuntime = await mapReportFiltersRuntimeToAdminFields({
     query: activeFilters,
     range: selectedRange,
-    reports: buildReportFilterableReports({
-      adapterLoadingStateByReportKey,
-      reports: allReports
-    }),
+    reports: searchScopedReports,
     view: selectedReportKey
   });
   const filteredReportKeySet = new Set(reportFiltersRuntime.filteredReportKeys);
@@ -12114,6 +12145,9 @@ export async function getAdminReportingControl(
     reportFiltersLastGenerated: reportFiltersRuntime.lastGeneratedState,
     reportFiltersNeedsAttention:
       reportFiltersRuntime.status === "empty" || reportFiltersRuntime.status === "unavailable",
+    reportSearchLastGenerated: reportSearchRuntime.lastGeneratedState,
+    reportSearchNeedsAttention:
+      reportSearchRuntime.status === "empty" || reportSearchRuntime.status === "unavailable",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -12565,6 +12599,22 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totalReportCount: reportFiltersRuntime.totalReportCount,
       warnings: reportFiltersRuntime.warnings
+    },
+    reportSearch: {
+      emptyMessage: reportSearchRuntime.emptyMessage,
+      errorMessage: reportSearchRuntime.errorMessage,
+      generatedAt: reportSearchRuntime.generatedAt,
+      lastGeneratedState: reportSearchRuntime.lastGeneratedState,
+      matchedReportCount: reportSearchRuntime.matchedReportCount,
+      query: reportSearchRuntime.query,
+      readOnly: true as const,
+      resetHref: reportSearchRuntime.resetHref,
+      searchableFields: reportSearchRuntime.searchableFields,
+      status: reportSearchRuntime.status,
+      summary: reportSearchRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totalReportCount: reportSearchRuntime.totalReportCount,
+      warnings: reportSearchRuntime.warnings
     },
     reports,
     selectedRange,

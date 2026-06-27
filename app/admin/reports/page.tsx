@@ -250,8 +250,10 @@ export default async function AdminReportsPage({
     filters: activeFilters,
     view: query.view ?? null
   });
+  const constrainedReportList =
+    control.reportFilters.appliedFilterCount > 0 || Boolean(control.reportSearch.query.q);
   const aggregationTotals =
-    control.reportFilters.appliedFilterCount > 0
+    constrainedReportList
       ? {
           ...control.reportFilters.filteredAggregation,
           reportsWithEmptyState: control.reportFilters.filteredAggregation.emptyReports
@@ -2098,7 +2100,7 @@ export default async function AdminReportsPage({
             {
               label: "Partial",
               value:
-                control.reportFilters.appliedFilterCount > 0
+                constrainedReportList
                   ? control.reportFilters.filteredAggregation.byRuntimeStatus.find((item) =>
                       item.label.includes("partial")
                     )?.count ?? 0
@@ -2107,7 +2109,7 @@ export default async function AdminReportsPage({
             {
               label: "Degraded",
               value:
-                control.reportFilters.appliedFilterCount > 0
+                constrainedReportList
                   ? control.reportFilters.filteredAggregation.byRuntimeStatus
                       .filter((item) => item.label.includes("degraded") || item.label.includes("error"))
                       .reduce((total, item) => total + item.count, 0)
@@ -2116,7 +2118,7 @@ export default async function AdminReportsPage({
             {
               label: "Certified",
               value:
-                control.reportFilters.appliedFilterCount > 0
+                constrainedReportList
                   ? control.reportFilters.filteredAggregation.byRuntimeStatus.find((item) =>
                       item.label.includes("certified")
                     )?.count ?? 0
@@ -2128,9 +2130,9 @@ export default async function AdminReportsPage({
           ]}
         />
 
-        {control.reportFilters.appliedFilterCount > 0 ? (
+        {constrainedReportList ? (
           <p className="text-xs text-slate-500">
-            Aggregation totals above reflect active report filters ({control.reportFilters.filteredReportCount}/
+            Aggregation totals above reflect active report search and filters ({control.reportFilters.filteredReportCount}/
             {control.reportFilters.totalReportCount} reports).
           </p>
         ) : null}
@@ -2147,11 +2149,11 @@ export default async function AdminReportsPage({
 
         <div className="grid gap-4 xl:grid-cols-2">
           <AdminTable headers={["Runtime status", "Reports"]}>
-            {(control.reportFilters.appliedFilterCount > 0
+            {(constrainedReportList
               ? aggregationTotals.byRuntimeStatus
               : control.reportAggregation.byRuntimeStatus
             ).length ? (
-              (control.reportFilters.appliedFilterCount > 0
+              (constrainedReportList
                 ? aggregationTotals.byRuntimeStatus
                 : control.reportAggregation.byRuntimeStatus
               ).map((item) => (
@@ -2170,11 +2172,11 @@ export default async function AdminReportsPage({
           </AdminTable>
 
           <AdminTable headers={["Runtime visibility", "Reports"]}>
-            {(control.reportFilters.appliedFilterCount > 0
+            {(constrainedReportList
               ? aggregationTotals.byRuntimeVisibility
               : control.reportAggregation.byRuntimeVisibility
             ).length ? (
-              (control.reportFilters.appliedFilterCount > 0
+              (constrainedReportList
                 ? aggregationTotals.byRuntimeVisibility
                 : control.reportAggregation.byRuntimeVisibility
               ).map((item) => (
@@ -2193,11 +2195,11 @@ export default async function AdminReportsPage({
           </AdminTable>
 
           <AdminTable headers={["Category", "Reports"]}>
-            {(control.reportFilters.appliedFilterCount > 0
+            {(constrainedReportList
               ? aggregationTotals.byCategory
               : control.reportAggregation.byCategory
             ).length ? (
-              (control.reportFilters.appliedFilterCount > 0
+              (constrainedReportList
                 ? aggregationTotals.byCategory
                 : control.reportAggregation.byCategory
               ).map((item) => (
@@ -2327,39 +2329,9 @@ export default async function AdminReportsPage({
           </div>
         ) : null}
 
-        <form action="/admin/reports" className="flex flex-wrap items-end gap-2" method="get">
-          <input name="range" type="hidden" value={control.selectedRange} />
-          {control.reportViewer.selectedReportKey ? (
-            <input name="view" type="hidden" value={control.reportViewer.selectedReportKey} />
-          ) : null}
-          {activeFilters.category ? <input name="category" type="hidden" value={activeFilters.category} /> : null}
-          {activeFilters.status ? <input name="status" type="hidden" value={activeFilters.status} /> : null}
-          {activeFilters.visibility ? <input name="visibility" type="hidden" value={activeFilters.visibility} /> : null}
-          {activeFilters.certification ? (
-            <input name="certification" type="hidden" value={activeFilters.certification} />
-          ) : null}
-          {activeFilters.action ? <input name="action" type="hidden" value={activeFilters.action} /> : null}
-          {activeFilters.availability ? (
-            <input name="availability" type="hidden" value={activeFilters.availability} />
-          ) : null}
-          {activeFilters.type ? <input name="type" type="hidden" value={activeFilters.type} /> : null}
-          <label className="grid gap-1 text-xs font-semibold text-slate-600">
-            Search keyword
-            <input
-              className="h-10 min-w-64 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
-              defaultValue={activeFilters.q ?? ""}
-              name="q"
-              placeholder="Report name, key, or category"
-              type="search"
-            />
-          </label>
-          <button
-            className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-            type="submit"
-          >
-            Apply search
-          </button>
-        </form>
+        <p className="text-xs text-slate-500">
+          Dimension filters apply to the registry list below. Keyword search is available in RP-18 Report Search.
+        </p>
 
         {control.reportFilters.warnings.length > 0 ? (
           <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
@@ -2547,6 +2519,98 @@ export default async function AdminReportsPage({
         </div>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-18 Report Search
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportSearch.status)}>{control.reportSearch.status}</AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportSearch.summary}</span>
+        </div>
+
+        {control.reportSearch.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportSearch.errorMessage}
+          </p>
+        ) : null}
+
+        {control.reportSearch.emptyMessage ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            {control.reportSearch.emptyMessage}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+            href={control.reportSearch.resetHref}
+          >
+            Reset search
+          </Link>
+          <span className="text-xs text-slate-500">
+            {control.reportSearch.query.q
+              ? `${control.reportSearch.matchedReportCount}/${control.reportSearch.totalReportCount} reports matched`
+              : `${control.reportSearch.totalReportCount} reports searchable`}
+          </span>
+        </div>
+
+        <form action="/admin/reports" className="flex flex-wrap items-end gap-2" method="get">
+          <input name="range" type="hidden" value={control.selectedRange} />
+          {control.reportViewer.selectedReportKey ? (
+            <input name="view" type="hidden" value={control.reportViewer.selectedReportKey} />
+          ) : null}
+          {activeFilters.category ? <input name="category" type="hidden" value={activeFilters.category} /> : null}
+          {activeFilters.status ? <input name="status" type="hidden" value={activeFilters.status} /> : null}
+          {activeFilters.visibility ? <input name="visibility" type="hidden" value={activeFilters.visibility} /> : null}
+          {activeFilters.certification ? (
+            <input name="certification" type="hidden" value={activeFilters.certification} />
+          ) : null}
+          {activeFilters.action ? <input name="action" type="hidden" value={activeFilters.action} /> : null}
+          {activeFilters.availability ? (
+            <input name="availability" type="hidden" value={activeFilters.availability} />
+          ) : null}
+          {activeFilters.type ? <input name="type" type="hidden" value={activeFilters.type} /> : null}
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Search keyword
+            <input
+              className="h-10 min-w-64 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.q ?? ""}
+              name="q"
+              placeholder="Key, title, category, status, visibility, certification, data source, hooks, action"
+              type="search"
+            />
+          </label>
+          <button
+            className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            type="submit"
+          >
+            Apply search
+          </button>
+        </form>
+
+        {control.reportSearch.searchableFields.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportSearch.searchableFields.map((field) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600"
+                key={field}
+              >
+                {field}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportSearch.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportSearch.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -2617,8 +2681,9 @@ export default async function AdminReportsPage({
         ) : (
           <tr>
             <td className="px-5 py-4 text-slate-600" colSpan={11}>
-              {control.reportFilters.emptyMessage ??
-                "No reports are available in the registry list for the current filters."}
+              {control.reportSearch.emptyMessage ??
+                control.reportFilters.emptyMessage ??
+                "No reports are available in the registry list for the current search and filters."}
             </td>
           </tr>
         )}

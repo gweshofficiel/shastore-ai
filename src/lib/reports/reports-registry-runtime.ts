@@ -114,6 +114,8 @@ export type ReportsRegistryRuntimeContext = {
   reportAggregationNeedsAttention?: boolean;
   reportFiltersLastGenerated?: string;
   reportFiltersNeedsAttention?: boolean;
+  reportSearchLastGenerated?: string;
+  reportSearchNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -414,16 +416,17 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Platform",
-    certificationState: "planned",
-    dataSourceDescription: "Report search reserved for a future phase.",
+    certificationState: "not_applicable",
+    dataSourceDescription:
+      "Report Search runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-2 through RP-11 adapters). Read-only URL query search on page load.",
     exportAvailabilityState: "unavailable",
-    futureHooks: ["Full-text search", "Registry search"],
-    lastGeneratedState: "Not generated",
+    futureHooks: ["Saved searches", "Search indexing"],
+    lastGeneratedState: "Live registry",
     reportId: "platform:report-search",
     reportKey: "rp-18-report-search",
     roadmapPhase: "RP-18",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Search",
     visibility: "super_admin"
   },
@@ -731,6 +734,16 @@ function applyRuntimeContext(
         "Report Filters runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation). Read-only URL query filters on page load.",
       lastGeneratedState: context.reportFiltersLastGenerated ?? definition.lastGeneratedState,
       status: context.reportFiltersNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-18-report-search") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Search runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-2 through RP-11 adapters). Read-only URL query search on page load.",
+      lastGeneratedState: context.reportSearchLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportSearchNeedsAttention ? "review" : definition.status
     };
   }
 

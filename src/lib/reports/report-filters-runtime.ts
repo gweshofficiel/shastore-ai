@@ -324,20 +324,6 @@ function buildFilterOptions(reports: ReportFilterableReport[]): ReportFilterOpti
   };
 }
 
-function matchesSearch(report: ReportFilterableReport, keyword: string) {
-  const haystack = [
-    report.name,
-    report.reportKey,
-    report.category,
-    report.roadmapPhase,
-    report.registryStatus
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(keyword);
-}
-
 function matchesFilter(report: ReportFilterableReport, query: ReportFilterQuery) {
   if (query.category && normalizeFilterComparable(report.category) !== query.category) {
     return false;
@@ -364,10 +350,6 @@ function matchesFilter(report: ReportFilterableReport, query: ReportFilterQuery)
   }
 
   if (query.type && report.reportType !== query.type) {
-    return false;
-  }
-
-  if (query.q && !matchesSearch(report, query.q)) {
     return false;
   }
 
