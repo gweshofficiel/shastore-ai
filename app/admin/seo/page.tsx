@@ -14,6 +14,22 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForExportStatus(status: string) {
+  if (status === "export_ready") {
+    return "green" as const;
+  }
+
+  if (status === "incomplete") {
+    return "red" as const;
+  }
+
+  if (status === "needs_review") {
+    return "amber" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForSafeActionStatus(status: string) {
   if (status === "available") {
     return "green" as const;
@@ -333,6 +349,10 @@ export default async function AdminSEOPage() {
                     {control.seoAudit.runtimeStatus}
                   </AdminBadge>
                   <p className="text-xs text-slate-600">{control.seoAudit.summary}</p>
+                  <AdminBadge tone={toneForExportStatus(control.seoExport.runtimeStatus)}>
+                    export {control.seoExport.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.seoExport.summary}</p>
                   {exportReportAction ? <SafeActionMeta action={exportReportAction} /> : null}
                   <button
                     className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
@@ -351,6 +371,17 @@ export default async function AdminSEOPage() {
                   {control.seoReport.recommendations.length > 0 ? (
                     <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
                       {control.seoReport.recommendations.map((recommendation) => (
+                        <li key={recommendation}>{recommendation}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <AdminBadge tone={toneForExportStatus(control.seoExport.runtimeStatus)}>
+                    export {control.seoExport.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.seoExport.summary}</p>
+                  {control.seoExport.safeRecommendations.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
+                      {control.seoExport.safeRecommendations.map((recommendation) => (
                         <li key={recommendation}>{recommendation}</li>
                       ))}
                     </ul>

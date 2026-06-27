@@ -181,6 +181,7 @@ import { mapSeoAuditRuntimeToAdminFields } from "@/src/lib/seo/seo-audit-runtime
 import { mapSeoReportRuntimeToAdminFields } from "@/src/lib/seo/seo-report-runtime";
 import { mapSeoReviewRuntimeToAdminFields } from "@/src/lib/seo/seo-review-runtime";
 import { mapSeoSafeActionRuntimeToAdminFields } from "@/src/lib/seo/seo-safe-action-runtime";
+import { mapSeoExportRuntimeToAdminFields } from "@/src/lib/seo/seo-export-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3816,6 +3817,13 @@ export type AdminSEOControl = {
     }>;
     readOnly: true;
     runtimeStatus: "action_ready" | "invalid" | "placeholder";
+    summary: string;
+  };
+  seoExport: {
+    exportPlaceholderStatus: "placeholder";
+    readOnly: true;
+    runtimeStatus: "export_ready" | "incomplete" | "needs_review" | "placeholder";
+    safeRecommendations: string[];
     summary: string;
   };
   overview: {
@@ -10457,14 +10465,16 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     indexingWarningRuntime,
     seoAuditRuntime,
     seoReportRuntime,
-    seoReviewRuntime
+    seoReviewRuntime,
+    seoExportRuntime
   ] = await Promise.all([
     mapSitemapRuntimeToAdminFields(),
     mapRobotsRuntimeToAdminFields(),
     mapIndexingWarningRuntimeToAdminFields(isProduction),
     mapSeoAuditRuntimeToAdminFields(),
     mapSeoReportRuntimeToAdminFields(),
-    mapSeoReviewRuntimeToAdminFields()
+    mapSeoReviewRuntimeToAdminFields(),
+    mapSeoExportRuntimeToAdminFields()
   ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
@@ -10528,6 +10538,13 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       readOnly: true as const,
       runtimeStatus: seoSafeActionsRuntime.runtimeStatus,
       summary: seoSafeActionsRuntime.summary
+    },
+    seoExport: {
+      exportPlaceholderStatus: seoExportRuntime.exportPlaceholderStatus,
+      readOnly: true as const,
+      runtimeStatus: seoExportRuntime.runtimeStatus,
+      safeRecommendations: seoExportRuntime.safeRecommendations,
+      summary: seoExportRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
