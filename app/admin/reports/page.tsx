@@ -32,6 +32,10 @@ import {
   reportRuntimeSafeActionLabel,
   REPORT_RUNTIME_SAFE_ACTIONS
 } from "@/src/lib/reports/report-safe-actions-runtime";
+import {
+  reportAuditCoverageBadgeTone,
+  reportAuditCoverageLabel
+} from "@/src/lib/reports/report-audit-runtime";
 
 function toneForStatus(status: string) {
   if (status === "ready" || status === "registry_ready") {
@@ -1815,6 +1819,62 @@ export default async function AdminReportsPage({
               </p>
             ) : null}
 
+            {control.reportAudit.selectedReportAudit ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-19 Audit summary
+                  </span>
+                  <AdminBadge
+                    tone={reportAuditCoverageBadgeTone(
+                      control.reportAudit.selectedReportAudit.auditCoverageState
+                    )}
+                  >
+                    {reportAuditCoverageLabel(control.reportAudit.selectedReportAudit.auditCoverageState)}
+                  </AdminBadge>
+                  <AdminBadge tone={toneForAggregationLoadingState(control.reportAudit.loadingState)}>
+                    {control.reportAudit.selectedReportAudit.auditAvailabilityState}
+                  </AdminBadge>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Last viewed:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.lastViewedState}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Last generated:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.lastGeneratedState}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Last export:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.lastExportState}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Last status change:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.lastStatusChangeState}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Latest safe audit event:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.latestSafeAuditEvent ??
+                      "No latest safe audit event is available yet."}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Audit source:</span>{" "}
+                    {control.reportAudit.selectedReportAudit.auditSourceDescription}
+                  </p>
+                </div>
+
+                {control.reportAudit.selectedReportAudit.auditGaps.length ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {control.reportAudit.selectedReportAudit.auditGaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -2609,6 +2669,113 @@ export default async function AdminReportsPage({
             ))}
           </ul>
         ) : null}
+      </div>
+
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-19 Report Audit
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportAudit.status)}>{control.reportAudit.status}</AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportAudit.loadingState)}>
+            {control.reportAudit.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportAudit.summary}</span>
+        </div>
+
+        {control.reportAudit.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportAudit.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Covered", value: control.reportAudit.totals.coveredReports },
+            { label: "Partial", value: control.reportAudit.totals.partialReports },
+            { label: "Planned", value: control.reportAudit.totals.plannedReports },
+            { label: "Unavailable", value: control.reportAudit.totals.unavailableReports }
+          ]}
+        />
+
+        {control.reportAudit.byCoverage.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportAudit.byCoverage.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportAuditCoverageLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportAudit.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportAudit.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Coverage",
+            "Availability",
+            "Last viewed",
+            "Last generated",
+            "Last export",
+            "Latest safe audit event",
+            "Audit gaps"
+          ]}
+        >
+          {control.reportAudit.entries.length ? (
+            control.reportAudit.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportAuditCoverageBadgeTone(entry.auditCoverageState)}>
+                    {reportAuditCoverageLabel(entry.auditCoverageState)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={toneForAggregationLoadingState(entry.auditAvailabilityState)}>
+                    {entry.auditAvailabilityState}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.lastViewedState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.lastGeneratedState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.lastExportState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">
+                  {entry.latestSafeAuditEvent ?? "No safe audit event recorded."}
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">
+                  {entry.auditGaps.length ? (
+                    <ul className="list-disc space-y-1 pl-4">
+                      {entry.auditGaps.map((gap) => (
+                        <li key={gap}>{gap}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "No audit gaps recorded."
+                  )}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={8}>
+                No audit entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
       </div>
 
       <AdminTable

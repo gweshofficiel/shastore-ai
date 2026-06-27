@@ -233,6 +233,10 @@ import {
   mapReportSearchRuntimeToAdminFields
 } from "@/src/lib/reports/report-search-runtime";
 import {
+  buildReportAuditRuntimeInput,
+  mapReportAuditRuntimeToAdminFields
+} from "@/src/lib/reports/report-audit-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -4937,6 +4941,53 @@ export type AdminReportingControl = {
     summary: string;
     superAdminReportsOnly: true;
     totalReportCount: number;
+    warnings: string[];
+  };
+  reportAudit: {
+    byCoverage: Array<{ count: number; label: "covered" | "partial" | "planned" | "unavailable" }>;
+    entries: Array<{
+      auditAvailabilityState: "available" | "degraded" | "empty" | "error" | "planned" | "unavailable";
+      auditCoverageState: "covered" | "partial" | "planned" | "unavailable";
+      auditGaps: string[];
+      auditSourceDescription: string;
+      lastExportState: string;
+      lastGeneratedState: string;
+      lastStatusChangeState: string;
+      lastViewedState: string;
+      latestSafeAuditEvent: string | null;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportAudit: {
+      auditAvailabilityState: "available" | "degraded" | "empty" | "error" | "planned" | "unavailable";
+      auditCoverageState: "covered" | "partial" | "planned" | "unavailable";
+      auditGaps: string[];
+      auditSourceDescription: string;
+      lastExportState: string;
+      lastGeneratedState: string;
+      lastStatusChangeState: string;
+      lastViewedState: string;
+      latestSafeAuditEvent: string | null;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+    } | null;
+    selectedReportKey: string | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      coveredReports: number;
+      partialReports: number;
+      plannedReports: number;
+      unavailableReports: number;
+    };
     warnings: string[];
   };
   reports: Array<{
@@ -12137,6 +12188,91 @@ export async function getAdminReportingControl(
     view: selectedReportKey
   });
   const filteredReportKeySet = new Set(reportFiltersRuntime.filteredReportKeys);
+  const adapterStatesByReportKey = {
+    "rp-2-revenue-reports": {
+      errorMessage: revenueReportsRuntime.errorMessage,
+      lastGeneratedState: revenueReportsRuntime.lastGeneratedState,
+      loadingState: revenueReportsRuntime.loadingState
+    },
+    "rp-3-store-reports": {
+      errorMessage: storeReportsRuntime.errorMessage,
+      lastGeneratedState: storeReportsRuntime.lastGeneratedState,
+      loadingState: storeReportsRuntime.loadingState
+    },
+    "rp-4-user-reports": {
+      errorMessage: userReportsRuntime.errorMessage,
+      lastGeneratedState: userReportsRuntime.lastGeneratedState,
+      loadingState: userReportsRuntime.loadingState
+    },
+    "rp-5-subscription-reports": {
+      errorMessage: subscriptionReportsRuntime.errorMessage,
+      lastGeneratedState: subscriptionReportsRuntime.lastGeneratedState,
+      loadingState: subscriptionReportsRuntime.loadingState
+    },
+    "rp-6-payment-reports": {
+      errorMessage: paymentReportsRuntime.errorMessage,
+      lastGeneratedState: paymentReportsRuntime.lastGeneratedState,
+      loadingState: paymentReportsRuntime.loadingState
+    },
+    "rp-7-ai-reports": {
+      errorMessage: aiReportsRuntime.errorMessage,
+      lastGeneratedState: aiReportsRuntime.lastGeneratedState,
+      loadingState: aiReportsRuntime.loadingState
+    },
+    "rp-8-domain-email-reports": {
+      errorMessage: domainEmailReportsRuntime.errorMessage,
+      lastGeneratedState: domainEmailReportsRuntime.lastGeneratedState,
+      loadingState: domainEmailReportsRuntime.loadingState
+    },
+    "rp-9-marketplace-reports": {
+      errorMessage: marketplaceReportsRuntime.errorMessage,
+      lastGeneratedState: marketplaceReportsRuntime.lastGeneratedState,
+      loadingState: marketplaceReportsRuntime.loadingState
+    },
+    "rp-10-security-reports": {
+      errorMessage: securityReportsRuntime.errorMessage,
+      lastGeneratedState: securityReportsRuntime.lastGeneratedState,
+      loadingState: securityReportsRuntime.loadingState
+    },
+    "rp-11-operations-reports": {
+      errorMessage: operationsReportsRuntime.errorMessage,
+      lastGeneratedState: operationsReportsRuntime.lastGeneratedState,
+      loadingState: operationsReportsRuntime.loadingState
+    }
+  };
+  const reportAuditRuntime = await mapReportAuditRuntimeToAdminFields(
+    buildReportAuditRuntimeInput({
+      adapterStatesByReportKey,
+      aggregationLatestActivity: reportAggregationRuntime.latestSafeActivity.map((item) => ({
+        activityAt: item.activityAt,
+        activityType: item.activityType,
+        reportKey: item.reportKey,
+        summary: item.summary
+      })),
+      registryReports: allReports.map((report) => ({
+        exportAvailabilityState: report.exportAvailabilityState,
+        lastGeneratedState: report.lastGenerated,
+        name: report.name,
+        reportKey: report.reportKey,
+        status: report.status
+      })),
+      reportStatusByReportKey: reportStatusRuntime.statusByReportKey,
+      reportViewerCatalog: reportViewerRuntime.catalog.map((entry) => ({
+        lastGeneratedState: entry.lastGeneratedState,
+        latestSafeActivity: entry.latestSafeActivity.map((item) => ({
+          activityAt: item.activityAt,
+          activityType: item.activityType,
+          summary: item.summary
+        })),
+        reportKey: entry.reportKey,
+        title: entry.title
+      })),
+      selectedReportKey
+    })
+  );
+  const filteredAuditEntries = reportAuditRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12148,6 +12284,11 @@ export async function getAdminReportingControl(
     reportSearchLastGenerated: reportSearchRuntime.lastGeneratedState,
     reportSearchNeedsAttention:
       reportSearchRuntime.status === "empty" || reportSearchRuntime.status === "unavailable",
+    reportAuditLastGenerated: reportAuditRuntime.lastGeneratedState,
+    reportAuditNeedsAttention:
+      reportAuditRuntime.status === "degraded" ||
+      reportAuditRuntime.status === "empty" ||
+      reportAuditRuntime.status === "unavailable",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -12615,6 +12756,22 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totalReportCount: reportSearchRuntime.totalReportCount,
       warnings: reportSearchRuntime.warnings
+    },
+    reportAudit: {
+      byCoverage: reportAuditRuntime.byCoverage,
+      entries: filteredAuditEntries,
+      errorMessage: reportAuditRuntime.errorMessage,
+      generatedAt: reportAuditRuntime.generatedAt,
+      lastGeneratedState: reportAuditRuntime.lastGeneratedState,
+      loadingState: reportAuditRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportAudit: reportAuditRuntime.selectedReportAudit,
+      selectedReportKey: reportAuditRuntime.selectedReportKey,
+      status: reportAuditRuntime.status,
+      summary: reportAuditRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportAuditRuntime.totals,
+      warnings: reportAuditRuntime.warnings
     },
     reports,
     selectedRange,

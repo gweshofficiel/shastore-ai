@@ -116,6 +116,8 @@ export type ReportsRegistryRuntimeContext = {
   reportFiltersNeedsAttention?: boolean;
   reportSearchLastGenerated?: string;
   reportSearchNeedsAttention?: boolean;
+  reportAuditLastGenerated?: string;
+  reportAuditNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -432,16 +434,17 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Platform",
-    certificationState: "planned",
-    dataSourceDescription: "Report audit trail reserved. Existing actions log monitoring events only.",
+    certificationState: "not_applicable",
+    dataSourceDescription:
+      "Report Audit runtime (registry + RP-12 viewer + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-18 search + RP-2 through RP-11 adapters). Read-only in-memory audit on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Audit timeline", "Audit export"],
-    lastGeneratedState: "Monitoring placeholders",
+    lastGeneratedState: "Live audit layer",
     reportId: "platform:report-audit",
     reportKey: "rp-19-report-audit",
     roadmapPhase: "RP-19",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Audit",
     visibility: "super_admin"
   },
@@ -744,6 +747,16 @@ function applyRuntimeContext(
         "Report Search runtime (registry + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-2 through RP-11 adapters). Read-only URL query search on page load.",
       lastGeneratedState: context.reportSearchLastGenerated ?? definition.lastGeneratedState,
       status: context.reportSearchNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-19-report-audit") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Audit runtime (registry + RP-12 viewer + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-18 search + RP-2 through RP-11 adapters). Read-only in-memory audit on page load.",
+      lastGeneratedState: context.reportAuditLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportAuditNeedsAttention ? "review" : definition.status
     };
   }
 
