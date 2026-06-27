@@ -250,6 +250,28 @@ export default async function AdminSEOPage() {
             ) : null}
           </td>
         </tr>
+        <tr>
+          <td className="px-5 py-4 font-bold text-slate-950">Runtime certification readiness</td>
+          <td className="px-5 py-4">
+            <AdminBadge tone={toneForCertificationStatus(control.seoRuntimeCertification.status)}>
+              {control.seoRuntimeCertification.status}
+            </AdminBadge>
+          </td>
+          <td className="px-5 py-4 text-slate-600">
+            <p className="text-sm">{control.seoRuntimeCertification.summary}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {control.seoRuntimeCertification.passedChecks}/{control.seoRuntimeCertification.totalChecks} checks passed
+              · generated {formatAdminDate(control.seoRuntimeCertification.generatedAt)}
+            </p>
+            {control.seoRuntimeCertification.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
+                {control.seoRuntimeCertification.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </td>
+        </tr>
       </AdminTable>
 
       <AdminTable

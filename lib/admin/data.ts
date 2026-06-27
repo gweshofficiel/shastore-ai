@@ -186,6 +186,7 @@ import { mapSeoEditorRuntimeToAdminFields } from "@/src/lib/seo/seo-editor-runti
 import { mapAiSeoRuntimeToAdminFields } from "@/src/lib/seo/seo-ai-runtime";
 import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-data-certification-runtime";
 import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-security-certification-runtime";
+import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-runtime-certification-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3875,6 +3876,16 @@ export type AdminSEOControl = {
     warnings: string[];
   };
   seoSecurityCertification: {
+    failedChecks: number;
+    generatedAt: string;
+    passedChecks: number;
+    readOnly: true;
+    status: "certified" | "needs_attention";
+    summary: string;
+    totalChecks: number;
+    warnings: string[];
+  };
+  seoRuntimeCertification: {
     failedChecks: number;
     generatedAt: string;
     passedChecks: number;
@@ -10526,7 +10537,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     seoReviewRuntime,
     seoExportRuntime,
     seoDataCertificationRuntime,
-    seoSecurityCertificationRuntime
+    seoSecurityCertificationRuntime,
+    seoRuntimeCertificationRuntime
   ] = await Promise.all([
     mapSitemapRuntimeToAdminFields(),
     mapRobotsRuntimeToAdminFields(),
@@ -10536,7 +10548,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     mapSeoReviewRuntimeToAdminFields(),
     mapSeoExportRuntimeToAdminFields(),
     mapSeoDataCertificationRuntimeToAdminFields(),
-    mapSeoSecurityCertificationRuntimeToAdminFields()
+    mapSeoSecurityCertificationRuntimeToAdminFields(),
+    mapSeoRuntimeCertificationRuntimeToAdminFields()
   ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
@@ -10644,6 +10657,16 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       summary: seoSecurityCertificationRuntime.summary,
       totalChecks: seoSecurityCertificationRuntime.totalChecks,
       warnings: seoSecurityCertificationRuntime.warnings
+    },
+    seoRuntimeCertification: {
+      failedChecks: seoRuntimeCertificationRuntime.failedChecks,
+      generatedAt: seoRuntimeCertificationRuntime.generatedAt,
+      passedChecks: seoRuntimeCertificationRuntime.passedChecks,
+      readOnly: true as const,
+      status: seoRuntimeCertificationRuntime.status,
+      summary: seoRuntimeCertificationRuntime.summary,
+      totalChecks: seoRuntimeCertificationRuntime.totalChecks,
+      warnings: seoRuntimeCertificationRuntime.warnings
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
