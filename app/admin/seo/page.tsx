@@ -14,6 +14,38 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForSafeActionStatus(status: string) {
+  if (status === "available") {
+    return "green" as const;
+  }
+
+  if (status === "blocked") {
+    return "red" as const;
+  }
+
+  return "blue" as const;
+}
+
+function getSeoSafeAction(
+  control: Awaited<ReturnType<typeof getAdminSEOControl>>,
+  actionId: Awaited<ReturnType<typeof getAdminSEOControl>>["seoSafeActions"]["actions"][number]["id"]
+) {
+  return control.seoSafeActions.actions.find((action) => action.id === actionId);
+}
+
+function SafeActionMeta({
+  action
+}: {
+  action: NonNullable<ReturnType<typeof getSeoSafeAction>>;
+}) {
+  return (
+    <div className="space-y-1">
+      <AdminBadge tone={toneForSafeActionStatus(action.status)}>{action.status}</AdminBadge>
+      <p className="text-[10px] leading-4 text-slate-500">{action.description}</p>
+    </div>
+  );
+}
+
 function toneForReviewStatus(status: string) {
   if (status === "reviewed") {
     return "green" as const;
@@ -97,6 +129,13 @@ function PageHiddenFields({
 
 export default async function AdminSEOPage() {
   const control = await getAdminSEOControl();
+  const previewSeoAction = getSeoSafeAction(control, "preview_seo");
+  const markReviewedAction = getSeoSafeAction(control, "mark_reviewed_placeholder");
+  const generateSitemapAction = getSeoSafeAction(control, "generate_sitemap_placeholder");
+  const validateSitemapAction = getSeoSafeAction(control, "validate_sitemap_placeholder");
+  const validateRobotsAction = getSeoSafeAction(control, "validate_robots_placeholder");
+  const validateSchemaAction = getSeoSafeAction(control, "validate_schema_placeholder");
+  const exportReportAction = getSeoSafeAction(control, "export_report_placeholder");
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -176,12 +215,14 @@ export default async function AdminSEOPage() {
                     ))}
                   </ul>
                 ) : null}
+                {previewSeoAction ? <SafeActionMeta action={previewSeoAction} /> : null}
                 <form action={previewSEO}>
                   <PageHiddenFields page={page} />
                   <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                    Preview SEO
+                    {previewSeoAction?.label ?? "Preview SEO"}
                   </button>
                 </form>
+                {markReviewedAction ? <SafeActionMeta action={markReviewedAction} /> : null}
                 <form action={markSEOReviewed}>
                   <PageHiddenFields page={page} />
                   <button
@@ -189,7 +230,7 @@ export default async function AdminSEOPage() {
                     disabled={page.reviewStatus === "blocked_private_route"}
                     type="submit"
                   >
-                    Mark reviewed
+                    {markReviewedAction?.label ?? "Mark reviewed"}
                   </button>
                 </form>
               </div>
@@ -208,11 +249,17 @@ export default async function AdminSEOPage() {
           <td className="px-5 py-4 font-bold text-slate-950">Included routes</td>
           <td className="px-5 py-4 text-slate-600">{control.sitemap.includedRoutes.join(", ")}</td>
           <td className="px-5 py-4">
+            {generateSitemapAction ? <SafeActionMeta action={generateSitemapAction} /> : null}
             <form action={generateSitemapPlaceholder}>
               <button className="h-9 rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-amber-700" type="submit">
-                Generate placeholder
+                {generateSitemapAction?.label ?? "Generate placeholder"}
               </button>
             </form>
+            {validateSitemapAction ? (
+              <div className="mt-2">
+                <SafeActionMeta action={validateSitemapAction} />
+              </div>
+            ) : null}
           </td>
         </tr>
         <tr>
@@ -232,9 +279,10 @@ export default async function AdminSEOPage() {
           <td className="px-5 py-4 font-bold text-slate-950">Allowed paths</td>
           <td className="px-5 py-4 text-slate-600">{control.robots.allowedPaths.join(", ")}</td>
           <td className="px-5 py-4">
+            {validateRobotsAction ? <SafeActionMeta action={validateRobotsAction} /> : null}
             <form action={validateRobotsPlaceholder}>
               <button className="h-9 rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                Validate robots
+                {validateRobotsAction?.label ?? "Validate robots"}
               </button>
             </form>
           </td>
@@ -253,9 +301,10 @@ export default async function AdminSEOPage() {
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(item.status)}>{item.status}</AdminBadge></td>
             <td className="px-5 py-4 text-slate-600">{item.note}</td>
             <td className="px-5 py-4">
+              {validateSchemaAction ? <SafeActionMeta action={validateSchemaAction} /> : null}
               <form action={validateStructuredDataPlaceholder}>
                 <button className="h-9 rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
-                  Validate schema
+                  {validateSchemaAction?.label ?? "Validate schema"}
                 </button>
               </form>
             </td>
@@ -284,12 +333,13 @@ export default async function AdminSEOPage() {
                     {control.seoAudit.runtimeStatus}
                   </AdminBadge>
                   <p className="text-xs text-slate-600">{control.seoAudit.summary}</p>
+                  {exportReportAction ? <SafeActionMeta action={exportReportAction} /> : null}
                   <button
                     className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
                     disabled
                     type="button"
                   >
-                    Export placeholder
+                    {exportReportAction?.label ?? "Export placeholder"}
                   </button>
                 </div>
               ) : hook === control.seoReport.exportHookLabel ? (
@@ -305,6 +355,7 @@ export default async function AdminSEOPage() {
                       ))}
                     </ul>
                   ) : null}
+                  {exportReportAction ? <SafeActionMeta action={exportReportAction} /> : null}
                   <button
                     className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
                     disabled

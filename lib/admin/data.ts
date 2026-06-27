@@ -180,6 +180,7 @@ import { mapIndexingWarningRuntimeToAdminFields } from "@/src/lib/seo/seo-indexi
 import { mapSeoAuditRuntimeToAdminFields } from "@/src/lib/seo/seo-audit-runtime";
 import { mapSeoReportRuntimeToAdminFields } from "@/src/lib/seo/seo-report-runtime";
 import { mapSeoReviewRuntimeToAdminFields } from "@/src/lib/seo/seo-review-runtime";
+import { mapSeoSafeActionRuntimeToAdminFields } from "@/src/lib/seo/seo-safe-action-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3793,6 +3794,28 @@ export type AdminSEOControl = {
   seoReview: {
     readOnly: true;
     runtimeStatus: "incomplete" | "needs_review" | "placeholder" | "review_ready";
+    summary: string;
+  };
+  seoSafeActions: {
+    actions: Array<{
+      description: string;
+      destructive: false;
+      id:
+        | "export_report_placeholder"
+        | "generate_sitemap_placeholder"
+        | "mark_reviewed_placeholder"
+        | "preview_seo"
+        | "validate_robots_placeholder"
+        | "validate_schema_placeholder"
+        | "validate_sitemap_placeholder";
+      implemented: boolean;
+      label: string;
+      requiresConfirmation: false;
+      source: "seo_safe_action_runtime";
+      status: "available" | "blocked" | "placeholder";
+    }>;
+    readOnly: true;
+    runtimeStatus: "action_ready" | "invalid" | "placeholder";
     summary: string;
   };
   overview: {
@@ -10446,6 +10469,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
+  const seoSafeActionsRuntime = mapSeoSafeActionRuntimeToAdminFields();
   const reviewItemsBySlug = new Map(seoReviewRuntime.items.map((item) => [item.slug, item]));
 
   const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => {
@@ -10498,6 +10522,12 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       readOnly: true as const,
       runtimeStatus: seoReviewRuntime.runtimeStatus,
       summary: seoReviewRuntime.summary
+    },
+    seoSafeActions: {
+      actions: seoSafeActionsRuntime.actions,
+      readOnly: true as const,
+      runtimeStatus: seoSafeActionsRuntime.runtimeStatus,
+      summary: seoSafeActionsRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
