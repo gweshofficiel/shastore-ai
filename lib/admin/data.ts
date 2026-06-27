@@ -188,6 +188,7 @@ import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-d
 import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-security-certification-runtime";
 import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-runtime-certification-runtime";
 import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-production-certification-runtime";
+import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/reports-registry-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3990,14 +3991,43 @@ export type AdminReportingControl = {
     supportTickets: number;
     totalRevenueEstimate: number;
   };
+  registry: {
+    readOnly: true;
+    source: "reports_registry_runtime";
+    status: "needs_attention" | "registry_ready";
+    summary: string;
+    totalEntries: number;
+  };
   reports: Array<{
-    category: AdminReportingControl["categories"][number]["name"];
+    category:
+      | "AI Reports"
+      | "Domain & Email Reports"
+      | "Marketplace Reports"
+      | "Operations Reports"
+      | "Payment Reports"
+      | "Report Certification"
+      | "Report Platform"
+      | "Reports Registry"
+      | "Revenue Reports"
+      | "Security Reports"
+      | "Store Reports"
+      | "Subscription Reports"
+      | "User Reports";
+    certificationState: "certified" | "needs_attention" | "not_applicable" | "planned";
+    dataSourceDescription: string;
+    exportAvailabilityState: "export_ready" | "placeholder" | "unavailable";
     exportPlaceholder: string;
+    futureHooks: string[];
     lastGenerated: string;
     name: string;
     reportId: string;
-    status: "ready" | "review" | "placeholder";
-    visibility: "internal" | "owner";
+    reportKey: string;
+    roadmapPhase: string;
+    safeActionsAvailability: "available" | "placeholder" | "unavailable";
+    safeActionsLabel: string;
+    status: "inactive" | "planned" | "placeholder" | "ready" | "review";
+    supportsSafeActions: boolean;
+    visibility: "internal" | "owner" | "super_admin";
   }>;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
   sources: string[];
@@ -10734,150 +10764,16 @@ export async function getAdminReportingControl(
     getAdminMarketplaceControl(),
     getAdminPlatformHealth()
   ]);
-  const categories: AdminReportingControl["categories"] = [
-    {
-      description: "Revenue estimates from existing commerce and analytics aggregates.",
-      name: "Revenue Reports",
-      status: "ready"
-    },
-    {
-      description: "Store health, publishing, products, views, and revenue rollups.",
-      name: "Store Reports",
-      status: "ready"
-    },
-    {
-      description: "User account, plan, governance, and workspace rollups.",
-      name: "User Reports",
-      status: "ready"
-    },
-    {
-      description: "Subscription plan, payment health, limits, and lifecycle rollups.",
-      name: "Subscription Reports",
-      status: "ready"
-    },
-    {
-      description: "Payment provider and failed payment monitoring placeholders.",
-      name: "Payment Reports",
-      status: "review"
-    },
-    {
-      description: "AI job usage, failures, stores using AI, and estimated costs.",
-      name: "AI Reports",
-      status: "ready"
-    },
-    {
-      description: "Domain drafts, DNS/SSL, email mailbox drafts, and future hosting rollups.",
-      name: "Domain & Email Reports",
-      status: "ready"
-    },
-    {
-      description: "Marketplace item, approval, visibility, and revenue placeholder rollups.",
-      name: "Marketplace Reports",
-      status: "ready"
-    },
-    {
-      description: "Security events and audit monitoring from existing logs.",
-      name: "Security Reports",
-      status: "ready"
-    },
-    {
-      description: "Support tickets, monitoring events, platform health, and operational review.",
-      name: "Operations Reports",
-      status: platformHealth.label === "Needs review" ? "review" : "ready"
-    }
-  ];
-  const reports: AdminReportingControl["reports"] = [
-    {
-      category: "Revenue Reports",
-      exportPlaceholder: "CSV/PDF export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Platform revenue estimate",
-      reportId: "revenue:platform-estimate",
-      status: "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Store Reports",
-      exportPlaceholder: "CSV export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Store activity and health",
-      reportId: "stores:activity-health",
-      status: "ready",
-      visibility: "internal"
-    },
-    {
-      category: "User Reports",
-      exportPlaceholder: "CSV export reserved",
-      lastGenerated: "Live aggregate",
-      name: "User growth and governance",
-      reportId: "users:growth-governance",
-      status: "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Subscription Reports",
-      exportPlaceholder: "CSV/PDF export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Subscription plan health",
-      reportId: "subscriptions:plan-health",
-      status: "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Payment Reports",
-      exportPlaceholder: "Provider export reserved",
-      lastGenerated: "Placeholder",
-      name: "Failed payment monitoring",
-      reportId: "payments:failed-monitoring",
-      status: "review",
-      visibility: "internal"
-    },
-    {
-      category: "AI Reports",
-      exportPlaceholder: "Usage export reserved",
-      lastGenerated: "Live aggregate",
-      name: "AI usage and failures",
-      reportId: "ai:usage-failures",
-      status: aiControl.overview.failedJobs ? "review" : "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Domain & Email Reports",
-      exportPlaceholder: "CSV export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Domain and email order readiness",
-      reportId: "domains-email:readiness",
-      status: domainsHosting.overview.failedOperations ? "review" : "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Marketplace Reports",
-      exportPlaceholder: "Marketplace export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Marketplace approval pipeline",
-      reportId: "marketplace:approval-pipeline",
-      status: marketplace.overview.pendingReviewItems ? "review" : "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Security Reports",
-      exportPlaceholder: "Audit export reserved",
-      lastGenerated: "Live aggregate",
-      name: "Security event summary",
-      reportId: "security:event-summary",
-      status: platformHealth.recentSecurityEvents ? "review" : "ready",
-      visibility: "internal"
-    },
-    {
-      category: "Operations Reports",
-      exportPlaceholder: "Scheduled delivery reserved",
-      lastGenerated: "Live aggregate",
-      name: "Operations and support health",
-      reportId: "operations:support-health",
-      status: platformHealth.label === "Needs review" ? "review" : "ready",
-      visibility: "internal"
-    }
-  ];
+  const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
+    aiFailedJobs: Boolean(aiControl.overview.failedJobs),
+    domainsFailedOperations: Boolean(domainsHosting.overview.failedOperations),
+    marketplacePendingReview: Boolean(marketplace.overview.pendingReviewItems),
+    platformHealthNeedsReview: platformHealth.label === "Needs review",
+    recentSecurityEvents: Boolean(platformHealth.recentSecurityEvents),
+    selectedRange
+  });
+  const categories: AdminReportingControl["categories"] = registryRuntime.categories;
+  const reports: AdminReportingControl["reports"] = registryRuntime.reports;
   const dateFilters: AdminReportingControl["dateFilters"] = [
     { active: selectedRange === "today", href: "/admin/reports?range=today", label: "Today", value: "today" },
     { active: selectedRange === "7d", href: "/admin/reports?range=7d", label: "7 days", value: "7d" },
@@ -10889,13 +10785,7 @@ export async function getAdminReportingControl(
   return {
     categories,
     dateFilters,
-    futureHooks: [
-      "CSV export",
-      "PDF export",
-      "Scheduled reports",
-      "Email report delivery",
-      "BI dashboard integration"
-    ],
+    futureHooks: registryRuntime.futureHooks,
     overview: {
       activeStores: stores.filter((store) => store.storeStatus === "active" || store.publicationStatus === "published").length,
       activeUsers: users.filter((user) => user.accountStatus === "active").length,
@@ -10910,18 +10800,16 @@ export async function getAdminReportingControl(
       supportTickets: platformHealth.openSupportTickets,
       totalRevenueEstimate: analytics.revenueEstimate
     },
+    registry: {
+      readOnly: true as const,
+      source: registryRuntime.registry.source,
+      status: registryRuntime.registry.status,
+      summary: registryRuntime.registry.summary,
+      totalEntries: registryRuntime.registry.totalEntries
+    },
     reports,
     selectedRange,
-    sources: [
-      "getAdminAnalytics",
-      "getAdminUsers",
-      "getAdminStores",
-      "getAdminSubscriptions",
-      "getAdminDomainsHostingControl",
-      "getAdminAIControl",
-      "getAdminMarketplaceControl",
-      "getAdminPlatformHealth"
-    ]
+    sources: registryRuntime.sources
   };
 }
 
