@@ -14,6 +14,26 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForReviewStatus(status: string) {
+  if (status === "reviewed") {
+    return "green" as const;
+  }
+
+  if (status === "missing_required_seo") {
+    return "red" as const;
+  }
+
+  if (status === "blocked_private_route") {
+    return "red" as const;
+  }
+
+  if (status === "needs_review") {
+    return "amber" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForReportStatus(status: string) {
   if (status === "report_ready") {
     return "green" as const;
@@ -148,6 +168,14 @@ export default async function AdminSEOPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(page.lastUpdated)}</td>
             <td className="px-5 py-4">
               <div className="grid min-w-52 gap-2">
+                <AdminBadge tone={toneForReviewStatus(page.reviewStatus)}>{page.reviewStatus}</AdminBadge>
+                {page.reviewWarnings.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
+                    {page.reviewWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <form action={previewSEO}>
                   <PageHiddenFields page={page} />
                   <button className="h-9 w-full rounded-full border border-blue-200 bg-blue-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700" type="submit">
@@ -156,7 +184,11 @@ export default async function AdminSEOPage() {
                 </form>
                 <form action={markSEOReviewed}>
                   <PageHiddenFields page={page} />
-                  <button className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700" type="submit">
+                  <button
+                    className="h-9 w-full rounded-full border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={page.reviewStatus === "blocked_private_route"}
+                    type="submit"
+                  >
                     Mark reviewed
                   </button>
                 </form>

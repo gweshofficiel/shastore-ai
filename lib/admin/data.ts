@@ -179,6 +179,7 @@ import { mapAnalyticsRuntimeToAdminFields } from "@/src/lib/seo/seo-analytics-ru
 import { mapIndexingWarningRuntimeToAdminFields } from "@/src/lib/seo/seo-indexing-warning-runtime";
 import { mapSeoAuditRuntimeToAdminFields } from "@/src/lib/seo/seo-audit-runtime";
 import { mapSeoReportRuntimeToAdminFields } from "@/src/lib/seo/seo-report-runtime";
+import { mapSeoReviewRuntimeToAdminFields } from "@/src/lib/seo/seo-review-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3789,6 +3790,11 @@ export type AdminSEOControl = {
     runtimeStatus: "incomplete" | "needs_review" | "placeholder" | "report_ready";
     summary: string;
   };
+  seoReview: {
+    readOnly: true;
+    runtimeStatus: "incomplete" | "needs_review" | "placeholder" | "review_ready";
+    summary: string;
+  };
   overview: {
     canonicalReady: number;
     indexedPagesPlaceholder: string;
@@ -3812,6 +3818,10 @@ export type AdminSEOControl = {
     openGraphStatus: "placeholder" | "ready";
     openGraphTitle: string;
     page: string;
+    reviewed: boolean;
+    reviewSource: string;
+    reviewStatus: "blocked_private_route" | "missing_required_seo" | "needs_review" | "reviewed";
+    reviewWarnings: string[];
     slug: string;
   }>;
   robots: {
@@ -10417,23 +10427,43 @@ export function createFallbackAdminNotificationControl(): AdminNotificationContr
 
 export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const seoPages = await listSeoPages();
-  const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => ({
-    ...mapSeoPageRuntimeToAdminSeoPage(seoPage),
-    ...mapMetaTitleRuntimeToAdminFields(seoPage),
-    ...mapMetaDescriptionRuntimeToAdminFields(seoPage),
-    ...mapCanonicalRuntimeToAdminFields(seoPage),
-    ...mapOpenGraphRuntimeToAdminFields(seoPage),
-    ...mapSeoLanguageRuntimeToAdminFields(seoPage)
-  }));
-  const sitemapRuntime = await mapSitemapRuntimeToAdminFields();
-  const robotsRuntime = await mapRobotsRuntimeToAdminFields();
+  const isProduction = process.env.NODE_ENV === "production";
+  const [
+    sitemapRuntime,
+    robotsRuntime,
+    indexingWarningRuntime,
+    seoAuditRuntime,
+    seoReportRuntime,
+    seoReviewRuntime
+  ] = await Promise.all([
+    mapSitemapRuntimeToAdminFields(),
+    mapRobotsRuntimeToAdminFields(),
+    mapIndexingWarningRuntimeToAdminFields(isProduction),
+    mapSeoAuditRuntimeToAdminFields(),
+    mapSeoReportRuntimeToAdminFields(),
+    mapSeoReviewRuntimeToAdminFields()
+  ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
-  const isProduction = process.env.NODE_ENV === "production";
-  const indexingWarningRuntime = await mapIndexingWarningRuntimeToAdminFields(isProduction);
-  const seoAuditRuntime = await mapSeoAuditRuntimeToAdminFields();
-  const seoReportRuntime = await mapSeoReportRuntimeToAdminFields();
+  const reviewItemsBySlug = new Map(seoReviewRuntime.items.map((item) => [item.slug, item]));
+
+  const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => {
+    const reviewItem = reviewItemsBySlug.get(seoPage.slug);
+
+    return {
+      ...mapSeoPageRuntimeToAdminSeoPage(seoPage),
+      ...mapMetaTitleRuntimeToAdminFields(seoPage),
+      ...mapMetaDescriptionRuntimeToAdminFields(seoPage),
+      ...mapCanonicalRuntimeToAdminFields(seoPage),
+      ...mapOpenGraphRuntimeToAdminFields(seoPage),
+      ...mapSeoLanguageRuntimeToAdminFields(seoPage),
+      reviewed: reviewItem?.reviewed ?? false,
+      reviewSource: reviewItem?.source ?? seoPage.source,
+      reviewStatus: reviewItem?.reviewStatus ?? "needs_review",
+      reviewWarnings: reviewItem?.warnings ?? []
+    };
+  });
 
   return {
     analyticsReadiness: [
@@ -10463,6 +10493,11 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       recommendations: seoReportRuntime.recommendations,
       runtimeStatus: seoReportRuntime.runtimeStatus,
       summary: seoReportRuntime.summary
+    },
+    seoReview: {
+      readOnly: true as const,
+      runtimeStatus: seoReviewRuntime.runtimeStatus,
+      summary: seoReviewRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
