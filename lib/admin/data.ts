@@ -187,6 +187,7 @@ import { mapAiSeoRuntimeToAdminFields } from "@/src/lib/seo/seo-ai-runtime";
 import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-data-certification-runtime";
 import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-security-certification-runtime";
 import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-runtime-certification-runtime";
+import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-production-certification-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3891,6 +3892,16 @@ export type AdminSEOControl = {
     passedChecks: number;
     readOnly: true;
     status: "certified" | "needs_attention";
+    summary: string;
+    totalChecks: number;
+    warnings: string[];
+  };
+  seoProductionCertification: {
+    failedChecks: number;
+    generatedAt: string;
+    passedChecks: number;
+    readOnly: true;
+    status: "needs_attention" | "production_certified";
     summary: string;
     totalChecks: number;
     warnings: string[];
@@ -10538,7 +10549,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     seoExportRuntime,
     seoDataCertificationRuntime,
     seoSecurityCertificationRuntime,
-    seoRuntimeCertificationRuntime
+    seoRuntimeCertificationRuntime,
+    seoProductionCertificationRuntime
   ] = await Promise.all([
     mapSitemapRuntimeToAdminFields(),
     mapRobotsRuntimeToAdminFields(),
@@ -10549,7 +10561,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     mapSeoExportRuntimeToAdminFields(),
     mapSeoDataCertificationRuntimeToAdminFields(),
     mapSeoSecurityCertificationRuntimeToAdminFields(),
-    mapSeoRuntimeCertificationRuntimeToAdminFields()
+    mapSeoRuntimeCertificationRuntimeToAdminFields(),
+    mapSeoProductionCertificationRuntimeToAdminFields()
   ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
@@ -10667,6 +10680,16 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       summary: seoRuntimeCertificationRuntime.summary,
       totalChecks: seoRuntimeCertificationRuntime.totalChecks,
       warnings: seoRuntimeCertificationRuntime.warnings
+    },
+    seoProductionCertification: {
+      failedChecks: seoProductionCertificationRuntime.failedChecks,
+      generatedAt: seoProductionCertificationRuntime.generatedAt,
+      passedChecks: seoProductionCertificationRuntime.passedChecks,
+      readOnly: true as const,
+      status: seoProductionCertificationRuntime.status,
+      summary: seoProductionCertificationRuntime.summary,
+      totalChecks: seoProductionCertificationRuntime.totalChecks,
+      warnings: seoProductionCertificationRuntime.warnings
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,

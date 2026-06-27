@@ -14,6 +14,14 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForProductionCertificationStatus(status: string) {
+  if (status === "production_certified") {
+    return "green" as const;
+  }
+
+  return "amber" as const;
+}
+
 function toneForCertificationStatus(status: string) {
   if (status === "certified") {
     return "green" as const;
@@ -192,6 +200,14 @@ export default async function AdminSEOPage() {
         title="SEO Center"
       />
 
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Production certification</span>
+        <AdminBadge tone={toneForProductionCertificationStatus(control.seoProductionCertification.status)}>
+          {control.seoProductionCertification.status}
+        </AdminBadge>
+        <span className="text-xs text-slate-600">{control.seoProductionCertification.summary}</span>
+      </div>
+
       <AdminStatGrid
         stats={[
           { label: "Indexed pages", value: control.overview.indexedPagesPlaceholder },
@@ -266,6 +282,28 @@ export default async function AdminSEOPage() {
             {control.seoRuntimeCertification.warnings.length > 0 ? (
               <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
                 {control.seoRuntimeCertification.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </td>
+        </tr>
+        <tr>
+          <td className="px-5 py-4 font-bold text-slate-950">Production certification readiness</td>
+          <td className="px-5 py-4">
+            <AdminBadge tone={toneForProductionCertificationStatus(control.seoProductionCertification.status)}>
+              {control.seoProductionCertification.status}
+            </AdminBadge>
+          </td>
+          <td className="px-5 py-4 text-slate-600">
+            <p className="text-sm">{control.seoProductionCertification.summary}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {control.seoProductionCertification.passedChecks}/{control.seoProductionCertification.totalChecks} checks passed
+              · generated {formatAdminDate(control.seoProductionCertification.generatedAt)}
+            </p>
+            {control.seoProductionCertification.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
+                {control.seoProductionCertification.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
