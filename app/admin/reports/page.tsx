@@ -237,6 +237,97 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-3 Store Reports</span>
+          <AdminBadge tone={toneForStatus(control.storeReports.status)}>{control.storeReports.status}</AdminBadge>
+          <span className="text-xs text-slate-600">{control.storeReports.rangeLabel}</span>
+        </div>
+
+        {control.storeReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.storeReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.storeReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No store source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total stores", value: control.storeReports.metrics.totalStores },
+            { label: "Active stores", value: control.storeReports.metrics.activeStores },
+            { label: "Inactive stores", value: control.storeReports.metrics.inactiveStores },
+            { label: "Suspended stores", value: control.storeReports.metrics.suspendedStores },
+            { label: "Newly created", value: control.storeReports.metrics.newlyCreatedStores },
+            { label: "With domains", value: control.storeReports.metrics.storesWithDomains },
+            { label: "With owners", value: control.storeReports.metrics.storesWithOwners }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.storeReports.summary}
+          {control.storeReports.lastUpdatedAt
+            ? ` · Last store activity ${control.storeReports.lastUpdatedAt}`
+            : " · No store activity timestamps recorded"}
+        </p>
+
+        {control.storeReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.storeReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Store status", "Count", "Availability"]}>
+          {control.storeReports.storesByStatus.length ? (
+            control.storeReports.storesByStatus.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No store status breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Owner plan", "Store count", "Availability"]}>
+          {control.storeReports.storesByPlan.length ? (
+            control.storeReports.storesByPlan.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No store plan breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

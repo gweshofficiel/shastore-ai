@@ -190,6 +190,7 @@ import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/se
 import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-production-certification-runtime";
 import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/reports-registry-runtime";
 import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue-reports-runtime";
+import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4032,6 +4033,38 @@ export type AdminReportingControl = {
     readOnly: true;
     selectedRange: "today" | "7d" | "30d" | "month" | "year";
     status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    warnings: string[];
+  };
+  storeReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      activeStores: number;
+      inactiveStores: number;
+      newlyCreatedStores: number;
+      storesWithDomains: number;
+      storesWithOwners: number;
+      suspendedStores: number;
+      totalStores: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    storesByPlan: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    storesByStatus: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
     summary: string;
     warnings: string[];
   };
@@ -10791,7 +10824,8 @@ export async function getAdminReportingControl(
     aiControl,
     marketplace,
     platformHealth,
-    revenueReportsRuntime
+    revenueReportsRuntime,
+    storeReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10801,7 +10835,8 @@ export async function getAdminReportingControl(
     getAdminAIControl(),
     getAdminMarketplaceControl(),
     getAdminPlatformHealth(),
-    mapRevenueReportsRuntimeToAdminFields(selectedRange)
+    mapRevenueReportsRuntimeToAdminFields(selectedRange),
+    mapStoreReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10811,6 +10846,8 @@ export async function getAdminReportingControl(
     recentSecurityEvents: Boolean(platformHealth.recentSecurityEvents),
     revenueReportLastGenerated: revenueReportsRuntime.lastGeneratedState,
     revenueReportNeedsAttention: revenueReportsRuntime.status === "needs_attention",
+    storeReportLastGenerated: storeReportsRuntime.lastGeneratedState,
+    storeReportNeedsAttention: storeReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -10863,6 +10900,22 @@ export async function getAdminReportingControl(
       status: revenueReportsRuntime.status,
       summary: revenueReportsRuntime.summary,
       warnings: revenueReportsRuntime.warnings
+    },
+    storeReports: {
+      errorMessage: storeReportsRuntime.errorMessage,
+      generatedAt: storeReportsRuntime.generatedAt,
+      lastGeneratedState: storeReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: storeReportsRuntime.lastUpdatedAt,
+      loadingState: storeReportsRuntime.loadingState,
+      metrics: storeReportsRuntime.metrics,
+      rangeLabel: storeReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: storeReportsRuntime.selectedRange,
+      status: storeReportsRuntime.status,
+      storesByPlan: storeReportsRuntime.storesByPlan,
+      storesByStatus: storeReportsRuntime.storesByStatus,
+      summary: storeReportsRuntime.summary,
+      warnings: storeReportsRuntime.warnings
     },
     reports,
     selectedRange,

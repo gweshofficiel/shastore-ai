@@ -84,6 +84,8 @@ export type ReportsRegistryRuntimeContext = {
   recentSecurityEvents: boolean;
   revenueReportLastGenerated?: string;
   revenueReportNeedsAttention?: boolean;
+  storeReportLastGenerated?: string;
+  storeReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -545,6 +547,16 @@ function applyRuntimeContext(
         "Revenue Reports runtime (commerce_orders, store_orders, invoices, billing_events, user_subscriptions).",
       lastGeneratedState: context.revenueReportLastGenerated ?? definition.lastGeneratedState,
       status: context.revenueReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-3-store-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Store Reports runtime (stores, published_stores, store_domains, user_subscriptions).",
+      lastGeneratedState: context.storeReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.storeReportNeedsAttention ? "review" : definition.status
     };
   }
 
