@@ -182,6 +182,7 @@ import { mapSeoReportRuntimeToAdminFields } from "@/src/lib/seo/seo-report-runti
 import { mapSeoReviewRuntimeToAdminFields } from "@/src/lib/seo/seo-review-runtime";
 import { mapSeoSafeActionRuntimeToAdminFields } from "@/src/lib/seo/seo-safe-action-runtime";
 import { mapSeoExportRuntimeToAdminFields } from "@/src/lib/seo/seo-export-runtime";
+import { mapSeoEditorRuntimeToAdminFields } from "@/src/lib/seo/seo-editor-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3824,6 +3825,21 @@ export type AdminSEOControl = {
     readOnly: true;
     runtimeStatus: "export_ready" | "incomplete" | "needs_review" | "placeholder";
     safeRecommendations: string[];
+    summary: string;
+  };
+  seoEditor: {
+    editableFields: Array<{
+      description: string;
+      enabled: true;
+      id: "canonicalPath" | "language" | "metaDescription" | "metaTitle" | "openGraphEnabled";
+      implemented: false;
+      label: string;
+      type: "boolean" | "language" | "path" | "text";
+      validationRules: string[];
+    }>;
+    hookLabel: string;
+    readOnly: true;
+    runtimeStatus: "editor_ready" | "invalid" | "placeholder";
     summary: string;
   };
   overview: {
@@ -10480,6 +10496,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
   const analyticsRuntime = mapAnalyticsRuntimeToAdminFields();
   const seoSafeActionsRuntime = mapSeoSafeActionRuntimeToAdminFields();
+  const seoEditorRuntime = mapSeoEditorRuntimeToAdminFields();
   const reviewItemsBySlug = new Map(seoReviewRuntime.items.map((item) => [item.slug, item]));
 
   const pages: AdminSEOControl["pages"] = seoPages.map((seoPage) => {
@@ -10506,7 +10523,7 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       indexingWarningRuntime.analyticsReadinessItem
     ],
     futureHooks: [
-      "SEO editor",
+      seoEditorRuntime.hookLabel,
       "AI SEO generator",
       "Sitemap regeneration",
       "Search Console integration",
@@ -10545,6 +10562,13 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       runtimeStatus: seoExportRuntime.runtimeStatus,
       safeRecommendations: seoExportRuntime.safeRecommendations,
       summary: seoExportRuntime.summary
+    },
+    seoEditor: {
+      editableFields: seoEditorRuntime.editableFields,
+      hookLabel: seoEditorRuntime.hookLabel,
+      readOnly: true as const,
+      runtimeStatus: seoEditorRuntime.runtimeStatus,
+      summary: seoEditorRuntime.summary
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,

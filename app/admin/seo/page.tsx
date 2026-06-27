@@ -14,6 +14,18 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForEditorStatus(status: string) {
+  if (status === "editor_ready") {
+    return "green" as const;
+  }
+
+  if (status === "invalid") {
+    return "red" as const;
+  }
+
+  return "blue" as const;
+}
+
 function toneForExportStatus(status: string) {
   if (status === "export_ready") {
     return "green" as const;
@@ -343,7 +355,28 @@ export default async function AdminSEOPage() {
           <tr key={hook}>
             <td className="px-5 py-4 font-bold text-slate-950">{hook}</td>
             <td className="px-5 py-4">
-              {hook === control.seoAudit.exportHookLabel ? (
+              {hook === control.seoEditor.hookLabel ? (
+                <div className="space-y-2">
+                  <AdminBadge tone={toneForEditorStatus(control.seoEditor.runtimeStatus)}>
+                    {control.seoEditor.runtimeStatus}
+                  </AdminBadge>
+                  <p className="text-xs text-slate-600">{control.seoEditor.summary}</p>
+                  <ul className="list-disc space-y-1 pl-4 text-xs text-slate-600">
+                    {control.seoEditor.editableFields.map((field) => (
+                      <li key={field.id}>
+                        {field.label} ({field.type}) — {field.implemented ? "implemented" : "validation-only"}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                    disabled
+                    type="button"
+                  >
+                    Editor placeholder
+                  </button>
+                </div>
+              ) : hook === control.seoAudit.exportHookLabel ? (
                 <div className="space-y-2">
                   <AdminBadge tone={toneForAuditStatus(control.seoAudit.runtimeStatus)}>
                     {control.seoAudit.runtimeStatus}
