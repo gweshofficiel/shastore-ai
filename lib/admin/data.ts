@@ -193,6 +193,7 @@ import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue
 import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-reports-runtime";
 import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-reports-runtime";
 import { mapSubscriptionReportsRuntimeToAdminFields } from "@/src/lib/reports/subscription-reports-runtime";
+import { mapPaymentReportsRuntimeToAdminFields } from "@/src/lib/reports/payment-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4132,6 +4133,55 @@ export type AdminReportingControl = {
       dataAvailability: "available" | "planned";
       label: string;
     }>;
+    summary: string;
+    warnings: string[];
+  };
+  paymentReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    latestPaymentActivity: Array<{
+      activityAt: string;
+      amountLabel: string;
+      dataAvailability: "available" | "planned";
+      provider: string;
+      source: string;
+      status: string;
+    }>;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      cancelledPayments: number;
+      failedPayments: number;
+      paymentVolume: number;
+      pendingPayments: number;
+      refundedPayments: number;
+      successfulPayments: number;
+      totalPayments: number;
+    };
+    paymentsByCurrency: Array<{
+      count: number;
+      currency: string;
+      dataAvailability: "available" | "planned";
+      paymentVolume: number;
+    }>;
+    paymentsByProvider: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      failedPayments: number;
+      paymentVolume: number;
+      provider: string;
+      successfulPayments: number;
+    }>;
+    paymentsByStatus: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
   };
@@ -10894,7 +10944,8 @@ export async function getAdminReportingControl(
     revenueReportsRuntime,
     storeReportsRuntime,
     userReportsRuntime,
-    subscriptionReportsRuntime
+    subscriptionReportsRuntime,
+    paymentReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10907,7 +10958,8 @@ export async function getAdminReportingControl(
     mapRevenueReportsRuntimeToAdminFields(selectedRange),
     mapStoreReportsRuntimeToAdminFields(selectedRange),
     mapUserReportsRuntimeToAdminFields(selectedRange),
-    mapSubscriptionReportsRuntimeToAdminFields(selectedRange)
+    mapSubscriptionReportsRuntimeToAdminFields(selectedRange),
+    mapPaymentReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10923,6 +10975,8 @@ export async function getAdminReportingControl(
     userReportNeedsAttention: userReportsRuntime.status === "needs_attention",
     subscriptionReportLastGenerated: subscriptionReportsRuntime.lastGeneratedState,
     subscriptionReportNeedsAttention: subscriptionReportsRuntime.status === "needs_attention",
+    paymentReportLastGenerated: paymentReportsRuntime.lastGeneratedState,
+    paymentReportNeedsAttention: paymentReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -11023,6 +11077,24 @@ export async function getAdminReportingControl(
       subscriptionsByStatus: subscriptionReportsRuntime.subscriptionsByStatus,
       summary: subscriptionReportsRuntime.summary,
       warnings: subscriptionReportsRuntime.warnings
+    },
+    paymentReports: {
+      errorMessage: paymentReportsRuntime.errorMessage,
+      generatedAt: paymentReportsRuntime.generatedAt,
+      lastGeneratedState: paymentReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: paymentReportsRuntime.lastUpdatedAt,
+      latestPaymentActivity: paymentReportsRuntime.latestPaymentActivity,
+      loadingState: paymentReportsRuntime.loadingState,
+      metrics: paymentReportsRuntime.metrics,
+      paymentsByCurrency: paymentReportsRuntime.paymentsByCurrency,
+      paymentsByProvider: paymentReportsRuntime.paymentsByProvider,
+      paymentsByStatus: paymentReportsRuntime.paymentsByStatus,
+      rangeLabel: paymentReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: paymentReportsRuntime.selectedRange,
+      status: paymentReportsRuntime.status,
+      summary: paymentReportsRuntime.summary,
+      warnings: paymentReportsRuntime.warnings
     },
     reports,
     selectedRange,

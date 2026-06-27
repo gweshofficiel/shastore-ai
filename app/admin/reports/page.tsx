@@ -524,6 +524,155 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-6 Payment Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.paymentReports.status)}>
+            {control.paymentReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.paymentReports.rangeLabel}</span>
+        </div>
+
+        {control.paymentReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.paymentReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.paymentReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No payment source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total payments", value: control.paymentReports.metrics.totalPayments },
+            { label: "Successful payments", value: control.paymentReports.metrics.successfulPayments },
+            { label: "Failed payments", value: control.paymentReports.metrics.failedPayments },
+            { label: "Pending payments", value: control.paymentReports.metrics.pendingPayments },
+            { label: "Cancelled payments", value: control.paymentReports.metrics.cancelledPayments },
+            { label: "Refunded payments", value: control.paymentReports.metrics.refundedPayments },
+            {
+              label: "Payment volume",
+              value: formatAdminMoney(control.paymentReports.metrics.paymentVolume)
+            }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.paymentReports.summary}
+          {control.paymentReports.lastUpdatedAt
+            ? ` · Last payment activity ${control.paymentReports.lastUpdatedAt}`
+            : " · No payment activity timestamps recorded"}
+        </p>
+
+        {control.paymentReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.paymentReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Latest activity", "Source", "Provider", "Status", "Amount", "Availability"]}>
+          {control.paymentReports.latestPaymentActivity.length ? (
+            control.paymentReports.latestPaymentActivity.map((item) => (
+              <tr key={`${item.activityAt}-${item.source}-${item.provider}-${item.status}`}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.activityAt}</td>
+                <td className="px-5 py-4 text-slate-600">{item.source}</td>
+                <td className="px-5 py-4 text-slate-600">{item.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="px-5 py-4 text-slate-600">{item.amountLabel}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No latest payment activity is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Provider", "Payments", "Successful", "Failed", "Volume", "Availability"]}>
+          {control.paymentReports.paymentsByProvider.length ? (
+            control.paymentReports.paymentsByProvider.map((item) => (
+              <tr key={item.provider}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4 text-slate-600">{item.successfulPayments}</td>
+                <td className="px-5 py-4 text-slate-600">{item.failedPayments}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(item.paymentVolume)}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No payment provider breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Currency", "Payments", "Volume", "Availability"]}>
+          {control.paymentReports.paymentsByCurrency.length ? (
+            control.paymentReports.paymentsByCurrency.map((item) => (
+              <tr key={item.currency}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.currency}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(item.paymentVolume)}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                No payment currency breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Payment status", "Count", "Availability"]}>
+          {control.paymentReports.paymentsByStatus.length ? (
+            control.paymentReports.paymentsByStatus.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No payment status breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

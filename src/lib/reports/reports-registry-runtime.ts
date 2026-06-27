@@ -90,6 +90,8 @@ export type ReportsRegistryRuntimeContext = {
   userReportNeedsAttention?: boolean;
   subscriptionReportLastGenerated?: string;
   subscriptionReportNeedsAttention?: boolean;
+  paymentReportLastGenerated?: string;
+  paymentReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -205,15 +207,15 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Payment Reports",
     certificationState: "not_applicable",
-    dataSourceDescription: "Existing subscription failed payment monitoring aggregate.",
+    dataSourceDescription: "Payment Reports runtime (commerce_orders, store_orders, invoices, billing_events).",
     exportAvailabilityState: "placeholder",
     futureHooks: ["Provider export"],
-    lastGeneratedState: "Placeholder",
+    lastGeneratedState: "Live aggregate",
     reportId: "payments:failed-monitoring",
     reportKey: "rp-6-payment-reports",
     roadmapPhase: "RP-6",
     safeActionsAvailability: "placeholder",
-    status: "review",
+    status: "ready",
     title: "Failed payment monitoring",
     visibility: "internal"
   },
@@ -524,7 +526,7 @@ const CATEGORY_DESCRIPTIONS: Record<ReportCategoryName, string> = {
   "Domain & Email Reports": "Domain drafts, DNS/SSL, email mailbox drafts, and hosting rollups.",
   "Marketplace Reports": "Marketplace item, approval, visibility, and revenue rollups.",
   "Operations Reports": "Support tickets, monitoring events, platform health, and operational review.",
-  "Payment Reports": "Payment provider and failed payment monitoring placeholders.",
+  "Payment Reports": "Payment provider, checkout transaction, and failed payment monitoring rollups.",
   "Revenue Reports": "Revenue estimates from existing commerce and analytics aggregates.",
   "Security Reports": "Security events and audit monitoring from existing logs.",
   "Store Reports": "Store health, publishing, products, views, and revenue rollups.",
@@ -581,6 +583,16 @@ function applyRuntimeContext(
         "Subscription Reports runtime (user_subscriptions, invoices, billing_events).",
       lastGeneratedState: context.subscriptionReportLastGenerated ?? definition.lastGeneratedState,
       status: context.subscriptionReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-6-payment-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Payment Reports runtime (commerce_orders, store_orders, invoices, billing_events).",
+      lastGeneratedState: context.paymentReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.paymentReportNeedsAttention ? "review" : definition.status
     };
   }
 
