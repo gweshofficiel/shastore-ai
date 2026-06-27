@@ -14,6 +14,14 @@ import {
   validateStructuredDataPlaceholder
 } from "@/lib/admin/seo-actions";
 
+function toneForCertificationStatus(status: string) {
+  if (status === "certified") {
+    return "green" as const;
+  }
+
+  return "amber" as const;
+}
+
 function toneForAiSeoStatus(status: string) {
   if (status === "ai_ready") {
     return "green" as const;
@@ -196,6 +204,31 @@ export default async function AdminSEOPage() {
           { label: "Language ready", value: control.overview.languageReady }
         ]}
       />
+
+      <AdminTable headers={["SEO data certification", "Status", "Readiness"]}>
+        <tr>
+          <td className="px-5 py-4 font-bold text-slate-950">Data certification readiness</td>
+          <td className="px-5 py-4">
+            <AdminBadge tone={toneForCertificationStatus(control.seoDataCertification.status)}>
+              {control.seoDataCertification.status}
+            </AdminBadge>
+          </td>
+          <td className="px-5 py-4 text-slate-600">
+            <p className="text-sm">{control.seoDataCertification.summary}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {control.seoDataCertification.passedChecks}/{control.seoDataCertification.totalChecks} checks passed
+              · generated {formatAdminDate(control.seoDataCertification.generatedAt)}
+            </p>
+            {control.seoDataCertification.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700">
+                {control.seoDataCertification.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </td>
+        </tr>
+      </AdminTable>
 
       <AdminTable
         headers={[

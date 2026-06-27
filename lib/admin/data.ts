@@ -184,6 +184,7 @@ import { mapSeoSafeActionRuntimeToAdminFields } from "@/src/lib/seo/seo-safe-act
 import { mapSeoExportRuntimeToAdminFields } from "@/src/lib/seo/seo-export-runtime";
 import { mapSeoEditorRuntimeToAdminFields } from "@/src/lib/seo/seo-editor-runtime";
 import { mapAiSeoRuntimeToAdminFields } from "@/src/lib/seo/seo-ai-runtime";
+import { mapSeoDataCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-data-certification-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3861,6 +3862,16 @@ export type AdminSEOControl = {
     readOnly: true;
     runtimeStatus: "ai_ready" | "invalid" | "placeholder";
     summary: string;
+  };
+  seoDataCertification: {
+    failedChecks: number;
+    generatedAt: string;
+    passedChecks: number;
+    readOnly: true;
+    status: "certified" | "needs_attention";
+    summary: string;
+    totalChecks: number;
+    warnings: string[];
   };
   overview: {
     canonicalReady: number;
@@ -10502,7 +10513,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     seoAuditRuntime,
     seoReportRuntime,
     seoReviewRuntime,
-    seoExportRuntime
+    seoExportRuntime,
+    seoDataCertificationRuntime
   ] = await Promise.all([
     mapSitemapRuntimeToAdminFields(),
     mapRobotsRuntimeToAdminFields(),
@@ -10510,7 +10522,8 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
     mapSeoAuditRuntimeToAdminFields(),
     mapSeoReportRuntimeToAdminFields(),
     mapSeoReviewRuntimeToAdminFields(),
-    mapSeoExportRuntimeToAdminFields()
+    mapSeoExportRuntimeToAdminFields(),
+    mapSeoDataCertificationRuntimeToAdminFields()
   ]);
   const structuredDataRuntime = mapStructuredDataRuntimeToAdminFields();
   const searchConsoleRuntime = mapSearchConsoleRuntimeToAdminFields();
@@ -10598,6 +10611,16 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
       readOnly: true as const,
       runtimeStatus: aiSeoRuntime.runtimeStatus,
       summary: aiSeoRuntime.summary
+    },
+    seoDataCertification: {
+      failedChecks: seoDataCertificationRuntime.failedChecks,
+      generatedAt: seoDataCertificationRuntime.generatedAt,
+      passedChecks: seoDataCertificationRuntime.passedChecks,
+      readOnly: true as const,
+      status: seoDataCertificationRuntime.status,
+      summary: seoDataCertificationRuntime.summary,
+      totalChecks: seoDataCertificationRuntime.totalChecks,
+      warnings: seoDataCertificationRuntime.warnings
     },
     overview: {
       canonicalReady: pages.filter((page) => page.canonicalStatus === "ready").length,
