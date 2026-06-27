@@ -1220,6 +1220,103 @@ export default async function AdminReportsPage({
         </div>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-11 Operations Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.operationsReports.status)}>
+            {control.operationsReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.operationsReports.rangeLabel}</span>
+        </div>
+
+        {control.operationsReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.operationsReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.operationsReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No operations source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total orders", value: control.operationsReports.metrics.totalOrders },
+            { label: "Pending orders", value: control.operationsReports.metrics.pendingOrders },
+            { label: "Fulfilled orders", value: control.operationsReports.metrics.fulfilledOrders },
+            { label: "Cancelled orders", value: control.operationsReports.metrics.cancelledOrders },
+            { label: "Delivery assignments", value: control.operationsReports.metrics.deliveryAssignments },
+            { label: "Active deliveries", value: control.operationsReports.metrics.activeDeliveries },
+            { label: "Completed deliveries", value: control.operationsReports.metrics.completedDeliveries },
+            { label: "Failed deliveries", value: control.operationsReports.metrics.failedDeliveries },
+            { label: "Tracking events", value: control.operationsReports.metrics.trackingEvents },
+            { label: "Return requests", value: control.operationsReports.metrics.returnRequests },
+            { label: "Operational issues", value: control.operationsReports.metrics.operationalIssues }
+          ]}
+        />
+
+        <p className="text-sm text-slate-600">
+          {control.operationsReports.summary}
+          {control.operationsReports.lastUpdatedAt
+            ? ` · Last operations activity ${control.operationsReports.lastUpdatedAt}`
+            : ` · ${control.operationsReports.lastGeneratedState}`}
+        </p>
+
+        {control.operationsReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.operationsReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AdminTable headers={["Latest operations activity", "Category", "Status", "Summary"]}>
+            {control.operationsReports.latestOperationsActivity.length ? (
+              control.operationsReports.latestOperationsActivity.map((item) => (
+                <tr key={`${item.activityAt}-${item.activityType}`}>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-slate-950">{item.activityType}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.activityAt}</p>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{item.category}</td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={item.status === "failed" || item.status === "open" ? "red" : "blue"}>
+                      {item.status}
+                    </AdminBadge>
+                  </td>
+                  <td className="px-5 py-4 text-sm text-slate-600">{item.summary}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                  No latest operations activity is available for this range yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <AdminTable headers={["Issue category", "Count", "Availability"]}>
+            {control.operationsReports.issuesByCategory.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))}
+          </AdminTable>
+        </div>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

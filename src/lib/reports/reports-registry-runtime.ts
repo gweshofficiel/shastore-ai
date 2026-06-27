@@ -100,6 +100,8 @@ export type ReportsRegistryRuntimeContext = {
   marketplaceReportNeedsAttention?: boolean;
   securityReportLastGenerated?: string;
   securityReportNeedsAttention?: boolean;
+  operationsReportLastGenerated?: string;
+  operationsReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -649,7 +651,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-11-operations-reports") {
     return {
       ...definition,
-      status: context.platformHealthNeedsReview ? "review" : definition.status
+      dataSourceDescription:
+        "Operations Reports runtime (store_orders, orders, delivery_assignments, order_events, store_delivery_events, store_return_requests, delivery_incidents, support_tickets).",
+      lastGeneratedState: context.operationsReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.operationsReportNeedsAttention ? "review" : definition.status
     };
   }
 

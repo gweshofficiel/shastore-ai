@@ -198,6 +198,7 @@ import { mapAIReportsRuntimeToAdminFields } from "@/src/lib/reports/ai-reports-r
 import { mapDomainEmailReportsRuntimeToAdminFields } from "@/src/lib/reports/domain-email-reports-runtime";
 import { mapMarketplaceReportsRuntimeToAdminFields } from "@/src/lib/reports/marketplace-reports-runtime";
 import { mapSecurityReportsRuntimeToAdminFields } from "@/src/lib/reports/security-reports-runtime";
+import { mapOperationsReportsRuntimeToAdminFields } from "@/src/lib/reports/operations-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4361,6 +4362,45 @@ export type AdminReportingControl = {
       roleChangesCount: number;
       successfulLoginEvents: number;
       totalSecurityEvents: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    warnings: string[];
+  };
+  operationsReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    issuesByCategory: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    latestOperationsActivity: Array<{
+      activityAt: string;
+      activityType: string;
+      category: string;
+      dataAvailability: "available" | "planned";
+      status: string;
+      summary: string;
+    }>;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      activeDeliveries: number;
+      cancelledOrders: number;
+      completedDeliveries: number;
+      deliveryAssignments: number;
+      failedDeliveries: number;
+      fulfilledOrders: number;
+      operationalIssues: number;
+      pendingOrders: number;
+      returnRequests: number;
+      totalOrders: number;
+      trackingEvents: number;
     };
     rangeLabel: string;
     readOnly: true;
@@ -11133,7 +11173,8 @@ export async function getAdminReportingControl(
     aiReportsRuntime,
     domainEmailReportsRuntime,
     marketplaceReportsRuntime,
-    securityReportsRuntime
+    securityReportsRuntime,
+    operationsReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -11151,7 +11192,8 @@ export async function getAdminReportingControl(
     mapAIReportsRuntimeToAdminFields(selectedRange),
     mapDomainEmailReportsRuntimeToAdminFields(selectedRange),
     mapMarketplaceReportsRuntimeToAdminFields(selectedRange),
-    mapSecurityReportsRuntimeToAdminFields(selectedRange)
+    mapSecurityReportsRuntimeToAdminFields(selectedRange),
+    mapOperationsReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -11177,6 +11219,8 @@ export async function getAdminReportingControl(
     marketplaceReportNeedsAttention: marketplaceReportsRuntime.status === "needs_attention",
     securityReportLastGenerated: securityReportsRuntime.lastGeneratedState,
     securityReportNeedsAttention: securityReportsRuntime.status === "needs_attention",
+    operationsReportLastGenerated: operationsReportsRuntime.lastGeneratedState,
+    operationsReportNeedsAttention: operationsReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -11366,6 +11410,22 @@ export async function getAdminReportingControl(
       status: securityReportsRuntime.status,
       summary: securityReportsRuntime.summary,
       warnings: securityReportsRuntime.warnings
+    },
+    operationsReports: {
+      errorMessage: operationsReportsRuntime.errorMessage,
+      generatedAt: operationsReportsRuntime.generatedAt,
+      issuesByCategory: operationsReportsRuntime.issuesByCategory,
+      lastGeneratedState: operationsReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: operationsReportsRuntime.lastUpdatedAt,
+      latestOperationsActivity: operationsReportsRuntime.latestOperationsActivity,
+      loadingState: operationsReportsRuntime.loadingState,
+      metrics: operationsReportsRuntime.metrics,
+      rangeLabel: operationsReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: operationsReportsRuntime.selectedRange,
+      status: operationsReportsRuntime.status,
+      summary: operationsReportsRuntime.summary,
+      warnings: operationsReportsRuntime.warnings
     },
     reports,
     selectedRange,
