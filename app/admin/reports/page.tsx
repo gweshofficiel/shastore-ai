@@ -1108,6 +1108,118 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-10 Security Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.securityReports.status)}>
+            {control.securityReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.securityReports.rangeLabel}</span>
+        </div>
+
+        {control.securityReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.securityReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.securityReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No security audit or monitoring source data is available for this range yet. Planned indicators remain
+            safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total security events", value: control.securityReports.metrics.totalSecurityEvents },
+            { label: "Audit events", value: control.securityReports.metrics.auditEventsCount },
+            { label: "Failed login attempts", value: control.securityReports.metrics.failedLoginAttempts },
+            { label: "Successful login events", value: control.securityReports.metrics.successfulLoginEvents },
+            { label: "Role changes", value: control.securityReports.metrics.roleChangesCount },
+            { label: "Permission changes", value: control.securityReports.metrics.permissionChangesCount },
+            { label: "Admin activity", value: control.securityReports.metrics.adminActivityCount },
+            { label: "Blocked or denied actions", value: control.securityReports.metrics.blockedOrDeniedActions },
+            { label: "RLS denied access", value: control.securityReports.metrics.rlsDeniedAccessEvents }
+          ]}
+        />
+
+        <p className="text-sm text-slate-600">
+          {control.securityReports.summary}
+          {control.securityReports.lastUpdatedAt
+            ? ` · Last security activity ${control.securityReports.lastUpdatedAt}`
+            : ` · ${control.securityReports.lastGeneratedState}`}
+        </p>
+
+        {control.securityReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.securityReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AdminTable headers={["Latest security activity", "Severity", "Category", "Summary"]}>
+            {control.securityReports.latestSecurityActivity.length ? (
+              control.securityReports.latestSecurityActivity.map((item) => (
+                <tr key={`${item.activityAt}-${item.activityType}`}>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-slate-950">{item.activityType}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.activityAt}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={item.severity === "critical" || item.severity === "high" ? "red" : "blue"}>
+                      {item.severity}
+                    </AdminBadge>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{item.category}</td>
+                  <td className="px-5 py-4 text-sm text-slate-600">{item.summary}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                  No latest security activity is available for this range yet.
+                </td>
+              </tr>
+            )}
+          </AdminTable>
+
+          <div className="grid gap-4">
+            <AdminTable headers={["Severity", "Count", "Availability"]}>
+              {control.securityReports.eventsBySeverity.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                      {item.dataAvailability}
+                    </AdminBadge>
+                  </td>
+                </tr>
+              ))}
+            </AdminTable>
+
+            <AdminTable headers={["Category", "Count", "Availability"]}>
+              {control.securityReports.eventsByCategory.map((item) => (
+                <tr key={item.label}>
+                  <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                  <td className="px-5 py-4">
+                    <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                      {item.dataAvailability}
+                    </AdminBadge>
+                  </td>
+                </tr>
+              ))}
+            </AdminTable>
+          </div>
+        </div>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

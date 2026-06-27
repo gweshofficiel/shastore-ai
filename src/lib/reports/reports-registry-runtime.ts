@@ -98,6 +98,8 @@ export type ReportsRegistryRuntimeContext = {
   domainEmailReportNeedsAttention?: boolean;
   marketplaceReportLastGenerated?: string;
   marketplaceReportNeedsAttention?: boolean;
+  securityReportLastGenerated?: string;
+  securityReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -637,7 +639,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-10-security-reports") {
     return {
       ...definition,
-      status: context.recentSecurityEvents ? "review" : definition.status
+      dataSourceDescription:
+        "Security Reports runtime (security_audit_logs, monitoring_events). Read-only aggregates only.",
+      lastGeneratedState: context.securityReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.securityReportNeedsAttention ? "review" : definition.status
     };
   }
 
