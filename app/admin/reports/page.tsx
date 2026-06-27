@@ -328,6 +328,79 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-4 User Reports</span>
+          <AdminBadge tone={toneForStatus(control.userReports.status)}>{control.userReports.status}</AdminBadge>
+          <span className="text-xs text-slate-600">{control.userReports.rangeLabel}</span>
+        </div>
+
+        {control.userReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.userReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.userReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No user source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total users", value: control.userReports.metrics.totalUsers },
+            { label: "Active users", value: control.userReports.metrics.activeUsers },
+            {
+              label: "Suspended/disabled",
+              value: control.userReports.metrics.suspendedDisabledUsers
+            },
+            { label: "Newly registered", value: control.userReports.metrics.newlyRegisteredUsers },
+            { label: "Owners", value: control.userReports.metrics.ownersCount },
+            { label: "Resellers", value: control.userReports.metrics.resellersCount },
+            { label: "Customers", value: control.userReports.metrics.customersCount },
+            { label: "Team members", value: control.userReports.metrics.teamMembersCount }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.userReports.summary}
+          {control.userReports.lastUpdatedAt
+            ? ` · Last user activity ${control.userReports.lastUpdatedAt}`
+            : " · No user activity timestamps recorded"}
+        </p>
+
+        {control.userReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.userReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["User role / account type", "Count", "Availability"]}>
+          {control.userReports.usersByRole.length ? (
+            control.userReports.usersByRole.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No user role breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

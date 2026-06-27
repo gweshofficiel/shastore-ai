@@ -191,6 +191,7 @@ import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo
 import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/reports-registry-runtime";
 import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue-reports-runtime";
 import { mapStoreReportsRuntimeToAdminFields } from "@/src/lib/reports/store-reports-runtime";
+import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4066,6 +4067,34 @@ export type AdminReportingControl = {
       label: string;
     }>;
     summary: string;
+    warnings: string[];
+  };
+  userReports: {
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      activeUsers: number;
+      customersCount: number;
+      newlyRegisteredUsers: number;
+      ownersCount: number;
+      resellersCount: number;
+      suspendedDisabledUsers: number;
+      teamMembersCount: number;
+      totalUsers: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    usersByRole: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
     warnings: string[];
   };
   reports: Array<{
@@ -10825,7 +10854,8 @@ export async function getAdminReportingControl(
     marketplace,
     platformHealth,
     revenueReportsRuntime,
-    storeReportsRuntime
+    storeReportsRuntime,
+    userReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10836,7 +10866,8 @@ export async function getAdminReportingControl(
     getAdminMarketplaceControl(),
     getAdminPlatformHealth(),
     mapRevenueReportsRuntimeToAdminFields(selectedRange),
-    mapStoreReportsRuntimeToAdminFields(selectedRange)
+    mapStoreReportsRuntimeToAdminFields(selectedRange),
+    mapUserReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10848,6 +10879,8 @@ export async function getAdminReportingControl(
     revenueReportNeedsAttention: revenueReportsRuntime.status === "needs_attention",
     storeReportLastGenerated: storeReportsRuntime.lastGeneratedState,
     storeReportNeedsAttention: storeReportsRuntime.status === "needs_attention",
+    userReportLastGenerated: userReportsRuntime.lastGeneratedState,
+    userReportNeedsAttention: userReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -10916,6 +10949,21 @@ export async function getAdminReportingControl(
       storesByStatus: storeReportsRuntime.storesByStatus,
       summary: storeReportsRuntime.summary,
       warnings: storeReportsRuntime.warnings
+    },
+    userReports: {
+      errorMessage: userReportsRuntime.errorMessage,
+      generatedAt: userReportsRuntime.generatedAt,
+      lastGeneratedState: userReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: userReportsRuntime.lastUpdatedAt,
+      loadingState: userReportsRuntime.loadingState,
+      metrics: userReportsRuntime.metrics,
+      rangeLabel: userReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: userReportsRuntime.selectedRange,
+      status: userReportsRuntime.status,
+      summary: userReportsRuntime.summary,
+      usersByRole: userReportsRuntime.usersByRole,
+      warnings: userReportsRuntime.warnings
     },
     reports,
     selectedRange,

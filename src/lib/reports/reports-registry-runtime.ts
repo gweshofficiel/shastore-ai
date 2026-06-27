@@ -86,6 +86,8 @@ export type ReportsRegistryRuntimeContext = {
   revenueReportNeedsAttention?: boolean;
   storeReportLastGenerated?: string;
   storeReportNeedsAttention?: boolean;
+  userReportLastGenerated?: string;
+  userReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -557,6 +559,16 @@ function applyRuntimeContext(
         "Store Reports runtime (stores, published_stores, store_domains, user_subscriptions).",
       lastGeneratedState: context.storeReportLastGenerated ?? definition.lastGeneratedState,
       status: context.storeReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-4-user-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "User Reports runtime (profiles, account_profiles, account_roles, workspace_members, internal_team_members, reseller_profiles, stores, commerce_customers).",
+      lastGeneratedState: context.userReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.userReportNeedsAttention ? "review" : definition.status
     };
   }
 
