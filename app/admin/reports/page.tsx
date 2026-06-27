@@ -813,6 +813,174 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-8 Domain & Email Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.domainEmailReports.status)}>
+            {control.domainEmailReports.status}
+          </AdminBadge>
+          <span className="text-xs text-slate-600">{control.domainEmailReports.rangeLabel}</span>
+        </div>
+
+        {control.domainEmailReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.domainEmailReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.domainEmailReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No domain or email source data is available for this range yet. Planned indicators remain safe and
+            read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total domains", value: control.domainEmailReports.metrics.totalDomains },
+            { label: "Active domains", value: control.domainEmailReports.metrics.activeDomains },
+            { label: "Pending domains", value: control.domainEmailReports.metrics.pendingDomains },
+            { label: "Failed domains", value: control.domainEmailReports.metrics.failedDomains },
+            { label: "Total email services", value: control.domainEmailReports.metrics.totalEmailServices },
+            { label: "Active email services", value: control.domainEmailReports.metrics.activeEmailServices },
+            { label: "Pending email services", value: control.domainEmailReports.metrics.pendingEmailServices }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.domainEmailReports.summary}
+          {control.domainEmailReports.lastUpdatedAt
+            ? ` · Last domain or email activity ${control.domainEmailReports.lastUpdatedAt}`
+            : " · No domain or email activity timestamps recorded"}
+        </p>
+
+        {control.domainEmailReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.domainEmailReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Latest domain activity", "Scope", "Provider", "Domain", "Status", "Availability"]}>
+          {control.domainEmailReports.latestDomainActivity.length ? (
+            control.domainEmailReports.latestDomainActivity.map((item) => (
+              <tr key={`${item.activityAt}-${item.scopeLabel}-${item.label}-${item.status}`}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.activityAt}</td>
+                <td className="px-5 py-4 text-slate-600">{item.scopeLabel}</td>
+                <td className="px-5 py-4 text-slate-600">{item.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No latest domain activity is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Latest email activity", "Scope", "Provider", "Mailbox", "Status", "Availability"]}>
+          {control.domainEmailReports.latestEmailActivity.length ? (
+            control.domainEmailReports.latestEmailActivity.map((item) => (
+              <tr key={`${item.activityAt}-${item.scopeLabel}-${item.label}-${item.status}`}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.activityAt}</td>
+                <td className="px-5 py-4 text-slate-600">{item.scopeLabel}</td>
+                <td className="px-5 py-4 text-slate-600">{item.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No latest email activity is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Domain status", "Count", "Availability"]}>
+          {control.domainEmailReports.domainsByStatus.length ? (
+            control.domainEmailReports.domainsByStatus.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No domain status breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Domain extension", "Count", "Availability"]}>
+          {control.domainEmailReports.domainsByExtension.length ? (
+            control.domainEmailReports.domainsByExtension.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No domain extension breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Domain provider", "Count", "Availability"]}>
+          {control.domainEmailReports.domainsByProvider.length ? (
+            control.domainEmailReports.domainsByProvider.map((item) => (
+              <tr key={item.label}>
+                <td className="px-5 py-4 font-bold text-slate-950">{item.label}</td>
+                <td className="px-5 py-4 text-slate-600">{item.count}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={item.dataAvailability === "available" ? "green" : "blue"}>
+                    {item.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={3}>
+                No domain provider breakdown is available yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",

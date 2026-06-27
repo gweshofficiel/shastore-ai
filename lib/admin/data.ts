@@ -195,6 +195,7 @@ import { mapUserReportsRuntimeToAdminFields } from "@/src/lib/reports/user-repor
 import { mapSubscriptionReportsRuntimeToAdminFields } from "@/src/lib/reports/subscription-reports-runtime";
 import { mapPaymentReportsRuntimeToAdminFields } from "@/src/lib/reports/payment-reports-runtime";
 import { mapAIReportsRuntimeToAdminFields } from "@/src/lib/reports/ai-reports-runtime";
+import { mapDomainEmailReportsRuntimeToAdminFields } from "@/src/lib/reports/domain-email-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -4228,6 +4229,59 @@ export type AdminReportingControl = {
       dataAvailability: "available" | "planned";
       label: string;
     }>;
+    warnings: string[];
+  };
+  domainEmailReports: {
+    domainsByExtension: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    domainsByProvider: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    domainsByStatus: Array<{
+      count: number;
+      dataAvailability: "available" | "planned";
+      label: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    latestDomainActivity: Array<{
+      activityAt: string;
+      dataAvailability: "available" | "planned";
+      label: string;
+      provider: string;
+      scopeLabel: string;
+      status: string;
+    }>;
+    latestEmailActivity: Array<{
+      activityAt: string;
+      dataAvailability: "available" | "planned";
+      label: string;
+      provider: string;
+      scopeLabel: string;
+      status: string;
+    }>;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      activeDomains: number;
+      activeEmailServices: number;
+      failedDomains: number;
+      pendingDomains: number;
+      pendingEmailServices: number;
+      totalDomains: number;
+      totalEmailServices: number;
+    };
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
     warnings: string[];
   };
   reports: Array<{
@@ -10991,7 +11045,8 @@ export async function getAdminReportingControl(
     userReportsRuntime,
     subscriptionReportsRuntime,
     paymentReportsRuntime,
-    aiReportsRuntime
+    aiReportsRuntime,
+    domainEmailReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -11006,7 +11061,8 @@ export async function getAdminReportingControl(
     mapUserReportsRuntimeToAdminFields(selectedRange),
     mapSubscriptionReportsRuntimeToAdminFields(selectedRange),
     mapPaymentReportsRuntimeToAdminFields(selectedRange),
-    mapAIReportsRuntimeToAdminFields(selectedRange)
+    mapAIReportsRuntimeToAdminFields(selectedRange),
+    mapDomainEmailReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -11026,6 +11082,8 @@ export async function getAdminReportingControl(
     paymentReportNeedsAttention: paymentReportsRuntime.status === "needs_attention",
     aiReportLastGenerated: aiReportsRuntime.lastGeneratedState,
     aiReportNeedsAttention: aiReportsRuntime.status === "needs_attention",
+    domainEmailReportLastGenerated: domainEmailReportsRuntime.lastGeneratedState,
+    domainEmailReportNeedsAttention: domainEmailReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -11162,6 +11220,25 @@ export async function getAdminReportingControl(
       usageByUserRole: aiReportsRuntime.usageByUserRole,
       usageByWorkspaceOrStore: aiReportsRuntime.usageByWorkspaceOrStore,
       warnings: aiReportsRuntime.warnings
+    },
+    domainEmailReports: {
+      domainsByExtension: domainEmailReportsRuntime.domainsByExtension,
+      domainsByProvider: domainEmailReportsRuntime.domainsByProvider,
+      domainsByStatus: domainEmailReportsRuntime.domainsByStatus,
+      errorMessage: domainEmailReportsRuntime.errorMessage,
+      generatedAt: domainEmailReportsRuntime.generatedAt,
+      lastGeneratedState: domainEmailReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: domainEmailReportsRuntime.lastUpdatedAt,
+      latestDomainActivity: domainEmailReportsRuntime.latestDomainActivity,
+      latestEmailActivity: domainEmailReportsRuntime.latestEmailActivity,
+      loadingState: domainEmailReportsRuntime.loadingState,
+      metrics: domainEmailReportsRuntime.metrics,
+      rangeLabel: domainEmailReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: domainEmailReportsRuntime.selectedRange,
+      status: domainEmailReportsRuntime.status,
+      summary: domainEmailReportsRuntime.summary,
+      warnings: domainEmailReportsRuntime.warnings
     },
     reports,
     selectedRange,

@@ -94,6 +94,8 @@ export type ReportsRegistryRuntimeContext = {
   paymentReportNeedsAttention?: boolean;
   aiReportLastGenerated?: string;
   aiReportNeedsAttention?: boolean;
+  domainEmailReportLastGenerated?: string;
+  domainEmailReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -239,7 +241,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Domain & Email Reports",
     certificationState: "not_applicable",
-    dataSourceDescription: "getAdminDomainsHostingControl readiness aggregate.",
+    dataSourceDescription:
+      "Domain & Email Reports runtime (store_domains, domain_orders, domain_dns_records, stores).",
     exportAvailabilityState: "placeholder",
     futureHooks: ["CSV export"],
     lastGeneratedState: "Live aggregate",
@@ -525,7 +528,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
 
 const CATEGORY_DESCRIPTIONS: Record<ReportCategoryName, string> = {
   "AI Reports": "AI job usage, failures, stores using AI, and estimated costs.",
-  "Domain & Email Reports": "Domain drafts, DNS/SSL, email mailbox drafts, and hosting rollups.",
+  "Domain & Email Reports": "Domain, DNS, SSL, email mailbox draft, and provider order rollups.",
   "Marketplace Reports": "Marketplace item, approval, visibility, and revenue rollups.",
   "Operations Reports": "Support tickets, monitoring events, platform health, and operational review.",
   "Payment Reports": "Payment provider, checkout transaction, and failed payment monitoring rollups.",
@@ -611,7 +614,10 @@ function applyRuntimeContext(
   if (definition.reportKey === "rp-8-domain-email-reports") {
     return {
       ...definition,
-      status: context.domainsFailedOperations ? "review" : definition.status
+      dataSourceDescription:
+        "Domain & Email Reports runtime (store_domains, domain_orders, domain_dns_records, stores).",
+      lastGeneratedState: context.domainEmailReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.domainEmailReportNeedsAttention ? "review" : definition.status
     };
   }
 
