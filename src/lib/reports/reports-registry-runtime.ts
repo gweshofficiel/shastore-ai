@@ -82,6 +82,8 @@ export type ReportsRegistryRuntimeContext = {
   marketplacePendingReview: boolean;
   platformHealthNeedsReview: boolean;
   recentSecurityEvents: boolean;
+  revenueReportLastGenerated?: string;
+  revenueReportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -536,6 +538,16 @@ function applyRuntimeContext(
   definition: ReportRegistryEntryDefinition,
   context: ReportsRegistryRuntimeContext
 ): ReportRegistryEntryDefinition {
+  if (definition.reportKey === "rp-2-revenue-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Revenue Reports runtime (commerce_orders, store_orders, invoices, billing_events, user_subscriptions).",
+      lastGeneratedState: context.revenueReportLastGenerated ?? definition.lastGeneratedState,
+      status: context.revenueReportNeedsAttention ? "review" : definition.status
+    };
+  }
+
   if (definition.reportKey === "rp-7-ai-reports") {
     return {
       ...definition,

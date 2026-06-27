@@ -189,6 +189,7 @@ import { mapSeoSecurityCertificationRuntimeToAdminFields } from "@/src/lib/seo/s
 import { mapSeoRuntimeCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-runtime-certification-runtime";
 import { mapSeoProductionCertificationRuntimeToAdminFields } from "@/src/lib/seo/seo-production-certification-runtime";
 import { mapReportsRegistryRuntimeToAdminFields } from "@/src/lib/reports/reports-registry-runtime";
+import { mapRevenueReportsRuntimeToAdminFields } from "@/src/lib/reports/revenue-reports-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -3997,6 +3998,42 @@ export type AdminReportingControl = {
     status: "needs_attention" | "registry_ready";
     summary: string;
     totalEntries: number;
+  };
+  revenueReports: {
+    currencyBreakdown: Array<{
+      commerceOrderRevenue: number;
+      currency: string;
+      dataAvailability: "available" | "planned";
+      invoiceRevenue: number;
+      totalRevenue: number;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    lastUpdatedAt: string | null;
+    loadingState: "empty" | "error" | "loaded";
+    metrics: {
+      commerceOrderRevenue: number;
+      failedPayments: number;
+      refundedOrCancelledPayments: number;
+      subscriptionRevenue: number;
+      successfulPayments: number;
+      totalRevenue: number;
+    };
+    providerBreakdown: Array<{
+      dataAvailability: "available" | "planned";
+      failedPayments: number;
+      provider: string;
+      refundedOrCancelledPayments: number;
+      revenueAmount: number;
+      successfulPayments: number;
+    }>;
+    rangeLabel: string;
+    readOnly: true;
+    selectedRange: "today" | "7d" | "30d" | "month" | "year";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    warnings: string[];
   };
   reports: Array<{
     category:
@@ -10753,7 +10790,8 @@ export async function getAdminReportingControl(
     domainsHosting,
     aiControl,
     marketplace,
-    platformHealth
+    platformHealth,
+    revenueReportsRuntime
   ] = await Promise.all([
     getAdminAnalytics(),
     getAdminUsers(),
@@ -10762,7 +10800,8 @@ export async function getAdminReportingControl(
     getAdminDomainsHostingControl(),
     getAdminAIControl(),
     getAdminMarketplaceControl(),
-    getAdminPlatformHealth()
+    getAdminPlatformHealth(),
+    mapRevenueReportsRuntimeToAdminFields(selectedRange)
   ]);
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     aiFailedJobs: Boolean(aiControl.overview.failedJobs),
@@ -10770,6 +10809,8 @@ export async function getAdminReportingControl(
     marketplacePendingReview: Boolean(marketplace.overview.pendingReviewItems),
     platformHealthNeedsReview: platformHealth.label === "Needs review",
     recentSecurityEvents: Boolean(platformHealth.recentSecurityEvents),
+    revenueReportLastGenerated: revenueReportsRuntime.lastGeneratedState,
+    revenueReportNeedsAttention: revenueReportsRuntime.status === "needs_attention",
     selectedRange
   });
   const categories: AdminReportingControl["categories"] = registryRuntime.categories;
@@ -10806,6 +10847,22 @@ export async function getAdminReportingControl(
       status: registryRuntime.registry.status,
       summary: registryRuntime.registry.summary,
       totalEntries: registryRuntime.registry.totalEntries
+    },
+    revenueReports: {
+      currencyBreakdown: revenueReportsRuntime.currencyBreakdown,
+      errorMessage: revenueReportsRuntime.errorMessage,
+      generatedAt: revenueReportsRuntime.generatedAt,
+      lastGeneratedState: revenueReportsRuntime.lastGeneratedState,
+      lastUpdatedAt: revenueReportsRuntime.lastUpdatedAt,
+      loadingState: revenueReportsRuntime.loadingState,
+      metrics: revenueReportsRuntime.metrics,
+      providerBreakdown: revenueReportsRuntime.providerBreakdown,
+      rangeLabel: revenueReportsRuntime.rangeLabel,
+      readOnly: true as const,
+      selectedRange: revenueReportsRuntime.selectedRange,
+      status: revenueReportsRuntime.status,
+      summary: revenueReportsRuntime.summary,
+      warnings: revenueReportsRuntime.warnings
     },
     reports,
     selectedRange,

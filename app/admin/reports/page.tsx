@@ -133,6 +133,110 @@ export default async function AdminReportsPage({
         ))}
       </AdminTable>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">RP-2 Revenue Reports</span>
+          <AdminBadge tone={toneForStatus(control.revenueReports.status)}>{control.revenueReports.status}</AdminBadge>
+          <span className="text-xs text-slate-600">{control.revenueReports.rangeLabel}</span>
+        </div>
+
+        {control.revenueReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.revenueReports.errorMessage}
+          </p>
+        ) : null}
+
+        {control.revenueReports.loadingState === "empty" ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            No revenue source data is available for this range yet. Planned indicators remain safe and read-only.
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Total revenue", value: formatAdminMoney(control.revenueReports.metrics.totalRevenue) },
+            {
+              label: "Subscription revenue",
+              value: formatAdminMoney(control.revenueReports.metrics.subscriptionRevenue)
+            },
+            {
+              label: "Commerce order revenue",
+              value: formatAdminMoney(control.revenueReports.metrics.commerceOrderRevenue)
+            },
+            { label: "Successful payments", value: control.revenueReports.metrics.successfulPayments },
+            { label: "Failed payments", value: control.revenueReports.metrics.failedPayments },
+            {
+              label: "Refunded/cancelled",
+              value: control.revenueReports.metrics.refundedOrCancelledPayments
+            }
+          ]}
+        />
+
+        <p className="text-xs text-slate-500">
+          {control.revenueReports.summary}
+          {control.revenueReports.lastUpdatedAt
+            ? ` · Last source activity ${control.revenueReports.lastUpdatedAt}`
+            : " · No in-range source activity recorded"}
+        </p>
+
+        {control.revenueReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-amber-700">
+            {control.revenueReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Provider", "Revenue", "Successful", "Failed", "Refunded/cancelled", "Availability"]}>
+          {control.revenueReports.providerBreakdown.length ? (
+            control.revenueReports.providerBreakdown.map((provider) => (
+              <tr key={provider.provider}>
+                <td className="px-5 py-4 font-bold text-slate-950">{provider.provider}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(provider.revenueAmount)}</td>
+                <td className="px-5 py-4 text-slate-600">{provider.successfulPayments}</td>
+                <td className="px-5 py-4 text-slate-600">{provider.failedPayments}</td>
+                <td className="px-5 py-4 text-slate-600">{provider.refundedOrCancelledPayments}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={provider.dataAvailability === "available" ? "green" : "blue"}>
+                    {provider.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+                No provider revenue breakdown is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+
+        <AdminTable headers={["Currency", "Commerce revenue", "Invoice revenue", "Total revenue", "Availability"]}>
+          {control.revenueReports.currencyBreakdown.length ? (
+            control.revenueReports.currencyBreakdown.map((currency) => (
+              <tr key={currency.currency}>
+                <td className="px-5 py-4 font-bold text-slate-950">{currency.currency}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(currency.commerceOrderRevenue)}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(currency.invoiceRevenue)}</td>
+                <td className="px-5 py-4 text-slate-600">{formatAdminMoney(currency.totalRevenue)}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={currency.dataAvailability === "available" ? "green" : "blue"}>
+                    {currency.dataAvailability}
+                  </AdminBadge>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={5}>
+                No currency breakdown is available for this range yet.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
