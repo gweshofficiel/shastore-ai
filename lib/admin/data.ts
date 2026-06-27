@@ -209,6 +209,11 @@ import {
   withReportRuntimeStatusFields
 } from "@/src/lib/reports/report-status-runtime";
 import {
+  buildReportVisibilityRuntimeInput,
+  mapReportVisibilityRuntimeToAdminFields,
+  withReportRuntimeVisibilityFields
+} from "@/src/lib/reports/report-visibility-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -3990,6 +3995,19 @@ type AdminReportRuntimeStatusFields = {
   runtimeStatusDescription: string;
 };
 
+type AdminReportRuntimeVisibilityFields = {
+  runtimeVisibility:
+    | "disabled"
+    | "hidden"
+    | "internal"
+    | "planned"
+    | "restricted"
+    | "super_admin_only";
+  runtimeVisibilityDescription: string;
+};
+
+type AdminReportRuntimeFields = AdminReportRuntimeStatusFields & AdminReportRuntimeVisibilityFields;
+
 export type AdminReportingControl = {
   categories: Array<{
     description: string;
@@ -4066,7 +4084,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   storeReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4098,7 +4116,7 @@ export type AdminReportingControl = {
     }>;
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   userReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4126,7 +4144,7 @@ export type AdminReportingControl = {
       label: string;
     }>;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   subscriptionReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4163,7 +4181,7 @@ export type AdminReportingControl = {
     }>;
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   paymentReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4212,7 +4230,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   aiReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4256,7 +4274,7 @@ export type AdminReportingControl = {
       label: string;
     }>;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   domainEmailReports: {
     domainsByExtension: Array<{
       count: number;
@@ -4309,7 +4327,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   marketplaceReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4350,7 +4368,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   securityReports: {
     errorMessage: string | null;
     eventsByCategory: Array<{
@@ -4392,7 +4410,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   operationsReports: {
     errorMessage: string | null;
     generatedAt: string;
@@ -4431,7 +4449,7 @@ export type AdminReportingControl = {
     status: "needs_attention" | "ready" | "unavailable";
     summary: string;
     warnings: string[];
-  } & AdminReportRuntimeStatusFields;
+  } & AdminReportRuntimeFields;
   reportViewer: {
     catalog: Array<{
       category: string;
@@ -4470,6 +4488,14 @@ export type AdminReportingControl = {
         | "partial"
         | "planned";
       runtimeStatusDescription: string;
+      runtimeVisibility:
+        | "disabled"
+        | "hidden"
+        | "internal"
+        | "planned"
+        | "restricted"
+        | "super_admin_only";
+      runtimeVisibilityDescription: string;
     }>;
     errorMessage: string | null;
     generatedAt: string;
@@ -4513,6 +4539,14 @@ export type AdminReportingControl = {
         | "partial"
         | "planned";
       runtimeStatusDescription: string;
+      runtimeVisibility:
+        | "disabled"
+        | "hidden"
+        | "internal"
+        | "planned"
+        | "restricted"
+        | "super_admin_only";
+      runtimeVisibilityDescription: string;
     } | null;
     selectedReportKey: string | null;
     status: "needs_attention" | "ready" | "unavailable";
@@ -4574,6 +4608,57 @@ export type AdminReportingControl = {
     summary: string;
     warnings: string[];
   };
+  reportVisibility: {
+    countsByVisibility: Record<
+      "disabled" | "hidden" | "internal" | "planned" | "restricted" | "super_admin_only",
+      number
+    >;
+    entries: Array<{
+      badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+      description: string;
+      readOnly: true;
+      registryVisibility: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeVisibility:
+        | "disabled"
+        | "hidden"
+        | "internal"
+        | "planned"
+        | "restricted"
+        | "super_admin_only";
+      superAdminOnly: true;
+      title: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    readOnly: true;
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    visibilityByReportKey: Record<
+      string,
+      {
+        badgeTone: "amber" | "blue" | "green" | "red" | "slate";
+        description: string;
+        readOnly: true;
+        registryVisibility: string;
+        reportKey: string;
+        roadmapPhase: string;
+        runtimeVisibility:
+          | "disabled"
+          | "hidden"
+          | "internal"
+          | "planned"
+          | "restricted"
+          | "super_admin_only";
+        superAdminOnly: true;
+        title: string;
+      }
+    >;
+    warnings: string[];
+  };
   reports: Array<{
     category:
       | "AI Reports"
@@ -4610,6 +4695,14 @@ export type AdminReportingControl = {
       | "partial"
       | "planned";
     runtimeStatusDescription: string;
+    runtimeVisibility:
+      | "disabled"
+      | "hidden"
+      | "internal"
+      | "planned"
+      | "restricted"
+      | "super_admin_only";
+    runtimeVisibilityDescription: string;
     safeActionsAvailability: "available" | "placeholder" | "unavailable";
     safeActionsLabel: string;
     status: "inactive" | "planned" | "placeholder" | "ready" | "review";
@@ -11325,6 +11418,19 @@ export async function getAdminSEOControl(): Promise<AdminSEOControl> {
   };
 }
 
+function withReportRuntimeFields<T extends Record<string, unknown>>(
+  module: T,
+  reportKey: string,
+  statusByReportKey: Parameters<typeof withReportRuntimeStatusFields>[2],
+  visibilityByReportKey: Parameters<typeof withReportRuntimeVisibilityFields>[2]
+) {
+  return withReportRuntimeVisibilityFields(
+    withReportRuntimeStatusFields(module, reportKey, statusByReportKey),
+    reportKey,
+    visibilityByReportKey
+  );
+}
+
 export async function getAdminReportingControl(
   range: AdminReportingControl["selectedRange"] = "30d",
   options: { view?: string | null } = {}
@@ -11569,21 +11675,39 @@ export async function getAdminReportingControl(
       }
     })
   );
+  const reportVisibilityRuntime = await mapReportVisibilityRuntimeToAdminFields(
+    buildReportVisibilityRuntimeInput({
+      registryContext: registryContextBase,
+      registryReports: preliminaryRegistryRuntime.reports,
+      statusByReportKey: Object.fromEntries(
+        Object.entries(reportStatusRuntime.statusByReportKey).map(([reportKey, entry]) => [
+          reportKey,
+          { runtimeStatus: entry.runtimeStatus }
+        ])
+      )
+    })
+  );
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
     reportStatusNeedsAttention: reportStatusRuntime.status === "needs_attention",
     reportViewerLastGenerated: reportViewerRuntime.lastGeneratedState,
-    reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention"
+    reportViewerNeedsAttention: reportViewerRuntime.status === "needs_attention",
+    reportVisibilityLastGenerated: reportVisibilityRuntime.lastGeneratedState,
+    reportVisibilityNeedsAttention: reportVisibilityRuntime.status === "needs_attention"
   });
-  const categories: AdminReportingControl["categories"] = registryRuntime.categories;
   const reports: AdminReportingControl["reports"] = registryRuntime.reports.map((report) => {
     const statusEntry = reportStatusRuntime.statusByReportKey[report.reportKey];
+    const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[report.reportKey];
 
     return {
       ...report,
       runtimeStatus: statusEntry?.runtimeStatus ?? "planned",
-      runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied."
+      runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied.",
+      runtimeVisibility: visibilityEntry?.runtimeVisibility ?? "super_admin_only",
+      runtimeVisibilityDescription:
+        visibilityEntry?.description ??
+        "Report visibility unavailable; safe Super Admin only fallback applied."
     };
   });
   const viewQuery = selectedReportKey ? `&view=${encodeURIComponent(selectedReportKey)}` : "";
@@ -11594,6 +11718,7 @@ export async function getAdminReportingControl(
     { active: selectedRange === "month", href: `/admin/reports?range=month${viewQuery}`, label: "Month", value: "month" },
     { active: selectedRange === "year", href: `/admin/reports?range=year${viewQuery}`, label: "Year", value: "year" }
   ];
+  const categories: AdminReportingControl["categories"] = registryRuntime.categories;
 
   return {
     categories,
@@ -11620,7 +11745,7 @@ export async function getAdminReportingControl(
       summary: registryRuntime.registry.summary,
       totalEntries: registryRuntime.registry.totalEntries
     },
-    revenueReports: withReportRuntimeStatusFields(
+    revenueReports: withReportRuntimeFields(
       {
       currencyBreakdown: revenueReportsRuntime.currencyBreakdown,
       errorMessage: revenueReportsRuntime.errorMessage,
@@ -11638,9 +11763,10 @@ export async function getAdminReportingControl(
       warnings: revenueReportsRuntime.warnings
       },
       "rp-2-revenue-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    storeReports: withReportRuntimeStatusFields(
+    storeReports: withReportRuntimeFields(
       {
       errorMessage: storeReportsRuntime.errorMessage,
       generatedAt: storeReportsRuntime.generatedAt,
@@ -11658,9 +11784,10 @@ export async function getAdminReportingControl(
       warnings: storeReportsRuntime.warnings
       },
       "rp-3-store-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    userReports: withReportRuntimeStatusFields(
+    userReports: withReportRuntimeFields(
       {
       errorMessage: userReportsRuntime.errorMessage,
       generatedAt: userReportsRuntime.generatedAt,
@@ -11677,9 +11804,10 @@ export async function getAdminReportingControl(
       warnings: userReportsRuntime.warnings
       },
       "rp-4-user-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    subscriptionReports: withReportRuntimeStatusFields(
+    subscriptionReports: withReportRuntimeFields(
       {
       errorMessage: subscriptionReportsRuntime.errorMessage,
       generatedAt: subscriptionReportsRuntime.generatedAt,
@@ -11698,9 +11826,10 @@ export async function getAdminReportingControl(
       warnings: subscriptionReportsRuntime.warnings
       },
       "rp-5-subscription-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    paymentReports: withReportRuntimeStatusFields(
+    paymentReports: withReportRuntimeFields(
       {
       errorMessage: paymentReportsRuntime.errorMessage,
       generatedAt: paymentReportsRuntime.generatedAt,
@@ -11720,9 +11849,10 @@ export async function getAdminReportingControl(
       warnings: paymentReportsRuntime.warnings
       },
       "rp-6-payment-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    aiReports: withReportRuntimeStatusFields(
+    aiReports: withReportRuntimeFields(
       {
       errorMessage: aiReportsRuntime.errorMessage,
       generatedAt: aiReportsRuntime.generatedAt,
@@ -11742,9 +11872,10 @@ export async function getAdminReportingControl(
       warnings: aiReportsRuntime.warnings
       },
       "rp-7-ai-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    domainEmailReports: withReportRuntimeStatusFields(
+    domainEmailReports: withReportRuntimeFields(
       {
       domainsByExtension: domainEmailReportsRuntime.domainsByExtension,
       domainsByProvider: domainEmailReportsRuntime.domainsByProvider,
@@ -11765,9 +11896,10 @@ export async function getAdminReportingControl(
       warnings: domainEmailReportsRuntime.warnings
       },
       "rp-8-domain-email-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    marketplaceReports: withReportRuntimeStatusFields(
+    marketplaceReports: withReportRuntimeFields(
       {
       errorMessage: marketplaceReportsRuntime.errorMessage,
       generatedAt: marketplaceReportsRuntime.generatedAt,
@@ -11786,9 +11918,10 @@ export async function getAdminReportingControl(
       warnings: marketplaceReportsRuntime.warnings
       },
       "rp-9-marketplace-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    securityReports: withReportRuntimeStatusFields(
+    securityReports: withReportRuntimeFields(
       {
       errorMessage: securityReportsRuntime.errorMessage,
       eventsByCategory: securityReportsRuntime.eventsByCategory,
@@ -11807,9 +11940,10 @@ export async function getAdminReportingControl(
       warnings: securityReportsRuntime.warnings
       },
       "rp-10-security-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
-    operationsReports: withReportRuntimeStatusFields(
+    operationsReports: withReportRuntimeFields(
       {
       errorMessage: operationsReportsRuntime.errorMessage,
       generatedAt: operationsReportsRuntime.generatedAt,
@@ -11827,16 +11961,22 @@ export async function getAdminReportingControl(
       warnings: operationsReportsRuntime.warnings
       },
       "rp-11-operations-reports",
-      reportStatusRuntime.statusByReportKey
+      reportStatusRuntime.statusByReportKey,
+      reportVisibilityRuntime.visibilityByReportKey
     ),
     reportViewer: {
       catalog: reportViewerRuntime.catalog.map((entry) => {
         const statusEntry = reportStatusRuntime.statusByReportKey[entry.reportKey];
+        const visibilityEntry = reportVisibilityRuntime.visibilityByReportKey[entry.reportKey];
 
         return {
           ...entry,
           runtimeStatus: statusEntry?.runtimeStatus ?? "planned",
-          runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied."
+          runtimeStatusDescription: statusEntry?.description ?? "Report status unavailable; safe planned fallback applied.",
+          runtimeVisibility: visibilityEntry?.runtimeVisibility ?? "super_admin_only",
+          runtimeVisibilityDescription:
+            visibilityEntry?.description ??
+            "Report visibility unavailable; safe Super Admin only fallback applied."
         };
       }),
       errorMessage: reportViewerRuntime.errorMessage,
@@ -11852,7 +11992,13 @@ export async function getAdminReportingControl(
               "planned",
             runtimeStatusDescription:
               reportStatusRuntime.statusByReportKey[reportViewerRuntime.selectedReport.reportKey]?.description ??
-              "Report status unavailable; safe planned fallback applied."
+              "Report status unavailable; safe planned fallback applied.",
+            runtimeVisibility:
+              reportVisibilityRuntime.visibilityByReportKey[reportViewerRuntime.selectedReport.reportKey]
+                ?.runtimeVisibility ?? "super_admin_only",
+            runtimeVisibilityDescription:
+              reportVisibilityRuntime.visibilityByReportKey[reportViewerRuntime.selectedReport.reportKey]
+                ?.description ?? "Report visibility unavailable; safe Super Admin only fallback applied."
           }
         : null,
       selectedReportKey: reportViewerRuntime.selectedReportKey,
@@ -11872,6 +12018,19 @@ export async function getAdminReportingControl(
       statusByReportKey: reportStatusRuntime.statusByReportKey,
       summary: reportStatusRuntime.summary,
       warnings: reportStatusRuntime.warnings
+    },
+    reportVisibility: {
+      countsByVisibility: reportVisibilityRuntime.countsByVisibility,
+      entries: reportVisibilityRuntime.entries,
+      errorMessage: reportVisibilityRuntime.errorMessage,
+      generatedAt: reportVisibilityRuntime.generatedAt,
+      lastGeneratedState: reportVisibilityRuntime.lastGeneratedState,
+      readOnly: true as const,
+      status: reportVisibilityRuntime.status,
+      summary: reportVisibilityRuntime.summary,
+      superAdminReportsOnly: true as const,
+      visibilityByReportKey: reportVisibilityRuntime.visibilityByReportKey,
+      warnings: reportVisibilityRuntime.warnings
     },
     reports,
     selectedRange,

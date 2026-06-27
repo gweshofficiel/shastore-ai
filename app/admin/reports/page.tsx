@@ -17,6 +17,11 @@ import {
   REPORT_RUNTIME_STATUSES
 } from "@/src/lib/reports/report-status-runtime";
 import {
+  reportRuntimeVisibilityBadgeTone,
+  reportRuntimeVisibilityLabel,
+  REPORT_RUNTIME_VISIBILITIES
+} from "@/src/lib/reports/report-visibility-runtime";
+import {
   exportReportPlaceholder,
   markReportReviewed,
   scheduleReportPlaceholder
@@ -92,6 +97,22 @@ function ReportRuntimeStatusBadge({
   );
 }
 
+function ReportRuntimeVisibilityBadge({
+  description,
+  visibility
+}: {
+  description?: string;
+  visibility: string;
+}) {
+  return (
+    <span title={description}>
+      <AdminBadge tone={reportRuntimeVisibilityBadgeTone(visibility)}>
+        {reportRuntimeVisibilityLabel(visibility)}
+      </AdminBadge>
+    </span>
+  );
+}
+
 function ReportHiddenFields({
   report
 }: {
@@ -120,6 +141,14 @@ export default async function AdminReportsPage({
         description="Global Super Admin reporting across existing users, stores, subscriptions, revenue, AI, domains, payments, marketplace, security, and operations data. No Store Owner reports, analytics systems, or billing systems are rewritten here."
         title="Reporting Center"
       />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">Super Admin only</span>
+        <span className="text-xs text-blue-800">
+          Reporting Center visibility is read-only on page load. No role, permission, or visibility mutations are
+          performed here.
+        </span>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Reports registry</span>
@@ -180,6 +209,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeStatusBadge
             description={control.revenueReports.runtimeStatusDescription}
             status={control.revenueReports.runtimeStatus}
+          />
+          <ReportRuntimeVisibilityBadge
+            description={control.revenueReports.runtimeVisibilityDescription}
+            visibility={control.revenueReports.runtimeVisibility}
           />
           <span className="text-xs text-slate-600">{control.revenueReports.rangeLabel}</span>
         </div>
@@ -289,6 +322,10 @@ export default async function AdminReportsPage({
             description={control.storeReports.runtimeStatusDescription}
             status={control.storeReports.runtimeStatus}
           />
+          <ReportRuntimeVisibilityBadge
+            description={control.storeReports.runtimeVisibilityDescription}
+            visibility={control.storeReports.runtimeVisibility}
+          />
           <span className="text-xs text-slate-600">{control.storeReports.rangeLabel}</span>
         </div>
 
@@ -384,6 +421,10 @@ export default async function AdminReportsPage({
             description={control.userReports.runtimeStatusDescription}
             status={control.userReports.runtimeStatus}
           />
+          <ReportRuntimeVisibilityBadge
+            description={control.userReports.runtimeVisibilityDescription}
+            visibility={control.userReports.runtimeVisibility}
+          />
           <span className="text-xs text-slate-600">{control.userReports.rangeLabel}</span>
         </div>
 
@@ -464,6 +505,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeStatusBadge
             description={control.subscriptionReports.runtimeStatusDescription}
             status={control.subscriptionReports.runtimeStatus}
+          />
+          <ReportRuntimeVisibilityBadge
+            description={control.subscriptionReports.runtimeVisibilityDescription}
+            visibility={control.subscriptionReports.runtimeVisibility}
           />
           <span className="text-xs text-slate-600">{control.subscriptionReports.rangeLabel}</span>
         </div>
@@ -591,6 +636,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeStatusBadge
             description={control.paymentReports.runtimeStatusDescription}
             status={control.paymentReports.runtimeStatus}
+          />
+          <ReportRuntimeVisibilityBadge
+            description={control.paymentReports.runtimeVisibilityDescription}
+            visibility={control.paymentReports.runtimeVisibility}
           />
           <span className="text-xs text-slate-600">{control.paymentReports.rangeLabel}</span>
         </div>
@@ -741,6 +790,10 @@ export default async function AdminReportsPage({
             description={control.aiReports.runtimeStatusDescription}
             status={control.aiReports.runtimeStatus}
           />
+          <ReportRuntimeVisibilityBadge
+            description={control.aiReports.runtimeVisibilityDescription}
+            visibility={control.aiReports.runtimeVisibility}
+          />
           <span className="text-xs text-slate-600">{control.aiReports.rangeLabel}</span>
         </div>
 
@@ -888,6 +941,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeStatusBadge
             description={control.domainEmailReports.runtimeStatusDescription}
             status={control.domainEmailReports.runtimeStatus}
+          />
+          <ReportRuntimeVisibilityBadge
+            description={control.domainEmailReports.runtimeVisibilityDescription}
+            visibility={control.domainEmailReports.runtimeVisibility}
           />
           <span className="text-xs text-slate-600">{control.domainEmailReports.rangeLabel}</span>
         </div>
@@ -1061,6 +1118,10 @@ export default async function AdminReportsPage({
             description={control.marketplaceReports.runtimeStatusDescription}
             status={control.marketplaceReports.runtimeStatus}
           />
+          <ReportRuntimeVisibilityBadge
+            description={control.marketplaceReports.runtimeVisibilityDescription}
+            visibility={control.marketplaceReports.runtimeVisibility}
+          />
           <span className="text-xs text-slate-600">{control.marketplaceReports.rangeLabel}</span>
         </div>
 
@@ -1192,6 +1253,10 @@ export default async function AdminReportsPage({
             description={control.securityReports.runtimeStatusDescription}
             status={control.securityReports.runtimeStatus}
           />
+          <ReportRuntimeVisibilityBadge
+            description={control.securityReports.runtimeVisibilityDescription}
+            visibility={control.securityReports.runtimeVisibility}
+          />
           <span className="text-xs text-slate-600">{control.securityReports.rangeLabel}</span>
         </div>
 
@@ -1307,6 +1372,10 @@ export default async function AdminReportsPage({
           <ReportRuntimeStatusBadge
             description={control.operationsReports.runtimeStatusDescription}
             status={control.operationsReports.runtimeStatus}
+          />
+          <ReportRuntimeVisibilityBadge
+            description={control.operationsReports.runtimeVisibilityDescription}
+            visibility={control.operationsReports.runtimeVisibility}
           />
           <span className="text-xs text-slate-600">{control.operationsReports.rangeLabel}</span>
         </div>
@@ -1460,12 +1529,20 @@ export default async function AdminReportsPage({
                 description={control.reportViewer.selectedReport.runtimeStatusDescription}
                 status={control.reportViewer.selectedReport.runtimeStatus}
               />
+              <ReportRuntimeVisibilityBadge
+                description={control.reportViewer.selectedReport.runtimeVisibilityDescription}
+                visibility={control.reportViewer.selectedReport.runtimeVisibility}
+              />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
                 <span className="font-bold text-slate-950">Runtime status:</span>{" "}
                 {control.reportViewer.selectedReport.runtimeStatusDescription}
+              </p>
+              <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                <span className="font-bold text-slate-950">Runtime visibility:</span>{" "}
+                {control.reportViewer.selectedReport.runtimeVisibilityDescription}
               </p>
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-950">Report key:</span>{" "}
@@ -1476,7 +1553,7 @@ export default async function AdminReportsPage({
                 {control.reportViewer.selectedReport.category}
               </p>
               <p className="text-sm text-slate-600">
-                <span className="font-bold text-slate-950">Visibility:</span>{" "}
+                <span className="font-bold text-slate-950">Registry visibility:</span>{" "}
                 {control.reportViewer.selectedReport.visibility}
               </p>
               <p className="text-sm text-slate-600">
@@ -1616,13 +1693,76 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-14 Report Visibility
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportVisibility.status)}>{control.reportVisibility.status}</AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportVisibility.summary}</span>
+        </div>
+
+        {control.reportVisibility.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportVisibility.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={REPORT_RUNTIME_VISIBILITIES.map((visibility) => ({
+            label: reportRuntimeVisibilityLabel(visibility),
+            value: control.reportVisibility.countsByVisibility[visibility]
+          }))}
+        />
+
+        {control.reportVisibility.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportVisibility.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable headers={["Report", "Registry visibility", "Runtime visibility", "Description"]}>
+          {control.reportVisibility.entries.length ? (
+            control.reportVisibility.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.title}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {entry.roadmapPhase} · {entry.reportKey}
+                  </p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={toneForVisibility(entry.registryVisibility)}>{entry.registryVisibility}</AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  <ReportRuntimeVisibilityBadge
+                    description={entry.description}
+                    visibility={entry.runtimeVisibility}
+                  />
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.description}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={4}>
+                No report visibility entries are available yet. Safe Super Admin only fallbacks remain read-only.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
           "Category",
           "Status",
           "Runtime status",
-          "Visibility",
+          "Runtime visibility",
           "Last generated",
           "Export",
           "Safe actions",
@@ -1652,7 +1792,11 @@ export default async function AdminReportsPage({
               />
             </td>
             <td className="px-5 py-4">
-              <AdminBadge tone={toneForVisibility(report.visibility)}>{report.visibility}</AdminBadge>
+              <ReportRuntimeVisibilityBadge
+                description={report.runtimeVisibilityDescription}
+                visibility={report.runtimeVisibility}
+              />
+              <p className="mt-1 text-xs text-slate-500">Registry: {report.visibility}</p>
             </td>
             <td className="px-5 py-4 text-slate-600">{report.lastGenerated}</td>
             <td className="px-5 py-4 text-slate-600">{report.exportPlaceholder}</td>

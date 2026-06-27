@@ -106,6 +106,8 @@ export type ReportsRegistryRuntimeContext = {
   reportViewerNeedsAttention?: boolean;
   reportStatusLastGenerated?: string;
   reportStatusNeedsAttention?: boolean;
+  reportVisibilityLastGenerated?: string;
+  reportVisibilityNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -343,7 +345,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "not_applicable",
-    dataSourceDescription: "Registry visibility fields for Super Admin internal reporting.",
+    dataSourceDescription:
+      "Report Visibility runtime (registry metadata + RP-13 status signals). Read-only on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Role-based visibility"],
     lastGeneratedState: "Live registry",
@@ -679,6 +682,16 @@ function applyRuntimeContext(
         "Report Status runtime (registry metadata + RP-2 through RP-11 adapter signals). Read-only on page load.",
       lastGeneratedState: context.reportStatusLastGenerated ?? definition.lastGeneratedState,
       status: context.reportStatusNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-14-report-visibility") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Visibility runtime (registry metadata + RP-13 status signals). Read-only on page load.",
+      lastGeneratedState: context.reportVisibilityLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportVisibilityNeedsAttention ? "review" : definition.status
     };
   }
 
