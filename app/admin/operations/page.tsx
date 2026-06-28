@@ -93,9 +93,15 @@ import {
   operationsDisasterRecoveryStatusLabel,
   type OperationsDisasterRecoveryRuntimeStatus
 } from "@/src/lib/operations/operations-disaster-recovery-runtime";
+import {
+  operationsDiagnosticsRuntimeStatusBadgeTone,
+  operationsDiagnosticsRuntimeStatusLabel,
+  operationsDiagnosticsStatusLabel,
+  type OperationsDiagnosticsRuntimeStatus
+} from "@/src/lib/operations/operations-diagnostics-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -168,6 +174,10 @@ function toneForBackupRuntimeStatus(status: string) {
 
 function toneForDisasterRecoveryRuntimeStatus(status: string) {
   return operationsDisasterRecoveryRuntimeStatusBadgeTone(status as OperationsDisasterRecoveryRuntimeStatus);
+}
+
+function toneForDiagnosticsRuntimeStatus(status: string) {
+  return operationsDiagnosticsRuntimeStatusBadgeTone(status as OperationsDiagnosticsRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -430,6 +440,24 @@ function DisasterRecoverySafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No disaster recovery action is executed during OP-16 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DiagnosticsSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Run Diagnostics", "Inspect", "Repair", "Auto Fix", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No diagnostics action is executed during OP-17 page load."
           type="button"
         >
           {label}
@@ -1410,6 +1438,80 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{recovery.backupDependencyLabel}</td>
             <td className="px-5 py-4">
               <DisasterRecoverySafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Diagnostics runtime</span>
+        <AdminBadge tone={toneForStatus(control.diagnosticsRuntime.status)}>{control.diagnosticsRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.diagnosticsRuntime.summary}</span>
+      </div>
+
+      {control.diagnosticsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} diagnostic{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Diagnostic",
+          "Type",
+          "Source",
+          "Status",
+          "Runtime status",
+          "Last checked",
+          "Warnings",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.diagnosticsRuntimeItems.map((diagnostic) => (
+          <tr key={diagnostic.diagnosticKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{diagnostic.diagnosticName}</span>
+                <AdminBadge tone={toneForDiagnosticsRuntimeStatus(diagnostic.runtimeStatus)}>
+                  {operationsDiagnosticsRuntimeStatusLabel(
+                    diagnostic.runtimeStatus as OperationsDiagnosticsRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {diagnostic.metadataDetected
+                    ? "Read-only diagnostic metadata and recorded events only; logs, payloads, and credentials hidden"
+                    : "No diagnostic metadata detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {diagnostic.reviewStatus} · Visibility: {diagnostic.visibility}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{diagnostic.diagnosticType}</td>
+            <td className="px-5 py-4 text-slate-600">{diagnostic.source}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={diagnostic.diagnosticStatus === "failed" ? "red" : diagnostic.diagnosticStatus === "warning" ? "amber" : "green"}>
+                {operationsDiagnosticsStatusLabel(
+                  diagnostic.diagnosticStatus as Parameters<typeof operationsDiagnosticsStatusLabel>[0]
+                )}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForDiagnosticsRuntimeStatus(diagnostic.runtimeStatus)}>
+                {operationsDiagnosticsRuntimeStatusLabel(
+                  diagnostic.runtimeStatus as OperationsDiagnosticsRuntimeStatus
+                )}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(diagnostic.lastCheckedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{diagnostic.warningCount}</td>
+            <td className="px-5 py-4 text-slate-600">{diagnostic.safeSummary}</td>
+            <td className="px-5 py-4">
+              <DiagnosticsSafeControls />
             </td>
           </tr>
         ))}

@@ -325,6 +325,10 @@ import {
   mapOperationsDisasterRecoveryRuntimeToAdminFields
 } from "@/src/lib/operations/operations-disaster-recovery-runtime";
 import {
+  loadOperationsDiagnosticsRuntimeReadOnlySafe,
+  mapOperationsDiagnosticsRuntimeToAdminFields
+} from "@/src/lib/operations/operations-diagnostics-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6117,6 +6121,39 @@ export type AdminOperationsDisasterRecoveryRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsDiagnosticsSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsDiagnosticsRuntimeItem = {
+  diagnosticKey: string;
+  diagnosticName: string;
+  diagnosticStatus: string;
+  diagnosticType: string;
+  errorCount: number;
+  groupKey: string;
+  lastCheckedAt: string | null;
+  lastFailureAt: string | null;
+  metadataDetected: boolean;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsDiagnosticsSafeControl[];
+  safeSummary: string;
+  source: string;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsDiagnosticsRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsDiagnosticsRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6278,6 +6315,21 @@ export type AdminOperationsControl = {
   disasterRecoveryRuntimeGroups: AdminOperationsDisasterRecoveryRuntimeGroup[];
   disasterRecoveryRuntimeItems: AdminOperationsDisasterRecoveryRuntimeItem[];
   disasterRecoverySafeControls: AdminOperationsDisasterRecoverySafeControl[];
+  diagnosticsRuntime: {
+    failedDiagnostics: number;
+    groupCount: number;
+    healthyDiagnostics: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_diagnostics_runtime";
+    status: "diagnostics_runtime_ready" | "needs_attention";
+    summary: string;
+    totalDiagnostics: number;
+    warningDiagnostics: number;
+  };
+  diagnosticsRuntimeGroups: AdminOperationsDiagnosticsRuntimeGroup[];
+  diagnosticsRuntimeItems: AdminOperationsDiagnosticsRuntimeItem[];
+  diagnosticsSafeControls: AdminOperationsDiagnosticsSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -14944,6 +14996,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsDiagnosticsRuntimeLoad = mapOperationsDiagnosticsRuntimeToAdminFields(
+    await loadOperationsDiagnosticsRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15206,7 +15263,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
     disasterRecoveryRuntimeGroups: operationsDisasterRecoveryRuntimeLoad.groups,
     disasterRecoveryRuntimeItems: operationsDisasterRecoveryRuntimeLoad.recoveryItems,
-    disasterRecoverySafeControls: operationsDisasterRecoveryRuntimeLoad.safeControls
+    disasterRecoverySafeControls: operationsDisasterRecoveryRuntimeLoad.safeControls,
+    diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+    diagnosticsRuntimeGroups: operationsDiagnosticsRuntimeLoad.groups,
+    diagnosticsRuntimeItems: operationsDiagnosticsRuntimeLoad.diagnosticItems,
+    diagnosticsSafeControls: operationsDiagnosticsRuntimeLoad.safeControls
   };
 }
 
