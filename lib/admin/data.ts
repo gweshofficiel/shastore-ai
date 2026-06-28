@@ -273,6 +273,10 @@ import {
   mapOperationsQueueRuntimeToAdminFields
 } from "@/src/lib/operations/operations-queue-runtime";
 import {
+  loadOperationsWorkerRuntimeReadOnlySafe,
+  mapOperationsWorkerRuntimeToAdminFields
+} from "@/src/lib/operations/operations-worker-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5663,6 +5667,41 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsWorkerSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsWorkerRuntimeItem = {
+  failedRuns: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastRunAt: string | null;
+  lastSeenAt: string | null;
+  linkedQueue: string;
+  metadataSource: string | null;
+  nextRunLabel: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsWorkerSafeControl[];
+  tableDetected: boolean;
+  totalRuns: number;
+  visibility: string;
+  workerKey: string;
+  workerName: string;
+  workerType: string;
+};
+
+export type AdminOperationsWorkerRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsWorkerRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsQueueSafeControl = {
   enabled: false;
   key: string;
@@ -5812,6 +5851,20 @@ export type AdminOperationsControl = {
     nextRun: string;
     status: "idle" | "placeholder" | "running" | "warning";
   }>;
+  workerRuntime: {
+    activeWorkers: number;
+    failedWorkers: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_worker_runtime";
+    status: "needs_attention" | "worker_runtime_ready";
+    summary: string;
+    totalWorkers: number;
+  };
+  workerRuntimeGroups: AdminOperationsWorkerRuntimeGroup[];
+  workerRuntimeItems: AdminOperationsWorkerRuntimeItem[];
+  workerSafeControls: AdminOperationsWorkerSafeControl[];
   registry: {
     readOnly: true;
     source: "operations_registry_runtime";
@@ -14155,6 +14208,13 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsWorkerRuntimeLoad = mapOperationsWorkerRuntimeToAdminFields(
+    await loadOperationsWorkerRuntimeReadOnlySafe({
+      monitoringEvents,
+      queueRuntimeItems: operationsQueueRuntimeLoad.queues,
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14211,11 +14271,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
   ]);
   const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const queueHasFailures = queues.some((queue) => queue.failed > 0) || monitoringQueue.failed > 0;
-  const workerFailures = aiQueue.failed + emailQueue.failed + domainEmailQueue.failed + monitoringFailures.length;
-  const aiWorkerStatus: AdminOperationsControl["workers"][number]["status"] =
-    aiQueue.processing > 0 ? "running" : aiQueue.failed > 0 ? "warning" : "idle";
-  const emailWorkerStatus: AdminOperationsControl["workers"][number]["status"] =
-    emailQueue.processing > 0 ? "running" : emailQueue.failed > 0 ? "warning" : "idle";
+  const workerFailures = operationsWorkerRuntimeLoad.workers
+    .filter((worker) => worker.groupKey !== "future-worker-hooks" && worker.groupKey !== "cron-workers")
+    .reduce((total, worker) => total + worker.failedRuns, 0);
 
   return {
     backupRecovery: [
@@ -14364,36 +14422,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
         status: monitoringFailures.length ? "review" : "monitoring"
       }
     ],
-    workers: [
-      {
-        failures: aiQueue.failed,
-        lastRun: aiQueue.lastProcessed,
-        name: "AI visual/generation worker",
-        nextRun: "Runtime driven",
-        status: aiWorkerStatus
-      },
-      {
-        failures: emailQueue.failed,
-        lastRun: emailQueue.lastProcessed,
-        name: "Email delivery worker",
-        nextRun: "Queue driven",
-        status: emailWorkerStatus
-      },
-      {
-        failures: domainEmailQueue.failed,
-        lastRun: domainEmailQueue.lastProcessed,
-        name: "Domain/email provider worker placeholder",
-        nextRun: "Future provider sync",
-        status: domainEmailQueue.failed ? "warning" : "placeholder"
-      },
-      {
-        failures: monitoringFailures.length,
-        lastRun: latestMonitoring,
-        name: "Monitoring event processor",
-        nextRun: "Live event stream",
-        status: monitoringFailures.length ? "warning" : "idle"
-      }
-    ],
+    workers: operationsWorkerRuntimeLoad.legacyWorkers,
+    workerRuntime: operationsWorkerRuntimeLoad.workerRuntime,
+    workerRuntimeGroups: operationsWorkerRuntimeLoad.groups,
+    workerRuntimeItems: operationsWorkerRuntimeLoad.workers,
+    workerSafeControls: operationsWorkerRuntimeLoad.safeControls,
     registry: operationsRegistry.registry
   };
 }

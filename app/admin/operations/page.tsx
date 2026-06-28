@@ -22,9 +22,14 @@ import {
   operationsQueueRuntimeStatusLabel,
   type OperationsQueueRuntimeStatus
 } from "@/src/lib/operations/operations-queue-runtime";
+import {
+  operationsWorkerRuntimeStatusBadgeTone,
+  operationsWorkerRuntimeStatusLabel,
+  type OperationsWorkerRuntimeStatus
+} from "@/src/lib/operations/operations-worker-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -47,6 +52,10 @@ function toneForQueueRuntimeStatus(status: string) {
   return operationsQueueRuntimeStatusBadgeTone(status as OperationsQueueRuntimeStatus);
 }
 
+function toneForWorkerRuntimeStatus(status: string) {
+  return operationsWorkerRuntimeStatusBadgeTone(status as OperationsWorkerRuntimeStatus);
+}
+
 function supportLabel(enabled: boolean) {
   return enabled ? "Supported" : "Not supported";
 }
@@ -61,6 +70,24 @@ function OperationsHiddenFields({ targetName, targetType }: { targetName: string
       <input name="targetName" type="hidden" value={targetName} />
       <input name="targetType" type="hidden" value={targetType} />
     </>
+  );
+}
+
+function WorkerSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Start", "Stop", "Restart", "Retry", "Inspect Logs"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No worker action is executed during OP-4 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -224,16 +251,49 @@ export default async function AdminOperationsPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Worker", "Status", "Last run", "Failures", "Next run", "Controls"]}>
-        {control.workers.map((worker) => (
-          <tr key={worker.name}>
-            <td className="px-5 py-4 font-bold text-slate-950">{worker.name}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(worker.status)}>{worker.status}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminDate(worker.lastRun)}</td>
-            <td className="px-5 py-4 text-slate-600">{worker.failures}</td>
-            <td className="px-5 py-4 text-slate-600">{worker.nextRun}</td>
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Worker runtime</span>
+        <AdminBadge tone={toneForStatus(control.workerRuntime.status)}>{control.workerRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.workerRuntime.summary}</span>
+      </div>
+
+      {control.workerRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} worker{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable headers={["Worker", "Status", "Last run", "Failures", "Next run", "Safe controls"]}>
+        {control.workerRuntimeItems.map((worker) => (
+          <tr key={worker.workerKey}>
             <td className="px-5 py-4">
-              <OperationsActionButtons targetName={worker.name} targetType="worker" />
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{worker.workerName}</span>
+                <AdminBadge tone={toneForWorkerRuntimeStatus(worker.runtimeStatus)}>
+                  {operationsWorkerRuntimeStatusLabel(worker.runtimeStatus as OperationsWorkerRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {worker.tableDetected
+                    ? worker.metadataSource
+                      ? `Read-only from ${worker.metadataSource}`
+                      : "Read-only workflow aggregate"
+                    : "No worker table detected"}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForWorkerRuntimeStatus(worker.runtimeStatus)}>
+                {operationsWorkerRuntimeStatusLabel(worker.runtimeStatus as OperationsWorkerRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(worker.lastRunAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{worker.failedRuns}</td>
+            <td className="px-5 py-4 text-slate-600">{worker.nextRunLabel}</td>
+            <td className="px-5 py-4">
+              <WorkerSafeControls />
             </td>
           </tr>
         ))}
