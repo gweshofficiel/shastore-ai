@@ -345,6 +345,10 @@ import {
   mapOperationsAuditRuntimeToAdminFields
 } from "@/src/lib/operations/operations-audit-runtime";
 import {
+  buildOperationsReviewRuntimeReadOnlySafe,
+  mapOperationsReviewRuntimeToAdminFields
+} from "@/src/lib/operations/operations-review-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6283,6 +6287,38 @@ export type AdminOperationsAuditRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsReviewSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsReviewRuntimeItem = {
+  auditStatus: string;
+  blockerCount: number;
+  category: string;
+  certificationCandidate: boolean;
+  groupKey: string;
+  healthStatus: string;
+  moduleKey: string;
+  moduleName: string;
+  reviewKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsReviewSafeControl[];
+  safeSummary: string;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsReviewRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsReviewRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6529,6 +6565,25 @@ export type AdminOperationsControl = {
   auditRuntimeGroups: AdminOperationsAuditRuntimeGroup[];
   auditRuntimeItems: AdminOperationsAuditRuntimeItem[];
   auditSafeControls: AdminOperationsAuditSafeControl[];
+  reviewRuntime: {
+    blockedModules: number;
+    disabledModules: number;
+    futureHooks: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "operations_review_runtime_ready";
+    productionReadyCandidates: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    reviewRequiredModules: number;
+    reviewedModules: number;
+    source: "operations_review_runtime";
+    summary: string;
+    totalModules: number;
+    warningModules: number;
+  };
+  reviewRuntimeGroups: AdminOperationsReviewRuntimeGroup[];
+  reviewRuntimeItems: AdminOperationsReviewRuntimeItem[];
+  reviewSafeControls: AdminOperationsReviewSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15238,6 +15293,17 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsReviewRuntimeLoad = mapOperationsReviewRuntimeToAdminFields(
+    buildOperationsReviewRuntimeReadOnlySafe({
+      auditItems: operationsAuditRuntimeLoad.auditItems,
+      auditRuntime: operationsAuditRuntimeLoad.auditRuntime,
+      futureHooks: reservedFutureHooks,
+      statusItems: operationsStatusRuntimeLoad.statusItems,
+      statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
+      visibilityItems: operationsVisibilityRuntimeLoad.visibilityItems,
+      visibilityRuntime: operationsVisibilityRuntimeLoad.visibilityRuntime
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15517,7 +15583,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     auditRuntime: operationsAuditRuntimeLoad.auditRuntime,
     auditRuntimeGroups: operationsAuditRuntimeLoad.groups,
     auditRuntimeItems: operationsAuditRuntimeLoad.auditItems,
-    auditSafeControls: operationsAuditRuntimeLoad.safeControls
+    auditSafeControls: operationsAuditRuntimeLoad.safeControls,
+    reviewRuntime: operationsReviewRuntimeLoad.reviewRuntime,
+    reviewRuntimeGroups: operationsReviewRuntimeLoad.groups,
+    reviewRuntimeItems: operationsReviewRuntimeLoad.reviewItems,
+    reviewSafeControls: operationsReviewRuntimeLoad.safeControls
   };
 }
 

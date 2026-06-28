@@ -121,9 +121,14 @@ import {
   operationsAuditRuntimeStatusLabel,
   type OperationsAuditRuntimeStatus
 } from "@/src/lib/operations/operations-audit-runtime";
+import {
+  operationsReviewStateBadgeTone,
+  operationsReviewStateLabel,
+  type OperationsReviewState
+} from "@/src/lib/operations/operations-review-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -216,6 +221,10 @@ function toneForVisibilityState(status: string) {
 
 function toneForAuditRuntimeStatus(status: string) {
   return operationsAuditRuntimeStatusBadgeTone(status as OperationsAuditRuntimeStatus);
+}
+
+function toneForReviewState(status: string) {
+  return operationsReviewStateBadgeTone(status as OperationsReviewState);
 }
 
 function supportLabel(enabled: boolean) {
@@ -532,6 +541,24 @@ function AuditSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No audit action is executed during OP-21 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReviewSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Approve Review", "Reject Review", "Resolve Blocker", "Mark Production Ready", "Export Review"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No review action is executed during OP-22 page load."
           type="button"
         >
           {label}
@@ -1883,6 +1910,86 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{auditItem.safeSummary}</td>
             <td className="px-5 py-4">
               <AuditSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations review runtime</span>
+        <AdminBadge tone={toneForStatus(control.reviewRuntime.overallStatus)}>{control.reviewRuntime.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.reviewRuntime.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total modules", value: String(control.reviewRuntime.totalModules) },
+          { label: "Reviewed", value: String(control.reviewRuntime.reviewedModules) },
+          { label: "Review required", value: String(control.reviewRuntime.reviewRequiredModules) },
+          { label: "Blocked", value: String(control.reviewRuntime.blockedModules) },
+          { label: "Warnings", value: String(control.reviewRuntime.warningModules) },
+          { label: "Production ready candidates", value: String(control.reviewRuntime.productionReadyCandidates) },
+          { label: "Disabled", value: String(control.reviewRuntime.disabledModules) },
+          { label: "Future hooks", value: String(control.reviewRuntime.futureHooks) }
+        ]}
+      />
+
+      {control.reviewRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} module{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Module",
+          "Category",
+          "Review",
+          "Runtime",
+          "Health",
+          "Visibility",
+          "Audit",
+          "Blockers",
+          "Warnings",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.reviewRuntimeItems.map((reviewItem) => (
+          <tr key={reviewItem.reviewKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{reviewItem.moduleName}</span>
+                <AdminBadge tone={toneForReviewState(reviewItem.reviewStatus)}>
+                  {operationsReviewStateLabel(reviewItem.reviewStatus as OperationsReviewState)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only review derived from registry, status, visibility, and audit metadata only; no approval or mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Module: {reviewItem.moduleKey}
+                  {reviewItem.certificationCandidate ? " · Production ready candidate" : ""}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForReviewState(reviewItem.reviewStatus)}>
+                {operationsReviewStateLabel(reviewItem.reviewStatus as OperationsReviewState)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.runtimeStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.healthStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.visibility}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.auditStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.blockerCount}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.warningCount}</td>
+            <td className="px-5 py-4 text-slate-600">{reviewItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <ReviewSafeControls />
             </td>
           </tr>
         ))}
