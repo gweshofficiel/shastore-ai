@@ -116,9 +116,14 @@ import {
   operationsVisibilityStateLabel,
   type OperationsVisibilityState
 } from "@/src/lib/operations/operations-visibility-runtime";
+import {
+  operationsAuditRuntimeStatusBadgeTone,
+  operationsAuditRuntimeStatusLabel,
+  type OperationsAuditRuntimeStatus
+} from "@/src/lib/operations/operations-audit-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -207,6 +212,10 @@ function toneForStatusRuntimeStatus(status: string) {
 
 function toneForVisibilityState(status: string) {
   return operationsVisibilityStateBadgeTone(status as OperationsVisibilityState);
+}
+
+function toneForAuditRuntimeStatus(status: string) {
+  return operationsAuditRuntimeStatusBadgeTone(status as OperationsAuditRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -505,6 +514,24 @@ function VisibilitySafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No visibility action is executed during OP-20 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AuditSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect Audit", "Resolve", "Export Audit", "Review Actor", "Review Payload"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No audit action is executed during OP-21 page load."
           type="button"
         >
           {label}
@@ -1780,6 +1807,82 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{visibilityItem.safeSummary}</td>
             <td className="px-5 py-4">
               <VisibilitySafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations audit runtime</span>
+        <AdminBadge tone={toneForStatus(control.auditRuntime.overallStatus)}>{control.auditRuntime.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.auditRuntime.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total audit items", value: String(control.auditRuntime.totalAuditItems) },
+          { label: "Available", value: String(control.auditRuntime.availableItems) },
+          { label: "Registered", value: String(control.auditRuntime.registeredItems) },
+          { label: "Empty", value: String(control.auditRuntime.emptyItems) },
+          { label: "No audit data", value: String(control.auditRuntime.noAuditDataItems) },
+          { label: "Review required", value: String(control.auditRuntime.reviewRequiredItems) },
+          { label: "Future hooks", value: String(control.auditRuntime.futureHookItems) }
+        ]}
+      />
+
+      {control.auditRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} item{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Module",
+          "Category",
+          "Audit status",
+          "Type",
+          "Action",
+          "Actor",
+          "Severity",
+          "Occurred",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.auditRuntimeItems.map((auditItem) => (
+          <tr key={auditItem.auditKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{auditItem.moduleName}</span>
+                <AdminBadge tone={toneForAuditRuntimeStatus(auditItem.runtimeStatus)}>
+                  {operationsAuditRuntimeStatusLabel(auditItem.runtimeStatus as OperationsAuditRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only audit metadata only; no audit creation, mutation, export, or payload exposure
+                </span>
+                <span className="text-xs text-slate-500">
+                  Module: {auditItem.moduleKey} · Review: {auditItem.reviewStatus}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForAuditRuntimeStatus(auditItem.runtimeStatus)}>
+                {operationsAuditRuntimeStatusLabel(auditItem.runtimeStatus as OperationsAuditRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.auditType}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.actionType}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.actorType}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.severity}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.occurredAt ?? "Not recorded"}</td>
+            <td className="px-5 py-4 text-slate-600">{auditItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <AuditSafeControls />
             </td>
           </tr>
         ))}
