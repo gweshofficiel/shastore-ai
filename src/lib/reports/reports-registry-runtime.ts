@@ -128,6 +128,8 @@ export type ReportsRegistryRuntimeContext = {
   reportDataCertificationNeedsAttention?: boolean;
   reportSecurityCertificationLastGenerated?: string;
   reportSecurityCertificationNeedsAttention?: boolean;
+  reportRuntimeCertificationLastGenerated?: string;
+  reportRuntimeCertificationNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -541,7 +543,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Certification",
     certificationState: "planned",
-    dataSourceDescription: "Report runtime certification reserved for RP-25.",
+    dataSourceDescription:
+      "Report Runtime Certification runtime (registry + RP-2 through RP-24 adapters + RP-12 through RP-24 platform runtimes). Read-only runtime certification metadata on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Runtime checks"],
     lastGeneratedState: "Not generated",
@@ -549,7 +552,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
     reportKey: "rp-25-report-runtime-certification",
     roadmapPhase: "RP-25",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Runtime Certification",
     visibility: "super_admin"
   },
@@ -826,6 +829,17 @@ function applyRuntimeContext(
       exportAvailabilityState: "placeholder",
       lastGeneratedState: context.reportSecurityCertificationLastGenerated ?? definition.lastGeneratedState,
       status: context.reportSecurityCertificationNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-25-report-runtime-certification") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Runtime Certification runtime (registry + RP-2 through RP-24 adapters + RP-12 through RP-24 platform runtimes). Read-only runtime certification metadata on page load. No certification records are written.",
+      exportAvailabilityState: "placeholder",
+      lastGeneratedState: context.reportRuntimeCertificationLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportRuntimeCertificationNeedsAttention ? "review" : definition.status
     };
   }
 

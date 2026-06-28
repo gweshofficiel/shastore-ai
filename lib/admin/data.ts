@@ -258,6 +258,10 @@ import {
   mapReportSecurityCertificationRuntimeToAdminFields
 } from "@/src/lib/reports/report-security-certification-runtime";
 import {
+  buildReportRuntimeCertificationRuntimeInput,
+  mapReportRuntimeCertificationRuntimeToAdminFields
+} from "@/src/lib/reports/report-runtime-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5333,6 +5337,94 @@ export type AdminReportingControl = {
       plannedReports: number;
       unsafeReports: number;
       unknownReports: number;
+    };
+    warnings: string[];
+  };
+  reportRuntimeCertification: {
+    byStatus: Array<{
+      count: number;
+      label:
+        | "runtime_blocked"
+        | "runtime_certified"
+        | "runtime_partial"
+        | "runtime_planned"
+        | "runtime_unsafe"
+        | "runtime_unknown";
+    }>;
+    entries: Array<{
+      auditIntegrationConfirmation: string;
+      dataCertificationIntegrationConfirmation: string;
+      emptyStateSafetyConfirmation: string;
+      errorStateSafetyConfirmation: string;
+      exportIntegrationConfirmation: string;
+      filtersSearchIntegrationConfirmation: string;
+      pageLoadReadOnlyConfirmation: string;
+      readOnly: true;
+      registryIntegrationConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      reviewIntegrationConfirmation: string;
+      runtimeCertificationNotes: string;
+      runtimeCertificationStatus:
+        | "runtime_blocked"
+        | "runtime_certified"
+        | "runtime_partial"
+        | "runtime_planned"
+        | "runtime_unsafe"
+        | "runtime_unknown";
+      runtimeHelperText: string;
+      safeActionsIntegrationConfirmation: string;
+      scheduledReportsIntegrationConfirmation: string;
+      securityCertificationIntegrationConfirmation: string;
+      statusIntegrationConfirmation: string;
+      viewerIntegrationConfirmation: string;
+      visibilityIntegrationConfirmation: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportKey: string | null;
+    selectedReportRuntimeCertification: {
+      auditIntegrationConfirmation: string;
+      dataCertificationIntegrationConfirmation: string;
+      emptyStateSafetyConfirmation: string;
+      errorStateSafetyConfirmation: string;
+      exportIntegrationConfirmation: string;
+      filtersSearchIntegrationConfirmation: string;
+      pageLoadReadOnlyConfirmation: string;
+      readOnly: true;
+      registryIntegrationConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      reviewIntegrationConfirmation: string;
+      runtimeCertificationNotes: string;
+      runtimeCertificationStatus:
+        | "runtime_blocked"
+        | "runtime_certified"
+        | "runtime_partial"
+        | "runtime_planned"
+        | "runtime_unsafe"
+        | "runtime_unknown";
+      runtimeHelperText: string;
+      safeActionsIntegrationConfirmation: string;
+      scheduledReportsIntegrationConfirmation: string;
+      securityCertificationIntegrationConfirmation: string;
+      statusIntegrationConfirmation: string;
+      viewerIntegrationConfirmation: string;
+      visibilityIntegrationConfirmation: string;
+    } | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      runtimeBlockedReports: number;
+      runtimeCertifiedReports: number;
+      runtimePartialReports: number;
+      runtimePlannedReports: number;
+      runtimeUnsafeReports: number;
+      runtimeUnknownReports: number;
     };
     warnings: string[];
   };
@@ -12907,6 +12999,42 @@ export async function getAdminReportingControl(
   const filteredSecurityCertificationEntries = reportSecurityCertificationRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportRuntimeCertificationRuntime = await mapReportRuntimeCertificationRuntimeToAdminFields(
+    buildReportRuntimeCertificationRuntimeInput({
+      adapterStatesByReportKey,
+      auditEntries: reportAuditRuntime.entries.map((entry) => ({ reportKey: entry.reportKey })),
+      dataCertificationEntries: reportDataCertificationRuntime.entries.map((entry) => ({
+        certificationStatus: entry.certificationStatus,
+        reportKey: entry.reportKey
+      })),
+      exportEntries: reportExportRuntime.entries.map((entry) => ({
+        exportAvailabilityState: entry.exportAvailabilityState,
+        reportKey: entry.reportKey
+      })),
+      registryReports: allReports.map((report) => ({
+        name: report.name,
+        reportKey: report.reportKey,
+        runtimeSafeAction: report.runtimeSafeAction,
+        runtimeStatus: report.runtimeStatus,
+        runtimeVisibility: report.runtimeVisibility,
+        status: report.status,
+        viewEnabled: report.viewEnabled
+      })),
+      reviewEntries: reportReviewRuntime.entries.map((entry) => ({ reportKey: entry.reportKey })),
+      scheduleEntries: reportScheduledReportsRuntime.entries.map((entry) => ({
+        reportKey: entry.reportKey,
+        scheduleAvailabilityState: entry.scheduleAvailabilityState
+      })),
+      securityCertificationEntries: reportSecurityCertificationRuntime.entries.map((entry) => ({
+        reportKey: entry.reportKey,
+        securityCertificationStatus: entry.securityCertificationStatus
+      })),
+      selectedReportKey
+    })
+  );
+  const filteredRuntimeCertificationEntries = reportRuntimeCertificationRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12950,6 +13078,12 @@ export async function getAdminReportingControl(
       reportSecurityCertificationRuntime.status === "empty" ||
       reportSecurityCertificationRuntime.status === "unavailable" ||
       reportSecurityCertificationRuntime.totals.unsafeReports > 0,
+    reportRuntimeCertificationLastGenerated: reportRuntimeCertificationRuntime.lastGeneratedState,
+    reportRuntimeCertificationNeedsAttention:
+      reportRuntimeCertificationRuntime.status === "degraded" ||
+      reportRuntimeCertificationRuntime.status === "empty" ||
+      reportRuntimeCertificationRuntime.status === "unavailable" ||
+      reportRuntimeCertificationRuntime.totals.runtimeUnsafeReports > 0,
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -13522,6 +13656,22 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportSecurityCertificationRuntime.totals,
       warnings: reportSecurityCertificationRuntime.warnings
+    },
+    reportRuntimeCertification: {
+      byStatus: reportRuntimeCertificationRuntime.byStatus,
+      entries: filteredRuntimeCertificationEntries,
+      errorMessage: reportRuntimeCertificationRuntime.errorMessage,
+      generatedAt: reportRuntimeCertificationRuntime.generatedAt,
+      lastGeneratedState: reportRuntimeCertificationRuntime.lastGeneratedState,
+      loadingState: reportRuntimeCertificationRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportKey: reportRuntimeCertificationRuntime.selectedReportKey,
+      selectedReportRuntimeCertification: reportRuntimeCertificationRuntime.selectedReportRuntimeCertification,
+      status: reportRuntimeCertificationRuntime.status,
+      summary: reportRuntimeCertificationRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportRuntimeCertificationRuntime.totals,
+      warnings: reportRuntimeCertificationRuntime.warnings
     },
     reports,
     selectedRange,

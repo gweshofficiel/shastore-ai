@@ -58,6 +58,16 @@ import {
   reportSecurityCertificationBadgeTone,
   reportSecurityCertificationStatusLabel
 } from "@/src/lib/reports/report-security-certification-runtime";
+import {
+  reportRuntimeCertificationBadgeTone,
+  reportRuntimeCertificationStatusLabel
+} from "@/src/lib/reports/report-runtime-certification-runtime";
+
+function toneForRuntimeCertificationStatus(status: string) {
+  return reportRuntimeCertificationBadgeTone(
+    status as Parameters<typeof reportRuntimeCertificationBadgeTone>[0]
+  );
+}
 
 function toneForSecurityCertificationStatus(status: string) {
   return reportSecurityCertificationBadgeTone(
@@ -385,9 +395,13 @@ export default async function AdminReportsPage({
         <AdminBadge tone={toneForSecurityCertificationStatus("certified")}>
           {control.reportSecurityCertification.totals.certifiedReports} security certified
         </AdminBadge>
+        <AdminBadge tone={toneForRuntimeCertificationStatus("runtime_certified")}>
+          {control.reportRuntimeCertification.totals.runtimeCertifiedReports} runtime certified
+        </AdminBadge>
         <span className="text-xs text-slate-600">
           {control.registry.summary} · {control.registry.totalEntries} roadmap entries ·{" "}
-          {control.reportDataCertification.summary} · {control.reportSecurityCertification.summary}
+          {control.reportDataCertification.summary} · {control.reportSecurityCertification.summary} ·{" "}
+          {control.reportRuntimeCertification.summary}
         </span>
       </div>
 
@@ -1788,7 +1802,9 @@ export default async function AdminReportsPage({
               { label: "Data certified", value: control.reportDataCertification.totals.certifiedReports },
               { label: "Data partial", value: control.reportDataCertification.totals.partialReports },
               { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
-              { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports }
+              { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports },
+              { label: "Runtime certified", value: control.reportRuntimeCertification.totals.runtimeCertifiedReports },
+              { label: "Runtime partial", value: control.reportRuntimeCertification.totals.runtimePartialReports }
             ]}
           />
         </div>
@@ -1807,6 +1823,9 @@ export default async function AdminReportsPage({
               (entry) => entry.reportKey === report.reportKey
             );
             const securityEntry = control.reportSecurityCertification.entries.find(
+              (entry) => entry.reportKey === report.reportKey
+            );
+            const runtimeEntry = control.reportRuntimeCertification.entries.find(
               (entry) => entry.reportKey === report.reportKey
             );
 
@@ -1831,6 +1850,9 @@ export default async function AdminReportsPage({
                   ({reportDataCertificationStatusLabel(certificationEntry.certificationStatus)}
                   {securityEntry
                     ? ` · ${reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}`
+                    : ""}
+                  {runtimeEntry
+                    ? ` · ${reportRuntimeCertificationStatusLabel(runtimeEntry.runtimeCertificationStatus)}`
                     : ""}
                   )
                 </span>
@@ -1930,6 +1952,22 @@ export default async function AdminReportsPage({
                           {reportSecurityCertificationStatusLabel(
                             control.reportSecurityCertification.selectedReportSecurityCertification
                               .securityCertificationStatus
+                          )}
+                        </AdminBadge>
+                      </>
+                    ) : null}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification ? (
+                      <>
+                        {" "}
+                        <AdminBadge
+                          tone={reportRuntimeCertificationBadgeTone(
+                            control.reportRuntimeCertification.selectedReportRuntimeCertification
+                              .runtimeCertificationStatus
+                          )}
+                        >
+                          {reportRuntimeCertificationStatusLabel(
+                            control.reportRuntimeCertification.selectedReportRuntimeCertification
+                              .runtimeCertificationStatus
                           )}
                         </AdminBadge>
                       </>
@@ -2479,6 +2517,107 @@ export default async function AdminReportsPage({
               </div>
             ) : null}
 
+            {control.reportRuntimeCertification.selectedReportRuntimeCertification ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-25 Runtime Certification summary
+                  </span>
+                  <AdminBadge
+                    tone={reportRuntimeCertificationBadgeTone(
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .runtimeCertificationStatus
+                    )}
+                  >
+                    {reportRuntimeCertificationStatusLabel(
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .runtimeCertificationStatus
+                    )}
+                  </AdminBadge>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  {control.reportRuntimeCertification.selectedReportRuntimeCertification.runtimeHelperText}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {control.reportRuntimeCertification.selectedReportRuntimeCertification.runtimeCertificationNotes}
+                </p>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Registry:</span>{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .registryIntegrationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Viewer:</span>{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .viewerIntegrationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Status / Visibility / Safe actions:</span>{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.statusIntegrationConfirmation}{" "}
+                    ·{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .visibilityIntegrationConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .safeActionsIntegrationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Audit / Review / Export / Schedule:</span>{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.auditIntegrationConfirmation}{" "}
+                    ·{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.reviewIntegrationConfirmation}{" "}
+                    ·{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.exportIntegrationConfirmation}{" "}
+                    ·{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .scheduledReportsIntegrationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Data / Security certification:</span>{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .dataCertificationIntegrationConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportRuntimeCertification.selectedReportRuntimeCertification
+                        .securityCertificationIntegrationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Read-only / Empty / Error safety:</span>{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.pageLoadReadOnlyConfirmation}{" "}
+                    ·{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.emptyStateSafetyConfirmation}{" "}
+                    ·{" "}
+                    {control.reportRuntimeCertification.selectedReportRuntimeCertification.errorStateSafetyConfirmation}
+                  </p>
+                </div>
+
+                <button
+                  className="h-10 w-fit rounded-full border border-slate-200 bg-slate-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  title="Runtime certification records are not written during page load."
+                  type="button"
+                >
+                  Certify runtime disabled
+                </button>
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -2796,7 +2935,10 @@ export default async function AdminReportsPage({
             { label: "Data planned", value: control.reportDataCertification.totals.plannedReports },
             { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
             { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports },
-            { label: "Security planned", value: control.reportSecurityCertification.totals.plannedReports }
+            { label: "Security planned", value: control.reportSecurityCertification.totals.plannedReports },
+            { label: "Runtime certified", value: control.reportRuntimeCertification.totals.runtimeCertifiedReports },
+            { label: "Runtime partial", value: control.reportRuntimeCertification.totals.runtimePartialReports },
+            { label: "Runtime planned", value: control.reportRuntimeCertification.totals.runtimePlannedReports }
           ]}
         />
 
@@ -2815,6 +2957,14 @@ export default async function AdminReportsPage({
               key={`security-${item.label}`}
             >
               {reportSecurityCertificationStatusLabel(item.label)}: {item.count}
+            </span>
+          ))}
+          {control.reportRuntimeCertification.byStatus.map((item) => (
+            <span
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+              key={`runtime-${item.label}`}
+            >
+              {reportRuntimeCertificationStatusLabel(item.label)}: {item.count}
             </span>
           ))}
         </div>
@@ -4059,6 +4209,115 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-25 Report Runtime Certification
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportRuntimeCertification.status)}>
+            {control.reportRuntimeCertification.status}
+          </AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportRuntimeCertification.loadingState)}>
+            {control.reportRuntimeCertification.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportRuntimeCertification.summary}</span>
+        </div>
+
+        {control.reportRuntimeCertification.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportRuntimeCertification.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Runtime certified", value: control.reportRuntimeCertification.totals.runtimeCertifiedReports },
+            { label: "Partial", value: control.reportRuntimeCertification.totals.runtimePartialReports },
+            { label: "Planned", value: control.reportRuntimeCertification.totals.runtimePlannedReports },
+            { label: "Blocked", value: control.reportRuntimeCertification.totals.runtimeBlockedReports },
+            { label: "Unsafe", value: control.reportRuntimeCertification.totals.runtimeUnsafeReports },
+            { label: "Unknown", value: control.reportRuntimeCertification.totals.runtimeUnknownReports }
+          ]}
+        />
+
+        {control.reportRuntimeCertification.byStatus.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportRuntimeCertification.byStatus.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportRuntimeCertificationStatusLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportRuntimeCertification.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportRuntimeCertification.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Status",
+            "Registry",
+            "Viewer",
+            "Status layer",
+            "Visibility",
+            "Safe actions",
+            "Audit",
+            "Review",
+            "Export",
+            "Schedule",
+            "Data cert",
+            "Security cert",
+            "Read-only",
+            "Notes"
+          ]}
+        >
+          {control.reportRuntimeCertification.entries.length ? (
+            control.reportRuntimeCertification.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportRuntimeCertificationBadgeTone(entry.runtimeCertificationStatus)}>
+                    {reportRuntimeCertificationStatusLabel(entry.runtimeCertificationStatus)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.registryIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.viewerIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.statusIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.visibilityIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.safeActionsIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.auditIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.reviewIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.exportIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduledReportsIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.dataCertificationIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.securityCertificationIntegrationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.pageLoadReadOnlyConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.runtimeCertificationNotes}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={15}>
+                No runtime certification entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -4084,6 +4343,9 @@ export default async function AdminReportsPage({
             (entry) => entry.reportKey === report.reportKey
           );
           const securityEntry = control.reportSecurityCertification.entries.find(
+            (entry) => entry.reportKey === report.reportKey
+          );
+          const runtimeEntry = control.reportRuntimeCertification.entries.find(
             (entry) => entry.reportKey === report.reportKey
           );
 
@@ -4158,9 +4420,17 @@ export default async function AdminReportsPage({
                       {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
                     </AdminBadge>
                   ) : null}
+                  {runtimeEntry ? (
+                    <AdminBadge tone={reportRuntimeCertificationBadgeTone(runtimeEntry.runtimeCertificationStatus)}>
+                      {reportRuntimeCertificationStatusLabel(runtimeEntry.runtimeCertificationStatus)}
+                    </AdminBadge>
+                  ) : null}
                   <p className="text-xs text-slate-500">{certificationEntry.certificationNotes}</p>
                   {securityEntry ? (
                     <p className="text-xs text-slate-500">{securityEntry.securityCertificationNotes}</p>
+                  ) : null}
+                  {runtimeEntry ? (
+                    <p className="text-xs text-slate-500">{runtimeEntry.runtimeCertificationNotes}</p>
                   ) : null}
                 </div>
               ) : null}
