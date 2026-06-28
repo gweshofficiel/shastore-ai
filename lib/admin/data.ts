@@ -329,6 +329,10 @@ import {
   mapOperationsDiagnosticsRuntimeToAdminFields
 } from "@/src/lib/operations/operations-diagnostics-runtime";
 import {
+  loadOperationsSafeControlsRuntimeReadOnlySafe,
+  mapOperationsSafeControlsRuntimeToAdminFields
+} from "@/src/lib/operations/operations-safe-controls-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6154,6 +6158,33 @@ export type AdminOperationsDiagnosticsRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsSafeControlsRuntimeItem = {
+  controlKey: string;
+  controlName: string;
+  controlType: string;
+  disabledReason: string;
+  enabled: false;
+  executionStatus: string;
+  groupKey: string;
+  metadataDetected: boolean;
+  permissionScope: string;
+  requiresAudit: boolean;
+  requiresConfirmation: boolean;
+  requiresReview: boolean;
+  reviewStatus: string;
+  riskLevel: string;
+  runtimeStatus: string;
+  targetRuntime: string;
+  visibility: string;
+};
+
+export type AdminOperationsSafeControlsRuntimeGroup = {
+  controlCount: number;
+  controls: AdminOperationsSafeControlsRuntimeItem[];
+  groupKey: string;
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6330,6 +6361,19 @@ export type AdminOperationsControl = {
   diagnosticsRuntimeGroups: AdminOperationsDiagnosticsRuntimeGroup[];
   diagnosticsRuntimeItems: AdminOperationsDiagnosticsRuntimeItem[];
   diagnosticsSafeControls: AdminOperationsDiagnosticsSafeControl[];
+  safeControlsRuntime: {
+    disabledControls: number;
+    groupCount: number;
+    readOnly: true;
+    registeredControls: number;
+    registrySource: "operations_registry_runtime";
+    source: "operations_safe_controls_runtime";
+    status: "needs_attention" | "safe_controls_runtime_ready";
+    summary: string;
+    totalControls: number;
+  };
+  safeControlsRuntimeGroups: AdminOperationsSafeControlsRuntimeGroup[];
+  safeControlsRuntimeItems: AdminOperationsSafeControlsRuntimeItem[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15001,6 +15045,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsSafeControlsRuntimeLoad = mapOperationsSafeControlsRuntimeToAdminFields(
+    await loadOperationsSafeControlsRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15267,7 +15316,10 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
     diagnosticsRuntimeGroups: operationsDiagnosticsRuntimeLoad.groups,
     diagnosticsRuntimeItems: operationsDiagnosticsRuntimeLoad.diagnosticItems,
-    diagnosticsSafeControls: operationsDiagnosticsRuntimeLoad.safeControls
+    diagnosticsSafeControls: operationsDiagnosticsRuntimeLoad.safeControls,
+    safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+    safeControlsRuntimeGroups: operationsSafeControlsRuntimeLoad.groups,
+    safeControlsRuntimeItems: operationsSafeControlsRuntimeLoad.controlItems
   };
 }
 

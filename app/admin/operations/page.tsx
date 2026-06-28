@@ -99,9 +99,16 @@ import {
   operationsDiagnosticsStatusLabel,
   type OperationsDiagnosticsRuntimeStatus
 } from "@/src/lib/operations/operations-diagnostics-runtime";
+import {
+  operationsSafeControlExecutionStatusLabel,
+  operationsSafeControlRiskLevelTone,
+  operationsSafeControlsRuntimeStatusBadgeTone,
+  operationsSafeControlsRuntimeStatusLabel,
+  type OperationsSafeControlsRuntimeStatus
+} from "@/src/lib/operations/operations-safe-controls-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -178,6 +185,10 @@ function toneForDisasterRecoveryRuntimeStatus(status: string) {
 
 function toneForDiagnosticsRuntimeStatus(status: string) {
   return operationsDiagnosticsRuntimeStatusBadgeTone(status as OperationsDiagnosticsRuntimeStatus);
+}
+
+function toneForSafeControlsRuntimeStatus(status: string) {
+  return operationsSafeControlsRuntimeStatusBadgeTone(status as OperationsSafeControlsRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -1512,6 +1523,84 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{diagnostic.safeSummary}</td>
             <td className="px-5 py-4">
               <DiagnosticsSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Safe controls runtime</span>
+        <AdminBadge tone={toneForStatus(control.safeControlsRuntime.status)}>{control.safeControlsRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.safeControlsRuntime.summary}</span>
+      </div>
+
+      {control.safeControlsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.controlCount} control{group.controlCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Control",
+          "Type",
+          "Target runtime",
+          "Risk",
+          "Execution",
+          "Permissions",
+          "Disabled reason",
+          "Action"
+        ]}
+      >
+        {control.safeControlsRuntimeItems.map((safeControl) => (
+          <tr key={safeControl.controlKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{safeControl.controlName}</span>
+                <AdminBadge tone={toneForSafeControlsRuntimeStatus(safeControl.runtimeStatus)}>
+                  {operationsSafeControlsRuntimeStatusLabel(
+                    safeControl.runtimeStatus as OperationsSafeControlsRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {safeControl.metadataDetected
+                    ? "Registry-based disabled control; read-only metadata only"
+                    : "Control registered; metadata pending"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {safeControl.reviewStatus} · Visibility: {safeControl.visibility}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{safeControl.controlType}</td>
+            <td className="px-5 py-4 text-slate-600">{safeControl.targetRuntime}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsSafeControlRiskLevelTone(safeControl.riskLevel as Parameters<typeof operationsSafeControlRiskLevelTone>[0])}>
+                {safeControl.riskLevel}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <div className="grid gap-1 text-xs text-slate-600">
+                <span>Disabled</span>
+                <span>Read-only</span>
+                <span>Requires future certification</span>
+                <span>{operationsSafeControlExecutionStatusLabel(safeControl.executionStatus as Parameters<typeof operationsSafeControlExecutionStatusLabel>[0])}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{safeControl.permissionScope}</td>
+            <td className="px-5 py-4 text-slate-600">{safeControl.disabledReason}</td>
+            <td className="px-5 py-4">
+              <button
+                className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                disabled
+                title={safeControl.disabledReason}
+                type="button"
+              >
+                {safeControl.controlName}
+              </button>
             </td>
           </tr>
         ))}
