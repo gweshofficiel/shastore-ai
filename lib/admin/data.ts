@@ -250,6 +250,10 @@ import {
   mapReportScheduledRuntimeToAdminFields
 } from "@/src/lib/reports/report-scheduled-reports-runtime";
 import {
+  buildReportDataCertificationRuntimeInput,
+  mapReportDataCertificationRuntimeToAdminFields
+} from "@/src/lib/reports/report-data-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5203,6 +5207,70 @@ export type AdminReportingControl = {
       schedulingLockedReports: number;
       schedulingPlannedReports: number;
       schedulingUnavailableReports: number;
+    };
+    warnings: string[];
+  };
+  reportDataCertification: {
+    byStatus: Array<{
+      count: number;
+      label: "blocked" | "certified" | "partial" | "planned" | "unsafe" | "unknown";
+    }>;
+    entries: Array<{
+      aggregationSafetyConfirmation: string;
+      certificationNotes: string;
+      certificationStatus: "blocked" | "certified" | "partial" | "planned" | "unsafe" | "unknown";
+      dataSourceAvailability: "available" | "partial" | "planned" | "unavailable";
+      dataSourceName: string;
+      emptyStateSafetyConfirmation: string;
+      readOnly: true;
+      readOnlyConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      runtimeAdapterHealth:
+        | "degraded"
+        | "empty"
+        | "error"
+        | "healthy"
+        | "not_applicable"
+        | "planned";
+      sensitiveDataMaskingConfirmation: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportCertification: {
+      aggregationSafetyConfirmation: string;
+      certificationNotes: string;
+      certificationStatus: "blocked" | "certified" | "partial" | "planned" | "unsafe" | "unknown";
+      dataSourceAvailability: "available" | "partial" | "planned" | "unavailable";
+      dataSourceName: string;
+      emptyStateSafetyConfirmation: string;
+      readOnly: true;
+      readOnlyConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      runtimeAdapterHealth:
+        | "degraded"
+        | "empty"
+        | "error"
+        | "healthy"
+        | "not_applicable"
+        | "planned";
+      sensitiveDataMaskingConfirmation: string;
+    } | null;
+    selectedReportKey: string | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      blockedReports: number;
+      certifiedReports: number;
+      partialReports: number;
+      plannedReports: number;
+      unsafeReports: number;
+      unknownReports: number;
     };
     warnings: string[];
   };
@@ -12709,6 +12777,45 @@ export async function getAdminReportingControl(
   const filteredScheduledEntries = reportScheduledReportsRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportDataCertificationRuntime = await mapReportDataCertificationRuntimeToAdminFields(
+    buildReportDataCertificationRuntimeInput({
+      adapterStatesByReportKey,
+      auditEntries: reportAuditRuntime.entries.map((entry) => ({
+        auditCoverageState: entry.auditCoverageState,
+        auditGaps: entry.auditGaps,
+        reportKey: entry.reportKey
+      })),
+      exportEntries: reportExportRuntime.entries.map((entry) => ({
+        exportAvailabilityState: entry.exportAvailabilityState,
+        reportKey: entry.reportKey
+      })),
+      registryReports: allReports.map((report) => ({
+        category: report.category,
+        dataSourceDescription: report.dataSourceDescription,
+        name: report.name,
+        reportKey: report.reportKey,
+        runtimeSafeAction: report.runtimeSafeAction,
+        runtimeStatus: report.runtimeStatus,
+        runtimeVisibility: report.runtimeVisibility,
+        status: report.status
+      })),
+      reviewEntries: reportReviewRuntime.entries.map((entry) => ({
+        certificationReadinessSignal: entry.certificationReadinessSignal,
+        reportKey: entry.reportKey,
+        reviewCoverageState: entry.reviewCoverageState,
+        reviewGaps: entry.reviewGaps
+      })),
+      scheduleEntries: reportScheduledReportsRuntime.entries.map((entry) => ({
+        reportKey: entry.reportKey,
+        scheduleAvailabilityState: entry.scheduleAvailabilityState,
+        scheduleGaps: entry.scheduleGaps
+      })),
+      selectedReportKey
+    })
+  );
+  const filteredCertificationEntries = reportDataCertificationRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12740,6 +12847,12 @@ export async function getAdminReportingControl(
       reportScheduledReportsRuntime.status === "degraded" ||
       reportScheduledReportsRuntime.status === "empty" ||
       reportScheduledReportsRuntime.status === "unavailable",
+    reportDataCertificationLastGenerated: reportDataCertificationRuntime.lastGeneratedState,
+    reportDataCertificationNeedsAttention:
+      reportDataCertificationRuntime.status === "degraded" ||
+      reportDataCertificationRuntime.status === "empty" ||
+      reportDataCertificationRuntime.status === "unavailable" ||
+      reportDataCertificationRuntime.totals.unsafeReports > 0,
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -13280,6 +13393,22 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportScheduledReportsRuntime.totals,
       warnings: reportScheduledReportsRuntime.warnings
+    },
+    reportDataCertification: {
+      byStatus: reportDataCertificationRuntime.byStatus,
+      entries: filteredCertificationEntries,
+      errorMessage: reportDataCertificationRuntime.errorMessage,
+      generatedAt: reportDataCertificationRuntime.generatedAt,
+      lastGeneratedState: reportDataCertificationRuntime.lastGeneratedState,
+      loadingState: reportDataCertificationRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportCertification: reportDataCertificationRuntime.selectedReportCertification,
+      selectedReportKey: reportDataCertificationRuntime.selectedReportKey,
+      status: reportDataCertificationRuntime.status,
+      summary: reportDataCertificationRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportDataCertificationRuntime.totals,
+      warnings: reportDataCertificationRuntime.warnings
     },
     reports,
     selectedRange,

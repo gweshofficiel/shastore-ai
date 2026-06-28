@@ -124,6 +124,8 @@ export type ReportsRegistryRuntimeContext = {
   reportExportNeedsAttention?: boolean;
   reportScheduledReportsLastGenerated?: string;
   reportScheduledReportsNeedsAttention?: boolean;
+  reportDataCertificationLastGenerated?: string;
+  reportDataCertificationNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -505,7 +507,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Certification",
     certificationState: "planned",
-    dataSourceDescription: "Report data certification reserved for RP-23.",
+    dataSourceDescription:
+      "Report Data Certification runtime (registry + RP-2 through RP-22 adapters + RP-12 through RP-22 platform runtimes). Read-only certification metadata on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Data integrity checks"],
     lastGeneratedState: "Not generated",
@@ -513,7 +516,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
     reportKey: "rp-23-report-data-certification",
     roadmapPhase: "RP-23",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Data Certification",
     visibility: "super_admin"
   },
@@ -798,6 +801,17 @@ function applyRuntimeContext(
       exportAvailabilityState: "placeholder",
       lastGeneratedState: context.reportScheduledReportsLastGenerated ?? definition.lastGeneratedState,
       status: context.reportScheduledReportsNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-23-report-data-certification") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Data Certification runtime (registry + RP-2 through RP-22 adapters + RP-12 through RP-22 platform runtimes). Read-only certification metadata on page load. No certification records are written.",
+      exportAvailabilityState: "placeholder",
+      lastGeneratedState: context.reportDataCertificationLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportDataCertificationNeedsAttention ? "review" : definition.status
     };
   }
 
