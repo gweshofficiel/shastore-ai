@@ -27,9 +27,14 @@ import {
   operationsWorkerRuntimeStatusLabel,
   type OperationsWorkerRuntimeStatus
 } from "@/src/lib/operations/operations-worker-runtime";
+import {
+  operationsCronRuntimeStatusBadgeTone,
+  operationsCronRuntimeStatusLabel,
+  type OperationsCronRuntimeStatus
+} from "@/src/lib/operations/operations-cron-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -56,6 +61,10 @@ function toneForWorkerRuntimeStatus(status: string) {
   return operationsWorkerRuntimeStatusBadgeTone(status as OperationsWorkerRuntimeStatus);
 }
 
+function toneForCronRuntimeStatus(status: string) {
+  return operationsCronRuntimeStatusBadgeTone(status as OperationsCronRuntimeStatus);
+}
+
 function supportLabel(enabled: boolean) {
   return enabled ? "Supported" : "Not supported";
 }
@@ -70,6 +79,24 @@ function OperationsHiddenFields({ targetName, targetType }: { targetName: string
       <input name="targetName" type="hidden" value={targetName} />
       <input name="targetType" type="hidden" value={targetType} />
     </>
+  );
+}
+
+function CronSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Trigger Now", "Pause", "Resume", "Reschedule", "Inspect Runs"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No cron action is executed during OP-5 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -299,16 +326,49 @@ export default async function AdminOperationsPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Cron job", "Schedule", "Last run", "Next run", "Status", "Controls"]}>
-        {control.cronJobs.map((cron) => (
-          <tr key={cron.name}>
-            <td className="px-5 py-4 font-bold text-slate-950">{cron.name}</td>
-            <td className="px-5 py-4 text-slate-600">{cron.schedule}</td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminDate(cron.lastRun)}</td>
-            <td className="px-5 py-4 text-slate-600">{cron.nextRun}</td>
-            <td className="px-5 py-4"><AdminBadge tone={toneForStatus(cron.status)}>{cron.status}</AdminBadge></td>
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Cron jobs runtime</span>
+        <AdminBadge tone={toneForStatus(control.cronRuntime.status)}>{control.cronRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.cronRuntime.summary}</span>
+      </div>
+
+      {control.cronRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} cron job{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable headers={["Cron job", "Schedule", "Last run", "Next run", "Status", "Safe controls"]}>
+        {control.cronRuntimeItems.map((cron) => (
+          <tr key={cron.cronKey}>
             <td className="px-5 py-4">
-              <OperationsActionButtons targetName={cron.name} targetType="cron" />
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{cron.cronName}</span>
+                <AdminBadge tone={toneForCronRuntimeStatus(cron.runtimeStatus)}>
+                  {operationsCronRuntimeStatusLabel(cron.runtimeStatus as OperationsCronRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {cron.tableDetected
+                    ? cron.metadataSource
+                      ? `Read-only from ${cron.metadataSource}`
+                      : "Read-only cron registry metadata"
+                    : "No cron table detected"}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{cron.scheduleExpression}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(cron.lastRunAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{cron.nextRunLabel}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForCronRuntimeStatus(cron.runtimeStatus)}>
+                {operationsCronRuntimeStatusLabel(cron.runtimeStatus as OperationsCronRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <CronSafeControls />
             </td>
           </tr>
         ))}

@@ -277,6 +277,10 @@ import {
   mapOperationsWorkerRuntimeToAdminFields
 } from "@/src/lib/operations/operations-worker-runtime";
 import {
+  loadOperationsCronRuntimeReadOnlySafe,
+  mapOperationsCronRuntimeToAdminFields
+} from "@/src/lib/operations/operations-cron-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5667,6 +5671,42 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsCronSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsCronRuntimeItem = {
+  cronKey: string;
+  cronName: string;
+  cronType: string;
+  failedRuns: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastRunAt: string | null;
+  metadataSource: string | null;
+  nextRunAt: string | null;
+  nextRunLabel: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsCronSafeControl[];
+  scheduleExpression: string;
+  tableDetected: boolean;
+  timezone: string;
+  totalRuns: number;
+  visibility: string;
+};
+
+export type AdminOperationsCronRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsCronRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsWorkerSafeControl = {
   enabled: false;
   key: string;
@@ -5770,6 +5810,20 @@ export type AdminOperationsControl = {
     schedule: string;
     status: "placeholder" | "ready" | "review";
   }>;
+  cronRuntime: {
+    activeCronJobs: number;
+    failedCronJobs: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_cron_runtime";
+    status: "cron_runtime_ready" | "needs_attention";
+    summary: string;
+    totalCronJobs: number;
+  };
+  cronRuntimeGroups: AdminOperationsCronRuntimeGroup[];
+  cronRuntimeItems: AdminOperationsCronRuntimeItem[];
+  cronSafeControls: AdminOperationsCronSafeControl[];
   databaseStorage: Array<{
     metric: string;
     note: string;
@@ -14215,6 +14269,14 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsCronRuntimeLoad = mapOperationsCronRuntimeToAdminFields(
+    await loadOperationsCronRuntimeReadOnlySafe({
+      monitoringEvents,
+      queueRuntimeItems: operationsQueueRuntimeLoad.queues,
+      supabase,
+      workerRuntimeItems: operationsWorkerRuntimeLoad.workers
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14299,36 +14361,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       }
     ],
     components: operationsRegistry.components,
-    cronJobs: [
-      {
-        lastRun: latestMonitoring,
-        name: "Billing sync monitor",
-        nextRun: "Placeholder schedule",
-        schedule: "Provider webhook driven",
-        status: "placeholder"
-      },
-      {
-        lastRun: emailQueue.lastProcessed,
-        name: "Email retry monitor",
-        nextRun: "Future cron placeholder",
-        schedule: "Manual/store-triggered queue today",
-        status: emailQueue.failed ? "review" : "placeholder"
-      },
-      {
-        lastRun: aiQueue.lastProcessed,
-        name: "AI queue monitor",
-        nextRun: "Future worker schedule",
-        schedule: "Worker/runtime driven",
-        status: aiQueue.failed ? "review" : "placeholder"
-      },
-      {
-        lastRun: domainEmailQueue.lastProcessed,
-        name: "Domain/email workflow monitor",
-        nextRun: "Future provider sync",
-        schedule: "Placeholder",
-        status: domainEmailQueue.failed ? "review" : "placeholder"
-      }
-    ],
+    cronJobs: operationsCronRuntimeLoad.legacyCronJobs,
+    cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+    cronRuntimeGroups: operationsCronRuntimeLoad.groups,
+    cronRuntimeItems: operationsCronRuntimeLoad.cronJobs,
+    cronSafeControls: operationsCronRuntimeLoad.safeControls,
     databaseStorage: [
       {
         metric: "Supabase health",
@@ -14367,7 +14404,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     dashboardStats: operationsDashboard.stats,
     overview: {
       aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueueItem?.tableDetected && aiQueue.completed + aiQueue.pending + aiQueue.processing + aiQueue.failed > 0 ? "healthy" : aiQueueItem?.tableDetected ? "placeholder" : "missing_config",
-      cronHealth: monitoringFailures.length ? "needs_review" : "placeholder",
+      cronHealth: operationsCronRuntimeLoad.cronRuntime.status === "needs_attention" ? "needs_review" : "placeholder",
       databaseHealth: supabaseConfigured ? "healthy" : "missing_config",
       domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
       emailQueueHealth: emailQueue.failed ? "needs_review" : emailQueueItem?.tableDetected && emailQueue.completed + emailQueue.pending + emailQueue.processing + emailQueue.failed > 0 ? "healthy" : emailQueueItem?.tableDetected ? "placeholder" : "missing_config",
