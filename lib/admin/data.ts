@@ -262,6 +262,10 @@ import {
   mapReportRuntimeCertificationRuntimeToAdminFields
 } from "@/src/lib/reports/report-runtime-certification-runtime";
 import {
+  buildReportProductionCertificationRuntimeInput,
+  mapReportProductionCertificationRuntimeToAdminFields
+} from "@/src/lib/reports/report-production-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5425,6 +5429,109 @@ export type AdminReportingControl = {
       runtimePlannedReports: number;
       runtimeUnsafeReports: number;
       runtimeUnknownReports: number;
+    };
+    warnings: string[];
+  };
+  reportProductionCertification: {
+    byStatus: Array<{
+      count: number;
+      label:
+        | "production_blocked"
+        | "production_certified"
+        | "production_partial"
+        | "production_planned"
+        | "production_unsafe"
+        | "production_unknown";
+    }>;
+    entries: Array<{
+      aggregationProductionConfirmation: string;
+      auditProductionConfirmation: string;
+      dataCertificationProductionConfirmation: string;
+      exportProductionConfirmation: string;
+      externalProviderCallPreventionConfirmation: string;
+      filtersProductionConfirmation: string;
+      pageLoadReadOnlyConfirmation: string;
+      productionCertificationNotes: string;
+      productionCertificationStatus:
+        | "production_blocked"
+        | "production_certified"
+        | "production_partial"
+        | "production_planned"
+        | "production_unsafe"
+        | "production_unknown";
+      productionHelperText: string;
+      providerCallPreventionConfirmation: string;
+      readOnly: true;
+      registryProductionConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      reviewProductionConfirmation: string;
+      runtimeCertificationProductionConfirmation: string;
+      safeActionsProductionConfirmation: string;
+      scheduledReportsProductionConfirmation: string;
+      searchProductionConfirmation: string;
+      securityCertificationProductionConfirmation: string;
+      sensitiveDataProtectionConfirmation: string;
+      statusProductionConfirmation: string;
+      viewerProductionConfirmation: string;
+      visibilityProductionConfirmation: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    reportsRuntimeProductionStatus:
+      | "production_blocked"
+      | "production_certified"
+      | "production_partial"
+      | "production_planned"
+      | "production_unsafe"
+      | "production_unknown";
+    selectedReportKey: string | null;
+    selectedReportProductionCertification: {
+      aggregationProductionConfirmation: string;
+      auditProductionConfirmation: string;
+      dataCertificationProductionConfirmation: string;
+      exportProductionConfirmation: string;
+      externalProviderCallPreventionConfirmation: string;
+      filtersProductionConfirmation: string;
+      pageLoadReadOnlyConfirmation: string;
+      productionCertificationNotes: string;
+      productionCertificationStatus:
+        | "production_blocked"
+        | "production_certified"
+        | "production_partial"
+        | "production_planned"
+        | "production_unsafe"
+        | "production_unknown";
+      productionHelperText: string;
+      providerCallPreventionConfirmation: string;
+      readOnly: true;
+      registryProductionConfirmation: string;
+      reportKey: string;
+      reportTitle: string;
+      reviewProductionConfirmation: string;
+      runtimeCertificationProductionConfirmation: string;
+      safeActionsProductionConfirmation: string;
+      scheduledReportsProductionConfirmation: string;
+      searchProductionConfirmation: string;
+      securityCertificationProductionConfirmation: string;
+      sensitiveDataProtectionConfirmation: string;
+      statusProductionConfirmation: string;
+      viewerProductionConfirmation: string;
+      visibilityProductionConfirmation: string;
+    } | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      productionBlockedReports: number;
+      productionCertifiedReports: number;
+      productionPartialReports: number;
+      productionPlannedReports: number;
+      productionUnsafeReports: number;
+      productionUnknownReports: number;
     };
     warnings: string[];
   };
@@ -13035,6 +13142,34 @@ export async function getAdminReportingControl(
   const filteredRuntimeCertificationEntries = reportRuntimeCertificationRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportProductionCertificationRuntime = await mapReportProductionCertificationRuntimeToAdminFields(
+    buildReportProductionCertificationRuntimeInput({
+      layerRuntimeStatuses: {
+        aggregationStatus: reportAggregationRuntime.status,
+        auditStatus: reportAuditRuntime.status,
+        exportStatus: reportExportRuntime.status,
+        filtersStatus: reportFiltersRuntime.status,
+        registryStatus: "registry_ready",
+        reviewStatus: reportReviewRuntime.status,
+        safeActionsStatus: reportSafeActionsRuntime.status,
+        scheduledReportsStatus: reportScheduledReportsRuntime.status,
+        searchStatus: reportSearchRuntime.status,
+        statusLayerStatus: reportStatusRuntime.status,
+        viewerStatus: reportViewerRuntime.status,
+        visibilityStatus: reportVisibilityRuntime.status
+      },
+      registryReports: allReports.map((report) => ({
+        name: report.name,
+        reportKey: report.reportKey,
+        status: report.status
+      })),
+      runtimeCertificationEntries: reportRuntimeCertificationRuntime.entries,
+      selectedReportKey
+    })
+  );
+  const filteredProductionCertificationEntries = reportProductionCertificationRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -13084,6 +13219,14 @@ export async function getAdminReportingControl(
       reportRuntimeCertificationRuntime.status === "empty" ||
       reportRuntimeCertificationRuntime.status === "unavailable" ||
       reportRuntimeCertificationRuntime.totals.runtimeUnsafeReports > 0,
+    reportProductionCertificationLastGenerated: reportProductionCertificationRuntime.lastGeneratedState,
+    reportProductionCertificationNeedsAttention:
+      reportProductionCertificationRuntime.status === "degraded" ||
+      reportProductionCertificationRuntime.status === "empty" ||
+      reportProductionCertificationRuntime.status === "unavailable" ||
+      reportProductionCertificationRuntime.totals.productionUnsafeReports > 0 ||
+      reportProductionCertificationRuntime.reportsRuntimeProductionStatus === "production_unsafe" ||
+      reportProductionCertificationRuntime.reportsRuntimeProductionStatus === "production_blocked",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -13672,6 +13815,23 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportRuntimeCertificationRuntime.totals,
       warnings: reportRuntimeCertificationRuntime.warnings
+    },
+    reportProductionCertification: {
+      byStatus: reportProductionCertificationRuntime.byStatus,
+      entries: filteredProductionCertificationEntries,
+      errorMessage: reportProductionCertificationRuntime.errorMessage,
+      generatedAt: reportProductionCertificationRuntime.generatedAt,
+      lastGeneratedState: reportProductionCertificationRuntime.lastGeneratedState,
+      loadingState: reportProductionCertificationRuntime.loadingState,
+      readOnly: true as const,
+      reportsRuntimeProductionStatus: reportProductionCertificationRuntime.reportsRuntimeProductionStatus,
+      selectedReportKey: reportProductionCertificationRuntime.selectedReportKey,
+      selectedReportProductionCertification: reportProductionCertificationRuntime.selectedReportProductionCertification,
+      status: reportProductionCertificationRuntime.status,
+      summary: reportProductionCertificationRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportProductionCertificationRuntime.totals,
+      warnings: reportProductionCertificationRuntime.warnings
     },
     reports,
     selectedRange,

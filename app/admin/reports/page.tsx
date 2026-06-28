@@ -62,10 +62,20 @@ import {
   reportRuntimeCertificationBadgeTone,
   reportRuntimeCertificationStatusLabel
 } from "@/src/lib/reports/report-runtime-certification-runtime";
+import {
+  reportProductionCertificationBadgeTone,
+  reportProductionCertificationStatusLabel
+} from "@/src/lib/reports/report-production-certification-runtime";
 
 function toneForRuntimeCertificationStatus(status: string) {
   return reportRuntimeCertificationBadgeTone(
     status as Parameters<typeof reportRuntimeCertificationBadgeTone>[0]
+  );
+}
+
+function toneForProductionCertificationStatus(status: string) {
+  return reportProductionCertificationBadgeTone(
+    status as Parameters<typeof reportProductionCertificationBadgeTone>[0]
   );
 }
 
@@ -398,10 +408,18 @@ export default async function AdminReportsPage({
         <AdminBadge tone={toneForRuntimeCertificationStatus("runtime_certified")}>
           {control.reportRuntimeCertification.totals.runtimeCertifiedReports} runtime certified
         </AdminBadge>
+        <AdminBadge tone={toneForProductionCertificationStatus("production_certified")}>
+          {control.reportProductionCertification.totals.productionCertifiedReports} production certified
+        </AdminBadge>
+        <AdminBadge
+          tone={toneForProductionCertificationStatus(control.reportProductionCertification.reportsRuntimeProductionStatus)}
+        >
+          Reports Runtime {reportProductionCertificationStatusLabel(control.reportProductionCertification.reportsRuntimeProductionStatus)}
+        </AdminBadge>
         <span className="text-xs text-slate-600">
           {control.registry.summary} · {control.registry.totalEntries} roadmap entries ·{" "}
           {control.reportDataCertification.summary} · {control.reportSecurityCertification.summary} ·{" "}
-          {control.reportRuntimeCertification.summary}
+          {control.reportRuntimeCertification.summary} · {control.reportProductionCertification.summary}
         </span>
       </div>
 
@@ -1804,7 +1822,15 @@ export default async function AdminReportsPage({
               { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
               { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports },
               { label: "Runtime certified", value: control.reportRuntimeCertification.totals.runtimeCertifiedReports },
-              { label: "Runtime partial", value: control.reportRuntimeCertification.totals.runtimePartialReports }
+              { label: "Runtime partial", value: control.reportRuntimeCertification.totals.runtimePartialReports },
+              {
+                label: "Production certified",
+                value: control.reportProductionCertification.totals.productionCertifiedReports
+              },
+              {
+                label: "Production partial",
+                value: control.reportProductionCertification.totals.productionPartialReports
+              }
             ]}
           />
         </div>
@@ -1826,6 +1852,9 @@ export default async function AdminReportsPage({
               (entry) => entry.reportKey === report.reportKey
             );
             const runtimeEntry = control.reportRuntimeCertification.entries.find(
+              (entry) => entry.reportKey === report.reportKey
+            );
+            const productionEntry = control.reportProductionCertification.entries.find(
               (entry) => entry.reportKey === report.reportKey
             );
 
@@ -1853,6 +1882,9 @@ export default async function AdminReportsPage({
                     : ""}
                   {runtimeEntry
                     ? ` · ${reportRuntimeCertificationStatusLabel(runtimeEntry.runtimeCertificationStatus)}`
+                    : ""}
+                  {productionEntry
+                    ? ` · ${reportProductionCertificationStatusLabel(productionEntry.productionCertificationStatus)}`
                     : ""}
                   )
                 </span>
@@ -1968,6 +2000,22 @@ export default async function AdminReportsPage({
                           {reportRuntimeCertificationStatusLabel(
                             control.reportRuntimeCertification.selectedReportRuntimeCertification
                               .runtimeCertificationStatus
+                          )}
+                        </AdminBadge>
+                      </>
+                    ) : null}
+                    {control.reportProductionCertification.selectedReportProductionCertification ? (
+                      <>
+                        {" "}
+                        <AdminBadge
+                          tone={reportProductionCertificationBadgeTone(
+                            control.reportProductionCertification.selectedReportProductionCertification
+                              .productionCertificationStatus
+                          )}
+                        >
+                          {reportProductionCertificationStatusLabel(
+                            control.reportProductionCertification.selectedReportProductionCertification
+                              .productionCertificationStatus
                           )}
                         </AdminBadge>
                       </>
@@ -2618,6 +2666,161 @@ export default async function AdminReportsPage({
               </div>
             ) : null}
 
+            {control.reportProductionCertification.selectedReportProductionCertification ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-26 Production Certification summary
+                  </span>
+                  <AdminBadge
+                    tone={reportProductionCertificationBadgeTone(
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .productionCertificationStatus
+                    )}
+                  >
+                    {reportProductionCertificationStatusLabel(
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .productionCertificationStatus
+                    )}
+                  </AdminBadge>
+                  <AdminBadge
+                    tone={toneForProductionCertificationStatus(
+                      control.reportProductionCertification.reportsRuntimeProductionStatus
+                    )}
+                  >
+                    Reports Runtime{" "}
+                    {reportProductionCertificationStatusLabel(
+                      control.reportProductionCertification.reportsRuntimeProductionStatus
+                    )}
+                  </AdminBadge>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  {control.reportProductionCertification.selectedReportProductionCertification.productionHelperText}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {
+                    control.reportProductionCertification.selectedReportProductionCertification
+                      .productionCertificationNotes
+                  }
+                </p>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Registry / Viewer:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .registryProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .viewerProductionConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Status / Visibility / Safe actions:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .statusProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .visibilityProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .safeActionsProductionConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Aggregation / Filters / Search:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .aggregationProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .filtersProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .searchProductionConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Audit / Review / Export / Schedule:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .auditProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .reviewProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .exportProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .scheduledReportsProductionConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Data / Security / Runtime certification:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .dataCertificationProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .securityCertificationProductionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .runtimeCertificationProductionConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Read-only / Provider / Sensitive data:</span>{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .pageLoadReadOnlyConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .providerCallPreventionConfirmation
+                    }{" "}
+                    ·{" "}
+                    {
+                      control.reportProductionCertification.selectedReportProductionCertification
+                        .sensitiveDataProtectionConfirmation
+                    }
+                  </p>
+                </div>
+
+                <button
+                  className="h-10 w-fit rounded-full border border-slate-200 bg-slate-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  title="Production certification records are not written during page load."
+                  type="button"
+                >
+                  Certify production disabled
+                </button>
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -2938,7 +3141,19 @@ export default async function AdminReportsPage({
             { label: "Security planned", value: control.reportSecurityCertification.totals.plannedReports },
             { label: "Runtime certified", value: control.reportRuntimeCertification.totals.runtimeCertifiedReports },
             { label: "Runtime partial", value: control.reportRuntimeCertification.totals.runtimePartialReports },
-            { label: "Runtime planned", value: control.reportRuntimeCertification.totals.runtimePlannedReports }
+            { label: "Runtime planned", value: control.reportRuntimeCertification.totals.runtimePlannedReports },
+            {
+              label: "Production certified",
+              value: control.reportProductionCertification.totals.productionCertifiedReports
+            },
+            {
+              label: "Production partial",
+              value: control.reportProductionCertification.totals.productionPartialReports
+            },
+            {
+              label: "Production planned",
+              value: control.reportProductionCertification.totals.productionPlannedReports
+            }
           ]}
         />
 
@@ -2965,6 +3180,14 @@ export default async function AdminReportsPage({
               key={`runtime-${item.label}`}
             >
               {reportRuntimeCertificationStatusLabel(item.label)}: {item.count}
+            </span>
+          ))}
+          {control.reportProductionCertification.byStatus.map((item) => (
+            <span
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+              key={`production-${item.label}`}
+            >
+              {reportProductionCertificationStatusLabel(item.label)}: {item.count}
             </span>
           ))}
         </div>
@@ -3999,6 +4222,9 @@ export default async function AdminReportsPage({
             {control.reportDataCertification.loadingState}
           </AdminBadge>
           <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <AdminBadge tone={toneForProductionCertificationStatus("production_certified")}>
+            {control.reportProductionCertification.totals.productionCertifiedReports} production certified
+          </AdminBadge>
           <span className="text-xs text-slate-600">{control.reportDataCertification.summary}</span>
         </div>
 
@@ -4116,6 +4342,9 @@ export default async function AdminReportsPage({
             {control.reportSecurityCertification.loadingState}
           </AdminBadge>
           <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <AdminBadge tone={toneForProductionCertificationStatus("production_partial")}>
+            {control.reportProductionCertification.totals.productionPartialReports} production partial
+          </AdminBadge>
           <span className="text-xs text-slate-600">{control.reportSecurityCertification.summary}</span>
         </div>
 
@@ -4221,6 +4450,16 @@ export default async function AdminReportsPage({
             {control.reportRuntimeCertification.loadingState}
           </AdminBadge>
           <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <AdminBadge
+            tone={toneForProductionCertificationStatus(
+              control.reportProductionCertification.reportsRuntimeProductionStatus
+            )}
+          >
+            Reports Runtime{" "}
+            {reportProductionCertificationStatusLabel(
+              control.reportProductionCertification.reportsRuntimeProductionStatus
+            )}
+          </AdminBadge>
           <span className="text-xs text-slate-600">{control.reportRuntimeCertification.summary}</span>
         </div>
 
@@ -4318,6 +4557,146 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-26 Report Production Certification
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportProductionCertification.status)}>
+            {control.reportProductionCertification.status}
+          </AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportProductionCertification.loadingState)}>
+            {control.reportProductionCertification.loadingState}
+          </AdminBadge>
+          <AdminBadge
+            tone={toneForProductionCertificationStatus(
+              control.reportProductionCertification.reportsRuntimeProductionStatus
+            )}
+          >
+            Reports Runtime{" "}
+            {reportProductionCertificationStatusLabel(
+              control.reportProductionCertification.reportsRuntimeProductionStatus
+            )}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportProductionCertification.summary}</span>
+        </div>
+
+        {control.reportProductionCertification.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportProductionCertification.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            {
+              label: "Production certified",
+              value: control.reportProductionCertification.totals.productionCertifiedReports
+            },
+            { label: "Partial", value: control.reportProductionCertification.totals.productionPartialReports },
+            { label: "Planned", value: control.reportProductionCertification.totals.productionPlannedReports },
+            { label: "Blocked", value: control.reportProductionCertification.totals.productionBlockedReports },
+            { label: "Unsafe", value: control.reportProductionCertification.totals.productionUnsafeReports },
+            { label: "Unknown", value: control.reportProductionCertification.totals.productionUnknownReports }
+          ]}
+        />
+
+        {control.reportProductionCertification.byStatus.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportProductionCertification.byStatus.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportProductionCertificationStatusLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportProductionCertification.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportProductionCertification.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <button
+          className="h-10 w-fit rounded-full border border-slate-200 bg-slate-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Production certification records are not written during page load."
+          type="button"
+        >
+          Certify production disabled
+        </button>
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Status",
+            "Registry",
+            "Viewer",
+            "Status layer",
+            "Visibility",
+            "Safe actions",
+            "Aggregation",
+            "Filters",
+            "Search",
+            "Audit",
+            "Review",
+            "Export",
+            "Schedule",
+            "Data cert",
+            "Security cert",
+            "Runtime cert",
+            "Read-only",
+            "Notes"
+          ]}
+        >
+          {control.reportProductionCertification.entries.length ? (
+            control.reportProductionCertification.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportProductionCertificationBadgeTone(entry.productionCertificationStatus)}>
+                    {reportProductionCertificationStatusLabel(entry.productionCertificationStatus)}
+                  </AdminBadge>
+                  <p className="mt-2 text-xs text-slate-500">{entry.productionHelperText}</p>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.registryProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.viewerProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.statusProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.visibilityProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.safeActionsProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.aggregationProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.filtersProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.searchProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.auditProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.reviewProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.exportProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduledReportsProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.dataCertificationProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.securityCertificationProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.runtimeCertificationProductionConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.pageLoadReadOnlyConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.productionCertificationNotes}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={19}>
+                No production certification entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -4346,6 +4725,9 @@ export default async function AdminReportsPage({
             (entry) => entry.reportKey === report.reportKey
           );
           const runtimeEntry = control.reportRuntimeCertification.entries.find(
+            (entry) => entry.reportKey === report.reportKey
+          );
+          const productionEntry = control.reportProductionCertification.entries.find(
             (entry) => entry.reportKey === report.reportKey
           );
 
@@ -4425,12 +4807,22 @@ export default async function AdminReportsPage({
                       {reportRuntimeCertificationStatusLabel(runtimeEntry.runtimeCertificationStatus)}
                     </AdminBadge>
                   ) : null}
+                  {productionEntry ? (
+                    <AdminBadge
+                      tone={reportProductionCertificationBadgeTone(productionEntry.productionCertificationStatus)}
+                    >
+                      {reportProductionCertificationStatusLabel(productionEntry.productionCertificationStatus)}
+                    </AdminBadge>
+                  ) : null}
                   <p className="text-xs text-slate-500">{certificationEntry.certificationNotes}</p>
                   {securityEntry ? (
                     <p className="text-xs text-slate-500">{securityEntry.securityCertificationNotes}</p>
                   ) : null}
                   {runtimeEntry ? (
                     <p className="text-xs text-slate-500">{runtimeEntry.runtimeCertificationNotes}</p>
+                  ) : null}
+                  {productionEntry ? (
+                    <p className="text-xs text-slate-500">{productionEntry.productionCertificationNotes}</p>
                   ) : null}
                 </div>
               ) : null}

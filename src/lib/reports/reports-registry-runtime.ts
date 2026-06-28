@@ -130,6 +130,8 @@ export type ReportsRegistryRuntimeContext = {
   reportSecurityCertificationNeedsAttention?: boolean;
   reportRuntimeCertificationLastGenerated?: string;
   reportRuntimeCertificationNeedsAttention?: boolean;
+  reportProductionCertificationLastGenerated?: string;
+  reportProductionCertificationNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -558,7 +560,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Certification",
-    certificationState: "planned",
+    certificationState: "needs_attention",
     dataSourceDescription: "Report production certification reserved for RP-26.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Production certification"],
@@ -567,7 +569,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
     reportKey: "rp-26-report-production-certification",
     roadmapPhase: "RP-26",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Production Certification",
     visibility: "super_admin"
   }
@@ -840,6 +842,17 @@ function applyRuntimeContext(
       exportAvailabilityState: "placeholder",
       lastGeneratedState: context.reportRuntimeCertificationLastGenerated ?? definition.lastGeneratedState,
       status: context.reportRuntimeCertificationNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-26-report-production-certification") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Production Certification runtime (registry + RP-2 through RP-25 adapters + RP-12 through RP-25 platform runtimes). Read-only production certification metadata on page load. No certification records are written.",
+      exportAvailabilityState: "placeholder",
+      lastGeneratedState: context.reportProductionCertificationLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportProductionCertificationNeedsAttention ? "review" : definition.status
     };
   }
 

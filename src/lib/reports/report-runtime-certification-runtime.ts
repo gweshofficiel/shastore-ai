@@ -130,8 +130,6 @@ const PLATFORM_RUNTIME_REPORT_KEYS = new Set([
   "rp-24-report-security-certification"
 ]);
 
-const FUTURE_CERTIFICATION_REPORT_KEYS = new Set(["rp-26-report-production-certification"]);
-
 function safeText(value: unknown, fallback = "") {
   const normalized =
     typeof value === "string" && value.trim()
@@ -339,13 +337,15 @@ function resolveRuntimeCertificationStatus(input: {
     return { runtimeCertificationNotes: notes.join(" "), runtimeCertificationStatus: "runtime_blocked" };
   }
 
-  if (FUTURE_CERTIFICATION_REPORT_KEYS.has(input.reportKey)) {
-    notes.push("Production certification remains planned in RP-26.");
-    return { runtimeCertificationNotes: notes.join(" "), runtimeCertificationStatus: "runtime_planned" };
-  }
-
-  if (input.reportKey === "rp-25-report-runtime-certification") {
-    notes.push("RP-25 runtime certification resolver is live as read-only metadata; no certification records are written.");
+  if (
+    input.reportKey === "rp-25-report-runtime-certification" ||
+    input.reportKey === "rp-26-report-production-certification"
+  ) {
+    notes.push(
+      input.reportKey === "rp-26-report-production-certification"
+        ? "RP-26 production certification resolver is live as read-only metadata; no certification records are written."
+        : "RP-25 runtime certification resolver is live as read-only metadata; no certification records are written."
+    );
     return { runtimeCertificationNotes: notes.join(" "), runtimeCertificationStatus: "runtime_partial" };
   }
 
