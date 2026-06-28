@@ -44,9 +44,14 @@ import {
   operationsDatabaseRuntimeStatusLabel,
   type OperationsDatabaseRuntimeStatus
 } from "@/src/lib/operations/operations-database-runtime";
+import {
+  operationsEmailQueueRuntimeStatusBadgeTone,
+  operationsEmailQueueRuntimeStatusLabel,
+  type OperationsEmailQueueRuntimeStatus
+} from "@/src/lib/operations/operations-email-queue-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -83,6 +88,10 @@ function toneForStorageRuntimeStatus(status: string) {
 
 function toneForDatabaseRuntimeStatus(status: string) {
   return operationsDatabaseRuntimeStatusBadgeTone(status as OperationsDatabaseRuntimeStatus);
+}
+
+function toneForEmailQueueRuntimeStatus(status: string) {
+  return operationsEmailQueueRuntimeStatusBadgeTone(status as OperationsEmailQueueRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -183,6 +192,24 @@ function QueueSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No queue action is executed during OP-3 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EmailQueueSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Retry Failed", "Pause Queue", "Resume Queue", "Cancel Pending", "Inspect"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No email queue action is executed during OP-8 page load."
           type="button"
         >
           {label}
@@ -329,6 +356,68 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(queue.lastJobAt)}</td>
             <td className="px-5 py-4">
               <QueueSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Email queue runtime</span>
+        <AdminBadge tone={toneForStatus(control.emailQueueRuntime.status)}>{control.emailQueueRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.emailQueueRuntime.summary}</span>
+      </div>
+
+      {control.emailQueueRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} queue{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Email queue",
+          "Total",
+          "Pending",
+          "Processing",
+          "Sent",
+          "Failed",
+          "Provider",
+          "Last email",
+          "Safe controls"
+        ]}
+      >
+        {control.emailQueueRuntimeItems.map((emailQueue) => (
+          <tr key={emailQueue.emailQueueKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{emailQueue.queueName}</span>
+                <AdminBadge tone={toneForEmailQueueRuntimeStatus(emailQueue.runtimeStatus)}>
+                  {operationsEmailQueueRuntimeStatusLabel(emailQueue.runtimeStatus as OperationsEmailQueueRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {emailQueue.tableDetected
+                    ? "Read-only from email_event_logs (metadata only; recipients and bodies hidden)"
+                    : "No email queue table detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {emailQueue.reviewStatus} · Visibility: {emailQueue.visibility} · Masked recipients: {emailQueue.maskedRecipientCount}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{emailQueue.totalEmails}</td>
+            <td className="px-5 py-4 text-slate-600">{emailQueue.pendingEmails}</td>
+            <td className="px-5 py-4 text-slate-600">{emailQueue.processingEmails}</td>
+            <td className="px-5 py-4 text-slate-600">{emailQueue.sentEmails}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={emailQueue.failedEmails ? "red" : "green"}>{emailQueue.failedEmails}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{emailQueue.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(emailQueue.lastEmailAt)}</td>
+            <td className="px-5 py-4">
+              <EmailQueueSafeControls />
             </td>
           </tr>
         ))}

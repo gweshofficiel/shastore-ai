@@ -289,6 +289,10 @@ import {
   mapOperationsDatabaseRuntimeToAdminFields
 } from "@/src/lib/operations/operations-database-runtime";
 import {
+  loadOperationsEmailQueueRuntimeReadOnlySafe,
+  mapOperationsEmailQueueRuntimeToAdminFields
+} from "@/src/lib/operations/operations-email-queue-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5679,6 +5683,42 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsEmailQueueSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsEmailQueueRuntimeItem = {
+  cancelledEmails: number;
+  emailQueueKey: string;
+  failedEmails: number;
+  groupKey: string;
+  lastEmailAt: string | null;
+  lastFailureAt: string | null;
+  maskedRecipientCount: number;
+  pendingEmails: number;
+  processingEmails: number;
+  provider: string;
+  queueName: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsEmailQueueSafeControl[];
+  sentEmails: number;
+  tableDetected: boolean;
+  totalEmails: number;
+  visibility: string;
+};
+
+export type AdminOperationsEmailQueueRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsEmailQueueRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -5925,6 +5965,20 @@ export type AdminOperationsControl = {
   databaseRuntimeGroups: AdminOperationsDatabaseRuntimeGroup[];
   databaseRuntimeItems: AdminOperationsDatabaseRuntimeItem[];
   databaseSafeControls: AdminOperationsDatabaseSafeControl[];
+  emailQueueRuntime: {
+    activeQueues: number;
+    failedQueues: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_email_queue_runtime";
+    status: "email_queue_runtime_ready" | "needs_attention";
+    summary: string;
+    totalQueues: number;
+  };
+  emailQueueRuntimeGroups: AdminOperationsEmailQueueRuntimeGroup[];
+  emailQueueRuntimeItems: AdminOperationsEmailQueueRuntimeItem[];
+  emailQueueSafeControls: AdminOperationsEmailQueueSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14402,6 +14456,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabaseConfigured
     })
   );
+  const operationsEmailQueueRuntimeLoad = mapOperationsEmailQueueRuntimeToAdminFields(
+    await loadOperationsEmailQueueRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14536,7 +14595,12 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
             ? "needs_review"
             : "missing_config",
       domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
-      emailQueueHealth: emailQueue.failed ? "needs_review" : emailQueueItem?.tableDetected && emailQueue.completed + emailQueue.pending + emailQueue.processing + emailQueue.failed > 0 ? "healthy" : emailQueueItem?.tableDetected ? "placeholder" : "missing_config",
+      emailQueueHealth:
+        operationsEmailQueueRuntimeLoad.emailQueueRuntime.status === "email_queue_runtime_ready"
+          ? "healthy"
+          : emailQueueItem?.tableDetected
+            ? "needs_review"
+            : "missing_config",
       queueHealth: queueHasFailures ? "needs_review" : "healthy",
       storageHealth:
         operationsStorageRuntimeLoad.storageRuntime.status === "storage_runtime_ready" ? "healthy" : "needs_review",
@@ -14602,7 +14666,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
     databaseRuntimeGroups: operationsDatabaseRuntimeLoad.groups,
     databaseRuntimeItems: operationsDatabaseRuntimeLoad.databaseItems,
-    databaseSafeControls: operationsDatabaseRuntimeLoad.safeControls
+    databaseSafeControls: operationsDatabaseRuntimeLoad.safeControls,
+    emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+    emailQueueRuntimeGroups: operationsEmailQueueRuntimeLoad.groups,
+    emailQueueRuntimeItems: operationsEmailQueueRuntimeLoad.emailQueues,
+    emailQueueSafeControls: operationsEmailQueueRuntimeLoad.safeControls
   };
 }
 
