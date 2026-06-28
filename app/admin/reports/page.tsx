@@ -54,6 +54,16 @@ import {
   reportDataCertificationBadgeTone,
   reportDataCertificationStatusLabel
 } from "@/src/lib/reports/report-data-certification-runtime";
+import {
+  reportSecurityCertificationBadgeTone,
+  reportSecurityCertificationStatusLabel
+} from "@/src/lib/reports/report-security-certification-runtime";
+
+function toneForSecurityCertificationStatus(status: string) {
+  return reportSecurityCertificationBadgeTone(
+    status as Parameters<typeof reportSecurityCertificationBadgeTone>[0]
+  );
+}
 
 function toneForDataCertificationStatus(status: string) {
   return reportDataCertificationBadgeTone(
@@ -372,9 +382,12 @@ export default async function AdminReportsPage({
         <AdminBadge tone={toneForDataCertificationStatus("partial")}>
           {control.reportDataCertification.totals.partialReports} partial
         </AdminBadge>
+        <AdminBadge tone={toneForSecurityCertificationStatus("certified")}>
+          {control.reportSecurityCertification.totals.certifiedReports} security certified
+        </AdminBadge>
         <span className="text-xs text-slate-600">
           {control.registry.summary} · {control.registry.totalEntries} roadmap entries ·{" "}
-          {control.reportDataCertification.summary}
+          {control.reportDataCertification.summary} · {control.reportSecurityCertification.summary}
         </span>
       </div>
 
@@ -1773,7 +1786,9 @@ export default async function AdminReportsPage({
               { label: "Empty state", value: aggregationTotals.reportsWithEmptyState },
               { label: "Locked actions", value: aggregationTotals.reportsWithLockedActions },
               { label: "Data certified", value: control.reportDataCertification.totals.certifiedReports },
-              { label: "Data partial", value: control.reportDataCertification.totals.partialReports }
+              { label: "Data partial", value: control.reportDataCertification.totals.partialReports },
+              { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
+              { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports }
             ]}
           />
         </div>
@@ -1789,6 +1804,9 @@ export default async function AdminReportsPage({
         <div className="flex flex-wrap gap-2">
           {control.reportViewer.catalog.map((report) => {
             const certificationEntry = control.reportDataCertification.entries.find(
+              (entry) => entry.reportKey === report.reportKey
+            );
+            const securityEntry = control.reportSecurityCertification.entries.find(
               (entry) => entry.reportKey === report.reportKey
             );
 
@@ -1810,7 +1828,11 @@ export default async function AdminReportsPage({
               {report.roadmapPhase} · {report.title}
               {certificationEntry ? (
                 <span className="ml-2 normal-case tracking-normal">
-                  ({reportDataCertificationStatusLabel(certificationEntry.certificationStatus)})
+                  ({reportDataCertificationStatusLabel(certificationEntry.certificationStatus)}
+                  {securityEntry
+                    ? ` · ${reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}`
+                    : ""}
+                  )
                 </span>
               ) : null}
             </Link>
@@ -1896,6 +1918,22 @@ export default async function AdminReportsPage({
                         control.reportDataCertification.selectedReportCertification.certificationStatus
                       )}
                     </AdminBadge>
+                    {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                      <>
+                        {" "}
+                        <AdminBadge
+                          tone={reportSecurityCertificationBadgeTone(
+                            control.reportSecurityCertification.selectedReportSecurityCertification
+                              .securityCertificationStatus
+                          )}
+                        >
+                          {reportSecurityCertificationStatusLabel(
+                            control.reportSecurityCertification.selectedReportSecurityCertification
+                              .securityCertificationStatus
+                          )}
+                        </AdminBadge>
+                      </>
+                    ) : null}
                   </p>
                   <p className="text-sm text-slate-600">
                     <span className="font-bold text-slate-950">Data source:</span>{" "}
@@ -1956,6 +1994,19 @@ export default async function AdminReportsPage({
                   <AdminBadge tone={toneForAggregationLoadingState(control.reportAudit.loadingState)}>
                     {control.reportAudit.selectedReportAudit.auditAvailabilityState}
                   </AdminBadge>
+                  {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                    <AdminBadge
+                      tone={reportSecurityCertificationBadgeTone(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    >
+                      {reportSecurityCertificationStatusLabel(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    </AdminBadge>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -2030,6 +2081,19 @@ export default async function AdminReportsPage({
                       )}
                     </AdminBadge>
                   ) : null}
+                  {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                    <AdminBadge
+                      tone={reportSecurityCertificationBadgeTone(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    >
+                      {reportSecurityCertificationStatusLabel(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    </AdminBadge>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -2088,6 +2152,19 @@ export default async function AdminReportsPage({
                     >
                       {reportDataCertificationStatusLabel(
                         control.reportDataCertification.selectedReportCertification.certificationStatus
+                      )}
+                    </AdminBadge>
+                  ) : null}
+                  {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                    <AdminBadge
+                      tone={reportSecurityCertificationBadgeTone(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    >
+                      {reportSecurityCertificationStatusLabel(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
                       )}
                     </AdminBadge>
                   ) : null}
@@ -2151,6 +2228,19 @@ export default async function AdminReportsPage({
                     >
                       {reportDataCertificationStatusLabel(
                         control.reportDataCertification.selectedReportCertification.certificationStatus
+                      )}
+                    </AdminBadge>
+                  ) : null}
+                  {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                    <AdminBadge
+                      tone={reportSecurityCertificationBadgeTone(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    >
+                      {reportSecurityCertificationStatusLabel(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
                       )}
                     </AdminBadge>
                   ) : null}
@@ -2228,6 +2318,19 @@ export default async function AdminReportsPage({
                   <AdminBadge tone="blue">
                     {control.reportDataCertification.selectedReportCertification.dataSourceAvailability}
                   </AdminBadge>
+                  {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+                    <AdminBadge
+                      tone={reportSecurityCertificationBadgeTone(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    >
+                      {reportSecurityCertificationStatusLabel(
+                        control.reportSecurityCertification.selectedReportSecurityCertification
+                          .securityCertificationStatus
+                      )}
+                    </AdminBadge>
+                  ) : null}
                 </div>
 
                 <p className="text-sm text-slate-600">
@@ -2271,6 +2374,107 @@ export default async function AdminReportsPage({
                   type="button"
                 >
                   Certify data disabled
+                </button>
+              </div>
+            ) : null}
+
+            {control.reportSecurityCertification.selectedReportSecurityCertification ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-24 Security Certification summary
+                  </span>
+                  <AdminBadge
+                    tone={reportSecurityCertificationBadgeTone(
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .securityCertificationStatus
+                    )}
+                  >
+                    {reportSecurityCertificationStatusLabel(
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .securityCertificationStatus
+                    )}
+                  </AdminBadge>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  {
+                    control.reportSecurityCertification.selectedReportSecurityCertification
+                      .securityCertificationNotes
+                  }
+                </p>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Access control:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .accessControlConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Super Admin only:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .superAdminOnlyConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">RLS safety:</span>{" "}
+                    {control.reportSecurityCertification.selectedReportSecurityCertification.rlsSafetyConfirmation}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Ownership isolation:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .ownershipIsolationConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Sensitive masking:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .sensitiveDataMaskingConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Provider secret masking:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .providerSecretMaskingConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Page load read-only:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .pageLoadReadOnlyConfirmation
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">External provider prevention:</span>{" "}
+                    {
+                      control.reportSecurityCertification.selectedReportSecurityCertification
+                        .externalProviderCallPrevention
+                    }
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">AI provider prevention:</span>{" "}
+                    {control.reportSecurityCertification.selectedReportSecurityCertification.aiProviderCallPrevention}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Mutation prevention:</span>{" "}
+                    {control.reportSecurityCertification.selectedReportSecurityCertification.mutationPrevention}
+                  </p>
+                </div>
+
+                <button
+                  className="h-10 w-fit rounded-full border border-slate-200 bg-slate-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  title="Security certification records are not written during page load."
+                  type="button"
+                >
+                  Certify security disabled
                 </button>
               </div>
             ) : null}
@@ -2589,7 +2793,10 @@ export default async function AdminReportsPage({
             { label: "Locked actions", value: aggregationTotals.reportsWithLockedActions },
             { label: "Data certified", value: control.reportDataCertification.totals.certifiedReports },
             { label: "Data partial", value: control.reportDataCertification.totals.partialReports },
-            { label: "Data planned", value: control.reportDataCertification.totals.plannedReports }
+            { label: "Data planned", value: control.reportDataCertification.totals.plannedReports },
+            { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
+            { label: "Security partial", value: control.reportSecurityCertification.totals.partialReports },
+            { label: "Security planned", value: control.reportSecurityCertification.totals.plannedReports }
           ]}
         />
 
@@ -2597,9 +2804,17 @@ export default async function AdminReportsPage({
           {control.reportDataCertification.byStatus.map((item) => (
             <span
               className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
-              key={item.label}
+              key={`data-${item.label}`}
             >
               {reportDataCertificationStatusLabel(item.label)}: {item.count}
+            </span>
+          ))}
+          {control.reportSecurityCertification.byStatus.map((item) => (
+            <span
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+              key={`security-${item.label}`}
+            >
+              {reportSecurityCertificationStatusLabel(item.label)}: {item.count}
             </span>
           ))}
         </div>
@@ -3139,6 +3354,7 @@ export default async function AdminReportsPage({
             "Report",
             "Coverage",
             "Availability",
+            "Security cert",
             "Last viewed",
             "Last generated",
             "Last export",
@@ -3147,7 +3363,12 @@ export default async function AdminReportsPage({
           ]}
         >
           {control.reportAudit.entries.length ? (
-            control.reportAudit.entries.map((entry) => (
+            control.reportAudit.entries.map((entry) => {
+              const securityEntry = control.reportSecurityCertification.entries.find(
+                (certEntry) => certEntry.reportKey === entry.reportKey
+              );
+
+              return (
               <tr key={entry.reportKey}>
                 <td className="px-5 py-4">
                   <p className="font-bold text-slate-950">{entry.reportTitle}</p>
@@ -3162,6 +3383,15 @@ export default async function AdminReportsPage({
                   <AdminBadge tone={toneForAggregationLoadingState(entry.auditAvailabilityState)}>
                     {entry.auditAvailabilityState}
                   </AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  {securityEntry ? (
+                    <AdminBadge tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}>
+                      {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
+                    </AdminBadge>
+                  ) : (
+                    "Unknown"
+                  )}
                 </td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.lastViewedState}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.lastGeneratedState}</td>
@@ -3181,10 +3411,11 @@ export default async function AdminReportsPage({
                   )}
                 </td>
               </tr>
-            ))
+              );
+            })
           ) : (
             <tr>
-              <td className="px-5 py-4 text-slate-600" colSpan={8}>
+              <td className="px-5 py-4 text-slate-600" colSpan={9}>
                 No audit entries match the current search and filters.
               </td>
             </tr>
@@ -3289,6 +3520,19 @@ export default async function AdminReportsPage({
                       </AdminBadge>
                     ) : null;
                   })()}
+                  {(() => {
+                    const securityEntry = control.reportSecurityCertification.entries.find(
+                      (certEntry) => certEntry.reportKey === entry.reportKey
+                    );
+
+                    return securityEntry ? (
+                      <AdminBadge
+                        tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}
+                      >
+                        {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
+                      </AdminBadge>
+                    ) : null;
+                  })()}
                 </td>
                 <td className="px-5 py-4 text-sm text-slate-600">
                   {entry.reviewGaps.length ? (
@@ -3364,11 +3608,14 @@ export default async function AdminReportsPage({
         ) : null}
 
         <AdminTable
-          headers={["Report", "Availability", "Data cert", "Helper text", "Export JSON", "Export CSV"]}
+          headers={["Report", "Availability", "Data cert", "Security cert", "Helper text", "Export JSON", "Export CSV"]}
         >
           {control.reportExport.entries.length ? (
             control.reportExport.entries.map((entry) => {
               const certificationEntry = control.reportDataCertification.entries.find(
+                (certEntry) => certEntry.reportKey === entry.reportKey
+              );
+              const securityEntry = control.reportSecurityCertification.entries.find(
                 (certEntry) => certEntry.reportKey === entry.reportKey
               );
 
@@ -3387,6 +3634,15 @@ export default async function AdminReportsPage({
                   {certificationEntry ? (
                     <AdminBadge tone={reportDataCertificationBadgeTone(certificationEntry.certificationStatus)}>
                       {reportDataCertificationStatusLabel(certificationEntry.certificationStatus)}
+                    </AdminBadge>
+                  ) : (
+                    "Unknown"
+                  )}
+                </td>
+                <td className="px-5 py-4">
+                  {securityEntry ? (
+                    <AdminBadge tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}>
+                      {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
                     </AdminBadge>
                   ) : (
                     "Unknown"
@@ -3416,7 +3672,7 @@ export default async function AdminReportsPage({
             })
           ) : (
             <tr>
-              <td className="px-5 py-4 text-slate-600" colSpan={6}>
+              <td className="px-5 py-4 text-slate-600" colSpan={7}>
                 No export entries match the current search and filters.
               </td>
             </tr>
@@ -3510,6 +3766,7 @@ export default async function AdminReportsPage({
             "Availability",
             "Coverage",
             "Data cert",
+            "Security cert",
             "Status",
             "Frequency",
             "Next run",
@@ -3521,6 +3778,9 @@ export default async function AdminReportsPage({
           {control.reportScheduledReports.entries.length ? (
             control.reportScheduledReports.entries.map((entry) => {
               const certificationEntry = control.reportDataCertification.entries.find(
+                (certEntry) => certEntry.reportKey === entry.reportKey
+              );
+              const securityEntry = control.reportSecurityCertification.entries.find(
                 (certEntry) => certEntry.reportKey === entry.reportKey
               );
 
@@ -3549,6 +3809,15 @@ export default async function AdminReportsPage({
                     "Unknown"
                   )}
                 </td>
+                <td className="px-5 py-4">
+                  {securityEntry ? (
+                    <AdminBadge tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}>
+                      {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
+                    </AdminBadge>
+                  ) : (
+                    "Unknown"
+                  )}
+                </td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduleStatus.replace(/_/g, " ")}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduleFrequencyState}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.nextRunState}</td>
@@ -3560,7 +3829,7 @@ export default async function AdminReportsPage({
             })
           ) : (
             <tr>
-              <td className="px-5 py-4 text-slate-600" colSpan={10}>
+              <td className="px-5 py-4 text-slate-600" colSpan={11}>
                 No scheduled report entries match the current search and filters.
               </td>
             </tr>
@@ -3625,6 +3894,7 @@ export default async function AdminReportsPage({
           headers={[
             "Report",
             "Status",
+            "Security cert",
             "Data source",
             "Availability",
             "Adapter health",
@@ -3636,7 +3906,12 @@ export default async function AdminReportsPage({
           ]}
         >
           {control.reportDataCertification.entries.length ? (
-            control.reportDataCertification.entries.map((entry) => (
+            control.reportDataCertification.entries.map((entry) => {
+              const securityEntry = control.reportSecurityCertification.entries.find(
+                (certEntry) => certEntry.reportKey === entry.reportKey
+              );
+
+              return (
               <tr key={entry.reportKey}>
                 <td className="px-5 py-4">
                   <p className="font-bold text-slate-950">{entry.reportTitle}</p>
@@ -3646,6 +3921,15 @@ export default async function AdminReportsPage({
                   <AdminBadge tone={reportDataCertificationBadgeTone(entry.certificationStatus)}>
                     {reportDataCertificationStatusLabel(entry.certificationStatus)}
                   </AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  {securityEntry ? (
+                    <AdminBadge tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}>
+                      {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
+                    </AdminBadge>
+                  ) : (
+                    "Unknown"
+                  )}
                 </td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.dataSourceName}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.dataSourceAvailability}</td>
@@ -3658,11 +3942,117 @@ export default async function AdminReportsPage({
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.emptyStateSafetyConfirmation}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{entry.certificationNotes}</td>
               </tr>
+              );
+            })
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={11}>
+                No data certification entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-24 Report Security Certification
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportSecurityCertification.status)}>
+            {control.reportSecurityCertification.status}
+          </AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportSecurityCertification.loadingState)}>
+            {control.reportSecurityCertification.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportSecurityCertification.summary}</span>
+        </div>
+
+        {control.reportSecurityCertification.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportSecurityCertification.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Security certified", value: control.reportSecurityCertification.totals.certifiedReports },
+            { label: "Partial", value: control.reportSecurityCertification.totals.partialReports },
+            { label: "Planned", value: control.reportSecurityCertification.totals.plannedReports },
+            { label: "Blocked", value: control.reportSecurityCertification.totals.blockedReports },
+            { label: "Unsafe", value: control.reportSecurityCertification.totals.unsafeReports },
+            { label: "Unknown", value: control.reportSecurityCertification.totals.unknownReports }
+          ]}
+        />
+
+        {control.reportSecurityCertification.byStatus.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportSecurityCertification.byStatus.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportSecurityCertificationStatusLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportSecurityCertification.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportSecurityCertification.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Status",
+            "Access control",
+            "Super Admin only",
+            "RLS safety",
+            "Ownership",
+            "Masking",
+            "Provider secrets",
+            "Read-only",
+            "External prevention",
+            "AI prevention",
+            "Mutation prevention",
+            "Notes"
+          ]}
+        >
+          {control.reportSecurityCertification.entries.length ? (
+            control.reportSecurityCertification.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportSecurityCertificationBadgeTone(entry.securityCertificationStatus)}>
+                    {reportSecurityCertificationStatusLabel(entry.securityCertificationStatus)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.accessControlConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.superAdminOnlyConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.rlsSafetyConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.ownershipIsolationConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.sensitiveDataMaskingConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.providerSecretMaskingConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.pageLoadReadOnlyConfirmation}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.externalProviderCallPrevention}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.aiProviderCallPrevention}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.mutationPrevention}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.securityCertificationNotes}</td>
+              </tr>
             ))
           ) : (
             <tr>
-              <td className="px-5 py-4 text-slate-600" colSpan={10}>
-                No data certification entries match the current search and filters.
+              <td className="px-5 py-4 text-slate-600" colSpan={13}>
+                No security certification entries match the current search and filters.
               </td>
             </tr>
           )}
@@ -3691,6 +4081,9 @@ export default async function AdminReportsPage({
             (entry) => entry.reportKey === report.reportKey
           );
           const certificationEntry = control.reportDataCertification.entries.find(
+            (entry) => entry.reportKey === report.reportKey
+          );
+          const securityEntry = control.reportSecurityCertification.entries.find(
             (entry) => entry.reportKey === report.reportKey
           );
 
@@ -3760,7 +4153,15 @@ export default async function AdminReportsPage({
                   <AdminBadge tone={reportDataCertificationBadgeTone(certificationEntry.certificationStatus)}>
                     {reportDataCertificationStatusLabel(certificationEntry.certificationStatus)}
                   </AdminBadge>
+                  {securityEntry ? (
+                    <AdminBadge tone={reportSecurityCertificationBadgeTone(securityEntry.securityCertificationStatus)}>
+                      {reportSecurityCertificationStatusLabel(securityEntry.securityCertificationStatus)}
+                    </AdminBadge>
+                  ) : null}
                   <p className="text-xs text-slate-500">{certificationEntry.certificationNotes}</p>
+                  {securityEntry ? (
+                    <p className="text-xs text-slate-500">{securityEntry.securityCertificationNotes}</p>
+                  ) : null}
                 </div>
               ) : null}
             </td>
