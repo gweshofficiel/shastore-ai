@@ -266,6 +266,7 @@ import {
   mapReportProductionCertificationRuntimeToAdminFields
 } from "@/src/lib/reports/report-production-certification-runtime";
 import { mapOperationsRegistryRuntimeToAdminFields } from "@/src/lib/operations/operations-registry-runtime";
+import { mapOperationsDashboardRuntimeToAdminFields } from "@/src/lib/operations/operations-dashboard-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -5657,6 +5658,26 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsDashboardItem = {
+  auditSupport: boolean;
+  category: string;
+  description: string;
+  healthSupport: boolean;
+  key: string;
+  monitoringSupport: boolean;
+  runtimeStatus: string;
+  sectionKey: string;
+  title: string;
+  visibility: string;
+};
+
+export type AdminOperationsDashboardSection = {
+  itemCount: number;
+  items: AdminOperationsDashboardItem[];
+  key: string;
+  title: string;
+};
+
 export type AdminOperationsControl = {
   backupRecovery: Array<{
     name: string;
@@ -5675,6 +5696,28 @@ export type AdminOperationsControl = {
     metric: string;
     note: string;
     status: "configured" | "missing" | "placeholder" | "ready" | "review";
+    value: string;
+  }>;
+  dashboard: {
+    metrics: {
+      auditSupportedModules: number;
+      healthSupportedModules: number;
+      monitoringSupportedModules: number;
+      productionReadyModules: number;
+      reviewRequiredModules: number;
+      runtimeReadyModules: number;
+      totalOperationsModules: number;
+      visibleModules: number;
+    };
+    readOnly: true;
+    sectionCount: number;
+    source: "operations_dashboard_runtime";
+    status: "dashboard_ready" | "needs_attention";
+    summary: string;
+  };
+  dashboardSections: AdminOperationsDashboardSection[];
+  dashboardStats: Array<{
+    label: string;
     value: string;
   }>;
   futureHooks: string[];
@@ -14033,6 +14076,7 @@ export async function getAdminAdvancedSecurityControl(): Promise<AdminAdvancedSe
 export async function getAdminOperationsControl(): Promise<AdminOperationsControl> {
   const { supabase, serviceRoleConfigured } = await getAdminClient();
   const operationsRegistry = mapOperationsRegistryRuntimeToAdminFields();
+  const operationsDashboard = mapOperationsDashboardRuntimeToAdminFields();
   const reservedFutureHooks =
     operationsRegistry.components.find((component) => component.key === "op-future-hooks")?.futureHooks ??
     operationsRegistry.futureHooks;
@@ -14205,6 +14249,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       }
     ],
     futureHooks: reservedFutureHooks,
+    dashboard: operationsDashboard.dashboard,
+    dashboardSections: operationsDashboard.sections,
+    dashboardStats: operationsDashboard.stats,
     overview: {
       aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueues.length ? "healthy" : "placeholder",
       cronHealth: monitoringFailures.length ? "needs_review" : "placeholder",
