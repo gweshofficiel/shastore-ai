@@ -281,6 +281,10 @@ import {
   mapOperationsCronRuntimeToAdminFields
 } from "@/src/lib/operations/operations-cron-runtime";
 import {
+  loadOperationsStorageRuntimeReadOnlySafe,
+  mapOperationsStorageRuntimeToAdminFields
+} from "@/src/lib/operations/operations-storage-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5671,6 +5675,42 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsStorageSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsStorageRuntimeItem = {
+  bucketName: string | null;
+  errorCount: number;
+  groupKey: string;
+  healthStatus: string;
+  lastCheckedAt: string | null;
+  lastFailureAt: string | null;
+  metadataDetected: boolean;
+  metadataSource: string | null;
+  provider: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsStorageSafeControl[];
+  storageKey: string;
+  storageName: string;
+  totalObjects: number;
+  totalSizeBytes: number;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsStorageRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsStorageRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -5898,6 +5938,21 @@ export type AdminOperationsControl = {
     note: string;
     status: "monitoring" | "placeholder" | "review";
   }>;
+  storageRuntime: {
+    failedStorageTargets: number;
+    groupCount: number;
+    healthyStorageTargets: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_storage_runtime";
+    status: "needs_attention" | "storage_runtime_ready";
+    summary: string;
+    totalStorageTargets: number;
+    warningStorageTargets: number;
+  };
+  storageRuntimeGroups: AdminOperationsStorageRuntimeGroup[];
+  storageRuntimeItems: AdminOperationsStorageRuntimeItem[];
+  storageSafeControls: AdminOperationsStorageSafeControl[];
   workers: Array<{
     failures: number;
     lastRun: string | null;
@@ -14277,6 +14332,12 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       workerRuntimeItems: operationsWorkerRuntimeLoad.workers
     })
   );
+  const operationsStorageRuntimeLoad = mapOperationsStorageRuntimeToAdminFields(
+    await loadOperationsStorageRuntimeReadOnlySafe({
+      monitoringEvents,
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14409,7 +14470,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
       emailQueueHealth: emailQueue.failed ? "needs_review" : emailQueueItem?.tableDetected && emailQueue.completed + emailQueue.pending + emailQueue.processing + emailQueue.failed > 0 ? "healthy" : emailQueueItem?.tableDetected ? "placeholder" : "missing_config",
       queueHealth: queueHasFailures ? "needs_review" : "healthy",
-      storageHealth: r2Status === "configured" ? "healthy" : r2Status === "partial" ? "needs_review" : "missing_config",
+      storageHealth:
+        operationsStorageRuntimeLoad.storageRuntime.status === "storage_runtime_ready" ? "healthy" : "needs_review",
       workerHealth: workerFailures ? "needs_review" : "placeholder"
     },
     queues,
@@ -14435,8 +14497,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Storage Health",
-        note: "Supabase/R2 configuration status only; no storage operations run here.",
-        status: r2Status === "partial" ? "review" : "monitoring"
+        note: "Storage health runtime uses registry and environment metadata only; no bucket scanning runs here.",
+        status: operationsStorageRuntimeLoad.storageRuntime.status === "needs_attention" ? "review" : "monitoring"
       },
       {
         name: "Database Health",
@@ -14464,7 +14526,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     workerRuntimeGroups: operationsWorkerRuntimeLoad.groups,
     workerRuntimeItems: operationsWorkerRuntimeLoad.workers,
     workerSafeControls: operationsWorkerRuntimeLoad.safeControls,
-    registry: operationsRegistry.registry
+    registry: operationsRegistry.registry,
+    storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+    storageRuntimeGroups: operationsStorageRuntimeLoad.groups,
+    storageRuntimeItems: operationsStorageRuntimeLoad.storageItems,
+    storageSafeControls: operationsStorageRuntimeLoad.safeControls
   };
 }
 

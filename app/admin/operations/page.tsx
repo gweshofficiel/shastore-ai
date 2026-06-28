@@ -32,9 +32,15 @@ import {
   operationsCronRuntimeStatusLabel,
   type OperationsCronRuntimeStatus
 } from "@/src/lib/operations/operations-cron-runtime";
+import {
+  operationsStorageHealthStatusLabel,
+  operationsStorageRuntimeStatusBadgeTone,
+  operationsStorageRuntimeStatusLabel,
+  type OperationsStorageRuntimeStatus
+} from "@/src/lib/operations/operations-storage-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -65,6 +71,10 @@ function toneForCronRuntimeStatus(status: string) {
   return operationsCronRuntimeStatusBadgeTone(status as OperationsCronRuntimeStatus);
 }
 
+function toneForStorageRuntimeStatus(status: string) {
+  return operationsStorageRuntimeStatusBadgeTone(status as OperationsStorageRuntimeStatus);
+}
+
 function supportLabel(enabled: boolean) {
   return enabled ? "Supported" : "Not supported";
 }
@@ -79,6 +89,24 @@ function OperationsHiddenFields({ targetName, targetType }: { targetName: string
       <input name="targetName" type="hidden" value={targetName} />
       <input name="targetType" type="hidden" value={targetType} />
     </>
+  );
+}
+
+function StorageSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Refresh Health", "Repair", "Cleanup", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No storage action is executed during OP-6 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -369,6 +397,68 @@ export default async function AdminOperationsPage() {
             </td>
             <td className="px-5 py-4">
               <CronSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Storage health runtime</span>
+        <AdminBadge tone={toneForStatus(control.storageRuntime.status)}>{control.storageRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.storageRuntime.summary}</span>
+      </div>
+
+      {control.storageRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} target{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Storage",
+          "Provider",
+          "Bucket",
+          "Health",
+          "Runtime status",
+          "Warnings",
+          "Errors",
+          "Safe controls"
+        ]}
+      >
+        {control.storageRuntimeItems.map((storage) => (
+          <tr key={storage.storageKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{storage.storageName}</span>
+                <span className="text-xs text-slate-500">
+                  {storage.metadataDetected
+                    ? storage.metadataSource
+                      ? `Read-only from ${storage.metadataSource}`
+                      : "Read-only registry metadata"
+                    : "No storage metadata detected"}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{storage.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{storage.bucketName ?? "Not configured"}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStorageRuntimeStatus(storage.runtimeStatus)}>
+                {operationsStorageHealthStatusLabel(storage.healthStatus as Parameters<typeof operationsStorageHealthStatusLabel>[0])}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStorageRuntimeStatus(storage.runtimeStatus)}>
+                {operationsStorageRuntimeStatusLabel(storage.runtimeStatus as OperationsStorageRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{storage.warningCount}</td>
+            <td className="px-5 py-4 text-slate-600">{storage.errorCount}</td>
+            <td className="px-5 py-4">
+              <StorageSafeControls />
             </td>
           </tr>
         ))}
