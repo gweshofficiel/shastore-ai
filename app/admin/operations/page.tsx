@@ -149,9 +149,14 @@ import {
   type OperationsProductionCertificationStatus,
   type OperationsProductionReadinessStatus
 } from "@/src/lib/operations/operations-production-certification-runtime";
+import {
+  operationsStressValidationStatusLabel,
+  operationsStressValidationStatusTone,
+  type OperationsStressValidationStatus
+} from "@/src/lib/operations/operations-stress-validation-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "operations_stress_validation_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -654,6 +659,24 @@ function ProductionCertificationSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No production certification action is executed during OP-26 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StressValidationSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Run Stress Test", "Recheck Stability", "Export Stress Report", "Resolve Stress Blocker", "Mark Stress Validated"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No stress validation action is executed during OP-27 page load."
           type="button"
         >
           {label}
@@ -2393,6 +2416,80 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{productionItem.safeSummary}</td>
             <td className="px-5 py-4">
               <ProductionCertificationSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations stress validation</span>
+        <AdminBadge tone={toneForStatus(control.stressValidation.overallStatus)}>{control.stressValidation.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.stressValidation.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total validations", value: String(control.stressValidation.totalValidations) },
+          { label: "Stable", value: String(control.stressValidation.stableScopes) },
+          { label: "Review required", value: String(control.stressValidation.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.stressValidation.blockedScopes) },
+          { label: "Warnings", value: String(control.stressValidation.warningScopes) }
+        ]}
+      />
+
+      {control.stressValidationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} validation{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Validation",
+          "Scope",
+          "Refresh",
+          "Metadata",
+          "Empty state",
+          "Controls",
+          "Execution",
+          "Mutation",
+          "Secrets",
+          "Isolation",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.stressValidationItems.map((stressItem) => (
+          <tr key={stressItem.stressValidationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{stressItem.validationName}</span>
+                <AdminBadge tone={operationsStressValidationStatusTone(stressItem.refreshStabilityStatus as OperationsStressValidationStatus)}>
+                  {operationsStressValidationStatusLabel(stressItem.refreshStabilityStatus as OperationsStressValidationStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only stress validation derived from OP-1 through OP-26 metadata only; no load testing or mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {stressItem.blockedModules} · Warnings: {stressItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{stressItem.validationScope}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.refreshStabilityStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.metadataConsistencyStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.emptyStateSafetyStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.disabledControlsStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.executionSafetyStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.mutationSafetyStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.secretSafetyStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsStressValidationStatusLabel(stressItem.certifiedSystemIsolationStatus as OperationsStressValidationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{stressItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <StressValidationSafeControls />
             </td>
           </tr>
         ))}

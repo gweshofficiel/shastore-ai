@@ -365,6 +365,10 @@ import {
   mapOperationsProductionCertificationToAdminFields
 } from "@/src/lib/operations/operations-production-certification-runtime";
 import {
+  buildOperationsStressValidationReadOnlySafe,
+  mapOperationsStressValidationToAdminFields
+} from "@/src/lib/operations/operations-stress-validation-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6467,6 +6471,39 @@ export type AdminOperationsProductionCertificationGroup = {
   title: string;
 };
 
+export type AdminOperationsStressValidationSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsStressValidationItem = {
+  blockedModules: number;
+  certifiedSystemIsolationStatus: string;
+  disabledControlsStatus: string;
+  emptyStateSafetyStatus: string;
+  executionSafetyStatus: string;
+  groupKey: string;
+  metadataConsistencyStatus: string;
+  mutationSafetyStatus: string;
+  refreshStabilityStatus: string;
+  safeControls: AdminOperationsStressValidationSafeControl[];
+  safeSummary: string;
+  secretSafetyStatus: string;
+  stressValidationKey: string;
+  validationName: string;
+  validationScope: string;
+  warningModules: number;
+};
+
+export type AdminOperationsStressValidationGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsStressValidationItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6796,6 +6833,22 @@ export type AdminOperationsControl = {
   productionCertificationGroups: AdminOperationsProductionCertificationGroup[];
   productionCertificationItems: AdminOperationsProductionCertificationItem[];
   productionCertificationSafeControls: AdminOperationsProductionCertificationSafeControl[];
+  stressValidation: {
+    blockedScopes: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "operations_stress_validation_ready";
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    reviewRequiredScopes: number;
+    source: "operations_stress_validation_runtime";
+    stableScopes: number;
+    summary: string;
+    totalValidations: number;
+    warningScopes: number;
+  };
+  stressValidationGroups: AdminOperationsStressValidationGroup[];
+  stressValidationItems: AdminOperationsStressValidationItem[];
+  stressValidationSafeControls: AdminOperationsStressValidationSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15642,6 +15695,61 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
     })
   );
+  const operationsStressValidationLoad = mapOperationsStressValidationToAdminFields(
+    buildOperationsStressValidationReadOnlySafe({
+      aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+      aiQueueSafeControls: operationsAiQueueRuntimeLoad.safeControls,
+      auditRuntime: operationsAuditRuntimeLoad.auditRuntime,
+      auditSafeControls: operationsAuditRuntimeLoad.safeControls,
+      backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+      backupSafeControls: operationsBackupRuntimeLoad.safeControls,
+      cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+      cronMonitoringSafeControls: operationsCronMonitoringRuntimeLoad.safeControls,
+      cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+      cronSafeControls: operationsCronRuntimeLoad.safeControls,
+      dashboardRuntime: operationsDashboard.dashboard,
+      dataCertification: operationsDataCertificationLoad.dataCertification,
+      dataCertificationSafeControls: operationsDataCertificationLoad.safeControls,
+      databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+      databaseSafeControls: operationsDatabaseRuntimeLoad.safeControls,
+      diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+      diagnosticsSafeControls: operationsDiagnosticsRuntimeLoad.safeControls,
+      disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+      disasterRecoverySafeControls: operationsDisasterRecoveryRuntimeLoad.safeControls,
+      domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+      domainEmailQueueSafeControls: operationsDomainEmailQueueRuntimeLoad.safeControls,
+      emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+      emailQueueSafeControls: operationsEmailQueueRuntimeLoad.safeControls,
+      monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+      monitoringEventsSafeControls: operationsMonitoringEventsRuntimeLoad.safeControls,
+      productionCertification: operationsProductionCertificationLoad.productionCertification,
+      productionCertificationItems: operationsProductionCertificationLoad.productionCertificationItems,
+      productionCertificationSafeControls: operationsProductionCertificationLoad.safeControls,
+      queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+      queueSafeControls: operationsQueueRuntimeLoad.safeControls,
+      registryRuntime: operationsRegistry.registry,
+      reviewItems: operationsReviewRuntimeLoad.reviewItems,
+      reviewRuntime: operationsReviewRuntimeLoad.reviewRuntime,
+      reviewSafeControls: operationsReviewRuntimeLoad.safeControls,
+      runtimeCertification: operationsRuntimeCertificationLoad.runtimeCertification,
+      runtimeCertificationSafeControls: operationsRuntimeCertificationLoad.safeControls,
+      safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+      safeControlsSafeControls: operationsSafeControlsRuntimeLoad.controlItems,
+      securityCertification: operationsSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: operationsSecurityCertificationLoad.securityCertificationItems,
+      securityCertificationSafeControls: operationsSecurityCertificationLoad.safeControls,
+      statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
+      storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
+      storageMetricsSafeControls: operationsStorageMetricsRuntimeLoad.safeControls,
+      storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+      storageSafeControls: operationsStorageRuntimeLoad.safeControls,
+      visibilityRuntime: operationsVisibilityRuntimeLoad.visibilityRuntime,
+      workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+      workerMonitoringSafeControls: operationsWorkerMonitoringRuntimeLoad.safeControls,
+      workerRuntime: operationsWorkerRuntimeLoad.workerRuntime,
+      workerSafeControls: operationsWorkerRuntimeLoad.safeControls
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15941,7 +16049,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     productionCertification: operationsProductionCertificationLoad.productionCertification,
     productionCertificationGroups: operationsProductionCertificationLoad.groups,
     productionCertificationItems: operationsProductionCertificationLoad.productionCertificationItems,
-    productionCertificationSafeControls: operationsProductionCertificationLoad.safeControls
+    productionCertificationSafeControls: operationsProductionCertificationLoad.safeControls,
+    stressValidation: operationsStressValidationLoad.stressValidation,
+    stressValidationGroups: operationsStressValidationLoad.groups,
+    stressValidationItems: operationsStressValidationLoad.stressValidationItems,
+    stressValidationSafeControls: operationsStressValidationLoad.safeControls
   };
 }
 
