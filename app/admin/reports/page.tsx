@@ -40,6 +40,10 @@ import {
   reportReviewCoverageBadgeTone,
   reportReviewCoverageLabel
 } from "@/src/lib/reports/report-review-runtime";
+import {
+  reportExportAvailabilityBadgeTone,
+  reportExportAvailabilityLabel
+} from "@/src/lib/reports/report-export-runtime";
 
 function toneForCertificationReadiness(signal: string) {
   if (signal === "certified" || signal === "ready_for_certification" || signal === "not_applicable") {
@@ -176,16 +180,20 @@ function ReportRuntimeSafeActionBadge({
 }
 
 function ReportRegistrySafeActionsCell({
+  exportEntry,
   report,
   selectedRange,
   activeFilters
 }: {
+  exportEntry?: Awaited<ReturnType<typeof getAdminReportingControl>>["reportExport"]["entries"][number];
   report: Awaited<ReturnType<typeof getAdminReportingControl>>["reports"][number];
   selectedRange: string;
   activeFilters: Awaited<ReturnType<typeof getAdminReportingControl>>["reportFilters"]["query"];
 }) {
   const disabledButtonClass =
     "h-9 w-full rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400";
+  const enabledLinkClass =
+    "flex h-9 w-full items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-700";
 
   return (
     <div className="grid min-w-52 gap-2">
@@ -216,14 +224,33 @@ function ReportRegistrySafeActionsCell({
           View disabled
         </button>
       )}
-      <button
-        className={disabledButtonClass}
-        disabled
-        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.export)}
-        type="button"
-      >
-        Export disabled
-      </button>
+      {exportEntry?.exportJsonHref && exportEntry.exportCsvHref ? (
+        <>
+          <Link
+            className={enabledLinkClass}
+            href={exportEntry.exportJsonHref}
+            title={exportEntry.exportHelperText}
+          >
+            Export JSON
+          </Link>
+          <Link
+            className={enabledLinkClass}
+            href={exportEntry.exportCsvHref}
+            title={exportEntry.exportHelperText}
+          >
+            Export CSV
+          </Link>
+        </>
+      ) : (
+        <button
+          className={disabledButtonClass}
+          disabled
+          title={exportEntry?.exportHelperText ?? reportRuntimeSafeActionDescription(report.runtimeSafeActions.export)}
+          type="button"
+        >
+          Export disabled
+        </button>
+      )}
       <button
         className={disabledButtonClass}
         disabled
@@ -1953,6 +1980,49 @@ export default async function AdminReportsPage({
               </div>
             ) : null}
 
+            {control.reportExport.selectedReportExport ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-21 Export summary
+                  </span>
+                  <AdminBadge
+                    tone={reportExportAvailabilityBadgeTone(
+                      control.reportExport.selectedReportExport.exportAvailabilityState
+                    )}
+                  >
+                    {reportExportAvailabilityLabel(
+                      control.reportExport.selectedReportExport.exportAvailabilityState
+                    )}
+                  </AdminBadge>
+                </div>
+
+                <p className="text-sm text-slate-600">{control.reportExport.selectedReportExport.exportHelperText}</p>
+
+                {control.reportExport.selectedReportExport.exportJsonHref &&
+                control.reportExport.selectedReportExport.exportCsvHref ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+                      href={control.reportExport.selectedReportExport.exportJsonHref}
+                    >
+                      Export JSON
+                    </Link>
+                    <Link
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-700"
+                      href={control.reportExport.selectedReportExport.exportCsvHref}
+                    >
+                      Export CSV
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Export actions remain disabled for this report until safe summary fields are available.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -2966,6 +3036,102 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-21 Report Export
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportExport.status)}>{control.reportExport.status}</AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportExport.loadingState)}>
+            {control.reportExport.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportExport.summary}</span>
+        </div>
+
+        {control.reportExport.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportExport.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Export available", value: control.reportExport.totals.exportAvailableReports },
+            { label: "Export disabled", value: control.reportExport.totals.exportDisabledReports },
+            { label: "Export planned", value: control.reportExport.totals.exportPlannedReports },
+            { label: "Export locked", value: control.reportExport.totals.exportLockedReports },
+            { label: "Export unavailable", value: control.reportExport.totals.exportUnavailableReports }
+          ]}
+        />
+
+        {control.reportExport.byAvailability.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportExport.byAvailability.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportExportAvailabilityLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportExport.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportExport.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={["Report", "Availability", "Helper text", "Export JSON", "Export CSV"]}
+        >
+          {control.reportExport.entries.length ? (
+            control.reportExport.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportExportAvailabilityBadgeTone(entry.exportAvailabilityState)}>
+                    {reportExportAvailabilityLabel(entry.exportAvailabilityState)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.exportHelperText}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">
+                  {entry.exportJsonHref ? (
+                    <Link className="font-semibold text-emerald-700" href={entry.exportJsonHref}>
+                      Download JSON
+                    </Link>
+                  ) : (
+                    "Disabled"
+                  )}
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">
+                  {entry.exportCsvHref ? (
+                    <Link className="font-semibold text-emerald-700" href={entry.exportCsvHref}>
+                      Download CSV
+                    </Link>
+                  ) : (
+                    "Disabled"
+                  )}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={5}>
+                No export entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -2982,7 +3148,10 @@ export default async function AdminReportsPage({
         ]}
       >
         {control.reports.length ? (
-        control.reports.map((report) => (
+        control.reports.map((report) => {
+          const exportEntry = control.reportExport.entries.find((entry) => entry.reportKey === report.reportKey);
+
+          return (
           <tr key={report.reportKey}>
             <td className="px-5 py-4">
               <p className="font-bold text-slate-950">{report.name}</p>
@@ -3010,10 +3179,22 @@ export default async function AdminReportsPage({
               <p className="mt-1 text-xs text-slate-500">Registry: {report.visibility}</p>
             </td>
             <td className="px-5 py-4 text-slate-600">{report.lastGenerated}</td>
-            <td className="px-5 py-4 text-slate-600">{report.exportPlaceholder}</td>
+            <td className="px-5 py-4 text-slate-600">
+              <AdminBadge
+                tone={reportExportAvailabilityBadgeTone(
+                  exportEntry?.exportAvailabilityState ?? "export_unavailable"
+                )}
+              >
+                {reportExportAvailabilityLabel(exportEntry?.exportAvailabilityState ?? "export_unavailable")}
+              </AdminBadge>
+              <p className="mt-2 text-xs text-slate-500">
+                {exportEntry?.exportHelperText ?? report.exportPlaceholder}
+              </p>
+            </td>
             <td className="px-5 py-4">
               <ReportRegistrySafeActionsCell
                 activeFilters={activeFilters}
+                exportEntry={exportEntry}
                 report={report}
                 selectedRange={control.selectedRange}
               />
@@ -3032,7 +3213,8 @@ export default async function AdminReportsPage({
               </AdminBadge>
             </td>
           </tr>
-        ))
+          );
+        })
         ) : (
           <tr>
             <td className="px-5 py-4 text-slate-600" colSpan={11}>

@@ -120,6 +120,8 @@ export type ReportsRegistryRuntimeContext = {
   reportAuditNeedsAttention?: boolean;
   reportReviewLastGenerated?: string;
   reportReviewNeedsAttention?: boolean;
+  reportExportLastGenerated?: string;
+  reportExportNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -468,16 +470,17 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Platform",
-    certificationState: "planned",
-    dataSourceDescription: "Export placeholder only. No file generation on page load.",
-    exportAvailabilityState: "unavailable",
-    futureHooks: ["CSV export", "PDF export"],
-    lastGeneratedState: "Not generated",
+    certificationState: "not_applicable",
+    dataSourceDescription:
+      "Report Export runtime (registry + RP-12 viewer + RP-13 status + RP-19 audit + RP-20 review + RP-2 through RP-11 adapters). Explicit user-triggered JSON/CSV export only.",
+    exportAvailabilityState: "export_ready",
+    futureHooks: ["PDF export", "Scheduled export delivery"],
+    lastGeneratedState: "Live export layer",
     reportId: "platform:report-export",
     reportKey: "rp-21-report-export",
     roadmapPhase: "RP-21",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Report Export",
     visibility: "super_admin"
   },
@@ -770,6 +773,17 @@ function applyRuntimeContext(
         "Report Review runtime (registry + RP-13 status + RP-19 audit + RP-12 through RP-18 runtime outputs). Read-only in-memory review on page load.",
       lastGeneratedState: context.reportReviewLastGenerated ?? definition.lastGeneratedState,
       status: context.reportReviewNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-21-report-export") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Export runtime (registry + RP-12 viewer + RP-13 status + RP-19 audit + RP-20 review + RP-2 through RP-11 adapters). Explicit user-triggered JSON/CSV export only.",
+      exportAvailabilityState: "export_ready",
+      lastGeneratedState: context.reportExportLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportExportNeedsAttention ? "review" : definition.status
     };
   }
 

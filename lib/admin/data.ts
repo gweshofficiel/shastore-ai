@@ -241,6 +241,11 @@ import {
   mapReportReviewRuntimeToAdminFields
 } from "@/src/lib/reports/report-review-runtime";
 import {
+  buildReportExportRuntimeInput,
+  mapReportExportRuntimeToAdminFields,
+  type ReportExportModuleSnapshots
+} from "@/src/lib/reports/report-export-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5056,6 +5061,74 @@ export type AdminReportingControl = {
       unavailableReports: number;
     };
     warnings: string[];
+  };
+  reportExport: {
+    byAvailability: Array<{
+      count: number;
+      label: "export_available" | "export_disabled" | "export_locked" | "export_planned" | "export_unavailable";
+    }>;
+    entries: Array<{
+      exportAvailabilityState:
+        | "export_available"
+        | "export_disabled"
+        | "export_locked"
+        | "export_planned"
+        | "export_unavailable";
+      exportCsvHref: string | null;
+      exportHelperText: string;
+      exportJsonHref: string | null;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportExport: {
+      exportAvailabilityState:
+        | "export_available"
+        | "export_disabled"
+        | "export_locked"
+        | "export_planned"
+        | "export_unavailable";
+      exportCsvHref: string | null;
+      exportHelperText: string;
+      exportJsonHref: string | null;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+    } | null;
+    selectedReportKey: string | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      exportAvailableReports: number;
+      exportDisabledReports: number;
+      exportLockedReports: number;
+      exportPlannedReports: number;
+      exportUnavailableReports: number;
+    };
+    warnings: string[];
+    registryReportsForExport: Array<{
+      category: string;
+      name: string;
+      reportKey: string;
+      roadmapPhase: string;
+      runtimeStatus:
+        | "active"
+        | "available"
+        | "certified"
+        | "degraded"
+        | "empty"
+        | "error"
+        | "inactive"
+        | "partial"
+        | "planned";
+      status: string;
+    }>;
   };
   reports: Array<{
     category:
@@ -12356,6 +12429,192 @@ export async function getAdminReportingControl(
   const filteredReviewEntries = reportReviewRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportExportModuleSnapshots: ReportExportModuleSnapshots = {
+    aggregation: {
+      generatedAt: reportAggregationRuntime.generatedAt,
+      summary: reportAggregationRuntime.summary,
+      totals: {
+        availableReports: reportAggregationRuntime.totals.availableReports,
+        certifiedReports: reportAggregationRuntime.totals.certifiedReports,
+        degradedReports: reportAggregationRuntime.totals.degradedReports,
+        emptyReports: reportAggregationRuntime.totals.emptyReports,
+        partialReports: reportAggregationRuntime.totals.partialReports,
+        plannedReports: reportAggregationRuntime.totals.plannedReports,
+        reportsWithEmptyState: reportAggregationRuntime.totals.reportsWithEmptyState,
+        reportsWithLockedActions: reportAggregationRuntime.totals.reportsWithLockedActions,
+        reportsWithRuntimeData: reportAggregationRuntime.totals.reportsWithRuntimeData,
+        totalRegisteredReports: reportAggregationRuntime.totals.totalRegisteredReports
+      }
+    },
+    aiReports: {
+      breakdowns: [
+        ...aiReportsRuntime.usageByFeature.map((item) => ({ ...item })),
+        ...aiReportsRuntime.usageByUserRole.map((item) => ({ ...item })),
+        ...aiReportsRuntime.usageByWorkspaceOrStore.map((item) => ({ ...item }))
+      ],
+      errorMessage: aiReportsRuntime.errorMessage,
+      generatedAt: aiReportsRuntime.generatedAt,
+      loadingState: aiReportsRuntime.loadingState,
+      metrics: { ...aiReportsRuntime.metrics },
+      rangeLabel: aiReportsRuntime.rangeLabel,
+      selectedRange: aiReportsRuntime.selectedRange,
+      status: aiReportsRuntime.status,
+      summary: aiReportsRuntime.summary,
+      warnings: [...aiReportsRuntime.warnings]
+    },
+    domainEmailReports: {
+      breakdowns: [
+        ...domainEmailReportsRuntime.domainsByExtension.map((item) => ({ ...item })),
+        ...domainEmailReportsRuntime.domainsByProvider.map((item) => ({ ...item })),
+        ...domainEmailReportsRuntime.domainsByStatus.map((item) => ({ ...item }))
+      ],
+      errorMessage: domainEmailReportsRuntime.errorMessage,
+      generatedAt: domainEmailReportsRuntime.generatedAt,
+      loadingState: domainEmailReportsRuntime.loadingState,
+      metrics: { ...domainEmailReportsRuntime.metrics },
+      rangeLabel: domainEmailReportsRuntime.rangeLabel,
+      selectedRange: domainEmailReportsRuntime.selectedRange,
+      status: domainEmailReportsRuntime.status,
+      summary: domainEmailReportsRuntime.summary,
+      warnings: [...domainEmailReportsRuntime.warnings]
+    },
+    marketplaceReports: {
+      breakdowns: [
+        ...marketplaceReportsRuntime.itemsByCategory.map((item) => ({ ...item })),
+        ...marketplaceReportsRuntime.itemsByStatus.map((item) => ({ ...item }))
+      ],
+      errorMessage: marketplaceReportsRuntime.errorMessage,
+      generatedAt: marketplaceReportsRuntime.generatedAt,
+      loadingState: marketplaceReportsRuntime.loadingState,
+      metrics: { ...marketplaceReportsRuntime.metrics },
+      rangeLabel: marketplaceReportsRuntime.rangeLabel,
+      selectedRange: marketplaceReportsRuntime.selectedRange,
+      status: marketplaceReportsRuntime.status,
+      summary: marketplaceReportsRuntime.summary,
+      warnings: [...marketplaceReportsRuntime.warnings]
+    },
+    operationsReports: {
+      breakdowns: operationsReportsRuntime.issuesByCategory.map((item) => ({ ...item })),
+      errorMessage: operationsReportsRuntime.errorMessage,
+      generatedAt: operationsReportsRuntime.generatedAt,
+      loadingState: operationsReportsRuntime.loadingState,
+      metrics: { ...operationsReportsRuntime.metrics },
+      rangeLabel: operationsReportsRuntime.rangeLabel,
+      selectedRange: operationsReportsRuntime.selectedRange,
+      status: operationsReportsRuntime.status,
+      summary: operationsReportsRuntime.summary,
+      warnings: [...operationsReportsRuntime.warnings]
+    },
+    paymentReports: {
+      breakdowns: [
+        ...paymentReportsRuntime.paymentsByCurrency.map((item) => ({ ...item })),
+        ...paymentReportsRuntime.paymentsByProvider.map((item) => ({ ...item })),
+        ...paymentReportsRuntime.paymentsByStatus.map((item) => ({ ...item }))
+      ],
+      errorMessage: paymentReportsRuntime.errorMessage,
+      generatedAt: paymentReportsRuntime.generatedAt,
+      loadingState: paymentReportsRuntime.loadingState,
+      metrics: { ...paymentReportsRuntime.metrics },
+      rangeLabel: paymentReportsRuntime.rangeLabel,
+      selectedRange: paymentReportsRuntime.selectedRange,
+      status: paymentReportsRuntime.status,
+      summary: paymentReportsRuntime.summary,
+      warnings: [...paymentReportsRuntime.warnings]
+    },
+    revenueReports: {
+      breakdowns: [
+        ...revenueReportsRuntime.currencyBreakdown.map((item) => ({ ...item })),
+        ...revenueReportsRuntime.providerBreakdown.map((item) => ({ ...item }))
+      ],
+      errorMessage: revenueReportsRuntime.errorMessage,
+      generatedAt: revenueReportsRuntime.generatedAt,
+      loadingState: revenueReportsRuntime.loadingState,
+      metrics: { ...revenueReportsRuntime.metrics },
+      rangeLabel: revenueReportsRuntime.rangeLabel,
+      selectedRange: revenueReportsRuntime.selectedRange,
+      status: revenueReportsRuntime.status,
+      summary: revenueReportsRuntime.summary,
+      warnings: [...revenueReportsRuntime.warnings]
+    },
+    securityReports: {
+      breakdowns: [
+        ...securityReportsRuntime.eventsByCategory.map((item) => ({ ...item })),
+        ...securityReportsRuntime.eventsBySeverity.map((item) => ({ ...item }))
+      ],
+      errorMessage: securityReportsRuntime.errorMessage,
+      generatedAt: securityReportsRuntime.generatedAt,
+      loadingState: securityReportsRuntime.loadingState,
+      metrics: { ...securityReportsRuntime.metrics },
+      rangeLabel: securityReportsRuntime.rangeLabel,
+      selectedRange: securityReportsRuntime.selectedRange,
+      status: securityReportsRuntime.status,
+      summary: securityReportsRuntime.summary,
+      warnings: [...securityReportsRuntime.warnings]
+    },
+    storeReports: {
+      breakdowns: [
+        ...storeReportsRuntime.storesByPlan.map((item) => ({ ...item })),
+        ...storeReportsRuntime.storesByStatus.map((item) => ({ ...item }))
+      ],
+      errorMessage: storeReportsRuntime.errorMessage,
+      generatedAt: storeReportsRuntime.generatedAt,
+      loadingState: storeReportsRuntime.loadingState,
+      metrics: { ...storeReportsRuntime.metrics },
+      rangeLabel: storeReportsRuntime.rangeLabel,
+      selectedRange: storeReportsRuntime.selectedRange,
+      status: storeReportsRuntime.status,
+      summary: storeReportsRuntime.summary,
+      warnings: [...storeReportsRuntime.warnings]
+    },
+    subscriptionReports: {
+      breakdowns: [
+        ...subscriptionReportsRuntime.subscriptionsByPlan.map((item) => ({ ...item })),
+        ...subscriptionReportsRuntime.subscriptionsByProvider.map((item) => ({ ...item })),
+        ...subscriptionReportsRuntime.subscriptionsByStatus.map((item) => ({ ...item }))
+      ],
+      errorMessage: subscriptionReportsRuntime.errorMessage,
+      generatedAt: subscriptionReportsRuntime.generatedAt,
+      loadingState: subscriptionReportsRuntime.loadingState,
+      metrics: { ...subscriptionReportsRuntime.metrics },
+      rangeLabel: subscriptionReportsRuntime.rangeLabel,
+      selectedRange: subscriptionReportsRuntime.selectedRange,
+      status: subscriptionReportsRuntime.status,
+      summary: subscriptionReportsRuntime.summary,
+      warnings: [...subscriptionReportsRuntime.warnings]
+    },
+    userReports: {
+      breakdowns: userReportsRuntime.usersByRole.map((item) => ({ ...item })),
+      errorMessage: userReportsRuntime.errorMessage,
+      generatedAt: userReportsRuntime.generatedAt,
+      loadingState: userReportsRuntime.loadingState,
+      metrics: { ...userReportsRuntime.metrics },
+      rangeLabel: userReportsRuntime.rangeLabel,
+      selectedRange: userReportsRuntime.selectedRange,
+      status: userReportsRuntime.status,
+      summary: userReportsRuntime.summary,
+      warnings: [...userReportsRuntime.warnings]
+    }
+  };
+  const reportExportRuntime = await mapReportExportRuntimeToAdminFields(
+    buildReportExportRuntimeInput({
+      adapterLoadingStateByReportKey,
+      filters: activeFilters,
+      moduleSnapshots: reportExportModuleSnapshots,
+      registryReports: allReports.map((report) => ({
+        category: report.category,
+        name: report.name,
+        reportKey: report.reportKey,
+        roadmapPhase: report.roadmapPhase,
+        runtimeStatus: report.runtimeStatus,
+        status: report.status
+      })),
+      range: selectedRange,
+      selectedReportKey
+    })
+  );
+  const filteredExportEntries = reportExportRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12377,6 +12636,11 @@ export async function getAdminReportingControl(
       reportReviewRuntime.status === "degraded" ||
       reportReviewRuntime.status === "empty" ||
       reportReviewRuntime.status === "unavailable",
+    reportExportLastGenerated: reportExportRuntime.lastGeneratedState,
+    reportExportNeedsAttention:
+      reportExportRuntime.status === "degraded" ||
+      reportExportRuntime.status === "empty" ||
+      reportExportRuntime.status === "unavailable",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -12876,6 +13140,30 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportReviewRuntime.totals,
       warnings: reportReviewRuntime.warnings
+    },
+    reportExport: {
+      byAvailability: reportExportRuntime.byAvailability,
+      entries: filteredExportEntries,
+      errorMessage: reportExportRuntime.errorMessage,
+      generatedAt: reportExportRuntime.generatedAt,
+      lastGeneratedState: reportExportRuntime.lastGeneratedState,
+      loadingState: reportExportRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportExport: reportExportRuntime.selectedReportExport,
+      selectedReportKey: reportExportRuntime.selectedReportKey,
+      status: reportExportRuntime.status,
+      summary: reportExportRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportExportRuntime.totals,
+      warnings: reportExportRuntime.warnings,
+      registryReportsForExport: allReports.map((report) => ({
+        category: report.category,
+        name: report.name,
+        reportKey: report.reportKey,
+        roadmapPhase: report.roadmapPhase,
+        runtimeStatus: report.runtimeStatus,
+        status: report.status
+      }))
     },
     reports,
     selectedRange,
