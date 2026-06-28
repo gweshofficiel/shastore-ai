@@ -80,9 +80,16 @@ import {
   operationsCronMonitoringRuntimeStatusLabel,
   type OperationsCronMonitoringRuntimeStatus
 } from "@/src/lib/operations/operations-cron-monitoring-runtime";
+import {
+  formatBackupBytes,
+  operationsBackupRuntimeStatusBadgeTone,
+  operationsBackupRuntimeStatusLabel,
+  operationsBackupStatusLabel,
+  type OperationsBackupRuntimeStatus
+} from "@/src/lib/operations/operations-backup-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -147,6 +154,10 @@ function toneForWorkerMonitoringRuntimeStatus(status: string) {
 
 function toneForCronMonitoringRuntimeStatus(status: string) {
   return operationsCronMonitoringRuntimeStatusBadgeTone(status as OperationsCronMonitoringRuntimeStatus);
+}
+
+function toneForBackupRuntimeStatus(status: string) {
+  return operationsBackupRuntimeStatusBadgeTone(status as OperationsBackupRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -373,6 +384,24 @@ function CronMonitoringSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No cron monitoring action is executed during OP-13 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BackupSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Create Backup", "Restore Backup", "Verify Backup", "Download", "Delete", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No backup action is executed during OP-15 page load."
           type="button"
         >
           {label}
@@ -1218,6 +1247,72 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{metric.value}</td>
             <td className="px-5 py-4"><AdminBadge tone={toneForStatus(metric.status)}>{metric.status}</AdminBadge></td>
             <td className="px-5 py-4 text-slate-600">{metric.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Backup runtime</span>
+        <AdminBadge tone={toneForStatus(control.backupRuntime.status)}>{control.backupRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.backupRuntime.summary}</span>
+      </div>
+
+      {control.backupRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} backup{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Backup",
+          "Type",
+          "Provider",
+          "Location",
+          "Status",
+          "Count",
+          "Size",
+          "Last backup",
+          "Safe controls"
+        ]}
+      >
+        {control.backupRuntimeItems.map((backup) => (
+          <tr key={backup.backupKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{backup.backupName}</span>
+                <AdminBadge tone={toneForBackupRuntimeStatus(backup.runtimeStatus)}>
+                  {operationsBackupRuntimeStatusLabel(backup.runtimeStatus as OperationsBackupRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {backup.metadataDetected
+                    ? backup.metadataSource
+                      ? `Read-only from ${backup.metadataSource}; paths, dumps, and credentials hidden`
+                      : "Read-only recorded backup metadata only"
+                    : "No backup metadata detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {backup.reviewStatus} · Visibility: {backup.visibility} · Retention: {backup.retentionPolicyLabel}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{backup.backupType}</td>
+            <td className="px-5 py-4 text-slate-600">{backup.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{backup.storageLocationLabel}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={backup.backupStatus === "failed" ? "red" : backup.backupStatus === "warning" ? "amber" : "green"}>
+                {operationsBackupStatusLabel(backup.backupStatus as Parameters<typeof operationsBackupStatusLabel>[0])}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{backup.backupCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatBackupBytes(backup.totalSizeBytes)}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(backup.lastBackupAt)}</td>
+            <td className="px-5 py-4">
+              <BackupSafeControls />
+            </td>
           </tr>
         ))}
       </AdminTable>

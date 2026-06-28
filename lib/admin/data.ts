@@ -317,6 +317,10 @@ import {
   mapOperationsStorageMetricsRuntimeToAdminFields
 } from "@/src/lib/operations/operations-storage-metrics-runtime";
 import {
+  loadOperationsBackupRuntimeReadOnlySafe,
+  mapOperationsBackupRuntimeToAdminFields
+} from "@/src/lib/operations/operations-backup-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6033,6 +6037,44 @@ export type AdminOperationsStorageMetricsRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsBackupSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsBackupRuntimeItem = {
+  backupCount: number;
+  backupKey: string;
+  backupName: string;
+  backupStatus: string;
+  backupType: string;
+  errorCount: number;
+  groupKey: string;
+  lastBackupAt: string | null;
+  lastFailureAt: string | null;
+  lastVerifiedAt: string | null;
+  metadataDetected: boolean;
+  metadataSource: string | null;
+  provider: string;
+  retentionPolicyLabel: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsBackupSafeControl[];
+  storageLocationLabel: string;
+  totalSizeBytes: number;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsBackupRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsBackupRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6164,6 +6206,21 @@ export type AdminOperationsControl = {
     note: string;
     status: "placeholder" | "ready" | "review";
   }>;
+  backupRuntime: {
+    availableBackups: number;
+    failedBackups: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_backup_runtime";
+    status: "backup_runtime_ready" | "needs_attention";
+    summary: string;
+    totalBackups: number;
+    warningBackups: number;
+  };
+  backupRuntimeGroups: AdminOperationsBackupRuntimeGroup[];
+  backupRuntimeItems: AdminOperationsBackupRuntimeItem[];
+  backupSafeControls: AdminOperationsBackupSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -14820,6 +14877,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsBackupRuntimeLoad = mapOperationsBackupRuntimeToAdminFields(
+    await loadOperationsBackupRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14864,8 +14926,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     backupRecovery: [
       {
         name: "Backup status",
-        note: "Supabase backup status is not queried in this phase.",
-        status: "placeholder"
+        note: "Legacy placeholder retained; see Backup Runtime section for read-only backup metadata.",
+        status: operationsBackupRuntimeLoad.backupRuntime.status === "backup_runtime_ready" ? "ready" : "review"
       },
       {
         name: "Last backup placeholder",
@@ -15014,8 +15076,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Backups",
-        note: "Backup status is a non-destructive placeholder.",
-        status: "placeholder"
+        note: "Backup runtime uses read-only backup metadata and recorded events only; no backup create, restore, delete, or provider API runs here.",
+        status: operationsBackupRuntimeLoad.backupRuntime.status === "needs_attention" ? "review" : "monitoring"
       },
       {
         name: "Disaster Recovery",
@@ -15070,7 +15132,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
     cronMonitoringRuntimeGroups: operationsCronMonitoringRuntimeLoad.groups,
     cronMonitoringRuntimeItems: operationsCronMonitoringRuntimeLoad.cronMonitoringItems,
-    cronMonitoringSafeControls: operationsCronMonitoringRuntimeLoad.safeControls
+    cronMonitoringSafeControls: operationsCronMonitoringRuntimeLoad.safeControls,
+    backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+    backupRuntimeGroups: operationsBackupRuntimeLoad.groups,
+    backupRuntimeItems: operationsBackupRuntimeLoad.backupItems,
+    backupSafeControls: operationsBackupRuntimeLoad.safeControls
   };
 }
 
