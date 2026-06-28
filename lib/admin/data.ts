@@ -293,6 +293,10 @@ import {
   mapOperationsEmailQueueRuntimeToAdminFields
 } from "@/src/lib/operations/operations-email-queue-runtime";
 import {
+  loadOperationsAiQueueRuntimeReadOnlySafe,
+  mapOperationsAiQueueRuntimeToAdminFields
+} from "@/src/lib/operations/operations-ai-queue-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5719,6 +5723,42 @@ export type AdminOperationsEmailQueueRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsAiQueueSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsAiQueueRuntimeItem = {
+  aiQueueKey: string;
+  cancelledJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastJobAt: string | null;
+  modelFamily: string;
+  pendingJobs: number;
+  processingJobs: number;
+  provider: string;
+  queueName: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsAiQueueSafeControl[];
+  tableDetected: boolean;
+  totalJobs: number;
+  visibility: string;
+};
+
+export type AdminOperationsAiQueueRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsAiQueueRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -5979,6 +6019,20 @@ export type AdminOperationsControl = {
   emailQueueRuntimeGroups: AdminOperationsEmailQueueRuntimeGroup[];
   emailQueueRuntimeItems: AdminOperationsEmailQueueRuntimeItem[];
   emailQueueSafeControls: AdminOperationsEmailQueueSafeControl[];
+  aiQueueRuntime: {
+    activeQueues: number;
+    failedQueues: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_ai_queue_runtime";
+    status: "ai_queue_runtime_ready" | "needs_attention";
+    summary: string;
+    totalQueues: number;
+  };
+  aiQueueRuntimeGroups: AdminOperationsAiQueueRuntimeGroup[];
+  aiQueueRuntimeItems: AdminOperationsAiQueueRuntimeItem[];
+  aiQueueSafeControls: AdminOperationsAiQueueSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14461,6 +14515,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsAiQueueRuntimeLoad = mapOperationsAiQueueRuntimeToAdminFields(
+    await loadOperationsAiQueueRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14483,14 +14542,6 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     name: emailQueueItem?.queueName ?? "Email event queue",
     pending: emailQueueItem?.pendingJobs ?? 0,
     processing: emailQueueItem?.processingJobs ?? 0
-  };
-  const aiQueue = {
-    completed: aiQueueItem?.completedJobs ?? 0,
-    failed: aiQueueItem?.failedJobs ?? 0,
-    lastProcessed: aiQueueItem?.lastJobAt ?? null,
-    name: aiQueueItem?.queueName ?? "AI generation queue",
-    pending: aiQueueItem?.pendingJobs ?? 0,
-    processing: aiQueueItem?.processingJobs ?? 0
   };
   const domainEmailQueue = {
     completed: domainEmailQueueItem?.completedJobs ?? 0,
@@ -14586,7 +14637,12 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     dashboardSections: operationsDashboard.sections,
     dashboardStats: operationsDashboard.stats,
     overview: {
-      aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueueItem?.tableDetected && aiQueue.completed + aiQueue.pending + aiQueue.processing + aiQueue.failed > 0 ? "healthy" : aiQueueItem?.tableDetected ? "placeholder" : "missing_config",
+      aiQueueHealth:
+        operationsAiQueueRuntimeLoad.aiQueueRuntime.status === "ai_queue_runtime_ready"
+          ? "healthy"
+          : aiQueueItem?.tableDetected
+            ? "needs_review"
+            : "missing_config",
       cronHealth: operationsCronRuntimeLoad.cronRuntime.status === "needs_attention" ? "needs_review" : "placeholder",
       databaseHealth:
         operationsDatabaseRuntimeLoad.databaseRuntime.status === "database_runtime_ready"
@@ -14670,7 +14726,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
     emailQueueRuntimeGroups: operationsEmailQueueRuntimeLoad.groups,
     emailQueueRuntimeItems: operationsEmailQueueRuntimeLoad.emailQueues,
-    emailQueueSafeControls: operationsEmailQueueRuntimeLoad.safeControls
+    emailQueueSafeControls: operationsEmailQueueRuntimeLoad.safeControls,
+    aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+    aiQueueRuntimeGroups: operationsAiQueueRuntimeLoad.groups,
+    aiQueueRuntimeItems: operationsAiQueueRuntimeLoad.aiQueues,
+    aiQueueSafeControls: operationsAiQueueRuntimeLoad.safeControls
   };
 }
 

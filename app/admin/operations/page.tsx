@@ -49,9 +49,14 @@ import {
   operationsEmailQueueRuntimeStatusLabel,
   type OperationsEmailQueueRuntimeStatus
 } from "@/src/lib/operations/operations-email-queue-runtime";
+import {
+  operationsAiQueueRuntimeStatusBadgeTone,
+  operationsAiQueueRuntimeStatusLabel,
+  type OperationsAiQueueRuntimeStatus
+} from "@/src/lib/operations/operations-ai-queue-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -92,6 +97,10 @@ function toneForDatabaseRuntimeStatus(status: string) {
 
 function toneForEmailQueueRuntimeStatus(status: string) {
   return operationsEmailQueueRuntimeStatusBadgeTone(status as OperationsEmailQueueRuntimeStatus);
+}
+
+function toneForAiQueueRuntimeStatus(status: string) {
+  return operationsAiQueueRuntimeStatusBadgeTone(status as OperationsAiQueueRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -210,6 +219,24 @@ function EmailQueueSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No email queue action is executed during OP-8 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AiQueueSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Retry Failed", "Pause Queue", "Resume Queue", "Cancel Pending", "Inspect"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No AI queue action is executed during OP-9 page load."
           type="button"
         >
           {label}
@@ -418,6 +445,70 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(emailQueue.lastEmailAt)}</td>
             <td className="px-5 py-4">
               <EmailQueueSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">AI queue runtime</span>
+        <AdminBadge tone={toneForStatus(control.aiQueueRuntime.status)}>{control.aiQueueRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.aiQueueRuntime.summary}</span>
+      </div>
+
+      {control.aiQueueRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} queue{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "AI queue",
+          "Total",
+          "Pending",
+          "Processing",
+          "Completed",
+          "Failed",
+          "Provider",
+          "Model family",
+          "Last job",
+          "Safe controls"
+        ]}
+      >
+        {control.aiQueueRuntimeItems.map((aiQueue) => (
+          <tr key={aiQueue.aiQueueKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{aiQueue.queueName}</span>
+                <AdminBadge tone={toneForAiQueueRuntimeStatus(aiQueue.runtimeStatus)}>
+                  {operationsAiQueueRuntimeStatusLabel(aiQueue.runtimeStatus as OperationsAiQueueRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {aiQueue.tableDetected
+                    ? "Read-only from ai_generation_queue (metadata only; prompts and outputs hidden)"
+                    : "No AI queue table detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {aiQueue.reviewStatus} · Visibility: {aiQueue.visibility} · Cancelled: {aiQueue.cancelledJobs}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.totalJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.pendingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.processingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.completedJobs}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={aiQueue.failedJobs ? "red" : "green"}>{aiQueue.failedJobs}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{aiQueue.modelFamily}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(aiQueue.lastJobAt)}</td>
+            <td className="px-5 py-4">
+              <AiQueueSafeControls />
             </td>
           </tr>
         ))}
