@@ -301,6 +301,10 @@ import {
   mapOperationsDomainEmailQueueRuntimeToAdminFields
 } from "@/src/lib/operations/operations-domain-email-queue-runtime";
 import {
+  loadOperationsMonitoringEventsRuntimeReadOnlySafe,
+  mapOperationsMonitoringEventsRuntimeToAdminFields
+} from "@/src/lib/operations/operations-monitoring-events-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5800,6 +5804,40 @@ export type AdminOperationsDomainEmailQueueRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsMonitoringEventsSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsMonitoringEventsRuntimeItem = {
+  count: number;
+  eventType: string;
+  groupKey: string;
+  lastSeenAt: string | null;
+  monitoringEventKey: string;
+  occurredAt: string | null;
+  resolvedAt: string | null;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsMonitoringEventsSafeControl[];
+  safeSummary: string;
+  severity: string;
+  source: string;
+  status: string;
+  tableDetected: boolean;
+  title: string;
+  visibility: string;
+};
+
+export type AdminOperationsMonitoringEventsRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsMonitoringEventsRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -6088,6 +6126,20 @@ export type AdminOperationsControl = {
   domainEmailQueueRuntimeGroups: AdminOperationsDomainEmailQueueRuntimeGroup[];
   domainEmailQueueRuntimeItems: AdminOperationsDomainEmailQueueRuntimeItem[];
   domainEmailQueueSafeControls: AdminOperationsDomainEmailQueueSafeControl[];
+  monitoringEventsRuntime: {
+    activeStreams: number;
+    criticalStreams: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_monitoring_events_runtime";
+    status: "monitoring_events_runtime_ready" | "needs_attention";
+    summary: string;
+    totalStreams: number;
+  };
+  monitoringEventsRuntimeGroups: AdminOperationsMonitoringEventsRuntimeGroup[];
+  monitoringEventsRuntimeItems: AdminOperationsMonitoringEventsRuntimeItem[];
+  monitoringEventsSafeControls: AdminOperationsMonitoringEventsSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14580,6 +14632,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsMonitoringEventsRuntimeLoad = mapOperationsMonitoringEventsRuntimeToAdminFields(
+    await loadOperationsMonitoringEventsRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14764,8 +14821,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "System Monitoring",
-        note: "Uses existing monitoring_events without duplicating monitoring storage.",
-        status: monitoringFailures.length ? "review" : "monitoring"
+        note: "Monitoring events runtime uses read-only monitoring_events metadata only; no alert or notification actions run here.",
+        status:
+          operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime.status === "needs_attention" ? "review" : "monitoring"
       }
     ],
     workers: operationsWorkerRuntimeLoad.legacyWorkers,
@@ -14793,7 +14851,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
     domainEmailQueueRuntimeGroups: operationsDomainEmailQueueRuntimeLoad.groups,
     domainEmailQueueRuntimeItems: operationsDomainEmailQueueRuntimeLoad.domainEmailQueues,
-    domainEmailQueueSafeControls: operationsDomainEmailQueueRuntimeLoad.safeControls
+    domainEmailQueueSafeControls: operationsDomainEmailQueueRuntimeLoad.safeControls,
+    monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+    monitoringEventsRuntimeGroups: operationsMonitoringEventsRuntimeLoad.groups,
+    monitoringEventsRuntimeItems: operationsMonitoringEventsRuntimeLoad.monitoringEvents,
+    monitoringEventsSafeControls: operationsMonitoringEventsRuntimeLoad.safeControls
   };
 }
 
