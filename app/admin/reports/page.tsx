@@ -44,6 +44,12 @@ import {
   reportExportAvailabilityBadgeTone,
   reportExportAvailabilityLabel
 } from "@/src/lib/reports/report-export-runtime";
+import {
+  reportScheduleAvailabilityBadgeTone,
+  reportScheduleAvailabilityLabel,
+  reportScheduleCoverageBadgeTone,
+  reportScheduleCoverageLabel
+} from "@/src/lib/reports/report-scheduled-reports-runtime";
 
 function toneForCertificationReadiness(signal: string) {
   if (signal === "certified" || signal === "ready_for_certification" || signal === "not_applicable") {
@@ -182,10 +188,14 @@ function ReportRuntimeSafeActionBadge({
 function ReportRegistrySafeActionsCell({
   exportEntry,
   report,
+  scheduleEntry,
   selectedRange,
   activeFilters
 }: {
   exportEntry?: Awaited<ReturnType<typeof getAdminReportingControl>>["reportExport"]["entries"][number];
+  scheduleEntry?: Awaited<
+    ReturnType<typeof getAdminReportingControl>
+  >["reportScheduledReports"]["entries"][number];
   report: Awaited<ReturnType<typeof getAdminReportingControl>>["reports"][number];
   selectedRange: string;
   activeFilters: Awaited<ReturnType<typeof getAdminReportingControl>>["reportFilters"]["query"];
@@ -254,7 +264,10 @@ function ReportRegistrySafeActionsCell({
       <button
         className={disabledButtonClass}
         disabled
-        title={reportRuntimeSafeActionDescription(report.runtimeSafeActions.schedule)}
+        title={
+          scheduleEntry?.scheduleHelperText ??
+          reportRuntimeSafeActionDescription(report.runtimeSafeActions.schedule)
+        }
         type="button"
       >
         Schedule disabled
@@ -2023,6 +2036,86 @@ export default async function AdminReportsPage({
               </div>
             ) : null}
 
+            {control.reportScheduledReports.selectedReportSchedule ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-22 Scheduled Reports summary
+                  </span>
+                  <AdminBadge
+                    tone={reportScheduleAvailabilityBadgeTone(
+                      control.reportScheduledReports.selectedReportSchedule.scheduleAvailabilityState
+                    )}
+                  >
+                    {reportScheduleAvailabilityLabel(
+                      control.reportScheduledReports.selectedReportSchedule.scheduleAvailabilityState
+                    )}
+                  </AdminBadge>
+                  <AdminBadge
+                    tone={reportScheduleCoverageBadgeTone(
+                      control.reportScheduledReports.selectedReportSchedule.scheduleCoverageState
+                    )}
+                  >
+                    {reportScheduleCoverageLabel(
+                      control.reportScheduledReports.selectedReportSchedule.scheduleCoverageState
+                    )}
+                  </AdminBadge>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  {control.reportScheduledReports.selectedReportSchedule.scheduleHelperText}
+                </p>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Schedule status:</span>{" "}
+                    {control.reportScheduledReports.selectedReportSchedule.scheduleStatus.replace(/_/g, " ")}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Frequency:</span>{" "}
+                    {control.reportScheduledReports.selectedReportSchedule.scheduleFrequencyState}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Next run:</span>{" "}
+                    {control.reportScheduledReports.selectedReportSchedule.nextRunState}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Last run:</span>{" "}
+                    {control.reportScheduledReports.selectedReportSchedule.lastRunState}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Delivery target:</span>{" "}
+                    {control.reportScheduledReports.selectedReportSchedule.deliveryTargetState}
+                  </p>
+                </div>
+
+                {control.reportScheduledReports.selectedReportSchedule.plannedIndicators.length ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {control.reportScheduledReports.selectedReportSchedule.plannedIndicators.map((indicator) => (
+                      <li key={indicator}>{indicator}</li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {control.reportScheduledReports.selectedReportSchedule.scheduleGaps.length ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {control.reportScheduledReports.selectedReportSchedule.scheduleGaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                <button
+                  className="h-10 w-fit rounded-full border border-slate-200 bg-slate-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                  disabled
+                  title={control.reportScheduledReports.selectedReportSchedule.scheduleHelperText}
+                  type="button"
+                >
+                  Create schedule disabled
+                </button>
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -3132,6 +3225,134 @@ export default async function AdminReportsPage({
         </AdminTable>
       </div>
 
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-22 Scheduled Reports
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportScheduledReports.status)}>
+            {control.reportScheduledReports.status}
+          </AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportScheduledReports.loadingState)}>
+            {control.reportScheduledReports.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportScheduledReports.summary}</span>
+        </div>
+
+        {control.reportScheduledReports.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportScheduledReports.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            {
+              label: "Scheduling available",
+              value: control.reportScheduledReports.totals.schedulingAvailableReports
+            },
+            {
+              label: "Scheduling planned",
+              value: control.reportScheduledReports.totals.schedulingPlannedReports
+            },
+            {
+              label: "Scheduling disabled",
+              value: control.reportScheduledReports.totals.schedulingDisabledReports
+            },
+            {
+              label: "Scheduling locked",
+              value: control.reportScheduledReports.totals.schedulingLockedReports
+            },
+            {
+              label: "Scheduling unavailable",
+              value: control.reportScheduledReports.totals.schedulingUnavailableReports
+            }
+          ]}
+        />
+
+        {control.reportScheduledReports.byAvailability.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportScheduledReports.byAvailability.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportScheduleAvailabilityLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportScheduledReports.byCoverage.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportScheduledReports.byCoverage.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportScheduleCoverageLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportScheduledReports.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportScheduledReports.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Availability",
+            "Coverage",
+            "Status",
+            "Frequency",
+            "Next run",
+            "Last run",
+            "Delivery target",
+            "Helper text"
+          ]}
+        >
+          {control.reportScheduledReports.entries.length ? (
+            control.reportScheduledReports.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportScheduleAvailabilityBadgeTone(entry.scheduleAvailabilityState)}>
+                    {reportScheduleAvailabilityLabel(entry.scheduleAvailabilityState)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportScheduleCoverageBadgeTone(entry.scheduleCoverageState)}>
+                    {reportScheduleCoverageLabel(entry.scheduleCoverageState)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduleStatus.replace(/_/g, " ")}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduleFrequencyState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.nextRunState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.lastRunState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.deliveryTargetState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.scheduleHelperText}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={9}>
+                No scheduled report entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
       <AdminTable
         headers={[
           "Report",
@@ -3150,6 +3371,9 @@ export default async function AdminReportsPage({
         {control.reports.length ? (
         control.reports.map((report) => {
           const exportEntry = control.reportExport.entries.find((entry) => entry.reportKey === report.reportKey);
+          const scheduleEntry = control.reportScheduledReports.entries.find(
+            (entry) => entry.reportKey === report.reportKey
+          );
 
           return (
           <tr key={report.reportKey}>
@@ -3196,6 +3420,7 @@ export default async function AdminReportsPage({
                 activeFilters={activeFilters}
                 exportEntry={exportEntry}
                 report={report}
+                scheduleEntry={scheduleEntry}
                 selectedRange={control.selectedRange}
               />
             </td>

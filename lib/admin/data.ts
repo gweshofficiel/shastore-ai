@@ -246,6 +246,10 @@ import {
   type ReportExportModuleSnapshots
 } from "@/src/lib/reports/report-export-runtime";
 import {
+  buildReportScheduledRuntimeInput,
+  mapReportScheduledRuntimeToAdminFields
+} from "@/src/lib/reports/report-scheduled-reports-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5129,6 +5133,78 @@ export type AdminReportingControl = {
         | "planned";
       status: string;
     }>;
+  };
+  reportScheduledReports: {
+    byAvailability: Array<{
+      count: number;
+      label:
+        | "scheduling_available"
+        | "scheduling_disabled"
+        | "scheduling_locked"
+        | "scheduling_planned"
+        | "scheduling_unavailable";
+    }>;
+    byCoverage: Array<{
+      count: number;
+      label: "partial" | "planned" | "unavailable";
+    }>;
+    entries: Array<{
+      deliveryTargetState: string;
+      lastRunState: string;
+      nextRunState: string;
+      plannedIndicators: string[];
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+      scheduleAvailabilityState:
+        | "scheduling_available"
+        | "scheduling_disabled"
+        | "scheduling_locked"
+        | "scheduling_planned"
+        | "scheduling_unavailable";
+      scheduleCoverageState: "partial" | "planned" | "unavailable";
+      scheduleFrequencyState: string;
+      scheduleGaps: string[];
+      scheduleHelperText: string;
+      scheduleStatus: "disabled" | "inactive" | "locked" | "planned" | "unavailable";
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportKey: string | null;
+    selectedReportSchedule: {
+      deliveryTargetState: string;
+      lastRunState: string;
+      nextRunState: string;
+      plannedIndicators: string[];
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+      scheduleAvailabilityState:
+        | "scheduling_available"
+        | "scheduling_disabled"
+        | "scheduling_locked"
+        | "scheduling_planned"
+        | "scheduling_unavailable";
+      scheduleCoverageState: "partial" | "planned" | "unavailable";
+      scheduleFrequencyState: string;
+      scheduleGaps: string[];
+      scheduleHelperText: string;
+      scheduleStatus: "disabled" | "inactive" | "locked" | "planned" | "unavailable";
+    } | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      schedulingAvailableReports: number;
+      schedulingDisabledReports: number;
+      schedulingLockedReports: number;
+      schedulingPlannedReports: number;
+      schedulingUnavailableReports: number;
+    };
+    warnings: string[];
   };
   reports: Array<{
     category:
@@ -12615,6 +12691,24 @@ export async function getAdminReportingControl(
   const filteredExportEntries = reportExportRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportScheduledReportsRuntime = await mapReportScheduledRuntimeToAdminFields(
+    buildReportScheduledRuntimeInput({
+      exportEntries: reportExportRuntime.entries.map((entry) => ({
+        exportAvailabilityState: entry.exportAvailabilityState,
+        reportKey: entry.reportKey
+      })),
+      registryReports: allReports.map((report) => ({
+        name: report.name,
+        reportKey: report.reportKey,
+        runtimeStatus: report.runtimeStatus,
+        status: report.status
+      })),
+      selectedReportKey
+    })
+  );
+  const filteredScheduledEntries = reportScheduledReportsRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12641,6 +12735,11 @@ export async function getAdminReportingControl(
       reportExportRuntime.status === "degraded" ||
       reportExportRuntime.status === "empty" ||
       reportExportRuntime.status === "unavailable",
+    reportScheduledReportsLastGenerated: reportScheduledReportsRuntime.lastGeneratedState,
+    reportScheduledReportsNeedsAttention:
+      reportScheduledReportsRuntime.status === "degraded" ||
+      reportScheduledReportsRuntime.status === "empty" ||
+      reportScheduledReportsRuntime.status === "unavailable",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -13164,6 +13263,23 @@ export async function getAdminReportingControl(
         runtimeStatus: report.runtimeStatus,
         status: report.status
       }))
+    },
+    reportScheduledReports: {
+      byAvailability: reportScheduledReportsRuntime.byAvailability,
+      byCoverage: reportScheduledReportsRuntime.byCoverage,
+      entries: filteredScheduledEntries,
+      errorMessage: reportScheduledReportsRuntime.errorMessage,
+      generatedAt: reportScheduledReportsRuntime.generatedAt,
+      lastGeneratedState: reportScheduledReportsRuntime.lastGeneratedState,
+      loadingState: reportScheduledReportsRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportKey: reportScheduledReportsRuntime.selectedReportKey,
+      selectedReportSchedule: reportScheduledReportsRuntime.selectedReportSchedule,
+      status: reportScheduledReportsRuntime.status,
+      summary: reportScheduledReportsRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportScheduledReportsRuntime.totals,
+      warnings: reportScheduledReportsRuntime.warnings
     },
     reports,
     selectedRange,

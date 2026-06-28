@@ -122,6 +122,8 @@ export type ReportsRegistryRuntimeContext = {
   reportReviewNeedsAttention?: boolean;
   reportExportLastGenerated?: string;
   reportExportNeedsAttention?: boolean;
+  reportScheduledReportsLastGenerated?: string;
+  reportScheduledReportsNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -487,7 +489,8 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   {
     category: "Report Platform",
     certificationState: "planned",
-    dataSourceDescription: "Scheduled reports reserved. No queue or delivery on page load.",
+    dataSourceDescription:
+      "Scheduled Reports runtime (registry + RP-12 viewer + RP-13 status + RP-21 export + RP-2 through RP-11 adapters). Read-only scheduling metadata on page load.",
     exportAvailabilityState: "unavailable",
     futureHooks: ["Scheduled delivery", "Email report delivery"],
     lastGeneratedState: "Not generated",
@@ -495,7 +498,7 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
     reportKey: "rp-22-scheduled-reports",
     roadmapPhase: "RP-22",
     safeActionsAvailability: "unavailable",
-    status: "planned",
+    status: "ready",
     title: "Scheduled Reports",
     visibility: "super_admin"
   },
@@ -784,6 +787,17 @@ function applyRuntimeContext(
       exportAvailabilityState: "export_ready",
       lastGeneratedState: context.reportExportLastGenerated ?? definition.lastGeneratedState,
       status: context.reportExportNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-22-scheduled-reports") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Scheduled Reports runtime (registry + RP-12 viewer + RP-13 status + RP-21 export + RP-19 audit + RP-20 review + RP-2 through RP-11 adapters). Read-only scheduling metadata on page load. No cron, queue, or delivery on page load.",
+      exportAvailabilityState: "placeholder",
+      lastGeneratedState: context.reportScheduledReportsLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportScheduledReportsNeedsAttention ? "review" : definition.status
     };
   }
 
