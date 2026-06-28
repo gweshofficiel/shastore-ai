@@ -265,6 +265,7 @@ import {
   buildReportProductionCertificationRuntimeInput,
   mapReportProductionCertificationRuntimeToAdminFields
 } from "@/src/lib/reports/report-production-certification-runtime";
+import { mapOperationsRegistryRuntimeToAdminFields } from "@/src/lib/operations/operations-registry-runtime";
 import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
@@ -5637,12 +5638,32 @@ export type AdminAdvancedSecurityControl = {
   }>;
 };
 
+export type AdminOperationsRegistryComponent = {
+  auditSupport: boolean;
+  category: string;
+  createdFromArchitecture: boolean;
+  description: string;
+  futureHooks: string[];
+  healthSupport: boolean;
+  id: string;
+  implementationStatus: string;
+  key: string;
+  monitoringSupport: boolean;
+  permissions: string[];
+  productionReady: boolean;
+  roadmapPhase: string;
+  runtimeType: string;
+  title: string;
+  visibility: string;
+};
+
 export type AdminOperationsControl = {
   backupRecovery: Array<{
     name: string;
     note: string;
     status: "placeholder" | "ready" | "review";
   }>;
+  components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
     name: string;
@@ -5695,6 +5716,13 @@ export type AdminOperationsControl = {
     nextRun: string;
     status: "idle" | "placeholder" | "running" | "warning";
   }>;
+  registry: {
+    readOnly: true;
+    source: "operations_registry_runtime";
+    status: "needs_attention" | "registry_ready";
+    summary: string;
+    totalEntries: number;
+  };
 };
 
 export type AdminInternalTeamControl = {
@@ -14004,6 +14032,10 @@ export async function getAdminAdvancedSecurityControl(): Promise<AdminAdvancedSe
 
 export async function getAdminOperationsControl(): Promise<AdminOperationsControl> {
   const { supabase, serviceRoleConfigured } = await getAdminClient();
+  const operationsRegistry = mapOperationsRegistryRuntimeToAdminFields();
+  const reservedFutureHooks =
+    operationsRegistry.components.find((component) => component.key === "op-future-hooks")?.futureHooks ??
+    operationsRegistry.futureHooks;
   const [monitoringEvents, emailLogs, aiQueues, domainsHosting] = await Promise.all([
     safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500),
     safeSelect(supabase, "email_event_logs", "id, status, sent_at, created_at, next_retry_at", 500),
@@ -14109,6 +14141,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
         status: "review"
       }
     ],
+    components: operationsRegistry.components,
     cronJobs: [
       {
         lastRun: latestMonitoring,
@@ -14171,15 +14204,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
         value: serviceRoleConfigured ? "Configured" : "Missing"
       }
     ],
-    futureHooks: [
-      "Retry failed queue",
-      "Restart worker",
-      "Run cron manually",
-      "Trigger backup",
-      "Restore backup",
-      "Export logs",
-      "Incident notifications"
-    ],
+    futureHooks: reservedFutureHooks,
     overview: {
       aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueues.length ? "healthy" : "placeholder",
       cronHealth: monitoringFailures.length ? "needs_review" : "placeholder",
@@ -14262,7 +14287,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
         nextRun: "Live event stream",
         status: monitoringFailures.length ? "warning" : "idle"
       }
-    ]
+    ],
+    registry: operationsRegistry.registry
   };
 }
 
