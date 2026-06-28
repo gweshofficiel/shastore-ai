@@ -54,9 +54,14 @@ import {
   operationsAiQueueRuntimeStatusLabel,
   type OperationsAiQueueRuntimeStatus
 } from "@/src/lib/operations/operations-ai-queue-runtime";
+import {
+  operationsDomainEmailQueueRuntimeStatusBadgeTone,
+  operationsDomainEmailQueueRuntimeStatusLabel,
+  type OperationsDomainEmailQueueRuntimeStatus
+} from "@/src/lib/operations/operations-domain-email-queue-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -101,6 +106,10 @@ function toneForEmailQueueRuntimeStatus(status: string) {
 
 function toneForAiQueueRuntimeStatus(status: string) {
   return operationsAiQueueRuntimeStatusBadgeTone(status as OperationsAiQueueRuntimeStatus);
+}
+
+function toneForDomainEmailQueueRuntimeStatus(status: string) {
+  return operationsDomainEmailQueueRuntimeStatusBadgeTone(status as OperationsDomainEmailQueueRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -237,6 +246,24 @@ function AiQueueSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No AI queue action is executed during OP-9 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DomainEmailQueueSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Retry Failed", "Pause Queue", "Resume Queue", "Cancel Pending", "Inspect"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No domain or email queue action is executed during OP-10 page load."
           type="button"
         >
           {label}
@@ -509,6 +536,73 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(aiQueue.lastJobAt)}</td>
             <td className="px-5 py-4">
               <AiQueueSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Domain & email queue runtime</span>
+        <AdminBadge tone={toneForStatus(control.domainEmailQueueRuntime.status)}>{control.domainEmailQueueRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.domainEmailQueueRuntime.summary}</span>
+      </div>
+
+      {control.domainEmailQueueRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} queue{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Domain & email queue",
+          "Type",
+          "Total",
+          "Pending",
+          "Processing",
+          "Completed",
+          "Failed",
+          "Provider",
+          "Last job",
+          "Safe controls"
+        ]}
+      >
+        {control.domainEmailQueueRuntimeItems.map((domainEmailQueue) => (
+          <tr key={domainEmailQueue.domainEmailQueueKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{domainEmailQueue.queueName}</span>
+                <AdminBadge tone={toneForDomainEmailQueueRuntimeStatus(domainEmailQueue.runtimeStatus)}>
+                  {operationsDomainEmailQueueRuntimeStatusLabel(
+                    domainEmailQueue.runtimeStatus as OperationsDomainEmailQueueRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {domainEmailQueue.tableDetected
+                    ? "Read-only queue metadata only; owner, customer, DNS values, and secrets hidden"
+                    : "No domain or email queue table detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {domainEmailQueue.reviewStatus} · Visibility: {domainEmailQueue.visibility} · Masked jobs:{" "}
+                  {domainEmailQueue.maskedJobCount}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.queueType}</td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.totalJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.pendingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.processingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.completedJobs}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={domainEmailQueue.failedJobs ? "red" : "green"}>{domainEmailQueue.failedJobs}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{domainEmailQueue.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(domainEmailQueue.lastJobAt)}</td>
+            <td className="px-5 py-4">
+              <DomainEmailQueueSafeControls />
             </td>
           </tr>
         ))}

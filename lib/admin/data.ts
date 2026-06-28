@@ -297,6 +297,10 @@ import {
   mapOperationsAiQueueRuntimeToAdminFields
 } from "@/src/lib/operations/operations-ai-queue-runtime";
 import {
+  loadOperationsDomainEmailQueueRuntimeReadOnlySafe,
+  mapOperationsDomainEmailQueueRuntimeToAdminFields
+} from "@/src/lib/operations/operations-domain-email-queue-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5759,6 +5763,43 @@ export type AdminOperationsAiQueueRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsDomainEmailQueueSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsDomainEmailQueueRuntimeItem = {
+  cancelledJobs: number;
+  completedJobs: number;
+  domainEmailQueueKey: string;
+  failedJobs: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastJobAt: string | null;
+  maskedJobCount: number;
+  pendingJobs: number;
+  processingJobs: number;
+  provider: string;
+  queueName: string;
+  queueType: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsDomainEmailQueueSafeControl[];
+  tableDetected: boolean;
+  totalJobs: number;
+  visibility: string;
+};
+
+export type AdminOperationsDomainEmailQueueRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsDomainEmailQueueRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -6033,6 +6074,20 @@ export type AdminOperationsControl = {
   aiQueueRuntimeGroups: AdminOperationsAiQueueRuntimeGroup[];
   aiQueueRuntimeItems: AdminOperationsAiQueueRuntimeItem[];
   aiQueueSafeControls: AdminOperationsAiQueueSafeControl[];
+  domainEmailQueueRuntime: {
+    activeQueues: number;
+    failedQueues: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_domain_email_queue_runtime";
+    status: "domain_email_queue_runtime_ready" | "needs_attention";
+    summary: string;
+    totalQueues: number;
+  };
+  domainEmailQueueRuntimeGroups: AdminOperationsDomainEmailQueueRuntimeGroup[];
+  domainEmailQueueRuntimeItems: AdminOperationsDomainEmailQueueRuntimeItem[];
+  domainEmailQueueSafeControls: AdminOperationsDomainEmailQueueSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -6060,7 +6115,7 @@ export type AdminOperationsControl = {
     aiQueueHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
     cronHealth: "healthy" | "needs_review" | "placeholder";
     databaseHealth: "healthy" | "missing_config" | "needs_review";
-    domainEmailQueueHealth: "healthy" | "needs_review" | "placeholder";
+    domainEmailQueueHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
     emailQueueHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
     queueHealth: "healthy" | "needs_review" | "placeholder";
     storageHealth: "healthy" | "missing_config" | "needs_review" | "placeholder";
@@ -14520,6 +14575,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsDomainEmailQueueRuntimeLoad = mapOperationsDomainEmailQueueRuntimeToAdminFields(
+    await loadOperationsDomainEmailQueueRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14542,14 +14602,6 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     name: emailQueueItem?.queueName ?? "Email event queue",
     pending: emailQueueItem?.pendingJobs ?? 0,
     processing: emailQueueItem?.processingJobs ?? 0
-  };
-  const domainEmailQueue = {
-    completed: domainEmailQueueItem?.completedJobs ?? 0,
-    failed: domainEmailQueueItem?.failedJobs ?? 0,
-    lastProcessed: domainEmailQueueItem?.lastJobAt ?? null,
-    name: domainEmailQueueItem?.queueName ?? "Domain/email workflow queue",
-    pending: domainEmailQueueItem?.pendingJobs ?? 0,
-    processing: domainEmailQueueItem?.processingJobs ?? 0
   };
   const monitoringQueue = {
     completed: monitoringEvents.filter((event) => ["info", "success", "recorded"].includes(text(event.event_status))).length,
@@ -14650,7 +14702,14 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
           : supabaseConfigured
             ? "needs_review"
             : "missing_config",
-      domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
+      domainEmailQueueHealth:
+        operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime.status === "domain_email_queue_runtime_ready"
+          ? "healthy"
+          : operationsDomainEmailQueueRuntimeLoad.domainEmailQueues.some(
+                (queue) => queue.tableDetected && queue.groupKey !== "future-domain-email-hooks"
+              )
+            ? "needs_review"
+            : "missing_config",
       emailQueueHealth:
         operationsEmailQueueRuntimeLoad.emailQueueRuntime.status === "email_queue_runtime_ready"
           ? "healthy"
@@ -14730,7 +14789,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
     aiQueueRuntimeGroups: operationsAiQueueRuntimeLoad.groups,
     aiQueueRuntimeItems: operationsAiQueueRuntimeLoad.aiQueues,
-    aiQueueSafeControls: operationsAiQueueRuntimeLoad.safeControls
+    aiQueueSafeControls: operationsAiQueueRuntimeLoad.safeControls,
+    domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+    domainEmailQueueRuntimeGroups: operationsDomainEmailQueueRuntimeLoad.groups,
+    domainEmailQueueRuntimeItems: operationsDomainEmailQueueRuntimeLoad.domainEmailQueues,
+    domainEmailQueueSafeControls: operationsDomainEmailQueueRuntimeLoad.safeControls
   };
 }
 
