@@ -17,9 +17,14 @@ import {
   operationsDashboardRuntimeStatusLabel,
   type OperationsDashboardRuntimeStatus
 } from "@/src/lib/operations/operations-dashboard-runtime";
+import {
+  operationsQueueRuntimeStatusBadgeTone,
+  operationsQueueRuntimeStatusLabel,
+  type OperationsQueueRuntimeStatus
+} from "@/src/lib/operations/operations-queue-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -38,6 +43,10 @@ function toneForDashboardRuntimeStatus(status: string) {
   return operationsDashboardRuntimeStatusBadgeTone(status as OperationsDashboardRuntimeStatus);
 }
 
+function toneForQueueRuntimeStatus(status: string) {
+  return operationsQueueRuntimeStatusBadgeTone(status as OperationsQueueRuntimeStatus);
+}
+
 function supportLabel(enabled: boolean) {
   return enabled ? "Supported" : "Not supported";
 }
@@ -52,6 +61,24 @@ function OperationsHiddenFields({ targetName, targetType }: { targetName: string
       <input name="targetName" type="hidden" value={targetName} />
       <input name="targetType" type="hidden" value={targetType} />
     </>
+  );
+}
+
+function QueueSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Retry", "Pause", "Resume", "Purge", "Inspect"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No queue action is executed during OP-3 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -150,17 +177,48 @@ export default async function AdminOperationsPage() {
         ))}
       </AdminTable>
 
-      <AdminTable headers={["Queue", "Pending", "Processing", "Completed", "Failed", "Last processed", "Retry"]}>
-        {control.queues.map((queue) => (
-          <tr key={queue.name}>
-            <td className="px-5 py-4 font-bold text-slate-950">{queue.name}</td>
-            <td className="px-5 py-4 text-slate-600">{queue.pending}</td>
-            <td className="px-5 py-4 text-slate-600">{queue.processing}</td>
-            <td className="px-5 py-4 text-slate-600">{queue.completed}</td>
-            <td className="px-5 py-4"><AdminBadge tone={queue.failed ? "red" : "green"}>{queue.failed}</AdminBadge></td>
-            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queue.lastProcessed)}</td>
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Queue runtime</span>
+        <AdminBadge tone={toneForStatus(control.queueRuntime.status)}>{control.queueRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.queueRuntime.summary}</span>
+      </div>
+
+      {control.queueRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} module{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable headers={["Queue", "Pending", "Processing", "Completed", "Failed", "Last processed", "Safe controls"]}>
+        {control.queueRuntimeItems.map((queue) => (
+          <tr key={queue.queueKey}>
             <td className="px-5 py-4">
-              <OperationsActionButtons targetName={queue.name} targetType="queue" />
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{queue.queueName}</span>
+                <AdminBadge tone={toneForQueueRuntimeStatus(queue.runtimeStatus)}>
+                  {operationsQueueRuntimeStatusLabel(queue.runtimeStatus as OperationsQueueRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {queue.tableDetected
+                    ? queue.tableName
+                      ? `Read-only from ${queue.tableName}`
+                      : "Read-only workflow aggregate"
+                    : "No queue table detected"}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{queue.pendingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{queue.processingJobs}</td>
+            <td className="px-5 py-4 text-slate-600">{queue.completedJobs}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={queue.failedJobs ? "red" : "green"}>{queue.failedJobs}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(queue.lastJobAt)}</td>
+            <td className="px-5 py-4">
+              <QueueSafeControls />
             </td>
           </tr>
         ))}

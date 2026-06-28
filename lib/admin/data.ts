@@ -268,6 +268,11 @@ import {
 import { mapOperationsRegistryRuntimeToAdminFields } from "@/src/lib/operations/operations-registry-runtime";
 import { mapOperationsDashboardRuntimeToAdminFields } from "@/src/lib/operations/operations-dashboard-runtime";
 import {
+  buildDomainEmailQueueSnapshot,
+  loadOperationsQueueRuntimeReadOnlySafe,
+  mapOperationsQueueRuntimeToAdminFields
+} from "@/src/lib/operations/operations-queue-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5658,6 +5663,40 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsQueueSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsQueueRuntimeItem = {
+  completedJobs: number;
+  failedJobs: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastJobAt: string | null;
+  pendingJobs: number;
+  processingJobs: number;
+  queueKey: string;
+  queueName: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsQueueSafeControl[];
+  tableDetected: boolean;
+  tableName: string | null;
+  totalJobs: number;
+  visibility: string;
+};
+
+export type AdminOperationsQueueRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsQueueRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDashboardItem = {
   auditSupport: boolean;
   category: string;
@@ -5739,6 +5778,20 @@ export type AdminOperationsControl = {
     pending: number;
     processing: number;
   }>;
+  queueRuntime: {
+    activeQueues: number;
+    failedQueues: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_queue_runtime";
+    status: "needs_attention" | "queue_runtime_ready";
+    summary: string;
+    totalQueues: number;
+  };
+  queueRuntimeGroups: AdminOperationsQueueRuntimeGroup[];
+  queueRuntimeItems: AdminOperationsQueueRuntimeItem[];
+  queueSafeControls: AdminOperationsQueueSafeControl[];
   sections: Array<{
     name:
       | "Backups"
@@ -14080,17 +14133,33 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
   const reservedFutureHooks =
     operationsRegistry.components.find((component) => component.key === "op-future-hooks")?.futureHooks ??
     operationsRegistry.futureHooks;
-  const [monitoringEvents, emailLogs, aiQueues, domainsHosting] = await Promise.all([
+  const [monitoringEvents, domainsHosting] = await Promise.all([
     safeSelect(supabase, "monitoring_events", "event_type, event_status, entity_type, metadata, created_at", 500),
-    safeSelect(supabase, "email_event_logs", "id, status, sent_at, created_at, next_retry_at", 500),
-    safeSelect(
-      supabase,
-      "ai_generation_queue",
-      "id, workflow_state, queue_status, attempts, max_attempts, completed_at, failed_at, created_at, updated_at",
-      500
-    ),
     getAdminDomainsHostingControl()
   ]);
+  const domainEmailSnapshot = buildDomainEmailQueueSnapshot({
+    domainOrders: domainsHosting.domainOrders.map((order) => ({
+      createdAt: order.createdAt,
+      status: order.status
+    })),
+    emailOrders: domainsHosting.emailOrders.map((order) => ({
+      createdAt: order.createdAt,
+      status: order.status
+    })),
+    overview: domainsHosting.overview,
+    sourceDetected: true
+  });
+  const operationsQueueRuntimeLoad = mapOperationsQueueRuntimeToAdminFields(
+    await loadOperationsQueueRuntimeReadOnlySafe({
+      domainEmailSnapshot,
+      supabase
+    })
+  );
+  const emailQueueItem =
+    operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
+  const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
+  const domainEmailQueueItem =
+    operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-domain-email-queue") ?? null;
   const monitoringFailures = monitoringEvents.filter((event) => {
     const eventStatus = text(event.event_status).toLowerCase();
     const eventType = text(event.event_type).toLowerCase();
@@ -14101,43 +14170,29 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     .filter(Boolean)
     .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
 
-  function latestDate(rows: AnyRecord[], keys: string[]) {
-    return rows
-      .flatMap((row) => keys.map((key) => text(row[key])).filter(Boolean))
-      .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
-  }
-
   const emailQueue = {
-    completed: emailLogs.filter((log) => text(log.status) === "sent").length,
-    failed: emailLogs.filter((log) => text(log.status) === "failed").length,
-    lastProcessed: latestDate(emailLogs, ["sent_at", "created_at"]),
-    name: "Email event queue",
-    pending: emailLogs.filter((log) => ["pending", "queued", "retry_pending"].includes(text(log.status))).length,
-    processing: emailLogs.filter((log) => text(log.status) === "processing").length
+    completed: emailQueueItem?.completedJobs ?? 0,
+    failed: emailQueueItem?.failedJobs ?? 0,
+    lastProcessed: emailQueueItem?.lastJobAt ?? null,
+    name: emailQueueItem?.queueName ?? "Email event queue",
+    pending: emailQueueItem?.pendingJobs ?? 0,
+    processing: emailQueueItem?.processingJobs ?? 0
   };
   const aiQueue = {
-    completed: aiQueues.filter((queue) => ["succeeded", "completed", "ready"].includes(text(queue.queue_status, text(queue.workflow_state)))).length,
-    failed: aiQueues.filter((queue) => text(queue.queue_status) === "failed" || text(queue.workflow_state) === "failed").length,
-    lastProcessed: latestDate(aiQueues, ["completed_at", "failed_at", "updated_at", "created_at"]),
-    name: "AI generation queue",
-    pending: aiQueues.filter((queue) => ["queued", "waiting", "pending"].includes(text(queue.queue_status, text(queue.workflow_state)))).length,
-    processing: aiQueues.filter((queue) => ["running", "processing", "generating"].includes(text(queue.queue_status, text(queue.workflow_state)))).length
+    completed: aiQueueItem?.completedJobs ?? 0,
+    failed: aiQueueItem?.failedJobs ?? 0,
+    lastProcessed: aiQueueItem?.lastJobAt ?? null,
+    name: aiQueueItem?.queueName ?? "AI generation queue",
+    pending: aiQueueItem?.pendingJobs ?? 0,
+    processing: aiQueueItem?.processingJobs ?? 0
   };
   const domainEmailQueue = {
-    completed: domainsHosting.overview.connectedDomains,
-    failed: domainsHosting.overview.failedOperations,
-    lastProcessed:
-      [...domainsHosting.domainOrders, ...domainsHosting.emailOrders]
-        .map((order) => order.createdAt)
-        .filter(Boolean)
-        .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null,
-    name: "Domain/email workflow queue",
-    pending:
-      domainsHosting.overview.pendingDomainOrders +
-      domainsHosting.overview.dnsPending +
-      domainsHosting.overview.sslPending +
-      domainsHosting.overview.emailMailboxDrafts,
-    processing: domainsHosting.overview.readyForRegistration
+    completed: domainEmailQueueItem?.completedJobs ?? 0,
+    failed: domainEmailQueueItem?.failedJobs ?? 0,
+    lastProcessed: domainEmailQueueItem?.lastJobAt ?? null,
+    name: domainEmailQueueItem?.queueName ?? "Domain/email workflow queue",
+    pending: domainEmailQueueItem?.pendingJobs ?? 0,
+    processing: domainEmailQueueItem?.processingJobs ?? 0
   };
   const monitoringQueue = {
     completed: monitoringEvents.filter((event) => ["info", "success", "recorded"].includes(text(event.event_status))).length,
@@ -14147,7 +14202,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     pending: monitoringEvents.filter((event) => ["warning", "retry_pending"].includes(text(event.event_status))).length,
     processing: 0
   };
-  const queues = [emailQueue, aiQueue, domainEmailQueue, monitoringQueue];
+  const queues = operationsQueueRuntimeLoad.legacyQueues;
   const r2Status = envConfigurationStatus([
     "CLOUDFLARE_R2_ACCOUNT_ID",
     "CLOUDFLARE_R2_ACCESS_KEY_ID",
@@ -14155,7 +14210,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     "CLOUDFLARE_R2_BUCKET"
   ]);
   const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-  const queueHasFailures = queues.some((queue) => queue.failed > 0);
+  const queueHasFailures = queues.some((queue) => queue.failed > 0) || monitoringQueue.failed > 0;
   const workerFailures = aiQueue.failed + emailQueue.failed + domainEmailQueue.failed + monitoringFailures.length;
   const aiWorkerStatus: AdminOperationsControl["workers"][number]["status"] =
     aiQueue.processing > 0 ? "running" : aiQueue.failed > 0 ? "warning" : "idle";
@@ -14253,16 +14308,20 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     dashboardSections: operationsDashboard.sections,
     dashboardStats: operationsDashboard.stats,
     overview: {
-      aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueues.length ? "healthy" : "placeholder",
+      aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueueItem?.tableDetected && aiQueue.completed + aiQueue.pending + aiQueue.processing + aiQueue.failed > 0 ? "healthy" : aiQueueItem?.tableDetected ? "placeholder" : "missing_config",
       cronHealth: monitoringFailures.length ? "needs_review" : "placeholder",
       databaseHealth: supabaseConfigured ? "healthy" : "missing_config",
       domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
-      emailQueueHealth: emailQueue.failed ? "needs_review" : emailLogs.length ? "healthy" : "placeholder",
+      emailQueueHealth: emailQueue.failed ? "needs_review" : emailQueueItem?.tableDetected && emailQueue.completed + emailQueue.pending + emailQueue.processing + emailQueue.failed > 0 ? "healthy" : emailQueueItem?.tableDetected ? "placeholder" : "missing_config",
       queueHealth: queueHasFailures ? "needs_review" : "healthy",
       storageHealth: r2Status === "configured" ? "healthy" : r2Status === "partial" ? "needs_review" : "missing_config",
       workerHealth: workerFailures ? "needs_review" : "placeholder"
     },
     queues,
+    queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+    queueRuntimeGroups: operationsQueueRuntimeLoad.groups,
+    queueRuntimeItems: operationsQueueRuntimeLoad.queues,
+    queueSafeControls: operationsQueueRuntimeLoad.safeControls,
     sections: [
       {
         name: "Queues",
