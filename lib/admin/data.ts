@@ -321,6 +321,10 @@ import {
   mapOperationsBackupRuntimeToAdminFields
 } from "@/src/lib/operations/operations-backup-runtime";
 import {
+  loadOperationsDisasterRecoveryRuntimeReadOnlySafe,
+  mapOperationsDisasterRecoveryRuntimeToAdminFields
+} from "@/src/lib/operations/operations-disaster-recovery-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6075,6 +6079,44 @@ export type AdminOperationsBackupRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsDisasterRecoverySafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsDisasterRecoveryRuntimeItem = {
+  backupDependencyLabel: string;
+  errorCount: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastRecoveryTestAt: string | null;
+  lastSuccessfulRecoveryAt: string | null;
+  metadataDetected: boolean;
+  metadataSource: string | null;
+  provider: string;
+  recoveryKey: string;
+  recoveryName: string;
+  recoveryPointObjectiveLabel: string;
+  recoveryScope: string;
+  recoveryStatus: string;
+  recoveryTimeObjectiveLabel: string;
+  recoveryType: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsDisasterRecoverySafeControl[];
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsDisasterRecoveryRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsDisasterRecoveryRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6221,6 +6263,21 @@ export type AdminOperationsControl = {
   backupRuntimeGroups: AdminOperationsBackupRuntimeGroup[];
   backupRuntimeItems: AdminOperationsBackupRuntimeItem[];
   backupSafeControls: AdminOperationsBackupSafeControl[];
+  disasterRecoveryRuntime: {
+    availableRecoveries: number;
+    failedRecoveries: number;
+    groupCount: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_disaster_recovery_runtime";
+    status: "disaster_recovery_runtime_ready" | "needs_attention";
+    summary: string;
+    totalRecoveries: number;
+    warningRecoveries: number;
+  };
+  disasterRecoveryRuntimeGroups: AdminOperationsDisasterRecoveryRuntimeGroup[];
+  disasterRecoveryRuntimeItems: AdminOperationsDisasterRecoveryRuntimeItem[];
+  disasterRecoverySafeControls: AdminOperationsDisasterRecoverySafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -14882,6 +14939,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsDisasterRecoveryRuntimeLoad = mapOperationsDisasterRecoveryRuntimeToAdminFields(
+    await loadOperationsDisasterRecoveryRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14941,8 +15003,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Disaster recovery readiness",
-        note: "Runbook readiness placeholder only; no production reset or restore action exists.",
-        status: "review"
+        note: "Legacy placeholder retained; see Disaster Recovery Runtime section for read-only recovery metadata.",
+        status:
+          operationsDisasterRecoveryRuntimeLoad.disasterRecovery.status === "disaster_recovery_runtime_ready"
+            ? "ready"
+            : "review"
       }
     ],
     components: operationsRegistry.components,
@@ -15081,8 +15146,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Disaster Recovery",
-        note: "Restore tests and disaster recovery runbooks are placeholders only.",
-        status: "placeholder"
+        note: "Disaster recovery runtime uses read-only recovery metadata and recorded events only; no restore, failover, rollback, or recovery test runs here.",
+        status:
+          operationsDisasterRecoveryRuntimeLoad.disasterRecovery.status === "needs_attention" ? "review" : "monitoring"
       },
       {
         name: "System Monitoring",
@@ -15136,7 +15202,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
     backupRuntimeGroups: operationsBackupRuntimeLoad.groups,
     backupRuntimeItems: operationsBackupRuntimeLoad.backupItems,
-    backupSafeControls: operationsBackupRuntimeLoad.safeControls
+    backupSafeControls: operationsBackupRuntimeLoad.safeControls,
+    disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+    disasterRecoveryRuntimeGroups: operationsDisasterRecoveryRuntimeLoad.groups,
+    disasterRecoveryRuntimeItems: operationsDisasterRecoveryRuntimeLoad.recoveryItems,
+    disasterRecoverySafeControls: operationsDisasterRecoveryRuntimeLoad.safeControls
   };
 }
 

@@ -87,9 +87,15 @@ import {
   operationsBackupStatusLabel,
   type OperationsBackupRuntimeStatus
 } from "@/src/lib/operations/operations-backup-runtime";
+import {
+  operationsDisasterRecoveryRuntimeStatusBadgeTone,
+  operationsDisasterRecoveryRuntimeStatusLabel,
+  operationsDisasterRecoveryStatusLabel,
+  type OperationsDisasterRecoveryRuntimeStatus
+} from "@/src/lib/operations/operations-disaster-recovery-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -158,6 +164,10 @@ function toneForCronMonitoringRuntimeStatus(status: string) {
 
 function toneForBackupRuntimeStatus(status: string) {
   return operationsBackupRuntimeStatusBadgeTone(status as OperationsBackupRuntimeStatus);
+}
+
+function toneForDisasterRecoveryRuntimeStatus(status: string) {
+  return operationsDisasterRecoveryRuntimeStatusBadgeTone(status as OperationsDisasterRecoveryRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -402,6 +412,24 @@ function BackupSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No backup action is executed during OP-15 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DisasterRecoverySafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Run Recovery Test", "Restore", "Failover", "Rollback", "Verify Recovery Plan", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No disaster recovery action is executed during OP-16 page load."
           type="button"
         >
           {label}
@@ -1312,6 +1340,76 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{formatAdminDate(backup.lastBackupAt)}</td>
             <td className="px-5 py-4">
               <BackupSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Disaster recovery runtime</span>
+        <AdminBadge tone={toneForStatus(control.disasterRecoveryRuntime.status)}>{control.disasterRecoveryRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.disasterRecoveryRuntime.summary}</span>
+      </div>
+
+      {control.disasterRecoveryRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} recover{group.itemCount === 1 ? "y" : "ies"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Recovery",
+          "Type",
+          "Scope",
+          "Status",
+          "RPO",
+          "RTO",
+          "Last test",
+          "Backup dependency",
+          "Safe controls"
+        ]}
+      >
+        {control.disasterRecoveryRuntimeItems.map((recovery) => (
+          <tr key={recovery.recoveryKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{recovery.recoveryName}</span>
+                <AdminBadge tone={toneForDisasterRecoveryRuntimeStatus(recovery.runtimeStatus)}>
+                  {operationsDisasterRecoveryRuntimeStatusLabel(
+                    recovery.runtimeStatus as OperationsDisasterRecoveryRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {recovery.metadataDetected
+                    ? recovery.metadataSource
+                      ? `Read-only from ${recovery.metadataSource}; endpoints, URLs, and credentials hidden`
+                      : "Read-only recorded recovery metadata only"
+                    : "No recovery metadata detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {recovery.reviewStatus} · Visibility: {recovery.visibility} · Provider: {recovery.provider}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{recovery.recoveryType}</td>
+            <td className="px-5 py-4 text-slate-600">{recovery.recoveryScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={recovery.recoveryStatus === "failed" ? "red" : recovery.recoveryStatus === "warning" ? "amber" : "green"}>
+                {operationsDisasterRecoveryStatusLabel(
+                  recovery.recoveryStatus as Parameters<typeof operationsDisasterRecoveryStatusLabel>[0]
+                )}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{recovery.recoveryPointObjectiveLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{recovery.recoveryTimeObjectiveLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(recovery.lastRecoveryTestAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{recovery.backupDependencyLabel}</td>
+            <td className="px-5 py-4">
+              <DisasterRecoverySafeControls />
             </td>
           </tr>
         ))}
