@@ -154,9 +154,14 @@ import {
   operationsStressValidationStatusTone,
   type OperationsStressValidationStatus
 } from "@/src/lib/operations/operations-stress-validation-runtime";
+import {
+  operationsProductionHardeningStatusLabel,
+  operationsProductionHardeningStatusTone,
+  type OperationsProductionHardeningStatus
+} from "@/src/lib/operations/operations-production-hardening-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "operations_stress_validation_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "operations_stress_validation_ready", "operations_production_hardening_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -677,6 +682,24 @@ function StressValidationSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No stress validation action is executed during OP-27 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProductionHardeningSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Apply Hardening", "Recheck Hardening", "Export Hardening Report", "Resolve Hardening Blocker", "Mark Hardened"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No production hardening action is executed during OP-28 page load."
           type="button"
         >
           {label}
@@ -2490,6 +2513,78 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{stressItem.safeSummary}</td>
             <td className="px-5 py-4">
               <StressValidationSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations production hardening</span>
+        <AdminBadge tone={toneForStatus(control.productionHardening.overallStatus)}>{control.productionHardening.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.productionHardening.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total scopes", value: String(control.productionHardening.totalHardeningScopes) },
+          { label: "Hardened", value: String(control.productionHardening.hardenedScopes) },
+          { label: "Review required", value: String(control.productionHardening.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.productionHardening.blockedScopes) },
+          { label: "Warnings", value: String(control.productionHardening.warningScopes) }
+        ]}
+      />
+
+      {control.productionHardeningGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} scope{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Hardening",
+          "Scope",
+          "Read only",
+          "Controls",
+          "Secrets",
+          "Empty state",
+          "Execution",
+          "Mutation",
+          "Isolation",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.productionHardeningItems.map((hardeningItem) => (
+          <tr key={hardeningItem.hardeningKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{hardeningItem.hardeningName}</span>
+                <AdminBadge tone={operationsProductionHardeningStatusTone(hardeningItem.readOnlyHardeningStatus as OperationsProductionHardeningStatus)}>
+                  {operationsProductionHardeningStatusLabel(hardeningItem.readOnlyHardeningStatus as OperationsProductionHardeningStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only production hardening derived from OP-1 through OP-27 metadata only; no mutation or execution
+                </span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {hardeningItem.blockedModules} · Warnings: {hardeningItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{hardeningItem.hardeningScope}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.readOnlyHardeningStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.controlSafetyStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.secretMaskingStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.emptyStateStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.executionIsolationStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.mutationIsolationStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionHardeningStatusLabel(hardeningItem.certifiedSystemIsolationStatus as OperationsProductionHardeningStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{hardeningItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <ProductionHardeningSafeControls />
             </td>
           </tr>
         ))}
