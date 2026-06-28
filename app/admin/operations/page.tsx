@@ -39,6 +39,12 @@ import {
   type OperationsStorageRuntimeStatus
 } from "@/src/lib/operations/operations-storage-runtime";
 import {
+  formatStorageMetricsBytes,
+  operationsStorageMetricsRuntimeStatusBadgeTone,
+  operationsStorageMetricsRuntimeStatusLabel,
+  type OperationsStorageMetricsRuntimeStatus
+} from "@/src/lib/operations/operations-storage-metrics-runtime";
+import {
   operationsDatabaseHealthStatusLabel,
   operationsDatabaseRuntimeStatusBadgeTone,
   operationsDatabaseRuntimeStatusLabel,
@@ -76,7 +82,7 @@ import {
 } from "@/src/lib/operations/operations-cron-monitoring-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -109,6 +115,10 @@ function toneForCronRuntimeStatus(status: string) {
 
 function toneForStorageRuntimeStatus(status: string) {
   return operationsStorageRuntimeStatusBadgeTone(status as OperationsStorageRuntimeStatus);
+}
+
+function toneForStorageMetricsRuntimeStatus(status: string) {
+  return operationsStorageMetricsRuntimeStatusBadgeTone(status as OperationsStorageMetricsRuntimeStatus);
 }
 
 function toneForDatabaseRuntimeStatus(status: string) {
@@ -183,6 +193,24 @@ function StorageSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No storage action is executed during OP-6 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StorageMetricsSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Refresh Metrics", "Inspect Objects", "Cleanup", "Repair", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No storage metrics action is executed during OP-14 page load."
           type="button"
         >
           {label}
@@ -980,6 +1008,76 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{storage.errorCount}</td>
             <td className="px-5 py-4">
               <StorageSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Storage metrics runtime</span>
+        <AdminBadge tone={toneForStatus(control.storageMetricsRuntime.status)}>{control.storageMetricsRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.storageMetricsRuntime.summary}</span>
+      </div>
+
+      {control.storageMetricsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} metric{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Storage metric",
+          "Provider",
+          "Bucket",
+          "Objects",
+          "Size",
+          "Runtime status",
+          "Last measured",
+          "Warnings",
+          "Safe controls"
+        ]}
+      >
+        {control.storageMetricsRuntimeItems.map((metric) => (
+          <tr key={metric.storageMetricKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{metric.storageName}</span>
+                <AdminBadge tone={toneForStorageMetricsRuntimeStatus(metric.runtimeStatus)}>
+                  {operationsStorageMetricsRuntimeStatusLabel(
+                    metric.runtimeStatus as OperationsStorageMetricsRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {metric.metricsDetected
+                    ? metric.metadataSource
+                      ? `Read-only from ${metric.metadataSource}; object paths and signed URLs hidden`
+                      : "Read-only recorded storage metrics only"
+                    : "No storage metrics detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {metric.reviewStatus} · Visibility: {metric.visibility}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{metric.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{metric.bucketName ?? "Not configured"}</td>
+            <td className="px-5 py-4 text-slate-600">{metric.totalObjects}</td>
+            <td className="px-5 py-4 text-slate-600">{formatStorageMetricsBytes(metric.totalSizeBytes)}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStorageMetricsRuntimeStatus(metric.runtimeStatus)}>
+                {operationsStorageMetricsRuntimeStatusLabel(
+                  metric.runtimeStatus as OperationsStorageMetricsRuntimeStatus
+                )}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(metric.lastMeasuredAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{metric.warningCount}</td>
+            <td className="px-5 py-4">
+              <StorageMetricsSafeControls />
             </td>
           </tr>
         ))}
