@@ -38,9 +38,15 @@ import {
   operationsStorageRuntimeStatusLabel,
   type OperationsStorageRuntimeStatus
 } from "@/src/lib/operations/operations-storage-runtime";
+import {
+  operationsDatabaseHealthStatusLabel,
+  operationsDatabaseRuntimeStatusBadgeTone,
+  operationsDatabaseRuntimeStatusLabel,
+  type OperationsDatabaseRuntimeStatus
+} from "@/src/lib/operations/operations-database-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -75,6 +81,10 @@ function toneForStorageRuntimeStatus(status: string) {
   return operationsStorageRuntimeStatusBadgeTone(status as OperationsStorageRuntimeStatus);
 }
 
+function toneForDatabaseRuntimeStatus(status: string) {
+  return operationsDatabaseRuntimeStatusBadgeTone(status as OperationsDatabaseRuntimeStatus);
+}
+
 function supportLabel(enabled: boolean) {
   return enabled ? "Supported" : "Not supported";
 }
@@ -89,6 +99,24 @@ function OperationsHiddenFields({ targetName, targetType }: { targetName: string
       <input name="targetName" type="hidden" value={targetName} />
       <input name="targetType" type="hidden" value={targetType} />
     </>
+  );
+}
+
+function DatabaseSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Refresh Health", "Review Policies", "Review Migrations", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No database action is executed during OP-7 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -459,6 +487,68 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{storage.errorCount}</td>
             <td className="px-5 py-4">
               <StorageSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Database health runtime</span>
+        <AdminBadge tone={toneForStatus(control.databaseRuntime.status)}>{control.databaseRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.databaseRuntime.summary}</span>
+      </div>
+
+      {control.databaseRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} target{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Database",
+          "Provider",
+          "Tables",
+          "Health",
+          "Runtime status",
+          "Migrations",
+          "Warnings",
+          "Safe controls"
+        ]}
+      >
+        {control.databaseRuntimeItems.map((database) => (
+          <tr key={database.databaseKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{database.databaseName}</span>
+                <span className="text-xs text-slate-500">
+                  {database.metadataDetected
+                    ? database.metadataSource
+                      ? `Read-only from ${database.metadataSource}`
+                      : "Read-only registry metadata"
+                    : "No database metadata detected"}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{database.provider}</td>
+            <td className="px-5 py-4 text-slate-600">{database.tableCount}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForDatabaseRuntimeStatus(database.runtimeStatus)}>
+                {operationsDatabaseHealthStatusLabel(database.healthStatus as Parameters<typeof operationsDatabaseHealthStatusLabel>[0])}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForDatabaseRuntimeStatus(database.runtimeStatus)}>
+                {operationsDatabaseRuntimeStatusLabel(database.runtimeStatus as OperationsDatabaseRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{database.migrationCount}</td>
+            <td className="px-5 py-4 text-slate-600">{database.warningCount}</td>
+            <td className="px-5 py-4">
+              <DatabaseSafeControls />
             </td>
           </tr>
         ))}

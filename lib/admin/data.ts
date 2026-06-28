@@ -285,6 +285,10 @@ import {
   mapOperationsStorageRuntimeToAdminFields
 } from "@/src/lib/operations/operations-storage-runtime";
 import {
+  loadOperationsDatabaseRuntimeReadOnlySafe,
+  mapOperationsDatabaseRuntimeToAdminFields
+} from "@/src/lib/operations/operations-database-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5675,6 +5679,42 @@ export type AdminOperationsRegistryComponent = {
   visibility: string;
 };
 
+export type AdminOperationsDatabaseSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsDatabaseRuntimeItem = {
+  databaseKey: string;
+  databaseName: string;
+  errorCount: number;
+  groupKey: string;
+  healthStatus: string;
+  lastCheckedAt: string | null;
+  lastFailureAt: string | null;
+  metadataDetected: boolean;
+  metadataSource: string | null;
+  migrationCount: number;
+  policyCount: number;
+  provider: string;
+  registryKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsDatabaseSafeControl[];
+  tableCount: number;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsDatabaseRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsDatabaseRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsStorageSafeControl = {
   enabled: false;
   key: string;
@@ -5870,6 +5910,21 @@ export type AdminOperationsControl = {
     status: "configured" | "missing" | "placeholder" | "ready" | "review";
     value: string;
   }>;
+  databaseRuntime: {
+    failedDatabaseTargets: number;
+    groupCount: number;
+    healthyDatabaseTargets: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_database_runtime";
+    status: "database_runtime_ready" | "needs_attention";
+    summary: string;
+    totalDatabaseTargets: number;
+    warningDatabaseTargets: number;
+  };
+  databaseRuntimeGroups: AdminOperationsDatabaseRuntimeGroup[];
+  databaseRuntimeItems: AdminOperationsDatabaseRuntimeItem[];
+  databaseSafeControls: AdminOperationsDatabaseSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14338,6 +14393,15 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const operationsDatabaseRuntimeLoad = mapOperationsDatabaseRuntimeToAdminFields(
+    await loadOperationsDatabaseRuntimeReadOnlySafe({
+      monitoringEvents,
+      serviceRoleConfigured,
+      supabase,
+      supabaseConfigured
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14392,7 +14456,6 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
     "CLOUDFLARE_R2_BUCKET"
   ]);
-  const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const queueHasFailures = queues.some((queue) => queue.failed > 0) || monitoringQueue.failed > 0;
   const workerFailures = operationsWorkerRuntimeLoad.workers
     .filter((worker) => worker.groupKey !== "future-worker-hooks" && worker.groupKey !== "cron-workers")
@@ -14466,7 +14529,12 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     overview: {
       aiQueueHealth: aiQueue.failed ? "needs_review" : aiQueueItem?.tableDetected && aiQueue.completed + aiQueue.pending + aiQueue.processing + aiQueue.failed > 0 ? "healthy" : aiQueueItem?.tableDetected ? "placeholder" : "missing_config",
       cronHealth: operationsCronRuntimeLoad.cronRuntime.status === "needs_attention" ? "needs_review" : "placeholder",
-      databaseHealth: supabaseConfigured ? "healthy" : "missing_config",
+      databaseHealth:
+        operationsDatabaseRuntimeLoad.databaseRuntime.status === "database_runtime_ready"
+          ? "healthy"
+          : supabaseConfigured
+            ? "needs_review"
+            : "missing_config",
       domainEmailQueueHealth: domainEmailQueue.failed ? "needs_review" : domainEmailQueue.pending ? "healthy" : "placeholder",
       emailQueueHealth: emailQueue.failed ? "needs_review" : emailQueueItem?.tableDetected && emailQueue.completed + emailQueue.pending + emailQueue.processing + emailQueue.failed > 0 ? "healthy" : emailQueueItem?.tableDetected ? "placeholder" : "missing_config",
       queueHealth: queueHasFailures ? "needs_review" : "healthy",
@@ -14502,8 +14570,8 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Database Health",
-        note: "Environment and service-role readiness only; no direct database action.",
-        status: supabaseConfigured ? "monitoring" : "review"
+        note: "Database health runtime uses registry and read-only table probes only; no schema mutation runs here.",
+        status: operationsDatabaseRuntimeLoad.databaseRuntime.status === "needs_attention" ? "review" : "monitoring"
       },
       {
         name: "Backups",
@@ -14530,7 +14598,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
     storageRuntimeGroups: operationsStorageRuntimeLoad.groups,
     storageRuntimeItems: operationsStorageRuntimeLoad.storageItems,
-    storageSafeControls: operationsStorageRuntimeLoad.safeControls
+    storageSafeControls: operationsStorageRuntimeLoad.safeControls,
+    databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+    databaseRuntimeGroups: operationsDatabaseRuntimeLoad.groups,
+    databaseRuntimeItems: operationsDatabaseRuntimeLoad.databaseItems,
+    databaseSafeControls: operationsDatabaseRuntimeLoad.safeControls
   };
 }
 
