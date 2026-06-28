@@ -69,9 +69,14 @@ import {
   operationsWorkerMonitoringRuntimeStatusLabel,
   type OperationsWorkerMonitoringRuntimeStatus
 } from "@/src/lib/operations/operations-worker-monitoring-runtime";
+import {
+  operationsCronMonitoringRuntimeStatusBadgeTone,
+  operationsCronMonitoringRuntimeStatusLabel,
+  type OperationsCronMonitoringRuntimeStatus
+} from "@/src/lib/operations/operations-cron-monitoring-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -128,6 +133,10 @@ function toneForMonitoringEventsRuntimeStatus(status: string) {
 
 function toneForWorkerMonitoringRuntimeStatus(status: string) {
   return operationsWorkerMonitoringRuntimeStatusBadgeTone(status as OperationsWorkerMonitoringRuntimeStatus);
+}
+
+function toneForCronMonitoringRuntimeStatus(status: string) {
+  return operationsCronMonitoringRuntimeStatusBadgeTone(status as OperationsCronMonitoringRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -318,6 +327,24 @@ function WorkerMonitoringSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No worker monitoring action is executed during OP-12 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CronMonitoringSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect Runs", "Trigger Now", "Pause Cron", "Resume Cron", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No cron monitoring action is executed during OP-13 page load."
           type="button"
         >
           {label}
@@ -823,6 +850,74 @@ export default async function AdminOperationsPage() {
             </td>
             <td className="px-5 py-4">
               <CronSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Cron monitoring runtime</span>
+        <AdminBadge tone={toneForStatus(control.cronMonitoringRuntime.status)}>{control.cronMonitoringRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.cronMonitoringRuntime.summary}</span>
+      </div>
+
+      {control.cronMonitoringRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} monitor{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Cron monitor",
+          "Type",
+          "Schedule",
+          "Monitoring",
+          "Runs",
+          "Failed",
+          "Last run",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.cronMonitoringRuntimeItems.map((cronMonitor) => (
+          <tr key={cronMonitor.cronMonitoringKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{cronMonitor.cronName}</span>
+                <AdminBadge tone={toneForCronMonitoringRuntimeStatus(cronMonitor.runtimeStatus)}>
+                  {operationsCronMonitoringRuntimeStatusLabel(
+                    cronMonitor.runtimeStatus as OperationsCronMonitoringRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {cronMonitor.metadataDetected
+                    ? "Read-only cron metadata and monitoring events only; logs and payloads hidden"
+                    : "No cron monitoring metadata detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {cronMonitor.reviewStatus} · Visibility: {cronMonitor.visibility} · TZ: {cronMonitor.timezone}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{cronMonitor.cronType}</td>
+            <td className="px-5 py-4 text-slate-600">{cronMonitor.scheduleExpression}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={cronMonitor.monitoringStatus === "failed" ? "red" : cronMonitor.monitoringStatus === "warning" ? "amber" : "green"}>
+                {cronMonitor.monitoringStatus}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{cronMonitor.totalRuns}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={cronMonitor.failedRuns ? "red" : "green"}>{cronMonitor.failedRuns}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(cronMonitor.lastRunAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{cronMonitor.safeSummary}</td>
+            <td className="px-5 py-4">
+              <CronMonitoringSafeControls />
             </td>
           </tr>
         ))}

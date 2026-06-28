@@ -309,6 +309,10 @@ import {
   mapOperationsWorkerMonitoringRuntimeToAdminFields
 } from "@/src/lib/operations/operations-worker-monitoring-runtime";
 import {
+  loadOperationsCronMonitoringRuntimeReadOnlySafe,
+  mapOperationsCronMonitoringRuntimeToAdminFields
+} from "@/src/lib/operations/operations-cron-monitoring-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5878,6 +5882,43 @@ export type AdminOperationsWorkerMonitoringRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsCronMonitoringSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsCronMonitoringRuntimeItem = {
+  cronMonitoringKey: string;
+  cronName: string;
+  cronType: string;
+  errorCount: number;
+  failedRuns: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastRunAt: string | null;
+  metadataDetected: boolean;
+  monitoringStatus: string;
+  nextRunAt: string | null;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsCronMonitoringSafeControl[];
+  safeSummary: string;
+  scheduleExpression: string;
+  timezone: string;
+  totalRuns: number;
+  visibility: string;
+  warningCount: number;
+};
+
+export type AdminOperationsCronMonitoringRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsCronMonitoringRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -6195,6 +6236,21 @@ export type AdminOperationsControl = {
   workerMonitoringRuntimeGroups: AdminOperationsWorkerMonitoringRuntimeGroup[];
   workerMonitoringRuntimeItems: AdminOperationsWorkerMonitoringRuntimeItem[];
   workerMonitoringSafeControls: AdminOperationsWorkerMonitoringSafeControl[];
+  cronMonitoringRuntime: {
+    failedCrons: number;
+    groupCount: number;
+    healthyCrons: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_cron_monitoring_runtime";
+    status: "cron_monitoring_runtime_ready" | "needs_attention";
+    summary: string;
+    totalCrons: number;
+    warningCrons: number;
+  };
+  cronMonitoringRuntimeGroups: AdminOperationsCronMonitoringRuntimeGroup[];
+  cronMonitoringRuntimeItems: AdminOperationsCronMonitoringRuntimeItem[];
+  cronMonitoringSafeControls: AdminOperationsCronMonitoringSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14697,6 +14753,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsCronMonitoringRuntimeLoad = mapOperationsCronMonitoringRuntimeToAdminFields(
+    await loadOperationsCronMonitoringRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14809,7 +14870,14 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
           : aiQueueItem?.tableDetected
             ? "needs_review"
             : "missing_config",
-      cronHealth: operationsCronRuntimeLoad.cronRuntime.status === "needs_attention" ? "needs_review" : "placeholder",
+      cronHealth:
+        operationsCronMonitoringRuntimeLoad.cronMonitoring.status === "cron_monitoring_runtime_ready"
+          ? "healthy"
+          : operationsCronMonitoringRuntimeLoad.cronMonitoringItems.some(
+                (cron) => cron.metadataDetected && cron.groupKey !== "future-cron-monitoring-hooks"
+              )
+            ? "needs_review"
+            : "placeholder",
       databaseHealth:
         operationsDatabaseRuntimeLoad.databaseRuntime.status === "database_runtime_ready"
           ? "healthy"
@@ -14861,8 +14929,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Cron Jobs",
-        note: "Cron schedules are placeholders until scheduler integration is added.",
-        status: "placeholder"
+        note: "Cron monitoring runtime uses read-only cron metadata and monitoring_events only; no cron trigger, pause, or reschedule runs here.",
+        status:
+          operationsCronMonitoringRuntimeLoad.cronMonitoring.status === "needs_attention" ? "review" : "placeholder"
       },
       {
         name: "Storage Health",
@@ -14924,7 +14993,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
     workerMonitoringRuntimeGroups: operationsWorkerMonitoringRuntimeLoad.groups,
     workerMonitoringRuntimeItems: operationsWorkerMonitoringRuntimeLoad.workerMonitoringItems,
-    workerMonitoringSafeControls: operationsWorkerMonitoringRuntimeLoad.safeControls
+    workerMonitoringSafeControls: operationsWorkerMonitoringRuntimeLoad.safeControls,
+    cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+    cronMonitoringRuntimeGroups: operationsCronMonitoringRuntimeLoad.groups,
+    cronMonitoringRuntimeItems: operationsCronMonitoringRuntimeLoad.cronMonitoringItems,
+    cronMonitoringSafeControls: operationsCronMonitoringRuntimeLoad.safeControls
   };
 }
 
