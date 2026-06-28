@@ -337,6 +337,10 @@ import {
   mapOperationsStatusRuntimeToAdminFields
 } from "@/src/lib/operations/operations-status-runtime";
 import {
+  buildOperationsVisibilityRuntimeReadOnlySafe,
+  mapOperationsVisibilityRuntimeToAdminFields
+} from "@/src/lib/operations/operations-visibility-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6212,6 +6216,37 @@ export type AdminOperationsStatusRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsVisibilitySafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsVisibilityRuntimeItem = {
+  accessLevel: string;
+  category: string;
+  featureStatus: string;
+  groupKey: string;
+  moduleKey: string;
+  moduleName: string;
+  permissionScope: string;
+  reviewStatus: string;
+  routeStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsVisibilitySafeControl[];
+  safeSummary: string;
+  visibility: string;
+  visibilityKey: string;
+};
+
+export type AdminOperationsVisibilityRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsVisibilityRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6420,6 +6455,23 @@ export type AdminOperationsControl = {
   };
   statusRuntimeGroups: AdminOperationsStatusRuntimeGroup[];
   statusRuntimeItems: AdminOperationsStatusRuntimeItem[];
+  visibilityRuntime: {
+    disabledModules: number;
+    futureHookModules: number;
+    groupCount: number;
+    hiddenModules: number;
+    overallStatus: "needs_attention" | "operations_visibility_runtime_ready";
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    reviewRequiredModules: number;
+    source: "operations_visibility_runtime";
+    summary: string;
+    superAdminOnlyModules: number;
+    totalModules: number;
+    visibleModules: number;
+  };
+  visibilityRuntimeGroups: AdminOperationsVisibilityRuntimeGroup[];
+  visibilityRuntimeItems: AdminOperationsVisibilityRuntimeItem[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15096,28 +15148,32 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsStatusRuntimeInput = {
+    aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+    backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+    cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+    cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+    dashboard: operationsDashboard.dashboard,
+    databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+    diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+    disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+    domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+    emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+    futureHooks: reservedFutureHooks,
+    monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+    queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+    registry: operationsRegistry.registry,
+    safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+    storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
+    storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+    workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+    workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
+  };
   const operationsStatusRuntimeLoad = mapOperationsStatusRuntimeToAdminFields(
-    buildOperationsStatusRuntimeReadOnlySafe({
-      aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
-      backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
-      cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
-      cronRuntime: operationsCronRuntimeLoad.cronRuntime,
-      dashboard: operationsDashboard.dashboard,
-      databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
-      diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
-      disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
-      domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
-      emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
-      futureHooks: reservedFutureHooks,
-      monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
-      queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
-      registry: operationsRegistry.registry,
-      safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
-      storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
-      storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
-      workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
-      workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
-    })
+    buildOperationsStatusRuntimeReadOnlySafe(operationsStatusRuntimeInput)
+  );
+  const operationsVisibilityRuntimeLoad = mapOperationsVisibilityRuntimeToAdminFields(
+    buildOperationsVisibilityRuntimeReadOnlySafe(operationsStatusRuntimeInput)
   );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
@@ -15391,7 +15447,10 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     safeControlsRuntimeItems: operationsSafeControlsRuntimeLoad.controlItems,
     statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
     statusRuntimeGroups: operationsStatusRuntimeLoad.groups,
-    statusRuntimeItems: operationsStatusRuntimeLoad.statusItems
+    statusRuntimeItems: operationsStatusRuntimeLoad.statusItems,
+    visibilityRuntime: operationsVisibilityRuntimeLoad.visibilityRuntime,
+    visibilityRuntimeGroups: operationsVisibilityRuntimeLoad.groups,
+    visibilityRuntimeItems: operationsVisibilityRuntimeLoad.visibilityItems
   };
 }
 

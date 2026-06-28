@@ -111,9 +111,14 @@ import {
   operationsStatusRuntimeStatusLabel,
   type OperationsStatusRuntimeStatus
 } from "@/src/lib/operations/operations-status-runtime";
+import {
+  operationsVisibilityStateBadgeTone,
+  operationsVisibilityStateLabel,
+  type OperationsVisibilityState
+} from "@/src/lib/operations/operations-visibility-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -198,6 +203,10 @@ function toneForSafeControlsRuntimeStatus(status: string) {
 
 function toneForStatusRuntimeStatus(status: string) {
   return operationsStatusRuntimeStatusBadgeTone(status as OperationsStatusRuntimeStatus);
+}
+
+function toneForVisibilityState(status: string) {
+  return operationsVisibilityStateBadgeTone(status as OperationsVisibilityState);
 }
 
 function supportLabel(enabled: boolean) {
@@ -478,6 +487,24 @@ function DiagnosticsSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No diagnostics action is executed during OP-17 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function VisibilitySafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Change Visibility", "Review Permissions", "Review Route", "Review Feature Flag", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No visibility action is executed during OP-20 page load."
           type="button"
         >
           {label}
@@ -1680,6 +1707,80 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{statusItem.certificationStatus}</td>
             <td className="px-5 py-4 text-slate-600">{statusItem.reviewStatus}</td>
             <td className="px-5 py-4 text-slate-600">{statusItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations visibility runtime</span>
+        <AdminBadge tone={toneForStatus(control.visibilityRuntime.overallStatus)}>{control.visibilityRuntime.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibilityRuntime.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total modules", value: String(control.visibilityRuntime.totalModules) },
+          { label: "Visible", value: String(control.visibilityRuntime.visibleModules) },
+          { label: "Hidden", value: String(control.visibilityRuntime.hiddenModules) },
+          { label: "Disabled", value: String(control.visibilityRuntime.disabledModules) },
+          { label: "Super admin only", value: String(control.visibilityRuntime.superAdminOnlyModules) },
+          { label: "Review required", value: String(control.visibilityRuntime.reviewRequiredModules) },
+          { label: "Future hooks", value: String(control.visibilityRuntime.futureHookModules) }
+        ]}
+      />
+
+      {control.visibilityRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} module{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Module",
+          "Category",
+          "Visibility",
+          "Access",
+          "Permissions",
+          "Route",
+          "Feature",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.visibilityRuntimeItems.map((visibilityItem) => (
+          <tr key={visibilityItem.visibilityKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{visibilityItem.moduleName}</span>
+                <AdminBadge tone={toneForVisibilityState(visibilityItem.visibility)}>
+                  {operationsVisibilityStateLabel(visibilityItem.visibility as OperationsVisibilityState)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only visibility derived from registry and runtime metadata only; no visibility mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Module: {visibilityItem.moduleKey} · Review: {visibilityItem.reviewStatus}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForVisibilityState(visibilityItem.visibility)}>
+                {operationsVisibilityStateLabel(visibilityItem.visibility as OperationsVisibilityState)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.accessLevel}</td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.permissionScope}</td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.routeStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.featureStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{visibilityItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <VisibilitySafeControls />
+            </td>
           </tr>
         ))}
       </AdminTable>
