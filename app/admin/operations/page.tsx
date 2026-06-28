@@ -64,9 +64,14 @@ import {
   operationsMonitoringEventsRuntimeStatusLabel,
   type OperationsMonitoringEventsRuntimeStatus
 } from "@/src/lib/operations/operations-monitoring-events-runtime";
+import {
+  operationsWorkerMonitoringRuntimeStatusBadgeTone,
+  operationsWorkerMonitoringRuntimeStatusLabel,
+  type OperationsWorkerMonitoringRuntimeStatus
+} from "@/src/lib/operations/operations-worker-monitoring-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -119,6 +124,10 @@ function toneForDomainEmailQueueRuntimeStatus(status: string) {
 
 function toneForMonitoringEventsRuntimeStatus(status: string) {
   return operationsMonitoringEventsRuntimeStatusBadgeTone(status as OperationsMonitoringEventsRuntimeStatus);
+}
+
+function toneForWorkerMonitoringRuntimeStatus(status: string) {
+  return operationsWorkerMonitoringRuntimeStatusBadgeTone(status as OperationsWorkerMonitoringRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -291,6 +300,24 @@ function MonitoringEventsSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No monitoring action is executed during OP-11 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WorkerMonitoringSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect Logs", "Restart Worker", "Retry Failed", "Pause Worker", "Export Report"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No worker monitoring action is executed during OP-12 page load."
           type="button"
         >
           {label}
@@ -678,6 +705,76 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{worker.nextRunLabel}</td>
             <td className="px-5 py-4">
               <WorkerSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Worker monitoring runtime</span>
+        <AdminBadge tone={toneForStatus(control.workerMonitoringRuntime.status)}>{control.workerMonitoringRuntime.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.workerMonitoringRuntime.summary}</span>
+      </div>
+
+      {control.workerMonitoringRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} monitor{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Worker monitor",
+          "Type",
+          "Linked queue",
+          "Monitoring",
+          "Runs",
+          "Failed",
+          "Warnings",
+          "Last seen",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.workerMonitoringRuntimeItems.map((workerMonitor) => (
+          <tr key={workerMonitor.workerMonitoringKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{workerMonitor.workerName}</span>
+                <AdminBadge tone={toneForWorkerMonitoringRuntimeStatus(workerMonitor.runtimeStatus)}>
+                  {operationsWorkerMonitoringRuntimeStatusLabel(
+                    workerMonitor.runtimeStatus as OperationsWorkerMonitoringRuntimeStatus
+                  )}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  {workerMonitor.metadataDetected
+                    ? "Read-only worker metadata and monitoring events only; logs and payloads hidden"
+                    : "No worker monitoring metadata detected"}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Review: {workerMonitor.reviewStatus} · Visibility: {workerMonitor.visibility}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{workerMonitor.workerType}</td>
+            <td className="px-5 py-4 text-slate-600">{workerMonitor.linkedQueue}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={workerMonitor.monitoringStatus === "failed" ? "red" : workerMonitor.monitoringStatus === "warning" ? "amber" : "green"}>
+                {workerMonitor.monitoringStatus}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{workerMonitor.totalRuns}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={workerMonitor.failedRuns ? "red" : "green"}>{workerMonitor.failedRuns}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{workerMonitor.warningCount}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(workerMonitor.lastSeenAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{workerMonitor.safeSummary}</td>
+            <td className="px-5 py-4">
+              <WorkerMonitoringSafeControls />
             </td>
           </tr>
         ))}

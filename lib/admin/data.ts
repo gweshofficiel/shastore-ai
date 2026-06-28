@@ -305,6 +305,10 @@ import {
   mapOperationsMonitoringEventsRuntimeToAdminFields
 } from "@/src/lib/operations/operations-monitoring-events-runtime";
 import {
+  loadOperationsWorkerMonitoringRuntimeReadOnlySafe,
+  mapOperationsWorkerMonitoringRuntimeToAdminFields
+} from "@/src/lib/operations/operations-worker-monitoring-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -5838,6 +5842,42 @@ export type AdminOperationsMonitoringEventsRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsWorkerMonitoringSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsWorkerMonitoringRuntimeItem = {
+  errorCount: number;
+  failedRuns: number;
+  groupKey: string;
+  lastFailureAt: string | null;
+  lastRunAt: string | null;
+  lastSeenAt: string | null;
+  linkedQueue: string;
+  metadataDetected: boolean;
+  monitoringStatus: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeControls: AdminOperationsWorkerMonitoringSafeControl[];
+  safeSummary: string;
+  totalRuns: number;
+  visibility: string;
+  warningCount: number;
+  workerMonitoringKey: string;
+  workerName: string;
+  workerType: string;
+};
+
+export type AdminOperationsWorkerMonitoringRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsWorkerMonitoringRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsDatabaseSafeControl = {
   enabled: false;
   key: string;
@@ -6140,6 +6180,21 @@ export type AdminOperationsControl = {
   monitoringEventsRuntimeGroups: AdminOperationsMonitoringEventsRuntimeGroup[];
   monitoringEventsRuntimeItems: AdminOperationsMonitoringEventsRuntimeItem[];
   monitoringEventsSafeControls: AdminOperationsMonitoringEventsSafeControl[];
+  workerMonitoringRuntime: {
+    failedWorkers: number;
+    groupCount: number;
+    healthyWorkers: number;
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    source: "operations_worker_monitoring_runtime";
+    status: "needs_attention" | "worker_monitoring_runtime_ready";
+    summary: string;
+    totalWorkers: number;
+    warningWorkers: number;
+  };
+  workerMonitoringRuntimeGroups: AdminOperationsWorkerMonitoringRuntimeGroup[];
+  workerMonitoringRuntimeItems: AdminOperationsWorkerMonitoringRuntimeItem[];
+  workerMonitoringSafeControls: AdminOperationsWorkerMonitoringSafeControl[];
   dashboard: {
     metrics: {
       auditSupportedModules: number;
@@ -14637,6 +14692,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsWorkerMonitoringRuntimeLoad = mapOperationsWorkerMonitoringRuntimeToAdminFields(
+    await loadOperationsWorkerMonitoringRuntimeReadOnlySafe({
+      supabase
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -14676,9 +14736,6 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     "CLOUDFLARE_R2_BUCKET"
   ]);
   const queueHasFailures = queues.some((queue) => queue.failed > 0) || monitoringQueue.failed > 0;
-  const workerFailures = operationsWorkerRuntimeLoad.workers
-    .filter((worker) => worker.groupKey !== "future-worker-hooks" && worker.groupKey !== "cron-workers")
-    .reduce((total, worker) => total + worker.failedRuns, 0);
 
   return {
     backupRecovery: [
@@ -14776,7 +14833,14 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       queueHealth: queueHasFailures ? "needs_review" : "healthy",
       storageHealth:
         operationsStorageRuntimeLoad.storageRuntime.status === "storage_runtime_ready" ? "healthy" : "needs_review",
-      workerHealth: workerFailures ? "needs_review" : "placeholder"
+      workerHealth:
+        operationsWorkerMonitoringRuntimeLoad.workerMonitoring.status === "worker_monitoring_runtime_ready"
+          ? "healthy"
+          : operationsWorkerMonitoringRuntimeLoad.workerMonitoringItems.some(
+                (worker) => worker.metadataDetected && worker.groupKey !== "future-worker-monitoring-hooks"
+              )
+            ? "needs_review"
+            : "placeholder"
     },
     queues,
     queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
@@ -14791,8 +14855,9 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       },
       {
         name: "Workers",
-        note: "Worker status is inferred from existing queue activity. No worker restart is available.",
-        status: workerFailures ? "review" : "monitoring"
+        note: "Worker monitoring runtime uses read-only worker metadata and monitoring_events only; no worker start, stop, or restart runs here.",
+        status:
+          operationsWorkerMonitoringRuntimeLoad.workerMonitoring.status === "needs_attention" ? "review" : "monitoring"
       },
       {
         name: "Cron Jobs",
@@ -14855,7 +14920,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
     monitoringEventsRuntimeGroups: operationsMonitoringEventsRuntimeLoad.groups,
     monitoringEventsRuntimeItems: operationsMonitoringEventsRuntimeLoad.monitoringEvents,
-    monitoringEventsSafeControls: operationsMonitoringEventsRuntimeLoad.safeControls
+    monitoringEventsSafeControls: operationsMonitoringEventsRuntimeLoad.safeControls,
+    workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+    workerMonitoringRuntimeGroups: operationsWorkerMonitoringRuntimeLoad.groups,
+    workerMonitoringRuntimeItems: operationsWorkerMonitoringRuntimeLoad.workerMonitoringItems,
+    workerMonitoringSafeControls: operationsWorkerMonitoringRuntimeLoad.safeControls
   };
 }
 
