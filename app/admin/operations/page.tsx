@@ -142,9 +142,16 @@ import {
   operationsRuntimeCertificationStatusTone,
   type OperationsRuntimeCertificationStatus
 } from "@/src/lib/operations/operations-runtime-certification-runtime";
+import {
+  operationsProductionCertificationStatusLabel,
+  operationsProductionCertificationStatusTone,
+  operationsProductionReadinessLabel,
+  type OperationsProductionCertificationStatus,
+  type OperationsProductionReadinessStatus
+} from "@/src/lib/operations/operations-production-certification-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -629,6 +636,24 @@ function RuntimeCertificationSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No runtime certification action is executed during OP-25 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProductionCertificationSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Approve Production Certification", "Recheck Production Readiness", "Export Production Report", "Resolve Production Blocker", "Mark Production Certified"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No production certification action is executed during OP-26 page load."
           type="button"
         >
           {label}
@@ -2286,6 +2311,88 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{runtimeItem.safeSummary}</td>
             <td className="px-5 py-4">
               <RuntimeCertificationSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations production certification</span>
+        <AdminBadge tone={toneForStatus(control.productionCertification.overallStatus)}>{control.productionCertification.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.productionCertification.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total scopes", value: String(control.productionCertification.totalCertifications) },
+          { label: "Production ready", value: String(control.productionCertification.productionReadyScopes) },
+          { label: "Review required", value: String(control.productionCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.productionCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.productionCertification.warningScopes) }
+        ]}
+      />
+
+      {control.productionCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} scope{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Certification",
+          "Scope",
+          "Production readiness",
+          "Integrity",
+          "Read only",
+          "Mutation",
+          "Execution",
+          "Data",
+          "Security",
+          "Certified",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.productionCertificationItems.map((productionItem) => (
+          <tr key={productionItem.productionCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{productionItem.certificationName}</span>
+                <AdminBadge tone={operationsProductionCertificationStatusTone(productionItem.productionReadinessStatus as OperationsProductionReadinessStatus)}>
+                  {operationsProductionReadinessLabel(productionItem.productionReadinessStatus as OperationsProductionReadinessStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only production certification derived from OP-1 through OP-25 metadata only; no production mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {productionItem.blockedModules} · Warnings: {productionItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{productionItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsProductionCertificationStatusTone(productionItem.productionReadinessStatus as OperationsProductionReadinessStatus)}>
+                {operationsProductionReadinessLabel(productionItem.productionReadinessStatus as OperationsProductionReadinessStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsProductionCertificationStatusTone(productionItem.runtimeIntegrityStatus as OperationsProductionCertificationStatus)}>
+                {operationsProductionCertificationStatusLabel(productionItem.runtimeIntegrityStatus as OperationsProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionCertificationStatusLabel(productionItem.readOnlyStatus as OperationsProductionCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionCertificationStatusLabel(productionItem.mutationSafetyStatus as OperationsProductionCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionCertificationStatusLabel(productionItem.executionSafetyStatus as OperationsProductionCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionCertificationStatusLabel(productionItem.dataSafetyStatus as OperationsProductionCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsProductionCertificationStatusLabel(productionItem.securitySafetyStatus as OperationsProductionCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{productionItem.certifiedModules}</td>
+            <td className="px-5 py-4 text-slate-600">{productionItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <ProductionCertificationSafeControls />
             </td>
           </tr>
         ))}
