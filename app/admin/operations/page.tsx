@@ -126,9 +126,15 @@ import {
   operationsReviewStateLabel,
   type OperationsReviewState
 } from "@/src/lib/operations/operations-review-runtime";
+import {
+  operationsDataCertificationIntegrityLabel,
+  operationsDataCertificationIntegrityTone,
+  operationsDataCertificationSafetyLabel,
+  type OperationsDataCertificationIntegrityStatus
+} from "@/src/lib/operations/operations-data-certification-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -559,6 +565,24 @@ function ReviewSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No review action is executed during OP-22 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DataCertificationSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Approve Certification", "Recheck Data", "Export Certification", "Resolve Blocker", "Mark Certified"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No certification action is executed during OP-23 page load."
           type="button"
         >
           {label}
@@ -1990,6 +2014,82 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{reviewItem.safeSummary}</td>
             <td className="px-5 py-4">
               <ReviewSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations data certification</span>
+        <AdminBadge tone={toneForStatus(control.dataCertification.overallStatus)}>{control.dataCertification.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.dataCertification.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total scopes", value: String(control.dataCertification.totalCertifications) },
+          { label: "Certified", value: String(control.dataCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.dataCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.dataCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.dataCertification.warningScopes) }
+        ]}
+      />
+
+      {control.dataCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} scope{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Certification",
+          "Scope",
+          "Integrity",
+          "Placeholders",
+          "Mutation",
+          "Secrets",
+          "Execution",
+          "Certified",
+          "Review",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.dataCertificationItems.map((certificationItem) => (
+          <tr key={certificationItem.certificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{certificationItem.certificationName}</span>
+                <AdminBadge tone={operationsDataCertificationIntegrityTone(certificationItem.dataIntegrityStatus as OperationsDataCertificationIntegrityStatus)}>
+                  {operationsDataCertificationIntegrityLabel(certificationItem.dataIntegrityStatus as OperationsDataCertificationIntegrityStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only certification derived from OP-1 through OP-22 metadata only; no certification mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {certificationItem.blockedModules} · Warnings: {certificationItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{certificationItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsDataCertificationIntegrityTone(certificationItem.dataIntegrityStatus as OperationsDataCertificationIntegrityStatus)}>
+                {operationsDataCertificationIntegrityLabel(certificationItem.dataIntegrityStatus as OperationsDataCertificationIntegrityStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{operationsDataCertificationSafetyLabel(certificationItem.placeholderStatus as never)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsDataCertificationSafetyLabel(certificationItem.mutationSafetyStatus as never)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsDataCertificationSafetyLabel(certificationItem.secretSafetyStatus as never)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsDataCertificationSafetyLabel(certificationItem.executionSafetyStatus as never)}</td>
+            <td className="px-5 py-4 text-slate-600">{certificationItem.certifiedModules}</td>
+            <td className="px-5 py-4 text-slate-600">{certificationItem.reviewRequiredModules}</td>
+            <td className="px-5 py-4 text-slate-600">{certificationItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <DataCertificationSafeControls />
             </td>
           </tr>
         ))}
