@@ -106,9 +106,14 @@ import {
   operationsSafeControlsRuntimeStatusLabel,
   type OperationsSafeControlsRuntimeStatus
 } from "@/src/lib/operations/operations-safe-controls-runtime";
+import {
+  operationsStatusRuntimeStatusBadgeTone,
+  operationsStatusRuntimeStatusLabel,
+  type OperationsStatusRuntimeStatus
+} from "@/src/lib/operations/operations-status-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -189,6 +194,10 @@ function toneForDiagnosticsRuntimeStatus(status: string) {
 
 function toneForSafeControlsRuntimeStatus(status: string) {
   return operationsSafeControlsRuntimeStatusBadgeTone(status as OperationsSafeControlsRuntimeStatus);
+}
+
+function toneForStatusRuntimeStatus(status: string) {
+  return operationsStatusRuntimeStatusBadgeTone(status as OperationsStatusRuntimeStatus);
 }
 
 function supportLabel(enabled: boolean) {
@@ -1602,6 +1611,75 @@ export default async function AdminOperationsPage() {
                 {safeControl.controlName}
               </button>
             </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations status runtime</span>
+        <AdminBadge tone={toneForStatus(control.statusRuntime.overallStatus)}>{control.statusRuntime.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.statusRuntime.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total modules", value: String(control.statusRuntime.totalModules) },
+          { label: "Runtime ready", value: String(control.statusRuntime.runtimeReadyModules) },
+          { label: "Review required", value: String(control.statusRuntime.reviewRequiredModules) },
+          { label: "Production ready", value: String(control.statusRuntime.productionReadyModules) },
+          { label: "Warnings", value: String(control.statusRuntime.warningModules) },
+          { label: "Future hooks", value: String(control.statusRuntime.futureHooks) }
+        ]}
+      />
+
+      {control.statusRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} module{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Module",
+          "Category",
+          "Runtime",
+          "Health",
+          "Monitoring",
+          "Certification",
+          "Review",
+          "Safe summary"
+        ]}
+      >
+        {control.statusRuntimeItems.map((statusItem) => (
+          <tr key={statusItem.operationsStatusKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{statusItem.moduleName}</span>
+                <AdminBadge tone={toneForStatusRuntimeStatus(statusItem.runtimeStatus)}>
+                  {operationsStatusRuntimeStatusLabel(statusItem.runtimeStatus as OperationsStatusRuntimeStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only status derived from registry and runtime metadata only; no status mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Module: {statusItem.moduleKey} · Visibility: {statusItem.visibility}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.category}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForStatusRuntimeStatus(statusItem.runtimeStatus)}>
+                {operationsStatusRuntimeStatusLabel(statusItem.runtimeStatus as OperationsStatusRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.healthStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.monitoringStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.certificationStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.reviewStatus}</td>
+            <td className="px-5 py-4 text-slate-600">{statusItem.safeSummary}</td>
           </tr>
         ))}
       </AdminTable>

@@ -333,6 +333,10 @@ import {
   mapOperationsSafeControlsRuntimeToAdminFields
 } from "@/src/lib/operations/operations-safe-controls-runtime";
 import {
+  buildOperationsStatusRuntimeReadOnlySafe,
+  mapOperationsStatusRuntimeToAdminFields
+} from "@/src/lib/operations/operations-status-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6185,6 +6189,29 @@ export type AdminOperationsSafeControlsRuntimeGroup = {
   title: string;
 };
 
+export type AdminOperationsStatusRuntimeItem = {
+  auditStatus: string;
+  category: string;
+  certificationStatus: string;
+  groupKey: string;
+  healthStatus: string;
+  moduleKey: string;
+  moduleName: string;
+  monitoringStatus: string;
+  operationsStatusKey: string;
+  reviewStatus: string;
+  runtimeStatus: string;
+  safeSummary: string;
+  visibility: string;
+};
+
+export type AdminOperationsStatusRuntimeGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsStatusRuntimeItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6374,6 +6401,25 @@ export type AdminOperationsControl = {
   };
   safeControlsRuntimeGroups: AdminOperationsSafeControlsRuntimeGroup[];
   safeControlsRuntimeItems: AdminOperationsSafeControlsRuntimeItem[];
+  statusRuntime: {
+    disabledModules: number;
+    failedModules: number;
+    futureHooks: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "operations_status_runtime_ready";
+    productionReadyModules: number;
+    readOnly: true;
+    registeredModules: number;
+    registrySource: "operations_registry_runtime";
+    source: "operations_status_runtime";
+    reviewRequiredModules: number;
+    runtimeReadyModules: number;
+    summary: string;
+    totalModules: number;
+    warningModules: number;
+  };
+  statusRuntimeGroups: AdminOperationsStatusRuntimeGroup[];
+  statusRuntimeItems: AdminOperationsStatusRuntimeItem[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15050,6 +15096,29 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       supabase
     })
   );
+  const operationsStatusRuntimeLoad = mapOperationsStatusRuntimeToAdminFields(
+    buildOperationsStatusRuntimeReadOnlySafe({
+      aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+      backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+      cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+      cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+      dashboard: operationsDashboard.dashboard,
+      databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+      diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+      disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+      domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+      emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+      futureHooks: reservedFutureHooks,
+      monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+      queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+      registry: operationsRegistry.registry,
+      safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+      storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
+      storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+      workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+      workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15319,7 +15388,10 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     diagnosticsSafeControls: operationsDiagnosticsRuntimeLoad.safeControls,
     safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
     safeControlsRuntimeGroups: operationsSafeControlsRuntimeLoad.groups,
-    safeControlsRuntimeItems: operationsSafeControlsRuntimeLoad.controlItems
+    safeControlsRuntimeItems: operationsSafeControlsRuntimeLoad.controlItems,
+    statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
+    statusRuntimeGroups: operationsStatusRuntimeLoad.groups,
+    statusRuntimeItems: operationsStatusRuntimeLoad.statusItems
   };
 }
 
