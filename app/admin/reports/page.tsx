@@ -36,6 +36,26 @@ import {
   reportAuditCoverageBadgeTone,
   reportAuditCoverageLabel
 } from "@/src/lib/reports/report-audit-runtime";
+import {
+  reportReviewCoverageBadgeTone,
+  reportReviewCoverageLabel
+} from "@/src/lib/reports/report-review-runtime";
+
+function toneForCertificationReadiness(signal: string) {
+  if (signal === "certified" || signal === "ready_for_certification" || signal === "not_applicable") {
+    return "green" as const;
+  }
+
+  if (signal === "needs_attention") {
+    return "amber" as const;
+  }
+
+  if (signal === "planned") {
+    return "blue" as const;
+  }
+
+  return "slate" as const;
+}
 
 function toneForStatus(status: string) {
   if (status === "ready" || status === "registry_ready") {
@@ -1875,6 +1895,64 @@ export default async function AdminReportsPage({
               </div>
             ) : null}
 
+            {control.reportReview.selectedReportReview ? (
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    RP-20 Review summary
+                  </span>
+                  <AdminBadge
+                    tone={reportReviewCoverageBadgeTone(
+                      control.reportReview.selectedReportReview.reviewCoverageState
+                    )}
+                  >
+                    {reportReviewCoverageLabel(control.reportReview.selectedReportReview.reviewCoverageState)}
+                  </AdminBadge>
+                  <AdminBadge tone={toneForAggregationLoadingState(control.reportReview.loadingState)}>
+                    {control.reportReview.selectedReportReview.reviewAvailabilityState}
+                  </AdminBadge>
+                  <AdminBadge
+                    tone={toneForCertificationReadiness(
+                      control.reportReview.selectedReportReview.certificationReadinessSignal
+                    )}
+                  >
+                    {control.reportReview.selectedReportReview.certificationReadinessSignal.replace(/_/g, " ")}
+                  </AdminBadge>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Review status:</span>{" "}
+                    {control.reportReview.selectedReportReview.reviewStatus.replace(/_/g, " ")}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Reviewer state:</span>{" "}
+                    {control.reportReview.selectedReportReview.reviewerState}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-slate-950">Last reviewed:</span>{" "}
+                    {control.reportReview.selectedReportReview.lastReviewedState}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Review notes:</span>{" "}
+                    {control.reportReview.selectedReportReview.reviewNotesState}
+                  </p>
+                  <p className="text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                    <span className="font-bold text-slate-950">Review source:</span>{" "}
+                    {control.reportReview.selectedReportReview.reviewSourceDescription}
+                  </p>
+                </div>
+
+                {control.reportReview.selectedReportReview.reviewGaps.length ? (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {control.reportReview.selectedReportReview.reviewGaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             <AdminTable headers={["Latest safe activity", "Status", "Summary"]}>
               {control.reportViewer.selectedReport.latestSafeActivity.length ? (
                 control.reportViewer.selectedReport.latestSafeActivity.map((item) => (
@@ -2772,6 +2850,116 @@ export default async function AdminReportsPage({
             <tr>
               <td className="px-5 py-4 text-slate-600" colSpan={8}>
                 No audit entries match the current search and filters.
+              </td>
+            </tr>
+          )}
+        </AdminTable>
+      </div>
+
+      <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 lg:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+            RP-20 Report Review
+          </span>
+          <AdminBadge tone={toneForStatus(control.reportReview.status)}>{control.reportReview.status}</AdminBadge>
+          <AdminBadge tone={toneForAggregationLoadingState(control.reportReview.loadingState)}>
+            {control.reportReview.loadingState}
+          </AdminBadge>
+          <AdminBadge tone="blue">Super Admin only</AdminBadge>
+          <span className="text-xs text-slate-600">{control.reportReview.summary}</span>
+        </div>
+
+        {control.reportReview.errorMessage ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {control.reportReview.errorMessage}
+          </p>
+        ) : null}
+
+        <AdminStatGrid
+          stats={[
+            { label: "Reviewed", value: control.reportReview.totals.reviewedReports },
+            { label: "Pending review", value: control.reportReview.totals.pendingReviewReports },
+            { label: "Partial", value: control.reportReview.totals.partialReports },
+            { label: "Planned", value: control.reportReview.totals.plannedReports },
+            { label: "Unavailable", value: control.reportReview.totals.unavailableReports }
+          ]}
+        />
+
+        {control.reportReview.byCoverage.length ? (
+          <div className="flex flex-wrap gap-2">
+            {control.reportReview.byCoverage.map((item) => (
+              <span
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-600"
+                key={item.label}
+              >
+                {reportReviewCoverageLabel(item.label)}: {item.count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {control.reportReview.warnings.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+            {control.reportReview.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <AdminTable
+          headers={[
+            "Report",
+            "Coverage",
+            "Review status",
+            "Availability",
+            "Reviewer",
+            "Last reviewed",
+            "Certification readiness",
+            "Review gaps"
+          ]}
+        >
+          {control.reportReview.entries.length ? (
+            control.reportReview.entries.map((entry) => (
+              <tr key={entry.reportKey}>
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-950">{entry.reportTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{entry.reportKey}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={reportReviewCoverageBadgeTone(entry.reviewCoverageState)}>
+                    {reportReviewCoverageLabel(entry.reviewCoverageState)}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.reviewStatus.replace(/_/g, " ")}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={toneForAggregationLoadingState(entry.reviewAvailabilityState)}>
+                    {entry.reviewAvailabilityState}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.reviewerState}</td>
+                <td className="px-5 py-4 text-sm text-slate-600">{entry.lastReviewedState}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={toneForCertificationReadiness(entry.certificationReadinessSignal)}>
+                    {entry.certificationReadinessSignal.replace(/_/g, " ")}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 text-sm text-slate-600">
+                  {entry.reviewGaps.length ? (
+                    <ul className="list-disc space-y-1 pl-4">
+                      {entry.reviewGaps.map((gap) => (
+                        <li key={gap}>{gap}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "No review gaps recorded."
+                  )}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-5 py-4 text-slate-600" colSpan={8}>
+                No review entries match the current search and filters.
               </td>
             </tr>
           )}

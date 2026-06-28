@@ -118,6 +118,8 @@ export type ReportsRegistryRuntimeContext = {
   reportSearchNeedsAttention?: boolean;
   reportAuditLastGenerated?: string;
   reportAuditNeedsAttention?: boolean;
+  reportReviewLastGenerated?: string;
+  reportReviewNeedsAttention?: boolean;
   selectedRange: "today" | "7d" | "30d" | "month" | "year";
 };
 
@@ -450,16 +452,17 @@ const REPORT_REGISTRY_DEFINITIONS: readonly ReportRegistryEntryDefinition[] = [
   },
   {
     category: "Report Platform",
-    certificationState: "planned",
-    dataSourceDescription: "Mark reviewed monitoring placeholder. No report persistence.",
+    certificationState: "not_applicable",
+    dataSourceDescription:
+      "Report Review runtime (registry + RP-13 status + RP-19 audit + RP-12 through RP-18 runtime outputs). Read-only in-memory review on page load.",
     exportAvailabilityState: "unavailable",
-    futureHooks: ["Review workflow"],
-    lastGeneratedState: "Monitoring placeholders",
+    futureHooks: ["Review workflow", "Review submit"],
+    lastGeneratedState: "Live review layer",
     reportId: "platform:report-review",
     reportKey: "rp-20-report-review",
     roadmapPhase: "RP-20",
-    safeActionsAvailability: "placeholder",
-    status: "review",
+    safeActionsAvailability: "unavailable",
+    status: "ready",
     title: "Report Review",
     visibility: "super_admin"
   },
@@ -757,6 +760,16 @@ function applyRuntimeContext(
         "Report Audit runtime (registry + RP-12 viewer + RP-13 status + RP-14 visibility + RP-15 safe actions + RP-16 aggregation + RP-17 filters + RP-18 search + RP-2 through RP-11 adapters). Read-only in-memory audit on page load.",
       lastGeneratedState: context.reportAuditLastGenerated ?? definition.lastGeneratedState,
       status: context.reportAuditNeedsAttention ? "review" : definition.status
+    };
+  }
+
+  if (definition.reportKey === "rp-20-report-review") {
+    return {
+      ...definition,
+      dataSourceDescription:
+        "Report Review runtime (registry + RP-13 status + RP-19 audit + RP-12 through RP-18 runtime outputs). Read-only in-memory review on page load.",
+      lastGeneratedState: context.reportReviewLastGenerated ?? definition.lastGeneratedState,
+      status: context.reportReviewNeedsAttention ? "review" : definition.status
     };
   }
 

@@ -237,6 +237,10 @@ import {
   mapReportAuditRuntimeToAdminFields
 } from "@/src/lib/reports/report-audit-runtime";
 import {
+  buildReportReviewRuntimeInput,
+  mapReportReviewRuntimeToAdminFields
+} from "@/src/lib/reports/report-review-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -4986,6 +4990,69 @@ export type AdminReportingControl = {
       coveredReports: number;
       partialReports: number;
       plannedReports: number;
+      unavailableReports: number;
+    };
+    warnings: string[];
+  };
+  reportReview: {
+    byCoverage: Array<{
+      count: number;
+      label: "partial" | "pending_review" | "planned" | "reviewed" | "unavailable";
+    }>;
+    entries: Array<{
+      certificationReadinessSignal:
+        | "certified"
+        | "needs_attention"
+        | "not_applicable"
+        | "planned"
+        | "ready_for_certification"
+        | "unavailable";
+      lastReviewedState: string;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+      reviewAvailabilityState: "available" | "degraded" | "empty" | "error" | "planned" | "unavailable";
+      reviewCoverageState: "partial" | "pending_review" | "planned" | "reviewed" | "unavailable";
+      reviewGaps: string[];
+      reviewNotesState: string;
+      reviewSourceDescription: string;
+      reviewStatus: "not_required" | "partial" | "pending_review" | "planned" | "reviewed" | "unavailable";
+      reviewerState: string;
+    }>;
+    errorMessage: string | null;
+    generatedAt: string;
+    lastGeneratedState: string;
+    loadingState: "degraded" | "empty" | "error" | "loaded" | "planned";
+    readOnly: true;
+    selectedReportKey: string | null;
+    selectedReportReview: {
+      certificationReadinessSignal:
+        | "certified"
+        | "needs_attention"
+        | "not_applicable"
+        | "planned"
+        | "ready_for_certification"
+        | "unavailable";
+      lastReviewedState: string;
+      readOnly: true;
+      reportKey: string;
+      reportTitle: string;
+      reviewAvailabilityState: "available" | "degraded" | "empty" | "error" | "planned" | "unavailable";
+      reviewCoverageState: "partial" | "pending_review" | "planned" | "reviewed" | "unavailable";
+      reviewGaps: string[];
+      reviewNotesState: string;
+      reviewSourceDescription: string;
+      reviewStatus: "not_required" | "partial" | "pending_review" | "planned" | "reviewed" | "unavailable";
+      reviewerState: string;
+    } | null;
+    status: "degraded" | "empty" | "planned" | "ready" | "unavailable";
+    summary: string;
+    superAdminReportsOnly: true;
+    totals: {
+      partialReports: number;
+      pendingReviewReports: number;
+      plannedReports: number;
+      reviewedReports: number;
       unavailableReports: number;
     };
     warnings: string[];
@@ -12273,6 +12340,22 @@ export async function getAdminReportingControl(
   const filteredAuditEntries = reportAuditRuntime.entries.filter((entry) =>
     filteredReportKeySet.has(entry.reportKey)
   );
+  const reportReviewRuntime = await mapReportReviewRuntimeToAdminFields(
+    buildReportReviewRuntimeInput({
+      auditEntries: reportAuditRuntime.entries,
+      registryReports: allReports.map((report) => ({
+        certificationState: report.certificationState,
+        name: report.name,
+        reportKey: report.reportKey,
+        status: report.status
+      })),
+      reportStatusByReportKey: reportStatusRuntime.statusByReportKey,
+      selectedReportKey
+    })
+  );
+  const filteredReviewEntries = reportReviewRuntime.entries.filter((entry) =>
+    filteredReportKeySet.has(entry.reportKey)
+  );
   const reports = allReports.filter((report) => filteredReportKeySet.has(report.reportKey));
   const registryRuntime = mapReportsRegistryRuntimeToAdminFields({
     ...registryContextBase,
@@ -12289,6 +12372,11 @@ export async function getAdminReportingControl(
       reportAuditRuntime.status === "degraded" ||
       reportAuditRuntime.status === "empty" ||
       reportAuditRuntime.status === "unavailable",
+    reportReviewLastGenerated: reportReviewRuntime.lastGeneratedState,
+    reportReviewNeedsAttention:
+      reportReviewRuntime.status === "degraded" ||
+      reportReviewRuntime.status === "empty" ||
+      reportReviewRuntime.status === "unavailable",
     reportSafeActionsLastGenerated: reportSafeActionsRuntime.lastGeneratedState,
     reportSafeActionsNeedsAttention: reportSafeActionsRuntime.status === "needs_attention",
     reportStatusLastGenerated: reportStatusRuntime.lastGeneratedState,
@@ -12772,6 +12860,22 @@ export async function getAdminReportingControl(
       superAdminReportsOnly: true as const,
       totals: reportAuditRuntime.totals,
       warnings: reportAuditRuntime.warnings
+    },
+    reportReview: {
+      byCoverage: reportReviewRuntime.byCoverage,
+      entries: filteredReviewEntries,
+      errorMessage: reportReviewRuntime.errorMessage,
+      generatedAt: reportReviewRuntime.generatedAt,
+      lastGeneratedState: reportReviewRuntime.lastGeneratedState,
+      loadingState: reportReviewRuntime.loadingState,
+      readOnly: true as const,
+      selectedReportKey: reportReviewRuntime.selectedReportKey,
+      selectedReportReview: reportReviewRuntime.selectedReportReview,
+      status: reportReviewRuntime.status,
+      summary: reportReviewRuntime.summary,
+      superAdminReportsOnly: true as const,
+      totals: reportReviewRuntime.totals,
+      warnings: reportReviewRuntime.warnings
     },
     reports,
     selectedRange,
