@@ -373,6 +373,11 @@ import {
   mapOperationsProductionHardeningToAdminFields
 } from "@/src/lib/operations/operations-production-hardening-runtime";
 import {
+  buildOperationsFinalProductionCertificationReadOnlySafe,
+  mapOperationsFinalProductionCertificationToAdminFields,
+  OPERATIONS_FINAL_PRODUCTION_CERTIFICATION_BADGES
+} from "@/src/lib/operations/operations-final-production-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6540,6 +6545,40 @@ export type AdminOperationsProductionHardeningGroup = {
   title: string;
 };
 
+export type AdminOperationsFinalProductionCertificationSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsFinalProductionCertificationItem = {
+  blockedModules: number;
+  certificationName: string;
+  certificationScope: string;
+  certifiedModules: number;
+  dataSafetyStatus: string;
+  executionSafetyStatus: string;
+  finalCertificationKey: string;
+  finalProductionStatus: string;
+  groupKey: string;
+  hardeningStatus: string;
+  mutationSafetyStatus: string;
+  readOnlyStatus: string;
+  runtimeIntegrityStatus: string;
+  safeControls: AdminOperationsFinalProductionCertificationSafeControl[];
+  safeSummary: string;
+  securitySafetyStatus: string;
+  warningModules: number;
+};
+
+export type AdminOperationsFinalProductionCertificationGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsFinalProductionCertificationItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6901,6 +6940,23 @@ export type AdminOperationsControl = {
   productionHardeningGroups: AdminOperationsProductionHardeningGroup[];
   productionHardeningItems: AdminOperationsProductionHardeningItem[];
   productionHardeningSafeControls: AdminOperationsProductionHardeningSafeControl[];
+  finalCertification: {
+    blockedScopes: number;
+    certifiedScopes: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "operations_final_production_certification_ready";
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    reviewRequiredScopes: number;
+    source: "operations_final_production_certification_runtime";
+    summary: string;
+    totalCertifications: number;
+    warningScopes: number;
+  };
+  finalCertificationBadges: readonly string[];
+  finalCertificationGroups: AdminOperationsFinalProductionCertificationGroup[];
+  finalCertificationItems: AdminOperationsFinalProductionCertificationItem[];
+  finalCertificationSafeControls: AdminOperationsFinalProductionCertificationSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15860,6 +15916,45 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       workerSafeControls: operationsWorkerRuntimeLoad.safeControls
     })
   );
+  const operationsFinalProductionCertificationLoad = mapOperationsFinalProductionCertificationToAdminFields(
+    buildOperationsFinalProductionCertificationReadOnlySafe({
+      aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+      auditRuntime: operationsAuditRuntimeLoad.auditRuntime,
+      backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+      cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+      cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+      dashboardRuntime: operationsDashboard.dashboard,
+      dataCertification: operationsDataCertificationLoad.dataCertification,
+      dataCertificationItems: operationsDataCertificationLoad.certificationItems,
+      databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+      diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+      disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+      domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+      emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+      monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+      productionCertification: operationsProductionCertificationLoad.productionCertification,
+      productionCertificationItems: operationsProductionCertificationLoad.productionCertificationItems,
+      productionHardening: operationsProductionHardeningLoad.productionHardening,
+      productionHardeningItems: operationsProductionHardeningLoad.productionHardeningItems,
+      queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+      registryRuntime: operationsRegistry.registry,
+      reviewItems: operationsReviewRuntimeLoad.reviewItems,
+      reviewRuntime: operationsReviewRuntimeLoad.reviewRuntime,
+      runtimeCertification: operationsRuntimeCertificationLoad.runtimeCertification,
+      runtimeCertificationItems: operationsRuntimeCertificationLoad.runtimeCertificationItems,
+      safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+      securityCertification: operationsSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: operationsSecurityCertificationLoad.securityCertificationItems,
+      statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
+      storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
+      storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+      stressValidation: operationsStressValidationLoad.stressValidation,
+      stressValidationItems: operationsStressValidationLoad.stressValidationItems,
+      visibilityRuntime: operationsVisibilityRuntimeLoad.visibilityRuntime,
+      workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+      workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -16167,7 +16262,12 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     productionHardening: operationsProductionHardeningLoad.productionHardening,
     productionHardeningGroups: operationsProductionHardeningLoad.groups,
     productionHardeningItems: operationsProductionHardeningLoad.productionHardeningItems,
-    productionHardeningSafeControls: operationsProductionHardeningLoad.safeControls
+    productionHardeningSafeControls: operationsProductionHardeningLoad.safeControls,
+    finalCertification: operationsFinalProductionCertificationLoad.finalCertification,
+    finalCertificationBadges: OPERATIONS_FINAL_PRODUCTION_CERTIFICATION_BADGES,
+    finalCertificationGroups: operationsFinalProductionCertificationLoad.groups,
+    finalCertificationItems: operationsFinalProductionCertificationLoad.finalCertificationItems,
+    finalCertificationSafeControls: operationsFinalProductionCertificationLoad.safeControls
   };
 }
 

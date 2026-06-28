@@ -159,9 +159,16 @@ import {
   operationsProductionHardeningStatusTone,
   type OperationsProductionHardeningStatus
 } from "@/src/lib/operations/operations-production-hardening-runtime";
+import {
+  operationsFinalCertificationStatusLabel,
+  operationsFinalCertificationStatusTone,
+  operationsFinalProductionStatusLabel,
+  type OperationsFinalCertificationStatus,
+  type OperationsFinalProductionStatus
+} from "@/src/lib/operations/operations-final-production-certification-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "operations_stress_validation_ready", "operations_production_hardening_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "operations_runtime_certification_ready", "operations_production_certification_ready", "operations_stress_validation_ready", "operations_production_hardening_ready", "operations_final_production_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -700,6 +707,24 @@ function ProductionHardeningSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No production hardening action is executed during OP-28 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FinalCertificationSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Approve Final Certification", "Recheck Final Production", "Export Final Report", "Resolve Final Blocker", "Mark Final Certified"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No final certification action is executed during OP-29 page load."
           type="button"
         >
           {label}
@@ -2585,6 +2610,98 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{hardeningItem.safeSummary}</td>
             <td className="px-5 py-4">
               <ProductionHardeningSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+        {control.finalCertificationBadges.map((badge) => (
+          <AdminBadge key={badge} tone="green">
+            {badge}
+          </AdminBadge>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations final production certification</span>
+        <AdminBadge tone={toneForStatus(control.finalCertification.overallStatus)}>{control.finalCertification.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.finalCertification.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total certifications", value: String(control.finalCertification.totalCertifications) },
+          { label: "Final certified", value: String(control.finalCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.finalCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.finalCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.finalCertification.warningScopes) }
+        ]}
+      />
+
+      {control.finalCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} certification{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Certification",
+          "Scope",
+          "Final status",
+          "Integrity",
+          "Read only",
+          "Execution",
+          "Mutation",
+          "Data",
+          "Security",
+          "Hardening",
+          "Certified",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.finalCertificationItems.map((finalItem) => (
+          <tr key={finalItem.finalCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{finalItem.certificationName}</span>
+                <AdminBadge tone={operationsFinalCertificationStatusTone(finalItem.finalProductionStatus as OperationsFinalProductionStatus)}>
+                  {operationsFinalProductionStatusLabel(finalItem.finalProductionStatus as OperationsFinalProductionStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only final certification derived from OP-1 through OP-28 metadata only; no mutation or execution
+                </span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {finalItem.blockedModules} · Warnings: {finalItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsFinalCertificationStatusTone(finalItem.finalProductionStatus as OperationsFinalProductionStatus)}>
+                {operationsFinalProductionStatusLabel(finalItem.finalProductionStatus as OperationsFinalProductionStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={operationsFinalCertificationStatusTone(finalItem.runtimeIntegrityStatus as OperationsFinalCertificationStatus)}>
+                {operationsFinalCertificationStatusLabel(finalItem.runtimeIntegrityStatus as OperationsFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.readOnlyStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.executionSafetyStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.mutationSafetyStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.dataSafetyStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.securitySafetyStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsFinalCertificationStatusLabel(finalItem.hardeningStatus as OperationsFinalCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.certifiedModules}</td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <FinalCertificationSafeControls />
             </td>
           </tr>
         ))}
