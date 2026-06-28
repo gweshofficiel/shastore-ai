@@ -353,6 +353,10 @@ import {
   mapOperationsDataCertificationToAdminFields
 } from "@/src/lib/operations/operations-data-certification-runtime";
 import {
+  buildOperationsSecurityCertificationReadOnlySafe,
+  mapOperationsSecurityCertificationToAdminFields
+} from "@/src/lib/operations/operations-security-certification-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -6355,6 +6359,41 @@ export type AdminOperationsDataCertificationGroup = {
   title: string;
 };
 
+export type AdminOperationsSecurityCertificationSafeControl = {
+  enabled: false;
+  key: string;
+  label: string;
+  note: string;
+};
+
+export type AdminOperationsSecurityCertificationItem = {
+  actionSafetyStatus: string;
+  blockedModules: number;
+  certificationName: string;
+  certificationScope: string;
+  certifiedModules: number;
+  executionSafetyStatus: string;
+  groupKey: string;
+  mutationSafetyStatus: string;
+  ownershipSafetyStatus: string;
+  privateDataSafetyStatus: string;
+  readOnlyStatus: string;
+  rlsSafetyStatus: string;
+  safeControls: AdminOperationsSecurityCertificationSafeControl[];
+  safeSummary: string;
+  secretSafetyStatus: string;
+  securityCertificationKey: string;
+  superAdminOnlyStatus: string;
+  warningModules: number;
+};
+
+export type AdminOperationsSecurityCertificationGroup = {
+  groupKey: string;
+  itemCount: number;
+  items: AdminOperationsSecurityCertificationItem[];
+  title: string;
+};
+
 export type AdminOperationsCronSafeControl = {
   enabled: false;
   key: string;
@@ -6636,6 +6675,22 @@ export type AdminOperationsControl = {
   dataCertificationGroups: AdminOperationsDataCertificationGroup[];
   dataCertificationItems: AdminOperationsDataCertificationItem[];
   dataCertificationSafeControls: AdminOperationsDataCertificationSafeControl[];
+  securityCertification: {
+    blockedScopes: number;
+    certifiedScopes: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "operations_security_certification_ready";
+    readOnly: true;
+    registrySource: "operations_registry_runtime";
+    reviewRequiredScopes: number;
+    source: "operations_security_certification_runtime";
+    summary: string;
+    totalCertifications: number;
+    warningScopes: number;
+  };
+  securityCertificationGroups: AdminOperationsSecurityCertificationGroup[];
+  securityCertificationItems: AdminOperationsSecurityCertificationItem[];
+  securityCertificationSafeControls: AdminOperationsSecurityCertificationSafeControl[];
   components: AdminOperationsRegistryComponent[];
   cronJobs: Array<{
     lastRun: string | null;
@@ -15386,6 +15441,38 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
       workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
     })
   );
+  const operationsSecurityCertificationLoad = mapOperationsSecurityCertificationToAdminFields(
+    buildOperationsSecurityCertificationReadOnlySafe({
+      aiQueueRuntime: operationsAiQueueRuntimeLoad.aiQueueRuntime,
+      auditItems: operationsAuditRuntimeLoad.auditItems,
+      auditRuntime: operationsAuditRuntimeLoad.auditRuntime,
+      backupRuntime: operationsBackupRuntimeLoad.backupRuntime,
+      cronMonitoringRuntime: operationsCronMonitoringRuntimeLoad.cronMonitoring,
+      cronRuntime: operationsCronRuntimeLoad.cronRuntime,
+      dashboardRuntime: operationsDashboard.dashboard,
+      dataCertification: operationsDataCertificationLoad.dataCertification,
+      dataCertificationItems: operationsDataCertificationLoad.certificationItems,
+      databaseRuntime: operationsDatabaseRuntimeLoad.databaseRuntime,
+      diagnosticsRuntime: operationsDiagnosticsRuntimeLoad.diagnosticsRuntime,
+      disasterRecoveryRuntime: operationsDisasterRecoveryRuntimeLoad.disasterRecovery,
+      domainEmailQueueRuntime: operationsDomainEmailQueueRuntimeLoad.domainEmailQueueRuntime,
+      emailQueueRuntime: operationsEmailQueueRuntimeLoad.emailQueueRuntime,
+      monitoringEventsRuntime: operationsMonitoringEventsRuntimeLoad.monitoringEventsRuntime,
+      queueRuntime: operationsQueueRuntimeLoad.queueRuntime,
+      registryRuntime: operationsRegistry.registry,
+      reviewItems: operationsReviewRuntimeLoad.reviewItems,
+      reviewRuntime: operationsReviewRuntimeLoad.reviewRuntime,
+      safeControlsRuntime: operationsSafeControlsRuntimeLoad.safeControlsRuntime,
+      statusItems: operationsStatusRuntimeLoad.statusItems,
+      statusRuntime: operationsStatusRuntimeLoad.statusRuntime,
+      storageMetricsRuntime: operationsStorageMetricsRuntimeLoad.storageMetrics,
+      storageRuntime: operationsStorageRuntimeLoad.storageRuntime,
+      visibilityItems: operationsVisibilityRuntimeLoad.visibilityItems,
+      visibilityRuntime: operationsVisibilityRuntimeLoad.visibilityRuntime,
+      workerMonitoringRuntime: operationsWorkerMonitoringRuntimeLoad.workerMonitoring,
+      workerRuntime: operationsWorkerRuntimeLoad.workerRuntime
+    })
+  );
   const emailQueueItem =
     operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-email-queue") ?? null;
   const aiQueueItem = operationsQueueRuntimeLoad.queues.find((queue) => queue.queueKey === "op-ai-queue") ?? null;
@@ -15673,7 +15760,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     dataCertification: operationsDataCertificationLoad.dataCertification,
     dataCertificationGroups: operationsDataCertificationLoad.groups,
     dataCertificationItems: operationsDataCertificationLoad.certificationItems,
-    dataCertificationSafeControls: operationsDataCertificationLoad.safeControls
+    dataCertificationSafeControls: operationsDataCertificationLoad.safeControls,
+    securityCertification: operationsSecurityCertificationLoad.securityCertification,
+    securityCertificationGroups: operationsSecurityCertificationLoad.groups,
+    securityCertificationItems: operationsSecurityCertificationLoad.securityCertificationItems,
+    securityCertificationSafeControls: operationsSecurityCertificationLoad.safeControls
   };
 }
 

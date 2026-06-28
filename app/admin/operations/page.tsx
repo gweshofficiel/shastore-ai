@@ -132,9 +132,14 @@ import {
   operationsDataCertificationSafetyLabel,
   type OperationsDataCertificationIntegrityStatus
 } from "@/src/lib/operations/operations-data-certification-runtime";
+import {
+  operationsSecurityCertificationStatusLabel,
+  operationsSecurityCertificationStatusTone,
+  type OperationsSecurityCertificationStatus
+} from "@/src/lib/operations/operations-security-certification-runtime";
 
 function toneForStatus(status: string) {
-  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
+  if (["configured", "healthy", "idle", "monitoring", "ready", "running", "dashboard_ready", "registry_ready", "queue_runtime_ready", "worker_runtime_ready", "cron_runtime_ready", "storage_runtime_ready", "storage_metrics_runtime_ready", "backup_runtime_ready", "disaster_recovery_runtime_ready", "diagnostics_runtime_ready", "safe_controls_runtime_ready", "operations_status_runtime_ready", "operations_visibility_runtime_ready", "operations_audit_runtime_ready", "operations_review_runtime_ready", "operations_data_certification_ready", "operations_security_certification_ready", "database_runtime_ready", "email_queue_runtime_ready", "ai_queue_runtime_ready", "domain_email_queue_runtime_ready", "monitoring_events_runtime_ready", "worker_monitoring_runtime_ready", "cron_monitoring_runtime_ready"].includes(status)) {
     return "green" as const;
   }
 
@@ -583,6 +588,24 @@ function DataCertificationSafeControls() {
           className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
           disabled
           title="Read-only placeholder. No certification action is executed during OP-23 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SecurityCertificationSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Approve Security Certification", "Recheck Security", "Export Security Report", "Resolve Security Blocker", "Mark Security Certified"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No security certification action is executed during OP-24 page load."
           type="button"
         >
           {label}
@@ -2090,6 +2113,80 @@ export default async function AdminOperationsPage() {
             <td className="px-5 py-4 text-slate-600">{certificationItem.safeSummary}</td>
             <td className="px-5 py-4">
               <DataCertificationSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Operations security certification</span>
+        <AdminBadge tone={toneForStatus(control.securityCertification.overallStatus)}>{control.securityCertification.overallStatus}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.securityCertification.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total scopes", value: String(control.securityCertification.totalCertifications) },
+          { label: "Certified", value: String(control.securityCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.securityCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.securityCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.securityCertification.warningScopes) }
+        ]}
+      />
+
+      {control.securityCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">{group.itemCount} scope{group.itemCount === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Certification",
+          "Scope",
+          "Super Admin",
+          "Read only",
+          "Mutation",
+          "Execution",
+          "Secrets",
+          "Private data",
+          "RLS",
+          "Actions",
+          "Safe summary",
+          "Safe controls"
+        ]}
+      >
+        {control.securityCertificationItems.map((securityItem) => (
+          <tr key={securityItem.securityCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-2">
+                <span className="font-bold text-slate-950">{securityItem.certificationName}</span>
+                <AdminBadge tone={operationsSecurityCertificationStatusTone(securityItem.superAdminOnlyStatus as OperationsSecurityCertificationStatus)}>
+                  {operationsSecurityCertificationStatusLabel(securityItem.superAdminOnlyStatus as OperationsSecurityCertificationStatus)}
+                </AdminBadge>
+                <span className="text-xs text-slate-500">
+                  Read-only security certification derived from OP-1 through OP-23 metadata only; no security mutation
+                </span>
+                <span className="text-xs text-slate-500">
+                  Certified modules: {securityItem.certifiedModules} · Blocked: {securityItem.blockedModules} · Warnings: {securityItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{securityItem.certificationScope}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.superAdminOnlyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.readOnlyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.mutationSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.executionSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.secretSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.privateDataSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.rlsSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{operationsSecurityCertificationStatusLabel(securityItem.actionSafetyStatus as OperationsSecurityCertificationStatus)}</td>
+            <td className="px-5 py-4 text-slate-600">{securityItem.safeSummary}</td>
+            <td className="px-5 py-4">
+              <SecurityCertificationSafeControls />
             </td>
           </tr>
         ))}
