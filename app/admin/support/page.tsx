@@ -44,6 +44,9 @@ import {
   type SupportEventTimelineSeverity
 } from "@/src/lib/support/support-event-timeline-runtime";
 import {
+  supportSearchRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-search-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -343,6 +346,7 @@ export default async function AdminSupportPage({
   searchParams: Promise<{
     assignmentResult?: string;
     conversationResult?: string;
+    q?: string;
     statusResult?: string;
     ticket?: string;
   }>;
@@ -353,6 +357,7 @@ export default async function AdminSupportPage({
   const assignmentResult = query.assignmentResult?.trim() || null;
   const conversationResult = query.conversationResult?.trim() || null;
   const control = await getAdminSupportControl({
+    searchQuery: query.q ?? null,
     ticketId: query.ticket ?? null
   });
 
@@ -1379,6 +1384,190 @@ export default async function AdminSupportPage({
           </tr>
         ))}
       </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support search runtime</span>
+        <AdminBadge tone={supportSearchRuntimeStatusBadgeTone(control.supportSearchRuntime.status)}>
+          {control.supportSearchRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportSearchRuntime.summary}</span>
+      </div>
+
+      {control.supportSearchRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to search Support records with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.supportSearchRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportSearchRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportSearchRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportSearchRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+          href={control.supportSearchRuntime.resetHref}
+        >
+          Reset search
+        </Link>
+        <span className="text-xs text-slate-500">
+          {control.supportSearchRuntime.query.q
+            ? `${control.supportSearchRuntime.matchedResultCount}/${control.supportSearchRuntime.totalCandidateCount} records matched`
+            : "Submit a keyword to search tickets, events, and timeline records"}
+        </span>
+      </div>
+
+      <form action="/admin/support" className="flex flex-wrap items-end gap-2" method="get">
+        {control.selectedTicketId ? (
+          <input name="ticket" type="hidden" value={control.selectedTicketId} />
+        ) : null}
+        <label className="grid gap-1 text-xs font-semibold text-slate-600">
+          Search keyword
+          <input
+            className="h-10 min-w-64 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+            defaultValue={control.supportSearchRuntime.query.q ?? ""}
+            name="q"
+            placeholder="Ticket ID, subject, status, event type, severity, source, scope"
+            type="search"
+          />
+        </label>
+        <button
+          className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+          type="submit"
+        >
+          Apply search
+        </button>
+      </form>
+
+      <p className="text-xs text-slate-500">
+        Search runs only after explicit submit. No queries execute while the keyword field is empty.
+      </p>
+
+      {control.supportSearchRuntime.searchableFields.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {control.supportSearchRuntime.searchableFields.map((field) => (
+            <span
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600"
+              key={field}
+            >
+              {field}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {control.supportSearchRuntime.query.q ? (
+        <AdminStatGrid
+          stats={[
+            { label: "Matched results", value: String(control.supportSearchRuntime.matchedResultCount) },
+            { label: "Candidates scanned", value: String(control.supportSearchRuntime.totalCandidateCount) },
+            {
+              label: "Tickets table",
+              value: control.supportSearchRuntime.tablesDetected.supportTickets ? "detected" : "missing"
+            },
+            {
+              label: "Messages table",
+              value: control.supportSearchRuntime.tablesDetected.supportTicketMessages ? "detected" : "missing"
+            },
+            {
+              label: "Monitoring table",
+              value: control.supportSearchRuntime.tablesDetected.monitoringEvents ? "detected" : "missing"
+            }
+          ]}
+        />
+      ) : null}
+
+      {control.supportSearchRuntime.query.q ? (
+        <AdminTable
+          empty="No Support records match the active search keyword."
+          headers={[
+            "Record ID",
+            "Category",
+            "Title",
+            "Severity",
+            "Status",
+            "Source",
+            "Matched fields",
+            "Related ticket",
+            "Related scope",
+            "Created"
+          ]}
+        >
+          {control.searchResults.map((result) => (
+            <tr key={result.recordKey}>
+              <td className="px-5 py-4">
+                <div className="grid gap-1">
+                  <span className="font-bold text-slate-950">{result.recordId}</span>
+                  <span className="text-xs text-slate-500">{result.safeSummary}</span>
+                </div>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{result.categoryLabel}</td>
+              <td className="px-5 py-4 text-slate-600">
+                {result.relatedTicketId ? (
+                  <Link
+                    className="font-semibold text-blue-700 hover:text-blue-900"
+                    href={buildSupportTicketDetailHref(result.relatedTicketId)}
+                  >
+                    {result.resultTitle}
+                  </Link>
+                ) : (
+                  result.resultTitle
+                )}
+              </td>
+              <td className="px-5 py-4 text-slate-600">{result.severity ?? "n/a"}</td>
+              <td className="px-5 py-4 text-slate-600">{result.status ?? "n/a"}</td>
+              <td className="px-5 py-4 text-slate-600">{result.source ?? "n/a"}</td>
+              <td className="px-5 py-4 text-slate-500">
+                <div className="flex flex-wrap gap-1">
+                  {result.matchedFields.map((field) => (
+                    <span
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600"
+                      key={`${result.recordKey}-${field}`}
+                    >
+                      {field}
+                    </span>
+                  ))}
+                </div>
+              </td>
+              <td className="px-5 py-4 text-slate-600">
+                {result.relatedTicketId ? (
+                  <div className="grid gap-1">
+                    <Link
+                      className="font-semibold text-blue-700 hover:text-blue-900"
+                      href={buildSupportTicketDetailHref(result.relatedTicketId)}
+                    >
+                      {result.relatedTicketNumber}
+                    </Link>
+                    <span className="text-xs text-slate-500">{result.relatedTicketId}</span>
+                  </div>
+                ) : (
+                  "Not linked"
+                )}
+              </td>
+              <td className="px-5 py-4 text-slate-500">
+                <div className="grid gap-1 text-xs">
+                  <span>Workspace: {result.relatedWorkspaceId ?? "n/a"}</span>
+                  <span>Store: {result.relatedStoreId ?? "n/a"}</span>
+                  <span>User: {result.relatedUserId ?? "n/a"}</span>
+                </div>
+              </td>
+              <td className="px-5 py-4 text-slate-500">
+                {result.createdAt ? formatAdminDate(result.createdAt) : "n/a"}
+              </td>
+            </tr>
+          ))}
+        </AdminTable>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>

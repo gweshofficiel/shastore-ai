@@ -411,6 +411,13 @@ import {
   resolveSupportEventTimelineAuthorization
 } from "@/src/lib/support/support-event-timeline-runtime";
 import {
+  buildSupportSearchResetHref,
+  loadSupportSearchRuntimeReadOnlySafe,
+  mapSupportSearchRuntimeToAdminFields,
+  resolveSupportSearchAuthorization,
+  sanitizeSupportSearchKeyword
+} from "@/src/lib/support/support-search-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -7814,6 +7821,47 @@ export type AdminSupportControl = {
     key: string;
     label: string;
     note: string;
+  }>;
+  supportSearchRuntime: {
+    emptyMessage: string | null;
+    loadError: string | null;
+    loadingState: "error" | "inactive" | "loaded" | "unauthorized";
+    matchedResultCount: number;
+    query: {
+      q: string | null;
+    };
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    resetHref: string;
+    searchableFields: string[];
+    source: "support_search_runtime";
+    status: "load_error" | "needs_attention" | "search_empty" | "search_inactive" | "search_runtime_ready" | "unauthorized";
+    summary: string;
+    tablesDetected: {
+      monitoringEvents: boolean;
+      supportTicketMessages: boolean;
+      supportTickets: boolean;
+    };
+    totalCandidateCount: number;
+  };
+  searchResults: Array<{
+    category: string;
+    categoryLabel: string;
+    createdAt: string | null;
+    matchedFields: string[];
+    recordId: string;
+    recordKey: string;
+    registryKey: string;
+    relatedStoreId: string | null;
+    relatedTicketId: string | null;
+    relatedTicketNumber: string | null;
+    relatedUserId: string | null;
+    relatedWorkspaceId: string | null;
+    resultTitle: string;
+    safeSummary: string;
+    severity: string | null;
+    source: string | null;
+    status: string | null;
   }>;
 };
 
@@ -16875,6 +16923,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
 }
 
 export async function getAdminSupportControl(options?: {
+  searchQuery?: string | null;
   ticketId?: string | null;
 }): Promise<AdminSupportControl> {
   const access = await getAdminAccess();
@@ -16900,9 +16949,15 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const searchAuthorization = resolveSupportSearchAuthorization({
+    internalRole: access.internalRole,
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
+  const searchQuery = sanitizeSupportSearchKeyword(options?.searchQuery ?? null);
+  const searchResetHref = buildSupportSearchResetHref({ ticketId: selectedTicketId });
   const assignmentLoad = mapSupportTicketAssignmentRuntimeToAdminFields(
     await loadSupportTicketAssignmentRuntimeReadOnlySafe({
       authorization: assignmentAuthorization,
@@ -16963,6 +17018,16 @@ export async function getAdminSupportControl(options?: {
       supabase
     })
   );
+  const supportSearchLoad = mapSupportSearchRuntimeToAdminFields(
+    await loadSupportSearchRuntimeReadOnlySafe({
+      authorization: searchAuthorization,
+      loadError: supabase ? null : "Admin client unavailable",
+      resetHref: searchResetHref,
+      searchQuery,
+      supabase,
+      ticketId: selectedTicketId
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17002,6 +17067,8 @@ export async function getAdminSupportControl(options?: {
       eventTimelineRuntimeGroups: eventTimelineLoad.eventTimelineRuntimeGroups,
       eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
       eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
+      supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
+      searchResults: supportSearchLoad.searchResults,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17060,6 +17127,8 @@ export async function getAdminSupportControl(options?: {
     eventTimelineRuntimeGroups: eventTimelineLoad.eventTimelineRuntimeGroups,
     eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
     eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
+    supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
+    searchResults: supportSearchLoad.searchResults,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
