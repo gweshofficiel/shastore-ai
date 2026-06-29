@@ -401,6 +401,11 @@ import {
   resolveSupportMonitoringEventsAuthorization
 } from "@/src/lib/support/support-monitoring-events-runtime";
 import {
+  loadSupportErrorEventsRuntimeReadOnlySafe,
+  mapSupportErrorEventsRuntimeToAdminFields,
+  resolveSupportErrorEventsAuthorization
+} from "@/src/lib/support/support-error-events-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -7655,6 +7660,78 @@ export type AdminSupportControl = {
     tableDetected: boolean;
   }>;
   monitoringEventsSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  errorEventsRuntime: {
+    criticalEvents: number;
+    failedEvents: number;
+    groupCount: number;
+    loadError: string | null;
+    loadingState: "error" | "loaded" | "unauthorized";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    source: "support_error_events_runtime";
+    status: "error_events_runtime_ready" | "load_error" | "needs_attention" | "unauthorized";
+    summary: string;
+    tableDetected: boolean;
+    totalEvents: number;
+    warningEvents: number;
+  };
+  errorEventsRuntimeGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      createdAt: string;
+      entityType: string;
+      errorId: string;
+      errorKey: string;
+      errorMessageSummary: string;
+      errorStatus: string;
+      errorType: string;
+      groupKey: string;
+      lastUpdatedAt: string;
+      relatedStoreId: string | null;
+      relatedTicketId: string | null;
+      relatedTicketNumber: string | null;
+      relatedTicketState: string;
+      relatedUserId: string | null;
+      relatedWorkspaceId: string | null;
+      registryKey: string;
+      safeSummary: string;
+      severity: string;
+      source: string;
+      status: string;
+      tableDetected: boolean;
+    }>;
+    title: string;
+  }>;
+  errorEventsRuntimeItems: Array<{
+    createdAt: string;
+    entityType: string;
+    errorId: string;
+    errorKey: string;
+    errorMessageSummary: string;
+    errorStatus: string;
+    errorType: string;
+    groupKey: string;
+    lastUpdatedAt: string;
+    relatedStoreId: string | null;
+    relatedTicketId: string | null;
+    relatedTicketNumber: string | null;
+    relatedTicketState: string;
+    relatedUserId: string | null;
+    relatedWorkspaceId: string | null;
+    registryKey: string;
+    safeSummary: string;
+    severity: string;
+    source: string;
+    status: string;
+    tableDetected: boolean;
+  }>;
+  errorEventsSafeControls: Array<{
     enabled: false;
     key: string;
     label: string;
@@ -16737,6 +16814,10 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const errorEventsAuthorization = resolveSupportErrorEventsAuthorization({
+    internalRole: access.internalRole,
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -16786,6 +16867,13 @@ export async function getAdminSupportControl(options?: {
       supabase
     })
   );
+  const errorEventsLoad = mapSupportErrorEventsRuntimeToAdminFields(
+    await loadSupportErrorEventsRuntimeReadOnlySafe({
+      authorization: errorEventsAuthorization,
+      loadError: supabase ? null : "Admin client unavailable",
+      supabase
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -16817,10 +16905,14 @@ export async function getAdminSupportControl(options?: {
       monitoringEventsRuntimeGroups: monitoringEventsLoad.monitoringEventsRuntimeGroups,
       monitoringEventsRuntimeItems: monitoringEventsLoad.monitoringEvents,
       monitoringEventsSafeControls: monitoringEventsLoad.monitoringEventsSafeControls,
+      errorEventsRuntime: errorEventsLoad.errorEventsRuntime,
+      errorEventsRuntimeGroups: errorEventsLoad.errorEventsRuntimeGroups,
+      errorEventsRuntimeItems: errorEventsLoad.errorEventsRuntimeItems,
+      errorEventsSafeControls: errorEventsLoad.errorEventsSafeControls,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
-        errorEvents: 0,
+        errorEvents: errorEventsLoad.errorEventsRuntime.totalEvents,
         monitoringEvents: 0,
         openTickets: ticketsRuntimeLoad.ticketsRuntime.openTickets,
         tickets: ticketsRuntimeLoad.ticketsRuntime.totalTickets
@@ -16867,10 +16959,14 @@ export async function getAdminSupportControl(options?: {
     monitoringEventsRuntimeGroups: monitoringEventsLoad.monitoringEventsRuntimeGroups,
     monitoringEventsRuntimeItems: monitoringEventsLoad.monitoringEvents,
     monitoringEventsSafeControls: monitoringEventsLoad.monitoringEventsSafeControls,
+    errorEventsRuntime: errorEventsLoad.errorEventsRuntime,
+    errorEventsRuntimeGroups: errorEventsLoad.errorEventsRuntimeGroups,
+    errorEventsRuntimeItems: errorEventsLoad.errorEventsRuntimeItems,
+    errorEventsSafeControls: errorEventsLoad.errorEventsSafeControls,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
-      errorEvents: monitoringEventsLoad.monitoringEventsRuntime.failedEvents,
+      errorEvents: errorEventsLoad.errorEventsRuntime.totalEvents,
       monitoringEvents: monitoringEvents.length,
       openTickets: ticketsRuntimeLoad.ticketsRuntime.openTickets,
       tickets: ticketsRuntimeLoad.ticketsRuntime.totalTickets

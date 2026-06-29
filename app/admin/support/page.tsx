@@ -34,6 +34,11 @@ import {
   type SupportMonitoringEventSeverity
 } from "@/src/lib/support/support-monitoring-events-runtime";
 import {
+  supportErrorEventSeverityBadgeTone,
+  supportErrorEventSeverityLabel,
+  type SupportErrorEventSeverity
+} from "@/src/lib/support/support-error-events-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -201,6 +206,40 @@ function MonitoringEventsSafeControls() {
 
 function toneForMonitoringEventsRuntimeStatus(status: string) {
   if (status === "monitoring_events_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "unauthorized") {
+    return "red" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function ErrorEventsSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Acknowledge", "Resolve", "Export"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No error action is executed during SP-9 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function toneForErrorEventsRuntimeStatus(status: string) {
+  if (status === "error_events_runtime_ready") {
     return "green" as const;
   }
 
@@ -1091,6 +1130,110 @@ export default async function AdminSupportPage({
             <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.lastUpdatedAt)}</td>
             <td className="px-5 py-4">
               <MonitoringEventsSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Error events runtime</span>
+        <AdminBadge tone={toneForErrorEventsRuntimeStatus(control.errorEventsRuntime.status)}>
+          {control.errorEventsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.errorEventsRuntime.summary}</span>
+      </div>
+
+      {control.errorEventsRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to view Support error events with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.errorEventsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.errorEventsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total errors", value: String(control.errorEventsRuntime.totalEvents) },
+          { label: "Critical", value: String(control.errorEventsRuntime.criticalEvents) },
+          { label: "Warning", value: String(control.errorEventsRuntime.warningEvents) },
+          {
+            label: "Table",
+            value: control.errorEventsRuntime.tableDetected ? "detected" : "missing"
+          }
+        ]}
+      />
+
+      {control.errorEventsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} error{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No error events recorded yet. Failed monitoring events appear here when platform signals record them safely."
+        headers={[
+          "Error ID",
+          "Error type",
+          "Severity",
+          "Source",
+          "Status",
+          "Error message summary",
+          "Related ticket",
+          "Related scope",
+          "Created",
+          "Last updated",
+          "Safe controls"
+        ]}
+      >
+        {control.errorEventsRuntimeItems.map((event) => (
+          <tr key={event.errorKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-bold text-slate-950">{event.errorId}</span>
+                <span className="text-xs text-slate-500">{event.entityType}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{event.errorType}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportErrorEventSeverityBadgeTone(event.severity as SupportErrorEventSeverity)}>
+                {supportErrorEventSeverityLabel(event.severity as SupportErrorEventSeverity)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{event.source}</td>
+            <td className="px-5 py-4 text-slate-600">{event.status}</td>
+            <td className="px-5 py-4 text-slate-600">{event.errorMessageSummary}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {event.relatedTicketState === "available" ? (
+                <div className="grid gap-1">
+                  <span>{event.relatedTicketNumber}</span>
+                  <span className="text-xs text-slate-500">{event.relatedTicketId}</span>
+                </div>
+              ) : (
+                "Not linked"
+              )}
+            </td>
+            <td className="px-5 py-4 text-slate-500">
+              <div className="grid gap-1 text-xs">
+                <span>Workspace: {event.relatedWorkspaceId ?? "n/a"}</span>
+                <span>Store: {event.relatedStoreId ?? "n/a"}</span>
+                <span>User: {event.relatedUserId ?? "n/a"}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.lastUpdatedAt)}</td>
+            <td className="px-5 py-4">
+              <ErrorEventsSafeControls />
             </td>
           </tr>
         ))}
