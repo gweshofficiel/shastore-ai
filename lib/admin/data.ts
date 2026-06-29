@@ -381,6 +381,9 @@ import {
   mapSupportRegistryRuntimeToAdminFields
 } from "@/src/lib/support/support-registry-runtime";
 import {
+  mapSupportDashboardRuntimeToAdminFields
+} from "@/src/lib/support/support-dashboard-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -7270,9 +7273,72 @@ export type AdminSupportControl = {
     status: "architectural" | "planned" | "ready";
   }>;
   components: AdminSupportRegistryComponent[];
+  dashboard: {
+    loadError: string | null;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    sectionCount: number;
+    source: "support_dashboard_runtime";
+    status: "dashboard_ready" | "load_error" | "needs_attention";
+    summary: string;
+  };
+  dashboardSections: Array<{
+    itemCount: number;
+    items: Array<{
+      auditSupport: boolean;
+      category: string;
+      description: string;
+      healthSupport: boolean;
+      key: string;
+      monitoringSupport: boolean;
+      runtimeStatus: string;
+      sectionKey: string;
+      title: string;
+      visibility: string;
+    }>;
+    key: string;
+    title: string;
+  }>;
+  dashboardStats: Array<{
+    label: string;
+    value: string;
+  }>;
   futureHooks: string[];
+  latestErrorRecords: Array<{
+    createdAt: string;
+    entityType: string;
+    eventStatus: string;
+    eventType: string;
+    recordKey: string;
+    safeSummary: string;
+  }>;
+  latestMonitoringRecords: Array<{
+    createdAt: string;
+    entityType: string;
+    eventStatus: string;
+    eventType: string;
+    recordKey: string;
+    safeSummary: string;
+  }>;
+  latestTickets: Array<{
+    createdAt: string;
+    priority: string;
+    recordKey: string;
+    status: string;
+    subject: string;
+    ticketNumber: string;
+    updatedAt: string;
+  }>;
   loadError: string | null;
   monitoringEvents: AdminSupportMonitoringEvent[];
+  recentActivity: Array<{
+    activityKey: string;
+    activityType: string;
+    createdAt: string;
+    safeSummary: string;
+    status: string;
+    title: string;
+  }>;
   registry: {
     readOnly: true;
     source: "support_registry_runtime";
@@ -16351,12 +16417,25 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
   const { supabase } = await getAdminClient();
 
   if (!supabase) {
+    const dashboardLoad = mapSupportDashboardRuntimeToAdminFields({
+      loadError: "Admin client unavailable",
+      monitoringEvents: [],
+      tickets: []
+    });
+
     return {
       categories: supportRegistry.categories,
       components: supportRegistry.components,
+      dashboard: dashboardLoad.dashboard,
+      dashboardSections: dashboardLoad.dashboardSections,
+      dashboardStats: dashboardLoad.dashboardStats,
       futureHooks: supportRegistry.futureHooks,
+      latestErrorRecords: dashboardLoad.latestErrorRecords,
+      latestMonitoringRecords: dashboardLoad.latestMonitoringRecords,
+      latestTickets: dashboardLoad.latestTickets,
       loadError: "Admin client unavailable",
       monitoringEvents: [],
+      recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
         errorEvents: 0,
@@ -16426,13 +16505,25 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
   const openTickets = tickets.filter(
     (ticket) => ticket.status !== "resolved" && ticket.status !== "closed"
   ).length;
+  const dashboardLoad = mapSupportDashboardRuntimeToAdminFields({
+    loadError: null,
+    monitoringEvents,
+    tickets
+  });
 
   return {
     categories: supportRegistry.categories,
     components: supportRegistry.components,
+    dashboard: dashboardLoad.dashboard,
+    dashboardSections: dashboardLoad.dashboardSections,
+    dashboardStats: dashboardLoad.dashboardStats,
     futureHooks: supportRegistry.futureHooks,
+    latestErrorRecords: dashboardLoad.latestErrorRecords,
+    latestMonitoringRecords: dashboardLoad.latestMonitoringRecords,
+    latestTickets: dashboardLoad.latestTickets,
     loadError: null,
     monitoringEvents,
+    recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
       errorEvents,
