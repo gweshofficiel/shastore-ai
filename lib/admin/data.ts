@@ -384,6 +384,12 @@ import {
   mapSupportDashboardRuntimeToAdminFields
 } from "@/src/lib/support/support-dashboard-runtime";
 import {
+  loadSupportTicketsRuntimeReadOnlySafe,
+  mapSupportTicketRuntimeItemsToDashboardTickets,
+  mapSupportTicketRuntimeItemsToLegacyTickets,
+  mapSupportTicketsRuntimeToAdminFields
+} from "@/src/lib/support/support-tickets-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -7353,6 +7359,81 @@ export type AdminSupportControl = {
     tickets: number;
   };
   tickets: AdminSupportTicket[];
+  ticketsRuntime: {
+    closedTickets: number;
+    groupCount: number;
+    inReviewTickets: number;
+    loadError: string | null;
+    openTickets: number;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    resolvedTickets: number;
+    source: "support_tickets_runtime";
+    status: "load_error" | "needs_attention" | "tickets_runtime_ready";
+    summary: string;
+    tableDetected: boolean;
+    totalTickets: number;
+    urgentTickets: number;
+  };
+  ticketsRuntimeGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      assignedAgentId: string | null;
+      assignedAgentLabel: string;
+      category: string;
+      createdAt: string;
+      eventId: string | null;
+      groupKey: string;
+      lastUpdatedAt: string;
+      priority: string;
+      registryKey: string;
+      relatedStoreId: string | null;
+      relatedUserId: string | null;
+      relatedWorkspaceId: string | null;
+      reviewStatus: string;
+      runtimeStatus: string;
+      safeSummary: string;
+      status: string;
+      subject: string;
+      tableDetected: boolean;
+      ticketId: string;
+      ticketKey: string;
+      ticketNumber: string;
+      visibility: string;
+    }>;
+    title: string;
+  }>;
+  ticketsRuntimeItems: Array<{
+    assignedAgentId: string | null;
+    assignedAgentLabel: string;
+    category: string;
+    createdAt: string;
+    eventId: string | null;
+    groupKey: string;
+    lastUpdatedAt: string;
+    priority: string;
+    registryKey: string;
+    relatedStoreId: string | null;
+    relatedUserId: string | null;
+    relatedWorkspaceId: string | null;
+    reviewStatus: string;
+    runtimeStatus: string;
+    safeSummary: string;
+    status: string;
+    subject: string;
+    tableDetected: boolean;
+    ticketId: string;
+    ticketKey: string;
+    ticketNumber: string;
+    visibility: string;
+  }>;
+  ticketsSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
 };
 
 export type AdminInternalTeamControl = {
@@ -16415,12 +16496,20 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
 export async function getAdminSupportControl(): Promise<AdminSupportControl> {
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
+  const ticketsRuntimeLoad = mapSupportTicketsRuntimeToAdminFields(
+    await loadSupportTicketsRuntimeReadOnlySafe({
+      loadError: supabase ? null : "Admin client unavailable",
+      supabase
+    })
+  );
+  const tickets = mapSupportTicketRuntimeItemsToLegacyTickets(ticketsRuntimeLoad.tickets);
+  const loadError = ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable");
 
   if (!supabase) {
     const dashboardLoad = mapSupportDashboardRuntimeToAdminFields({
-      loadError: "Admin client unavailable",
+      loadError,
       monitoringEvents: [],
-      tickets: []
+      tickets: mapSupportTicketRuntimeItemsToDashboardTickets(ticketsRuntimeLoad.tickets)
     });
 
     return {
@@ -16433,55 +16522,30 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
       latestErrorRecords: dashboardLoad.latestErrorRecords,
       latestMonitoringRecords: dashboardLoad.latestMonitoringRecords,
       latestTickets: dashboardLoad.latestTickets,
-      loadError: "Admin client unavailable",
+      loadError,
       monitoringEvents: [],
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
         errorEvents: 0,
         monitoringEvents: 0,
-        openTickets: 0,
-        tickets: 0
+        openTickets: ticketsRuntimeLoad.ticketsRuntime.openTickets,
+        tickets: ticketsRuntimeLoad.ticketsRuntime.totalTickets
       },
-      tickets: []
+      tickets,
+      ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
+      ticketsRuntimeGroups: ticketsRuntimeLoad.groups,
+      ticketsRuntimeItems: ticketsRuntimeLoad.tickets,
+      ticketsSafeControls: ticketsRuntimeLoad.safeControls
     };
   }
 
-  const [ticketRows, monitoringRows] = await Promise.all([
-    safeSelect(
-      supabase,
-      "support_tickets",
-      "id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, message, technical_snapshot, created_at, updated_at",
-      200
-    ),
-    safeSelect(
-      supabase,
-      "monitoring_events",
-      "id, workspace_id, store_id, user_id, event_type, event_status, entity_type, created_at",
-      100
-    )
-  ]);
-
-  const tickets: AdminSupportTicket[] = ticketRows
-    .map((row) => ({
-      created_at: text(row.created_at),
-      event_id: row.event_id ? text(row.event_id) : null,
-      id: text(row.id),
-      message: row.message ? text(row.message) : null,
-      priority: text(row.priority) || "normal",
-      status: text(row.status) || "open",
-      store_id: row.store_id ? text(row.store_id) : null,
-      subject: text(row.subject) || "Support ticket",
-      technical_snapshot:
-        row.technical_snapshot && typeof row.technical_snapshot === "object"
-          ? (row.technical_snapshot as Record<string, unknown>)
-          : null,
-      ticket_number: text(row.ticket_number) || text(row.id),
-      updated_at: text(row.updated_at),
-      user_id: row.user_id ? text(row.user_id) : null,
-      workspace_id: row.workspace_id ? text(row.workspace_id) : null
-    }))
-    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+  const monitoringRows = await safeSelect(
+    supabase,
+    "monitoring_events",
+    "id, workspace_id, store_id, user_id, event_type, event_status, entity_type, created_at",
+    100
+  );
 
   const monitoringEvents: AdminSupportMonitoringEvent[] = monitoringRows
     .map((row) => ({
@@ -16502,13 +16566,10 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
       event.event_type.toLowerCase().includes("error") ||
       event.event_type.toLowerCase().includes("failed")
   ).length;
-  const openTickets = tickets.filter(
-    (ticket) => ticket.status !== "resolved" && ticket.status !== "closed"
-  ).length;
   const dashboardLoad = mapSupportDashboardRuntimeToAdminFields({
-    loadError: null,
+    loadError,
     monitoringEvents,
-    tickets
+    tickets: mapSupportTicketRuntimeItemsToDashboardTickets(ticketsRuntimeLoad.tickets)
   });
 
   return {
@@ -16521,17 +16582,21 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
     latestErrorRecords: dashboardLoad.latestErrorRecords,
     latestMonitoringRecords: dashboardLoad.latestMonitoringRecords,
     latestTickets: dashboardLoad.latestTickets,
-    loadError: null,
+    loadError,
     monitoringEvents,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
       errorEvents,
       monitoringEvents: monitoringEvents.length,
-      openTickets,
-      tickets: tickets.length
+      openTickets: ticketsRuntimeLoad.ticketsRuntime.openTickets,
+      tickets: ticketsRuntimeLoad.ticketsRuntime.totalTickets
     },
-    tickets
+    tickets,
+    ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
+    ticketsRuntimeGroups: ticketsRuntimeLoad.groups,
+    ticketsRuntimeItems: ticketsRuntimeLoad.tickets,
+    ticketsSafeControls: ticketsRuntimeLoad.safeControls
   };
 }
 

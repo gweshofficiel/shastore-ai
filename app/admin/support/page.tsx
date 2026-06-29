@@ -13,6 +13,11 @@ import {
   supportDashboardRuntimeStatusLabel,
   type SupportDashboardRuntimeStatus
 } from "@/src/lib/support/support-dashboard-runtime";
+import {
+  supportTicketRuntimeStatusBadgeTone,
+  supportTicketRuntimeStatusLabel,
+  type SupportTicketRuntimeStatus
+} from "@/src/lib/support/support-tickets-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +60,36 @@ function toneForRegistryStatus(status: string) {
 
 function supportFlagLabel(value: boolean) {
   return value ? "Yes" : "No";
+}
+
+function toneForTicketsRuntimeStatus(status: string) {
+  if (status === "tickets_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function TicketsSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Assign", "Update Status", "Close", "Reopen"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No ticket action is executed during SP-3 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function toneForDashboardStatus(status: string) {
@@ -208,6 +243,88 @@ export default async function AdminSupportPage() {
       </AdminTable>
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Tickets runtime</span>
+        <AdminBadge tone={toneForTicketsRuntimeStatus(control.ticketsRuntime.status)}>
+          {control.ticketsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.ticketsRuntime.summary}</span>
+      </div>
+
+      {control.ticketsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.ticketsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total tickets", value: String(control.ticketsRuntime.totalTickets) },
+          { label: "Open", value: String(control.ticketsRuntime.openTickets) },
+          { label: "In review", value: String(control.ticketsRuntime.inReviewTickets) },
+          { label: "Urgent", value: String(control.ticketsRuntime.urgentTickets) }
+        ]}
+      />
+
+      {control.ticketsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} ticket{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No support tickets yet. Ticket records appear here when created through the platform support flow."
+        headers={[
+          "Ticket ID",
+          "Subject",
+          "Status",
+          "Priority",
+          "Category",
+          "Created",
+          "Last updated",
+          "Assigned agent",
+          "Related scope",
+          "Safe controls"
+        ]}
+      >
+        {control.ticketsRuntimeItems.map((ticket) => (
+          <tr key={ticket.ticketKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-bold text-slate-950">{ticket.ticketNumber}</span>
+                <span className="text-xs text-slate-500">{ticket.ticketId}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{ticket.subject}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportTicketRuntimeStatusBadgeTone(ticket.runtimeStatus as SupportTicketRuntimeStatus)}>
+                {supportTicketRuntimeStatusLabel(ticket.runtimeStatus as SupportTicketRuntimeStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{ticket.priority}</td>
+            <td className="px-5 py-4 text-slate-600">{ticket.category}</td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(ticket.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(ticket.lastUpdatedAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{ticket.assignedAgentLabel}</td>
+            <td className="px-5 py-4 text-slate-500">
+              <div className="grid gap-1 text-xs">
+                <span>Workspace: {ticket.relatedWorkspaceId ?? "n/a"}</span>
+                <span>Store: {ticket.relatedStoreId ?? "n/a"}</span>
+                <span>User: {ticket.relatedUserId ?? "n/a"}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <TicketsSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
         <AdminBadge tone={toneForRegistryStatus(control.registry.status)}>{control.registry.status}</AdminBadge>
         <span className="text-sm text-slate-600">{control.registry.summary}</span>
@@ -280,46 +397,41 @@ export default async function AdminSupportPage() {
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-slate-100">
-          {control.tickets.length ? (
-            control.tickets.map((ticket) => (
-              <div className="grid gap-4 p-5" key={ticket.id}>
+          {control.ticketsRuntimeItems.length ? (
+            control.ticketsRuntimeItems.map((ticket) => (
+              <div className="grid gap-4 p-5" key={ticket.ticketKey}>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <div>
-                    <p className="text-lg font-black text-slate-950">
-                      Ticket {ticket.ticket_number}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-600">
-                      {ticket.subject}
-                    </p>
+                    <p className="text-lg font-black text-slate-950">Ticket {ticket.ticketNumber}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-600">{ticket.subject}</p>
                     <p className="mt-1 text-xs font-bold text-slate-400">
-                      Created {formatDate(ticket.created_at)} - Last update {formatDate(ticket.updated_at)}
+                      Created {formatDate(ticket.createdAt)} - Last update {formatDate(ticket.lastUpdatedAt)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
-                    <span className={`h-fit rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(ticket.status)}`}>
+                    <span
+                      className={`h-fit rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(ticket.status)}`}
+                    >
                       {ticket.status}
                     </span>
                     <span className="h-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
                       {ticket.priority}
                     </span>
+                    <span className="h-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+                      {ticket.category}
+                    </span>
                   </div>
                 </div>
 
                 <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600 md:grid-cols-2">
-                  <p>Workspace: {ticket.workspace_id ?? "Not provided"}</p>
-                  <p>Store: {ticket.store_id ?? "Not provided"}</p>
-                  <p>User: {ticket.user_id ?? "Not provided"}</p>
-                  <p>Monitoring event: {ticket.event_id ?? "Not provided"}</p>
+                  <p>Workspace: {ticket.relatedWorkspaceId ?? "Not provided"}</p>
+                  <p>Store: {ticket.relatedStoreId ?? "Not provided"}</p>
+                  <p>User: {ticket.relatedUserId ?? "Not provided"}</p>
+                  <p>Assigned agent: {ticket.assignedAgentLabel}</p>
+                  <p>Monitoring event: {ticket.eventId ?? "Not provided"}</p>
                 </div>
 
-                <details className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer text-sm font-black text-slate-950">
-                    Full technical snapshot
-                  </summary>
-                  <pre className="mt-4 max-h-96 overflow-auto rounded-2xl bg-white p-4 text-xs leading-5 text-slate-700">
-                    {JSON.stringify(ticket.technical_snapshot ?? {}, null, 2)}
-                  </pre>
-                </details>
+                <p className="text-sm text-slate-600">{ticket.safeSummary}</p>
 
                 <p className="rounded-2xl bg-white p-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                   Status management reserved for the next support operations phase
@@ -327,9 +439,7 @@ export default async function AdminSupportPage() {
               </div>
             ))
           ) : (
-            <p className="p-5 text-sm font-semibold text-slate-500">
-              No support tickets yet.
-            </p>
+            <p className="p-5 text-sm font-semibold text-slate-500">No support tickets yet.</p>
           )}
         </div>
       </Card>
