@@ -39,6 +39,11 @@ import {
   type SupportErrorEventSeverity
 } from "@/src/lib/support/support-error-events-runtime";
 import {
+  supportEventTimelineSeverityBadgeTone,
+  supportEventTimelineSeverityLabel,
+  type SupportEventTimelineSeverity
+} from "@/src/lib/support/support-event-timeline-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -240,6 +245,40 @@ function ErrorEventsSafeControls() {
 
 function toneForErrorEventsRuntimeStatus(status: string) {
   if (status === "error_events_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "unauthorized") {
+    return "red" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function EventTimelineSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Export"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No timeline action is executed during SP-10 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function toneForEventTimelineRuntimeStatus(status: string) {
+  if (status === "event_timeline_runtime_ready") {
     return "green" as const;
   }
 
@@ -1234,6 +1273,108 @@ export default async function AdminSupportPage({
             <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.lastUpdatedAt)}</td>
             <td className="px-5 py-4">
               <ErrorEventsSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Event timeline runtime</span>
+        <AdminBadge tone={toneForEventTimelineRuntimeStatus(control.eventTimelineRuntime.status)}>
+          {control.eventTimelineRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.eventTimelineRuntime.summary}</span>
+      </div>
+
+      {control.eventTimelineRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to view the Support event timeline with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.eventTimelineRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.eventTimelineRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total items", value: String(control.eventTimelineRuntime.totalItems) },
+          { label: "Tickets", value: String(control.eventTimelineRuntime.ticketEventCount) },
+          { label: "Monitoring", value: String(control.eventTimelineRuntime.monitoringEventCount) },
+          { label: "Errors", value: String(control.eventTimelineRuntime.errorEventCount) },
+          { label: "Status changes", value: String(control.eventTimelineRuntime.statusChangeCount) },
+          { label: "Assignments", value: String(control.eventTimelineRuntime.assignmentChangeCount) },
+          { label: "Conversation", value: String(control.eventTimelineRuntime.conversationActivityCount) }
+        ]}
+      />
+
+      {control.eventTimelineRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} item{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No timeline events recorded yet. Ticket, monitoring, and conversation activity appears here when platform records exist."
+        headers={[
+          "Timeline item ID",
+          "Event type",
+          "Source",
+          "Severity",
+          "Status",
+          "Related ticket",
+          "Related scope",
+          "Actor",
+          "Created",
+          "Safe controls"
+        ]}
+      >
+        {control.eventTimelineRuntimeItems.map((item) => (
+          <tr key={item.timelineItemKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-bold text-slate-950">{item.timelineItemId}</span>
+                <span className="text-xs text-slate-500">{item.safeSummary}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.eventTypeLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{item.source}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportEventTimelineSeverityBadgeTone(item.severity as SupportEventTimelineSeverity | null)}>
+                {supportEventTimelineSeverityLabel(item.severity as SupportEventTimelineSeverity | null)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.status ?? "n/a"}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {item.relatedTicketState === "available" ? (
+                <div className="grid gap-1">
+                  <span>{item.relatedTicketNumber}</span>
+                  <span className="text-xs text-slate-500">{item.relatedTicketId}</span>
+                </div>
+              ) : (
+                "Not linked"
+              )}
+            </td>
+            <td className="px-5 py-4 text-slate-500">
+              <div className="grid gap-1 text-xs">
+                <span>Workspace: {item.relatedWorkspaceId ?? "n/a"}</span>
+                <span>Store: {item.relatedStoreId ?? "n/a"}</span>
+                <span>User: {item.relatedUserId ?? "n/a"}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.actorLabel ?? "n/a"}</td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(item.createdAt)}</td>
+            <td className="px-5 py-4">
+              <EventTimelineSafeControls />
             </td>
           </tr>
         ))}
