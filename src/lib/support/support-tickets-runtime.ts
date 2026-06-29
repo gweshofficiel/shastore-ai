@@ -7,6 +7,12 @@ import {
   SUPPORT_REGISTRY_SOURCE,
   type SupportRegistryVisibility
 } from "@/src/lib/support/support-registry-runtime";
+import {
+  isInReviewCanonicalStatus,
+  isOpenCanonicalStatus,
+  normalizeStorageStatusToCanonical,
+  type SupportTicketCanonicalStatus
+} from "@/src/lib/support/support-ticket-status-runtime";
 
 export type SupportTicketsRuntimeSource = "support_tickets_runtime";
 
@@ -33,6 +39,7 @@ export type SupportTicketSafeControl = {
 export type SupportTicketRuntimeItem = {
   assignedAgentId: string | null;
   assignedAgentLabel: string;
+  canonicalStatus: SupportTicketCanonicalStatus;
   category: string;
   createdAt: string;
   eventId: string | null;
@@ -140,10 +147,13 @@ function buildSafeControls() {
 }
 
 function normalizeTicketStatus(status: string): SupportTicketRuntimeStatus {
-  switch (status.toLowerCase()) {
+  const canonical = normalizeStorageStatusToCanonical(status);
+
+  switch (canonical) {
     case "open":
       return "open";
-    case "in_review":
+    case "in_progress":
+    case "pending":
       return "in_review";
     case "resolved":
       return "resolved";
@@ -154,8 +164,8 @@ function normalizeTicketStatus(status: string): SupportTicketRuntimeStatus {
   }
 }
 
-function isOpenTicketStatus(status: SupportTicketRuntimeStatus) {
-  return status === "open" || status === "in_review";
+function isOpenTicketStatus(status: SupportTicketRuntimeStatus, canonicalStatus: SupportTicketCanonicalStatus) {
+  return isOpenCanonicalStatus(canonicalStatus) || status === "open" || status === "in_review";
 }
 
 function deriveTicketCategory(row: AnyRecord) {
@@ -170,13 +180,17 @@ function deriveTicketCategory(row: AnyRecord) {
   return "Platform Support";
 }
 
-function deriveReviewStatus(status: SupportTicketRuntimeStatus, priority: string): SupportTicketReviewStatus {
-  if (status === "unknown") {
+function deriveReviewStatus(
+  runtimeStatus: SupportTicketRuntimeStatus,
+  canonicalStatus: SupportTicketCanonicalStatus,
+  priority: string
+): SupportTicketReviewStatus {
+  if (runtimeStatus === "unknown" || canonicalStatus === "unknown") {
     return "review_required";
   }
 
   if (priority === "urgent" || priority === "high") {
-    return isOpenTicketStatus(status) ? "review_required" : "clear";
+    return isOpenTicketStatus(runtimeStatus, canonicalStatus) ? "review_required" : "clear";
   }
 
   return "clear";
@@ -206,6 +220,7 @@ function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): Support
   const ticketNumber = text(row.ticket_number) || ticketId;
   const status = text(row.status) || "open";
   const priority = text(row.priority) || "normal";
+  const canonicalStatus = normalizeStorageStatusToCanonical(status);
   const runtimeStatus = normalizeTicketStatus(status);
   const category = deriveTicketCategory(row);
   const workspaceId = row.workspace_id ? text(row.workspace_id) : null;
@@ -216,6 +231,7 @@ function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): Support
   return {
     assignedAgentId: null,
     assignedAgentLabel: "Not assigned",
+    canonicalStatus,
     category,
     createdAt: text(row.created_at),
     eventId,
@@ -226,18 +242,18 @@ function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): Support
     relatedStoreId: storeId,
     relatedUserId: userId,
     relatedWorkspaceId: workspaceId,
-    reviewStatus: deriveReviewStatus(runtimeStatus, priority),
+    reviewStatus: deriveReviewStatus(runtimeStatus, canonicalStatus, priority),
     runtimeStatus,
     safeControls: buildSafeControls(),
     safeSummary: [
       `ticket ${ticketNumber}`,
-      `status ${status}`,
+      `status ${canonicalStatus}`,
       `priority ${priority}`,
       `category ${category}`,
       workspaceId ? `workspace ${workspaceId}` : "workspace n/a",
       storeId ? `store ${storeId}` : "store n/a"
     ].join("; "),
-    status,
+    status: canonicalStatus,
     subject: text(row.subject) || "Support ticket",
     tableDetected,
     ticketId,
@@ -293,12 +309,14 @@ export function getSupportTicketsRuntimeSummary(
   items: SupportTicketRuntimeItem[],
   input: { loadError: string | null; tableDetected: boolean }
 ): SupportTicketsRuntimeSummary {
-  const openTickets = items.filter((item) => isOpenTicketStatus(item.runtimeStatus)).length;
-  const inReviewTickets = items.filter((item) => item.runtimeStatus === "in_review").length;
+  const openTickets = items.filter((item) => isOpenTicketStatus(item.runtimeStatus, item.canonicalStatus)).length;
+  const inReviewTickets = items.filter((item) => isInReviewCanonicalStatus(item.canonicalStatus)).length;
   const resolvedTickets = items.filter((item) => item.runtimeStatus === "resolved").length;
   const closedTickets = items.filter((item) => item.runtimeStatus === "closed").length;
   const urgentTickets = items.filter(
-    (item) => (item.priority === "urgent" || item.priority === "high") && isOpenTicketStatus(item.runtimeStatus)
+    (item) =>
+      (item.priority === "urgent" || item.priority === "high") &&
+      isOpenTicketStatus(item.runtimeStatus, item.canonicalStatus)
   ).length;
   const status = input.loadError
     ? ("load_error" as const)

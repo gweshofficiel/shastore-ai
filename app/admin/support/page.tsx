@@ -7,6 +7,7 @@ import {
   AdminTable,
   formatAdminDate
 } from "@/components/admin/admin-control";
+import { updatePlatformSupportTicketStatusAction } from "@/lib/admin/support-actions";
 import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminSupportControl } from "@/lib/admin/data";
 import {
@@ -17,10 +18,12 @@ import {
 import type { SupportTicketDetailState } from "@/src/lib/support/support-ticket-details-runtime";
 import { buildSupportTicketDetailHref } from "@/src/lib/support/support-ticket-details-runtime";
 import {
-  supportTicketRuntimeStatusBadgeTone,
-  supportTicketRuntimeStatusLabel,
-  type SupportTicketRuntimeStatus
-} from "@/src/lib/support/support-tickets-runtime";
+  supportTicketCanonicalStatusBadgeTone,
+  supportTicketCanonicalStatusLabel,
+  supportTicketStatusTransitionMessage,
+  type SupportTicketCanonicalStatus,
+  type SupportTicketStatusTransitionResultCode
+} from "@/src/lib/support/support-ticket-status-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +41,35 @@ function statusClass(status: string) {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 
-  if (status === "in_review") {
+  if (status === "in_progress" || status === "pending" || status === "in_review") {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
 
   return "border-blue-200 bg-blue-50 text-blue-700";
+}
+
+function toneForTicketStatusRuntimeStatus(status: string) {
+  if (status === "status_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function toneForStatusTransitionResult(result: string) {
+  if (result === "success" || result === "unchanged") {
+    return "green" as const;
+  }
+
+  if (result === "unauthorized" || result === "invalid" || result === "not_found" || result === "error") {
+    return "red" as const;
+  }
+
+  return "slate" as const;
 }
 
 function toneForRegistryStatus(status: string) {
@@ -151,11 +178,13 @@ export default async function AdminSupportPage({
   searchParams
 }: {
   searchParams: Promise<{
+    statusResult?: string;
     ticket?: string;
   }>;
 }) {
   await getAdminAccess();
   const query = await searchParams;
+  const statusResult = query.statusResult?.trim() || null;
   const control = await getAdminSupportControl({
     ticketId: query.ticket ?? null
   });
@@ -166,6 +195,25 @@ export default async function AdminSupportPage({
         description="Support dashboard runtime powered by the SP-1 registry. Dashboard cards and sections load from read-only ticket and monitoring aggregates without mutation, assignment, or provider calls."
         title="Support"
       />
+
+      {statusResult ? (
+        <Card
+          className={
+            statusResult === "success" || statusResult === "unchanged"
+              ? "border-emerald-200 bg-emerald-50 p-5"
+              : statusResult === "unauthorized" || statusResult === "error" || statusResult === "not_found"
+                ? "border-red-200 bg-red-50 p-5"
+                : "border-amber-200 bg-amber-50 p-5"
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <AdminBadge tone={toneForStatusTransitionResult(statusResult)}>{statusResult}</AdminBadge>
+            <p className="text-sm font-semibold text-slate-800">
+              {supportTicketStatusTransitionMessage(statusResult as SupportTicketStatusTransitionResultCode)}
+            </p>
+          </div>
+        </Card>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support dashboard</span>
@@ -240,7 +288,11 @@ export default async function AdminSupportPage({
           <tr key={ticket.recordKey}>
             <td className="px-5 py-4 font-bold text-slate-950">{ticket.ticketNumber}</td>
             <td className="px-5 py-4 text-slate-600">{ticket.subject}</td>
-            <td className="px-5 py-4 text-slate-600">{ticket.status}</td>
+            <td className="px-5 py-4 text-slate-600">
+              <AdminBadge tone={supportTicketCanonicalStatusBadgeTone(ticket.status as SupportTicketCanonicalStatus)}>
+                {supportTicketCanonicalStatusLabel(ticket.status as SupportTicketCanonicalStatus)}
+              </AdminBadge>
+            </td>
             <td className="px-5 py-4 text-slate-600">{ticket.priority}</td>
             <td className="px-5 py-4 text-slate-500">{formatAdminDate(ticket.createdAt)}</td>
             <td className="px-5 py-4 text-slate-500">{formatAdminDate(ticket.updatedAt)}</td>
@@ -345,8 +397,10 @@ export default async function AdminSupportPage({
             </td>
             <td className="px-5 py-4 text-slate-600">{ticket.subject}</td>
             <td className="px-5 py-4">
-              <AdminBadge tone={supportTicketRuntimeStatusBadgeTone(ticket.runtimeStatus as SupportTicketRuntimeStatus)}>
-                {supportTicketRuntimeStatusLabel(ticket.runtimeStatus as SupportTicketRuntimeStatus)}
+              <AdminBadge
+                tone={supportTicketCanonicalStatusBadgeTone(ticket.status as SupportTicketCanonicalStatus)}
+              >
+                {supportTicketCanonicalStatusLabel(ticket.status as SupportTicketCanonicalStatus)}
               </AdminBadge>
             </td>
             <td className="px-5 py-4 text-slate-600">{ticket.priority}</td>
@@ -417,11 +471,11 @@ export default async function AdminSupportPage({
             </div>
             <div className="flex flex-wrap gap-2">
               <AdminBadge
-                tone={supportTicketRuntimeStatusBadgeTone(
-                  control.ticketDetail.runtimeStatus as SupportTicketRuntimeStatus
+                tone={supportTicketCanonicalStatusBadgeTone(
+                  control.ticketDetail.status as SupportTicketCanonicalStatus
                 )}
               >
-                {supportTicketRuntimeStatusLabel(control.ticketDetail.runtimeStatus as SupportTicketRuntimeStatus)}
+                {supportTicketCanonicalStatusLabel(control.ticketDetail.status as SupportTicketCanonicalStatus)}
               </AdminBadge>
               <AdminBadge tone="slate">{control.ticketDetail.priority}</AdminBadge>
               <AdminBadge tone="slate">{control.ticketDetail.category}</AdminBadge>
@@ -516,10 +570,93 @@ export default async function AdminSupportPage({
           ) : null}
 
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Status, assignment, conversation, and safe actions remain reserved for later support phases
+            Assignment, conversation, and notifications remain reserved for later support phases
           </p>
         </Card>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket status runtime</span>
+        <AdminBadge tone={toneForTicketStatusRuntimeStatus(control.ticketStatusRuntime.status)}>
+          {control.ticketStatusRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone={control.ticketStatusRuntime.transitionFoundation === "available" ? "green" : "slate"}>
+          {control.ticketStatusRuntime.transitionFoundation}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.ticketStatusRuntime.summary}</span>
+      </div>
+
+      {control.ticketStatusRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.ticketStatusRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={control.ticketStatusRuntime.allowedStatuses.map((status) => ({
+          label: supportTicketCanonicalStatusLabel(status as SupportTicketCanonicalStatus),
+          value: status
+        }))}
+      />
+
+      {control.selectedTicketStatus ? (
+        <Card className="grid gap-4 p-5 lg:p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-black text-slate-950">Selected ticket status</span>
+            <AdminBadge
+              tone={supportTicketCanonicalStatusBadgeTone(
+                control.selectedTicketStatus.canonicalStatus as SupportTicketCanonicalStatus
+              )}
+            >
+              {supportTicketCanonicalStatusLabel(
+                control.selectedTicketStatus.canonicalStatus as SupportTicketCanonicalStatus
+              )}
+            </AdminBadge>
+            <span className="text-xs text-slate-500">Storage: {control.selectedTicketStatus.storageStatus}</span>
+          </div>
+
+          <p className="text-sm text-slate-600">{control.selectedTicketStatus.transitionNote}</p>
+
+          {control.selectedTicketStatus.canMutateStatus && control.selectedTicketStatus.allowedTransitions.length ? (
+            <form action={updatePlatformSupportTicketStatusAction} className="flex flex-wrap items-end gap-3">
+              <input name="ticketId" type="hidden" value={control.selectedTicketStatus.ticketId} />
+              <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                Transition to
+                <select
+                  className="h-10 min-w-48 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+                  defaultValue={control.selectedTicketStatus.allowedTransitions[0]}
+                  name="status"
+                  required
+                >
+                  {control.selectedTicketStatus.allowedTransitions.map((status) => (
+                    <option key={status} value={status}>
+                      {supportTicketCanonicalStatusLabel(status as SupportTicketCanonicalStatus)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                type="submit"
+              >
+                Update status
+              </button>
+            </form>
+          ) : (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Status transitions are read-only for this account or no further transitions are available from the
+              current status.
+            </p>
+          )}
+        </Card>
+      ) : (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">
+            Select a ticket to inspect its current status and available transitions. Status never changes automatically
+            during page load.
+          </p>
+        </Card>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
@@ -613,7 +750,7 @@ export default async function AdminSupportPage({
                     <span
                       className={`h-fit rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${statusClass(ticket.status)}`}
                     >
-                      {ticket.status}
+                      {supportTicketCanonicalStatusLabel(ticket.status as SupportTicketCanonicalStatus)}
                     </span>
                     <span className="h-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
                       {ticket.priority}

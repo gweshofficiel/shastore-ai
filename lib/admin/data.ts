@@ -394,6 +394,11 @@ import {
   mapSupportTicketDetailsRuntimeToAdminFields
 } from "@/src/lib/support/support-ticket-details-runtime";
 import {
+  loadSupportTicketStatusRuntimeReadOnlySafe,
+  mapSupportTicketStatusRuntimeToAdminFields,
+  resolveSupportTicketStatusAuthorization
+} from "@/src/lib/support/support-ticket-status-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -7411,6 +7416,7 @@ export type AdminSupportControl = {
   ticketsRuntimeItems: Array<{
     assignedAgentId: string | null;
     assignedAgentLabel: string;
+    canonicalStatus: string;
     category: string;
     createdAt: string;
     eventId: string | null;
@@ -7441,6 +7447,7 @@ export type AdminSupportControl = {
   ticketDetail: {
     assignedAgentId: string | null;
     assignedAgentLabel: string;
+    canonicalStatus: string;
     category: string;
     createdAt: string;
     description: string;
@@ -7488,6 +7495,26 @@ export type AdminSupportControl = {
     tableDetected: boolean;
   };
   selectedTicketId: string | null;
+  selectedTicketStatus: {
+    allowedTransitions: string[];
+    canMutateStatus: boolean;
+    canonicalStatus: string;
+    registryKey: string;
+    storageStatus: string;
+    ticketId: string;
+    transitionFoundation: "available" | "read_only";
+    transitionNote: string;
+  } | null;
+  ticketStatusRuntime: {
+    allowedStatuses: string[];
+    loadError: string | null;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    source: "support_ticket_status_runtime";
+    status: "load_error" | "needs_attention" | "status_runtime_ready";
+    summary: string;
+    transitionFoundation: "available" | "read_only";
+  };
 };
 
 export type AdminInternalTeamControl = {
@@ -16550,6 +16577,11 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
 export async function getAdminSupportControl(options?: {
   ticketId?: string | null;
 }): Promise<AdminSupportControl> {
+  const access = await getAdminAccess();
+  const statusAuthorization = resolveSupportTicketStatusAuthorization({
+    internalRole: access.internalRole,
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -16561,6 +16593,14 @@ export async function getAdminSupportControl(options?: {
   );
   const ticketDetailsLoad = mapSupportTicketDetailsRuntimeToAdminFields(
     await loadSupportTicketDetailsRuntimeReadOnlySafe({
+      loadError: supabase ? null : "Admin client unavailable",
+      selectedTicketId,
+      supabase
+    })
+  );
+  const ticketStatusLoad = mapSupportTicketStatusRuntimeToAdminFields(
+    await loadSupportTicketStatusRuntimeReadOnlySafe({
+      authorization: statusAuthorization,
       loadError: supabase ? null : "Admin client unavailable",
       selectedTicketId,
       supabase
@@ -16603,7 +16643,9 @@ export async function getAdminSupportControl(options?: {
       ticketsSafeControls: ticketsRuntimeLoad.safeControls,
       ticketDetail: ticketDetailsLoad.ticketDetail,
       ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
-      selectedTicketId
+      selectedTicketId,
+      selectedTicketStatus: ticketStatusLoad.selectedTicketStatus,
+      ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime
     };
   }
 
@@ -16666,7 +16708,9 @@ export async function getAdminSupportControl(options?: {
     ticketsSafeControls: ticketsRuntimeLoad.safeControls,
     ticketDetail: ticketDetailsLoad.ticketDetail,
     ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
-    selectedTicketId
+    selectedTicketId,
+    selectedTicketStatus: ticketStatusLoad.selectedTicketStatus,
+    ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime
   };
 }
 

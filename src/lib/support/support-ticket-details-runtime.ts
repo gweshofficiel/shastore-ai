@@ -9,6 +9,10 @@ import {
   type SupportRegistryVisibility
 } from "@/src/lib/support/support-registry-runtime";
 import type { SupportTicketRuntimeStatus } from "@/src/lib/support/support-tickets-runtime";
+import {
+  normalizeStorageStatusToCanonical,
+  type SupportTicketCanonicalStatus
+} from "@/src/lib/support/support-ticket-status-runtime";
 
 export type SupportTicketDetailsRuntimeSource = "support_ticket_details_runtime";
 
@@ -32,6 +36,7 @@ export type SupportTicketRelatedMonitoringEvent = {
 export type SupportTicketDetailRuntimeItem = {
   assignedAgentId: string | null;
   assignedAgentLabel: string;
+  canonicalStatus: SupportTicketCanonicalStatus;
   category: string;
   createdAt: string;
   description: string;
@@ -185,6 +190,7 @@ function buildTicketDetailItem(
   const ticketNumber = text(row.ticket_number) || ticketId;
   const status = text(row.status) || "open";
   const priority = text(row.priority) || "normal";
+  const canonicalStatus = normalizeStorageStatusToCanonical(status);
   const runtimeStatus = normalizeTicketStatus(status);
   const category = deriveTicketCategory(row);
   const workspaceId = row.workspace_id ? text(row.workspace_id) : null;
@@ -196,6 +202,7 @@ function buildTicketDetailItem(
   return {
     assignedAgentId: null,
     assignedAgentLabel: "Not assigned",
+    canonicalStatus,
     category,
     createdAt: text(row.created_at),
     description,
@@ -212,7 +219,7 @@ function buildTicketDetailItem(
     runtimeStatus,
     safeSummary: [
       `ticket ${ticketNumber}`,
-      `status ${status}`,
+      `status ${canonicalStatus}`,
       `priority ${priority}`,
       `category ${category}`,
       descriptionState === "available" ? "description available" : "description empty",
@@ -220,7 +227,7 @@ function buildTicketDetailItem(
       storeId ? `store ${storeId}` : "store n/a",
       eventId ? `event ${eventId}` : "event n/a"
     ].join("; "),
-    status,
+    status: canonicalStatus,
     subject: text(row.subject) || "Support ticket",
     tableDetected: input.tableDetected,
     ticketId,
