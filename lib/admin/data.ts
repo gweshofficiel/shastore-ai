@@ -390,6 +390,10 @@ import {
   mapSupportTicketsRuntimeToAdminFields
 } from "@/src/lib/support/support-tickets-runtime";
 import {
+  loadSupportTicketDetailsRuntimeReadOnlySafe,
+  mapSupportTicketDetailsRuntimeToAdminFields
+} from "@/src/lib/support/support-ticket-details-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -7434,6 +7438,56 @@ export type AdminSupportControl = {
     label: string;
     note: string;
   }>;
+  ticketDetail: {
+    assignedAgentId: string | null;
+    assignedAgentLabel: string;
+    category: string;
+    createdAt: string;
+    description: string;
+    descriptionState: "available" | "empty";
+    eventId: string | null;
+    lastUpdatedAt: string;
+    priority: string;
+    registryKey: string;
+    relatedMonitoringEvent: {
+      createdAt: string;
+      entityType: string;
+      eventId: string;
+      eventStatus: string;
+      eventType: string;
+      isErrorEvent: boolean;
+      relatedStoreId: string | null;
+      relatedUserId: string | null;
+      relatedWorkspaceId: string | null;
+      safeSummary: string;
+    } | null;
+    relatedMonitoringEventState: "available" | "not_found" | "not_linked";
+    relatedStoreId: string | null;
+    relatedUserId: string | null;
+    relatedWorkspaceId: string | null;
+    runtimeStatus: string;
+    safeSummary: string;
+    status: string;
+    subject: string;
+    tableDetected: boolean;
+    ticketId: string;
+    ticketKey: string;
+    ticketNumber: string;
+    visibility: string;
+  } | null;
+  ticketDetailsRuntime: {
+    detailState: "available" | "error" | "not_found" | "unselected";
+    loadError: string | null;
+    loadingState: "error" | "loaded" | "unselected";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    selectedTicketId: string | null;
+    source: "support_ticket_details_runtime";
+    status: "load_error" | "needs_attention" | "ticket_details_ready" | "unselected";
+    summary: string;
+    tableDetected: boolean;
+  };
+  selectedTicketId: string | null;
 };
 
 export type AdminInternalTeamControl = {
@@ -16493,12 +16547,22 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
   };
 }
 
-export async function getAdminSupportControl(): Promise<AdminSupportControl> {
+export async function getAdminSupportControl(options?: {
+  ticketId?: string | null;
+}): Promise<AdminSupportControl> {
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
+  const selectedTicketId = options?.ticketId?.trim() || null;
   const ticketsRuntimeLoad = mapSupportTicketsRuntimeToAdminFields(
     await loadSupportTicketsRuntimeReadOnlySafe({
       loadError: supabase ? null : "Admin client unavailable",
+      supabase
+    })
+  );
+  const ticketDetailsLoad = mapSupportTicketDetailsRuntimeToAdminFields(
+    await loadSupportTicketDetailsRuntimeReadOnlySafe({
+      loadError: supabase ? null : "Admin client unavailable",
+      selectedTicketId,
       supabase
     })
   );
@@ -16536,7 +16600,10 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
       ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
       ticketsRuntimeGroups: ticketsRuntimeLoad.groups,
       ticketsRuntimeItems: ticketsRuntimeLoad.tickets,
-      ticketsSafeControls: ticketsRuntimeLoad.safeControls
+      ticketsSafeControls: ticketsRuntimeLoad.safeControls,
+      ticketDetail: ticketDetailsLoad.ticketDetail,
+      ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
+      selectedTicketId
     };
   }
 
@@ -16596,7 +16663,10 @@ export async function getAdminSupportControl(): Promise<AdminSupportControl> {
     ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
     ticketsRuntimeGroups: ticketsRuntimeLoad.groups,
     ticketsRuntimeItems: ticketsRuntimeLoad.tickets,
-    ticketsSafeControls: ticketsRuntimeLoad.safeControls
+    ticketsSafeControls: ticketsRuntimeLoad.safeControls,
+    ticketDetail: ticketDetailsLoad.ticketDetail,
+    ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
+    selectedTicketId
   };
 }
 

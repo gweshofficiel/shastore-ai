@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import {
   AdminBadge,
@@ -13,6 +14,8 @@ import {
   supportDashboardRuntimeStatusLabel,
   type SupportDashboardRuntimeStatus
 } from "@/src/lib/support/support-dashboard-runtime";
+import type { SupportTicketDetailState } from "@/src/lib/support/support-ticket-details-runtime";
+import { buildSupportTicketDetailHref } from "@/src/lib/support/support-ticket-details-runtime";
 import {
   supportTicketRuntimeStatusBadgeTone,
   supportTicketRuntimeStatusLabel,
@@ -108,6 +111,30 @@ function supportFlagTone(value: boolean) {
   return value ? ("green" as const) : ("slate" as const);
 }
 
+function toneForTicketDetailsRuntimeStatus(status: string) {
+  if (status === "ticket_details_ready") {
+    return "green" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function toneForTicketDetailState(state: SupportTicketDetailState) {
+  if (state === "available") {
+    return "green" as const;
+  }
+
+  if (state === "error" || state === "not_found") {
+    return "red" as const;
+  }
+
+  return "slate" as const;
+}
+
 function activityTone(activityType: string) {
   if (activityType === "error") {
     return "red" as const;
@@ -120,9 +147,18 @@ function activityTone(activityType: string) {
   return "slate" as const;
 }
 
-export default async function AdminSupportPage() {
+export default async function AdminSupportPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    ticket?: string;
+  }>;
+}) {
   await getAdminAccess();
-  const control = await getAdminSupportControl();
+  const query = await searchParams;
+  const control = await getAdminSupportControl({
+    ticketId: query.ticket ?? null
+  });
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -292,10 +328,18 @@ export default async function AdminSupportPage() {
         ]}
       >
         {control.ticketsRuntimeItems.map((ticket) => (
-          <tr key={ticket.ticketKey}>
+          <tr
+            className={control.selectedTicketId === ticket.ticketId ? "bg-blue-50/60" : undefined}
+            key={ticket.ticketKey}
+          >
             <td className="px-5 py-4">
               <div className="grid gap-1">
-                <span className="font-bold text-slate-950">{ticket.ticketNumber}</span>
+                <Link
+                  className="font-bold text-blue-700 hover:text-blue-900"
+                  href={buildSupportTicketDetailHref(ticket.ticketId)}
+                >
+                  {ticket.ticketNumber}
+                </Link>
                 <span className="text-xs text-slate-500">{ticket.ticketId}</span>
               </div>
             </td>
@@ -323,6 +367,159 @@ export default async function AdminSupportPage() {
           </tr>
         ))}
       </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket details runtime</span>
+        <AdminBadge tone={toneForTicketDetailsRuntimeStatus(control.ticketDetailsRuntime.status)}>
+          {control.ticketDetailsRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone={toneForTicketDetailState(control.ticketDetailsRuntime.detailState)}>
+          {control.ticketDetailsRuntime.detailState}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.ticketDetailsRuntime.summary}</span>
+      </div>
+
+      {control.ticketDetailsRuntime.loadingState === "unselected" ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">
+            Select a ticket from the Tickets runtime table to view read-only ticket details. No status, assignment, or
+            conversation actions run during SP-4 page load.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.ticketDetailsRuntime.detailState === "not_found" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            Ticket not found. The selected ticket ID does not match an existing support ticket record.
+          </p>
+          {control.selectedTicketId ? (
+            <p className="mt-2 text-xs font-semibold text-red-700">Requested ticket: {control.selectedTicketId}</p>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {control.ticketDetailsRuntime.detailState === "error" || control.ticketDetailsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">
+            {control.ticketDetailsRuntime.loadError ?? "Ticket details could not be loaded safely."}
+          </p>
+        </Card>
+      ) : null}
+
+      {control.ticketDetail ? (
+        <Card className="grid gap-5 p-5 lg:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="grid gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket details</p>
+              <h3 className="text-xl font-black text-slate-950">Ticket {control.ticketDetail.ticketNumber}</h3>
+              <p className="text-sm text-slate-500">{control.ticketDetail.ticketId}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <AdminBadge
+                tone={supportTicketRuntimeStatusBadgeTone(
+                  control.ticketDetail.runtimeStatus as SupportTicketRuntimeStatus
+                )}
+              >
+                {supportTicketRuntimeStatusLabel(control.ticketDetail.runtimeStatus as SupportTicketRuntimeStatus)}
+              </AdminBadge>
+              <AdminBadge tone="slate">{control.ticketDetail.priority}</AdminBadge>
+              <AdminBadge tone="slate">{control.ticketDetail.category}</AdminBadge>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Subject</span>
+              <p className="text-sm font-semibold text-slate-900">{control.ticketDetail.subject}</p>
+            </div>
+            <div className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Assigned agent</span>
+              <p className="text-sm font-semibold text-slate-900">{control.ticketDetail.assignedAgentLabel}</p>
+            </div>
+            <div className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Created</span>
+              <p className="text-sm text-slate-700">{formatAdminDate(control.ticketDetail.createdAt)}</p>
+            </div>
+            <div className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Last updated</span>
+              <p className="text-sm text-slate-700">{formatAdminDate(control.ticketDetail.lastUpdatedAt)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Description</span>
+            <p className="text-sm leading-6 text-slate-700">{control.ticketDetail.description}</p>
+          </div>
+
+          <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:grid-cols-3">
+            <p>
+              <span className="font-bold text-slate-900">Workspace:</span>{" "}
+              {control.ticketDetail.relatedWorkspaceId ?? "Not provided"}
+            </p>
+            <p>
+              <span className="font-bold text-slate-900">Store:</span>{" "}
+              {control.ticketDetail.relatedStoreId ?? "Not provided"}
+            </p>
+            <p>
+              <span className="font-bold text-slate-900">User:</span>{" "}
+              {control.ticketDetail.relatedUserId ?? "Not provided"}
+            </p>
+          </div>
+
+          {control.ticketDetail.relatedMonitoringEventState === "not_linked" ? (
+            <p className="text-sm text-slate-500">No related monitoring or error event is linked to this ticket.</p>
+          ) : null}
+
+          {control.ticketDetail.relatedMonitoringEventState === "not_found" ? (
+            <Card className="border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-800">
+                Linked monitoring event not found for event ID {control.ticketDetail.eventId ?? "unknown"}.
+              </p>
+            </Card>
+          ) : null}
+
+          {control.ticketDetail.relatedMonitoringEvent ? (
+            <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                  Related monitoring event
+                </span>
+                <AdminBadge tone={control.ticketDetail.relatedMonitoringEvent.isErrorEvent ? "red" : "slate"}>
+                  {control.ticketDetail.relatedMonitoringEvent.isErrorEvent ? "error event" : "monitoring event"}
+                </AdminBadge>
+              </div>
+              <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+                <p>
+                  <span className="font-bold text-slate-900">Event type:</span>{" "}
+                  {control.ticketDetail.relatedMonitoringEvent.eventType}
+                </p>
+                <p>
+                  <span className="font-bold text-slate-900">Status:</span>{" "}
+                  {control.ticketDetail.relatedMonitoringEvent.eventStatus}
+                </p>
+                <p>
+                  <span className="font-bold text-slate-900">Entity:</span>{" "}
+                  {control.ticketDetail.relatedMonitoringEvent.entityType}
+                </p>
+                <p>
+                  <span className="font-bold text-slate-900">Created:</span>{" "}
+                  {formatAdminDate(control.ticketDetail.relatedMonitoringEvent.createdAt)}
+                </p>
+                <p className="md:col-span-2">
+                  <span className="font-bold text-slate-900">Event ID:</span>{" "}
+                  {control.ticketDetail.relatedMonitoringEvent.eventId}
+                </p>
+              </div>
+              <p className="text-sm text-slate-600">{control.ticketDetail.relatedMonitoringEvent.safeSummary}</p>
+            </div>
+          ) : null}
+
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+            Status, assignment, conversation, and safe actions remain reserved for later support phases
+          </p>
+        </Card>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
@@ -402,7 +599,11 @@ export default async function AdminSupportPage() {
               <div className="grid gap-4 p-5" key={ticket.ticketKey}>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <div>
-                    <p className="text-lg font-black text-slate-950">Ticket {ticket.ticketNumber}</p>
+                    <p className="text-lg font-black text-slate-950">
+                      <Link className="hover:text-blue-700" href={buildSupportTicketDetailHref(ticket.ticketId)}>
+                        Ticket {ticket.ticketNumber}
+                      </Link>
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-slate-600">{ticket.subject}</p>
                     <p className="mt-1 text-xs font-bold text-slate-400">
                       Created {formatDate(ticket.createdAt)} - Last update {formatDate(ticket.lastUpdatedAt)}
