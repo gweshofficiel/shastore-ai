@@ -29,6 +29,11 @@ import {
   type SupportTicketStatusTransitionResultCode
 } from "@/src/lib/support/support-ticket-status-runtime";
 import {
+  supportMonitoringEventSeverityBadgeTone,
+  supportMonitoringEventSeverityLabel,
+  type SupportMonitoringEventSeverity
+} from "@/src/lib/support/support-monitoring-events-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -171,6 +176,40 @@ function toneForTicketDetailState(state: SupportTicketDetailState) {
 
   if (state === "error" || state === "not_found") {
     return "red" as const;
+  }
+
+  return "slate" as const;
+}
+
+function MonitoringEventsSafeControls() {
+  return (
+    <div className="flex min-w-52 flex-wrap gap-2">
+      {["Inspect", "Acknowledge", "Resolve", "Export"].map((label) => (
+        <button
+          key={label}
+          className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+          disabled
+          title="Read-only placeholder. No monitoring action is executed during SP-8 page load."
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function toneForMonitoringEventsRuntimeStatus(status: string) {
+  if (status === "monitoring_events_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "unauthorized") {
+    return "red" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
   }
 
   return "slate" as const;
@@ -956,6 +995,108 @@ export default async function AdminSupportPage({
       )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Monitoring events runtime</span>
+        <AdminBadge tone={toneForMonitoringEventsRuntimeStatus(control.monitoringEventsRuntime.status)}>
+          {control.monitoringEventsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.monitoringEventsRuntime.summary}</span>
+      </div>
+
+      {control.monitoringEventsRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to view Support monitoring events with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.monitoringEventsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.monitoringEventsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total events", value: String(control.monitoringEventsRuntime.totalEvents) },
+          { label: "Critical", value: String(control.monitoringEventsRuntime.criticalEvents) },
+          { label: "Warning", value: String(control.monitoringEventsRuntime.warningEvents) },
+          {
+            label: "Table",
+            value: control.monitoringEventsRuntime.tableDetected ? "detected" : "missing"
+          }
+        ]}
+      />
+
+      {control.monitoringEventsRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} event{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No monitoring events recorded yet. Events appear here when platform monitoring records them safely."
+        headers={[
+          "Event ID",
+          "Event type",
+          "Severity",
+          "Source",
+          "Status",
+          "Related ticket",
+          "Related scope",
+          "Created",
+          "Last updated",
+          "Safe controls"
+        ]}
+      >
+        {control.monitoringEventsRuntimeItems.map((event) => (
+          <tr key={event.eventKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-bold text-slate-950">{event.eventId}</span>
+                <span className="text-xs text-slate-500">{event.entityType}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{event.eventType}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportMonitoringEventSeverityBadgeTone(event.severity as SupportMonitoringEventSeverity)}>
+                {supportMonitoringEventSeverityLabel(event.severity as SupportMonitoringEventSeverity)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{event.source}</td>
+            <td className="px-5 py-4 text-slate-600">{event.status}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {event.relatedTicketState === "available" ? (
+                <div className="grid gap-1">
+                  <span>{event.relatedTicketNumber}</span>
+                  <span className="text-xs text-slate-500">{event.relatedTicketId}</span>
+                </div>
+              ) : (
+                "Not linked"
+              )}
+            </td>
+            <td className="px-5 py-4 text-slate-500">
+              <div className="grid gap-1 text-xs">
+                <span>Workspace: {event.relatedWorkspaceId ?? "n/a"}</span>
+                <span>Store: {event.relatedStoreId ?? "n/a"}</span>
+                <span>User: {event.relatedUserId ?? "n/a"}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.lastUpdatedAt)}</td>
+            <td className="px-5 py-4">
+              <MonitoringEventsSafeControls />
+            </td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
         <AdminBadge tone={toneForRegistryStatus(control.registry.status)}>{control.registry.status}</AdminBadge>
         <span className="text-sm text-slate-600">{control.registry.summary}</span>
@@ -1078,31 +1219,6 @@ export default async function AdminSupportPage({
           )}
         </div>
       </Card>
-
-      <AdminTable
-        empty={!control.monitoringEvents.length ? "No monitoring events recorded yet." : null}
-        headers={["Event", "Status", "Entity", "Scope", "Created"]}
-      >
-        {control.monitoringEvents.slice(0, 25).map((event) => (
-          <tr key={event.id}>
-            <td className="px-5 py-4 font-bold text-slate-950">{event.event_type}</td>
-            <td className="px-5 py-4">
-              <AdminBadge tone={event.event_status === "failed" ? "red" : "slate"}>
-                {event.event_status}
-              </AdminBadge>
-            </td>
-            <td className="px-5 py-4 text-slate-600">{event.entity_type}</td>
-            <td className="px-5 py-4 text-slate-500">
-              <div className="grid gap-1">
-                <span>Workspace: {event.workspace_id ?? "n/a"}</span>
-                <span>Store: {event.store_id ?? "n/a"}</span>
-                <span>User: {event.user_id ?? "anonymous"}</span>
-              </div>
-            </td>
-            <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.created_at)}</td>
-          </tr>
-        ))}
-      </AdminTable>
 
       <AdminTable headers={["Future hook", "Status"]}>
         {control.futureHooks.map((hook) => (
