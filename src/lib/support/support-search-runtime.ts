@@ -5,6 +5,11 @@ import { maskSensitiveText } from "@/lib/integrations/safe-diagnostics";
 import type { Database } from "@/types/database";
 import { isSupportErrorMonitoringEvent } from "@/src/lib/support/support-error-events-runtime";
 import {
+  buildSupportAdminHref,
+  buildSupportFilterResetHref,
+  type SupportFilterQuery
+} from "@/src/lib/support/support-filters-runtime";
+import {
   SUPPORT_REGISTRY_SOURCE
 } from "@/src/lib/support/support-registry-runtime";
 
@@ -140,29 +145,17 @@ export function emptySupportSearchQuery(): SupportSearchQuery {
   return { q: null };
 }
 
-export function buildSupportSearchResetHref(input: { ticketId?: string | null }) {
+export function buildSupportSearchResetHref(input: {
+  filters?: SupportFilterQuery;
+  ticketId?: string | null;
+}) {
   return buildSupportAdminHref({
+    filters: input.filters,
     ticketId: input.ticketId ?? null
   });
 }
 
-export function buildSupportAdminHref(input: {
-  q?: string | null;
-  ticketId?: string | null;
-}) {
-  const params = new URLSearchParams();
-
-  if (input.ticketId) {
-    params.set("ticket", input.ticketId);
-  }
-
-  if (input.q) {
-    params.set("q", input.q);
-  }
-
-  const query = params.toString();
-  return query ? `/admin/support?${query}` : "/admin/support";
-}
+export { buildSupportAdminHref, buildSupportFilterResetHref } from "@/src/lib/support/support-filters-runtime";
 
 function deriveTicketCategory(row: AnyRecord) {
   if (row.event_id) {

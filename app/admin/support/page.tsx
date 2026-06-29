@@ -47,6 +47,9 @@ import {
   supportSearchRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-search-runtime";
 import {
+  supportFiltersRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-filters-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -344,11 +347,24 @@ export default async function AdminSupportPage({
   searchParams
 }: {
   searchParams: Promise<{
+    agent?: string;
     assignmentResult?: string;
+    category?: string;
     conversationResult?: string;
+    eventSeverity?: string;
+    eventSource?: string;
+    eventStatus?: string;
+    eventType?: string;
+    from?: string;
+    priority?: string;
     q?: string;
+    status?: string;
     statusResult?: string;
+    store?: string;
     ticket?: string;
+    to?: string;
+    user?: string;
+    workspace?: string;
   }>;
 }) {
   await getAdminAccess();
@@ -357,9 +373,11 @@ export default async function AdminSupportPage({
   const assignmentResult = query.assignmentResult?.trim() || null;
   const conversationResult = query.conversationResult?.trim() || null;
   const control = await getAdminSupportControl({
+    filterQuery: query,
     searchQuery: query.q ?? null,
     ticketId: query.ticket ?? null
   });
+  const activeFilters = control.supportFiltersRuntime.query;
 
   return (
     <div className="grid gap-6 lg:gap-8">
@@ -589,7 +607,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.ticketsRuntimeItems.map((ticket) => (
+        {control.filteredTicketsRuntimeItems.map((ticket) => (
           <tr
             className={control.selectedTicketId === ticket.ticketId ? "bg-blue-50/60" : undefined}
             key={ticket.ticketKey}
@@ -1137,7 +1155,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.monitoringEventsRuntimeItems.map((event) => (
+        {control.filteredMonitoringEventsRuntimeItems.map((event) => (
           <tr key={event.eventKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1240,7 +1258,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.errorEventsRuntimeItems.map((event) => (
+        {control.filteredErrorEventsRuntimeItems.map((event) => (
           <tr key={event.errorKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1343,7 +1361,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.eventTimelineRuntimeItems.map((item) => (
+        {control.filteredEventTimelineRuntimeItems.map((item) => (
           <tr key={item.timelineItemKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1384,6 +1402,255 @@ export default async function AdminSupportPage({
           </tr>
         ))}
       </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support filters runtime</span>
+        <AdminBadge tone={supportFiltersRuntimeStatusBadgeTone(control.supportFiltersRuntime.status)}>
+          {control.supportFiltersRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportFiltersRuntime.summary}</span>
+      </div>
+
+      {control.supportFiltersRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to apply Support filters with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.supportFiltersRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportFiltersRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700"
+          href={control.supportFiltersRuntime.resetHref}
+        >
+          Reset filters
+        </Link>
+        <span className="text-xs text-slate-500">
+          {control.supportFiltersRuntime.appliedFilterCount > 0
+            ? `${control.supportFiltersRuntime.filteredCounts.tickets}/${control.supportFiltersRuntime.totalCounts.tickets} tickets visible`
+            : "Submit filters to narrow tickets, monitoring, error, and timeline views"}
+        </span>
+      </div>
+
+      <form action="/admin/support" className="grid gap-3 rounded-3xl border border-slate-200 bg-white p-5" method="get">
+        {control.selectedTicketId ? <input name="ticket" type="hidden" value={control.selectedTicketId} /> : null}
+        {control.supportSearchRuntime.query.q ? (
+          <input name="q" type="hidden" value={control.supportSearchRuntime.query.q} />
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Ticket status
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.status ?? ""}
+              list="support-filter-statuses"
+              name="status"
+              placeholder="open, in_progress, resolved"
+            />
+            <datalist id="support-filter-statuses">
+              {control.supportFiltersRuntime.filterOptions.statuses.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Ticket priority
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.priority ?? ""}
+              list="support-filter-priorities"
+              name="priority"
+              placeholder="normal, high, urgent"
+            />
+            <datalist id="support-filter-priorities">
+              {control.supportFiltersRuntime.filterOptions.priorities.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Ticket category
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.category ?? ""}
+              list="support-filter-categories"
+              name="category"
+              placeholder="platform support, store related"
+            />
+            <datalist id="support-filter-categories">
+              {control.supportFiltersRuntime.filterOptions.categories.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Assigned agent
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.agent ?? ""}
+              list="support-filter-agents"
+              name="agent"
+              placeholder="Agent ID or label"
+            />
+            <datalist id="support-filter-agents">
+              {control.supportFiltersRuntime.filterOptions.agents.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Event type
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.eventType ?? ""}
+              list="support-filter-event-types"
+              name="eventType"
+              placeholder="support_ticket_status_changed"
+            />
+            <datalist id="support-filter-event-types">
+              {control.supportFiltersRuntime.filterOptions.eventTypes.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Event severity
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.eventSeverity ?? ""}
+              list="support-filter-severities"
+              name="eventSeverity"
+              placeholder="critical, warning, info"
+            />
+            <datalist id="support-filter-severities">
+              {control.supportFiltersRuntime.filterOptions.eventSeverities.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Event source
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.eventSource ?? ""}
+              list="support-filter-sources"
+              name="eventSource"
+              placeholder="Support Platform"
+            />
+            <datalist id="support-filter-sources">
+              {control.supportFiltersRuntime.filterOptions.eventSources.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Event status
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.eventStatus ?? ""}
+              list="support-filter-event-statuses"
+              name="eventStatus"
+              placeholder="failed, success, recorded"
+            />
+            <datalist id="support-filter-event-statuses">
+              {control.supportFiltersRuntime.filterOptions.eventStatuses.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Date from
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.from ?? ""}
+              name="from"
+              type="date"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Date to
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.to ?? ""}
+              name="to"
+              type="date"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Related workspace
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.workspace ?? ""}
+              name="workspace"
+              placeholder="Workspace ID"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Related store
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.store ?? ""}
+              name="store"
+              placeholder="Store ID"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Related user
+            <input
+              className="h-10 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+              defaultValue={activeFilters.user ?? ""}
+              name="user"
+              placeholder="User ID"
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+            type="submit"
+          >
+            Apply filters
+          </button>
+          <span className="text-xs text-slate-500">
+            Filters apply to tickets, monitoring events, error events, timeline, and search results.
+          </span>
+        </div>
+      </form>
+
+      {control.supportFiltersRuntime.activeFilters.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {control.supportFiltersRuntime.activeFilters.map((filter) => (
+            <span
+              className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800"
+              key={`${filter.dimension}-${filter.value}`}
+            >
+              {filter.label}: {filter.value}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {control.supportFiltersRuntime.appliedFilterCount > 0 ? (
+        <AdminStatGrid
+          stats={[
+            { label: "Filtered tickets", value: String(control.supportFiltersRuntime.filteredCounts.tickets) },
+            { label: "Filtered monitoring", value: String(control.supportFiltersRuntime.filteredCounts.monitoringEvents) },
+            { label: "Filtered errors", value: String(control.supportFiltersRuntime.filteredCounts.errorEvents) },
+            { label: "Filtered timeline", value: String(control.supportFiltersRuntime.filteredCounts.eventTimeline) },
+            {
+              label: "Filtered search",
+              value: String(control.supportFiltersRuntime.filteredCounts.searchResults)
+            }
+          ]}
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support search runtime</span>
@@ -1431,6 +1698,21 @@ export default async function AdminSupportPage({
         {control.selectedTicketId ? (
           <input name="ticket" type="hidden" value={control.selectedTicketId} />
         ) : null}
+        {activeFilters.status ? <input name="status" type="hidden" value={activeFilters.status} /> : null}
+        {activeFilters.priority ? <input name="priority" type="hidden" value={activeFilters.priority} /> : null}
+        {activeFilters.category ? <input name="category" type="hidden" value={activeFilters.category} /> : null}
+        {activeFilters.agent ? <input name="agent" type="hidden" value={activeFilters.agent} /> : null}
+        {activeFilters.eventType ? <input name="eventType" type="hidden" value={activeFilters.eventType} /> : null}
+        {activeFilters.eventSeverity ? (
+          <input name="eventSeverity" type="hidden" value={activeFilters.eventSeverity} />
+        ) : null}
+        {activeFilters.eventSource ? <input name="eventSource" type="hidden" value={activeFilters.eventSource} /> : null}
+        {activeFilters.eventStatus ? <input name="eventStatus" type="hidden" value={activeFilters.eventStatus} /> : null}
+        {activeFilters.from ? <input name="from" type="hidden" value={activeFilters.from} /> : null}
+        {activeFilters.to ? <input name="to" type="hidden" value={activeFilters.to} /> : null}
+        {activeFilters.workspace ? <input name="workspace" type="hidden" value={activeFilters.workspace} /> : null}
+        {activeFilters.store ? <input name="store" type="hidden" value={activeFilters.store} /> : null}
+        {activeFilters.user ? <input name="user" type="hidden" value={activeFilters.user} /> : null}
         <label className="grid gap-1 text-xs font-semibold text-slate-600">
           Search keyword
           <input
@@ -1469,7 +1751,7 @@ export default async function AdminSupportPage({
       {control.supportSearchRuntime.query.q ? (
         <AdminStatGrid
           stats={[
-            { label: "Matched results", value: String(control.supportSearchRuntime.matchedResultCount) },
+            { label: "Matched results", value: String(control.filteredSearchResults.length) },
             { label: "Candidates scanned", value: String(control.supportSearchRuntime.totalCandidateCount) },
             {
               label: "Tickets table",
@@ -1642,8 +1924,8 @@ export default async function AdminSupportPage({
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-slate-100">
-          {control.ticketsRuntimeItems.length ? (
-            control.ticketsRuntimeItems.map((ticket) => (
+          {control.filteredTicketsRuntimeItems.length ? (
+            control.filteredTicketsRuntimeItems.map((ticket) => (
               <div className="grid gap-4 p-5" key={ticket.ticketKey}>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <div>

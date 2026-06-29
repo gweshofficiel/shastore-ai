@@ -418,6 +418,12 @@ import {
   sanitizeSupportSearchKeyword
 } from "@/src/lib/support/support-search-runtime";
 import {
+  applySupportFiltersRuntime,
+  mapSupportFiltersRuntimeToAdminFields,
+  parseSupportFilterQuery,
+  resolveSupportFiltersAuthorization
+} from "@/src/lib/support/support-filters-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -7863,6 +7869,67 @@ export type AdminSupportControl = {
     source: string | null;
     status: string | null;
   }>;
+  supportFiltersRuntime: {
+    activeFilters: Array<{
+      dimension: string;
+      label: string;
+      value: string;
+    }>;
+    appliedFilterCount: number;
+    emptyMessage: string | null;
+    filterOptions: {
+      agents: string[];
+      categories: string[];
+      eventSeverities: string[];
+      eventSources: string[];
+      eventStatuses: string[];
+      eventTypes: string[];
+      priorities: string[];
+      statuses: string[];
+    };
+    filteredCounts: {
+      errorEvents: number;
+      eventTimeline: number;
+      monitoringEvents: number;
+      searchResults: number;
+      tickets: number;
+    };
+    loadError: string | null;
+    loadingState: "applied" | "inactive" | "unauthorized";
+    query: {
+      agent: string | null;
+      category: string | null;
+      eventSeverity: string | null;
+      eventSource: string | null;
+      eventStatus: string | null;
+      eventType: string | null;
+      from: string | null;
+      priority: string | null;
+      status: string | null;
+      store: string | null;
+      to: string | null;
+      user: string | null;
+      workspace: string | null;
+    };
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    resetHref: string;
+    source: "support_filters_runtime";
+    status: "filters_empty" | "filters_inactive" | "filters_runtime_ready" | "unauthorized";
+    summary: string;
+    totalCounts: {
+      errorEvents: number;
+      eventTimeline: number;
+      monitoringEvents: number;
+      searchResults: number;
+      tickets: number;
+    };
+  };
+  filteredTicketsRuntimeItems: AdminSupportControl["ticketsRuntimeItems"];
+  filteredMonitoringEventsRuntimeItems: AdminSupportControl["monitoringEventsRuntimeItems"];
+  filteredErrorEventsRuntimeItems: AdminSupportControl["errorEventsRuntimeItems"];
+  filteredEventTimelineRuntimeItems: AdminSupportControl["eventTimelineRuntimeItems"];
+  filteredSearchResults: AdminSupportControl["searchResults"];
 };
 
 export type AdminInternalTeamControl = {
@@ -16923,6 +16990,7 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
 }
 
 export async function getAdminSupportControl(options?: {
+  filterQuery?: Record<string, string | undefined>;
   searchQuery?: string | null;
   ticketId?: string | null;
 }): Promise<AdminSupportControl> {
@@ -16953,11 +17021,19 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const filtersAuthorization = resolveSupportFiltersAuthorization({
+    internalRole: access.internalRole,
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
   const searchQuery = sanitizeSupportSearchKeyword(options?.searchQuery ?? null);
-  const searchResetHref = buildSupportSearchResetHref({ ticketId: selectedTicketId });
+  const filterQuery = parseSupportFilterQuery(options?.filterQuery ?? {});
+  const searchResetHref = buildSupportSearchResetHref({
+    filters: filterQuery,
+    ticketId: selectedTicketId
+  });
   const assignmentLoad = mapSupportTicketAssignmentRuntimeToAdminFields(
     await loadSupportTicketAssignmentRuntimeReadOnlySafe({
       authorization: assignmentAuthorization,
@@ -17028,6 +17104,19 @@ export async function getAdminSupportControl(options?: {
       ticketId: selectedTicketId
     })
   );
+  const supportFiltersLoad = mapSupportFiltersRuntimeToAdminFields(
+    applySupportFiltersRuntime({
+      authorization: filtersAuthorization,
+      errorEvents: errorEventsLoad.errorEventsRuntimeItems,
+      eventTimeline: eventTimelineLoad.eventTimelineRuntimeItems,
+      filterQuery,
+      monitoringEvents: monitoringEventsLoad.monitoringEvents,
+      q: searchQuery,
+      searchResults: supportSearchLoad.searchResults,
+      ticketId: selectedTicketId,
+      tickets: ticketsRuntimeLoad.tickets
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17068,7 +17157,13 @@ export async function getAdminSupportControl(options?: {
       eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
       eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
       supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
-      searchResults: supportSearchLoad.searchResults,
+      searchResults: supportFiltersLoad.filteredSearchResults,
+      supportFiltersRuntime: supportFiltersLoad.supportFiltersRuntime,
+      filteredTicketsRuntimeItems: supportFiltersLoad.filteredTickets,
+      filteredMonitoringEventsRuntimeItems: supportFiltersLoad.filteredMonitoringEvents,
+      filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
+      filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
+      filteredSearchResults: supportFiltersLoad.filteredSearchResults,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17128,7 +17223,13 @@ export async function getAdminSupportControl(options?: {
     eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
     eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
     supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
-    searchResults: supportSearchLoad.searchResults,
+    searchResults: supportFiltersLoad.filteredSearchResults,
+    supportFiltersRuntime: supportFiltersLoad.supportFiltersRuntime,
+    filteredTicketsRuntimeItems: supportFiltersLoad.filteredTickets,
+    filteredMonitoringEventsRuntimeItems: supportFiltersLoad.filteredMonitoringEvents,
+    filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
+    filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
+    filteredSearchResults: supportFiltersLoad.filteredSearchResults,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
