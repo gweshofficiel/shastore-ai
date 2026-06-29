@@ -8,6 +8,10 @@ import {
   type SupportRegistryVisibility
 } from "@/src/lib/support/support-registry-runtime";
 import {
+  resolveAssignedAgentLabel,
+  type SupportAgentDirectory
+} from "@/src/lib/support/support-ticket-assignment-runtime";
+import {
   isInReviewCanonicalStatus,
   isOpenCanonicalStatus,
   normalizeStorageStatusToCanonical,
@@ -214,7 +218,11 @@ async function safeTicketTableSelect(
   };
 }
 
-function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): SupportTicketRuntimeItem {
+function buildTicketRuntimeItem(
+  row: AnyRecord,
+  tableDetected: boolean,
+  agentDirectory: SupportAgentDirectory = {}
+): SupportTicketRuntimeItem {
   const registryEntry = getSupportRegistryEntry("sp-tickets");
   const ticketId = text(row.id);
   const ticketNumber = text(row.ticket_number) || ticketId;
@@ -227,10 +235,12 @@ function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): Support
   const storeId = row.store_id ? text(row.store_id) : null;
   const userId = row.user_id ? text(row.user_id) : null;
   const eventId = row.event_id ? text(row.event_id) : null;
+  const assignedUserId = row.assigned_user_id ? text(row.assigned_user_id) : null;
+  const assignment = resolveAssignedAgentLabel(assignedUserId, agentDirectory);
 
   return {
-    assignedAgentId: null,
-    assignedAgentLabel: "Not assigned",
+    assignedAgentId: assignment.assignedAgentId,
+    assignedAgentLabel: assignment.assignedAgentLabel,
     canonicalStatus,
     category,
     createdAt: text(row.created_at),
@@ -251,7 +261,8 @@ function buildTicketRuntimeItem(row: AnyRecord, tableDetected: boolean): Support
       `priority ${priority}`,
       `category ${category}`,
       workspaceId ? `workspace ${workspaceId}` : "workspace n/a",
-      storeId ? `store ${storeId}` : "store n/a"
+      storeId ? `store ${storeId}` : "store n/a",
+      assignment.assignedAgentId ? `agent ${assignment.assignedAgentId}` : "agent n/a"
     ].join("; "),
     status: canonicalStatus,
     subject: text(row.subject) || "Support ticket",
@@ -352,9 +363,11 @@ export function getSupportTicketsRuntimeSummary(
 }
 
 export async function loadSupportTicketsRuntimeReadOnlySafe(params: {
+  agentDirectory?: SupportAgentDirectory;
   loadError?: string | null;
   supabase: SupabaseClient<Database> | null;
 }) {
+  const agentDirectory = params.agentDirectory ?? {};
   if (!params.supabase || params.loadError) {
     return {
       groups: buildSupportTicketsRuntimeGroups([]),
@@ -367,15 +380,21 @@ export async function loadSupportTicketsRuntimeReadOnlySafe(params: {
     };
   }
 
-  const ticketLoad = await safeTicketTableSelect(
+  const baseColumns =
+    "id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, created_at, updated_at";
+  let ticketLoad = await safeTicketTableSelect(
     params.supabase,
     "support_tickets",
-    "id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, created_at, updated_at",
+    `${baseColumns}, assigned_user_id`,
     200
   );
 
+  if (ticketLoad.error?.includes("assigned_user_id")) {
+    ticketLoad = await safeTicketTableSelect(params.supabase, "support_tickets", baseColumns, 200);
+  }
+
   const tickets = ticketLoad.rows
-    .map((row) => buildTicketRuntimeItem(row, ticketLoad.tableDetected))
+    .map((row) => buildTicketRuntimeItem(row, ticketLoad.tableDetected, agentDirectory))
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   const groups = buildSupportTicketsRuntimeGroups(tickets);
   const summary = getSupportTicketsRuntimeSummary(tickets, {

@@ -394,6 +394,11 @@ import {
   mapSupportTicketDetailsRuntimeToAdminFields
 } from "@/src/lib/support/support-ticket-details-runtime";
 import {
+  loadSupportTicketAssignmentRuntimeReadOnlySafe,
+  mapSupportTicketAssignmentRuntimeToAdminFields,
+  resolveSupportTicketAssignmentAuthorization
+} from "@/src/lib/support/support-ticket-assignment-runtime";
+import {
   loadSupportTicketStatusRuntimeReadOnlySafe,
   mapSupportTicketStatusRuntimeToAdminFields,
   resolveSupportTicketStatusAuthorization
@@ -7512,6 +7517,36 @@ export type AdminSupportControl = {
     registrySource: "support_registry_runtime";
     source: "support_ticket_status_runtime";
     status: "load_error" | "needs_attention" | "status_runtime_ready";
+    summary: string;
+    transitionFoundation: "available" | "read_only";
+  };
+  eligibleSupportAgents: Array<{
+    agentKey: string;
+    displayName: string;
+    email: string;
+    role: string;
+    roleKey: string;
+    status: "active";
+    userId: string;
+  }>;
+  selectedTicketAssignment: {
+    assignedAgentId: string | null;
+    assignedAgentLabel: string;
+    assignmentFoundation: "available" | "read_only";
+    assignmentState: "assigned" | "unassigned";
+    canMutateAssignment: boolean;
+    registryKey: string;
+    ticketId: string;
+    transitionNote: string;
+  } | null;
+  ticketAssignmentRuntime: {
+    assignmentColumnDetected: boolean;
+    eligibleAgentCount: number;
+    loadError: string | null;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    source: "support_ticket_assignment_runtime";
+    status: "assignment_runtime_ready" | "load_error" | "needs_attention";
     summary: string;
     transitionFoundation: "available" | "read_only";
   };
@@ -16582,17 +16617,30 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const assignmentAuthorization = resolveSupportTicketAssignmentAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
+  const assignmentLoad = mapSupportTicketAssignmentRuntimeToAdminFields(
+    await loadSupportTicketAssignmentRuntimeReadOnlySafe({
+      authorization: assignmentAuthorization,
+      loadError: supabase ? null : "Admin client unavailable",
+      selectedTicketId,
+      supabase
+    })
+  );
   const ticketsRuntimeLoad = mapSupportTicketsRuntimeToAdminFields(
     await loadSupportTicketsRuntimeReadOnlySafe({
+      agentDirectory: assignmentLoad.agentDirectory,
       loadError: supabase ? null : "Admin client unavailable",
       supabase
     })
   );
   const ticketDetailsLoad = mapSupportTicketDetailsRuntimeToAdminFields(
     await loadSupportTicketDetailsRuntimeReadOnlySafe({
+      agentDirectory: assignmentLoad.agentDirectory,
       loadError: supabase ? null : "Admin client unavailable",
       selectedTicketId,
       supabase
@@ -16645,7 +16693,10 @@ export async function getAdminSupportControl(options?: {
       ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
       selectedTicketId,
       selectedTicketStatus: ticketStatusLoad.selectedTicketStatus,
-      ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime
+      ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
+      eligibleSupportAgents: assignmentLoad.eligibleAgents,
+      selectedTicketAssignment: assignmentLoad.selectedTicketAssignment,
+      ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime
     };
   }
 
@@ -16710,7 +16761,10 @@ export async function getAdminSupportControl(options?: {
     ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
     selectedTicketId,
     selectedTicketStatus: ticketStatusLoad.selectedTicketStatus,
-    ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime
+    ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
+    eligibleSupportAgents: assignmentLoad.eligibleAgents,
+    selectedTicketAssignment: assignmentLoad.selectedTicketAssignment,
+    ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime
   };
 }
 

@@ -7,7 +7,10 @@ import {
   AdminTable,
   formatAdminDate
 } from "@/components/admin/admin-control";
-import { updatePlatformSupportTicketStatusAction } from "@/lib/admin/support-actions";
+import {
+  updatePlatformSupportTicketAssignmentAction,
+  updatePlatformSupportTicketStatusAction
+} from "@/lib/admin/support-actions";
 import { getAdminAccess } from "@/lib/admin-access";
 import { getAdminSupportControl } from "@/lib/admin/data";
 import {
@@ -24,6 +27,10 @@ import {
   type SupportTicketCanonicalStatus,
   type SupportTicketStatusTransitionResultCode
 } from "@/src/lib/support/support-ticket-status-runtime";
+import {
+  supportTicketAssignmentResultMessage,
+  type SupportTicketAssignmentResultCode
+} from "@/src/lib/support/support-ticket-assignment-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +169,22 @@ function toneForTicketDetailState(state: SupportTicketDetailState) {
   return "slate" as const;
 }
 
+function toneForTicketAssignmentRuntimeStatus(status: string) {
+  if (status === "assignment_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function toneForAssignmentTransitionResult(result: string) {
+  return toneForStatusTransitionResult(result);
+}
+
 function activityTone(activityType: string) {
   if (activityType === "error") {
     return "red" as const;
@@ -178,6 +201,7 @@ export default async function AdminSupportPage({
   searchParams
 }: {
   searchParams: Promise<{
+    assignmentResult?: string;
     statusResult?: string;
     ticket?: string;
   }>;
@@ -185,6 +209,7 @@ export default async function AdminSupportPage({
   await getAdminAccess();
   const query = await searchParams;
   const statusResult = query.statusResult?.trim() || null;
+  const assignmentResult = query.assignmentResult?.trim() || null;
   const control = await getAdminSupportControl({
     ticketId: query.ticket ?? null
   });
@@ -210,6 +235,25 @@ export default async function AdminSupportPage({
             <AdminBadge tone={toneForStatusTransitionResult(statusResult)}>{statusResult}</AdminBadge>
             <p className="text-sm font-semibold text-slate-800">
               {supportTicketStatusTransitionMessage(statusResult as SupportTicketStatusTransitionResultCode)}
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {assignmentResult ? (
+        <Card
+          className={
+            assignmentResult === "success" || assignmentResult === "unchanged"
+              ? "border-emerald-200 bg-emerald-50 p-5"
+              : assignmentResult === "unauthorized" || assignmentResult === "error" || assignmentResult === "not_found"
+                ? "border-red-200 bg-red-50 p-5"
+                : "border-amber-200 bg-amber-50 p-5"
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <AdminBadge tone={toneForAssignmentTransitionResult(assignmentResult)}>{assignmentResult}</AdminBadge>
+            <p className="text-sm font-semibold text-slate-800">
+              {supportTicketAssignmentResultMessage(assignmentResult as SupportTicketAssignmentResultCode)}
             </p>
           </div>
         </Card>
@@ -570,7 +614,7 @@ export default async function AdminSupportPage({
           ) : null}
 
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Assignment, conversation, and notifications remain reserved for later support phases
+            Conversation and notifications remain reserved for later support phases
           </p>
         </Card>
       ) : null}
@@ -654,6 +698,129 @@ export default async function AdminSupportPage({
           <p className="text-sm font-semibold text-slate-600">
             Select a ticket to inspect its current status and available transitions. Status never changes automatically
             during page load.
+          </p>
+        </Card>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket assignment runtime</span>
+        <AdminBadge tone={toneForTicketAssignmentRuntimeStatus(control.ticketAssignmentRuntime.status)}>
+          {control.ticketAssignmentRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone={control.ticketAssignmentRuntime.transitionFoundation === "available" ? "green" : "slate"}>
+          {control.ticketAssignmentRuntime.transitionFoundation}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.ticketAssignmentRuntime.summary}</span>
+      </div>
+
+      {control.ticketAssignmentRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.ticketAssignmentRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Eligible agents", value: String(control.ticketAssignmentRuntime.eligibleAgentCount) },
+          {
+            label: "Assignment column",
+            value: control.ticketAssignmentRuntime.assignmentColumnDetected ? "detected" : "missing"
+          },
+          {
+            label: "Selected assignment",
+            value: control.selectedTicketAssignment?.assignmentState ?? "unselected"
+          },
+          {
+            label: "Foundation",
+            value: control.ticketAssignmentRuntime.transitionFoundation
+          }
+        ]}
+      />
+
+      <AdminTable
+        empty="No eligible support agents found. Active internal team members with support_agent or admin role appear here."
+        headers={["Agent", "Email", "Role", "Status", "User ID"]}
+      >
+        {control.eligibleSupportAgents.map((agent) => (
+          <tr key={agent.agentKey}>
+            <td className="px-5 py-4 font-bold text-slate-950">{agent.displayName}</td>
+            <td className="px-5 py-4 text-slate-600">{agent.email}</td>
+            <td className="px-5 py-4 text-slate-600">{agent.role}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="green">{agent.status}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-500">{agent.userId}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      {control.selectedTicketAssignment ? (
+        <Card className="grid gap-4 p-5 lg:p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-black text-slate-950">Selected ticket assignment</span>
+            <AdminBadge tone={control.selectedTicketAssignment.assignmentState === "assigned" ? "green" : "slate"}>
+              {control.selectedTicketAssignment.assignmentState}
+            </AdminBadge>
+            <span className="text-sm text-slate-700">{control.selectedTicketAssignment.assignedAgentLabel}</span>
+          </div>
+
+          <p className="text-sm text-slate-600">{control.selectedTicketAssignment.transitionNote}</p>
+
+          {control.selectedTicketAssignment.canMutateAssignment && control.eligibleSupportAgents.length ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <form action={updatePlatformSupportTicketAssignmentAction} className="flex flex-wrap items-end gap-3">
+                <input name="ticketId" type="hidden" value={control.selectedTicketAssignment.ticketId} />
+                <label className="grid flex-1 gap-1 text-xs font-semibold text-slate-600">
+                  Assign to agent
+                  <select
+                    className="h-10 min-w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+                    defaultValue={control.selectedTicketAssignment.assignedAgentId ?? ""}
+                    name="assignedUserId"
+                    required
+                  >
+                    <option disabled value="">
+                      Select support agent
+                    </option>
+                    {control.eligibleSupportAgents.map((agent) => (
+                      <option key={agent.agentKey} value={agent.userId}>
+                        {agent.displayName} ({agent.role})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                  type="submit"
+                >
+                  Assign ticket
+                </button>
+              </form>
+
+              {control.selectedTicketAssignment.assignedAgentId ? (
+                <form action={updatePlatformSupportTicketAssignmentAction} className="flex items-end gap-3">
+                  <input name="ticketId" type="hidden" value={control.selectedTicketAssignment.ticketId} />
+                  <input name="unassign" type="hidden" value="true" />
+                  <button
+                    className="h-10 rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-800"
+                    type="submit"
+                  >
+                    Unassign ticket
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Ticket assignment is read-only for this account, no eligible agents are available, or no ticket is
+              selected.
+            </p>
+          )}
+        </Card>
+      ) : (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">
+            Select a ticket to view assignment state and assign or unassign a support agent. Assignment never changes
+            automatically during page load.
           </p>
         </Card>
       )}

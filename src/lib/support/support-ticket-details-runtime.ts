@@ -8,11 +8,15 @@ import {
   SUPPORT_REGISTRY_SOURCE,
   type SupportRegistryVisibility
 } from "@/src/lib/support/support-registry-runtime";
-import type { SupportTicketRuntimeStatus } from "@/src/lib/support/support-tickets-runtime";
+import {
+  resolveAssignedAgentLabel,
+  type SupportAgentDirectory
+} from "@/src/lib/support/support-ticket-assignment-runtime";
 import {
   normalizeStorageStatusToCanonical,
   type SupportTicketCanonicalStatus
 } from "@/src/lib/support/support-ticket-status-runtime";
+import type { SupportTicketRuntimeStatus } from "@/src/lib/support/support-tickets-runtime";
 
 export type SupportTicketDetailsRuntimeSource = "support_ticket_details_runtime";
 
@@ -180,6 +184,7 @@ function buildRelatedMonitoringEvent(row: AnyRecord): SupportTicketRelatedMonito
 function buildTicketDetailItem(
   row: AnyRecord,
   input: {
+    agentDirectory: SupportAgentDirectory;
     relatedMonitoringEvent: SupportTicketRelatedMonitoringEvent | null;
     relatedMonitoringEventState: SupportTicketDetailRuntimeItem["relatedMonitoringEventState"];
     tableDetected: boolean;
@@ -198,10 +203,12 @@ function buildTicketDetailItem(
   const userId = row.user_id ? text(row.user_id) : null;
   const eventId = row.event_id ? text(row.event_id) : null;
   const { description, descriptionState } = buildSafeDescription(text(row.message));
+  const assignedUserId = row.assigned_user_id ? text(row.assigned_user_id) : null;
+  const assignment = resolveAssignedAgentLabel(assignedUserId, input.agentDirectory);
 
   return {
-    assignedAgentId: null,
-    assignedAgentLabel: "Not assigned",
+    assignedAgentId: assignment.assignedAgentId,
+    assignedAgentLabel: assignment.assignedAgentLabel,
     canonicalStatus,
     category,
     createdAt: text(row.created_at),
@@ -312,10 +319,12 @@ export function buildSupportTicketDetailHref(ticketId: string) {
 }
 
 export async function loadSupportTicketDetailsRuntimeReadOnlySafe(params: {
+  agentDirectory?: SupportAgentDirectory;
   loadError?: string | null;
   selectedTicketId?: string | null;
   supabase: SupabaseClient<Database> | null;
 }) {
+  const agentDirectory = params.agentDirectory ?? {};
   const selectedTicketId = params.selectedTicketId?.trim() || null;
 
   if (!selectedTicketId) {
@@ -351,11 +360,19 @@ export async function loadSupportTicketDetailsRuntimeReadOnlySafe(params: {
     };
   }
 
-  const ticketLoad = await params.supabase
+  let ticketLoad = await params.supabase
     .from("support_tickets" as never)
-    .select(TICKET_DETAIL_COLUMNS)
+    .select(`${TICKET_DETAIL_COLUMNS}, assigned_user_id`)
     .eq("id", selectedTicketId)
     .maybeSingle();
+
+  if (ticketLoad.error?.message?.includes("assigned_user_id")) {
+    ticketLoad = await params.supabase
+      .from("support_tickets" as never)
+      .select(TICKET_DETAIL_COLUMNS)
+      .eq("id", selectedTicketId)
+      .maybeSingle();
+  }
 
   if (ticketLoad.error) {
     return {
@@ -417,6 +434,7 @@ export async function loadSupportTicketDetailsRuntimeReadOnlySafe(params: {
   }
 
   const detail = buildTicketDetailItem(row, {
+    agentDirectory,
     relatedMonitoringEvent,
     relatedMonitoringEventState,
     tableDetected: true
