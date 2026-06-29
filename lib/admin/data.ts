@@ -378,6 +378,9 @@ import {
   OPERATIONS_FINAL_PRODUCTION_CERTIFICATION_BADGES
 } from "@/src/lib/operations/operations-final-production-certification-runtime";
 import {
+  mapSupportRegistryRuntimeToAdminFields
+} from "@/src/lib/support/support-registry-runtime";
+import {
   buildNotificationTemplateStatsSafe,
   buildNotificationTemplateViewsSafe,
   parseNotificationTemplateKeySafe,
@@ -7212,6 +7215,78 @@ export type AdminOperationsControl = {
     summary: string;
     totalEntries: number;
   };
+};
+
+export type AdminSupportRegistryComponent = {
+  auditSupport: boolean;
+  category: string;
+  createdFromArchitecture: boolean;
+  description: string;
+  futureHooks: string[];
+  healthSupport: boolean;
+  id: string;
+  implementationStatus: string;
+  key: string;
+  monitoringSupport: boolean;
+  permissions: string[];
+  productionReady: boolean;
+  roadmapPhase: string;
+  runtimeType: string;
+  title: string;
+  visibility: string;
+};
+
+export type AdminSupportTicket = {
+  created_at: string;
+  event_id: string | null;
+  id: string;
+  message: string | null;
+  priority: string;
+  status: string;
+  store_id: string | null;
+  subject: string;
+  technical_snapshot?: Record<string, unknown> | null;
+  ticket_number: string;
+  updated_at: string;
+  user_id: string | null;
+  workspace_id: string | null;
+};
+
+export type AdminSupportMonitoringEvent = {
+  created_at: string;
+  entity_type: string;
+  event_status: string;
+  event_type: string;
+  id: string;
+  store_id: string | null;
+  user_id: string | null;
+  workspace_id: string | null;
+};
+
+export type AdminSupportControl = {
+  categories: Array<{
+    entryCount: number;
+    name: string;
+    status: "architectural" | "planned" | "ready";
+  }>;
+  components: AdminSupportRegistryComponent[];
+  futureHooks: string[];
+  loadError: string | null;
+  monitoringEvents: AdminSupportMonitoringEvent[];
+  registry: {
+    readOnly: true;
+    source: "support_registry_runtime";
+    status: "needs_attention" | "registry_ready";
+    summary: string;
+    totalEntries: number;
+  };
+  stats: {
+    errorEvents: number;
+    monitoringEvents: number;
+    openTickets: number;
+    tickets: number;
+  };
+  tickets: AdminSupportTicket[];
 };
 
 export type AdminInternalTeamControl = {
@@ -16268,6 +16343,104 @@ export async function getAdminOperationsControl(): Promise<AdminOperationsContro
     finalCertificationGroups: operationsFinalProductionCertificationLoad.groups,
     finalCertificationItems: operationsFinalProductionCertificationLoad.finalCertificationItems,
     finalCertificationSafeControls: operationsFinalProductionCertificationLoad.safeControls
+  };
+}
+
+export async function getAdminSupportControl(): Promise<AdminSupportControl> {
+  const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
+  const { supabase } = await getAdminClient();
+
+  if (!supabase) {
+    return {
+      categories: supportRegistry.categories,
+      components: supportRegistry.components,
+      futureHooks: supportRegistry.futureHooks,
+      loadError: "Admin client unavailable",
+      monitoringEvents: [],
+      registry: supportRegistry.registry,
+      stats: {
+        errorEvents: 0,
+        monitoringEvents: 0,
+        openTickets: 0,
+        tickets: 0
+      },
+      tickets: []
+    };
+  }
+
+  const [ticketRows, monitoringRows] = await Promise.all([
+    safeSelect(
+      supabase,
+      "support_tickets",
+      "id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, message, technical_snapshot, created_at, updated_at",
+      200
+    ),
+    safeSelect(
+      supabase,
+      "monitoring_events",
+      "id, workspace_id, store_id, user_id, event_type, event_status, entity_type, created_at",
+      100
+    )
+  ]);
+
+  const tickets: AdminSupportTicket[] = ticketRows
+    .map((row) => ({
+      created_at: text(row.created_at),
+      event_id: row.event_id ? text(row.event_id) : null,
+      id: text(row.id),
+      message: row.message ? text(row.message) : null,
+      priority: text(row.priority) || "normal",
+      status: text(row.status) || "open",
+      store_id: row.store_id ? text(row.store_id) : null,
+      subject: text(row.subject) || "Support ticket",
+      technical_snapshot:
+        row.technical_snapshot && typeof row.technical_snapshot === "object"
+          ? (row.technical_snapshot as Record<string, unknown>)
+          : null,
+      ticket_number: text(row.ticket_number) || text(row.id),
+      updated_at: text(row.updated_at),
+      user_id: row.user_id ? text(row.user_id) : null,
+      workspace_id: row.workspace_id ? text(row.workspace_id) : null
+    }))
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+
+  const monitoringEvents: AdminSupportMonitoringEvent[] = monitoringRows
+    .map((row) => ({
+      created_at: text(row.created_at),
+      entity_type: text(row.entity_type) || "unknown",
+      event_status: text(row.event_status) || "recorded",
+      event_type: text(row.event_type) || "unknown",
+      id: text(row.id),
+      store_id: row.store_id ? text(row.store_id) : null,
+      user_id: row.user_id ? text(row.user_id) : null,
+      workspace_id: row.workspace_id ? text(row.workspace_id) : null
+    }))
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+
+  const errorEvents = monitoringEvents.filter(
+    (event) =>
+      event.event_status === "failed" ||
+      event.event_type.toLowerCase().includes("error") ||
+      event.event_type.toLowerCase().includes("failed")
+  ).length;
+  const openTickets = tickets.filter(
+    (ticket) => ticket.status !== "resolved" && ticket.status !== "closed"
+  ).length;
+
+  return {
+    categories: supportRegistry.categories,
+    components: supportRegistry.components,
+    futureHooks: supportRegistry.futureHooks,
+    loadError: null,
+    monitoringEvents,
+    registry: supportRegistry.registry,
+    stats: {
+      errorEvents,
+      monitoringEvents: monitoringEvents.length,
+      openTickets,
+      tickets: tickets.length
+    },
+    tickets
   };
 }
 

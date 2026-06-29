@@ -7,36 +7,9 @@ import {
   formatAdminDate
 } from "@/components/admin/admin-control";
 import { getAdminAccess } from "@/lib/admin-access";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getAdminSupportControl } from "@/lib/admin/data";
 
 export const dynamic = "force-dynamic";
-
-type SupportTicketRow = {
-  created_at: string;
-  event_id: string | null;
-  id: string;
-  message: string | null;
-  priority: string;
-  status: string;
-  store_id: string | null;
-  subject: string;
-  technical_snapshot?: Record<string, unknown> | null;
-  ticket_number: string;
-  updated_at: string;
-  user_id: string | null;
-  workspace_id: string | null;
-};
-
-type MonitoringEventRow = {
-  created_at: string;
-  entity_type: string;
-  event_status: string;
-  event_type: string;
-  id: string;
-  store_id: string | null;
-  user_id: string | null;
-  workspace_id: string | null;
-};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -59,66 +32,125 @@ function statusClass(status: string) {
   return "border-blue-200 bg-blue-50 text-blue-700";
 }
 
+function toneForRegistryStatus(status: string) {
+  if (status === "registry_ready" || status === "production_ready" || status === "ready") {
+    return "green" as const;
+  }
+
+  if (status === "architectural" || status === "registered" || status === "needs_attention") {
+    return "amber" as const;
+  }
+
+  if (status === "planned") {
+    return "blue" as const;
+  }
+
+  return "slate" as const;
+}
+
+function supportFlagLabel(value: boolean) {
+  return value ? "Yes" : "No";
+}
+
+function supportFlagTone(value: boolean) {
+  return value ? ("green" as const) : ("slate" as const);
+}
+
 export default async function AdminSupportPage() {
   await getAdminAccess();
-  const admin = createAdminClient();
-  const [{ data, error }, monitoringResult] = admin
-    ? await Promise.all([
-        admin
-        .from("support_tickets" as never)
-        .select("id, workspace_id, store_id, user_id, event_id, ticket_number, status, priority, subject, message, technical_snapshot, created_at, updated_at")
-        .order("created_at" as never, { ascending: false } as never)
-        .limit(200),
-        admin
-          .from("monitoring_events" as never)
-          .select("id, workspace_id, store_id, user_id, event_type, event_status, entity_type, created_at")
-          .order("created_at" as never, { ascending: false } as never)
-          .limit(100)
-      ])
-    : [
-        { data: [], error: new Error("Admin client unavailable") },
-        { data: [], error: new Error("Admin client unavailable") }
-      ];
-  const tickets = ((data ?? []) as unknown as SupportTicketRow[]);
-  const monitoringEvents = ((monitoringResult.data ?? []) as unknown as MonitoringEventRow[]);
-  const errorEvents = monitoringEvents.filter(
-    (event) =>
-      event.event_status === "failed" ||
-      event.event_type.toLowerCase().includes("error") ||
-      event.event_type.toLowerCase().includes("failed")
-  );
-  const openTickets = tickets.filter(
-    (ticket) => ticket.status !== "resolved" && ticket.status !== "closed"
-  ).length;
+  const control = await getAdminSupportControl();
 
   return (
     <div className="grid gap-6 lg:gap-8">
       <AdminHeader
-        description="Review support escalations, monitoring events, and error signals from real platform records."
+        description="Support runtime registry and read-only ticket review. SP-1 registry metadata loads without ticket mutation, assignment, notification dispatch, or provider calls."
         title="Support"
       />
 
-      {error || monitoringResult.error ? (
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
+        <AdminBadge tone={toneForRegistryStatus(control.registry.status)}>{control.registry.status}</AdminBadge>
+        <span className="text-sm text-slate-600">{control.registry.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Registry entries", value: String(control.registry.totalEntries) },
+          { label: "Categories", value: String(control.categories.length) },
+          { label: "Production ready", value: String(control.components.filter((item) => item.productionReady).length) },
+          { label: "Future hooks", value: String(control.futureHooks.length) }
+        ]}
+      />
+
+      {control.categories.map((category) => (
+        <div key={category.name} className="flex flex-wrap items-center gap-3 px-1">
+          <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{category.name}</span>
+          <AdminBadge tone={toneForRegistryStatus(category.status)}>{category.status}</AdminBadge>
+          <span className="text-xs text-slate-500">{category.entryCount} entries</span>
+        </div>
+      ))}
+
+      <AdminTable
+        headers={[
+          "Component",
+          "Category",
+          "Phase",
+          "Runtime",
+          "Status",
+          "Visibility",
+          "Monitoring",
+          "Audit",
+          "Health",
+          "Description"
+        ]}
+      >
+        {control.components.map((component) => (
+          <tr key={component.key}>
+            <td className="px-5 py-4 font-bold text-slate-950">{component.title}</td>
+            <td className="px-5 py-4 text-slate-600">{component.category}</td>
+            <td className="px-5 py-4 text-slate-600">{component.roadmapPhase}</td>
+            <td className="px-5 py-4 text-slate-600">{component.runtimeType}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForRegistryStatus(component.implementationStatus)}>
+                {component.implementationStatus}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{component.visibility}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFlagTone(component.monitoringSupport)}>
+                {supportFlagLabel(component.monitoringSupport)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFlagTone(component.auditSupport)}>{supportFlagLabel(component.auditSupport)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFlagTone(component.healthSupport)}>{supportFlagLabel(component.healthSupport)}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{component.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      {control.loadError ? (
         <Card className="border-red-200 bg-red-50 p-5">
-          <p className="text-sm font-black text-red-800">
-            Support or monitoring events could not be loaded.
-          </p>
+          <p className="text-sm font-black text-red-800">{control.loadError}</p>
         </Card>
       ) : null}
 
       <AdminStatGrid
         stats={[
-          { label: "Tickets", value: tickets.length },
-          { label: "Open tickets", value: openTickets },
-          { label: "Monitoring events", value: monitoringEvents.length },
-          { label: "Error events", value: errorEvents.length }
+          { label: "Tickets", value: control.stats.tickets },
+          { label: "Open tickets", value: control.stats.openTickets },
+          { label: "Monitoring events", value: control.stats.monitoringEvents },
+          { label: "Error events", value: control.stats.errorEvents }
         ]}
       />
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-slate-100">
-          {tickets.length ? (
-            tickets.map((ticket) => (
+          {control.tickets.length ? (
+            control.tickets.map((ticket) => (
               <div className="grid gap-4 p-5" key={ticket.id}>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <div>
@@ -172,10 +204,10 @@ export default async function AdminSupportPage() {
       </Card>
 
       <AdminTable
-        empty={!monitoringEvents.length ? "No monitoring events recorded yet." : null}
+        empty={!control.monitoringEvents.length ? "No monitoring events recorded yet." : null}
         headers={["Event", "Status", "Entity", "Scope", "Created"]}
       >
-        {monitoringEvents.slice(0, 25).map((event) => (
+        {control.monitoringEvents.slice(0, 25).map((event) => (
           <tr key={event.id}>
             <td className="px-5 py-4 font-bold text-slate-950">{event.event_type}</td>
             <td className="px-5 py-4">
@@ -192,6 +224,23 @@ export default async function AdminSupportPage() {
               </div>
             </td>
             <td className="px-5 py-4 text-slate-500">{formatAdminDate(event.created_at)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable headers={["Future hook", "Status"]}>
+        {control.futureHooks.map((hook) => (
+          <tr key={hook}>
+            <td className="px-5 py-4 font-bold text-slate-950">{hook}</td>
+            <td className="px-5 py-4">
+              <button
+                className="h-8 rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400"
+                disabled
+                type="button"
+              >
+                Reserved placeholder
+              </button>
+            </td>
           </tr>
         ))}
       </AdminTable>
