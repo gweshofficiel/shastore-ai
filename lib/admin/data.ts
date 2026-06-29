@@ -394,6 +394,11 @@ import {
   mapSupportTicketDetailsRuntimeToAdminFields
 } from "@/src/lib/support/support-ticket-details-runtime";
 import {
+  loadSupportTicketConversationRuntimeReadOnlySafe,
+  mapSupportTicketConversationRuntimeToAdminFields,
+  resolveSupportTicketConversationAuthorization
+} from "@/src/lib/support/support-ticket-conversation-runtime";
+import {
   loadSupportTicketAssignmentRuntimeReadOnlySafe,
   mapSupportTicketAssignmentRuntimeToAdminFields,
   resolveSupportTicketAssignmentAuthorization
@@ -7549,6 +7554,34 @@ export type AdminSupportControl = {
     status: "assignment_runtime_ready" | "load_error" | "needs_attention";
     summary: string;
     transitionFoundation: "available" | "read_only";
+  };
+  ticketConversationMessages: Array<{
+    attachmentsIndicator: "available" | "none";
+    author: string;
+    authorRole: string;
+    createdAt: string;
+    messageBody: string;
+    messageId: string;
+    messageKey: string;
+    messageSource: string;
+    registryKey: string;
+    safeSummary: string;
+    visibility: string;
+  }>;
+  ticketConversationRuntime: {
+    canCreateMessage: boolean;
+    creationFoundation: "available" | "read_only";
+    emptyMessage: string | null;
+    loadError: string | null;
+    loadingState: "error" | "loaded" | "unselected";
+    messageCount: number;
+    messagesTableDetected: boolean;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    selectedTicketId: string | null;
+    source: "support_ticket_conversation_runtime";
+    status: "conversation_runtime_ready" | "load_error" | "needs_attention" | "unselected";
+    summary: string;
   };
 };
 
@@ -16620,6 +16653,9 @@ export async function getAdminSupportControl(options?: {
   const assignmentAuthorization = resolveSupportTicketAssignmentAuthorization({
     role: access.role
   });
+  const conversationAuthorization = resolveSupportTicketConversationAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -16649,6 +16685,14 @@ export async function getAdminSupportControl(options?: {
   const ticketStatusLoad = mapSupportTicketStatusRuntimeToAdminFields(
     await loadSupportTicketStatusRuntimeReadOnlySafe({
       authorization: statusAuthorization,
+      loadError: supabase ? null : "Admin client unavailable",
+      selectedTicketId,
+      supabase
+    })
+  );
+  const ticketConversationLoad = mapSupportTicketConversationRuntimeToAdminFields(
+    await loadSupportTicketConversationRuntimeReadOnlySafe({
+      authorization: conversationAuthorization,
       loadError: supabase ? null : "Admin client unavailable",
       selectedTicketId,
       supabase
@@ -16696,7 +16740,9 @@ export async function getAdminSupportControl(options?: {
       ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
       eligibleSupportAgents: assignmentLoad.eligibleAgents,
       selectedTicketAssignment: assignmentLoad.selectedTicketAssignment,
-      ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime
+      ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime,
+      ticketConversationMessages: ticketConversationLoad.ticketConversationMessages,
+      ticketConversationRuntime: ticketConversationLoad.ticketConversationRuntime
     };
   }
 
@@ -16764,7 +16810,9 @@ export async function getAdminSupportControl(options?: {
     ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
     eligibleSupportAgents: assignmentLoad.eligibleAgents,
     selectedTicketAssignment: assignmentLoad.selectedTicketAssignment,
-    ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime
+    ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime,
+    ticketConversationMessages: ticketConversationLoad.ticketConversationMessages,
+    ticketConversationRuntime: ticketConversationLoad.ticketConversationRuntime
   };
 }
 

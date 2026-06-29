@@ -8,6 +8,7 @@ import {
   formatAdminDate
 } from "@/components/admin/admin-control";
 import {
+  createPlatformSupportTicketConversationMessageAction,
   updatePlatformSupportTicketAssignmentAction,
   updatePlatformSupportTicketStatusAction
 } from "@/lib/admin/support-actions";
@@ -31,6 +32,12 @@ import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
+import {
+  supportTicketConversationAuthorRoleLabel,
+  supportTicketConversationResultMessage,
+  supportTicketConversationVisibilityLabel,
+  type SupportTicketConversationResultCode
+} from "@/src/lib/support/support-ticket-conversation-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +176,22 @@ function toneForTicketDetailState(state: SupportTicketDetailState) {
   return "slate" as const;
 }
 
+function toneForTicketConversationRuntimeStatus(status: string) {
+  if (status === "conversation_runtime_ready") {
+    return "green" as const;
+  }
+
+  if (status === "needs_attention" || status === "load_error") {
+    return "amber" as const;
+  }
+
+  return "slate" as const;
+}
+
+function toneForConversationTransitionResult(result: string) {
+  return toneForStatusTransitionResult(result);
+}
+
 function toneForTicketAssignmentRuntimeStatus(status: string) {
   if (status === "assignment_runtime_ready") {
     return "green" as const;
@@ -202,6 +225,7 @@ export default async function AdminSupportPage({
 }: {
   searchParams: Promise<{
     assignmentResult?: string;
+    conversationResult?: string;
     statusResult?: string;
     ticket?: string;
   }>;
@@ -210,6 +234,7 @@ export default async function AdminSupportPage({
   const query = await searchParams;
   const statusResult = query.statusResult?.trim() || null;
   const assignmentResult = query.assignmentResult?.trim() || null;
+  const conversationResult = query.conversationResult?.trim() || null;
   const control = await getAdminSupportControl({
     ticketId: query.ticket ?? null
   });
@@ -254,6 +279,25 @@ export default async function AdminSupportPage({
             <AdminBadge tone={toneForAssignmentTransitionResult(assignmentResult)}>{assignmentResult}</AdminBadge>
             <p className="text-sm font-semibold text-slate-800">
               {supportTicketAssignmentResultMessage(assignmentResult as SupportTicketAssignmentResultCode)}
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {conversationResult ? (
+        <Card
+          className={
+            conversationResult === "success"
+              ? "border-emerald-200 bg-emerald-50 p-5"
+              : conversationResult === "unauthorized" || conversationResult === "error" || conversationResult === "not_found"
+                ? "border-red-200 bg-red-50 p-5"
+                : "border-amber-200 bg-amber-50 p-5"
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <AdminBadge tone={toneForConversationTransitionResult(conversationResult)}>{conversationResult}</AdminBadge>
+            <p className="text-sm font-semibold text-slate-800">
+              {supportTicketConversationResultMessage(conversationResult as SupportTicketConversationResultCode)}
             </p>
           </div>
         </Card>
@@ -565,6 +609,92 @@ export default async function AdminSupportPage({
             </p>
           </div>
 
+          <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket conversation</span>
+              <AdminBadge tone={toneForTicketConversationRuntimeStatus(control.ticketConversationRuntime.status)}>
+                {control.ticketConversationRuntime.status}
+              </AdminBadge>
+              <AdminBadge tone={control.ticketConversationRuntime.creationFoundation === "available" ? "green" : "slate"}>
+                {control.ticketConversationRuntime.creationFoundation}
+              </AdminBadge>
+              <span className="text-xs text-slate-500">{control.ticketConversationRuntime.messageCount} messages</span>
+            </div>
+
+            {control.ticketConversationRuntime.loadError ? (
+              <Card className="border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-amber-800">{control.ticketConversationRuntime.loadError}</p>
+              </Card>
+            ) : null}
+
+            {control.ticketConversationRuntime.emptyMessage ? (
+              <p className="text-sm text-slate-600">{control.ticketConversationRuntime.emptyMessage}</p>
+            ) : null}
+
+            {control.ticketConversationMessages.length ? (
+              <div className="grid gap-3">
+                {control.ticketConversationMessages.map((message) => (
+                  <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" key={message.messageKey}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-bold text-slate-950">{message.author}</span>
+                      <AdminBadge tone="slate">
+                        {supportTicketConversationAuthorRoleLabel(message.authorRole)}
+                      </AdminBadge>
+                      <AdminBadge tone="blue">
+                        {supportTicketConversationVisibilityLabel(message.visibility)}
+                      </AdminBadge>
+                      {message.attachmentsIndicator === "available" ? (
+                        <AdminBadge tone="amber">Attachments</AdminBadge>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Message {message.messageId} · {formatAdminDate(message.createdAt)}
+                    </p>
+                    <p className="text-sm leading-6 text-slate-700">{message.messageBody}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {control.ticketConversationRuntime.canCreateMessage ? (
+              <form action={createPlatformSupportTicketConversationMessageAction} className="grid gap-3">
+                <input name="ticketId" type="hidden" value={control.ticketDetail.ticketId} />
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                  Add message
+                  <textarea
+                    className="min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"
+                    maxLength={4000}
+                    name="messageBody"
+                    placeholder="Write a Super Admin support note or reply. No message is sent automatically on page load."
+                    required
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                  Visibility
+                  <select
+                    className="h-10 max-w-xs rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+                    defaultValue="internal"
+                    name="visibility"
+                  >
+                    <option value="internal">Internal</option>
+                    <option value="super_admin">Super Admin</option>
+                  </select>
+                </label>
+                <button
+                  className="h-10 w-fit rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                  type="submit"
+                >
+                  Add message
+                </button>
+              </form>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Conversation message creation is read-only for this account. Only Super Admin may add messages through
+                explicit form submission.
+              </p>
+            )}
+          </div>
+
           {control.ticketDetail.relatedMonitoringEventState === "not_linked" ? (
             <p className="text-sm text-slate-500">No related monitoring or error event is linked to this ticket.</p>
           ) : null}
@@ -614,7 +744,7 @@ export default async function AdminSupportPage({
           ) : null}
 
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Conversation and notifications remain reserved for later support phases
+            Notifications remain reserved for later support phases
           </p>
         </Card>
       ) : null}

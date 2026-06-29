@@ -269,3 +269,104 @@ export async function updatePlatformSupportTicketAssignmentAction(formData: Form
   revalidatePath(supportAdminPath);
   redirectWithAssignmentResult(ticketId, "success");
 }
+
+function redirectWithConversationResult(ticketId: string, result: string) {
+  const params = new URLSearchParams();
+  params.set("ticket", ticketId);
+  params.set("conversationResult", result);
+  redirect(`${supportAdminPath}?${params.toString()}`);
+}
+
+async function assertSuperAdminConversationAccess() {
+  const access = await getAdminAccess();
+
+  if (access.role === "super_admin") {
+    return access;
+  }
+
+  redirect(`${supportAdminPath}?conversationResult=unauthorized`);
+}
+
+function cleanMessageBody(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value.trim().slice(0, 4000) : "";
+}
+
+const conversationVisibilitySet = new Set(["internal", "super_admin"]);
+
+export async function createPlatformSupportTicketConversationMessageAction(formData: FormData) {
+  const ticketId = cleanText(formData.get("ticketId"), 80);
+  const messageBody = cleanMessageBody(formData.get("messageBody"));
+  const visibility = cleanText(formData.get("visibility"), 40) || "internal";
+
+  if (!ticketId || !uuidPattern.test(ticketId) || !messageBody || !conversationVisibilitySet.has(visibility)) {
+    redirect(`${supportAdminPath}?conversationResult=invalid`);
+  }
+
+  const access = await assertSuperAdminConversationAccess();
+  const admin = createAdminClient();
+
+  if (!admin) {
+    redirectWithConversationResult(ticketId, "error");
+    throw new Error("Admin client unavailable");
+  }
+
+  const { data: ticket, error: ticketError } = await admin
+    .from("support_tickets" as never)
+    .select("id, workspace_id, store_id, ticket_number")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (ticketError) {
+    redirectWithConversationResult(ticketId, "error");
+  }
+
+  if (!ticket) {
+    redirect(`${supportAdminPath}?conversationResult=not_found`);
+  }
+
+  const ticketRow = ticket as Record<string, unknown>;
+  const authorLabel = cleanText(access.user.email ?? null, 120) || "Super Admin";
+
+  const { error: insertError } = await admin.from("support_ticket_messages" as never).insert({
+    author_label: authorLabel,
+    author_role: "super_admin",
+    author_user_id: access.user.id,
+    has_attachments: false,
+    message_body: messageBody,
+    store_id: ticketRow.store_id ?? null,
+    ticket_id: ticketId,
+    visibility,
+    workspace_id: ticketRow.workspace_id ?? null
+  } as never);
+
+  if (insertError) {
+    redirectWithConversationResult(ticketId, "error");
+  }
+
+  await admin
+    .from("support_tickets" as never)
+    .update({ updated_at: new Date().toISOString() } as never)
+    .eq("id", ticketId);
+
+  await recordMonitoringEventSafe({
+    entityId: ticketId,
+    entityType: "support_ticket",
+    eventStatus: "success",
+    eventType: "support_ticket_message_created",
+    metadata: {
+      action: "support.ticket.conversation.create",
+      actorRole: "super_admin",
+      messageLength: messageBody.length,
+      route: supportAdminPath,
+      source: "support_ticket_conversation_runtime",
+      ticketNumber: String(ticketRow.ticket_number ?? ticketId),
+      visibility
+    },
+    storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+    userId: access.user.id,
+    workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+  });
+
+  revalidatePath(supportAdminPath);
+  redirectWithConversationResult(ticketId, "success");
+}
