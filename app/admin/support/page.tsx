@@ -122,6 +122,12 @@ import {
   type SupportProductionReadinessStatus
 } from "@/src/lib/support/support-production-certification-runtime";
 import {
+  supportStressValidationRuntimeStatusBadgeTone,
+  supportStressValidationStatusLabel,
+  supportStressValidationStatusTone,
+  type SupportStressValidationStatus
+} from "@/src/lib/support/support-stress-validation-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3432,6 +3438,147 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportProductionCertificationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-26 Support Stress Validation</span>
+        <AdminBadge tone={supportStressValidationRuntimeStatusBadgeTone(control.visibleSupportStressValidation.overallStatus)}>
+          {control.visibleSupportStressValidation.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportStressValidation.summary}</span>
+      </div>
+
+      {control.visibleSupportStressValidation.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportStressValidation.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStressValidation.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportStressValidation.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStressValidation.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportStressValidation.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStressValidation.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportStressValidation.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Stress validations", value: String(control.visibleSupportStressValidation.totalValidations) },
+          { label: "Stable", value: String(control.visibleSupportStressValidation.stableScopes) },
+          { label: "Review required", value: String(control.visibleSupportStressValidation.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportStressValidation.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportStressValidation.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportStressValidation.loadingState }
+        ]}
+      />
+
+      {control.supportStressValidationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} validation{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support stress validation scopes registered."
+        headers={[
+          "Validation",
+          "Scope",
+          "Refresh",
+          "Metadata",
+          "Empty state",
+          "Controls",
+          "Execution",
+          "Mutation",
+          "Secrets",
+          "Isolation",
+          "Summary"
+        ]}
+      >
+        {control.supportStressValidationItems.map((stressItem) => (
+          <tr key={stressItem.stressValidationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{stressItem.validationName}</span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {stressItem.blockedModules} · Warnings: {stressItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{stressItem.validationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.refreshStabilityStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.refreshStabilityStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.metadataConsistencyStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.metadataConsistencyStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.emptyStateSafetyStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.emptyStateSafetyStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.disabledControlsStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.disabledControlsStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.executionSafetyStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.executionSafetyStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.mutationSafetyStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.mutationSafetyStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.secretSafetyStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.secretSafetyStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportStressValidationStatusTone(stressItem.certifiedSystemIsolationStatus as SupportStressValidationStatus)}>
+                {supportStressValidationStatusLabel(stressItem.certifiedSystemIsolationStatus as SupportStressValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{stressItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled stress validation controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportStressValidationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">

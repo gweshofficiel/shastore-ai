@@ -30,6 +30,7 @@ export type SupportRuntimeType =
   | "search_runtime"
   | "security_certification_runtime"
   | "status_runtime"
+  | "stress_validation_runtime"
   | "ticket_assignment"
   | "ticket_conversation"
   | "ticket_detail"
@@ -76,6 +77,7 @@ export type SupportRegistryEntryDefinition = {
     | "SP-23"
     | "SP-24"
     | "SP-25"
+    | "SP-26"
     | "SP-3"
     | "SP-4"
     | "SP-5"
@@ -566,6 +568,25 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     roadmapPhase: "SP-25",
     runtimeType: "production_certification_runtime",
     title: "Production Certification",
+    visibility: "super_admin"
+  },
+  {
+    auditSupport: true,
+    category: "Support Platform",
+    createdFromArchitecture: true,
+    description:
+      "Support stress validation runtime validating production-safe read-only Support stability metadata across SP-1 through SP-25. Derived validation only; no stress execution on page load.",
+    futureHooks: ["Production hardening", "Final certification"],
+    healthSupport: true,
+    id: "support:stress-validation",
+    implementationStatus: "production_ready",
+    key: "sp-stress-validation",
+    monitoringSupport: true,
+    permissions: ["super_admin:read"],
+    productionReady: true,
+    roadmapPhase: "SP-26",
+    runtimeType: "stress_validation_runtime",
+    title: "Stress Validation",
     visibility: "super_admin"
   }
 ] as const;

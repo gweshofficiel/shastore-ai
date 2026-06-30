@@ -492,6 +492,12 @@ import {
   toSupportProductionCertificationSnapshot
 } from "@/src/lib/support/support-production-certification-runtime";
 import {
+  buildSupportStressValidationReadOnlySafe,
+  mapSupportStressValidationToAdminFields,
+  resolveSupportStressValidationAuthorization,
+  toSupportStressValidationSnapshot
+} from "@/src/lib/support/support-stress-validation-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8614,6 +8620,54 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportProductionCertification: AdminSupportControl["supportProductionCertification"];
+  supportStressValidation: {
+    blockedScopes: number;
+    emptyMessage: string | null;
+    groupCount: number;
+    loadError: string | null;
+    loadingState: "empty" | "error" | "restricted" | "stable" | "unauthorized";
+    overallStatus: "needs_attention" | "support_stress_validation_ready";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    reviewRequiredScopes: number;
+    source: "support_stress_validation_runtime";
+    stableScopes: number;
+    summary: string;
+    totalValidations: number;
+    unauthorizedMessage: string | null;
+    warningScopes: number;
+  };
+  supportStressValidationGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      blockedModules: number;
+      certifiedSystemIsolationStatus: "blocked" | "review_required" | "stable" | "warning";
+      disabledControlsStatus: "blocked" | "review_required" | "stable" | "warning";
+      emptyStateSafetyStatus: "blocked" | "review_required" | "stable" | "warning";
+      executionSafetyStatus: "blocked" | "review_required" | "stable" | "warning";
+      groupKey: string;
+      metadataConsistencyStatus: "blocked" | "review_required" | "stable" | "warning";
+      mutationSafetyStatus: "blocked" | "review_required" | "stable" | "warning";
+      refreshStabilityStatus: "blocked" | "review_required" | "stable" | "warning";
+      safeSummary: string;
+      secretSafetyStatus: "blocked" | "review_required" | "stable" | "warning";
+      stressValidationKey: string;
+      validationName: string;
+      validationScope: string;
+      warningModules: number;
+    }>;
+    title: string;
+  }>;
+  supportStressValidationItems: AdminSupportControl["supportStressValidationGroups"][number]["items"];
+  supportStressValidationSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportStressValidation: AdminSupportControl["supportStressValidation"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17743,6 +17797,9 @@ export async function getAdminSupportControl(options?: {
   const productionCertificationAuthorization = resolveSupportProductionCertificationAuthorization({
     role: access.role
   });
+  const stressValidationAuthorization = resolveSupportStressValidationAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -18670,6 +18727,140 @@ export async function getAdminSupportControl(options?: {
       })
     })
   );
+  const supportStressValidationLoad = mapSupportStressValidationToAdminFields(
+    buildSupportStressValidationReadOnlySafe({
+      analyticsRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportAnalyticsLoad.supportAnalyticsRuntime.readOnly,
+        source: supportAnalyticsLoad.supportAnalyticsRuntime.source,
+        summary: supportAnalyticsLoad.supportAnalyticsRuntime.summary
+      }),
+      analyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
+      auditRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportAuditLoad.supportAuditRuntime.readOnly,
+        source: supportAuditLoad.supportAuditRuntime.source,
+        summary: supportAuditLoad.supportAuditRuntime.summary
+      }),
+      auditSafeControls: supportAuditLoad.supportAuditSafeControls,
+      authorization: stressValidationAuthorization,
+      dashboardRuntime: toSupportStressValidationSnapshot({
+        readOnly: certificationDashboardLoad.dashboard.readOnly,
+        source: certificationDashboardLoad.dashboard.source,
+        summary: certificationDashboardLoad.dashboard.summary
+      }),
+      dataCertification: supportDataCertificationLoad.dataCertification,
+      dataCertificationSafeControls: supportDataCertificationLoad.dataCertificationSafeControls,
+      errorEventsRuntime: toSupportStressValidationSnapshot({
+        readOnly: errorEventsLoad.errorEventsRuntime.readOnly,
+        source: errorEventsLoad.errorEventsRuntime.source,
+        summary: errorEventsLoad.errorEventsRuntime.summary
+      }),
+      errorEventsSafeControls: errorEventsLoad.errorEventsSafeControls,
+      eventTimelineRuntime: toSupportStressValidationSnapshot({
+        readOnly: eventTimelineLoad.eventTimelineRuntime.readOnly,
+        source: eventTimelineLoad.eventTimelineRuntime.source,
+        summary: eventTimelineLoad.eventTimelineRuntime.summary
+      }),
+      eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
+      exportRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportExportLoad.supportExportRuntime.readOnly,
+        source: supportExportLoad.supportExportRuntime.source,
+        summary: supportExportLoad.supportExportRuntime.summary
+      }),
+      filtersRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportFiltersLoad.supportFiltersRuntime.readOnly,
+        source: supportFiltersLoad.supportFiltersRuntime.source,
+        summary: supportFiltersLoad.supportFiltersRuntime.summary
+      }),
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportVisibilityLoad.visibleSupportMetricsRuntime.readOnly,
+        source: supportVisibilityLoad.visibleSupportMetricsRuntime.source,
+        summary: supportVisibilityLoad.visibleSupportMetricsRuntime.summary
+      }),
+      monitoringEventsRuntime: toSupportStressValidationSnapshot({
+        readOnly: monitoringEventsLoad.monitoringEventsRuntime.readOnly,
+        source: monitoringEventsLoad.monitoringEventsRuntime.source,
+        summary: monitoringEventsLoad.monitoringEventsRuntime.summary
+      }),
+      monitoringEventsSafeControls: monitoringEventsLoad.monitoringEventsSafeControls,
+      notificationsRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportNotificationsLoad.supportNotificationsRuntime.readOnly,
+        source: supportNotificationsLoad.supportNotificationsRuntime.source,
+        summary: supportNotificationsLoad.supportNotificationsRuntime.summary
+      }),
+      notificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
+      productionCertification: supportProductionCertificationLoad.productionCertification,
+      productionCertificationItems: supportProductionCertificationLoad.productionCertificationItems,
+      productionCertificationSafeControls: supportProductionCertificationLoad.productionCertificationSafeControls,
+      registryRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportRegistry.registry.readOnly,
+        source: supportRegistry.registry.source,
+        summary: supportRegistry.registry.summary
+      }),
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount,
+      reviewItems: supportReviewLoad.supportReviewRuntimeItems,
+      reviewRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportReviewLoad.supportReviewRuntime.readOnly,
+        source: supportReviewLoad.supportReviewRuntime.source,
+        summary: supportReviewLoad.supportReviewRuntime.summary
+      }),
+      reviewSafeControls: supportReviewLoad.supportReviewSafeControls,
+      role: access.role,
+      runtimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
+      runtimeCertificationSafeControls: supportRuntimeCertificationLoad.runtimeCertificationSafeControls,
+      safeActionsRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportSafeActionsLoad.supportSafeActionsRuntime.readOnly,
+        source: supportSafeActionsLoad.supportSafeActionsRuntime.source,
+        summary: supportSafeActionsLoad.supportSafeActionsRuntime.summary
+      }),
+      searchRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportSearchLoad.supportSearchRuntime.readOnly,
+        source: supportSearchLoad.supportSearchRuntime.source,
+        summary: supportSearchLoad.supportSearchRuntime.summary
+      }),
+      securityCertification: supportSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
+      securityCertificationSafeControls: supportSecurityCertificationLoad.securityCertificationSafeControls,
+      statusRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportStatusLoad.supportStatusRuntime.readOnly,
+        source: supportStatusLoad.supportStatusRuntime.source,
+        summary: supportStatusLoad.supportStatusRuntime.summary
+      }),
+      ticketAssignmentRuntime: toSupportStressValidationSnapshot({
+        readOnly: assignmentLoad.ticketAssignmentRuntime.readOnly,
+        source: assignmentLoad.ticketAssignmentRuntime.source,
+        summary: assignmentLoad.ticketAssignmentRuntime.summary
+      }),
+      ticketConversationRuntime: toSupportStressValidationSnapshot({
+        readOnly: ticketConversationLoad.ticketConversationRuntime.readOnly,
+        source: ticketConversationLoad.ticketConversationRuntime.source,
+        summary: ticketConversationLoad.ticketConversationRuntime.summary
+      }),
+      ticketDetailsRuntime: toSupportStressValidationSnapshot({
+        readOnly: ticketDetailsLoad.ticketDetailsRuntime.readOnly,
+        source: ticketDetailsLoad.ticketDetailsRuntime.source,
+        summary: ticketDetailsLoad.ticketDetailsRuntime.summary
+      }),
+      ticketStatusRuntime: toSupportStressValidationSnapshot({
+        readOnly: ticketStatusLoad.ticketStatusRuntime.readOnly,
+        source: ticketStatusLoad.ticketStatusRuntime.source,
+        summary: ticketStatusLoad.ticketStatusRuntime.summary
+      }),
+      ticketsRuntime: toSupportStressValidationSnapshot({
+        readOnly: ticketsRuntimeLoad.ticketsRuntime.readOnly,
+        source: ticketsRuntimeLoad.ticketsRuntime.source,
+        summary: ticketsRuntimeLoad.ticketsRuntime.summary
+      }),
+      ticketsSafeControls: ticketsRuntimeLoad.safeControls,
+      visibilityAuthorization,
+      visibilityRuntime: toSupportStressValidationSnapshot({
+        readOnly: supportVisibilityLoad.supportVisibilityRuntime.readOnly,
+        source: supportVisibilityLoad.supportVisibilityRuntime.source,
+        summary: supportVisibilityLoad.supportVisibilityRuntime.summary
+      })
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -18774,6 +18965,11 @@ export async function getAdminSupportControl(options?: {
       supportProductionCertificationItems: supportProductionCertificationLoad.productionCertificationItems,
       supportProductionCertificationSafeControls: supportProductionCertificationLoad.productionCertificationSafeControls,
       visibleSupportProductionCertification: supportProductionCertificationLoad.productionCertification,
+      supportStressValidation: supportStressValidationLoad.stressValidation,
+      supportStressValidationGroups: supportStressValidationLoad.stressValidationGroups,
+      supportStressValidationItems: supportStressValidationLoad.stressValidationItems,
+      supportStressValidationSafeControls: supportStressValidationLoad.stressValidationSafeControls,
+      visibleSupportStressValidation: supportStressValidationLoad.stressValidation,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -18897,6 +19093,11 @@ export async function getAdminSupportControl(options?: {
     supportProductionCertificationItems: supportProductionCertificationLoad.productionCertificationItems,
     supportProductionCertificationSafeControls: supportProductionCertificationLoad.productionCertificationSafeControls,
     visibleSupportProductionCertification: supportProductionCertificationLoad.productionCertification,
+    supportStressValidation: supportStressValidationLoad.stressValidation,
+    supportStressValidationGroups: supportStressValidationLoad.stressValidationGroups,
+    supportStressValidationItems: supportStressValidationLoad.stressValidationItems,
+    supportStressValidationSafeControls: supportStressValidationLoad.stressValidationSafeControls,
+    visibleSupportStressValidation: supportStressValidationLoad.stressValidation,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
