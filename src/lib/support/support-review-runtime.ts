@@ -492,16 +492,16 @@ function buildVisibilityReviews(
     );
   }
 
-  for (const module of visibilityItems.filter((item) => item.restrictedRecordCount > 0).slice(0, 10)) {
+  for (const supportReviewModule of visibilityItems.filter((item) => item.restrictedRecordCount > 0).slice(0, 10)) {
     items.push(
       buildReviewItem({
         detectedAt: nowIso(),
         groupKey: "support-governance-review",
-        issueSummary: `${module.moduleName} has ${module.restrictedRecordCount} restricted record(s).`,
+        issueSummary: `${supportReviewModule.moduleName} has ${supportReviewModule.restrictedRecordCount} restricted record(s).`,
         recommendedManualAction: "Inspect module visibility context read-only before any manual action.",
-        recordId: module.moduleKey,
+        recordId: supportReviewModule.moduleKey,
         recordType: "visibility_rule",
-        registryKey: module.registryKey,
+        registryKey: supportReviewModule.registryKey,
         reviewStatus: "restricted",
         riskLevel: "low"
       })
