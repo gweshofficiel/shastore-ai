@@ -85,6 +85,9 @@ import {
   type SupportNotificationSeverity
 } from "@/src/lib/support/support-notifications-runtime";
 import {
+  supportAnalyticsRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-analytics-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -2231,6 +2234,140 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportNotificationsSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-19 Support Analytics</span>
+        <AdminBadge tone={supportAnalyticsRuntimeStatusBadgeTone(control.visibleSupportAnalyticsRuntime.status)}>
+          {control.visibleSupportAnalyticsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportAnalyticsRuntime.summary}</span>
+      </div>
+
+      {control.visibleSupportAnalyticsRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportAnalyticsRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportAnalyticsRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportAnalyticsRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportAnalyticsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportAnalyticsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportAnalyticsRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportAnalyticsRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid stats={control.visibleSupportAnalyticsRuntime.analyticsCards} />
+
+      <AdminStatGrid
+        stats={[
+          { label: "Open vs resolved", value: control.visibleSupportAnalyticsRuntime.openVsResolvedSummary },
+          { label: "Assigned tickets", value: String(control.visibleSupportAnalyticsRuntime.assignedTickets) },
+          { label: "Unassigned tickets", value: String(control.visibleSupportAnalyticsRuntime.unassignedTickets) },
+          { label: "Safe action success", value: String(control.visibleSupportAnalyticsRuntime.safeActionSuccessCount) },
+          { label: "Safe action failure", value: String(control.visibleSupportAnalyticsRuntime.safeActionFailureCount) },
+          { label: "Loading state", value: control.visibleSupportAnalyticsRuntime.loadingState }
+        ]}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <AdminTable empty="No ticket volume trend in the current scope." headers={["Date", "Activity"]}>
+          {control.visibleSupportAnalyticsRuntime.ticketVolumeTrend.map((item) => (
+            <tr key={`ticket-volume-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No ticket status breakdown in the current scope." headers={["Status", "Tickets"]}>
+          {control.visibleSupportAnalyticsRuntime.ticketsByStatus.map((item) => (
+            <tr key={`analytics-status-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No ticket priority breakdown in the current scope." headers={["Priority", "Tickets"]}>
+          {control.visibleSupportAnalyticsRuntime.ticketsByPriority.map((item) => (
+            <tr key={`analytics-priority-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No ticket category breakdown in the current scope." headers={["Category", "Tickets"]}>
+          {control.visibleSupportAnalyticsRuntime.ticketsByCategory.map((item) => (
+            <tr key={`analytics-category-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No monitoring event trend in the current scope." headers={["Date", "Events"]}>
+          {control.visibleSupportAnalyticsRuntime.monitoringEventsTrend.map((item) => (
+            <tr key={`monitoring-trend-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No error event trend in the current scope." headers={["Date", "Events"]}>
+          {control.visibleSupportAnalyticsRuntime.errorEventsTrend.map((item) => (
+            <tr key={`error-trend-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No error severity distribution in the current scope." headers={["Severity", "Events"]}>
+          {control.visibleSupportAnalyticsRuntime.errorSeverityDistribution.map((item) => (
+            <tr key={`error-severity-analytics-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No review issues trend in the current scope." headers={["Date", "Issues"]}>
+          {control.visibleSupportAnalyticsRuntime.reviewIssuesTrend.map((item) => (
+            <tr key={`review-trend-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </div>
+
+      <AdminTable
+        empty="No disabled analytics controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportAnalyticsSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">

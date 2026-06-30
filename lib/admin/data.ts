@@ -452,6 +452,11 @@ import {
   resolveSupportNotificationsAuthorization
 } from "@/src/lib/support/support-notifications-runtime";
 import {
+  buildSupportAnalyticsRuntime,
+  mapSupportAnalyticsRuntimeToAdminFields,
+  resolveSupportAnalyticsAuthorization
+} from "@/src/lib/support/support-analytics-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8260,6 +8265,50 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportNotificationsRuntimeItems: AdminSupportControl["supportNotificationsRuntimeGroups"][number]["items"];
+  supportAnalyticsRuntime: {
+    analyticsCards: Array<{ label: string; value: string }>;
+    assignedTickets: number;
+    emptyMessage: string | null;
+    errorEventsTrend: Array<{ count: number; key: string; label: string }>;
+    errorSeverityDistribution: Array<{ count: number; key: string; label: string }>;
+    hiddenRecordCount: number;
+    loadError: string | null;
+    loadingState: "computed" | "empty" | "error" | "restricted" | "unauthorized";
+    monitoringEventsTrend: Array<{ count: number; key: string; label: string }>;
+    notificationSignalCount: number;
+    openTicketCount: number;
+    openVsResolvedSummary: string;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    resolvedTicketCount: number;
+    restrictedMessage: string | null;
+    restrictedRecordCount: number;
+    reviewIssuesTrend: Array<{ count: number; key: string; label: string }>;
+    safeActionFailureCount: number;
+    safeActionSuccessCount: number;
+    scope: "visible_runtime_data";
+    source: "support_analytics_runtime";
+    status: "analytics_empty" | "analytics_runtime_ready" | "load_error" | "needs_attention" | "unauthorized";
+    summary: string;
+    ticketsByCategory: Array<{ count: number; key: string; label: string }>;
+    ticketsByPriority: Array<{ count: number; key: string; label: string }>;
+    ticketsByStatus: Array<{ count: number; key: string; label: string }>;
+    ticketVolumeTrend: Array<{ count: number; key: string; label: string }>;
+    totalErrorEvents: number;
+    totalMonitoringEvents: number;
+    totalReviewIssues: number;
+    totalTickets: number;
+    unauthorizedMessage: string | null;
+    unassignedTickets: number;
+    visibleRecordCount: number;
+  };
+  supportAnalyticsSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportAnalyticsRuntime: AdminSupportControl["supportAnalyticsRuntime"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17368,6 +17417,9 @@ export async function getAdminSupportControl(options?: {
   const notificationsAuthorization = resolveSupportNotificationsAuthorization({
     role: access.role
   });
+  const analyticsAuthorization = resolveSupportAnalyticsAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17561,6 +17613,24 @@ export async function getAdminSupportControl(options?: {
       visibleTickets: supportVisibilityLoad.visibleTickets
     })
   );
+  const supportAnalyticsLoad = mapSupportAnalyticsRuntimeToAdminFields(
+    buildSupportAnalyticsRuntime({
+      authorization: analyticsAuthorization,
+      filtersApplied: supportFiltersLoad.supportFiltersRuntime.appliedFilterCount > 0,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      safeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
+      searchQuery,
+      visibilityAuthorization,
+      visibleAuditItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+      visibleErrorEvents: supportVisibilityLoad.visibleErrorEvents,
+      visibleMonitoringEvents: supportVisibilityLoad.visibleMonitoringEvents,
+      visibleNotificationItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
+      visibleReviewItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
+      visibleTickets: supportVisibilityLoad.visibleTickets,
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17636,6 +17706,9 @@ export async function getAdminSupportControl(options?: {
       supportNotificationsRuntimeItems: supportNotificationsLoad.supportNotificationsRuntimeItems,
       supportNotificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
       visibleSupportNotificationsRuntimeItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
+      supportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+      supportAnalyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
+      visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17730,6 +17803,9 @@ export async function getAdminSupportControl(options?: {
     supportNotificationsRuntimeItems: supportNotificationsLoad.supportNotificationsRuntimeItems,
     supportNotificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
     visibleSupportNotificationsRuntimeItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
+    supportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+    supportAnalyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
+    visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
