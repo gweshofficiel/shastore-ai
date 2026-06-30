@@ -15,6 +15,7 @@ export type SupportRuntimeType =
   | "analytics_runtime"
   | "audit_runtime"
   | "dashboard"
+  | "data_certification_runtime"
   | "error_stream"
   | "event_timeline"
   | "export_runtime"
@@ -68,6 +69,7 @@ export type SupportRegistryEntryDefinition = {
     | "SP-2"
     | "SP-20"
     | "SP-21"
+    | "SP-22"
     | "SP-3"
     | "SP-4"
     | "SP-5"
@@ -482,6 +484,25 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     roadmapPhase: "SP-21",
     runtimeType: "status_runtime",
     title: "Status",
+    visibility: "super_admin"
+  },
+  {
+    auditSupport: true,
+    category: "Support Platform",
+    createdFromArchitecture: true,
+    description:
+      "Support data certification runtime validating read-only Support data integrity across SP-1 through SP-21. Derived validation only; no certification mutation on page load.",
+    futureHooks: ["Runtime certification", "Production certification"],
+    healthSupport: true,
+    id: "support:data-certification",
+    implementationStatus: "production_ready",
+    key: "sp-data-certification",
+    monitoringSupport: true,
+    permissions: ["super_admin:read"],
+    productionReady: true,
+    roadmapPhase: "SP-22",
+    runtimeType: "data_certification_runtime",
+    title: "Data Certification",
     visibility: "super_admin"
   }
 ] as const;

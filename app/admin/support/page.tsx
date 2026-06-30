@@ -95,6 +95,13 @@ import {
   supportStatusRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-status-runtime";
 import {
+  supportDataCertificationIntegrityLabel,
+  supportDataCertificationIntegrityTone,
+  supportDataCertificationRuntimeStatusBadgeTone,
+  supportDataCertificationSafetyLabel,
+  type SupportDataCertificationIntegrityStatus
+} from "@/src/lib/support/support-data-certification-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -2873,6 +2880,127 @@ export default async function AdminSupportPage({
           </AdminTable>
         </div>
       ))}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-22 Support Data Certification</span>
+        <AdminBadge tone={supportDataCertificationRuntimeStatusBadgeTone(control.visibleSupportDataCertification.overallStatus)}>
+          {control.visibleSupportDataCertification.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportDataCertification.summary}</span>
+      </div>
+
+      {control.visibleSupportDataCertification.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportDataCertification.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportDataCertification.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportDataCertification.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportDataCertification.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportDataCertification.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportDataCertification.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportDataCertification.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Certification scopes", value: String(control.visibleSupportDataCertification.totalCertifications) },
+          { label: "Certified", value: String(control.visibleSupportDataCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.visibleSupportDataCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportDataCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportDataCertification.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportDataCertification.loadingState }
+        ]}
+      />
+
+      {control.supportDataCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} scope{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support data certification scopes registered."
+        headers={[
+          "Scope",
+          "Integrity",
+          "Mutation",
+          "Secrets",
+          "States",
+          "Execution",
+          "Placeholders",
+          "Summary"
+        ]}
+      >
+        {control.supportDataCertificationItems.map((certificationItem) => (
+          <tr key={certificationItem.certificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{certificationItem.certificationName}</span>
+                <span className="text-xs text-slate-500">{certificationItem.certificationScope}</span>
+              </div>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge
+                tone={supportDataCertificationIntegrityTone(
+                  certificationItem.dataIntegrityStatus as SupportDataCertificationIntegrityStatus
+                )}
+              >
+                {supportDataCertificationIntegrityLabel(
+                  certificationItem.dataIntegrityStatus as SupportDataCertificationIntegrityStatus
+                )}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {supportDataCertificationSafetyLabel(certificationItem.mutationSafetyStatus)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {supportDataCertificationSafetyLabel(certificationItem.secretSafetyStatus)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {supportDataCertificationSafetyLabel(certificationItem.stateCoverageStatus)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {supportDataCertificationSafetyLabel(certificationItem.executionSafetyStatus)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {supportDataCertificationSafetyLabel(certificationItem.placeholderStatus)}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{certificationItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled data certification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportDataCertificationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
