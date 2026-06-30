@@ -128,6 +128,12 @@ import {
   type SupportStressValidationStatus
 } from "@/src/lib/support/support-stress-validation-runtime";
 import {
+  supportProductionHardeningRuntimeStatusBadgeTone,
+  supportProductionHardeningStatusLabel,
+  supportProductionHardeningStatusTone,
+  type SupportProductionHardeningStatus
+} from "@/src/lib/support/support-production-hardening-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3579,6 +3585,141 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportStressValidationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-27 Support Production Hardening</span>
+        <AdminBadge tone={supportProductionHardeningRuntimeStatusBadgeTone(control.visibleSupportProductionHardening.overallStatus)}>
+          {control.visibleSupportProductionHardening.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportProductionHardening.summary}</span>
+      </div>
+
+      {control.visibleSupportProductionHardening.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportProductionHardening.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionHardening.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportProductionHardening.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionHardening.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportProductionHardening.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionHardening.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportProductionHardening.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Hardening scopes", value: String(control.visibleSupportProductionHardening.totalHardeningScopes) },
+          { label: "Hardened", value: String(control.visibleSupportProductionHardening.hardenedScopes) },
+          { label: "Review required", value: String(control.visibleSupportProductionHardening.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportProductionHardening.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportProductionHardening.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportProductionHardening.loadingState }
+        ]}
+      />
+
+      {control.supportProductionHardeningGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} scope{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support production hardening scopes registered."
+        headers={[
+          "Hardening",
+          "Scope",
+          "Read only",
+          "Controls",
+          "Secrets",
+          "Empty state",
+          "Execution",
+          "Mutation",
+          "Isolation",
+          "Summary"
+        ]}
+      >
+        {control.supportProductionHardeningItems.map((hardeningItem) => (
+          <tr key={hardeningItem.hardeningKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{hardeningItem.hardeningName}</span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {hardeningItem.blockedModules} · Warnings: {hardeningItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{hardeningItem.hardeningScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.readOnlyHardeningStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.readOnlyHardeningStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.controlSafetyStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.controlSafetyStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.secretMaskingStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.secretMaskingStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.emptyStateStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.emptyStateStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.executionIsolationStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.executionIsolationStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.mutationIsolationStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.mutationIsolationStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionHardeningStatusTone(hardeningItem.certifiedSystemIsolationStatus as SupportProductionHardeningStatus)}>
+                {supportProductionHardeningStatusLabel(hardeningItem.certifiedSystemIsolationStatus as SupportProductionHardeningStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{hardeningItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled production hardening controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportProductionHardeningSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
