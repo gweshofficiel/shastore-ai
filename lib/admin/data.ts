@@ -462,6 +462,12 @@ import {
   resolveSupportExportAuthorization
 } from "@/src/lib/support/support-export-runtime";
 import {
+  buildSupportStatusRuntimeReadOnlySafe,
+  mapSupportStatusRuntimeToAdminFields,
+  resolveSupportStatusAuthorization,
+  toSupportStatusRuntimeSnapshot
+} from "@/src/lib/support/support-status-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8345,6 +8351,50 @@ export type AdminSupportControl = {
     visibleRecordCount: number;
   };
   visibleSupportExportRuntime: AdminSupportControl["supportExportRuntime"];
+  supportStatusRuntime: {
+    emptyMessage: string | null;
+    emptyModules: number;
+    errorModules: number;
+    groupCount: number;
+    hiddenRecordCount: number;
+    loadError: string | null;
+    loadingState: "computed" | "empty" | "error" | "restricted" | "unauthorized";
+    needsReviewModules: number;
+    readOnly: true;
+    readyModules: number;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    restrictedModules: number;
+    restrictedRecordCount: number;
+    source: "support_status_runtime";
+    status: "load_error" | "needs_attention" | "status_empty" | "status_runtime_ready" | "unauthorized";
+    summary: string;
+    totalModules: number;
+    unauthorizedMessage: string | null;
+    visibleRecordCount: number;
+  };
+  supportStatusRuntimeGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      groupKey: string;
+      loadingState: "computed" | "empty" | "error" | "restricted" | "unauthorized";
+      moduleKey: string;
+      moduleName: string;
+      operationalStatus: "empty" | "error" | "needs_review" | "ready" | "restricted";
+      operationalStatusLabel: string;
+      providerStatus: string;
+      readOnly: true;
+      recordCount: number | null;
+      registryKey: string;
+      safeSummary: string;
+      supportStatusKey: string;
+      visibility: string;
+    }>;
+    title: string;
+  }>;
+  supportStatusRuntimeItems: AdminSupportControl["supportStatusRuntimeGroups"][number]["items"];
+  visibleSupportStatusRuntime: AdminSupportControl["supportStatusRuntime"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17459,6 +17509,9 @@ export async function getAdminSupportControl(options?: {
   const exportAuthorization = resolveSupportExportAuthorization({
     role: access.role
   });
+  const supportStatusAuthorization = resolveSupportStatusAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17694,6 +17747,146 @@ export async function getAdminSupportControl(options?: {
       restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount
     })
   );
+  const supportStatusLoad = mapSupportStatusRuntimeToAdminFields(
+    buildSupportStatusRuntimeReadOnlySafe({
+      analyticsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportAnalyticsLoad.supportAnalyticsRuntime.loadingState,
+        recordCount: supportAnalyticsLoad.supportAnalyticsRuntime.visibleRecordCount,
+        status: supportAnalyticsLoad.supportAnalyticsRuntime.status,
+        summary: supportAnalyticsLoad.supportAnalyticsRuntime.summary,
+        unauthorized: supportAnalyticsLoad.supportAnalyticsRuntime.status === "unauthorized"
+      }),
+      auditRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportAuditLoad.supportAuditRuntime.loadingState,
+        loadError: supportAuditLoad.supportAuditRuntime.loadError,
+        recordCount: supportAuditLoad.supportAuditRuntime.visibleRecordCount,
+        status: supportAuditLoad.supportAuditRuntime.status,
+        summary: supportAuditLoad.supportAuditRuntime.summary,
+        unauthorized: supportAuditLoad.supportAuditRuntime.status === "unauthorized"
+      }),
+      authorization: supportStatusAuthorization,
+      exportRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportExportLoad.supportExportRuntime.loadingState,
+        loadError: supportExportLoad.supportExportRuntime.loadError,
+        recordCount: supportExportLoad.supportExportRuntime.visibleRecordCount,
+        status: supportExportLoad.supportExportRuntime.status,
+        summary: supportExportLoad.supportExportRuntime.summary,
+        unauthorized: supportExportLoad.supportExportRuntime.status === "unauthorized"
+      }),
+      filtersRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportFiltersLoad.supportFiltersRuntime.loadingState,
+        recordCount: supportFiltersLoad.supportFiltersRuntime.appliedFilterCount,
+        status: supportFiltersLoad.supportFiltersRuntime.status,
+        summary: supportFiltersLoad.supportFiltersRuntime.summary,
+        unauthorized: supportFiltersLoad.supportFiltersRuntime.status === "unauthorized"
+      }),
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportVisibilityLoad.visibleSupportMetricsRuntime.loadingState,
+        loadError: supportVisibilityLoad.visibleSupportMetricsRuntime.loadError,
+        recordCount: supportVisibilityLoad.visibleSupportMetricsRuntime.totalTickets,
+        status: supportVisibilityLoad.visibleSupportMetricsRuntime.status,
+        summary: supportVisibilityLoad.visibleSupportMetricsRuntime.summary,
+        unauthorized: supportVisibilityLoad.visibleSupportMetricsRuntime.status === "unauthorized"
+      }),
+      monitoringEventsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: monitoringEventsLoad.monitoringEventsRuntime.loadingState,
+        loadError: monitoringEventsLoad.monitoringEventsRuntime.loadError,
+        recordCount: monitoringEventsLoad.monitoringEventsRuntime.totalEvents,
+        status: monitoringEventsLoad.monitoringEventsRuntime.status,
+        summary: monitoringEventsLoad.monitoringEventsRuntime.summary,
+        unauthorized: monitoringEventsLoad.monitoringEventsRuntime.status === "unauthorized"
+      }),
+      notificationsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportNotificationsLoad.supportNotificationsRuntime.loadingState,
+        loadError: supportNotificationsLoad.supportNotificationsRuntime.loadError,
+        recordCount: supportNotificationsLoad.supportNotificationsRuntime.visibleRecordCount,
+        status: supportNotificationsLoad.supportNotificationsRuntime.status,
+        summary: supportNotificationsLoad.supportNotificationsRuntime.summary,
+        unauthorized: supportNotificationsLoad.supportNotificationsRuntime.status === "unauthorized"
+      }),
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount,
+      reviewRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportReviewLoad.supportReviewRuntime.loadingState,
+        loadError: supportReviewLoad.supportReviewRuntime.loadError,
+        recordCount: supportReviewLoad.supportReviewRuntime.visibleReviewCount,
+        status: supportReviewLoad.supportReviewRuntime.status,
+        summary: supportReviewLoad.supportReviewRuntime.summary,
+        unauthorized: supportReviewLoad.supportReviewRuntime.status === "unauthorized"
+      }),
+      safeActionsRuntime: toSupportStatusRuntimeSnapshot({
+        loadError: supportSafeActionsLoad.supportSafeActionsRuntime.loadError,
+        recordCount: supportSafeActionsLoad.supportSafeActionsRuntime.enabledActionCount,
+        status: supportSafeActionsLoad.supportSafeActionsRuntime.status,
+        summary: supportSafeActionsLoad.supportSafeActionsRuntime.summary
+      }),
+      searchRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: supportSearchLoad.supportSearchRuntime.loadingState,
+        loadError: supportSearchLoad.supportSearchRuntime.loadError,
+        recordCount: supportSearchLoad.supportSearchRuntime.matchedResultCount,
+        status: supportSearchLoad.supportSearchRuntime.status,
+        summary: supportSearchLoad.supportSearchRuntime.summary,
+        unauthorized: supportSearchLoad.supportSearchRuntime.status === "unauthorized"
+      }),
+      ticketAssignmentRuntime: toSupportStatusRuntimeSnapshot({
+        loadError: assignmentLoad.ticketAssignmentRuntime.loadError,
+        recordCount: assignmentLoad.ticketAssignmentRuntime.eligibleAgentCount,
+        status: assignmentLoad.ticketAssignmentRuntime.status,
+        summary: assignmentLoad.ticketAssignmentRuntime.summary
+      }),
+      ticketConversationRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: ticketConversationLoad.ticketConversationRuntime.loadingState,
+        loadError: ticketConversationLoad.ticketConversationRuntime.loadError,
+        recordCount: ticketConversationLoad.ticketConversationRuntime.messageCount,
+        status: ticketConversationLoad.ticketConversationRuntime.status,
+        summary: ticketConversationLoad.ticketConversationRuntime.summary
+      }),
+      ticketDetailsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: ticketDetailsLoad.ticketDetailsRuntime.loadingState,
+        loadError: ticketDetailsLoad.ticketDetailsRuntime.loadError,
+        recordCount: ticketDetailsLoad.ticketDetail ? 1 : 0,
+        status: ticketDetailsLoad.ticketDetailsRuntime.status,
+        summary: ticketDetailsLoad.ticketDetailsRuntime.summary
+      }),
+      ticketStatusRuntime: toSupportStatusRuntimeSnapshot({
+        loadError: ticketStatusLoad.ticketStatusRuntime.loadError,
+        recordCount: ticketStatusLoad.selectedTicketStatus ? 1 : 0,
+        status: ticketStatusLoad.ticketStatusRuntime.status,
+        summary: ticketStatusLoad.ticketStatusRuntime.summary
+      }),
+      ticketsRuntime: toSupportStatusRuntimeSnapshot({
+        loadError: ticketsRuntimeLoad.ticketsRuntime.loadError,
+        recordCount: ticketsRuntimeLoad.ticketsRuntime.totalTickets,
+        status: ticketsRuntimeLoad.ticketsRuntime.status,
+        summary: ticketsRuntimeLoad.ticketsRuntime.summary
+      }),
+      visibilityAuthorization,
+      visibilityRuntime: toSupportStatusRuntimeSnapshot({
+        loadError: supportVisibilityLoad.supportVisibilityRuntime.loadError,
+        recordCount: supportVisibilityLoad.supportVisibilityRuntime.visibleRecordCount,
+        status: supportVisibilityLoad.supportVisibilityRuntime.status,
+        summary: supportVisibilityLoad.supportVisibilityRuntime.summary,
+        unauthorized: supportVisibilityLoad.supportVisibilityRuntime.status === "unauthorized"
+      }),
+      errorEventsRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: errorEventsLoad.errorEventsRuntime.loadingState,
+        loadError: errorEventsLoad.errorEventsRuntime.loadError,
+        recordCount: errorEventsLoad.errorEventsRuntime.totalEvents,
+        status: errorEventsLoad.errorEventsRuntime.status,
+        summary: errorEventsLoad.errorEventsRuntime.summary,
+        unauthorized: errorEventsLoad.errorEventsRuntime.status === "unauthorized"
+      }),
+      eventTimelineRuntime: toSupportStatusRuntimeSnapshot({
+        loadingState: eventTimelineLoad.eventTimelineRuntime.loadingState,
+        loadError: eventTimelineLoad.eventTimelineRuntime.loadError,
+        recordCount: eventTimelineLoad.eventTimelineRuntime.totalItems,
+        status: eventTimelineLoad.eventTimelineRuntime.status,
+        summary: eventTimelineLoad.eventTimelineRuntime.summary,
+        unauthorized: eventTimelineLoad.eventTimelineRuntime.status === "unauthorized"
+      })
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17774,6 +17967,10 @@ export async function getAdminSupportControl(options?: {
       visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
       supportExportRuntime: supportExportLoad.supportExportRuntime,
       visibleSupportExportRuntime: supportExportLoad.supportExportRuntime,
+      supportStatusRuntime: supportStatusLoad.supportStatusRuntime,
+      supportStatusRuntimeGroups: supportStatusLoad.supportStatusRuntimeGroups,
+      supportStatusRuntimeItems: supportStatusLoad.supportStatusRuntimeItems,
+      visibleSupportStatusRuntime: supportStatusLoad.supportStatusRuntime,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17873,6 +18070,10 @@ export async function getAdminSupportControl(options?: {
     visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
     supportExportRuntime: supportExportLoad.supportExportRuntime,
     visibleSupportExportRuntime: supportExportLoad.supportExportRuntime,
+    supportStatusRuntime: supportStatusLoad.supportStatusRuntime,
+    supportStatusRuntimeGroups: supportStatusLoad.supportStatusRuntimeGroups,
+    supportStatusRuntimeItems: supportStatusLoad.supportStatusRuntimeItems,
+    visibleSupportStatusRuntime: supportStatusLoad.supportStatusRuntime,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

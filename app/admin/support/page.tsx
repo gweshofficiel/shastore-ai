@@ -91,6 +91,10 @@ import {
   supportExportRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-export-runtime";
 import {
+  supportModuleOperationalStatusBadgeTone,
+  supportStatusRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-status-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -2795,6 +2799,80 @@ export default async function AdminSupportPage({
           ))}
         </AdminTable>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-21 Support Status</span>
+        <AdminBadge tone={supportStatusRuntimeStatusBadgeTone(control.visibleSupportStatusRuntime.status)}>
+          {control.visibleSupportStatusRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportStatusRuntime.summary}</span>
+      </div>
+
+      {control.visibleSupportStatusRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportStatusRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStatusRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportStatusRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStatusRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportStatusRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportStatusRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportStatusRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Modules tracked", value: String(control.visibleSupportStatusRuntime.totalModules) },
+          { label: "Ready", value: String(control.visibleSupportStatusRuntime.readyModules) },
+          { label: "Needs review", value: String(control.visibleSupportStatusRuntime.needsReviewModules) },
+          { label: "Restricted", value: String(control.visibleSupportStatusRuntime.restrictedModules) },
+          { label: "Empty", value: String(control.visibleSupportStatusRuntime.emptyModules) },
+          { label: "Error", value: String(control.visibleSupportStatusRuntime.errorModules) },
+          { label: "Loading state", value: control.visibleSupportStatusRuntime.loadingState }
+        ]}
+      />
+
+      {control.supportStatusRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} module{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+          <AdminTable
+            empty="No Support status modules in this group."
+            headers={["Module", "Operational status", "Provider status", "Records", "Loading", "Summary"]}
+          >
+            {group.items.map((item) => (
+              <tr key={item.supportStatusKey}>
+                <td className="px-5 py-4 font-semibold text-slate-950">{item.moduleName}</td>
+                <td className="px-5 py-4">
+                  <AdminBadge tone={supportModuleOperationalStatusBadgeTone(item.operationalStatus)}>
+                    {item.operationalStatusLabel}
+                  </AdminBadge>
+                </td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.providerStatus}</td>
+                <td className="px-5 py-4 text-slate-600">{item.recordCount ?? "n/a"}</td>
+                <td className="px-5 py-4 text-slate-600">{item.loadingState}</td>
+                <td className="px-5 py-4 text-slate-600">{item.safeSummary}</td>
+              </tr>
+            ))}
+          </AdminTable>
+        </div>
+      ))}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support registry</span>
