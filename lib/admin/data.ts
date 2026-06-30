@@ -443,6 +443,10 @@ import {
   resolveSupportAuditAuthorization
 } from "@/src/lib/support/support-audit-runtime";
 import {
+  buildSupportReviewRuntime,
+  mapSupportReviewRuntimeToAdminFields
+} from "@/src/lib/support/support-review-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8152,6 +8156,54 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportAuditRuntimeItems: AdminSupportControl["supportAuditRuntimeItems"];
+  supportReviewRuntime: {
+    blockedReviewCount: number;
+    clearReviewCount: number;
+    coverageModules: number;
+    emptyMessage: string | null;
+    groupCount: number;
+    hiddenReviewCount: number;
+    loadError: string | null;
+    loadingState: "empty" | "error" | "loaded" | "restricted" | "unauthorized";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    restrictedReviewCount: number;
+    reviewRequiredCount: number;
+    source: "support_review_runtime";
+    status: "load_error" | "review_empty" | "review_runtime_ready" | "needs_attention" | "unauthorized";
+    summary: string;
+    unauthorizedMessage: string | null;
+    visibleReviewCount: number;
+    warningReviewCount: number;
+  };
+  supportReviewRuntimeGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      detectedAt: string;
+      groupKey: string;
+      issueSummary: string;
+      recommendedManualAction: string | null;
+      recordId: string;
+      recordType: string;
+      registryKey: string;
+      reviewItemId: string;
+      reviewStatus: string;
+      riskLevel: string;
+      safeSummary: string;
+      visibilityState: string;
+    }>;
+    title: string;
+  }>;
+  supportReviewRuntimeItems: AdminSupportControl["supportReviewRuntimeGroups"][number]["items"];
+  supportReviewSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportReviewRuntimeItems: AdminSupportControl["supportReviewRuntimeGroups"][number]["items"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17407,6 +17459,34 @@ export async function getAdminSupportControl(options?: {
       visibleTickets: supportVisibilityLoad.visibleTickets
     })
   );
+  const supportReviewLoad = mapSupportReviewRuntimeToAdminFields(
+    buildSupportReviewRuntime({
+      auditItems: supportAuditLoad.supportAuditRuntimeItems,
+      auditRuntime: supportAuditLoad.supportAuditRuntime,
+      errorEventsRuntime: errorEventsLoad.errorEventsRuntime,
+      eventTimelineRuntime: eventTimelineLoad.eventTimelineRuntime,
+      filtersRuntime: supportFiltersLoad.supportFiltersRuntime,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+      monitoringEventsRuntime: monitoringEventsLoad.monitoringEventsRuntime,
+      role: access.role,
+      safeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
+      searchRuntime: supportSearchLoad.supportSearchRuntime,
+      selectedTicketId,
+      ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime,
+      ticketConversationRuntime: ticketConversationLoad.ticketConversationRuntime,
+      ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
+      ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
+      ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
+      visibilityAuthorization,
+      visibilityRuntime: supportVisibilityLoad.supportVisibilityRuntime,
+      visibilityRuntimeItems: supportVisibilityLoad.supportVisibilityRuntimeItems,
+      visibleAuditItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+      visibleErrorEvents: supportVisibilityLoad.visibleErrorEvents,
+      visibleMonitoringEvents: supportVisibilityLoad.visibleMonitoringEvents,
+      visibleTickets: supportVisibilityLoad.visibleTickets
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17472,6 +17552,11 @@ export async function getAdminSupportControl(options?: {
       supportAuditRuntimeItems: supportAuditLoad.supportAuditRuntimeItems,
       supportAuditSafeControls: supportAuditLoad.supportAuditSafeControls,
       visibleSupportAuditRuntimeItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+      supportReviewRuntime: supportReviewLoad.supportReviewRuntime,
+      supportReviewRuntimeGroups: supportReviewLoad.supportReviewRuntimeGroups,
+      supportReviewRuntimeItems: supportReviewLoad.supportReviewRuntimeItems,
+      supportReviewSafeControls: supportReviewLoad.supportReviewSafeControls,
+      visibleSupportReviewRuntimeItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17556,6 +17641,11 @@ export async function getAdminSupportControl(options?: {
     supportAuditRuntimeItems: supportAuditLoad.supportAuditRuntimeItems,
     supportAuditSafeControls: supportAuditLoad.supportAuditSafeControls,
     visibleSupportAuditRuntimeItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+    supportReviewRuntime: supportReviewLoad.supportReviewRuntime,
+    supportReviewRuntimeGroups: supportReviewLoad.supportReviewRuntimeGroups,
+    supportReviewRuntimeItems: supportReviewLoad.supportReviewRuntimeItems,
+    supportReviewSafeControls: supportReviewLoad.supportReviewSafeControls,
+    visibleSupportReviewRuntimeItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

@@ -68,6 +68,16 @@ import {
   supportAuditRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-audit-runtime";
 import {
+  supportReviewRecordTypeLabel,
+  supportReviewRiskBadgeTone,
+  supportReviewRuntimeStatusBadgeTone,
+  supportReviewStatusBadgeTone,
+  supportReviewStatusLabel,
+  type SupportReviewRecordType,
+  type SupportReviewRiskLevel,
+  type SupportReviewStatus
+} from "@/src/lib/support/support-review-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -1992,6 +2002,113 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportAuditSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-17 Support Review</span>
+        <AdminBadge tone={supportReviewRuntimeStatusBadgeTone(control.supportReviewRuntime.status)}>
+          {control.supportReviewRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone="blue">Super Admin only</AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportReviewRuntime.summary}</span>
+      </div>
+
+      {control.supportReviewRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.supportReviewRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportReviewRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportReviewRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportReviewRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportReviewRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportReviewRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportReviewRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Visible review items", value: String(control.supportReviewRuntime.visibleReviewCount) },
+          { label: "Review required", value: String(control.supportReviewRuntime.reviewRequiredCount) },
+          { label: "Warnings", value: String(control.supportReviewRuntime.warningReviewCount) },
+          { label: "Blocked", value: String(control.supportReviewRuntime.blockedReviewCount) },
+          { label: "Clear", value: String(control.supportReviewRuntime.clearReviewCount) },
+          { label: "Coverage modules", value: String(control.supportReviewRuntime.coverageModules) }
+        ]}
+      />
+
+      {control.supportReviewRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} item{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support review items are visible for the current scope. Review is read-only and never auto-fixes records."
+        headers={[
+          "Review ID",
+          "Record type",
+          "Record ID",
+          "Status",
+          "Risk",
+          "Issue",
+          "Manual action",
+          "Detected"
+        ]}
+      >
+        {control.visibleSupportReviewRuntimeItems.map((item) => (
+          <tr key={item.reviewItemId}>
+            <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.reviewItemId}</td>
+            <td className="px-5 py-4 font-semibold text-slate-950">
+              {supportReviewRecordTypeLabel(item.recordType as SupportReviewRecordType)}
+            </td>
+            <td className="px-5 py-4 font-mono text-xs text-slate-600">{item.recordId}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportReviewStatusBadgeTone(item.reviewStatus as SupportReviewStatus)}>
+                {supportReviewStatusLabel(item.reviewStatus as SupportReviewStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportReviewRiskBadgeTone(item.riskLevel as SupportReviewRiskLevel)}>
+                {item.riskLevel}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.issueSummary}</td>
+            <td className="px-5 py-4 text-slate-600">{item.recommendedManualAction ?? "None"}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.detectedAt)}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled review controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportReviewSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
