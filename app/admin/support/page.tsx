@@ -102,6 +102,12 @@ import {
   type SupportDataCertificationIntegrityStatus
 } from "@/src/lib/support/support-data-certification-runtime";
 import {
+  supportSecurityCertificationRuntimeStatusBadgeTone,
+  supportSecurityCertificationStatusLabel,
+  supportSecurityCertificationStatusTone,
+  type SupportSecurityCertificationStatus
+} from "@/src/lib/support/support-security-certification-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -2992,6 +2998,154 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportDataCertificationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-23 Support Security Certification</span>
+        <AdminBadge tone={supportSecurityCertificationRuntimeStatusBadgeTone(control.visibleSupportSecurityCertification.overallStatus)}>
+          {control.visibleSupportSecurityCertification.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportSecurityCertification.summary}</span>
+      </div>
+
+      {control.visibleSupportSecurityCertification.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportSecurityCertification.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportSecurityCertification.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportSecurityCertification.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportSecurityCertification.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportSecurityCertification.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportSecurityCertification.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportSecurityCertification.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Security scopes", value: String(control.visibleSupportSecurityCertification.totalCertifications) },
+          { label: "Certified", value: String(control.visibleSupportSecurityCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.visibleSupportSecurityCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportSecurityCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportSecurityCertification.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportSecurityCertification.loadingState }
+        ]}
+      />
+
+      {control.supportSecurityCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} scope{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support security certification scopes registered."
+        headers={[
+          "Certification",
+          "Scope",
+          "Super Admin",
+          "Read only",
+          "Mutation",
+          "Execution",
+          "Secrets",
+          "Private data",
+          "RLS",
+          "Visibility",
+          "Actions",
+          "Summary"
+        ]}
+      >
+        {control.supportSecurityCertificationItems.map((securityItem) => (
+          <tr key={securityItem.securityCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{securityItem.certificationName}</span>
+                <span className="text-xs text-slate-500">
+                  Certified modules: {securityItem.certifiedModules} · Blocked: {securityItem.blockedModules} · Warnings:{" "}
+                  {securityItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{securityItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.superAdminOnlyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.superAdminOnlyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.readOnlyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.readOnlyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.mutationSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.mutationSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.executionSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.executionSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.secretSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.secretSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.privateDataSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.privateDataSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.rlsSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.rlsSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.visibilitySafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.visibilitySafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportSecurityCertificationStatusTone(securityItem.actionSafetyStatus as SupportSecurityCertificationStatus)}>
+                {supportSecurityCertificationStatusLabel(securityItem.actionSafetyStatus as SupportSecurityCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{securityItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled security certification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportSecurityCertificationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
