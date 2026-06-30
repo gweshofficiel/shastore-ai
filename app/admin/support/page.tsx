@@ -64,6 +64,10 @@ import {
   type SupportSafeActionResultCode
 } from "@/src/lib/support/support-safe-actions-runtime";
 import {
+  supportAuditResultStatusBadgeTone,
+  supportAuditRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-audit-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -1880,6 +1884,120 @@ export default async function AdminSupportPage({
               {entry.serverActionImplemented ? "Implemented" : "Reserved"}
             </td>
             <td className="px-5 py-4 text-slate-600">{entry.description}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-16 Support Audit</span>
+        <AdminBadge tone={supportAuditRuntimeStatusBadgeTone(control.supportAuditRuntime.status)}>
+          {control.supportAuditRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone="blue">Super Admin only</AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportAuditRuntime.summary}</span>
+      </div>
+
+      {control.supportAuditRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.supportAuditRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportAuditRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportAuditRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportAuditRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportAuditRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportAuditRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportAuditRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Visible audit records", value: String(control.supportAuditRuntime.visibleRecordCount) },
+          { label: "Restricted records", value: String(control.supportAuditRuntime.restrictedRecordCount) },
+          { label: "Hidden records", value: String(control.supportAuditRuntime.hiddenRecordCount) },
+          { label: "Loading state", value: control.supportAuditRuntime.loadingState },
+          {
+            label: "Monitoring table",
+            value: control.supportAuditRuntime.tableDetected ? "detected" : "missing"
+          }
+        ]}
+      />
+
+      {control.supportAuditRuntime.actionTypeCounts.length ? (
+        <AdminTable empty="No audit action counts available." headers={["Action type", "Count"]}>
+          {control.supportAuditRuntime.actionTypeCounts.map((item) => (
+            <tr key={item.actionType}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      ) : null}
+
+      {control.supportAuditRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} record{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support audit records are visible for the current scope. Audit entries appear after explicit authorized actions."
+        headers={[
+          "Audit ID",
+          "Action",
+          "Target type",
+          "Target ID",
+          "Actor",
+          "Role",
+          "Result",
+          "Created",
+          "Metadata"
+        ]}
+      >
+        {control.visibleSupportAuditRuntimeItems.map((item) => (
+          <tr key={item.auditItemKey}>
+            <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.auditId}</td>
+            <td className="px-5 py-4 font-semibold text-slate-950">{item.actionTypeLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{item.targetRecordType}</td>
+            <td className="px-5 py-4 font-mono text-xs text-slate-600">{item.targetRecordId}</td>
+            <td className="px-5 py-4 text-slate-600">{item.actorReference}</td>
+            <td className="px-5 py-4 text-slate-600">{item.actorRole}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportAuditResultStatusBadgeTone(item.resultStatus)}>{item.resultStatus}</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{item.metadataSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled audit controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportAuditSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
           </tr>
         ))}
       </AdminTable>
