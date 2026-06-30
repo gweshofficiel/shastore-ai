@@ -434,6 +434,10 @@ import {
   resolveSupportVisibilityAuthorization
 } from "@/src/lib/support/support-visibility-runtime";
 import {
+  buildSupportSafeActionsRuntime,
+  mapSupportSafeActionsRuntimeToAdminFields
+} from "@/src/lib/support/support-safe-actions-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8030,6 +8034,50 @@ export type AdminSupportControl = {
   visibleSupportMetricsRuntime: AdminSupportControl["supportMetricsRuntime"];
   visibleTicketDetail: AdminSupportControl["ticketDetail"];
   visibleTicketConversationMessages: AdminSupportControl["ticketConversationMessages"];
+  supportSafeActionsRuntime: {
+    actionsByKey: Record<
+      string,
+      {
+        actionKey: string;
+        availability: string;
+        badgeTone: string;
+        confirmationPrompt: string | null;
+        description: string;
+        readOnly: true;
+        requiresConfirmation: boolean;
+        resultQueryParam: string;
+        serverActionImplemented: boolean;
+        superAdminOnly: true;
+        title: string;
+      }
+    >;
+    countsByAvailability: Record<string, number>;
+    emptyMessage: string | null;
+    enabledActionCount: number;
+    entries: Array<{
+      actionKey: string;
+      availability: string;
+      badgeTone: string;
+      confirmationPrompt: string | null;
+      description: string;
+      readOnly: true;
+      requiresConfirmation: boolean;
+      resultQueryParam: string;
+      serverActionImplemented: boolean;
+      superAdminOnly: true;
+      title: string;
+    }>;
+    loadError: string | null;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    selectedTicketId: string | null;
+    source: "support_safe_actions_runtime";
+    status: "needs_attention" | "ready" | "unavailable";
+    summary: string;
+    superAdminOnly: true;
+    totalActionCount: number;
+    unauthorizedMessage: string | null;
+  };
 };
 
 export type AdminInternalTeamControl = {
@@ -17255,6 +17303,23 @@ export async function getAdminSupportControl(options?: {
       tickets: supportFiltersLoad.filteredTickets
     })
   );
+  const supportSafeActionsLoad = mapSupportSafeActionsRuntimeToAdminFields(
+    buildSupportSafeActionsRuntime({
+      assignmentRuntime: assignmentLoad.ticketAssignmentRuntime,
+      conversationRuntime: ticketConversationLoad.ticketConversationRuntime,
+      eligibleAgentCount: assignmentLoad.ticketAssignmentRuntime.eligibleAgentCount,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      role: access.role,
+      selectedTicketAssignment: assignmentLoad.selectedTicketAssignment,
+      selectedTicketId,
+      selectedTicketStatus: ticketStatusLoad.selectedTicketStatus,
+      ticketDetail: ticketDetailsLoad.ticketDetail,
+      ticketsTableDetected: ticketsRuntimeLoad.ticketsRuntime.tableDetected,
+      visibleTicketDetail: supportVisibilityLoad.visibleTicketDetail,
+      visibleTickets: supportVisibilityLoad.visibleTickets,
+      visibilityRuntime: supportVisibilityLoad.supportVisibilityRuntime
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17314,6 +17379,7 @@ export async function getAdminSupportControl(options?: {
       visibleSupportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
       visibleTicketDetail: supportVisibilityLoad.visibleTicketDetail,
       visibleTicketConversationMessages: supportVisibilityLoad.visibleTicketConversationMessages,
+      supportSafeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17392,6 +17458,7 @@ export async function getAdminSupportControl(options?: {
     visibleSupportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
     visibleTicketDetail: supportVisibilityLoad.visibleTicketDetail,
     visibleTicketConversationMessages: supportVisibilityLoad.visibleTicketConversationMessages,
+    supportSafeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

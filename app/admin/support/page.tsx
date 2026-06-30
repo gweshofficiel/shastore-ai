@@ -56,6 +56,14 @@ import {
   supportVisibilityStateBadgeTone
 } from "@/src/lib/support/support-visibility-runtime";
 import {
+  supportSafeActionAvailabilityLabel,
+  supportSafeActionResultBadgeTone,
+  supportSafeActionResultMessage,
+  supportSafeActionsRuntimeStatusBadgeTone,
+  type SupportSafeActionAvailability,
+  type SupportSafeActionResultCode
+} from "@/src/lib/support/support-safe-actions-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -111,6 +119,26 @@ function toneForStatusTransitionResult(result: string) {
   }
 
   return "slate" as const;
+}
+
+function toneForSafeActionAvailability(availability: string) {
+  if (availability === "enabled") {
+    return "green" as const;
+  }
+
+  if (availability === "restricted" || availability === "validation_blocked") {
+    return "amber" as const;
+  }
+
+  if (availability === "unauthorized") {
+    return "red" as const;
+  }
+
+  return "slate" as const;
+}
+
+function toneForSafeActionResult(result: string) {
+  return supportSafeActionResultBadgeTone(result as SupportSafeActionResultCode);
 }
 
 function toneForRegistryStatus(status: string) {
@@ -364,6 +392,8 @@ export default async function AdminSupportPage({
     from?: string;
     priority?: string;
     q?: string;
+    safeAction?: string;
+    safeActionResult?: string;
     status?: string;
     statusResult?: string;
     store?: string;
@@ -378,6 +408,8 @@ export default async function AdminSupportPage({
   const statusResult = query.statusResult?.trim() || null;
   const assignmentResult = query.assignmentResult?.trim() || null;
   const conversationResult = query.conversationResult?.trim() || null;
+  const safeActionResult = query.safeActionResult?.trim() || null;
+  const safeAction = query.safeAction?.trim() || null;
   const control = await getAdminSupportControl({
     filterQuery: query,
     searchQuery: query.q ?? null,
@@ -444,6 +476,31 @@ export default async function AdminSupportPage({
             <AdminBadge tone={toneForConversationTransitionResult(conversationResult)}>{conversationResult}</AdminBadge>
             <p className="text-sm font-semibold text-slate-800">
               {supportTicketConversationResultMessage(conversationResult as SupportTicketConversationResultCode)}
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {safeActionResult ? (
+        <Card
+          className={
+            safeActionResult === "success" || safeActionResult === "unchanged"
+              ? "border-emerald-200 bg-emerald-50 p-5"
+              : safeActionResult === "unauthorized" ||
+                  safeActionResult === "error" ||
+                  safeActionResult === "not_found" ||
+                  safeActionResult === "restricted"
+                ? "border-red-200 bg-red-50 p-5"
+                : "border-amber-200 bg-amber-50 p-5"
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <AdminBadge tone={toneForSafeActionResult(safeActionResult)}>{safeActionResult}</AdminBadge>
+            {safeAction ? (
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{safeAction}</span>
+            ) : null}
+            <p className="text-sm font-semibold text-slate-800">
+              {supportSafeActionResultMessage(safeActionResult as SupportSafeActionResultCode)}
             </p>
           </div>
         </Card>
@@ -802,7 +859,8 @@ export default async function AdminSupportPage({
               </div>
             ) : null}
 
-            {control.ticketConversationRuntime.canCreateMessage ? (
+            {control.ticketConversationRuntime.canCreateMessage &&
+            control.supportSafeActionsRuntime.actionsByKey.add_conversation_message?.availability === "enabled" ? (
               <form action={createPlatformSupportTicketConversationMessageAction} className="grid gap-3">
                 <input name="ticketId" type="hidden" value={control.visibleTicketDetail.ticketId} />
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -937,30 +995,40 @@ export default async function AdminSupportPage({
 
           <p className="text-sm text-slate-600">{control.selectedTicketStatus.transitionNote}</p>
 
-          {control.selectedTicketStatus.canMutateStatus && control.selectedTicketStatus.allowedTransitions.length ? (
-            <form action={updatePlatformSupportTicketStatusAction} className="flex flex-wrap items-end gap-3">
+          {control.selectedTicketStatus.canMutateStatus &&
+          control.selectedTicketStatus.allowedTransitions.length &&
+          control.supportSafeActionsRuntime.actionsByKey.update_ticket_status?.availability === "enabled" ? (
+            <form action={updatePlatformSupportTicketStatusAction} className="grid gap-3">
               <input name="ticketId" type="hidden" value={control.selectedTicketStatus.ticketId} />
-              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                Transition to
-                <select
-                  className="h-10 min-w-48 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
-                  defaultValue={control.selectedTicketStatus.allowedTransitions[0]}
-                  name="status"
-                  required
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                  Transition to
+                  <select
+                    className="h-10 min-w-48 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+                    defaultValue={control.selectedTicketStatus.allowedTransitions[0]}
+                    name="status"
+                    required
+                  >
+                    {control.selectedTicketStatus.allowedTransitions.map((status) => (
+                      <option key={status} value={status}>
+                        {supportTicketCanonicalStatusLabel(status as SupportTicketCanonicalStatus)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                  type="submit"
                 >
-                  {control.selectedTicketStatus.allowedTransitions.map((status) => (
-                    <option key={status} value={status}>
-                      {supportTicketCanonicalStatusLabel(status as SupportTicketCanonicalStatus)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                type="submit"
-              >
-                Update status
-              </button>
+                  Update status
+                </button>
+              </div>
+              {control.supportSafeActionsRuntime.actionsByKey.update_ticket_status?.requiresConfirmation ? (
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  <input name="confirmAction" required type="checkbox" value="true" />
+                  Confirm this status transition through the SP-15 safe action layer.
+                </label>
+              ) : null}
             </form>
           ) : (
             <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -1042,46 +1110,63 @@ export default async function AdminSupportPage({
 
           <p className="text-sm text-slate-600">{control.selectedTicketAssignment.transitionNote}</p>
 
-          {control.selectedTicketAssignment.canMutateAssignment && control.eligibleSupportAgents.length ? (
+          {control.selectedTicketAssignment.canMutateAssignment &&
+          control.eligibleSupportAgents.length &&
+          control.supportSafeActionsRuntime.actionsByKey.assign_ticket?.availability === "enabled" ? (
             <div className="grid gap-4 lg:grid-cols-2">
-              <form action={updatePlatformSupportTicketAssignmentAction} className="flex flex-wrap items-end gap-3">
+              <form action={updatePlatformSupportTicketAssignmentAction} className="grid gap-3">
                 <input name="ticketId" type="hidden" value={control.selectedTicketAssignment.ticketId} />
-                <label className="grid flex-1 gap-1 text-xs font-semibold text-slate-600">
-                  Assign to agent
-                  <select
-                    className="h-10 min-w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
-                    defaultValue={control.selectedTicketAssignment.assignedAgentId ?? ""}
-                    name="assignedUserId"
-                    required
-                  >
-                    <option disabled value="">
-                      Select support agent
-                    </option>
-                    {control.eligibleSupportAgents.map((agent) => (
-                      <option key={agent.agentKey} value={agent.userId}>
-                        {agent.displayName} ({agent.role})
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="grid flex-1 gap-1 text-xs font-semibold text-slate-600">
+                    Assign to agent
+                    <select
+                      className="h-10 min-w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+                      defaultValue={control.selectedTicketAssignment.assignedAgentId ?? ""}
+                      name="assignedUserId"
+                      required
+                    >
+                      <option disabled value="">
+                        Select support agent
                       </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
-                  type="submit"
-                >
-                  Assign ticket
-                </button>
+                      {control.eligibleSupportAgents.map((agent) => (
+                        <option key={agent.agentKey} value={agent.userId}>
+                          {agent.displayName} ({agent.role})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="h-10 rounded-full border border-blue-200 bg-blue-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700"
+                    type="submit"
+                  >
+                    Assign ticket
+                  </button>
+                </div>
+                {control.supportSafeActionsRuntime.actionsByKey.assign_ticket?.requiresConfirmation ? (
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <input name="confirmAction" required type="checkbox" value="true" />
+                    Confirm ticket assignment through the SP-15 safe action layer.
+                  </label>
+                ) : null}
               </form>
 
-              {control.selectedTicketAssignment.assignedAgentId ? (
-                <form action={updatePlatformSupportTicketAssignmentAction} className="flex items-end gap-3">
+              {control.selectedTicketAssignment.assignedAgentId &&
+              control.supportSafeActionsRuntime.actionsByKey.unassign_ticket?.availability === "enabled" ? (
+                <form action={updatePlatformSupportTicketAssignmentAction} className="grid gap-3">
                   <input name="ticketId" type="hidden" value={control.selectedTicketAssignment.ticketId} />
                   <input name="unassign" type="hidden" value="true" />
                   <button
-                    className="h-10 rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-800"
+                    className="h-10 w-fit rounded-full border border-amber-200 bg-amber-50 px-4 text-xs font-black uppercase tracking-[0.14em] text-amber-800"
                     type="submit"
                   >
                     Unassign ticket
                   </button>
+                  {control.supportSafeActionsRuntime.actionsByKey.unassign_ticket?.requiresConfirmation ? (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                      <input name="confirmAction" required type="checkbox" value="true" />
+                      Confirm ticket unassignment through the SP-15 safe action layer.
+                    </label>
+                  ) : null}
                 </form>
               ) : null}
             </div>
@@ -1734,6 +1819,67 @@ export default async function AdminSupportPage({
             <td className="px-5 py-4 text-slate-600">{item.restrictedRecordCount}</td>
             <td className="px-5 py-4 text-slate-500">{item.permissionScope}</td>
             <td className="px-5 py-4 text-slate-600">{item.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-15 Safe Actions</span>
+        <AdminBadge tone={supportSafeActionsRuntimeStatusBadgeTone(control.supportSafeActionsRuntime.status)}>
+          {control.supportSafeActionsRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone="blue">Super Admin only</AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportSafeActionsRuntime.summary}</span>
+      </div>
+
+      {control.supportSafeActionsRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.supportSafeActionsRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportSafeActionsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportSafeActionsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportSafeActionsRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportSafeActionsRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Enabled actions", value: String(control.supportSafeActionsRuntime.enabledActionCount) },
+          { label: "Total actions", value: String(control.supportSafeActionsRuntime.totalActionCount) },
+          {
+            label: "Selected ticket",
+            value: control.supportSafeActionsRuntime.selectedTicketId ?? "none"
+          }
+        ]}
+      />
+
+      <AdminTable
+        empty="No Support safe actions are registered."
+        headers={["Action", "Availability", "Confirmation", "Server action", "Description"]}
+      >
+        {control.supportSafeActionsRuntime.entries.map((entry) => (
+          <tr key={entry.actionKey}>
+            <td className="px-5 py-4 font-bold text-slate-950">{entry.title}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={toneForSafeActionAvailability(entry.availability)}>
+                {supportSafeActionAvailabilityLabel(entry.availability as SupportSafeActionAvailability)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {entry.requiresConfirmation ? "Required" : "Not required"}
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {entry.serverActionImplemented ? "Implemented" : "Reserved"}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{entry.description}</td>
           </tr>
         ))}
       </AdminTable>

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/admin-access";
-import { internalTeamRoleCanMutate } from "@/lib/admin/internal-team-runtime";
 import { recordMonitoringEventSafe } from "@/lib/monitoring/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -14,86 +13,176 @@ import {
   type SupportTicketCanonicalStatus
 } from "@/src/lib/support/support-ticket-status-runtime";
 import { isEligibleSupportAssignmentAgent } from "@/src/lib/support/support-ticket-assignment-runtime";
+import {
+  cleanSafeActionText,
+  isSupportSafeActionConfirmed,
+  isValidSupportSafeActionUuid,
+  recordSupportSafeActionAttempt,
+  requiresSupportSafeActionConfirmation,
+  type SupportSafeActionKey,
+  type SupportSafeActionResultCode,
+  validateSupportConversationSafeActionPayload,
+  validateSupportSafeActionRequest,
+  validateSupportStatusSafeActionPayload,
+  validateSupportTicketExistsForSafeAction
+} from "@/src/lib/support/support-safe-actions-runtime";
 
 const supportAdminPath = "/admin/support";
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function cleanText(value: FormDataEntryValue | null, maxLength = 120) {
-  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
-}
-
-function redirectWithStatusResult(ticketId: string, result: string) {
+function redirectWithSafeActionResult(
+  actionKey: SupportSafeActionKey,
+  ticketId: string | null,
+  result: SupportSafeActionResultCode,
+  legacyParam: "assignmentResult" | "conversationResult" | "statusResult"
+): never {
   const params = new URLSearchParams();
-  params.set("ticket", ticketId);
-  params.set("statusResult", result);
+
+  if (ticketId) {
+    params.set("ticket", ticketId);
+  }
+
+  params.set("safeAction", actionKey);
+  params.set("safeActionResult", result);
+  params.set(legacyParam, result === "validation" ? "invalid" : result);
   redirect(`${supportAdminPath}?${params.toString()}`);
+  throw new Error("Support safe action redirect");
 }
 
-async function assertSupportTicketStatusMutationAccess() {
-  const access = await getAdminAccess();
+async function guardSupportSafeAction(
+  actionKey: SupportSafeActionKey,
+  formData: FormData,
+  ticketId: string | null,
+  legacyParam: "assignmentResult" | "conversationResult" | "statusResult",
+  options?: { nextStatus?: string | null; requireConfirmation?: boolean }
+): Promise<Awaited<ReturnType<typeof getAdminAccess>>> {
+  const validation = await validateSupportSafeActionRequest({
+    actionKey,
+    nextStatus: options?.nextStatus ?? null,
+    ticketId
+  });
 
-  if (access.role === "super_admin") {
-    return access;
+  if (!validation.ok) {
+    await recordSupportSafeActionAttempt({
+      access: validation.access,
+      actionKey,
+      entityId: ticketId ?? "unknown",
+      eventStatus: "failed",
+      resultCode: validation.code
+    }).catch(() => undefined);
+    redirectWithSafeActionResult(actionKey, ticketId, validation.code, legacyParam);
   }
 
-  if (access.role === "internal_team" && internalTeamRoleCanMutate(access.internalRole)) {
-    return access;
+  if (
+    options?.requireConfirmation &&
+    requiresSupportSafeActionConfirmation({ actionKey, nextStatus: options.nextStatus }) &&
+    !isSupportSafeActionConfirmed(formData)
+  ) {
+    await recordSupportSafeActionAttempt({
+      access: validation.access,
+      actionKey,
+      entityId: ticketId ?? "unknown",
+      eventStatus: "failed",
+      metadata: { reason: "confirmation_required" },
+      resultCode: "validation"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "validation", legacyParam);
   }
 
-  redirect(`${supportAdminPath}?statusResult=unauthorized`);
+  return validation.access;
 }
 
 export async function updatePlatformSupportTicketStatusAction(formData: FormData) {
-  const ticketId = cleanText(formData.get("ticketId"), 80);
-  const nextStatus = cleanText(formData.get("status"), 40);
+  const actionKey = "update_ticket_status" as const;
+  const ticketId = cleanSafeActionText(formData.get("ticketId"), 80);
+  const nextStatus = cleanSafeActionText(formData.get("status"), 40);
 
-  if (!ticketId || !uuidPattern.test(ticketId) || !isValidSupportTicketCanonicalStatus(nextStatus)) {
-    redirect(`${supportAdminPath}?statusResult=invalid`);
+  if (!ticketId || !isValidSupportSafeActionUuid(ticketId) || !isValidSupportTicketCanonicalStatus(nextStatus)) {
+    redirectWithSafeActionResult(actionKey, ticketId || null, "invalid", "statusResult");
   }
 
-  const access = await assertSupportTicketStatusMutationAccess();
-  const admin = createAdminClient();
+  const access = await guardSupportSafeAction(actionKey, formData, ticketId, "statusResult", {
+    nextStatus,
+    requireConfirmation: true
+  });
+  const adminClient = createAdminClient();
 
-  if (!admin) {
-    redirectWithStatusResult(ticketId, "error");
-    throw new Error("Admin client unavailable");
+  if (!adminClient) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "statusResult");
   }
 
-  const { data: ticket, error: ticketError } = await admin
-    .from("support_tickets" as never)
-    .select("id, workspace_id, store_id, user_id, ticket_number, status")
-    .eq("id", ticketId)
-    .maybeSingle();
+  const ticketLoad = await validateSupportTicketExistsForSafeAction(adminClient, ticketId);
 
-  if (ticketError) {
-    redirectWithStatusResult(ticketId, "error");
+  if (!ticketLoad.ok) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: ticketLoad.code
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, ticketLoad.code, "statusResult");
   }
 
-  if (!ticket) {
-    redirect(`${supportAdminPath}?statusResult=not_found`);
+  const ticketRow = ticketLoad.ticket;
+  const payloadError = validateSupportStatusSafeActionPayload({
+    nextStatus,
+    ticketStatus: String(ticketRow.status ?? "")
+  });
+
+  if (payloadError) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      metadata: { nextStatus },
+      resultCode: payloadError
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, payloadError, "statusResult");
   }
 
-  const ticketRow = ticket as Record<string, unknown>;
   const currentCanonical = normalizeStorageStatusToCanonical(String(ticketRow.status ?? ""));
   const targetCanonical = nextStatus as Exclude<SupportTicketCanonicalStatus, "unknown">;
-
-  if (!isAllowedSupportTicketTransition(currentCanonical, targetCanonical)) {
-    redirectWithStatusResult(ticketId, "invalid");
-  }
-
   const storageStatus = canonicalStatusToStorage(targetCanonical);
 
   if (String(ticketRow.status ?? "").toLowerCase() === storageStatus) {
-    redirectWithStatusResult(ticketId, "unchanged");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "success",
+      metadata: { nextStatus: targetCanonical, outcome: "unchanged" },
+      resultCode: "unchanged",
+      storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+      workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "unchanged", "statusResult");
   }
 
-  const { error: updateError } = await admin
+  const { error: updateError } = await adminClient
     .from("support_tickets" as never)
     .update({ status: storageStatus } as never)
     .eq("id", ticketId);
 
   if (updateError) {
-    redirectWithStatusResult(ticketId, "error");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      metadata: { nextStatus: targetCanonical },
+      resultCode: "error",
+      storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+      workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "statusResult");
   }
 
   await recordMonitoringEventSafe({
@@ -103,12 +192,12 @@ export async function updatePlatformSupportTicketStatusAction(formData: FormData
     eventType: "support_ticket_status_changed",
     metadata: {
       action: "support.ticket.status.update",
-      actorRole: access.role === "super_admin" ? "super_admin" : access.internalRole,
+      actorRole: "super_admin",
       canonicalStatus: targetCanonical,
       previousCanonicalStatus: currentCanonical,
       previousStorageStatus: String(ticketRow.status ?? ""),
       route: supportAdminPath,
-      source: "support_ticket_status_runtime",
+      source: "support_safe_actions_runtime",
       storageStatus,
       ticketNumber: String(ticketRow.ticket_number ?? ticketId)
     },
@@ -117,128 +206,124 @@ export async function updatePlatformSupportTicketStatusAction(formData: FormData
     workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
   });
 
+  await recordSupportSafeActionAttempt({
+    access,
+    actionKey,
+    entityId: ticketId,
+    eventStatus: "success",
+    metadata: { nextStatus: targetCanonical },
+    resultCode: "success",
+    storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+    workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+  });
+
   revalidatePath(supportAdminPath);
-  redirectWithStatusResult(ticketId, "success");
-}
-
-function redirectWithAssignmentResult(ticketId: string, result: string) {
-  const params = new URLSearchParams();
-  params.set("ticket", ticketId);
-  params.set("assignmentResult", result);
-  redirect(`${supportAdminPath}?${params.toString()}`);
-}
-
-async function assertSuperAdminAssignmentAccess() {
-  const access = await getAdminAccess();
-
-  if (access.role === "super_admin") {
-    return access;
-  }
-
-  redirect(`${supportAdminPath}?assignmentResult=unauthorized`);
-}
-
-async function loadEligibleAssignmentAgents(admin: NonNullable<ReturnType<typeof createAdminClient>>) {
-  const { data, error } = await admin
-    .from("internal_team_members" as never)
-    .select("user_id, email, display_name, role, status")
-    .in("role", ["support_agent", "admin"] as never)
-    .eq("status", "active" as never)
-    .limit(200);
-
-  if (error) {
-    return { agents: [], error: error.message };
-  }
-
-  const agents = (Array.isArray(data) ? data : [])
-    .map((row) => {
-      const record = row as Record<string, unknown>;
-      const userId = cleanText(record.user_id as string | null, 80);
-      const email = cleanText(record.email as string | null, 120).toLowerCase();
-      const role = cleanText(record.role as string | null, 40);
-      const status = cleanText(record.status as string | null, 40);
-
-      if (!userId || !email || status !== "active") {
-        return null;
-      }
-
-      if (role !== "support_agent" && role !== "admin") {
-        return null;
-      }
-
-      return {
-        displayName: cleanText(record.display_name as string | null, 120) || email,
-        email,
-        role,
-        userId
-      };
-    })
-    .filter((agent): agent is { displayName: string; email: string; role: string; userId: string } => agent !== null);
-
-  return { agents, error: null as string | null };
+  redirectWithSafeActionResult(actionKey, ticketId, "success", "statusResult");
 }
 
 export async function updatePlatformSupportTicketAssignmentAction(formData: FormData) {
-  const ticketId = cleanText(formData.get("ticketId"), 80);
-  const assignedUserId = cleanText(formData.get("assignedUserId"), 80);
-  const unassign = cleanText(formData.get("unassign"), 10) === "true";
+  const unassign = cleanSafeActionText(formData.get("unassign"), 10) === "true";
+  const actionKey: SupportSafeActionKey = unassign ? "unassign_ticket" : "assign_ticket";
+  const ticketId = cleanSafeActionText(formData.get("ticketId"), 80);
+  const assignedUserId = cleanSafeActionText(formData.get("assignedUserId"), 80);
 
-  if (!ticketId || !uuidPattern.test(ticketId)) {
-    redirect(`${supportAdminPath}?assignmentResult=invalid`);
+  if (!ticketId || !isValidSupportSafeActionUuid(ticketId)) {
+    redirectWithSafeActionResult(actionKey, ticketId || null, "invalid", "assignmentResult");
   }
 
-  if (!unassign && assignedUserId && !uuidPattern.test(assignedUserId)) {
-    redirectWithAssignmentResult(ticketId, "invalid");
+  if (!unassign && assignedUserId && !isValidSupportSafeActionUuid(assignedUserId)) {
+    redirectWithSafeActionResult(actionKey, ticketId, "invalid", "assignmentResult");
   }
 
-  const access = await assertSuperAdminAssignmentAccess();
-  const admin = createAdminClient();
+  const access = await guardSupportSafeAction(actionKey, formData, ticketId, "assignmentResult", {
+    requireConfirmation: true
+  });
+  const adminClient = createAdminClient();
 
-  if (!admin) {
-    redirectWithAssignmentResult(ticketId, "error");
-    throw new Error("Admin client unavailable");
+  if (!adminClient) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "assignmentResult");
   }
 
-  const agentLoad = await loadEligibleAssignmentAgents(admin);
+  const agentLoad = await loadEligibleAssignmentAgents(adminClient);
 
   if (agentLoad.error) {
-    redirectWithAssignmentResult(ticketId, "error");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "assignmentResult");
   }
 
   const nextAssignedUserId = unassign ? null : assignedUserId || null;
 
   if (nextAssignedUserId && !isEligibleSupportAssignmentAgent(agentLoad.agents, nextAssignedUserId)) {
-    redirectWithAssignmentResult(ticketId, "invalid");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      metadata: { assignedUserId: nextAssignedUserId },
+      resultCode: "invalid"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "invalid", "assignmentResult");
   }
 
-  const { data: ticket, error: ticketError } = await admin
-    .from("support_tickets" as never)
-    .select("id, workspace_id, store_id, user_id, ticket_number, assigned_user_id")
-    .eq("id", ticketId)
-    .maybeSingle();
+  const ticketLoad = await validateSupportTicketExistsForSafeAction(adminClient, ticketId);
 
-  if (ticketError) {
-    redirectWithAssignmentResult(ticketId, "error");
+  if (!ticketLoad.ok) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: ticketLoad.code
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, ticketLoad.code, "assignmentResult");
   }
 
-  if (!ticket) {
-    redirect(`${supportAdminPath}?assignmentResult=not_found`);
-  }
-
-  const ticketRow = ticket as Record<string, unknown>;
+  const ticketRow = ticketLoad.ticket;
   const previousAssignedUserId = ticketRow.assigned_user_id ? String(ticketRow.assigned_user_id) : null;
 
   if (previousAssignedUserId === nextAssignedUserId) {
-    redirectWithAssignmentResult(ticketId, "unchanged");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "success",
+      metadata: { outcome: "unchanged" },
+      resultCode: "unchanged",
+      storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+      workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "unchanged", "assignmentResult");
   }
 
-  const { error: updateError } = await admin
+  const { error: updateError } = await adminClient
     .from("support_tickets" as never)
     .update({ assigned_user_id: nextAssignedUserId } as never)
     .eq("id", ticketId);
 
   if (updateError) {
-    redirectWithAssignmentResult(ticketId, "error");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error",
+      storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+      workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "assignmentResult");
   }
 
   const assignedAgent = nextAssignedUserId
@@ -258,7 +343,7 @@ export async function updatePlatformSupportTicketAssignmentAction(formData: Form
       assignedUserId: nextAssignedUserId,
       previousAssignedUserId,
       route: supportAdminPath,
-      source: "support_ticket_assignment_runtime",
+      source: "support_safe_actions_runtime",
       ticketNumber: String(ticketRow.ticket_number ?? ticketId)
     },
     storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
@@ -266,68 +351,68 @@ export async function updatePlatformSupportTicketAssignmentAction(formData: Form
     workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
   });
 
+  await recordSupportSafeActionAttempt({
+    access,
+    actionKey,
+    entityId: ticketId,
+    eventStatus: "success",
+    metadata: { assignedUserId: nextAssignedUserId },
+    resultCode: "success",
+    storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+    workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+  });
+
   revalidatePath(supportAdminPath);
-  redirectWithAssignmentResult(ticketId, "success");
+  redirectWithSafeActionResult(actionKey, ticketId, "success", "assignmentResult");
 }
-
-function redirectWithConversationResult(ticketId: string, result: string) {
-  const params = new URLSearchParams();
-  params.set("ticket", ticketId);
-  params.set("conversationResult", result);
-  redirect(`${supportAdminPath}?${params.toString()}`);
-}
-
-async function assertSuperAdminConversationAccess() {
-  const access = await getAdminAccess();
-
-  if (access.role === "super_admin") {
-    return access;
-  }
-
-  redirect(`${supportAdminPath}?conversationResult=unauthorized`);
-}
-
-function cleanMessageBody(value: FormDataEntryValue | null) {
-  return typeof value === "string" ? value.trim().slice(0, 4000) : "";
-}
-
-const conversationVisibilitySet = new Set(["internal", "super_admin"]);
 
 export async function createPlatformSupportTicketConversationMessageAction(formData: FormData) {
-  const ticketId = cleanText(formData.get("ticketId"), 80);
-  const messageBody = cleanMessageBody(formData.get("messageBody"));
-  const visibility = cleanText(formData.get("visibility"), 40) || "internal";
+  const actionKey = "add_conversation_message" as const;
+  const ticketId = cleanSafeActionText(formData.get("ticketId"), 80);
+  const messageBody = cleanSafeActionText(formData.get("messageBody"), 4000);
+  const visibility = cleanSafeActionText(formData.get("visibility"), 40) || "internal";
 
-  if (!ticketId || !uuidPattern.test(ticketId) || !messageBody || !conversationVisibilitySet.has(visibility)) {
-    redirect(`${supportAdminPath}?conversationResult=invalid`);
+  if (!ticketId || !isValidSupportSafeActionUuid(ticketId)) {
+    redirectWithSafeActionResult(actionKey, ticketId || null, "invalid", "conversationResult");
   }
 
-  const access = await assertSuperAdminConversationAccess();
-  const admin = createAdminClient();
+  const payloadError = validateSupportConversationSafeActionPayload({ messageBody, visibility });
 
-  if (!admin) {
-    redirectWithConversationResult(ticketId, "error");
-    throw new Error("Admin client unavailable");
+  if (payloadError) {
+    redirectWithSafeActionResult(actionKey, ticketId, payloadError, "conversationResult");
   }
 
-  const { data: ticket, error: ticketError } = await admin
-    .from("support_tickets" as never)
-    .select("id, workspace_id, store_id, ticket_number")
-    .eq("id", ticketId)
-    .maybeSingle();
+  const access = await guardSupportSafeAction(actionKey, formData, ticketId, "conversationResult");
+  const adminClient = createAdminClient();
 
-  if (ticketError) {
-    redirectWithConversationResult(ticketId, "error");
+  if (!adminClient) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error"
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "conversationResult");
   }
 
-  if (!ticket) {
-    redirect(`${supportAdminPath}?conversationResult=not_found`);
+  const ticketLoad = await validateSupportTicketExistsForSafeAction(adminClient, ticketId);
+
+  if (!ticketLoad.ok) {
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: ticketLoad.code
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, ticketLoad.code, "conversationResult");
   }
 
-  const ticketRow = ticket as Record<string, unknown>;
-  const authorLabel = cleanText(access.user.email ?? null, 120) || "Super Admin";
+  const ticketRow = ticketLoad.ticket;
+  const authorLabel = cleanSafeActionText(access.user.email ?? null, 120) || "Super Admin";
 
-  const { error: insertError } = await admin.from("support_ticket_messages" as never).insert({
+  const { error: insertError } = await adminClient.from("support_ticket_messages" as never).insert({
     author_label: authorLabel,
     author_role: "super_admin",
     author_user_id: access.user.id,
@@ -340,10 +425,19 @@ export async function createPlatformSupportTicketConversationMessageAction(formD
   } as never);
 
   if (insertError) {
-    redirectWithConversationResult(ticketId, "error");
+    await recordSupportSafeActionAttempt({
+      access,
+      actionKey,
+      entityId: ticketId,
+      eventStatus: "failed",
+      resultCode: "error",
+      storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+      workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+    });
+    redirectWithSafeActionResult(actionKey, ticketId, "error", "conversationResult");
   }
 
-  await admin
+  await adminClient
     .from("support_tickets" as never)
     .update({ updated_at: new Date().toISOString() } as never)
     .eq("id", ticketId);
@@ -358,7 +452,7 @@ export async function createPlatformSupportTicketConversationMessageAction(formD
       actorRole: "super_admin",
       messageLength: messageBody.length,
       route: supportAdminPath,
-      source: "support_ticket_conversation_runtime",
+      source: "support_safe_actions_runtime",
       ticketNumber: String(ticketRow.ticket_number ?? ticketId),
       visibility
     },
@@ -367,6 +461,57 @@ export async function createPlatformSupportTicketConversationMessageAction(formD
     workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
   });
 
+  await recordSupportSafeActionAttempt({
+    access,
+    actionKey,
+    entityId: ticketId,
+    eventStatus: "success",
+    metadata: { messageLength: messageBody.length, visibility },
+    resultCode: "success",
+    storeId: ticketRow.store_id ? String(ticketRow.store_id) : null,
+    workspaceId: ticketRow.workspace_id ? String(ticketRow.workspace_id) : null
+  });
+
   revalidatePath(supportAdminPath);
-  redirectWithConversationResult(ticketId, "success");
+  redirectWithSafeActionResult(actionKey, ticketId, "success", "conversationResult");
+}
+
+async function loadEligibleAssignmentAgents(admin: NonNullable<ReturnType<typeof createAdminClient>>) {
+  const { data, error } = await admin
+    .from("internal_team_members" as never)
+    .select("user_id, email, display_name, role, status")
+    .in("role", ["support_agent", "admin"] as never)
+    .eq("status", "active" as never)
+    .limit(200);
+
+  if (error) {
+    return { agents: [], error: error.message };
+  }
+
+  const agents = (Array.isArray(data) ? data : [])
+    .map((row) => {
+      const record = row as Record<string, unknown>;
+      const userId = cleanSafeActionText(record.user_id as string | null, 80);
+      const email = cleanSafeActionText(record.email as string | null, 120).toLowerCase();
+      const role = cleanSafeActionText(record.role as string | null, 40);
+      const status = cleanSafeActionText(record.status as string | null, 40);
+
+      if (!userId || !email || status !== "active") {
+        return null;
+      }
+
+      if (role !== "support_agent" && role !== "admin") {
+        return null;
+      }
+
+      return {
+        displayName: cleanSafeActionText(record.display_name as string | null, 120) || email,
+        email,
+        role,
+        userId
+      };
+    })
+    .filter((agent): agent is { displayName: string; email: string; role: string; userId: string } => agent !== null);
+
+  return { agents, error: null as string | null };
 }
