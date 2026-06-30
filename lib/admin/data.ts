@@ -447,6 +447,11 @@ import {
   mapSupportReviewRuntimeToAdminFields
 } from "@/src/lib/support/support-review-runtime";
 import {
+  loadSupportNotificationsRuntimeReadOnlySafe,
+  mapSupportNotificationsRuntimeToAdminFields,
+  resolveSupportNotificationsAuthorization
+} from "@/src/lib/support/support-notifications-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8204,6 +8209,57 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportReviewRuntimeItems: AdminSupportControl["supportReviewRuntimeGroups"][number]["items"];
+  supportNotificationsRuntime: {
+    categoryCounts: Array<{ category: string; count: number; label: string }>;
+    certifiedDeliveryCount: number;
+    emptyMessage: string | null;
+    groupCount: number;
+    hiddenRecordCount: number;
+    loadError: string | null;
+    loadingState: "empty" | "error" | "loaded" | "restricted" | "unauthorized";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    restrictedRecordCount: number;
+    signalRecordCount: number;
+    source: "support_notifications_runtime";
+    status: "load_error" | "needs_attention" | "notifications_empty" | "notifications_runtime_ready" | "unauthorized";
+    summary: string;
+    unauthorizedMessage: string | null;
+    visibleRecordCount: number;
+  };
+  supportNotificationsRuntimeGroups: Array<{
+    category: string;
+    categoryLabel: string;
+    itemCount: number;
+    items: Array<{
+      category: string;
+      categoryLabel: string;
+      createdAt: string;
+      deliveryStatus: string;
+      deliveryStatusLabel: string;
+      notificationId: string;
+      notificationItemKey: string;
+      readStatus: string;
+      recordSource: string;
+      registryKey: string;
+      relatedTicketId: string | null;
+      relatedTicketNumber: string | null;
+      safeSummary: string;
+      severity: string;
+      targetResourceId: string;
+      targetResourceType: string;
+      visibilityState: string;
+    }>;
+  }>;
+  supportNotificationsRuntimeItems: AdminSupportControl["supportNotificationsRuntimeGroups"][number]["items"];
+  supportNotificationsSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportNotificationsRuntimeItems: AdminSupportControl["supportNotificationsRuntimeGroups"][number]["items"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17309,6 +17365,9 @@ export async function getAdminSupportControl(options?: {
   const auditAuthorization = resolveSupportAuditAuthorization({
     role: access.role
   });
+  const notificationsAuthorization = resolveSupportNotificationsAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17487,6 +17546,21 @@ export async function getAdminSupportControl(options?: {
       visibleTickets: supportVisibilityLoad.visibleTickets
     })
   );
+  const supportNotificationsLoad = mapSupportNotificationsRuntimeToAdminFields(
+    await loadSupportNotificationsRuntimeReadOnlySafe({
+      authorization: notificationsAuthorization,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      safeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
+      selectedTicketId,
+      supabase,
+      visibilityAuthorization,
+      visibleAuditItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+      visibleErrorEvents: supportVisibilityLoad.visibleErrorEvents,
+      visibleMonitoringEvents: supportVisibilityLoad.visibleMonitoringEvents,
+      visibleReviewItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
+      visibleTickets: supportVisibilityLoad.visibleTickets
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17557,6 +17631,11 @@ export async function getAdminSupportControl(options?: {
       supportReviewRuntimeItems: supportReviewLoad.supportReviewRuntimeItems,
       supportReviewSafeControls: supportReviewLoad.supportReviewSafeControls,
       visibleSupportReviewRuntimeItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
+      supportNotificationsRuntime: supportNotificationsLoad.supportNotificationsRuntime,
+      supportNotificationsRuntimeGroups: supportNotificationsLoad.supportNotificationsRuntimeGroups,
+      supportNotificationsRuntimeItems: supportNotificationsLoad.supportNotificationsRuntimeItems,
+      supportNotificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
+      visibleSupportNotificationsRuntimeItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17646,6 +17725,11 @@ export async function getAdminSupportControl(options?: {
     supportReviewRuntimeItems: supportReviewLoad.supportReviewRuntimeItems,
     supportReviewSafeControls: supportReviewLoad.supportReviewSafeControls,
     visibleSupportReviewRuntimeItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
+    supportNotificationsRuntime: supportNotificationsLoad.supportNotificationsRuntime,
+    supportNotificationsRuntimeGroups: supportNotificationsLoad.supportNotificationsRuntimeGroups,
+    supportNotificationsRuntimeItems: supportNotificationsLoad.supportNotificationsRuntimeItems,
+    supportNotificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
+    visibleSupportNotificationsRuntimeItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

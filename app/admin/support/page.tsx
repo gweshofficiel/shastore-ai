@@ -78,6 +78,13 @@ import {
   type SupportReviewStatus
 } from "@/src/lib/support/support-review-runtime";
 import {
+  supportNotificationCategoryLabel,
+  supportNotificationSeverityBadgeTone,
+  supportNotificationsRuntimeStatusBadgeTone,
+  type SupportNotificationCategory,
+  type SupportNotificationSeverity
+} from "@/src/lib/support/support-notifications-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -962,7 +969,7 @@ export default async function AdminSupportPage({
           ) : null}
 
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Notifications remain reserved for later support phases
+            Notification dispatch remains read-only. See SP-18 Support Notifications below.
           </p>
         </Card>
       ) : null}
@@ -2109,6 +2116,121 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportReviewSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-18 Support Notifications</span>
+        <AdminBadge tone={supportNotificationsRuntimeStatusBadgeTone(control.supportNotificationsRuntime.status)}>
+          {control.supportNotificationsRuntime.status}
+        </AdminBadge>
+        <AdminBadge tone="blue">Certified Notifications Runtime</AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportNotificationsRuntime.summary}</span>
+      </div>
+
+      {control.supportNotificationsRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.supportNotificationsRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportNotificationsRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportNotificationsRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportNotificationsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportNotificationsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportNotificationsRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportNotificationsRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Visible records", value: String(control.supportNotificationsRuntime.visibleRecordCount) },
+          { label: "Certified deliveries", value: String(control.supportNotificationsRuntime.certifiedDeliveryCount) },
+          { label: "Read-only signals", value: String(control.supportNotificationsRuntime.signalRecordCount) },
+          { label: "Restricted records", value: String(control.supportNotificationsRuntime.restrictedRecordCount) },
+          { label: "Loading state", value: control.supportNotificationsRuntime.loadingState }
+        ]}
+      />
+
+      {control.supportNotificationsRuntime.categoryCounts.length ? (
+        <AdminTable empty="No notification categories available." headers={["Category", "Count"]}>
+          {control.supportNotificationsRuntime.categoryCounts.map((item) => (
+            <tr key={item.category}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      ) : null}
+
+      {control.supportNotificationsRuntimeGroups.map((group) => (
+        <div key={group.category} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.categoryLabel}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} record{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support notification records are visible for the current scope. Records load read-only from the certified Notifications Runtime and Support signals."
+        headers={[
+          "Notification ID",
+          "Type",
+          "Severity",
+          "Target resource",
+          "Related ticket",
+          "Delivery status",
+          "Created",
+          "Read status"
+        ]}
+      >
+        {control.visibleSupportNotificationsRuntimeItems.map((item) => (
+          <tr key={item.notificationItemKey}>
+            <td className="px-5 py-4 font-mono text-xs text-slate-700">{item.notificationId}</td>
+            <td className="px-5 py-4 font-semibold text-slate-950">
+              {supportNotificationCategoryLabel(item.category as SupportNotificationCategory)}
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportNotificationSeverityBadgeTone(item.severity as SupportNotificationSeverity)}>
+                {item.severity}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">
+              {item.targetResourceType}: {item.targetResourceId}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.relatedTicketNumber ?? "n/a"}</td>
+            <td className="px-5 py-4 text-slate-600">{item.deliveryStatusLabel}</td>
+            <td className="px-5 py-4 text-slate-600">{formatAdminDate(item.createdAt)}</td>
+            <td className="px-5 py-4 text-slate-600">{item.readStatus}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled notification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportNotificationsSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
