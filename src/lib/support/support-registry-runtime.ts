@@ -24,6 +24,7 @@ export type SupportRuntimeType =
   | "monitoring_stream"
   | "notification_runtime"
   | "review_runtime"
+  | "runtime_certification_runtime"
   | "safe_actions"
   | "search_runtime"
   | "security_certification_runtime"
@@ -72,6 +73,7 @@ export type SupportRegistryEntryDefinition = {
     | "SP-21"
     | "SP-22"
     | "SP-23"
+    | "SP-24"
     | "SP-3"
     | "SP-4"
     | "SP-5"
@@ -524,6 +526,25 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     roadmapPhase: "SP-23",
     runtimeType: "security_certification_runtime",
     title: "Security Certification",
+    visibility: "super_admin"
+  },
+  {
+    auditSupport: true,
+    category: "Support Platform",
+    createdFromArchitecture: true,
+    description:
+      "Support runtime certification runtime validating production-safe read-only Support runtime behavior across SP-1 through SP-23. Derived validation only; no runtime mutation on page load.",
+    futureHooks: ["Production certification", "Runtime hardening"],
+    healthSupport: true,
+    id: "support:runtime-certification",
+    implementationStatus: "production_ready",
+    key: "sp-runtime-certification",
+    monitoringSupport: true,
+    permissions: ["super_admin:read"],
+    productionReady: true,
+    roadmapPhase: "SP-24",
+    runtimeType: "runtime_certification_runtime",
+    title: "Runtime Certification",
     visibility: "super_admin"
   }
 ] as const;

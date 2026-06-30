@@ -480,6 +480,12 @@ import {
   toSupportSecurityCertificationSnapshot
 } from "@/src/lib/support/support-security-certification-runtime";
 import {
+  buildSupportRuntimeCertificationReadOnlySafe,
+  mapSupportRuntimeCertificationToAdminFields,
+  resolveSupportRuntimeCertificationAuthorization,
+  toSupportRuntimeCertificationSnapshot
+} from "@/src/lib/support/support-runtime-certification-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8506,6 +8512,54 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportSecurityCertification: AdminSupportControl["supportSecurityCertification"];
+  supportRuntimeCertification: {
+    blockedScopes: number;
+    certifiedScopes: number;
+    emptyMessage: string | null;
+    groupCount: number;
+    loadError: string | null;
+    loadingState: "certified" | "empty" | "error" | "restricted" | "unauthorized";
+    overallStatus: "needs_attention" | "support_runtime_certification_ready";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    reviewRequiredScopes: number;
+    source: "support_runtime_certification_runtime";
+    summary: string;
+    totalCertifications: number;
+    unauthorizedMessage: string | null;
+    warningScopes: number;
+  };
+  supportRuntimeCertificationGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      blockedModules: number;
+      certificationName: string;
+      certificationScope: string;
+      certifiedModules: number;
+      dataSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      executionSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      groupKey: string;
+      mutationSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      readOnlyStatus: "blocked" | "certified" | "review_required" | "warning";
+      runtimeCertificationKey: string;
+      runtimeIntegrityStatus: "blocked" | "certified" | "review_required" | "warning";
+      safeSummary: string;
+      securitySafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      stateSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      warningModules: number;
+    }>;
+    title: string;
+  }>;
+  supportRuntimeCertificationItems: AdminSupportControl["supportRuntimeCertificationGroups"][number]["items"];
+  supportRuntimeCertificationSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportRuntimeCertification: AdminSupportControl["supportRuntimeCertification"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17629,6 +17683,9 @@ export async function getAdminSupportControl(options?: {
   const securityCertificationAuthorization = resolveSupportSecurityCertificationAuthorization({
     role: access.role
   });
+  const runtimeCertificationAuthorization = resolveSupportRuntimeCertificationAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -18313,6 +18370,127 @@ export async function getAdminSupportControl(options?: {
       })
     })
   );
+  const supportRuntimeCertificationLoad = mapSupportRuntimeCertificationToAdminFields(
+    buildSupportRuntimeCertificationReadOnlySafe({
+      analyticsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportAnalyticsLoad.supportAnalyticsRuntime.readOnly,
+        source: supportAnalyticsLoad.supportAnalyticsRuntime.source,
+        summary: supportAnalyticsLoad.supportAnalyticsRuntime.summary
+      }),
+      auditRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportAuditLoad.supportAuditRuntime.readOnly,
+        source: supportAuditLoad.supportAuditRuntime.source,
+        summary: supportAuditLoad.supportAuditRuntime.summary
+      }),
+      authorization: runtimeCertificationAuthorization,
+      dashboardRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: certificationDashboardLoad.dashboard.readOnly,
+        source: certificationDashboardLoad.dashboard.source,
+        summary: certificationDashboardLoad.dashboard.summary
+      }),
+      dataCertification: supportDataCertificationLoad.dataCertification,
+      dataCertificationItems: supportDataCertificationLoad.dataCertificationItems,
+      errorEventsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: errorEventsLoad.errorEventsRuntime.readOnly,
+        source: errorEventsLoad.errorEventsRuntime.source,
+        summary: errorEventsLoad.errorEventsRuntime.summary
+      }),
+      eventTimelineRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: eventTimelineLoad.eventTimelineRuntime.readOnly,
+        source: eventTimelineLoad.eventTimelineRuntime.source,
+        summary: eventTimelineLoad.eventTimelineRuntime.summary
+      }),
+      exportRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportExportLoad.supportExportRuntime.readOnly,
+        source: supportExportLoad.supportExportRuntime.source,
+        summary: supportExportLoad.supportExportRuntime.summary
+      }),
+      filtersRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportFiltersLoad.supportFiltersRuntime.readOnly,
+        source: supportFiltersLoad.supportFiltersRuntime.source,
+        summary: supportFiltersLoad.supportFiltersRuntime.summary
+      }),
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportVisibilityLoad.visibleSupportMetricsRuntime.readOnly,
+        source: supportVisibilityLoad.visibleSupportMetricsRuntime.source,
+        summary: supportVisibilityLoad.visibleSupportMetricsRuntime.summary
+      }),
+      monitoringEventsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: monitoringEventsLoad.monitoringEventsRuntime.readOnly,
+        source: monitoringEventsLoad.monitoringEventsRuntime.source,
+        summary: monitoringEventsLoad.monitoringEventsRuntime.summary
+      }),
+      notificationsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportNotificationsLoad.supportNotificationsRuntime.readOnly,
+        source: supportNotificationsLoad.supportNotificationsRuntime.source,
+        summary: supportNotificationsLoad.supportNotificationsRuntime.summary
+      }),
+      registryRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportRegistry.registry.readOnly,
+        source: supportRegistry.registry.source,
+        summary: supportRegistry.registry.summary
+      }),
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount,
+      reviewItems: supportReviewLoad.supportReviewRuntimeItems,
+      reviewRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportReviewLoad.supportReviewRuntime.readOnly,
+        source: supportReviewLoad.supportReviewRuntime.source,
+        summary: supportReviewLoad.supportReviewRuntime.summary
+      }),
+      role: access.role,
+      safeActionsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportSafeActionsLoad.supportSafeActionsRuntime.readOnly,
+        source: supportSafeActionsLoad.supportSafeActionsRuntime.source,
+        summary: supportSafeActionsLoad.supportSafeActionsRuntime.summary
+      }),
+      searchRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportSearchLoad.supportSearchRuntime.readOnly,
+        source: supportSearchLoad.supportSearchRuntime.source,
+        summary: supportSearchLoad.supportSearchRuntime.summary
+      }),
+      securityCertification: supportSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
+      statusItems: supportStatusLoad.supportStatusRuntimeItems,
+      statusRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportStatusLoad.supportStatusRuntime.readOnly,
+        source: supportStatusLoad.supportStatusRuntime.source,
+        summary: supportStatusLoad.supportStatusRuntime.summary
+      }),
+      ticketAssignmentRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: assignmentLoad.ticketAssignmentRuntime.readOnly,
+        source: assignmentLoad.ticketAssignmentRuntime.source,
+        summary: assignmentLoad.ticketAssignmentRuntime.summary
+      }),
+      ticketConversationRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: ticketConversationLoad.ticketConversationRuntime.readOnly,
+        source: ticketConversationLoad.ticketConversationRuntime.source,
+        summary: ticketConversationLoad.ticketConversationRuntime.summary
+      }),
+      ticketDetailsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: ticketDetailsLoad.ticketDetailsRuntime.readOnly,
+        source: ticketDetailsLoad.ticketDetailsRuntime.source,
+        summary: ticketDetailsLoad.ticketDetailsRuntime.summary
+      }),
+      ticketStatusRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: ticketStatusLoad.ticketStatusRuntime.readOnly,
+        source: ticketStatusLoad.ticketStatusRuntime.source,
+        summary: ticketStatusLoad.ticketStatusRuntime.summary
+      }),
+      ticketsRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: ticketsRuntimeLoad.ticketsRuntime.readOnly,
+        source: ticketsRuntimeLoad.ticketsRuntime.source,
+        summary: ticketsRuntimeLoad.ticketsRuntime.summary
+      }),
+      visibilityAuthorization,
+      visibilityRuntime: toSupportRuntimeCertificationSnapshot({
+        readOnly: supportVisibilityLoad.supportVisibilityRuntime.readOnly,
+        source: supportVisibilityLoad.supportVisibilityRuntime.source,
+        summary: supportVisibilityLoad.supportVisibilityRuntime.summary
+      })
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -18407,6 +18585,11 @@ export async function getAdminSupportControl(options?: {
       supportSecurityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
       supportSecurityCertificationSafeControls: supportSecurityCertificationLoad.securityCertificationSafeControls,
       visibleSupportSecurityCertification: supportSecurityCertificationLoad.securityCertification,
+      supportRuntimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
+      supportRuntimeCertificationGroups: supportRuntimeCertificationLoad.runtimeCertificationGroups,
+      supportRuntimeCertificationItems: supportRuntimeCertificationLoad.runtimeCertificationItems,
+      supportRuntimeCertificationSafeControls: supportRuntimeCertificationLoad.runtimeCertificationSafeControls,
+      visibleSupportRuntimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -18520,6 +18703,11 @@ export async function getAdminSupportControl(options?: {
     supportSecurityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
     supportSecurityCertificationSafeControls: supportSecurityCertificationLoad.securityCertificationSafeControls,
     visibleSupportSecurityCertification: supportSecurityCertificationLoad.securityCertification,
+    supportRuntimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
+    supportRuntimeCertificationGroups: supportRuntimeCertificationLoad.runtimeCertificationGroups,
+    supportRuntimeCertificationItems: supportRuntimeCertificationLoad.runtimeCertificationItems,
+    supportRuntimeCertificationSafeControls: supportRuntimeCertificationLoad.runtimeCertificationSafeControls,
+    visibleSupportRuntimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

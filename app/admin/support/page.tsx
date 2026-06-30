@@ -108,6 +108,12 @@ import {
   type SupportSecurityCertificationStatus
 } from "@/src/lib/support/support-security-certification-runtime";
 import {
+  supportRuntimeCertificationRuntimeStatusBadgeTone,
+  supportRuntimeCertificationStatusLabel,
+  supportRuntimeCertificationStatusTone,
+  type SupportRuntimeCertificationStatus
+} from "@/src/lib/support/support-runtime-certification-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3146,6 +3152,142 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportSecurityCertificationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-24 Support Runtime Certification</span>
+        <AdminBadge tone={supportRuntimeCertificationRuntimeStatusBadgeTone(control.visibleSupportRuntimeCertification.overallStatus)}>
+          {control.visibleSupportRuntimeCertification.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportRuntimeCertification.summary}</span>
+      </div>
+
+      {control.visibleSupportRuntimeCertification.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportRuntimeCertification.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportRuntimeCertification.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportRuntimeCertification.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportRuntimeCertification.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportRuntimeCertification.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportRuntimeCertification.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportRuntimeCertification.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Runtime scopes", value: String(control.visibleSupportRuntimeCertification.totalCertifications) },
+          { label: "Certified", value: String(control.visibleSupportRuntimeCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.visibleSupportRuntimeCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportRuntimeCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportRuntimeCertification.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportRuntimeCertification.loadingState }
+        ]}
+      />
+
+      {control.supportRuntimeCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} scope{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support runtime certification scopes registered."
+        headers={[
+          "Certification",
+          "Scope",
+          "Integrity",
+          "Read only",
+          "States",
+          "Mutation",
+          "Execution",
+          "Data",
+          "Security",
+          "Summary"
+        ]}
+      >
+        {control.supportRuntimeCertificationItems.map((runtimeItem) => (
+          <tr key={runtimeItem.runtimeCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{runtimeItem.certificationName}</span>
+                <span className="text-xs text-slate-500">
+                  Certified modules: {runtimeItem.certifiedModules} · Blocked: {runtimeItem.blockedModules} · Warnings:{" "}
+                  {runtimeItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{runtimeItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.runtimeIntegrityStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.runtimeIntegrityStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.readOnlyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.readOnlyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.stateSafetyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.stateSafetyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.mutationSafetyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.mutationSafetyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.executionSafetyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.executionSafetyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.dataSafetyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.dataSafetyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportRuntimeCertificationStatusTone(runtimeItem.securitySafetyStatus as SupportRuntimeCertificationStatus)}>
+                {supportRuntimeCertificationStatusLabel(runtimeItem.securitySafetyStatus as SupportRuntimeCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{runtimeItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled runtime certification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportRuntimeCertificationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
