@@ -140,6 +140,14 @@ import {
   type SupportFinalValidationStatus
 } from "@/src/lib/support/support-final-validation-runtime";
 import {
+  supportFinalCertificationStatusLabel,
+  supportFinalCertificationStatusTone,
+  supportFinalProductionCertificationRuntimeStatusBadgeTone,
+  supportFinalProductionStatusLabel,
+  type SupportFinalCertificationStatus,
+  type SupportFinalProductionStatus
+} from "@/src/lib/support/support-final-production-certification-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3867,6 +3875,132 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportFinalValidationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+        {control.supportFinalProductionCertificationBadges.map((badge) => (
+          <AdminBadge key={badge} tone="green">
+            {badge}
+          </AdminBadge>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-29 Support Final Production Certification</span>
+        <AdminBadge tone={supportFinalProductionCertificationRuntimeStatusBadgeTone(control.visibleSupportFinalProductionCertification.overallStatus)}>
+          {control.visibleSupportFinalProductionCertification.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportFinalProductionCertification.summary}</span>
+      </div>
+
+      <AdminStatGrid
+        stats={[
+          { label: "Total certifications", value: String(control.visibleSupportFinalProductionCertification.totalCertifications) },
+          { label: "Final certified", value: String(control.visibleSupportFinalProductionCertification.certifiedScopes) },
+          { label: "Review required", value: String(control.visibleSupportFinalProductionCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportFinalProductionCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportFinalProductionCertification.warningScopes) }
+        ]}
+      />
+
+      {control.supportFinalProductionCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} certification{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support final production certification scopes registered."
+        headers={[
+          "Certification",
+          "Scope",
+          "Final status",
+          "Integrity",
+          "Read only",
+          "Execution",
+          "Mutation",
+          "Data",
+          "Security",
+          "Hardening",
+          "Certified",
+          "Summary"
+        ]}
+      >
+        {control.supportFinalProductionCertificationItems.map((finalItem) => (
+          <tr key={finalItem.finalCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{finalItem.certificationName}</span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {finalItem.blockedModules} · Warnings: {finalItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.finalProductionStatus as SupportFinalProductionStatus)}>
+                {supportFinalProductionStatusLabel(finalItem.finalProductionStatus as SupportFinalProductionStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.runtimeIntegrityStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.runtimeIntegrityStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.readOnlyStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.readOnlyStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.executionSafetyStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.executionSafetyStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.mutationSafetyStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.mutationSafetyStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.dataSafetyStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.dataSafetyStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.securitySafetyStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.securitySafetyStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalCertificationStatusTone(finalItem.hardeningStatus as SupportFinalCertificationStatus)}>
+                {supportFinalCertificationStatusLabel(finalItem.hardeningStatus as SupportFinalCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.certifiedModules}</td>
+            <td className="px-5 py-4 text-slate-600">{finalItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled final production certification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportFinalProductionCertificationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">

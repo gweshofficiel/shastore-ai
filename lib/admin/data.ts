@@ -510,6 +510,11 @@ import {
   toSupportFinalValidationSnapshot
 } from "@/src/lib/support/support-final-validation-runtime";
 import {
+  buildSupportFinalProductionCertificationReadOnlySafe,
+  mapSupportFinalProductionCertificationToAdminFields,
+  SUPPORT_FINAL_PRODUCTION_CERTIFICATION_BADGES
+} from "@/src/lib/support/support-final-production-certification-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8775,6 +8780,51 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportFinalValidation: AdminSupportControl["supportFinalValidation"];
+  supportFinalProductionCertification: {
+    blockedScopes: number;
+    certifiedScopes: number;
+    groupCount: number;
+    overallStatus: "needs_attention" | "support_final_production_certification_ready";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    reviewRequiredScopes: number;
+    source: "support_final_production_certification_runtime";
+    summary: string;
+    totalCertifications: number;
+    warningScopes: number;
+  };
+  supportFinalProductionCertificationBadges: readonly string[];
+  supportFinalProductionCertificationGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      blockedModules: number;
+      certificationName: string;
+      certificationScope: string;
+      certifiedModules: number;
+      dataSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      executionSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      finalCertificationKey: string;
+      finalProductionStatus: "blocked" | "final_production_certified" | "review_required" | "warning";
+      groupKey: string;
+      hardeningStatus: "blocked" | "certified" | "review_required" | "warning";
+      mutationSafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      readOnlyStatus: "blocked" | "certified" | "review_required" | "warning";
+      runtimeIntegrityStatus: "blocked" | "certified" | "review_required" | "warning";
+      safeSummary: string;
+      securitySafetyStatus: "blocked" | "certified" | "review_required" | "warning";
+      warningModules: number;
+    }>;
+    title: string;
+  }>;
+  supportFinalProductionCertificationItems: AdminSupportControl["supportFinalProductionCertificationGroups"][number]["items"];
+  supportFinalProductionCertificationSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportFinalProductionCertification: AdminSupportControl["supportFinalProductionCertification"];
 };
 
 export type AdminInternalTeamControl = {
@@ -19251,6 +19301,46 @@ export async function getAdminSupportControl(options?: {
       })
     })
   );
+  const supportFinalProductionCertificationLoad = mapSupportFinalProductionCertificationToAdminFields(
+    buildSupportFinalProductionCertificationReadOnlySafe({
+      analyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+      auditRuntime: supportAuditLoad.supportAuditRuntime,
+      dashboardRuntime: certificationDashboardLoad.dashboard,
+      dataCertification: supportDataCertificationLoad.dataCertification,
+      dataCertificationItems: supportDataCertificationLoad.dataCertificationItems,
+      errorEventsRuntime: errorEventsLoad.errorEventsRuntime,
+      eventTimelineRuntime: eventTimelineLoad.eventTimelineRuntime,
+      exportRuntime: supportExportLoad.supportExportRuntime,
+      filtersRuntime: supportFiltersLoad.supportFiltersRuntime,
+      finalValidation: supportFinalValidationLoad.finalValidation,
+      finalValidationItems: supportFinalValidationLoad.finalValidationItems,
+      metricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+      monitoringEventsRuntime: monitoringEventsLoad.monitoringEventsRuntime,
+      notificationsRuntime: supportNotificationsLoad.supportNotificationsRuntime,
+      productionCertification: supportProductionCertificationLoad.productionCertification,
+      productionCertificationItems: supportProductionCertificationLoad.productionCertificationItems,
+      productionHardening: supportProductionHardeningLoad.productionHardening,
+      productionHardeningItems: supportProductionHardeningLoad.productionHardeningItems,
+      registryRuntime: supportRegistry.registry,
+      reviewItems: supportReviewLoad.supportReviewRuntimeItems,
+      reviewRuntime: supportReviewLoad.supportReviewRuntime,
+      runtimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
+      runtimeCertificationItems: supportRuntimeCertificationLoad.runtimeCertificationItems,
+      safeActionsRuntime: supportSafeActionsLoad.supportSafeActionsRuntime,
+      searchRuntime: supportSearchLoad.supportSearchRuntime,
+      securityCertification: supportSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
+      statusRuntime: supportStatusLoad.supportStatusRuntime,
+      stressValidation: supportStressValidationLoad.stressValidation,
+      stressValidationItems: supportStressValidationLoad.stressValidationItems,
+      ticketAssignmentRuntime: assignmentLoad.ticketAssignmentRuntime,
+      ticketConversationRuntime: ticketConversationLoad.ticketConversationRuntime,
+      ticketDetailsRuntime: ticketDetailsLoad.ticketDetailsRuntime,
+      ticketStatusRuntime: ticketStatusLoad.ticketStatusRuntime,
+      ticketsRuntime: ticketsRuntimeLoad.ticketsRuntime,
+      visibilityRuntime: supportVisibilityLoad.supportVisibilityRuntime
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -19370,6 +19460,13 @@ export async function getAdminSupportControl(options?: {
       supportFinalValidationItems: supportFinalValidationLoad.finalValidationItems,
       supportFinalValidationSafeControls: supportFinalValidationLoad.finalValidationSafeControls,
       visibleSupportFinalValidation: supportFinalValidationLoad.finalValidation,
+      supportFinalProductionCertification: supportFinalProductionCertificationLoad.finalCertification,
+      supportFinalProductionCertificationBadges: SUPPORT_FINAL_PRODUCTION_CERTIFICATION_BADGES,
+      supportFinalProductionCertificationGroups: supportFinalProductionCertificationLoad.finalCertificationGroups,
+      supportFinalProductionCertificationItems: supportFinalProductionCertificationLoad.finalCertificationItems,
+      supportFinalProductionCertificationSafeControls:
+        supportFinalProductionCertificationLoad.finalCertificationSafeControls,
+      visibleSupportFinalProductionCertification: supportFinalProductionCertificationLoad.finalCertification,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -19508,6 +19605,13 @@ export async function getAdminSupportControl(options?: {
     supportFinalValidationItems: supportFinalValidationLoad.finalValidationItems,
     supportFinalValidationSafeControls: supportFinalValidationLoad.finalValidationSafeControls,
     visibleSupportFinalValidation: supportFinalValidationLoad.finalValidation,
+    supportFinalProductionCertification: supportFinalProductionCertificationLoad.finalCertification,
+    supportFinalProductionCertificationBadges: SUPPORT_FINAL_PRODUCTION_CERTIFICATION_BADGES,
+    supportFinalProductionCertificationGroups: supportFinalProductionCertificationLoad.finalCertificationGroups,
+    supportFinalProductionCertificationItems: supportFinalProductionCertificationLoad.finalCertificationItems,
+    supportFinalProductionCertificationSafeControls:
+      supportFinalProductionCertificationLoad.finalCertificationSafeControls,
+    visibleSupportFinalProductionCertification: supportFinalProductionCertificationLoad.finalCertification,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

@@ -26,6 +26,7 @@ export type SupportRuntimeType =
   | "production_certification_runtime"
   | "production_hardening_runtime"
   | "final_validation_runtime"
+  | "final_production_certification_runtime"
   | "review_runtime"
   | "runtime_certification_runtime"
   | "safe_actions"
@@ -82,6 +83,7 @@ export type SupportRegistryEntryDefinition = {
     | "SP-26"
     | "SP-27"
     | "SP-28"
+    | "SP-29"
     | "SP-3"
     | "SP-4"
     | "SP-5"
@@ -618,7 +620,7 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     createdFromArchitecture: true,
     description:
       "Support final validation runtime performing end-to-end read-only validation metadata across SP-1 through SP-27. Derived validation only; no execution, mutation, or certified system regression on page load.",
-    futureHooks: ["Final production certification"],
+    futureHooks: [],
     healthSupport: true,
     id: "support:final-validation",
     implementationStatus: "production_ready",
@@ -629,6 +631,25 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     roadmapPhase: "SP-28",
     runtimeType: "final_validation_runtime",
     title: "Final Validation",
+    visibility: "super_admin"
+  },
+  {
+    auditSupport: true,
+    category: "Support Platform",
+    createdFromArchitecture: true,
+    description:
+      "Support final production certification runtime certifying the complete read-only Support runtime across SP-1 through SP-28. Derived certification only; no approval, mutation, or certified system regression on page load.",
+    futureHooks: [],
+    healthSupport: true,
+    id: "support:final-production-certification",
+    implementationStatus: "production_ready",
+    key: "sp-final-production-certification",
+    monitoringSupport: true,
+    permissions: ["super_admin:read"],
+    productionReady: true,
+    roadmapPhase: "SP-29",
+    runtimeType: "final_production_certification_runtime",
+    title: "Final Production Certification",
     visibility: "super_admin"
   }
 ] as const;
