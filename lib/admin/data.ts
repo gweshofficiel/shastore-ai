@@ -429,6 +429,11 @@ import {
   resolveSupportMetricsAuthorization
 } from "@/src/lib/support/support-metrics-runtime";
 import {
+  applySupportVisibilityRuntime,
+  mapSupportVisibilityRuntimeToAdminFields,
+  resolveSupportVisibilityAuthorization
+} from "@/src/lib/support/support-visibility-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -7965,6 +7970,66 @@ export type AdminSupportControl = {
     totalTickets: number;
     unassignedTickets: number;
   };
+  supportVisibilityRuntime: {
+    accessLevel: "restricted" | "super_admin_only" | "unauthorized";
+    emptyMessage: string | null;
+    groupCount: number;
+    hiddenRecordCount: number;
+    loadError: string | null;
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    restrictedRecordCount: number;
+    source: "support_visibility_runtime";
+    status: "load_error" | "needs_attention" | "unauthorized" | "visibility_runtime_ready";
+    summary: string;
+    superAdminOnlyModules: number;
+    totalModules: number;
+    unauthorizedMessage: string | null;
+    visibleModules: number;
+    visibleRecordCount: number;
+  };
+  supportVisibilityRuntimeGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      accessLevel: string;
+      groupKey: string;
+      moduleKey: string;
+      moduleName: string;
+      permissionScope: string;
+      recordCount: number;
+      registryKey: string;
+      restrictedRecordCount: number;
+      safeSummary: string;
+      visibility: string;
+      visibilityKey: string;
+      visibleRecordCount: number;
+    }>;
+    title: string;
+  }>;
+  supportVisibilityRuntimeItems: Array<{
+    accessLevel: string;
+    groupKey: string;
+    moduleKey: string;
+    moduleName: string;
+    permissionScope: string;
+    recordCount: number;
+    registryKey: string;
+    restrictedRecordCount: number;
+    safeSummary: string;
+    visibility: string;
+    visibilityKey: string;
+    visibleRecordCount: number;
+  }>;
+  visibleTicketsRuntimeItems: AdminSupportControl["ticketsRuntimeItems"];
+  visibleMonitoringEventsRuntimeItems: AdminSupportControl["monitoringEventsRuntimeItems"];
+  visibleErrorEventsRuntimeItems: AdminSupportControl["errorEventsRuntimeItems"];
+  visibleEventTimelineRuntimeItems: AdminSupportControl["eventTimelineRuntimeItems"];
+  visibleSearchResults: AdminSupportControl["searchResults"];
+  visibleSupportMetricsRuntime: AdminSupportControl["supportMetricsRuntime"];
+  visibleTicketDetail: AdminSupportControl["ticketDetail"];
+  visibleTicketConversationMessages: AdminSupportControl["ticketConversationMessages"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17064,6 +17129,9 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const visibilityAuthorization = resolveSupportVisibilityAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17169,6 +17237,24 @@ export async function getAdminSupportControl(options?: {
       tickets: supportFiltersLoad.filteredTickets
     })
   );
+  const supportVisibilityLoad = mapSupportVisibilityRuntimeToAdminFields(
+    applySupportVisibilityRuntime({
+      authorization: visibilityAuthorization,
+      errorEvents: supportFiltersLoad.filteredErrorEvents,
+      eventTimeline: supportFiltersLoad.filteredEventTimeline,
+      filtersApplied: supportFiltersLoad.supportFiltersRuntime.appliedFilterCount > 0,
+      filtersRuntime: supportFiltersLoad.supportFiltersRuntime,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsAuthorization,
+      monitoringEvents: supportFiltersLoad.filteredMonitoringEvents,
+      searchQuery,
+      searchResults: supportFiltersLoad.filteredSearchResults,
+      searchRuntime: supportSearchLoad.supportSearchRuntime,
+      ticketConversationMessages: ticketConversationLoad.ticketConversationMessages,
+      ticketDetail: ticketDetailsLoad.ticketDetail,
+      tickets: supportFiltersLoad.filteredTickets
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17209,14 +17295,25 @@ export async function getAdminSupportControl(options?: {
       eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
       eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
       supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
-      searchResults: supportFiltersLoad.filteredSearchResults,
+      searchResults: supportVisibilityLoad.visibleSearchResults,
       supportFiltersRuntime: supportFiltersLoad.supportFiltersRuntime,
       filteredTicketsRuntimeItems: supportFiltersLoad.filteredTickets,
       filteredMonitoringEventsRuntimeItems: supportFiltersLoad.filteredMonitoringEvents,
       filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
       filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
       filteredSearchResults: supportFiltersLoad.filteredSearchResults,
-      supportMetricsRuntime: supportMetricsLoad.supportMetricsRuntime,
+      supportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+      supportVisibilityRuntime: supportVisibilityLoad.supportVisibilityRuntime,
+      supportVisibilityRuntimeGroups: supportVisibilityLoad.supportVisibilityRuntimeGroups,
+      supportVisibilityRuntimeItems: supportVisibilityLoad.supportVisibilityRuntimeItems,
+      visibleTicketsRuntimeItems: supportVisibilityLoad.visibleTickets,
+      visibleMonitoringEventsRuntimeItems: supportVisibilityLoad.visibleMonitoringEvents,
+      visibleErrorEventsRuntimeItems: supportVisibilityLoad.visibleErrorEvents,
+      visibleEventTimelineRuntimeItems: supportVisibilityLoad.visibleEventTimeline,
+      visibleSearchResults: supportVisibilityLoad.visibleSearchResults,
+      visibleSupportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+      visibleTicketDetail: supportVisibilityLoad.visibleTicketDetail,
+      visibleTicketConversationMessages: supportVisibilityLoad.visibleTicketConversationMessages,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17276,14 +17373,25 @@ export async function getAdminSupportControl(options?: {
     eventTimelineRuntimeItems: eventTimelineLoad.eventTimelineRuntimeItems,
     eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
     supportSearchRuntime: supportSearchLoad.supportSearchRuntime,
-    searchResults: supportFiltersLoad.filteredSearchResults,
+    searchResults: supportVisibilityLoad.visibleSearchResults,
     supportFiltersRuntime: supportFiltersLoad.supportFiltersRuntime,
     filteredTicketsRuntimeItems: supportFiltersLoad.filteredTickets,
     filteredMonitoringEventsRuntimeItems: supportFiltersLoad.filteredMonitoringEvents,
     filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
     filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
     filteredSearchResults: supportFiltersLoad.filteredSearchResults,
-    supportMetricsRuntime: supportMetricsLoad.supportMetricsRuntime,
+    supportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+    supportVisibilityRuntime: supportVisibilityLoad.supportVisibilityRuntime,
+    supportVisibilityRuntimeGroups: supportVisibilityLoad.supportVisibilityRuntimeGroups,
+    supportVisibilityRuntimeItems: supportVisibilityLoad.supportVisibilityRuntimeItems,
+    visibleTicketsRuntimeItems: supportVisibilityLoad.visibleTickets,
+    visibleMonitoringEventsRuntimeItems: supportVisibilityLoad.visibleMonitoringEvents,
+    visibleErrorEventsRuntimeItems: supportVisibilityLoad.visibleErrorEvents,
+    visibleEventTimelineRuntimeItems: supportVisibilityLoad.visibleEventTimeline,
+    visibleSearchResults: supportVisibilityLoad.visibleSearchResults,
+    visibleSupportMetricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+    visibleTicketDetail: supportVisibilityLoad.visibleTicketDetail,
+    visibleTicketConversationMessages: supportVisibilityLoad.visibleTicketConversationMessages,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

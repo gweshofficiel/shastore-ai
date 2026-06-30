@@ -53,6 +53,9 @@ import {
   supportMetricsRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-metrics-runtime";
 import {
+  supportVisibilityStateBadgeTone
+} from "@/src/lib/support/support-visibility-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -610,7 +613,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.filteredTicketsRuntimeItems.map((ticket) => (
+        {control.visibleTicketsRuntimeItems.map((ticket) => (
           <tr
             className={control.selectedTicketId === ticket.ticketId ? "bg-blue-50/60" : undefined}
             key={ticket.ticketKey}
@@ -692,63 +695,63 @@ export default async function AdminSupportPage({
         </Card>
       ) : null}
 
-      {control.ticketDetail ? (
+      {control.visibleTicketDetail ? (
         <Card className="grid gap-5 p-5 lg:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="grid gap-2">
               <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Ticket details</p>
-              <h3 className="text-xl font-black text-slate-950">Ticket {control.ticketDetail.ticketNumber}</h3>
-              <p className="text-sm text-slate-500">{control.ticketDetail.ticketId}</p>
+              <h3 className="text-xl font-black text-slate-950">Ticket {control.visibleTicketDetail.ticketNumber}</h3>
+              <p className="text-sm text-slate-500">{control.visibleTicketDetail.ticketId}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <AdminBadge
                 tone={supportTicketCanonicalStatusBadgeTone(
-                  control.ticketDetail.status as SupportTicketCanonicalStatus
+                  control.visibleTicketDetail.status as SupportTicketCanonicalStatus
                 )}
               >
-                {supportTicketCanonicalStatusLabel(control.ticketDetail.status as SupportTicketCanonicalStatus)}
+                {supportTicketCanonicalStatusLabel(control.visibleTicketDetail.status as SupportTicketCanonicalStatus)}
               </AdminBadge>
-              <AdminBadge tone="slate">{control.ticketDetail.priority}</AdminBadge>
-              <AdminBadge tone="slate">{control.ticketDetail.category}</AdminBadge>
+              <AdminBadge tone="slate">{control.visibleTicketDetail.priority}</AdminBadge>
+              <AdminBadge tone="slate">{control.visibleTicketDetail.category}</AdminBadge>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-1">
               <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Subject</span>
-              <p className="text-sm font-semibold text-slate-900">{control.ticketDetail.subject}</p>
+              <p className="text-sm font-semibold text-slate-900">{control.visibleTicketDetail.subject}</p>
             </div>
             <div className="grid gap-1">
               <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Assigned agent</span>
-              <p className="text-sm font-semibold text-slate-900">{control.ticketDetail.assignedAgentLabel}</p>
+              <p className="text-sm font-semibold text-slate-900">{control.visibleTicketDetail.assignedAgentLabel}</p>
             </div>
             <div className="grid gap-1">
               <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Created</span>
-              <p className="text-sm text-slate-700">{formatAdminDate(control.ticketDetail.createdAt)}</p>
+              <p className="text-sm text-slate-700">{formatAdminDate(control.visibleTicketDetail.createdAt)}</p>
             </div>
             <div className="grid gap-1">
               <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Last updated</span>
-              <p className="text-sm text-slate-700">{formatAdminDate(control.ticketDetail.lastUpdatedAt)}</p>
+              <p className="text-sm text-slate-700">{formatAdminDate(control.visibleTicketDetail.lastUpdatedAt)}</p>
             </div>
           </div>
 
           <div className="grid gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Description</span>
-            <p className="text-sm leading-6 text-slate-700">{control.ticketDetail.description}</p>
+            <p className="text-sm leading-6 text-slate-700">{control.visibleTicketDetail.description}</p>
           </div>
 
           <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:grid-cols-3">
             <p>
               <span className="font-bold text-slate-900">Workspace:</span>{" "}
-              {control.ticketDetail.relatedWorkspaceId ?? "Not provided"}
+              {control.visibleTicketDetail.relatedWorkspaceId ?? "Not provided"}
             </p>
             <p>
               <span className="font-bold text-slate-900">Store:</span>{" "}
-              {control.ticketDetail.relatedStoreId ?? "Not provided"}
+              {control.visibleTicketDetail.relatedStoreId ?? "Not provided"}
             </p>
             <p>
               <span className="font-bold text-slate-900">User:</span>{" "}
-              {control.ticketDetail.relatedUserId ?? "Not provided"}
+              {control.visibleTicketDetail.relatedUserId ?? "Not provided"}
             </p>
           </div>
 
@@ -774,9 +777,9 @@ export default async function AdminSupportPage({
               <p className="text-sm text-slate-600">{control.ticketConversationRuntime.emptyMessage}</p>
             ) : null}
 
-            {control.ticketConversationMessages.length ? (
+            {control.visibleTicketConversationMessages.length ? (
               <div className="grid gap-3">
-                {control.ticketConversationMessages.map((message) => (
+                {control.visibleTicketConversationMessages.map((message) => (
                   <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" key={message.messageKey}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-slate-950">{message.author}</span>
@@ -801,7 +804,7 @@ export default async function AdminSupportPage({
 
             {control.ticketConversationRuntime.canCreateMessage ? (
               <form action={createPlatformSupportTicketConversationMessageAction} className="grid gap-3">
-                <input name="ticketId" type="hidden" value={control.ticketDetail.ticketId} />
+                <input name="ticketId" type="hidden" value={control.visibleTicketDetail.ticketId} />
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
                   Add message
                   <textarea
@@ -838,51 +841,51 @@ export default async function AdminSupportPage({
             )}
           </div>
 
-          {control.ticketDetail.relatedMonitoringEventState === "not_linked" ? (
+          {control.visibleTicketDetail.relatedMonitoringEventState === "not_linked" ? (
             <p className="text-sm text-slate-500">No related monitoring or error event is linked to this ticket.</p>
           ) : null}
 
-          {control.ticketDetail.relatedMonitoringEventState === "not_found" ? (
+          {control.visibleTicketDetail.relatedMonitoringEventState === "not_found" ? (
             <Card className="border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-800">
-                Linked monitoring event not found for event ID {control.ticketDetail.eventId ?? "unknown"}.
+                Linked monitoring event not found for event ID {control.visibleTicketDetail.eventId ?? "unknown"}.
               </p>
             </Card>
           ) : null}
 
-          {control.ticketDetail.relatedMonitoringEvent ? (
+          {control.visibleTicketDetail.relatedMonitoringEvent ? (
             <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
                   Related monitoring event
                 </span>
-                <AdminBadge tone={control.ticketDetail.relatedMonitoringEvent.isErrorEvent ? "red" : "slate"}>
-                  {control.ticketDetail.relatedMonitoringEvent.isErrorEvent ? "error event" : "monitoring event"}
+                <AdminBadge tone={control.visibleTicketDetail.relatedMonitoringEvent.isErrorEvent ? "red" : "slate"}>
+                  {control.visibleTicketDetail.relatedMonitoringEvent.isErrorEvent ? "error event" : "monitoring event"}
                 </AdminBadge>
               </div>
               <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
                 <p>
                   <span className="font-bold text-slate-900">Event type:</span>{" "}
-                  {control.ticketDetail.relatedMonitoringEvent.eventType}
+                  {control.visibleTicketDetail.relatedMonitoringEvent.eventType}
                 </p>
                 <p>
                   <span className="font-bold text-slate-900">Status:</span>{" "}
-                  {control.ticketDetail.relatedMonitoringEvent.eventStatus}
+                  {control.visibleTicketDetail.relatedMonitoringEvent.eventStatus}
                 </p>
                 <p>
                   <span className="font-bold text-slate-900">Entity:</span>{" "}
-                  {control.ticketDetail.relatedMonitoringEvent.entityType}
+                  {control.visibleTicketDetail.relatedMonitoringEvent.entityType}
                 </p>
                 <p>
                   <span className="font-bold text-slate-900">Created:</span>{" "}
-                  {formatAdminDate(control.ticketDetail.relatedMonitoringEvent.createdAt)}
+                  {formatAdminDate(control.visibleTicketDetail.relatedMonitoringEvent.createdAt)}
                 </p>
                 <p className="md:col-span-2">
                   <span className="font-bold text-slate-900">Event ID:</span>{" "}
-                  {control.ticketDetail.relatedMonitoringEvent.eventId}
+                  {control.visibleTicketDetail.relatedMonitoringEvent.eventId}
                 </p>
               </div>
-              <p className="text-sm text-slate-600">{control.ticketDetail.relatedMonitoringEvent.safeSummary}</p>
+              <p className="text-sm text-slate-600">{control.visibleTicketDetail.relatedMonitoringEvent.safeSummary}</p>
             </div>
           ) : null}
 
@@ -1158,7 +1161,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.filteredMonitoringEventsRuntimeItems.map((event) => (
+        {control.visibleMonitoringEventsRuntimeItems.map((event) => (
           <tr key={event.eventKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1261,7 +1264,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.filteredErrorEventsRuntimeItems.map((event) => (
+        {control.visibleErrorEventsRuntimeItems.map((event) => (
           <tr key={event.errorKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1364,7 +1367,7 @@ export default async function AdminSupportPage({
           "Safe controls"
         ]}
       >
-        {control.filteredEventTimelineRuntimeItems.map((item) => (
+        {control.visibleEventTimelineRuntimeItems.map((item) => (
           <tr key={item.timelineItemKey}>
             <td className="px-5 py-4">
               <div className="grid gap-1">
@@ -1656,14 +1659,94 @@ export default async function AdminSupportPage({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
-        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support metrics runtime</span>
-        <AdminBadge tone={supportMetricsRuntimeStatusBadgeTone(control.supportMetricsRuntime.status)}>
-          {control.supportMetricsRuntime.status}
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support visibility runtime</span>
+        <AdminBadge tone={supportVisibilityStateBadgeTone(control.supportVisibilityRuntime.status)}>
+          {control.supportVisibilityRuntime.status}
         </AdminBadge>
-        <span className="text-sm text-slate-600">{control.supportMetricsRuntime.summary}</span>
+        <AdminBadge tone="blue">Super Admin only</AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportVisibilityRuntime.summary}</span>
       </div>
 
-      {control.supportMetricsRuntime.status === "unauthorized" ? (
+      {control.supportVisibilityRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.supportVisibilityRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportVisibilityRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportVisibilityRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.supportVisibilityRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportVisibilityRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Visible records", value: String(control.supportVisibilityRuntime.visibleRecordCount) },
+          { label: "Restricted records", value: String(control.supportVisibilityRuntime.restrictedRecordCount) },
+          { label: "Hidden records", value: String(control.supportVisibilityRuntime.hiddenRecordCount) },
+          { label: "Visible modules", value: String(control.supportVisibilityRuntime.visibleModules) },
+          { label: "Super Admin modules", value: String(control.supportVisibilityRuntime.superAdminOnlyModules) },
+          { label: "Access level", value: control.supportVisibilityRuntime.accessLevel }
+        ]}
+      />
+
+      {control.supportVisibilityRuntimeGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} module{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support visibility modules are registered."
+        headers={[
+          "Module",
+          "Visibility",
+          "Access",
+          "Visible records",
+          "Restricted",
+          "Permission scope",
+          "Safe summary"
+        ]}
+      >
+        {control.supportVisibilityRuntimeItems.map((item) => (
+          <tr key={item.visibilityKey}>
+            <td className="px-5 py-4 font-bold text-slate-950">{item.moduleName}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportVisibilityStateBadgeTone(item.visibility as "hidden" | "restricted" | "super_admin_only" | "visible")}>
+                {item.visibility}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.accessLevel}</td>
+            <td className="px-5 py-4 text-slate-600">
+              {item.visibleRecordCount}/{item.recordCount}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{item.restrictedRecordCount}</td>
+            <td className="px-5 py-4 text-slate-500">{item.permissionScope}</td>
+            <td className="px-5 py-4 text-slate-600">{item.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support metrics runtime</span>
+        <AdminBadge tone={supportMetricsRuntimeStatusBadgeTone(control.visibleSupportMetricsRuntime.status)}>
+          {control.visibleSupportMetricsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportMetricsRuntime.summary}</span>
+      </div>
+
+      {control.visibleSupportMetricsRuntime.status === "unauthorized" ? (
         <Card className="border-red-200 bg-red-50 p-5">
           <p className="text-sm font-black text-red-800">
             You are not authorized to view Support metrics with the current account.
@@ -1671,23 +1754,23 @@ export default async function AdminSupportPage({
         </Card>
       ) : null}
 
-      {control.supportMetricsRuntime.loadError ? (
+      {control.visibleSupportMetricsRuntime.loadError ? (
         <Card className="border-amber-200 bg-amber-50 p-5">
-          <p className="text-sm font-black text-amber-800">{control.supportMetricsRuntime.loadError}</p>
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportMetricsRuntime.loadError}</p>
         </Card>
       ) : null}
 
-      {control.supportMetricsRuntime.emptyMessage ? (
+      {control.visibleSupportMetricsRuntime.emptyMessage ? (
         <Card className="border-slate-200 bg-slate-50 p-5">
-          <p className="text-sm font-semibold text-slate-600">{control.supportMetricsRuntime.emptyMessage}</p>
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportMetricsRuntime.emptyMessage}</p>
         </Card>
       ) : null}
 
-      <AdminStatGrid stats={control.supportMetricsRuntime.metricCards} />
+      <AdminStatGrid stats={control.visibleSupportMetricsRuntime.metricCards} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <AdminTable empty="No ticket priority metrics in the current scope." headers={["Priority", "Tickets"]}>
-          {control.supportMetricsRuntime.ticketsByPriority.map((item) => (
+          {control.visibleSupportMetricsRuntime.ticketsByPriority.map((item) => (
             <tr key={`priority-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1696,7 +1779,7 @@ export default async function AdminSupportPage({
         </AdminTable>
 
         <AdminTable empty="No ticket category metrics in the current scope." headers={["Category", "Tickets"]}>
-          {control.supportMetricsRuntime.ticketsByCategory.map((item) => (
+          {control.visibleSupportMetricsRuntime.ticketsByCategory.map((item) => (
             <tr key={`category-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1708,7 +1791,7 @@ export default async function AdminSupportPage({
           empty="No monitoring severity metrics in the current scope."
           headers={["Monitoring severity", "Events"]}
         >
-          {control.supportMetricsRuntime.monitoringEventsBySeverity.map((item) => (
+          {control.visibleSupportMetricsRuntime.monitoringEventsBySeverity.map((item) => (
             <tr key={`monitoring-severity-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1720,7 +1803,7 @@ export default async function AdminSupportPage({
           empty="No monitoring status metrics in the current scope."
           headers={["Monitoring status", "Events"]}
         >
-          {control.supportMetricsRuntime.monitoringEventsByStatus.map((item) => (
+          {control.visibleSupportMetricsRuntime.monitoringEventsByStatus.map((item) => (
             <tr key={`monitoring-status-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1729,7 +1812,7 @@ export default async function AdminSupportPage({
         </AdminTable>
 
         <AdminTable empty="No error severity metrics in the current scope." headers={["Error severity", "Events"]}>
-          {control.supportMetricsRuntime.errorEventsBySeverity.map((item) => (
+          {control.visibleSupportMetricsRuntime.errorEventsBySeverity.map((item) => (
             <tr key={`error-severity-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1738,7 +1821,7 @@ export default async function AdminSupportPage({
         </AdminTable>
 
         <AdminTable empty="No error status metrics in the current scope." headers={["Error status", "Events"]}>
-          {control.supportMetricsRuntime.errorEventsByStatus.map((item) => (
+          {control.visibleSupportMetricsRuntime.errorEventsByStatus.map((item) => (
             <tr key={`error-status-${item.key}`}>
               <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
               <td className="px-5 py-4 text-slate-600">{item.count}</td>
@@ -1846,7 +1929,7 @@ export default async function AdminSupportPage({
       {control.supportSearchRuntime.query.q ? (
         <AdminStatGrid
           stats={[
-            { label: "Matched results", value: String(control.filteredSearchResults.length) },
+            { label: "Matched results", value: String(control.visibleSearchResults.length) },
             { label: "Candidates scanned", value: String(control.supportSearchRuntime.totalCandidateCount) },
             {
               label: "Tickets table",
@@ -2019,8 +2102,8 @@ export default async function AdminSupportPage({
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-slate-100">
-          {control.filteredTicketsRuntimeItems.length ? (
-            control.filteredTicketsRuntimeItems.map((ticket) => (
+          {control.visibleTicketsRuntimeItems.length ? (
+            control.visibleTicketsRuntimeItems.map((ticket) => (
               <div className="grid gap-4 p-5" key={ticket.ticketKey}>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <div>
